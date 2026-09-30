@@ -1,0 +1,111 @@
+{
+  "$defs": {
+    "Priors": {
+      "additionalProperties": false,
+      "description": "The priors and penalties of the calibration fit; the defaults are the paper's.",
+      "properties": {
+        "ability_sd": {
+          "default": 1.0,
+          "description": "Prior standard deviation of the latent ability (rubric-only mode; logits).",
+          "exclusiveMinimum": 0,
+          "title": "Ability Sd",
+          "type": "number"
+        },
+        "bt_l2": {
+          "default": 0.0001,
+          "description": "L2 penalty of the Bradley-Terry abilities the tournament mode refits from the tournament's windows (logits^-2). The default is the paper's, which the tournament's live fit uses while judging; the judgement store records it.",
+          "minimum": 0,
+          "title": "Bt L2",
+          "type": "number"
+        },
+        "l2_beta": {
+          "default": 0.0001,
+          "description": "L2 penalty on ``beta_k`` (tournament mode; logits^-2).",
+          "minimum": 0,
+          "title": "L2 Beta",
+          "type": "number"
+        },
+        "l2_gamma": {
+          "default": 0.0001,
+          "description": "L2 penalty on ``log gamma_k`` (tournament mode).",
+          "minimum": 0,
+          "title": "L2 Gamma",
+          "type": "number"
+        },
+        "sigma_alpha": {
+          "default": 2.0,
+          "description": "Prior standard deviation of ``alpha_q`` (tournament mode; logits).",
+          "exclusiveMinimum": 0,
+          "title": "Sigma Alpha",
+          "type": "number"
+        },
+        "sigma_tau": {
+          "default": 1.0,
+          "description": "Prior standard deviation of ``tau_q - 1`` (tournament mode; dimensionless).",
+          "exclusiveMinimum": 0,
+          "title": "Sigma Tau",
+          "type": "number"
+        }
+      },
+      "title": "Priors",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/calibration-identity.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What a calibration was fitted from and how.",
+  "properties": {
+    "families": {
+      "description": "The family keys fitted.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Families",
+      "type": "array"
+    },
+    "judgements": {
+      "description": "16-hex digest of the fitted judgements' record ids.",
+      "title": "Judgements",
+      "type": "string"
+    },
+    "judges": {
+      "description": "``\"single\"`` or ``\"pooled\"``.",
+      "enum": [
+        "single",
+        "pooled"
+      ],
+      "title": "Judges",
+      "type": "string"
+    },
+    "mode": {
+      "description": "The fit's mode.",
+      "enum": [
+        "tournament",
+        "rubric_only"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "priors": {
+      "$ref": "#/$defs/Priors",
+      "description": "The priors and penalties of the fit, the Bradley-Terry refit's ``bt_l2`` included."
+    },
+    "schema": {
+      "const": "rcp-ndcg.calibration-identity.v1",
+      "default": "rcp-ndcg.calibration-identity.v1",
+      "title": "Schema",
+      "type": "string"
+    }
+  },
+  "required": [
+    "judgements",
+    "families",
+    "mode",
+    "judges",
+    "priors"
+  ],
+  "title": "CalibrationIdentity",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.calibration-identity.v1"
+}

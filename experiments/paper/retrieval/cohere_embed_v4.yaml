@@ -1,0 +1,9 @@
+# Cohere Embed v4 through the public Cohere API, one of the paper's three first-stage retrievers: a retriever config
+# (rcp_ndcg.retrieval.RetrieverConfig) for `rcp-ndcg retrieval index|search --retriever <this file>`. No GPU; the key
+# is read from CO_API_KEY or COHERE_API_KEY. The API returns one vector per text. The Voyage and Gemini embedding APIs work the same way
+# with `provider: voyage | gemini`, and OpenAI's with `provider: openai_compatible` and its base_url.
+kind: dense
+encoder:
+  provider: cohere
+  model: embed-v4.0
+  batch_size: 96

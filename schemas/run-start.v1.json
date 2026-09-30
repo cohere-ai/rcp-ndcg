@@ -1,0 +1,483 @@
+{
+  "$defs": {
+    "CostEstimate": {
+      "description": "A projected judging pass.",
+      "properties": {
+        "assumptions": {
+          "description": "What the numbers rest on.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Assumptions",
+          "type": "array"
+        },
+        "calls": {
+          "description": "Judge calls (an upper bound: the adaptive phase can stop early).",
+          "title": "Calls",
+          "type": "integer"
+        },
+        "input_token_count": {
+          "description": "``\"exact\"`` when the text was counted with the judge's tokenizer, ``\"approximate\"`` when it was estimated from characters (the judge names no tokenizer).",
+          "enum": [
+            "exact",
+            "approximate"
+          ],
+          "title": "Input Token Count",
+          "type": "string"
+        },
+        "input_tokens": {
+          "description": "Prompt tokens (exact or approximate: ``input_token_count``).",
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "description": "Completion tokens (approximate).",
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "schema": {
+          "const": "rcp-ndcg.cost-estimate.v1",
+          "default": "rcp-ndcg.cost-estimate.v1",
+          "title": "Schema",
+          "type": "string"
+        },
+        "stages": {
+          "additionalProperties": {
+            "$ref": "#/$defs/StageEstimate"
+          },
+          "description": "Per stage.",
+          "title": "Stages",
+          "type": "object"
+        },
+        "wall_s": {
+          "description": "Wall time in seconds at the judge's concurrency (approximate).",
+          "title": "Wall S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "calls",
+        "input_tokens",
+        "output_tokens",
+        "wall_s",
+        "stages",
+        "input_token_count",
+        "assumptions"
+      ],
+      "title": "CostEstimate",
+      "type": "object"
+    },
+    "JobState": {
+      "description": "One job a runner was handed for the run.",
+      "properties": {
+        "handle": {
+          "title": "Handle",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "status": {
+          "description": "pending, running, succeeded, failed, cancelled or unknown.",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "handle",
+        "status"
+      ],
+      "title": "JobState",
+      "type": "object"
+    },
+    "MirrorState": {
+      "description": "What a mirror last did (``run status`` shows it).",
+      "properties": {
+        "lag_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Seconds since the last successful upload.",
+          "title": "Lag S"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Error"
+        },
+        "last_upload_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Upload At"
+        },
+        "remote": {
+          "title": "Remote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "remote"
+      ],
+      "title": "MirrorState",
+      "type": "object"
+    },
+    "PlanStep": {
+      "properties": {
+        "status": {
+          "enum": [
+            "would run",
+            "would skip"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "step": {
+          "title": "Step",
+          "type": "string"
+        }
+      },
+      "required": [
+        "step",
+        "status"
+      ],
+      "title": "PlanStep",
+      "type": "object"
+    },
+    "RunState": {
+      "description": "Where a run stands: its status, every step, its judge requests, and its jobs when a runner holds it.",
+      "properties": {
+        "done": {
+          "description": "Whether the status is terminal (completed, partial, failed or cancelled).",
+          "title": "Done",
+          "type": "boolean"
+        },
+        "jobs": {
+          "items": {
+            "$ref": "#/$defs/JobState"
+          },
+          "title": "Jobs",
+          "type": "array"
+        },
+        "metrics": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "`<system>/<metric>@<k>` -> value of every system but the judge's own order (the full report with confidence intervals: metrics/report.json).",
+          "title": "Metrics",
+          "type": "object"
+        },
+        "mirror": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MirrorState"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The mirror's last upload and lag, if mirrored."
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why the state is not the local manifest's own: read from a newer mirror, or derived from jobs that ended without recording it; and a submission that failed.",
+          "title": "Note"
+        },
+        "requests": {
+          "description": "Judge requests made so far.",
+          "title": "Requests",
+          "type": "integer"
+        },
+        "run_dir": {
+          "title": "Run Dir",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "runner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The job runner holding the run, if any.",
+          "title": "Runner"
+        },
+        "status": {
+          "description": "submitted, running, completed, partial, failed or cancelled.",
+          "title": "Status",
+          "type": "string"
+        },
+        "steps": {
+          "description": "Every planned step in run order; one not started yet is pending.",
+          "items": {
+            "$ref": "#/$defs/StepState"
+          },
+          "title": "Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "run_id",
+        "run_dir",
+        "status",
+        "done",
+        "steps",
+        "requests",
+        "metrics"
+      ],
+      "title": "RunState",
+      "type": "object"
+    },
+    "StageEstimate": {
+      "description": "One stage's share of a CostEstimate.",
+      "properties": {
+        "calls": {
+          "title": "Calls",
+          "type": "integer"
+        },
+        "input_tokens": {
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "title": "Output Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "calls",
+        "input_tokens",
+        "output_tokens"
+      ],
+      "title": "StageEstimate",
+      "type": "object"
+    },
+    "StepProgress": {
+      "description": "How far a judging step has got, in judge windows.",
+      "properties": {
+        "done": {
+          "description": "Windows judged and stored so far.",
+          "title": "Done",
+          "type": "integer"
+        },
+        "planned": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The windows the step's schedule asks at most for its pools (the tournament's adaptive phase can stop early); ``None`` until the pools and the schedule are known.",
+          "title": "Planned"
+        }
+      },
+      "required": [
+        "done"
+      ],
+      "title": "StepProgress",
+      "type": "object"
+    },
+    "StepState": {
+      "description": "One planned step of a run: its status, time, error and, for a judging step, its progress.",
+      "properties": {
+        "duration_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration S"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "progress": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StepProgress"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Judge windows done and planned (judging steps)."
+        },
+        "status": {
+          "description": "pending, running, completed, failed or cancelled.",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "status"
+      ],
+      "title": "StepState",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/run-start.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What ``run start`` or ``run resume`` did: ran the run, handed it to a runner, planned it or estimated it.",
+  "properties": {
+    "estimate": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CostEstimate"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "mode": {
+      "enum": [
+        "ran",
+        "submitted",
+        "plan",
+        "estimate"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "plan": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/PlanStep"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Plan"
+    },
+    "rendered": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "For a plan handed to a runner: what it would submit, per job (script or YAML).",
+      "title": "Rendered"
+    },
+    "run_dir": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The run directory; null for a plan or an estimate of a new run.",
+      "title": "Run Dir"
+    },
+    "run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The run's id; null for a plan or an estimate of a new run.",
+      "title": "Run Id"
+    },
+    "schema": {
+      "const": "rcp-ndcg.run-start.v1",
+      "type": "string"
+    },
+    "state": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RunState"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "schema",
+    "mode",
+    "run_id",
+    "run_dir"
+  ],
+  "title": "RunStartResult",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.run-start.v1"
+}

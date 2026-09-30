@@ -1,0 +1,189 @@
+{
+  "$defs": {
+    "Stats": {
+      "description": "Minimum, mean and maximum of a quantity.",
+      "properties": {
+        "max": {
+          "title": "Max",
+          "type": "number"
+        },
+        "mean": {
+          "title": "Mean",
+          "type": "number"
+        },
+        "min": {
+          "title": "Min",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "mean",
+        "max"
+      ],
+      "title": "Stats",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/dataset-summary.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What a dataset holds: counts, candidate pools, labels and gains; or a suite's subsets.",
+  "properties": {
+    "dataset": {
+      "title": "Dataset",
+      "type": "string"
+    },
+    "excluded": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "(query, document) pairs removed by the protocol.",
+      "title": "Excluded"
+    },
+    "gains": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Stats"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Calibrated gains g(theta) in [0, 1] over the pools."
+    },
+    "judged_documents": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "(query, document) pairs with a gain.",
+      "title": "Judged Documents"
+    },
+    "kind": {
+      "enum": [
+        "dataset",
+        "suite-subsets"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "labels": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Count of each positive human label value.",
+      "title": "Labels"
+    },
+    "pool_depth": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Stats"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Candidates per query."
+    },
+    "positive_labels": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "(query, document) pairs with a positive label.",
+      "title": "Positive Labels"
+    },
+    "queries": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Queries with a candidate pool or a positive label.",
+      "title": "Queries"
+    },
+    "revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Revision"
+    },
+    "schema": {
+      "const": "rcp-ndcg.dataset-summary.v1",
+      "type": "string"
+    },
+    "subset": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Subset"
+    },
+    "subsets": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The suite's subsets (kind suite-subsets).",
+      "title": "Subsets"
+    }
+  },
+  "required": [
+    "schema",
+    "dataset",
+    "kind"
+  ],
+  "title": "DatasetSummary",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.dataset-summary.v1"
+}

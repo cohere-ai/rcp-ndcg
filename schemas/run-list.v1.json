@@ -1,0 +1,32 @@
+{
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/run-list.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The runs under a runs directory, newest first.",
+  "properties": {
+    "runs": {
+      "description": "Per run: run_id, status, created_at, dataset, judges, metrics, requests, steps.",
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Runs",
+      "type": "array"
+    },
+    "runs_dir": {
+      "title": "Runs Dir",
+      "type": "string"
+    },
+    "schema": {
+      "const": "rcp-ndcg.run-list.v1",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "runs_dir",
+    "runs"
+  ],
+  "title": "RunList",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.run-list.v1"
+}

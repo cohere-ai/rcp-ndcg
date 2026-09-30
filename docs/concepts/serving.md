@@ -1,0 +1,521 @@
+# Judges, serving and runners
+
+rcp-ndcg's contract with a model is one OpenAI-compatible URL. Serve the judge with any engine and image you choose
+(vLLM, SGLang, a gateway in front of several workers) or use a hosted API, describe it in a judge config, and run the
+judging steps here or through a job runner on SLURM or Kubernetes. The package never builds an image, never pins an
+engine and never translates engine flags. A run config's `serve:` section (below) starts your image with your
+command, verbatim, beside the run's job (on SLURM without a container runtime, your command on the node).
+
+## The judge config
+
+`rcp_ndcg.llm.JudgeConfig` describes one judge:
+
+| Field | Meaning |
+|---|---|
+| `base_url`, `model` | the OpenAI-compatible endpoint (`.../v1`), or a list of replica URLs of the same model, and the served model name |
+| `revision` | the checkpoint commit; recorded in every judgement |
+| `temperature` | the sampling temperature; `None` (the default) sends none, so the server's default applies |
+| `max_output_tokens`, `extra_body` | the completion cap (reasoning included) and further request fields, e.g. `reasoning_effort` |
+| `context_tokens` | the model's context window; sets the per-window text budget, counted with the judge's `tokenizer` ([preprocessing](preprocessing.md)) |
+| `tokenizer` | the model's Hugging Face repo id (optionally `@revision`) or a `tokenizer.json` path; text limits, the window budget and estimates count its tokens ([preprocessing](preprocessing.md)); without one nothing is cut and estimates approximate |
+| `concurrency`, `timeout_s`, `connect_timeout_s`, `max_retries` | the transport; `concurrency` is shared by all replicas |
+| `api_key_env` | the environment variable that holds the API key; the key itself is never written anywhere |
+| `decoding` | `json_schema`: each request carries the stage's answer schema as `response_format`, and the family records `decoding: json_schema`; an endpoint that refuses the schema fails the pass with exit code 8. `free` (the default): the judge answers in free text |
+| `max_images`, `max_videos` | what the served model accepts per request; 0 (the default) means it reads none |
+| `image_processor` | the model's image processor family (`qwen2_vl`, `qwen2_5_vl`, `qwen3_vl`); the client sizes every image as it does ([preprocessing](preprocessing.md)) |
+| `allow_floating_model` | accept an undated model alias on the OpenAI API (`gpt-5`); by default only a dated snapshot (`gpt-5-2025-08-07`) is accepted, since an alias moves between snapshots and its judgements are not reproducible |
+| `wait_on_outage_s` | how long a request waits while every replica is down, counted from its first failed send (time queued behind `concurrency` never counts); `None` waits indefinitely, except in a job that starts its own engine, where it is `serve.outage_timeout_s` |
+
+Only the content fields (model, revision, sampling settings, context, tokenizer, image processor) enter the judgement
+identity. The transport, the URLs included, can be retuned between runs, and a store still resumes. The shipped
+configs ship inside the package (`rcp_ndcg/llm/judges/`) and load by name, from any directory: `qwen35_397b_nvfp4` is
+the paper's primary judge (Qwen3.5-397B), `qwen35_397b_fp8` the same model in its FP8 release, `gpt_oss_120b` its
+second judge, `qwen36_27b_fp8` its TREC-DL judge (Qwen3.6-27B), and `gpt5_hosted` a hosted judge through the OpenAI
+API. The shipped configs send no temperature, as the paper's runs did, and name no engine.
+
+```python
+from rcp_ndcg.llm import JudgeConfig
+
+judge_cfg = JudgeConfig(base_url="http://127.0.0.1:8000/v1", model="my-model", context_tokens=131072)
+assert judge_cfg.temperature is None  # no temperature is sent: the server's default sampling
+replicas = JudgeConfig(base_url=["http://node1:8000/v1", "http://node2:8000/v1"], model="my-model")
+assert replicas.urls == ("http://node1:8000/v1", "http://node2:8000/v1")
+```
+
+`JudgeConfig.load(name_or_path)` reads a shipped config by name or a YAML config by path, and
+`JudgeConfig.fake(seed=0)` gives the offline fake judge of `rcp_ndcg.testing`, recorded as model `fake` so that its
+judgements never pool with a real judge's.
+
+## Serving a judge
+
+Any engine works that serves the OpenAI chat-completions API under the judge's `model` name. Pin the image tag, or
+the engine version, you serve with: correct engine behaviour comes from a correctly versioned engine. Three settings
+matter to the judge:
+
+- **The served model name** must be the judge config's `model`.
+- **The reasoning parser.** A reasoning judge with `decoding: json_schema` must be served with its reasoning parser,
+  so the reasoning goes to its own channel and the answer schema constrains only the answer.
+- **The per-request media limit** of a judge that reads page images or video must allow its `max_images` and
+  `max_videos`. The client sizes every image itself, so no pixel or processor flag is needed
+  ([preprocessing](preprocessing.md)).
+
+For the shipped judges, with vLLM and with SGLang:
+
+| Judge config | Weights | Served name | Reasoning parser (vLLM / SGLang) | Context |
+|---|---|---|---|---|
+| `qwen35_397b_nvfp4` | `nvidia/Qwen3.5-397B-A17B-NVFP4` | `qwen3.5-397b` | `qwen3` / `qwen3` | 262144 |
+| `qwen35_397b_fp8` | `Qwen/Qwen3.5-397B-A17B-FP8` | `qwen3.5-397b-fp8` | `qwen3` / `qwen3` | 262144 |
+| `gpt_oss_120b` | `openai/gpt-oss-120b` | `gpt-oss-120b` | `openai_gptoss` / `gpt-oss` | 131072 |
+| `qwen36_27b_fp8` | `Qwen/Qwen3.6-27B-FP8` | `qwen3.6-27b-fp8` | `qwen3` / `qwen3` | the model's |
+
+```bash
+# vLLM (the vllm/vllm-openai image runs `vllm serve`)
+vllm serve openai/gpt-oss-120b --served-model-name gpt-oss-120b --reasoning-parser openai_gptoss \
+  --max-model-len 131072 --tensor-parallel-size 4 --port 8000
+
+# SGLang (the lmsysorg/sglang image)
+python3 -m sglang.launch_server --model-path openai/gpt-oss-120b --served-model-name gpt-oss-120b \
+  --reasoning-parser gpt-oss --context-length 131072 --tp 4 --port 8000
+
+# A Qwen3.5 judge of page images: ten pages per window
+vllm serve nvidia/Qwen3.5-397B-A17B-NVFP4 --revision 0368c1b3233414cd4a617b8ff9515e25752dc16c \
+  --served-model-name qwen3.5-397b --reasoning-parser qwen3 --max-model-len 262144 \
+  --limit-mm-per-prompt '{"image": 10}' --tensor-parallel-size 4 --data-parallel-size 2
+python3 -m sglang.launch_server --model-path nvidia/Qwen3.5-397B-A17B-NVFP4 --served-model-name qwen3.5-397b \
+  --reasoning-parser qwen3 --context-length 262144 --limit-mm-data-per-request '{"image": 10}' --tp 4
+```
+
+and `--set judge.max_images=10` on the judging side. A `video_url` corpus, whose containers the engine decodes, also
+counts videos in the limit (`{"video": 1}`), and pins the engine's frame count to the video policy's `num_frames`:
+`--media-io-kwargs '{"video": {"num_frames": 8}}'` on vLLM, `--mm-process-config '{"video": {"nframes": 8}}'` on
+SGLang. Frame-directory corpora need neither, because their frames are sent as images.
+
+Inside one node, use the engine's own data parallelism for one URL per node (vLLM `--data-parallel-size`, SGLang
+`python3 -m sglang_router.launch_server --dp-size`); across nodes, run independent replicas and list their URLs
+(below). The paper's exact engine commands, with their images pinned, are in `experiments/paper/serve/` of the
+repository.
+
+### What the client checks at run time
+
+- **A refused media count.** An HTTP 400 or 422 that says a request carries too many images or videos stops the
+  pass with a `CapabilityError` (exit code 8) whose hint names the server's per-request media limit.
+- **A missing reasoning parser.** With `decoding: json_schema`, when the first 8 answers carry no reasoning, the
+  client logs one warning that the server probably runs without the model's reasoning parser. A model that does not
+  reason, or an API that does not return its reasoning, can ignore it.
+- **What the endpoint serves.** At the start of every judging pass the client asks each replica `GET /models` and
+  records the served model id, `max_model_len` when reported, the `server` and any version header, and the first
+  answer's `system_fingerprint` (vLLM puts its version there), in the judgement store and in the run manifest's
+  judging steps. A server that does not list the judge's `model` is named in a warning. Nothing engine-specific is
+  asked, and none of it enters an identity.
+
+### Several replicas
+
+`base_url` takes a list of replica URLs of the same served model. Each request goes to the live replica with the
+fewest requests in flight from this client; the client is normally the only sender, so its counts are exact. A
+gateway or a Kubernetes Service is simply a list of one.
+
+- **A replica that fails** (a connection error, a timeout, HTTP 408, 429 or 5xx after retries) is set aside for a
+  backoff that doubles while it keeps failing, from 5 to 60 seconds, and its request moves at once to another live
+  replica. A replica that answers again is used again.
+- **When every replica is down,** requests wait and are re-sent with backoff until one answers, or until
+  `wait_on_outage_s` passes (`BackendUnavailableError`). A run against dead servers therefore parks instead of
+  turning the outage into missing judgements. A job that starts its own engine (`serve:`) waits at most
+  `serve.outage_timeout_s` (900 s by default) and then fails, since its engine will not come back on its own.
+- **A request that keeps failing on a replica that answers other requests** is that request's failure: it is
+  refused and recorded like any refused window.
+
+## How the client behaves
+
+- **Refusals.** HTTP 401 or 403 stops the pass with `CredentialsError` (exit code 5), and HTTP 404 (no such route or
+  model) with `ProviderError`: both concern every request, not one window. Any other refusal of one request, such
+  as HTTP 400 for an over-long prompt, is that window's: it is asked again up to three attempts, then recorded as
+  an invalid judgement, and a resumed pass asks it again. Failures of the OpenAI SDK and of httpx map alike.
+- **Answers.** The client records the endpoint's `finish_reason` as it comes, any string or none; only the answer's
+  text is parsed.
+- **Window budget.** Each document's text is cut to the tokens its window leaves it, and every cut is recorded
+  ([preprocessing](preprocessing.md)).
+- **Media.** A prompt with images or video is refused (`CapabilityError`) unless the judge config declares that the
+  model reads them.
+
+## The judgement store
+
+`rcp_ndcg.llm.judge` writes one append-only store per judging pass: `tournament.jsonl` and `rubric.jsonl`, one
+`Judgement` record per window, plus `identity.json`, `preprocessing.jsonl` and `prompts/<sha256>.txt`, the text of
+every prompt the store was judged with under the hash its judgement family records. A custom prompt thus stays
+reproducible from the store after its file moves or changes.
+
+- **Record ids.** Every window has a stable `record_id`, a hash of the judgement family, the query, the stage, the
+  window's sequence number and its placements. Calling `judge` again over the same store asks only for the missing
+  windows. Resuming and re-judging a subset of documents (`docs=`) are therefore the same call.
+- **Identity.** `identity.json` records what produced the store: the judgement family (judge model and revision,
+  prompt hash, criteria, parse version, decoding, preprocessing, tokenizer hash), the judge's content fields, the
+  schedule and the dataset. It holds content only: the prompt and the tokenizer enter by their SHA-256, and a local
+  dataset by its absolute path, so the same file under another name or path is the same identity; the names the pass
+  was given are kept beside it (`sources`). Judging into a store of another identity raises `IdentityError` and names
+  the differing fields.
+  `force=True` moves the old records aside instead. Beside the identity, each stage's entry lists what the judge's
+  endpoints said they serve (`engines`: the served model id, `max_model_len`, `owned_by`, the `server` and any
+  version header, and the first answer's `system_fingerprint`). This is runtime information: it never enters the
+  identity, so a store resumed against another engine version adds a report instead of being refused. The dataset
+  enters the identity by its name and URI and, for a Hub dataset, by the commit its revision resolved to, so a moved
+  upstream is refused. Local files have no such pin: editing the documents of a local dataset after judging it is
+  your responsibility, since the stored answers would then be paired with texts the judge never saw. Adding
+  documents is fine: only windows that show them are new.
+- **Reparse.** Every record keeps the judge's raw answer. `rcp_ndcg.llm.reparse(store, out)`, or
+  `rcp-ndcg judge reparse --judgements DIR --out DIR`, reads the stored answers again with the current parser and
+  writes a new store under the current parse version, with its own family key and record ids. It never calls the
+  judge and never writes into the source store, and it reports per stage how many windows were recovered, stayed
+  invalid (by category), were unchanged or changed.
+
+## Estimating a pass
+
+`rcp_ndcg.llm.estimate(dataset, candidates, judge, stages=...)`, and `--estimate` on the command line, report the
+calls, input and output tokens and wall time of a judging pass before the judge is called. Input tokens are
+counted exactly with the judge's tokenizer, or approximated at 2.0 characters per token without one;
+`input_token_count` says which. For a judge without an `image_processor`, images are approximated at 1,000 tokens
+each, stated in the assumptions and warned about (`APPROXIMATE_IMAGE_TOKENS`). The assumptions name only the stages
+estimated. A run whose candidates come from retrieval can be estimated before it retrieves: each query's pool is then
+assumed to hold `candidates.depth` documents, and the assumptions say so.
+
+## Runs and job runners
+
+A run config names the dataset, the candidates, the judge and the steps (`retrieve`, `rerank`, `tournament`,
+`rubric`, `calibrate`, `evaluate`). `rcp-ndcg run start my_run.yaml` runs them into `runs/<run_id>/`, whose
+`manifest.json` records every step's identity, inputs, outputs and usage (judge calls and tokens). Resuming (`rcp-ndcg run resume --run
+runs/<run_id>`) reuses every step whose identity is unchanged, and `rcp-ndcg run status` shows the state of each
+step. Estimate a run with `--estimate` before you start it.
+
+`run resume --set KEY=VALUE` (a YAML literal) changes the run's config, and the run keeps the change only if the
+resume succeeds. A resume that fails or is refused leaves `run.yaml`, the recorded config and
+the run's status as they were; a step it re-ran before failing is redone by the next resume. Once a judging step has
+started a stage under the changed config, its store holds judgements of that config, so the change stays and the
+run is `failed` until a resume finishes it. `run resume --only STEP` runs just those steps now and never changes the
+run's recorded `steps`.
+
+The steps run on this machine by default. `rcp-ndcg run start my_run.yaml --runner slurm` (or `kubernetes`) submits
+the run as one job instead, which runs `rcp-ndcg run resume` on the scheduler (`run resume` always runs the run in
+the process that calls it); `run status`, `run logs` and `run cancel` follow it, from any process. `--detach` makes
+`run start` return at once and leaves the run to be followed with `run status`; without `--runner`, the run becomes a
+background job of the local runner. The MCP tool `run_start` always detaches: it returns the run directory, and the
+agent polls `run_status`. `rcp-ndcg run start my_run.yaml --runner slurm --dry-run` prints the step plan and the
+sbatch script (or, for `kubernetes`, the manifests) that would be submitted, and writes nothing.
+
+The runner's options go in the run config. Each runner validates them with its own model (`LocalOptions`,
+`SlurmOptions`, `KubernetesOptions` in `rcp_ndcg.runners`), when the config is read and before anything is written,
+so a typo leaves no run directory behind. Three of them describe the job rather than the runner: `resources`
+(`gpus`, `cpus`, `memory_gb`, `time_limit_s`), `image` and `env`:
+
+```yaml
+runner:
+  name: slurm
+  options:
+    partition: gpu
+    account: my-project
+    log_dir: logs/slurm
+    setup: ["source .venv/bin/activate"]
+    resources: {cpus: 8, memory_gb: 64, time_limit_s: 86400}
+    env: {HF_HOME: /shared/hf}
+```
+
+- **SLURM.** Resources become `--gres=gpu:N`, `--cpus-per-task`, `--mem` and `--time`, and `sbatch_args` passes
+  anything else through. With `serve:`, a node holds an engine replica and, on the first node, the coordinator: the
+  GPUs are the larger of the two requests, CPUs and memory add up, and an engine whose `memory_gb` is unstated gets
+  the node's whole memory (`--mem=0`), whatever the coordinator asks. The job runs in the node's environment (`setup`) or in a container
+  (`container_runtime: apptainer` or `pyxis`, with `container_mounts`); a container runs the stock coordinator image
+  below unless `image` names another. Runs, stores and caches live on the cluster's shared filesystem. A node without
+  internet access needs the weights and data staged beforehand: set `HF_HOME` to a shared cache and
+  `HF_HUB_OFFLINE=1`.
+- **Kubernetes.** Each run is a `batch/v1` Job, applied with the `kubectl` on your `PATH` (and `context`, if set).
+  Resources become the coordinator's requests and limits (`nvidia.com/gpu`, `cpu`, `memory`) and the Job's
+  `activeDeadlineSeconds`. With one engine replica, its one container asks for the larger of the two GPU requests,
+  and for the engine's CPUs and memory plus the coordinator's; a CPU or memory amount the engine leaves unstated is
+  left unlimited, whatever the coordinator asks, so the coordinator's share never caps the engine; `secrets` are exposed to every container as environment (an HF token, the mirror's
+  credentials). The pod's disk is scratch, an `emptyDir` at `/scratch`, so a Kubernetes run needs a `mirror:`
+  ([durability](#durability-local-runs-and-a-mirror)). The pod does not see the submitting host's files either,
+  so every input must be a URI it can read (`hf://`, `s3://`, `gs://`, `https://`): a run that names a local dataset,
+  rankings file, evaluation system, judge config file or prompt file is refused before anything is written, naming
+  them. A judge or prompt goes by its shipped name, or inline in the run config. The packaged `tiny` example reads
+  local files, so it is not submittable to Kubernetes as it is.
+
+### The coordinator installs itself
+
+The coordinator, the process that runs `rcp-ndcg run resume`, needs no GPU and no image of its own. In a container
+it runs a stock image with uv and Python 3.12 (`ghcr.io/astral-sh/uv:python3.12-trixie-slim` unless the runner's
+`image` names another), which installs the same release as the submitting host when the job starts:
+
+```bash
+uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==<version>' \
+  --constraints https://github.com/cohere-ai/rcp-ndcg/releases/download/v<version>/requirements-constraints.txt \
+  --index https://download.pytorch.org/whl/cpu --index-strategy unsafe-best-match \
+  rcp-ndcg run resume --run <run_dir> --mirror <uri>
+```
+
+The constraints file, attached to each GitHub release, is the release's `uv.lock` exported, so every dependency is
+the version the release was tested with. `unsafe-best-match` lets uv consider the PyTorch CPU index next to PyPI for
+every package, so torch resolves to its CPU build at the locked version; without it uv stops at the first index that
+has a package and fails. On Kubernetes uv's cache lives on the scratch volume. Without PyPI, install from the
+repository instead: `--from 'rcp-ndcg[calibrate,hf,s3,azure] @ git+https://github.com/cohere-ai/rcp-ndcg@v<version>'`
+in the larger `ghcr.io/astral-sh/uv:python3.12-trixie` image, which has git.
+
+### Starting the engine with the run: `serve:`
+
+Without `serve:`, the job runs the coordinator only, and the judge's `base_url` is used as it is: your own engine,
+gateway or hosted API. With `serve:`, the `slurm` and `kubernetes` runners start the judge's engine inside the run's
+own job, so the engine and the coordinator are scheduled together and end together, and the coordinator gets the
+replicas' URLs as its judge's `base_url` list (in `RCP_NDCG_JUDGE_URLS`, which `run resume --judge-urls` reads):
+
+```yaml
+judge: gpt_oss_120b
+serve:
+  image: vllm/vllm-openai:v0.30.0                  # your engine and your tag
+  command: [vllm, serve, openai/gpt-oss-120b, --served-model-name, gpt-oss-120b, --reasoning-parser, openai_gptoss,
+            --max-model-len, "131072", --tensor-parallel-size, "4", --data-parallel-size, "2",
+            --host, 0.0.0.0, --port, "8000"]
+  env: {HF_HOME: /models}
+  resources: {gpus: 8}                            # per replica
+  replicas: 1                                     # one URL per replica
+  port: 8000
+  readiness_path: /v1/models                      # GET answers 2xx once a replica serves
+  startup_timeout_s: 1800                         # fail the job if no replica answers by then
+  outage_timeout_s: 900                           # fail the run if every replica stops answering this long
+runner:
+  name: kubernetes
+  options: {namespace: eval, secrets: [hf-token]}
+mirror: s3://my-bucket/runs/nano-gpt-oss
+```
+
+The `command` is yours, verbatim (an argv list or one string): it must serve the judge's `model` name on `port`,
+on all interfaces when there are several replicas. `nodes_per_replica` must be 1: a replica that spans several nodes
+is not implemented, and another value fails when the config is read. The `image` is required on Kubernetes and with
+the SLURM runner's `container_runtime: apptainer` or `pyxis`. With `container_runtime: none` (the SLURM default) the
+command runs on the node itself, so `serve.image` is refused there: set a container runtime to run the engine in its
+image, or drop `image` to run the command on the node. The local runner, and a run in this process, start no engine and refuse `serve:`:
+start the engine yourself and pass `--judge-url`.
+
+What the runners submit:
+
+| | One replica | Several replicas |
+|---|---|---|
+| **Kubernetes** | one Job whose pod has one container, in the engine's `image`: its command is the supervision script below, which starts the engine and the coordinator side by side and talks to the engine on `localhost` | the coordinator Job, plus a StatefulSet of engine pods (`podManagementPolicy: Parallel`) behind a headless Service, both owned by the Job, so `run cancel` or the Job's TTL deletes them; the URLs are the pods' stable names, and the coordinator waits at most `startup_timeout_s` until one replica answers |
+| **SLURM** | one sbatch running the supervision script: the engine is a background step (`srun --overlap`) | one sbatch over as many nodes running the supervision script: one engine per node in one step, the URLs built from the node list, the coordinator on the first node |
+
+### When the engine fails, the job fails
+
+A job that starts its engine never outlives it. Holding an allocation for a dead or hung engine costs more than
+starting again: the judgement stores are append-only, a mirror keeps them, and `run resume` asks only for the windows
+they lack. The supervision script, the same on SLURM and in a Kubernetes pod of one replica, therefore:
+
+- starts the engine once, in the background, and never restarts it;
+- waits until a replica answers `readiness_path`, for at most `startup_timeout_s` (1800 s by default); an engine
+  that exits before it answers fails the job at once, with its status and its own output in the job's log;
+- then runs the coordinator in the background and ends with whichever ends first: when the engine exits, the
+  coordinator is stopped (`SIGTERM`, then `SIGKILL` 20 s later) and the job exits 1 with a message naming the
+  engine; when the coordinator exits, the engine is stopped and the job exits with the coordinator's status;
+- stops both when the scheduler cancels or preempts the job (`SIGTERM` or `SIGINT`), so no engine keeps running.
+
+On SLURM with several replicas, the engine step runs with `srun --kill-on-bad-exit=1 --wait=10`: one replica that
+fails ends the whole step at once (one that exits with status 0 ends it 10 s later), and with it the job. On
+Kubernetes with several replicas, the StatefulSet restarts an engine pod that dies, and the run relies on the judge
+instead: a job that starts its engine runs `run resume` with `--set judge.wait_on_outage_s=<outage_timeout_s>`, so
+a judge that finds no replica answering for `outage_timeout_s` (900 s by default) stops with
+`BackendUnavailableError` and a non-zero exit. The same bound applies to every job with `serve:`, so an engine that
+hangs without exiting fails the run too. A judge without `serve:` keeps its own `wait_on_outage_s`.
+
+A failed job is not retried by default. To run it again, engine included, submit the run again with
+`rcp-ndcg run resume --run <dir> --runner slurm` (or `kubernetes`): it takes the runner options of the run's last
+job and its `serve:` section, restores the directory from the mirror first when the run has one, and the new job
+resumes the run where it stopped, asking only for the windows its stores lack. `run resume` without `--runner`
+resumes in this process, which starts no engine. On Kubernetes, `backoff_limit` (0 by default) lets the Job retry a
+failed pod by itself, and a retried pod resumes the run from its mirror.
+
+The pod of one replica needs nothing from the cluster but an image and a command, so any launcher that takes those
+two runs it, and no Kubernetes feature beyond a plain Job is used. The engine image needs `bash` 4.3 or later,
+`python3` and `pip`; the stock vLLM and SGLang images have them. The readiness probe uses Python's standard library,
+and the coordinator runs in the engine image through `uvx`: an image without uv gets it first with
+`python3 -m pip install --target`, which needs `pip` and access to PyPI (an image that has uv needs no `pip`). The
+job checks these before it starts the engine. An image without `bash` fails to start the container; one without a
+recent enough `bash`, without `python3`, or without both uv and `pip` stops the job at once with a message naming
+what is missing. On SLURM, the node that runs the batch script is checked for `bash` 4.3 and `python3` the same way.
+
+### Deployment modes
+
+A suite (`dataset: suite:<name>`) is one run config and one coordinator: the judge's concurrency interleaves the
+queries of all its datasets. So the recipe depends on the platform and the number of nodes, not on how many
+datasets are judged:
+
+| | One node | Several nodes |
+|---|---|---|
+| **One dataset or a suite, Kubernetes** | `serve: {replicas: 1}`: the engine and the coordinator in one container of the Job's pod, engine-native data parallelism inside the node | `serve: {replicas: N}`: N engine pods, one coordinator balancing over them |
+| **One dataset or a suite, SLURM** | `serve: {replicas: 1}`: one sbatch, the engine as a background step | `serve: {replicas: N}`: one N-node sbatch, one engine per node |
+| **A shared or long-lived engine** | no `serve:`: point `judge.base_url` at it (below) | no `serve:`: list the replicas in `judge.base_url`, or point it at their gateway |
+
+Replicas are independent engines. Do not span one engine's data parallelism over nodes for a mixture-of-experts
+judge (both paper judges are): its expert layers then synchronise every forward pass across the nodes.
+
+### The job interface
+
+`rcp_ndcg.runners.get_runner(name, **options)` returns the `local`, `slurm` or `kubernetes` runner, or a runner
+that another installed package registers under the `rcp_ndcg.runners` entry-point group. A job is one command line
+with its image, resources, environment and optional engine (`JobSpec`). `render` shows what would be submitted
+without submitting anything:
+
+```python
+from rcp_ndcg.runners import JobSpec, Resources, ServeConfig, get_runner
+
+job = JobSpec(
+    name="nano-nfcorpus",
+    argv=("rcp-ndcg", "run", "resume", "--run", "/shared/runs/nano-nfcorpus"),
+    resources=Resources(cpus=8, memory_gb=32, time_limit_s=86400),
+    env={"HF_HOME": "/shared/hf"},
+    serve=ServeConfig(
+        image="vllm/vllm-openai:v0.30.0",
+        command="vllm serve openai/gpt-oss-120b --served-model-name gpt-oss-120b --reasoning-parser openai_gptoss",
+        resources=Resources(gpus=8),
+    ),
+)
+
+slurm = get_runner("slurm", partition="gpu", account="my-project", log_dir="logs/slurm",
+                   container_runtime="pyxis")  # the engine runs in serve.image
+print(slurm.render([job])["nano-nfcorpus"])  # the sbatch script
+
+kubernetes = get_runner("kubernetes", namespace="eval", secrets=["hf-token"])
+print(kubernetes.render([job])["nano-nfcorpus"])  # the batch/v1 Job: one container, the engine and the coordinator
+```
+
+`runner.submit([job])` submits and returns handles; `runner.status(handle)`, `runner.logs(handle, tail=100)` and
+`runner.cancel(handle)` follow them.
+
+## Durability: local runs and a mirror
+
+A run directory and a judgement store (`judge --out`) are written on a local or shared filesystem, never straight to
+a bucket: a remote runs directory or `--out` is refused. Inputs are still read from anywhere (`hf://`, `s3://`,
+`https://`).
+
+A mirror copies what a run writes to any fsspec URI while it runs, so a job that is preempted loses at most one
+interval of work. Set it with `--mirror s3://bucket/runs/<name>` on `run start`, `run resume` and
+`judge tournament|rubric`, or with `mirror:` (and `mirror_interval_s:`, 60 by default) in the run config; a job a
+runner starts carries it on its `run resume` command line. On Kubernetes the mirror is how the run reaches its pod:
+the pod's disk is scratch, so the prepared run directory is uploaded to the mirror before the Job is submitted, and
+the pod restores it into `/scratch/runs/<run_id>`. A Kubernetes run without a mirror is refused before anything is
+written.
+
+- Every `mirror_interval_s`, and once more when the run ends, also on `SIGTERM` or `SIGINT`, the judgement stores and
+  the text census go up as immutable parts: `<file>.parts/<start>-<end>` holds the bytes appended since the last
+  upload, up to the last complete line. Every other file (the manifest, `run.yaml`, `identity.json`, the calibration,
+  the reports, the log) goes up whole when it changed. `work/` is scratch space and is not mirrored.
+- `run resume --run <dir> --mirror <uri>` on a node that lacks the run directory, or holds a shorter store, first
+  rebuilds it from the mirror (the parts in offset order; a gap or an overlap is refused with exit 12), and then
+  resumes as usual: only the windows the store lacks are asked. A directory whose manifest is older than the
+  mirror's (the run went on in a job elsewhere) also takes the mirror's newer whole files. The restore writes into
+  the run directory before anything else, also with `--dry-run` or `--estimate`.
+- A local or shared path (`/shared/mirrors/nano` or `file:///shared/mirrors/nano`) is a mirror too; its directories
+  are created as the mirror writes.
+- `run status` shows the mirror's last upload and its lag (`data.mirror.last_upload_at`, `data.mirror.lag_s`).
+
+**Any fsspec filesystem is a mirror target**, because the mirror uses exactly three of its operations: write an
+object (`pipe_file`), read an object (`cat_file`) and list a prefix (`ls`). It never asks whether an object exists,
+renames or appends. GCS works as installed (`gcsfs` is a dependency), S3 needs `s3fs` (`pip install
+"rcp-ndcg[s3]"`) and Azure `adlfs` (`[azure]`); a protocol with no filesystem installed or registered stops the run at
+start with exit 10, naming what is missing.
+`hf://` works, but every write to the Hub is a commit and its rate limits apply: publish a finished run there, and
+mirror a running one to an object store.
+
+Your own storage is a small `fsspec.AbstractFileSystem` with those three methods, registered under a protocol
+with `fsspec.register_implementation`, or from your package's `fsspec.specs` entry point:
+
+```python
+import fsspec
+from fsspec import AbstractFileSystem
+
+
+class MyStore(AbstractFileSystem):
+    """Objects in a dict; a real one would call its service's put, get and list."""
+
+    protocol = "mystore"
+    objects: dict[str, bytes] = {}
+
+    def pipe_file(self, path, value, **kwargs):
+        self.objects[self._strip_protocol(path)] = bytes(value)
+
+    def cat_file(self, path, start=None, end=None, **kwargs):
+        return self.objects[self._strip_protocol(path)]
+
+    def ls(self, path, detail=True, **kwargs):
+        prefix = self._strip_protocol(path).rstrip("/") + "/"
+        names = {prefix + key[len(prefix) :].split("/")[0] for key in self.objects if key.startswith(prefix)}
+        if not names:
+            raise FileNotFoundError(path)
+        entries = [{"name": n, "type": "file" if n in self.objects else "directory", "size": 0} for n in names]
+        return entries if detail else sorted(names)
+
+
+fsspec.register_implementation("mystore", MyStore, clobber=True)
+```
+
+Then `--mirror mystore://team/runs/nano` (or `mirror: mystore://team/runs/nano`) mirrors to it. The same class
+serves `rcp_ndcg.runs.Mirror` directly:
+
+```python
+from pathlib import Path
+
+from rcp_ndcg.runs import Mirror, restore
+
+Path("run/judgements").mkdir(parents=True)
+Path("run/judgements/rubric.jsonl").write_text('{"window": 1}\n', encoding="utf-8")
+Mirror("run", "mystore://team/runs/nano").flush()
+assert restore("elsewhere", "mystore://team/runs/nano") == ["judgements/rubric.jsonl"]
+```
+
+## One engine, many judge jobs
+
+For many runs against one long-lived engine, serve it once as a Deployment behind a Service, and run GPU-less judge
+jobs against it. The manifest below serves `gpt-oss-120b` with the stock vLLM image. The judge config of the run
+points `base_url` at the Service (`http://judge-engine:8000/v1`); nothing else changes. Engine health comes from
+`/health`, and the engine's Prometheus `/metrics` shows running and queued requests and KV-cache use.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: judge-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: judge-engine}
+  template:
+    metadata:
+      labels: {app: judge-engine}
+    spec:
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.30.0         # pin the tag you tested
+          command: [vllm, serve]
+          args: ["openai/gpt-oss-120b", "--served-model-name", "gpt-oss-120b", "--reasoning-parser", "openai_gptoss",
+                 "--tensor-parallel-size", "4", "--max-model-len", "131072", "--port", "8000"]
+          ports: [{containerPort: 8000}]
+          envFrom: [{secretRef: {name: hf-token}}]
+          resources:
+            limits: {nvidia.com/gpu: 4}
+          startupProbe:
+            httpGet: {path: /health, port: 8000}
+            periodSeconds: 10
+            failureThreshold: 360                 # up to an hour to load the weights
+          readinessProbe:
+            httpGet: {path: /health, port: 8000}
+            periodSeconds: 10
+          volumeMounts: [{name: dshm, mountPath: /dev/shm}]
+      volumes:
+        - name: dshm
+          emptyDir: {medium: Memory}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: judge-engine
+spec:
+  selector: {app: judge-engine}
+  ports: [{port: 8000, targetPort: 8000}]
+```
+
+A restarted judge job resumes its run from its mirror, and the judgement store asks the judge only for the missing
+windows.

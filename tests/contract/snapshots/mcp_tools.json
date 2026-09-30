@@ -1,0 +1,762 @@
+{
+  "calibration_show": {
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "inputSchema": {
+      "properties": {
+        "calibration": {
+          "description": "A calibration directory (what `calibration fit` writes), or a run directory.",
+          "title": "Calibration",
+          "type": "string"
+        }
+      },
+      "required": [
+        "calibration"
+      ],
+      "type": "object"
+    },
+    "mirrors": "calibration show",
+    "outputSchema": "rcp-ndcg.calibration-summary.v1"
+  },
+  "data_inspect": {
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "inputSchema": {
+      "description": "``--dataset URI`` (``--subset``, ``--revision``): any dataset ``load_dataset`` reads.",
+      "properties": {
+        "dataset": {
+          "description": "Dataset URI (hf://, suite:, beir:, jsonl:, images:, videos:, frames:).",
+          "title": "Dataset",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Hub revision of a hf:// or suite: dataset.",
+          "title": "Revision"
+        },
+        "subset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The subset of a hf:// or suite: dataset.",
+          "title": "Subset"
+        }
+      },
+      "required": [
+        "dataset"
+      ],
+      "type": "object"
+    },
+    "mirrors": "data inspect",
+    "outputSchema": "rcp-ndcg.dataset-summary.v1"
+  },
+  "describe": {
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "inputSchema": {
+      "properties": {},
+      "type": "object"
+    },
+    "mirrors": "schema show",
+    "outputSchema": "rcp-ndcg.command-index.v1"
+  },
+  "estimate": {
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "inputSchema": {
+      "properties": {
+        "config": {
+          "description": "The run config YAML.",
+          "title": "Config",
+          "type": "string"
+        },
+        "judge": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Replace the config's judge: fake, a shipped judge config's name (gpt5_hosted, gpt_oss_120b, qwen35_397b_fp8, qwen35_397b_nvfp4, qwen36_27b_fp8), or a judge config YAML.",
+          "title": "Judge"
+        },
+        "judge_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The served model name, with --judge-url.",
+          "title": "Judge Model"
+        },
+        "judge_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Replace the judge by an ad-hoc endpoint (.../v1).",
+          "title": "Judge Url"
+        },
+        "only": {
+          "description": "Give the new run only these steps (repeatable; its config's steps).",
+          "items": {
+            "enum": [
+              "retrieve",
+              "rerank",
+              "tournament",
+              "rubric",
+              "calibrate",
+              "evaluate"
+            ],
+            "type": "string"
+          },
+          "title": "Only",
+          "type": "array"
+        },
+        "set": {
+          "description": "Override one config field (dotted KEY=VALUE, repeatable; VALUE is a YAML literal: 5, true, [a, b], {k: v}); applied after --judge/--judge-url, so --set judge.context_tokens=... configures an ad-hoc judge.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Set",
+          "type": "array"
+        }
+      },
+      "required": [
+        "config"
+      ],
+      "type": "object"
+    },
+    "mirrors": "run start",
+    "outputSchema": "rcp-ndcg.run-start.v1"
+  },
+  "eval_compare": {
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "inputSchema": {
+      "properties": {
+        "alpha": {
+          "default": 0.05,
+          "description": "Significance level; the interval covers 1 - alpha.",
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Alpha",
+          "type": "number"
+        },
+        "baseline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Compare every system against this one.",
+          "title": "Baseline"
+        },
+        "bootstrap": {
+          "default": 10000,
+          "description": "Bootstrap resamples of the interval.",
+          "minimum": 0,
+          "title": "Bootstrap",
+          "type": "integer"
+        },
+        "include_reference": {
+          "default": false,
+          "description": "With --run, also compare the run's reference systems: candidates (the pool order) and judge (the judge's own abilities, RCP-nDCG 1 by construction).",
+          "title": "Include Reference",
+          "type": "boolean"
+        },
+        "k": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The cutoff (may be omitted when the report has one).",
+          "title": "K"
+        },
+        "metric": {
+          "default": "rcp_ndcg",
+          "description": "The metric compared.",
+          "enum": [
+            "rcp_ndcg",
+            "qrel_ndcg",
+            "count_ndcg"
+          ],
+          "title": "Metric",
+          "type": "string"
+        },
+        "report": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A report file from `eval score --out`.",
+          "title": "Report"
+        },
+        "run": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A run directory (its systems, scored with its calibration).",
+          "title": "Run"
+        },
+        "seed": {
+          "default": 0,
+          "description": "The bootstrap seed.",
+          "title": "Seed",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "mirrors": "eval compare",
+    "outputSchema": "rcp-ndcg.comparison.v1"
+  },
+  "eval_explain": {
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "inputSchema": {
+      "properties": {
+        "include_text": {
+          "default": false,
+          "description": "Add the query and document texts.",
+          "title": "Include Text",
+          "type": "boolean"
+        },
+        "k": {
+          "default": 10,
+          "description": "Documents shown per system (and the cutoff of the deltas).",
+          "minimum": 1,
+          "title": "K",
+          "type": "integer"
+        },
+        "query_id": {
+          "description": "The query to explain.",
+          "title": "Query Id",
+          "type": "string"
+        },
+        "report": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A report from `eval score --out`: its rankings, data and calibration are read again.",
+          "title": "Report"
+        },
+        "run": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A run directory with a calibration.",
+          "title": "Run"
+        },
+        "subset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The query's dataset, when a suite's report has it twice.",
+          "title": "Subset"
+        }
+      },
+      "required": [
+        "query_id"
+      ],
+      "type": "object"
+    },
+    "mirrors": "eval explain",
+    "outputSchema": "rcp-ndcg.query-explanation.v1"
+  },
+  "eval_score": {
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "inputSchema": {
+      "properties": {
+        "bootstrap": {
+          "default": 1000,
+          "description": "Bootstrap resamples of the summary interval.",
+          "minimum": 0,
+          "title": "Bootstrap",
+          "type": "integer"
+        },
+        "calibration": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A calibration (or run) directory whose gains score RCP-nDCG.",
+          "title": "Calibration"
+        },
+        "dataset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A dataset URI instead of a suite (hf://, beir:, jsonl:, ...).",
+          "title": "Dataset"
+        },
+        "fields": {
+          "description": "Print only these top-level fields of the result (repeatable), e.g. --fields summary.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "k": {
+          "description": "Cutoffs (repeatable).",
+          "items": {
+            "type": "integer"
+          },
+          "title": "K",
+          "type": "array"
+        },
+        "metrics": {
+          "description": "Metrics to compute (repeatable).",
+          "items": {
+            "enum": [
+              "rcp_ndcg",
+              "qrel_ndcg"
+            ],
+            "type": "string"
+          },
+          "title": "Metrics",
+          "type": "array"
+        },
+        "out": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Also write the full report (JSON, every per-query value) here, for `eval compare --report` and `eval explain --report`.",
+          "title": "Out"
+        },
+        "per_query": {
+          "default": false,
+          "description": "Also print every per-query value (one row per system, query, metric and k).",
+          "title": "Per Query",
+          "type": "boolean"
+        },
+        "protocol": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override the suite's protocol (nanobeir, bright, vidore, trecdl, mteb, plain).",
+          "title": "Protocol"
+        },
+        "rankings": {
+          "description": "The rankings to score: parquet, TREC run, JSONL or CSV (one or more systems).",
+          "title": "Rankings",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Hub revision of the data.",
+          "title": "Revision"
+        },
+        "seed": {
+          "default": 0,
+          "description": "The bootstrap seed.",
+          "title": "Seed",
+          "type": "integer"
+        },
+        "subset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The subset of a hf:// dataset.",
+          "title": "Subset"
+        },
+        "suite": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A public suite (nanobeir, bright, vidore, trecdl).",
+          "title": "Suite"
+        }
+      },
+      "required": [
+        "rankings"
+      ],
+      "type": "object"
+    },
+    "mirrors": "eval score",
+    "outputSchema": "rcp-ndcg.eval-score.v1"
+  },
+  "run_cancel": {
+    "annotations": {
+      "destructiveHint": true,
+      "readOnlyHint": false
+    },
+    "inputSchema": {
+      "properties": {
+        "run": {
+          "description": "The run directory.",
+          "title": "Run",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run"
+      ],
+      "type": "object"
+    },
+    "mirrors": "run cancel",
+    "outputSchema": "rcp-ndcg.run-status.v1"
+  },
+  "run_list": {
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "inputSchema": {
+      "properties": {
+        "limit": {
+          "default": 50,
+          "description": "At most this many runs, newest first.",
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "runs_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where the runs live (default: ./runs).",
+          "title": "Runs Dir"
+        }
+      },
+      "type": "object"
+    },
+    "mirrors": "run list",
+    "outputSchema": "rcp-ndcg.run-list.v1"
+  },
+  "run_show": {
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "inputSchema": {
+      "properties": {
+        "run": {
+          "description": "The run directory (<runs dir>/<run_id>).",
+          "title": "Run",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run"
+      ],
+      "type": "object"
+    },
+    "mirrors": "run show",
+    "outputSchema": "rcp-ndcg.run-summary.v1"
+  },
+  "run_start": {
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "inputSchema": {
+      "properties": {
+        "config": {
+          "description": "The run config YAML.",
+          "title": "Config",
+          "type": "string"
+        },
+        "judge": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Replace the config's judge: fake, a shipped judge config's name (gpt5_hosted, gpt_oss_120b, qwen35_397b_fp8, qwen35_397b_nvfp4, qwen36_27b_fp8), or a judge config YAML.",
+          "title": "Judge"
+        },
+        "judge_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The served model name, with --judge-url.",
+          "title": "Judge Model"
+        },
+        "judge_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Replace the judge by an ad-hoc endpoint (.../v1).",
+          "title": "Judge Url"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A readable fragment of the run id.",
+          "title": "Label"
+        },
+        "mirror": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Mirror the run directory to any fsspec URI (e.g. s3://bucket/runs) while it runs, and restore it from there on resume (sets the config's mirror).",
+          "title": "Mirror"
+        },
+        "only": {
+          "description": "Give the new run only these steps (repeatable; its config's steps).",
+          "items": {
+            "enum": [
+              "retrieve",
+              "rerank",
+              "tournament",
+              "rubric",
+              "calibrate",
+              "evaluate"
+            ],
+            "type": "string"
+          },
+          "title": "Only",
+          "type": "array"
+        },
+        "runner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hand the run to a job runner: local, slurm, kubernetes or an installed plugin.",
+          "title": "Runner"
+        },
+        "runs_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where the run directory is created (default: ./runs).",
+          "title": "Runs Dir"
+        },
+        "set": {
+          "description": "Override one config field (dotted KEY=VALUE, repeatable; VALUE is a YAML literal: 5, true, [a, b], {k: v}); applied after --judge/--judge-url, so --set judge.context_tokens=... configures an ad-hoc judge.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Set",
+          "type": "array"
+        }
+      },
+      "required": [
+        "config"
+      ],
+      "type": "object"
+    },
+    "mirrors": "run start",
+    "outputSchema": "rcp-ndcg.run-start.v1"
+  },
+  "run_status": {
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "inputSchema": {
+      "properties": {
+        "run": {
+          "description": "The run directory.",
+          "title": "Run",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run"
+      ],
+      "type": "object"
+    },
+    "mirrors": "run status",
+    "outputSchema": "rcp-ndcg.run-status.v1"
+  },
+  "schema_show": {
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": true
+    },
+    "inputSchema": {
+      "properties": {
+        "full": {
+          "default": false,
+          "description": "With 'commands': the whole click tree instead of the compact command index.",
+          "title": "Full",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "A schema name from `schema list` (e.g. run-manifest), or 'commands' for the CLI.",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "mirrors": "schema show",
+    "outputSchema": null
+  }
+}

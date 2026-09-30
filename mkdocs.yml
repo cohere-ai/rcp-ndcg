@@ -1,0 +1,54 @@
+# The documentation is plain Markdown, read on GitHub. This file only serves a local preview
+# (`mkdocs serve`) and the CI check that every page is in the navigation and every link resolves.
+site_name: RCP-nDCG
+site_description: RCP-nDCG, nDCG with calibrated relevance gains from an LLM judge.
+repo_url: https://github.com/cohere-ai/rcp-ndcg
+repo_name: rcp-ndcg
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Data: data.md
+  - Concepts:
+      - "The metric": concepts/metric.md
+      - "Scoring protocols and tie rules": concepts/protocols.md
+      - "Stage A: the tournament": concepts/tournament.md
+      - "Stage B: the rubric": concepts/rubric.md
+      - "The calibration": concepts/calibration.md
+      - "Primitives": concepts/primitives.md
+      - "Preprocessing and chunking": concepts/preprocessing.md
+      - "Judges, serving and runners": concepts/serving.md
+  - Tutorials:
+      - "Calibrate your benchmark": tutorials/calibrate-your-benchmark.md
+      - "MTEB integration": tutorials/mteb-integration.md
+      - "Reproduce the paper": tutorials/reproduce-the-paper.md
+  - Reference:
+      - "Command line": reference/cli.md
+      - "rcp_ndcg_core": api/metric.md
+      - "rcp_ndcg.eval": api/evaluate.md
+
+# Links to files outside docs/ (experiments/, the repository root) resolve on GitHub, not in the local preview.
+validation:
+  links:
+    not_found: info
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.arithmatex:
+      generic: true
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js

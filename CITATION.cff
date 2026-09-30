@@ -1,0 +1,38 @@
+cff-version: 1.2.0
+message: "If you use RCP-nDCG, please cite the paper below."
+title: "RCP-nDCG"
+type: software
+version: 0.1.0
+license: Apache-2.0
+repository-code: "https://github.com/cohere-ai/rcp-ndcg"
+authors:
+  - given-names: Fabian David
+    family-names: Schmidt
+    affiliation: Cohere
+  - given-names: Donato
+    family-names: Crisostomi
+    affiliation: Cohere
+  - given-names: Carlos
+    family-names: Lassance
+    affiliation: Cohere
+  - given-names: Nils
+    family-names: Reimers
+    affiliation: Cohere
+preferred-citation:
+  type: article
+  title: "Rubric-Calibrated Preferences: Cross-Query Calibration of LLM Judgments via Item Response Theory"
+  authors:
+    - given-names: Fabian David
+      family-names: Schmidt
+    - given-names: Donato
+      family-names: Crisostomi
+    - given-names: Carlos
+      family-names: Lassance
+    - given-names: Nils
+      family-names: Reimers
+  year: 2026
+  journal: "arXiv preprint"
+  identifiers:
+    - type: other
+      value: "arXiv:2609.35739"
+  url: "https://arxiv.org/abs/2609.35739"

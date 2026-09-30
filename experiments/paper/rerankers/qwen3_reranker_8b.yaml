@@ -1,0 +1,5 @@
+# Qwen/Qwen3-Reranker-8B: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
+# `rcp-ndcg retrieval rerank --reranker <this file>`. Runs in process (the [local] extra); the model family is picked from the model id.
+provider: local
+model: Qwen/Qwen3-Reranker-8B
+batch_size: 4

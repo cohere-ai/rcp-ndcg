@@ -1,0 +1,70 @@
+{
+  "$defs": {
+    "McpToolInfo": {
+      "description": "One tool as ``tools/list`` serves it.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "title": "Meta",
+          "type": "object"
+        },
+        "annotations": {
+          "additionalProperties": true,
+          "title": "Annotations",
+          "type": "object"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "inputSchema": {
+          "additionalProperties": true,
+          "title": "Inputschema",
+          "type": "object"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "outputSchema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outputschema"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "inputSchema"
+      ],
+      "title": "McpToolInfo",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/mcp-manifest.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The tools the server offers.",
+  "properties": {
+    "tools": {
+      "items": {
+        "$ref": "#/$defs/McpToolInfo"
+      },
+      "title": "Tools",
+      "type": "array"
+    }
+  },
+  "required": [
+    "tools"
+  ],
+  "title": "McpManifest",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.mcp-manifest.v1"
+}

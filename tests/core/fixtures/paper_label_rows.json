@@ -1,0 +1,56 @@
+{
+ "description": "Five rows of the public NanoBEIR release (https://huggingface.co/datasets/fabianschmidt-cohere/rcp-ndcg-nanobeir, <subset>/qrels.parquet: theta and gain), one per subset and spanning low to high gain, with the item parameters the release ships (provenance/item_params.qwen35.json). Over every qrels row of the release, gain(theta) equals the released gain within 2.2e-16.",
+ "item_params": {
+  "gamma": [
+   1.1690490245819092,
+   1.047158122062683,
+   0.9400498867034912,
+   1.1572155952453613,
+   0.6865269541740417
+  ],
+  "beta": [
+   -2.5716564655303955,
+   -2.0024073123931885,
+   -0.2512804865837097,
+   0.7088905572891235,
+   4.116453647613525
+  ]
+ },
+ "rows": [
+  {
+   "subset": "NanoHotpotQARetrieval",
+   "query_id": "5adbd70c55429947ff173843",
+   "doc_id": "44269101",
+   "theta": -5.187374497929923,
+   "gain": 0.01997428042617851
+  },
+  {
+   "subset": "NanoQuoraRetrieval",
+   "query_id": "362950",
+   "doc_id": "35146",
+   "theta": -2.69231277679755,
+   "gain": 0.20004480585660003
+  },
+  {
+   "subset": "NanoFiQA2018Retrieval",
+   "query_id": "9548",
+   "doc_id": "511945",
+   "theta": -0.6592735429940149,
+   "gain": 0.5000468970283468
+  },
+  {
+   "subset": "NanoTouche2020Retrieval",
+   "query_id": "26",
+   "doc_id": "440fb971-2019-04-18T17:06:22Z-00002-000",
+   "theta": 1.7329515144396055,
+   "gain": 0.800045354013547
+  },
+  {
+   "subset": "NanoMSMARCORetrieval",
+   "query_id": "265729",
+   "doc_id": "7011409",
+   "theta": 6.095513311843433,
+   "gain": 0.9709403037225048
+  }
+ ]
+}

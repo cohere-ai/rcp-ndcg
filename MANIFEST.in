@@ -1,0 +1,13 @@
+# What ships in an sdist besides the package code.
+include LICENSE NOTICE CITATION.cff *.md requirements-constraints.txt
+recursive-include src/rcp_ndcg *.py *.txt *.yaml *.json *.jsonl
+recursive-include schemas *.json
+recursive-include skills *.md
+recursive-include examples *.py *.yaml *.json *.jsonl
+
+# setuptools adds tests/test*.py to an sdist by default; the suite is not shipped.
+prune tests
+prune experiments
+prune site
+
+global-exclude *.py[cod] __pycache__ .DS_Store *.log *.zip

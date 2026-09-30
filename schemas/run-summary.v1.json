@@ -1,0 +1,36 @@
+{
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/run-summary.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One run: its manifest and which artifacts exist.",
+  "properties": {
+    "artifacts": {
+      "additionalProperties": {
+        "type": "boolean"
+      },
+      "title": "Artifacts",
+      "type": "object"
+    },
+    "manifest": {
+      "additionalProperties": true,
+      "title": "Manifest",
+      "type": "object"
+    },
+    "run_dir": {
+      "title": "Run Dir",
+      "type": "string"
+    },
+    "schema": {
+      "const": "rcp-ndcg.run-summary.v1",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "run_dir",
+    "manifest",
+    "artifacts"
+  ],
+  "title": "RunSummary",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.run-summary.v1"
+}

@@ -1,0 +1,6 @@
+# rerank-2.5: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
+# `rcp-ndcg retrieval rerank --reranker <this file>`. Hosted API, no GPU; the key is read from VOYAGE_API_KEY.
+provider: voyage
+model: rerank-2.5
+batch_size: 50
+api_key_env: VOYAGE_API_KEY

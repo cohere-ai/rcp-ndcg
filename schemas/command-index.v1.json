@@ -1,0 +1,126 @@
+{
+  "$defs": {
+    "CommandEntry": {
+      "description": "One command, as an agent needs it.",
+      "properties": {
+        "flags": {
+          "items": {
+            "$ref": "#/$defs/FlagInfo"
+          },
+          "title": "Flags",
+          "type": "array"
+        },
+        "help": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Help"
+        },
+        "output_schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The schema id of the command's --json data.",
+          "title": "Output Schema"
+        }
+      },
+      "required": [
+        "help",
+        "output_schema",
+        "flags"
+      ],
+      "title": "CommandEntry",
+      "type": "object"
+    },
+    "FlagInfo": {
+      "description": "One flag (or positional argument) of a command, as an agent needs it.",
+      "properties": {
+        "choices": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Choices"
+        },
+        "default": {
+          "default": null,
+          "title": "Default"
+        },
+        "flag": {
+          "description": "How to pass it: '--name', '--name/--no-name' for a switch, or NAME (positional).",
+          "title": "Flag",
+          "type": "string"
+        },
+        "help": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Help"
+        },
+        "repeatable": {
+          "title": "Repeatable",
+          "type": "boolean"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "type": {
+          "description": "text, integer, float, boolean, path or choice.",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "flag",
+        "type",
+        "required",
+        "repeatable"
+      ],
+      "title": "FlagInfo",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/command-index.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Every leaf command, keyed by path (``\"data inspect\"``): its help, flags and output schema.",
+  "properties": {
+    "commands": {
+      "additionalProperties": {
+        "$ref": "#/$defs/CommandEntry"
+      },
+      "title": "Commands",
+      "type": "object"
+    }
+  },
+  "required": [
+    "commands"
+  ],
+  "title": "CommandIndex",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.command-index.v1"
+}

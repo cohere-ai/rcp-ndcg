@@ -1,0 +1,277 @@
+{
+  "$defs": {
+    "Placement": {
+      "additionalProperties": false,
+      "description": "One document shown in one judged window.",
+      "properties": {
+        "chunk_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The chunk shown, when the document was judged in chunks (``doc_id#k``).",
+          "title": "Chunk Id"
+        },
+        "criteria": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge's verdicts ``{\"C1\": 0|1, ..., \"CK\": 0|1}`` (rubric).",
+          "title": "Criteria"
+        },
+        "doc_id": {
+          "description": "The document.",
+          "minLength": 1,
+          "title": "Doc Id",
+          "type": "string"
+        },
+        "position": {
+          "description": "The 1-based prompt slot the document was shown in.",
+          "minimum": 1,
+          "title": "Position",
+          "type": "integer"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge's window score for this placement (tournament; the prompt's scale, -5 to 5).",
+          "title": "Score"
+        }
+      },
+      "required": [
+        "position",
+        "doc_id"
+      ],
+      "title": "Placement",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/judgement.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One judge call's parsed observation (schema ``rcp-ndcg.judgement.v1``).\n\nA valid rubric judgement carries every family criterion, 0 or 1, on every\nplacement; a valid tournament judgement carries a score on every placement\n(and the judge's stated ``ranking``). An answer that could not be parsed is recorded with\n``valid=False``, the reason and its category, never dropped and never read as a vote.",
+  "properties": {
+    "dataset": {
+      "description": "The dataset the query belongs to.",
+      "title": "Dataset",
+      "type": "string"
+    },
+    "family_key": {
+      "description": "Family.key of the instrument that produced it.",
+      "title": "Family Key",
+      "type": "string"
+    },
+    "finish_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Why the endpoint stopped generating (``\"stop\"``, ``\"length\"``, ...), when it said.",
+      "title": "Finish Reason"
+    },
+    "input_tokens": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Prompt tokens the call used, when the endpoint reported them.",
+      "title": "Input Tokens"
+    },
+    "invalid_category": {
+      "anyOf": [
+        {
+          "enum": [
+            "truncated",
+            "no_json",
+            "invalid_json",
+            "schema",
+            "incomplete",
+            "refused"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The class of that reason (InvalidCategory), when ``valid`` is false.",
+      "title": "Invalid Category"
+    },
+    "invalid_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Why it did not, when ``valid`` is false.",
+      "title": "Invalid Reason"
+    },
+    "output_tokens": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Completion tokens the call used, when the endpoint reported them.",
+      "title": "Output Tokens"
+    },
+    "phase": {
+      "anyOf": [
+        {
+          "enum": [
+            "random",
+            "stratified",
+            "adaptive"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The schedule phase the window belongs to (Phase); ``None`` for a planned window.",
+      "title": "Phase"
+    },
+    "placements": {
+      "description": "The documents shown, in prompt order.",
+      "items": {
+        "$ref": "#/$defs/Placement"
+      },
+      "title": "Placements",
+      "type": "array"
+    },
+    "query_id": {
+      "description": "The query (as in the dataset, not namespaced).",
+      "title": "Query Id",
+      "type": "string"
+    },
+    "ranking": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The judge's stated order as 1-based positions (tournament).",
+      "title": "Ranking"
+    },
+    "record_id": {
+      "description": "judgement_record_id of the window.",
+      "title": "Record Id",
+      "type": "string"
+    },
+    "recorded_at": {
+      "description": "When the judge answered (timezone-aware). Who answered, with which prompt and parser, is the record's Family (``JudgementSet.families[judgement.family_key]``).",
+      "format": "date-time",
+      "title": "Recorded At",
+      "type": "string"
+    },
+    "response": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The judge's raw answer text.",
+      "title": "Response"
+    },
+    "schema": {
+      "const": "rcp-ndcg.judgement.v1",
+      "default": "rcp-ndcg.judgement.v1",
+      "title": "Schema",
+      "type": "string"
+    },
+    "stage": {
+      "description": "``\"tournament\"`` or ``\"rubric\"``.",
+      "enum": [
+        "tournament",
+        "rubric"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "valid": {
+      "default": true,
+      "description": "Whether the answer parsed into a complete observation.",
+      "title": "Valid",
+      "type": "boolean"
+    },
+    "window_seq": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The window's index in the query's schedule (0-based); ``None`` for a planned window (asked outside the schedule's phases, e.g. an insertion plan: ``judge(windows=...)``).",
+      "title": "Window Seq"
+    }
+  },
+  "required": [
+    "record_id",
+    "dataset",
+    "query_id",
+    "stage",
+    "family_key",
+    "window_seq",
+    "placements",
+    "recorded_at"
+  ],
+  "title": "Judgement",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.judgement.v1"
+}

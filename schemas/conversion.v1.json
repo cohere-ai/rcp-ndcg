@@ -1,0 +1,64 @@
+{
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/conversion.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What `data convert` wrote (or, with --dry-run, would write).",
+  "properties": {
+    "dry_run": {
+      "title": "Dry Run",
+      "type": "boolean"
+    },
+    "out": {
+      "title": "Out",
+      "type": "string"
+    },
+    "reader": {
+      "title": "Reader",
+      "type": "string"
+    },
+    "schema": {
+      "const": "rcp-ndcg.conversion.v1",
+      "type": "string"
+    },
+    "shape": {
+      "enum": [
+        "corpus",
+        "ranking"
+      ],
+      "title": "Shape",
+      "type": "string"
+    },
+    "source": {
+      "title": "Source",
+      "type": "string"
+    },
+    "writer": {
+      "title": "Writer",
+      "type": "string"
+    },
+    "written": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Records written; null for a dry run.",
+      "title": "Written"
+    }
+  },
+  "required": [
+    "schema",
+    "source",
+    "out",
+    "reader",
+    "writer",
+    "shape",
+    "written",
+    "dry_run"
+  ],
+  "title": "Conversion",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.conversion.v1"
+}

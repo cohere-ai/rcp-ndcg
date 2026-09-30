@@ -1,0 +1,177 @@
+{
+  "$defs": {
+    "CliError": {
+      "description": "Why a command failed and what to do next (the exit-code table of rcp_ndcg.errors).",
+      "properties": {
+        "code": {
+          "enum": [
+            "INTERNAL",
+            "USAGE",
+            "CONFIG",
+            "MISSING_INPUT",
+            "CREDENTIALS",
+            "PROVIDER",
+            "CAPABILITY",
+            "INTERRUPTED",
+            "DEPENDENCY",
+            "IDENTITY",
+            "DATA"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "exit_code": {
+          "maximum": 12,
+          "minimum": 1,
+          "title": "Exit Code",
+          "type": "integer"
+        },
+        "hint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hint"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "exit_code",
+        "message"
+      ],
+      "title": "CliError",
+      "type": "object"
+    },
+    "CliMeta": {
+      "description": "Facts about the invocation: package version, wall time in seconds, and the run directory the result names\n(its ``run_dir``), if any.",
+      "properties": {
+        "elapsed_s": {
+          "title": "Elapsed S",
+          "type": "number"
+        },
+        "run_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Run Dir"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "elapsed_s"
+      ],
+      "title": "CliMeta",
+      "type": "object"
+    },
+    "CliWarning": {
+      "description": "A typed warning: ``code`` is from the closed list rcp_ndcg.errors.WarningCode.",
+      "properties": {
+        "code": {
+          "enum": [
+            "APPROXIMATE_IMAGE_TOKENS",
+            "BT_L2_MISMATCH",
+            "INVALID_WINDOWS",
+            "UNCALIBRATED_DOCUMENTS",
+            "UNREADABLE_RUN"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "CliWarning",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/cli.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The one JSON document a ``--json`` command prints on stdout.",
+  "properties": {
+    "command": {
+      "description": "The command path without the program name, e.g. 'data inspect'.",
+      "title": "Command",
+      "type": "string"
+    },
+    "data": {
+      "default": null,
+      "description": "The result, present when ok; its 'schema' names its JSON Schema.",
+      "title": "Data"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CliError"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Present when not ok."
+    },
+    "meta": {
+      "$ref": "#/$defs/CliMeta"
+    },
+    "ok": {
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "schema": {
+      "const": "rcp-ndcg.cli.v1",
+      "default": "rcp-ndcg.cli.v1",
+      "title": "Schema",
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "$ref": "#/$defs/CliWarning"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "command",
+    "ok",
+    "meta"
+  ],
+  "title": "CliEnvelope",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.cli.v1"
+}

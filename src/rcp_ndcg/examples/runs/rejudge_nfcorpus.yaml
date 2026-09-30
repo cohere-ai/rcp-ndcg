@@ -1,0 +1,16 @@
+# Re-judge the released NanoNFCorpus pools with your own judge, calibrate, and score the pools' order.
+#
+#   rcp-ndcg run start rejudge_nfcorpus --judge-url http://localhost:8000/v1 --judge-model my-model --estimate
+#   rcp-ndcg run start rejudge_nfcorpus --judge-url http://localhost:8000/v1 --judge-model my-model
+#
+# The judge below is the default; --judge, or --judge-url with --judge-model, replaces it. The candidates are the
+# dataset's own judged pools (the top 50 of each), for the first 5 queries: raise `depth` and drop `limit` once the
+# estimate looks right. Needs the [hf] and [calibrate] extras. It ships with the package: run it by name.
+label: rejudge-nfcorpus
+dataset: hf://fabianschmidt-cohere/rcp-ndcg-nanobeir/NanoNFCorpusRetrieval
+candidates:
+  from: dataset
+  depth: 50
+judge: gpt_oss_120b
+steps: [tournament, rubric, calibrate, evaluate]
+limit: 5

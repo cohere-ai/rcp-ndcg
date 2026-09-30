@@ -1,0 +1,716 @@
+{
+  "$defs": {
+    "BM25Config": {
+      "additionalProperties": false,
+      "description": "Okapi BM25 with ``bm25s``.",
+      "properties": {
+        "kind": {
+          "const": "bm25",
+          "default": "bm25",
+          "title": "Kind",
+          "type": "string"
+        },
+        "stemmer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A Snowball stemmer language of PyStemmer (``english``, ``german``, ``french``, ...) that corpus and queries are stemmed with, or ``None`` for no stemming.",
+          "title": "Stemmer"
+        }
+      },
+      "title": "BM25Config",
+      "type": "object"
+    },
+    "Cohere": {
+      "additionalProperties": false,
+      "description": "Cohere's public API: Embed v4 (``embed-v4.0``, which also embeds page images) and Rerank 4 Pro and Fast\n(``rerank-v4.0-pro``, ``rerank-v4.0-fast``). The key is read from ``api_key_env``, else ``CO_API_KEY`` or\n``COHERE_API_KEY``. A rerank request carries up to ``batch_size`` documents (default 100, the API's search\nunit).",
+      "properties": {
+        "api_key_env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "title": "Base Url"
+        },
+        "batch_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Batch Size"
+        },
+        "concurrency": {
+          "default": 64,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "max_retries": {
+          "default": 8,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "provider": {
+          "const": "cohere",
+          "default": "cohere",
+          "title": "Provider",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "timeout_s": {
+          "default": 120.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "title": "Cohere",
+      "type": "object"
+    },
+    "DenseConfig": {
+      "additionalProperties": false,
+      "description": "One vector per text, searched by inner product.",
+      "properties": {
+        "encoder": {
+          "discriminator": {
+            "mapping": {
+              "cohere": "#/$defs/Cohere",
+              "gemini": "#/$defs/Gemini",
+              "local": "#/$defs/LocalEncoder",
+              "openai_compatible": "#/$defs/OpenAICompatibleEncoder",
+              "voyage": "#/$defs/Voyage"
+            },
+            "propertyName": "provider"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/LocalEncoder"
+            },
+            {
+              "$ref": "#/$defs/OpenAICompatibleEncoder"
+            },
+            {
+              "$ref": "#/$defs/Cohere"
+            },
+            {
+              "$ref": "#/$defs/Voyage"
+            },
+            {
+              "$ref": "#/$defs/Gemini"
+            }
+          ],
+          "title": "Encoder"
+        },
+        "kind": {
+          "const": "dense",
+          "default": "dense",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "encoder"
+      ],
+      "title": "DenseConfig",
+      "type": "object"
+    },
+    "Gemini": {
+      "additionalProperties": false,
+      "description": "Google's Gemini embedding API (``gemini-embedding-001``). The key is read from ``api_key_env``, else\n``GEMINI_API_KEY`` or ``GOOGLE_API_KEY``.",
+      "properties": {
+        "api_key_env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "title": "Base Url"
+        },
+        "batch_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Batch Size"
+        },
+        "concurrency": {
+          "default": 64,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "max_retries": {
+          "default": 8,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "provider": {
+          "const": "gemini",
+          "default": "gemini",
+          "title": "Provider",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "timeout_s": {
+          "default": 120.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "title": "Gemini",
+      "type": "object"
+    },
+    "LateInteractionConfig": {
+      "additionalProperties": false,
+      "description": "One vector per token, searched by MaxSim; the encoder is a vLLM model with ``pooling: token``.",
+      "properties": {
+        "encoder": {
+          "discriminator": {
+            "mapping": {
+              "local": "#/$defs/LocalEncoder",
+              "openai_compatible": "#/$defs/OpenAICompatibleEncoder"
+            },
+            "propertyName": "provider"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/LocalEncoder"
+            },
+            {
+              "$ref": "#/$defs/OpenAICompatibleEncoder"
+            }
+          ],
+          "title": "Encoder"
+        },
+        "kind": {
+          "const": "late_interaction",
+          "default": "late_interaction",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "encoder"
+      ],
+      "title": "LateInteractionConfig",
+      "type": "object"
+    },
+    "LocalEncoder": {
+      "additionalProperties": false,
+      "description": "An embedding model run in this process.",
+      "properties": {
+        "batch_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Texts per forward pass; ``None`` for the model's default. ZeRank and Jina batch on their own and refuse it.",
+          "title": "Batch Size"
+        },
+        "doc_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Text prepended to every document, as the model's recipe defines it (Octen: ``\"- \"``).",
+          "title": "Doc Prompt"
+        },
+        "engine": {
+          "default": "hf",
+          "description": "``hf`` (transformers, last-token pooling) or ``vllm`` (an in-process vLLM engine, the ``[vllm]`` extra; for corpus-scale late-interaction indexes, whose vectors are too many to send over HTTP).",
+          "enum": [
+            "hf",
+            "vllm"
+          ],
+          "title": "Engine",
+          "type": "string"
+        },
+        "model": {
+          "description": "The Hub repo id or a local path.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "pooling": {
+          "description": "``last``, ``mean`` or ``cls`` for one vector per text, ``token`` for one per token (late interaction). ``hf`` pools the last token; ``vllm`` serves ``token`` as its ``token_embed`` task and the others as ``embed`` (the model's own pooler).",
+          "enum": [
+            "mean",
+            "cls",
+            "last",
+            "token"
+          ],
+          "title": "Pooling",
+          "type": "string"
+        },
+        "provider": {
+          "const": "local",
+          "default": "local",
+          "title": "Provider",
+          "type": "string"
+        },
+        "query_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Text prepended to every query (``vllm``).",
+          "title": "Query Prompt"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Hub revision (commit, tag or branch) loaded; ``None`` is the default branch.",
+          "title": "Revision"
+        }
+      },
+      "required": [
+        "model",
+        "pooling"
+      ],
+      "title": "LocalEncoder",
+      "type": "object"
+    },
+    "OpenAICompatibleEncoder": {
+      "additionalProperties": false,
+      "description": "A served embedding model.\n\nOne vector per text through ``POST <base_url>/embeddings`` (vLLM's OpenAI-compatible route, or OpenAI's API at\n``https://api.openai.com/v1`` with ``api_key_env: OPENAI_API_KEY``); with ``pooling: token``, one vector per\ntoken through vLLM's ``/pooling`` route (late interaction).",
+      "properties": {
+        "api_key_env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "minLength": 1,
+          "title": "Base Url",
+          "type": "string"
+        },
+        "batch_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Batch Size"
+        },
+        "concurrency": {
+          "default": 8,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "doc_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Text prepended to every document.",
+          "title": "Doc Prompt"
+        },
+        "max_retries": {
+          "default": 4,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "pooling": {
+          "anyOf": [
+            {
+              "const": "token",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``token`` for late interaction; ``None`` (the server's pooler) for one vector per text.",
+          "title": "Pooling"
+        },
+        "provider": {
+          "const": "openai_compatible",
+          "default": "openai_compatible",
+          "title": "Provider",
+          "type": "string"
+        },
+        "query_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Text prepended to every query.",
+          "title": "Query Prompt"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "timeout_s": {
+          "default": 600.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "base_url",
+        "model"
+      ],
+      "title": "OpenAICompatibleEncoder",
+      "type": "object"
+    },
+    "Voyage": {
+      "additionalProperties": false,
+      "description": "Voyage AI's public API (``voyage-3-large``, ``rerank-2.5``, ``rerank-2.5-lite``, ...). The key is read from\n``api_key_env``, else ``VOYAGE_API_KEY``. A rerank request carries up to ``batch_size`` documents (default 20).",
+      "properties": {
+        "api_key_env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "title": "Base Url"
+        },
+        "batch_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Batch Size"
+        },
+        "concurrency": {
+          "default": 64,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "max_retries": {
+          "default": 8,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "provider": {
+          "const": "voyage",
+          "default": "voyage",
+          "title": "Provider",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "timeout_s": {
+          "default": 120.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "title": "Voyage",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/index.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A built index: where it is, what it indexes, and its identity.",
+  "properties": {
+    "dataset": {
+      "title": "Dataset",
+      "type": "string"
+    },
+    "identity": {
+      "title": "Identity",
+      "type": "string"
+    },
+    "num_documents": {
+      "title": "Num Documents",
+      "type": "integer"
+    },
+    "path": {
+      "title": "Path",
+      "type": "string"
+    },
+    "retriever": {
+      "discriminator": {
+        "mapping": {
+          "bm25": "#/$defs/BM25Config",
+          "dense": "#/$defs/DenseConfig",
+          "late_interaction": "#/$defs/LateInteractionConfig"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/BM25Config"
+        },
+        {
+          "$ref": "#/$defs/DenseConfig"
+        },
+        {
+          "$ref": "#/$defs/LateInteractionConfig"
+        }
+      ],
+      "title": "Retriever"
+    },
+    "schema": {
+      "const": "rcp-ndcg.index.v1",
+      "default": "rcp-ndcg.index.v1",
+      "title": "Schema",
+      "type": "string"
+    }
+  },
+  "required": [
+    "path",
+    "dataset",
+    "retriever",
+    "identity",
+    "num_documents"
+  ],
+  "title": "Index",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.index.v1"
+}

@@ -1,0 +1,5 @@
+# BM25 with bm25s, one of the paper's three first-stage retrievers: a retriever config
+# (rcp_ndcg.retrieval.RetrieverConfig) for `rcp-ndcg retrieval index|search --retriever <this file>`. Corpus and
+# queries are stemmed with PyStemmer's English Snowball stemmer. Runs on any install.
+kind: bm25
+stemmer: english
