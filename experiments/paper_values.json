@@ -1,0 +1,175 @@
+{
+  "_source": "Values as printed in arXiv:2609.35739 (tables and text); percentages in %, nDCG in % with one decimal.",
+  "leaderboards": {
+    "nanobeir": {
+      "qrel_ndcg10": {
+        "Qwen3-RR-8B": {"NanoArguAnaRetrieval": 86.0, "NanoClimateFeverRetrieval": 54.1, "NanoDBPediaRetrieval": 75.0, "NanoFEVERRetrieval": 96.2, "NanoFiQA2018Retrieval": 69.0, "NanoHotpotQARetrieval": 94.3, "NanoMSMARCORetrieval": 72.3, "NanoNFCorpusRetrieval": 46.7, "NanoNQRetrieval": 81.6, "NanoQuoraRetrieval": 97.1, "NanoSCIDOCSRetrieval": 48.9, "NanoSciFactRetrieval": 83.6, "NanoTouche2020Retrieval": 65.9, "mean": 74.7},
+        "CTXL-RR-6B": {"NanoArguAnaRetrieval": 88.9, "NanoClimateFeverRetrieval": 42.1, "NanoDBPediaRetrieval": 77.1, "NanoFEVERRetrieval": 98.7, "NanoFiQA2018Retrieval": 68.3, "NanoHotpotQARetrieval": 98.0, "NanoMSMARCORetrieval": 69.6, "NanoNFCorpusRetrieval": 48.6, "NanoNQRetrieval": 84.4, "NanoQuoraRetrieval": 89.4, "NanoSCIDOCSRetrieval": 50.8, "NanoSciFactRetrieval": 90.3, "NanoTouche2020Retrieval": 62.5, "mean": 74.5},
+        "Qwen3-RR-4B": {"NanoArguAnaRetrieval": 81.5, "NanoClimateFeverRetrieval": 51.7, "NanoDBPediaRetrieval": 74.6, "NanoFEVERRetrieval": 97.3, "NanoFiQA2018Retrieval": 67.1, "NanoHotpotQARetrieval": 94.3, "NanoMSMARCORetrieval": 70.4, "NanoNFCorpusRetrieval": 47.4, "NanoNQRetrieval": 82.1, "NanoQuoraRetrieval": 96.0, "NanoSCIDOCSRetrieval": 51.5, "NanoSciFactRetrieval": 82.9, "NanoTouche2020Retrieval": 66.6, "mean": 74.1},
+        "RR4-Pro": {"NanoArguAnaRetrieval": 77.0, "NanoClimateFeverRetrieval": 52.3, "NanoDBPediaRetrieval": 75.8, "NanoFEVERRetrieval": 97.8, "NanoFiQA2018Retrieval": 70.8, "NanoHotpotQARetrieval": 94.4, "NanoMSMARCORetrieval": 67.2, "NanoNFCorpusRetrieval": 47.9, "NanoNQRetrieval": 81.7, "NanoQuoraRetrieval": 96.4, "NanoSCIDOCSRetrieval": 46.4, "NanoSciFactRetrieval": 81.7, "NanoTouche2020Retrieval": 63.6, "mean": 73.3},
+        "Voyage2.5": {"NanoArguAnaRetrieval": 94.0, "NanoClimateFeverRetrieval": 37.6, "NanoDBPediaRetrieval": 77.6, "NanoFEVERRetrieval": 96.8, "NanoFiQA2018Retrieval": 67.6, "NanoHotpotQARetrieval": 95.0, "NanoMSMARCORetrieval": 70.2, "NanoNFCorpusRetrieval": 46.6, "NanoNQRetrieval": 80.9, "NanoQuoraRetrieval": 93.3, "NanoSCIDOCSRetrieval": 44.2, "NanoSciFactRetrieval": 82.3, "NanoTouche2020Retrieval": 55.6, "mean": 72.4},
+        "CTXL-RR-2B": {"NanoArguAnaRetrieval": 76.9, "NanoClimateFeverRetrieval": 41.1, "NanoDBPediaRetrieval": 75.9, "NanoFEVERRetrieval": 95.2, "NanoFiQA2018Retrieval": 65.1, "NanoHotpotQARetrieval": 96.3, "NanoMSMARCORetrieval": 68.3, "NanoNFCorpusRetrieval": 48.2, "NanoNQRetrieval": 80.1, "NanoQuoraRetrieval": 93.2, "NanoSCIDOCSRetrieval": 51.7, "NanoSciFactRetrieval": 84.4, "NanoTouche2020Retrieval": 62.4, "mean": 72.2},
+        "Voyage2.5-lt": {"NanoArguAnaRetrieval": 88.9, "NanoClimateFeverRetrieval": 39.4, "NanoDBPediaRetrieval": 76.5, "NanoFEVERRetrieval": 94.8, "NanoFiQA2018Retrieval": 69.5, "NanoHotpotQARetrieval": 93.9, "NanoMSMARCORetrieval": 70.7, "NanoNFCorpusRetrieval": 45.2, "NanoNQRetrieval": 77.6, "NanoQuoraRetrieval": 94.1, "NanoSCIDOCSRetrieval": 42.4, "NanoSciFactRetrieval": 82.0, "NanoTouche2020Retrieval": 57.8, "mean": 71.8},
+        "RR4-Fast": {"NanoArguAnaRetrieval": 72.3, "NanoClimateFeverRetrieval": 52.3, "NanoDBPediaRetrieval": 74.3, "NanoFEVERRetrieval": 96.9, "NanoFiQA2018Retrieval": 61.5, "NanoHotpotQARetrieval": 93.7, "NanoMSMARCORetrieval": 72.6, "NanoNFCorpusRetrieval": 46.9, "NanoNQRetrieval": 79.2, "NanoQuoraRetrieval": 95.4, "NanoSCIDOCSRetrieval": 44.6, "NanoSciFactRetrieval": 80.4, "NanoTouche2020Retrieval": 61.8, "mean": 71.7},
+        "CTXL-RR-1B": {"NanoArguAnaRetrieval": 68.4, "NanoClimateFeverRetrieval": 40.0, "NanoDBPediaRetrieval": 73.7, "NanoFEVERRetrieval": 96.0, "NanoFiQA2018Retrieval": 62.4, "NanoHotpotQARetrieval": 95.2, "NanoMSMARCORetrieval": 68.2, "NanoNFCorpusRetrieval": 46.9, "NanoNQRetrieval": 73.4, "NanoQuoraRetrieval": 93.7, "NanoSCIDOCSRetrieval": 47.1, "NanoSciFactRetrieval": 83.9, "NanoTouche2020Retrieval": 61.1, "mean": 70.0},
+        "Qwen3-RR-0.6B": {"NanoArguAnaRetrieval": 75.8, "NanoClimateFeverRetrieval": 47.8, "NanoDBPediaRetrieval": 70.6, "NanoFEVERRetrieval": 96.5, "NanoFiQA2018Retrieval": 58.6, "NanoHotpotQARetrieval": 92.0, "NanoMSMARCORetrieval": 67.9, "NanoNFCorpusRetrieval": 46.1, "NanoNQRetrieval": 75.3, "NanoQuoraRetrieval": 93.6, "NanoSCIDOCSRetrieval": 44.9, "NanoSciFactRetrieval": 80.4, "NanoTouche2020Retrieval": 58.7, "mean": 69.9},
+        "Jina-RR-v3": {"NanoArguAnaRetrieval": 79.5, "NanoClimateFeverRetrieval": 39.6, "NanoDBPediaRetrieval": 68.0, "NanoFEVERRetrieval": 97.7, "NanoFiQA2018Retrieval": 57.9, "NanoHotpotQARetrieval": 96.3, "NanoMSMARCORetrieval": 69.5, "NanoNFCorpusRetrieval": 49.0, "NanoNQRetrieval": 79.2, "NanoQuoraRetrieval": 97.9, "NanoSCIDOCSRetrieval": 34.3, "NanoSciFactRetrieval": 78.5, "NanoTouche2020Retrieval": 52.9, "mean": 69.3},
+        "zerank-1-sm": {"NanoArguAnaRetrieval": 62.5, "NanoClimateFeverRetrieval": 33.5, "NanoDBPediaRetrieval": 73.8, "NanoFEVERRetrieval": 91.7, "NanoFiQA2018Retrieval": 62.2, "NanoHotpotQARetrieval": 89.4, "NanoMSMARCORetrieval": 62.8, "NanoNFCorpusRetrieval": 46.4, "NanoNQRetrieval": 74.8, "NanoQuoraRetrieval": 82.8, "NanoSCIDOCSRetrieval": 44.1, "NanoSciFactRetrieval": 82.2, "NanoTouche2020Retrieval": 65.3, "mean": 67.0},
+        "zerank-1": {"NanoArguAnaRetrieval": 61.0, "NanoClimateFeverRetrieval": 33.7, "NanoDBPediaRetrieval": 73.6, "NanoFEVERRetrieval": 92.3, "NanoFiQA2018Retrieval": 63.6, "NanoHotpotQARetrieval": 90.2, "NanoMSMARCORetrieval": 62.0, "NanoNFCorpusRetrieval": 48.1, "NanoNQRetrieval": 77.9, "NanoQuoraRetrieval": 78.6, "NanoSCIDOCSRetrieval": 42.9, "NanoSciFactRetrieval": 82.9, "NanoTouche2020Retrieval": 64.3, "mean": 67.0},
+        "zerank-2": {"NanoArguAnaRetrieval": 56.2, "NanoClimateFeverRetrieval": 36.5, "NanoDBPediaRetrieval": 74.0, "NanoFEVERRetrieval": 92.1, "NanoFiQA2018Retrieval": 62.9, "NanoHotpotQARetrieval": 90.1, "NanoMSMARCORetrieval": 59.2, "NanoNFCorpusRetrieval": 47.1, "NanoNQRetrieval": 77.0, "NanoQuoraRetrieval": 76.8, "NanoSCIDOCSRetrieval": 45.3, "NanoSciFactRetrieval": 83.2, "NanoTouche2020Retrieval": 64.0, "mean": 66.5}
+      },
+      "rcp_ndcg10": {
+        "zerank-2": {"NanoArguAnaRetrieval": 55.3, "NanoClimateFeverRetrieval": 88.9, "NanoDBPediaRetrieval": 90.6, "NanoFEVERRetrieval": 93.4, "NanoFiQA2018Retrieval": 90.8, "NanoHotpotQARetrieval": 89.5, "NanoMSMARCORetrieval": 88.3, "NanoNFCorpusRetrieval": 87.9, "NanoNQRetrieval": 83.9, "NanoQuoraRetrieval": 86.5, "NanoSCIDOCSRetrieval": 90.4, "NanoSciFactRetrieval": 91.1, "NanoTouche2020Retrieval": 97.0, "mean": 87.2},
+        "zerank-1": {"NanoArguAnaRetrieval": 56.3, "NanoClimateFeverRetrieval": 87.3, "NanoDBPediaRetrieval": 90.6, "NanoFEVERRetrieval": 93.0, "NanoFiQA2018Retrieval": 91.3, "NanoHotpotQARetrieval": 88.9, "NanoMSMARCORetrieval": 88.0, "NanoNFCorpusRetrieval": 87.5, "NanoNQRetrieval": 84.2, "NanoQuoraRetrieval": 88.1, "NanoSCIDOCSRetrieval": 89.8, "NanoSciFactRetrieval": 90.3, "NanoTouche2020Retrieval": 96.8, "mean": 87.1},
+        "Voyage2.5": {"NanoArguAnaRetrieval": 69.3, "NanoClimateFeverRetrieval": 85.4, "NanoDBPediaRetrieval": 89.9, "NanoFEVERRetrieval": 92.8, "NanoFiQA2018Retrieval": 83.1, "NanoHotpotQARetrieval": 92.0, "NanoMSMARCORetrieval": 85.8, "NanoNFCorpusRetrieval": 85.0, "NanoNQRetrieval": 81.8, "NanoQuoraRetrieval": 87.4, "NanoSCIDOCSRetrieval": 79.6, "NanoSciFactRetrieval": 87.0, "NanoTouche2020Retrieval": 87.1, "mean": 85.1},
+        "zerank-1-sm": {"NanoArguAnaRetrieval": 54.9, "NanoClimateFeverRetrieval": 83.7, "NanoDBPediaRetrieval": 87.1, "NanoFEVERRetrieval": 91.3, "NanoFiQA2018Retrieval": 90.0, "NanoHotpotQARetrieval": 88.0, "NanoMSMARCORetrieval": 85.8, "NanoNFCorpusRetrieval": 81.9, "NanoNQRetrieval": 79.3, "NanoQuoraRetrieval": 83.8, "NanoSCIDOCSRetrieval": 90.4, "NanoSciFactRetrieval": 88.5, "NanoTouche2020Retrieval": 96.1, "mean": 84.7},
+        "RR4-Pro": {"NanoArguAnaRetrieval": 62.8, "NanoClimateFeverRetrieval": 71.1, "NanoDBPediaRetrieval": 86.9, "NanoFEVERRetrieval": 85.7, "NanoFiQA2018Retrieval": 86.1, "NanoHotpotQARetrieval": 90.3, "NanoMSMARCORetrieval": 85.9, "NanoNFCorpusRetrieval": 85.4, "NanoNQRetrieval": 83.0, "NanoQuoraRetrieval": 88.1, "NanoSCIDOCSRetrieval": 80.4, "NanoSciFactRetrieval": 88.0, "NanoTouche2020Retrieval": 90.2, "mean": 83.4},
+        "CTXL-RR-6B": {"NanoArguAnaRetrieval": 70.4, "NanoClimateFeverRetrieval": 68.2, "NanoDBPediaRetrieval": 88.4, "NanoFEVERRetrieval": 84.8, "NanoFiQA2018Retrieval": 80.3, "NanoHotpotQARetrieval": 90.1, "NanoMSMARCORetrieval": 87.9, "NanoNFCorpusRetrieval": 84.6, "NanoNQRetrieval": 85.4, "NanoQuoraRetrieval": 78.9, "NanoSCIDOCSRetrieval": 84.7, "NanoSciFactRetrieval": 84.9, "NanoTouche2020Retrieval": 91.4, "mean": 83.1},
+        "Voyage2.5-lt": {"NanoArguAnaRetrieval": 67.0, "NanoClimateFeverRetrieval": 82.4, "NanoDBPediaRetrieval": 87.7, "NanoFEVERRetrieval": 91.7, "NanoFiQA2018Retrieval": 79.7, "NanoHotpotQARetrieval": 90.3, "NanoMSMARCORetrieval": 84.3, "NanoNFCorpusRetrieval": 79.2, "NanoNQRetrieval": 77.7, "NanoQuoraRetrieval": 81.1, "NanoSCIDOCSRetrieval": 84.7, "NanoSciFactRetrieval": 84.4, "NanoTouche2020Retrieval": 83.0, "mean": 82.5},
+        "Qwen3-RR-4B": {"NanoArguAnaRetrieval": 64.7, "NanoClimateFeverRetrieval": 68.7, "NanoDBPediaRetrieval": 84.5, "NanoFEVERRetrieval": 88.2, "NanoFiQA2018Retrieval": 84.2, "NanoHotpotQARetrieval": 89.7, "NanoMSMARCORetrieval": 83.3, "NanoNFCorpusRetrieval": 82.1, "NanoNQRetrieval": 80.9, "NanoQuoraRetrieval": 87.6, "NanoSCIDOCSRetrieval": 86.4, "NanoSciFactRetrieval": 85.4, "NanoTouche2020Retrieval": 86.1, "mean": 82.4},
+        "Qwen3-RR-8B": {"NanoArguAnaRetrieval": 68.2, "NanoClimateFeverRetrieval": 64.7, "NanoDBPediaRetrieval": 86.6, "NanoFEVERRetrieval": 87.7, "NanoFiQA2018Retrieval": 85.3, "NanoHotpotQARetrieval": 89.7, "NanoMSMARCORetrieval": 83.6, "NanoNFCorpusRetrieval": 83.1, "NanoNQRetrieval": 81.3, "NanoQuoraRetrieval": 88.3, "NanoSCIDOCSRetrieval": 79.1, "NanoSciFactRetrieval": 85.7, "NanoTouche2020Retrieval": 87.6, "mean": 82.4},
+        "CTXL-RR-2B": {"NanoArguAnaRetrieval": 57.3, "NanoClimateFeverRetrieval": 70.7, "NanoDBPediaRetrieval": 87.5, "NanoFEVERRetrieval": 85.4, "NanoFiQA2018Retrieval": 81.1, "NanoHotpotQARetrieval": 89.2, "NanoMSMARCORetrieval": 87.2, "NanoNFCorpusRetrieval": 82.1, "NanoNQRetrieval": 83.7, "NanoQuoraRetrieval": 81.2, "NanoSCIDOCSRetrieval": 88.8, "NanoSciFactRetrieval": 85.2, "NanoTouche2020Retrieval": 90.6, "mean": 82.3},
+        "RR4-Fast": {"NanoArguAnaRetrieval": 61.9, "NanoClimateFeverRetrieval": 64.7, "NanoDBPediaRetrieval": 83.7, "NanoFEVERRetrieval": 85.4, "NanoFiQA2018Retrieval": 83.0, "NanoHotpotQARetrieval": 89.1, "NanoMSMARCORetrieval": 83.1, "NanoNFCorpusRetrieval": 79.5, "NanoNQRetrieval": 77.8, "NanoQuoraRetrieval": 85.9, "NanoSCIDOCSRetrieval": 84.6, "NanoSciFactRetrieval": 86.1, "NanoTouche2020Retrieval": 89.9, "mean": 81.1},
+        "CTXL-RR-1B": {"NanoArguAnaRetrieval": 56.7, "NanoClimateFeverRetrieval": 67.0, "NanoDBPediaRetrieval": 86.1, "NanoFEVERRetrieval": 85.4, "NanoFiQA2018Retrieval": 81.9, "NanoHotpotQARetrieval": 87.0, "NanoMSMARCORetrieval": 86.0, "NanoNFCorpusRetrieval": 79.9, "NanoNQRetrieval": 78.1, "NanoQuoraRetrieval": 84.8, "NanoSCIDOCSRetrieval": 84.6, "NanoSciFactRetrieval": 83.5, "NanoTouche2020Retrieval": 89.3, "mean": 80.8},
+        "Qwen3-RR-0.6B": {"NanoArguAnaRetrieval": 59.4, "NanoClimateFeverRetrieval": 73.7, "NanoDBPediaRetrieval": 78.3, "NanoFEVERRetrieval": 87.3, "NanoFiQA2018Retrieval": 77.0, "NanoHotpotQARetrieval": 87.0, "NanoMSMARCORetrieval": 80.2, "NanoNFCorpusRetrieval": 73.5, "NanoNQRetrieval": 71.6, "NanoQuoraRetrieval": 83.9, "NanoSCIDOCSRetrieval": 84.2, "NanoSciFactRetrieval": 83.3, "NanoTouche2020Retrieval": 78.7, "mean": 78.3},
+        "Jina-RR-v3": {"NanoArguAnaRetrieval": 54.4, "NanoClimateFeverRetrieval": 64.9, "NanoDBPediaRetrieval": 73.3, "NanoFEVERRetrieval": 79.4, "NanoFiQA2018Retrieval": 70.0, "NanoHotpotQARetrieval": 84.4, "NanoMSMARCORetrieval": 81.6, "NanoNFCorpusRetrieval": 66.0, "NanoNQRetrieval": 69.1, "NanoQuoraRetrieval": 75.1, "NanoSCIDOCSRetrieval": 44.2, "NanoSciFactRetrieval": 69.8, "NanoTouche2020Retrieval": 77.4, "mean": 70.0}
+      }
+    },
+    "bright": {
+      "qrel_ndcg10": {
+        "zerank-1": {"aops": 14.4, "biology": 54.6, "earth_science": 51.7, "economics": 33.6, "leetcode": 21.0, "pony": 38.7, "psychology": 47.6, "robotics": 33.2, "stackoverflow": 27.6, "sustainable_living": 44.0, "theoremqa_questions": 46.2, "theoremqa_theorems": 46.9, "mean": 38.3},
+        "zerank-2": {"aops": 13.5, "biology": 52.9, "earth_science": 52.0, "economics": 37.4, "leetcode": 22.1, "pony": 25.2, "psychology": 46.5, "robotics": 37.7, "stackoverflow": 31.0, "sustainable_living": 44.9, "theoremqa_questions": 46.3, "theoremqa_theorems": 43.6, "mean": 37.8},
+        "Voyage2.5": {"aops": 10.2, "biology": 47.9, "earth_science": 49.6, "economics": 30.9, "leetcode": 21.1, "pony": 41.6, "psychology": 42.3, "robotics": 30.9, "stackoverflow": 26.0, "sustainable_living": 38.9, "theoremqa_questions": 37.3, "theoremqa_theorems": 30.0, "mean": 33.9},
+        "RR4-Pro": {"aops": 12.7, "biology": 50.2, "earth_science": 49.2, "economics": 31.0, "leetcode": 29.2, "pony": 3.8, "psychology": 44.5, "robotics": 27.8, "stackoverflow": 24.2, "sustainable_living": 35.8, "theoremqa_questions": 48.1, "theoremqa_theorems": 45.6, "mean": 33.5},
+        "zerank-1-sm": {"aops": 10.4, "biology": 46.5, "earth_science": 45.6, "economics": 29.1, "leetcode": 19.2, "pony": 24.4, "psychology": 41.0, "robotics": 25.5, "stackoverflow": 26.6, "sustainable_living": 40.1, "theoremqa_questions": 45.7, "theoremqa_theorems": 40.2, "mean": 32.9},
+        "RR4-Fast": {"aops": 10.9, "biology": 44.6, "earth_science": 45.5, "economics": 30.8, "leetcode": 20.4, "pony": 3.9, "psychology": 38.2, "robotics": 23.6, "stackoverflow": 23.7, "sustainable_living": 34.2, "theoremqa_questions": 46.7, "theoremqa_theorems": 38.8, "mean": 30.1},
+        "Voyage2.5-lt": {"aops": 11.1, "biology": 38.4, "earth_science": 45.3, "economics": 26.6, "leetcode": 24.9, "pony": 26.2, "psychology": 38.0, "robotics": 23.5, "stackoverflow": 22.2, "sustainable_living": 30.8, "theoremqa_questions": 33.3, "theoremqa_theorems": 21.9, "mean": 28.5},
+        "Qwen3-RR-4B": {"aops": 12.2, "biology": 30.7, "earth_science": 36.6, "economics": 21.7, "leetcode": 40.7, "pony": 18.7, "psychology": 27.9, "robotics": 23.1, "stackoverflow": 26.2, "sustainable_living": 23.9, "theoremqa_questions": 42.8, "theoremqa_theorems": 36.3, "mean": 28.4},
+        "Qwen3-RR-8B": {"aops": 9.4, "biology": 32.7, "earth_science": 34.4, "economics": 25.6, "leetcode": 29.4, "pony": 21.2, "psychology": 30.7, "robotics": 27.4, "stackoverflow": 24.4, "sustainable_living": 25.4, "theoremqa_questions": 39.7, "theoremqa_theorems": 34.1, "mean": 27.9},
+        "Jina-RR-v3": {"aops": 8.4, "biology": 26.8, "earth_science": 39.2, "economics": 27.8, "leetcode": 10.2, "pony": 18.1, "psychology": 29.2, "robotics": 23.2, "stackoverflow": 12.5, "sustainable_living": 31.5, "theoremqa_questions": 28.3, "theoremqa_theorems": 32.6, "mean": 24.0},
+        "Qwen3-RR-0.6B": {"aops": 8.7, "biology": 19.1, "earth_science": 24.6, "economics": 14.9, "leetcode": 28.9, "pony": 3.1, "psychology": 17.1, "robotics": 13.8, "stackoverflow": 15.4, "sustainable_living": 11.3, "theoremqa_questions": 37.1, "theoremqa_theorems": 30.0, "mean": 18.7},
+        "CTXL-RR-6B": {"aops": 17.4, "biology": 10.0, "earth_science": 16.7, "economics": 18.0, "leetcode": 15.0, "pony": 29.2, "psychology": 20.7, "robotics": 12.3, "stackoverflow": 5.7, "sustainable_living": 11.5, "theoremqa_questions": 38.2, "theoremqa_theorems": 22.8, "mean": 18.1},
+        "CTXL-RR-1B": {"aops": 11.4, "biology": 10.2, "earth_science": 24.1, "economics": 18.6, "leetcode": 21.2, "pony": 16.3, "psychology": 19.5, "robotics": 13.9, "stackoverflow": 10.8, "sustainable_living": 12.3, "theoremqa_questions": 37.2, "theoremqa_theorems": 18.7, "mean": 17.9},
+        "CTXL-RR-2B": {"aops": 14.5, "biology": 11.6, "earth_science": 23.7, "economics": 16.0, "leetcode": 14.7, "pony": 12.5, "psychology": 23.3, "robotics": 9.5, "stackoverflow": 6.5, "sustainable_living": 12.4, "theoremqa_questions": 34.0, "theoremqa_theorems": 28.7, "mean": 17.3}
+      },
+      "rcp_ndcg10": {
+        "zerank-2": {"aops": 75.5, "biology": 85.9, "earth_science": 86.5, "economics": 87.8, "leetcode": 77.0, "pony": 73.3, "psychology": 82.2, "robotics": 85.2, "stackoverflow": 82.3, "sustainable_living": 84.0, "theoremqa_questions": 81.3, "theoremqa_theorems": 77.8, "mean": 81.6},
+        "zerank-1": {"aops": 70.1, "biology": 84.5, "earth_science": 85.4, "economics": 86.1, "leetcode": 75.9, "pony": 68.7, "psychology": 81.8, "robotics": 82.4, "stackoverflow": 80.4, "sustainable_living": 83.6, "theoremqa_questions": 80.7, "theoremqa_theorems": 76.4, "mean": 79.7},
+        "zerank-1-sm": {"aops": 71.4, "biology": 76.8, "earth_science": 81.9, "economics": 80.5, "leetcode": 70.1, "pony": 52.7, "psychology": 76.5, "robotics": 77.3, "stackoverflow": 74.4, "sustainable_living": 77.8, "theoremqa_questions": 76.3, "theoremqa_theorems": 70.8, "mean": 73.9},
+        "Voyage2.5": {"aops": 54.4, "biology": 78.7, "earth_science": 83.2, "economics": 78.8, "leetcode": 69.1, "pony": 63.4, "psychology": 79.1, "robotics": 78.7, "stackoverflow": 72.2, "sustainable_living": 79.1, "theoremqa_questions": 69.6, "theoremqa_theorems": 59.4, "mean": 72.1},
+        "RR4-Pro": {"aops": 73.1, "biology": 76.9, "earth_science": 81.6, "economics": 76.8, "leetcode": 78.7, "pony": 15.5, "psychology": 76.6, "robotics": 77.5, "stackoverflow": 67.7, "sustainable_living": 72.7, "theoremqa_questions": 75.2, "theoremqa_theorems": 79.1, "mean": 71.0},
+        "Qwen3-RR-4B": {"aops": 68.8, "biology": 68.4, "earth_science": 74.3, "economics": 65.4, "leetcode": 70.1, "pony": 63.1, "psychology": 61.9, "robotics": 70.4, "stackoverflow": 72.7, "sustainable_living": 60.2, "theoremqa_questions": 72.2, "theoremqa_theorems": 70.4, "mean": 68.1},
+        "Qwen3-RR-8B": {"aops": 64.7, "biology": 69.7, "earth_science": 73.3, "economics": 70.3, "leetcode": 69.4, "pony": 33.8, "psychology": 65.8, "robotics": 74.4, "stackoverflow": 71.7, "sustainable_living": 65.8, "theoremqa_questions": 70.8, "theoremqa_theorems": 68.6, "mean": 66.5},
+        "RR4-Fast": {"aops": 66.8, "biology": 73.9, "earth_science": 78.5, "economics": 74.3, "leetcode": 67.2, "pony": 19.3, "psychology": 71.3, "robotics": 71.7, "stackoverflow": 65.7, "sustainable_living": 71.9, "theoremqa_questions": 70.1, "theoremqa_theorems": 67.2, "mean": 66.5},
+        "Voyage2.5-lt": {"aops": 45.3, "biology": 71.4, "earth_science": 78.5, "economics": 73.3, "leetcode": 62.4, "pony": 47.1, "psychology": 70.8, "robotics": 72.5, "stackoverflow": 64.3, "sustainable_living": 71.4, "theoremqa_questions": 63.0, "theoremqa_theorems": 49.1, "mean": 64.1},
+        "Qwen3-RR-0.6B": {"aops": 59.6, "biology": 53.3, "earth_science": 61.1, "economics": 55.1, "leetcode": 61.3, "pony": 33.7, "psychology": 48.4, "robotics": 61.9, "stackoverflow": 52.9, "sustainable_living": 48.9, "theoremqa_questions": 63.2, "theoremqa_theorems": 57.3, "mean": 54.7},
+        "Jina-RR-v3": {"aops": 41.1, "biology": 59.1, "earth_science": 65.1, "economics": 62.4, "leetcode": 50.9, "pony": 40.5, "psychology": 55.4, "robotics": 68.1, "stackoverflow": 46.9, "sustainable_living": 62.2, "theoremqa_questions": 46.4, "theoremqa_theorems": 54.3, "mean": 54.4},
+        "CTXL-RR-1B": {"aops": 47.5, "biology": 41.7, "earth_science": 48.9, "economics": 48.4, "leetcode": 32.0, "pony": 30.0, "psychology": 50.0, "robotics": 49.4, "stackoverflow": 31.1, "sustainable_living": 38.6, "theoremqa_questions": 51.7, "theoremqa_theorems": 44.7, "mean": 42.8},
+        "CTXL-RR-2B": {"aops": 36.5, "biology": 38.2, "earth_science": 46.5, "economics": 45.6, "leetcode": 42.3, "pony": 21.1, "psychology": 50.0, "robotics": 49.0, "stackoverflow": 31.8, "sustainable_living": 34.9, "theoremqa_questions": 53.8, "theoremqa_theorems": 51.1, "mean": 41.7},
+        "CTXL-RR-6B": {"aops": 38.5, "biology": 40.1, "earth_science": 45.4, "economics": 45.5, "leetcode": 36.9, "pony": 30.5, "psychology": 50.5, "robotics": 47.1, "stackoverflow": 27.9, "sustainable_living": 32.5, "theoremqa_questions": 52.7, "theoremqa_theorems": 50.5, "mean": 41.5}
+      }
+    },
+    "vidore": {
+      "qrel_ndcg10": {
+        "Voyage2.5": {"computer_science": 85.1, "energy": 74.0, "finance_en": 75.1, "finance_fr": 58.5, "hr": 71.9, "industrial": 62.1, "pharmaceuticals": 71.6, "physics": 50.3, "mean": 68.6},
+        "RR4-Pro": {"computer_science": 83.2, "energy": 73.7, "finance_en": 75.5, "finance_fr": 57.9, "hr": 70.8, "industrial": 61.3, "pharmaceuticals": 71.4, "physics": 51.5, "mean": 68.2},
+        "Voyage2.5-lt": {"computer_science": 83.8, "energy": 73.2, "finance_en": 74.6, "finance_fr": 57.3, "hr": 69.6, "industrial": 62.1, "pharmaceuticals": 70.2, "physics": 49.0, "mean": 67.5},
+        "zerank-2": {"computer_science": 84.2, "energy": 72.4, "finance_en": 75.1, "finance_fr": 55.8, "hr": 68.9, "industrial": 60.7, "pharmaceuticals": 69.8, "physics": 49.0, "mean": 67.0},
+        "zerank-1": {"computer_science": 84.0, "energy": 71.7, "finance_en": 75.1, "finance_fr": 55.4, "hr": 68.7, "industrial": 60.4, "pharmaceuticals": 69.7, "physics": 48.9, "mean": 66.7},
+        "RR4-Fast": {"computer_science": 81.9, "energy": 70.7, "finance_en": 74.5, "finance_fr": 53.6, "hr": 68.5, "industrial": 59.7, "pharmaceuticals": 69.5, "physics": 48.8, "mean": 65.9},
+        "CTXL-RR-6B": {"computer_science": 74.4, "energy": 71.8, "finance_en": 73.8, "finance_fr": 55.2, "hr": 69.1, "industrial": 60.6, "pharmaceuticals": 68.2, "physics": 51.2, "mean": 65.5},
+        "Qwen3-RR-8B": {"computer_science": 80.8, "energy": 70.6, "finance_en": 70.3, "finance_fr": 55.5, "hr": 65.5, "industrial": 60.0, "pharmaceuticals": 68.6, "physics": 52.3, "mean": 65.4},
+        "zerank-1-sm": {"computer_science": 84.3, "energy": 69.5, "finance_en": 72.8, "finance_fr": 52.6, "hr": 66.8, "industrial": 58.7, "pharmaceuticals": 67.5, "physics": 48.5, "mean": 65.1},
+        "CTXL-RR-2B": {"computer_science": 76.7, "energy": 71.6, "finance_en": 71.7, "finance_fr": 53.2, "hr": 68.1, "industrial": 61.1, "pharmaceuticals": 67.5, "physics": 49.0, "mean": 64.9},
+        "CTXL-RR-1B": {"computer_science": 77.7, "energy": 68.9, "finance_en": 69.1, "finance_fr": 49.7, "hr": 65.4, "industrial": 57.4, "pharmaceuticals": 66.4, "physics": 49.2, "mean": 63.0},
+        "Qwen3-RR-4B": {"computer_science": 80.4, "energy": 67.9, "finance_en": 67.4, "finance_fr": 51.0, "hr": 61.7, "industrial": 57.8, "pharmaceuticals": 66.4, "physics": 51.0, "mean": 62.9},
+        "Jina-RR-v3": {"computer_science": 74.1, "energy": 65.8, "finance_en": 63.6, "finance_fr": 41.5, "hr": 57.2, "industrial": 57.3, "pharmaceuticals": 67.9, "physics": 45.3, "mean": 59.1},
+        "Qwen3-RR-0.6B": {"computer_science": 74.4, "energy": 53.3, "finance_en": 57.3, "finance_fr": 34.2, "hr": 45.2, "industrial": 49.7, "pharmaceuticals": 60.0, "physics": 47.9, "mean": 52.8}
+      },
+      "rcp_ndcg10": {
+        "zerank-2": {"computer_science": 94.2, "energy": 93.6, "finance_en": 87.6, "finance_fr": 89.6, "hr": 92.0, "industrial": 89.4, "pharmaceuticals": 91.2, "physics": 93.7, "mean": 91.4},
+        "zerank-1": {"computer_science": 94.1, "energy": 93.3, "finance_en": 88.9, "finance_fr": 89.6, "hr": 91.6, "industrial": 89.1, "pharmaceuticals": 90.8, "physics": 93.3, "mean": 91.3},
+        "Voyage2.5": {"computer_science": 93.3, "energy": 93.3, "finance_en": 86.5, "finance_fr": 87.5, "hr": 91.8, "industrial": 89.1, "pharmaceuticals": 90.3, "physics": 91.0, "mean": 90.4},
+        "RR4-Pro": {"computer_science": 90.8, "energy": 93.0, "finance_en": 88.6, "finance_fr": 90.2, "hr": 90.4, "industrial": 87.9, "pharmaceuticals": 89.0, "physics": 91.6, "mean": 90.2},
+        "zerank-1-sm": {"computer_science": 93.2, "energy": 90.9, "finance_en": 88.2, "finance_fr": 86.7, "hr": 90.1, "industrial": 87.8, "pharmaceuticals": 88.1, "physics": 90.8, "mean": 89.5},
+        "Voyage2.5-lt": {"computer_science": 91.5, "energy": 90.7, "finance_en": 86.9, "finance_fr": 85.2, "hr": 89.8, "industrial": 87.7, "pharmaceuticals": 88.6, "physics": 86.9, "mean": 88.4},
+        "RR4-Fast": {"computer_science": 89.8, "energy": 90.2, "finance_en": 87.2, "finance_fr": 84.7, "hr": 88.4, "industrial": 85.1, "pharmaceuticals": 86.7, "physics": 88.2, "mean": 87.5},
+        "Qwen3-RR-8B": {"computer_science": 88.3, "energy": 89.2, "finance_en": 82.6, "finance_fr": 85.1, "hr": 85.3, "industrial": 84.1, "pharmaceuticals": 85.9, "physics": 89.2, "mean": 86.2},
+        "CTXL-RR-2B": {"computer_science": 82.8, "energy": 89.9, "finance_en": 85.7, "finance_fr": 83.7, "hr": 87.9, "industrial": 85.0, "pharmaceuticals": 85.6, "physics": 88.0, "mean": 86.1},
+        "CTXL-RR-6B": {"computer_science": 79.0, "energy": 89.0, "finance_en": 86.6, "finance_fr": 85.5, "hr": 88.0, "industrial": 85.1, "pharmaceuticals": 84.6, "physics": 88.0, "mean": 85.7},
+        "CTXL-RR-1B": {"computer_science": 85.1, "energy": 88.1, "finance_en": 82.5, "finance_fr": 82.2, "hr": 85.3, "industrial": 81.5, "pharmaceuticals": 83.7, "physics": 86.7, "mean": 84.4},
+        "Qwen3-RR-4B": {"computer_science": 87.7, "energy": 86.5, "finance_en": 79.5, "finance_fr": 80.4, "hr": 82.7, "industrial": 81.0, "pharmaceuticals": 84.1, "physics": 88.1, "mean": 83.7},
+        "Qwen3-RR-0.6B": {"computer_science": 82.5, "energy": 79.8, "finance_en": 75.1, "finance_fr": 67.2, "hr": 72.5, "industrial": 76.4, "pharmaceuticals": 78.3, "physics": 83.2, "mean": 76.9},
+        "Jina-RR-v3": {"computer_science": 73.2, "energy": 70.5, "finance_en": 67.9, "finance_fr": 64.3, "hr": 69.7, "industrial": 74.3, "pharmaceuticals": 75.9, "physics": 76.9, "mean": 71.6}
+      }
+    }
+  },
+  "trecdl_pairs": {
+    "dl19": {"pairs": 91, "separated_qrel_linear": 14, "separated_rcp": 60, "agree_with_nist": "14/14", "kendall_rcp_vs_nist_14": 0.209, "queries": 43},
+    "dl20": {"pairs": 91, "separated_qrel_linear": 37, "separated_rcp": 70, "agree_with_nist": "37/37", "kendall_rcp_vs_nist_14": 0.604, "queries": 54}
+  },
+  "human_study": {
+    "descriptives": {"contests": 311, "contests.nanomteb": 108, "contests.bright": 103, "contests.vidore": 100, "queries": 292, "datasets": 24, "annotators": 46, "annotators.nanomteb": 33, "annotators.bright": 39, "annotators.vidore": 35, "reviews": 933, "reviews.nanomteb": 324, "reviews.bright": 309, "reviews.vidore": 300, "grades": 7080, "distinct-docs": 2268, "verdict-a": 139, "verdict-b": 150, "verdict-tie": 22, "decided-flips": 156, "pairs": 42, "rerankers": 10},
+    "rates": {
+      "main": {"pct": 72.4, "k": 134, "n": 185, "lo": 66.0, "hi": 78.9},
+      "main_without_zerank": {"pct": 68.1, "k": 64, "n": 94, "lo": 58.7, "hi": 77.5},
+      "main_zerank_contests": {"pct": 76.9},
+      "disagreements": {"pct": 69.9, "k": 109, "n": 156, "lo": 62.7, "hi": 77.1},
+      "disagreements_without_zerank": {"pct": 65.4, "k": 51, "n": 78, "lo": 54.9, "hi": 75.9},
+      "disagreements_both_margins_ge_0.02": {"pct": 74.8, "k": 98, "n": 131, "lo": 67.3, "hi": 82.3},
+      "disagreements_a_margin_lt_0.02": {"pct": 44.0, "k": 11, "n": 25, "lo": 24.1, "hi": 63.9},
+      "hit_rcp": {"pct": 77.9, "k": 219, "n": 281},
+      "hit_qrel": {"pct": 51.9},
+      "band_rcp_margin_lt_0.02": {"pct": 47.2, "n": 36, "lo": 30.7, "hi": 63.8},
+      "band_rcp_margin_ge_0.20": {"pct": 96.8},
+      "band_qrel_margin_ge_0.20": {"pct": 53.1},
+      "rcp_margin_ge_0.02": {"pct": 82.4}
+    },
+    "margin_auc": {"rcp": 0.81, "qrel": 0.521, "picks": 854}
+  },
+  "tournament_order_test": {
+    "s1": {
+      "consensus": {"n_cases": 480, "n_decided": 317, "rcp_share": 63.1},
+      "glm-5-3-flash": {"n_decided": 297, "rcp_share": 61.3},
+      "deepseek-4-1-flash": {"n_decided": 354, "rcp_share": 60.5},
+      "kimi-k3": {"n_decided": 323, "rcp_share": 66.3}
+    },
+    "s1ctl": {
+      "consensus": {"n_cases": 120, "n_decided": 76, "rcp_share": 75.0},
+      "glm-5-3-flash": {"n_decided": 79, "rcp_share": 70.9},
+      "deepseek-4-1-flash": {"n_decided": 92, "rcp_share": 75.0},
+      "kimi-k3": {"n_decided": 79, "rcp_share": 77.2}
+    },
+    "s2": {
+      "consensus": {"n_cases": 447, "n_decided": 333, "rcp_share": 86.8},
+      "glm-5-3-flash": {"n_decided": 306, "rcp_share": 85.3},
+      "glm-5-3-flash.nanomteb": {"n_decided": 58, "rcp_share": 86.2},
+      "glm-5-3-flash.bright": {"n_decided": 73, "rcp_share": 80.8},
+      "glm-5-3-flash.vidore": {"n_decided": 97, "rcp_share": 81.4},
+      "glm-5-3-flash.trecdl": {"n_decided": 78, "rcp_share": 93.6},
+      "deepseek-4-1-flash": {"n_decided": 352, "rcp_share": 86.1},
+      "deepseek-4-1-flash.nanomteb": {"n_decided": 74, "rcp_share": 86.5},
+      "deepseek-4-1-flash.bright": {"n_decided": 82, "rcp_share": 84.1},
+      "deepseek-4-1-flash.vidore": {"n_decided": 110, "rcp_share": 80.9},
+      "deepseek-4-1-flash.trecdl": {"n_decided": 86, "rcp_share": 94.2},
+      "kimi-k3": {"n_decided": 340, "rcp_share": 86.2},
+      "kimi-k3.nanomteb": {"n_decided": 70, "rcp_share": 85.7},
+      "kimi-k3.bright": {"n_decided": 80, "rcp_share": 81.2},
+      "kimi-k3.vidore": {"n_decided": 108, "rcp_share": 80.6},
+      "kimi-k3.trecdl": {"n_decided": 82, "rcp_share": 98.8}
+    },
+    "s3": {
+      "consensus": {"n_cases": 100, "n_decided": 50, "rcp_share": 84.0},
+      "glm-5-3-flash": {"n_decided": 45, "rcp_share": 86.7},
+      "deepseek-4-1-flash": {"n_decided": 71, "rcp_share": 76.1},
+      "kimi-k3": {"n_decided": 52, "rcp_share": 80.8}
+    }
+  },
+  "study1": {
+    "nanobeir_qwen": {"n_cases": 264, "n_decided": 222, "k": 173, "rcp_share": 77.9, "unanimous_n": 167, "unanimous_share": 82.6, "datasets": 13, "datasets_rcp_majority": 12, "hotpotqa_decided_all_qrel": 8},
+    "nanobeir_oss": {"n_decided": 216, "rcp_share": 72.2},
+    "bright_qwen_12": {"n_decided": 843, "rcp_share": 87.8, "unanimous_n": 694, "unanimous_share": 89.6},
+    "bright_qwen_rebuilt": {"n_original": 456, "n_cases": 373, "n_decided": 344, "rcp_share": 85.8},
+    "bright_oss_unaffected": {"n_decided": 514, "rcp_share": 84.0}
+  }
+}

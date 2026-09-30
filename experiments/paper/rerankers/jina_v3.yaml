@@ -1,0 +1,4 @@
+# jinaai/jina-reranker-v3: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
+# `rcp-ndcg retrieval rerank --reranker <this file>`. Jina reranker v3, in process (the [local] extra).
+provider: local
+model: jinaai/jina-reranker-v3

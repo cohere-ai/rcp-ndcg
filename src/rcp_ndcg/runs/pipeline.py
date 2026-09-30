@@ -1,0 +1,675 @@
+"""The pipeline: run a config's steps against one run directory.
+
+Each step calls the library function that owns its work -- retrieval, the
+reranker, :func:`rcp_ndcg.llm.judge`, :func:`rcp_ndcg.calibration.calibrate`,
+the evaluation -- and writes into the layout of :mod:`rcp_ndcg.runs.layout`.
+The manifest records every step's identity and the content hashes of what it
+read and wrote, so resuming a run re-does exactly the steps whose identity or
+inputs changed. The judging steps resume at window granularity on top: their
+store is append-only, so a stopped judging step asks the judge only for the
+windows that are missing.
+
+A spend ceiling (``budget_usd``) stops the judging steps; everything judged so
+far is kept, the run is ``partial``, and resuming with a higher ceiling carries
+on where it stopped.
+
+The dataset is read through :func:`rcp_ndcg.data.load_dataset`. The judging
+steps read each query's pool from ``candidates.parquet`` (a
+:class:`~rcp_ndcg.data.Rankings` table): the retrieved
+(:func:`rcp_ndcg.retrieval.retrieve`) or supplied rankings, the dataset's own
+pools (written when the run starts), or, with a ``rerank`` step, the first-stage
+pools rescored by :func:`rcp_ndcg.retrieval.rerank`. The first stage is then kept
+in ``work/first_stage.parquet``, so the reranker always reads the pools it was
+configured on.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
+
+from rcp_ndcg.data import Dataset, Rankings
+from rcp_ndcg.errors import BudgetError, ConfigError, DataError, IdentityError, MissingInputError
+from rcp_ndcg.llm.client import Usage
+from rcp_ndcg.runs.config import JUDGE_STEPS, RunConfig
+from rcp_ndcg.runs.layout import RunLayout, new_run_id
+from rcp_ndcg.runs.manifest import DatasetRef, RunManifest, RunStatus, StepStatus
+from rcp_ndcg.storage import local_dir
+from rcp_ndcg.storage.artifacts import ArtifactRef, artifact_ref
+from rcp_ndcg.support.identity import hash_payload
+from rcp_ndcg.support.logging import get_logger
+from rcp_ndcg.support.paths import runs_dir as default_runs_dir
+
+logger = get_logger(__name__)
+
+
+class Pipeline:
+    """The steps of one run against one run directory.
+
+    Args:
+        config: The run's config.
+        runs_dir: Where a new run's directory is created: ``<runs_dir>/<run_id>``; default
+            :func:`rcp_ndcg.support.paths.runs_dir` (``$RCP_NDCG_RUNS_DIR``, else ``runs``).
+        layout: The run directory of an existing run (then ``runs_dir`` is not used).
+        manifest: The existing run's manifest.
+        only: Run only these of the config's steps in this invocation (``run resume --only``); the config's
+            ``steps`` stay as recorded.
+
+    Raises:
+        ConfigError: ``only`` names a step the config does not have.
+    """
+
+    def __init__(
+        self,
+        config: RunConfig,
+        *,
+        runs_dir: str | None = None,
+        layout: RunLayout | None = None,
+        manifest: RunManifest | None = None,
+        only: Sequence[str] | None = None,
+    ):
+        self.config = config
+        self.only = list(only) if only else None
+        if self.only is not None:
+            missing = [step for step in self.only if step not in config.steps]
+            if missing:
+                raise ConfigError(
+                    f"{', '.join(missing)} is not a step of this run (its steps: {', '.join(config.ordered_steps)})",
+                    hint="name one of the run's steps, or start a new run with the steps you need",
+                )
+        # Named but not created: --estimate and --dry-run must not leave an empty run behind.
+        root = local_dir(runs_dir or default_runs_dir(), "the runs directory")
+        self.layout = layout or RunLayout.at(root / new_run_id(config.label))
+        self.manifest = manifest or RunManifest.new(
+            self.layout.run_id, config=config.resolved(), budget_usd=config.budget_usd
+        )
+        self._judge_usage: Usage | None = None
+        self._dataset: Dataset | None = None
+
+    @property
+    def dataset(self) -> Dataset:
+        """The run's dataset, loaded once (queries and corpus are read on first access)."""
+        if self._dataset is None:
+            self._dataset = self.config.dataset.load()
+            if self._dataset.subsets:
+                raise ConfigError(
+                    f"{self._dataset.name!r} is a suite; a run evaluates one dataset",
+                    hint="name one subset: dataset: {uri: ..., subset: <name>}",
+                )
+        return self._dataset
+
+    # ------------------------------------------------------------------
+    # Entry points
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def resume(
+        cls, run_dir: str | Path, *, overrides: list[str] | None = None, only: Sequence[str] | None = None
+    ) -> Pipeline:
+        """Reopen a run directory with its recorded config (``key=value`` overrides applied).
+
+        ``only`` runs just those steps in this invocation; the recorded ``steps`` stay (see :class:`Pipeline`).
+        """
+        layout = RunLayout.at(run_dir)
+        manifest = RunManifest.load(layout)
+        config = RunConfig.from_data(manifest.config, overrides=overrides or [])
+        return cls(config, layout=layout, manifest=manifest, only=only)
+
+    @property
+    def steps(self) -> list[str]:
+        """The steps this invocation runs, in run order: the config's, narrowed by ``only``."""
+        return [step for step in self.config.ordered_steps if self.only is None or step in self.only]
+
+    def estimate(self, *, resume: bool = True):
+        """The judging steps' calls, tokens, cost and wall time (:func:`rcp_ndcg.llm.estimate`); nothing is spent.
+
+        Before a retrieval-sourced run has retrieved, each query's pool is assumed to hold ``candidates.depth``
+        documents of the corpus (:meth:`_assumed_pools`), and the estimate's ``assumptions`` say so. Before a
+        rankings-sourced run has read its rankings file, the pools are read from that file.
+
+        Raises:
+            IdentityError, ConfigError: what :meth:`run` would refuse (:meth:`preflight`).
+        """
+        from rcp_ndcg.llm.cost import estimate
+
+        self.preflight(resume=resume)
+        stages = [step for step in self.steps if step in JUDGE_STEPS]
+        schedules = {name: self.schedule(name) for name in stages if self.schedule(name) is not None}
+        pools, assumed = self._planned_pools()
+        projected = estimate(
+            self.dataset,
+            pools,
+            self.config.judge_config(),
+            stages=stages,  # type: ignore[arg-type]
+            schedules=schedules,
+            preprocessing=self.config.preprocessing,
+        )
+        if not assumed:
+            return projected
+        note = (
+            f"the retrieval has not run: each query's pool is assumed to be {self.config.candidates.depth} "
+            "documents (candidates.depth, at most the corpus), their lengths those of an evenly spaced sample of the "
+            "corpus"
+        )
+        return projected.model_copy(update={"assumptions": [*projected.assumptions, note]})
+
+    def preflight(self, *, resume: bool = True) -> None:
+        """Every refusal :meth:`run` with the same ``resume`` would give before it judges; nothing is written.
+
+        Each judging step that would run is checked as :func:`rcp_ndcg.llm.judging.preflight` checks a pass: a
+        budget without the judge's price, and a store holding judgements of another identity. ``--dry-run`` and
+        ``--estimate`` call it, so they refuse what the real command refuses.
+
+        Raises:
+            IdentityError: a judging step's store holds judgements of another identity.
+            ConfigError: a budget, and a judge without a price.
+        """
+        from rcp_ndcg.llm.judging import preflight
+
+        stages = [s for s in self.steps if s in JUDGE_STEPS and not (resume and self._is_current(s))]
+        if not stages:
+            return
+        pools, _ = self._planned_pools()
+        for stage in stages:
+            preflight(
+                self.dataset,
+                pools,
+                self.config.judge_config(),
+                stage=stage,  # type: ignore[arg-type]
+                out=self.layout.judgements,
+                schedule=self.schedule(stage),
+                preprocessing=self.config.preprocessing,
+                budget_usd=self.config.budget_usd,
+            )
+
+    def _planned_pools(self) -> tuple[dict[str, list[str]], bool]:
+        """The pools the judging steps will read, and whether they are assumed (a run that has not retrieved)."""
+        retrieved = Path(self.layout.candidates).exists()
+        if self.config.candidates.source == "retrieval" and not retrieved:
+            return self._assumed_pools(), True
+        if self.config.candidates.source == "rankings" and not retrieved:
+            depth = self.config.candidates.depth
+            return {query: pool[:depth] for query, pool in self._limited(self._supplied_pools()).items()}, False
+        return self._judging_input(), False
+
+    def _assumed_pools(self) -> dict[str, list[str]]:
+        """Each query's pool as :meth:`estimate` assumes it before retrieval: ``candidates.depth`` documents.
+
+        The same evenly spaced sample of the corpus (in id order) stands in for every query's retrieved pool: the
+        number of calls depends on the pool size only, and the tokens on the documents' lengths.
+        """
+        dataset = self.dataset
+        corpus = sorted(dataset.corpus)
+        if not corpus:
+            raise DataError(f"{dataset.name!r} has no corpus to retrieve from")
+        depth = min(self.config.candidates.depth, len(corpus))
+        sample = [corpus[i * len(corpus) // depth] for i in range(depth)]
+        return self._limited({query: sample for query in dataset.queries})
+
+    def schedule(self, stage: str):
+        """The schedule a judging stage runs with: the configured one (seeded by the config: :class:`RunConfig`).
+
+        ``None`` is the paper's schedule for the corpus's modality, whose seed is the run's default seed; with
+        another run seed that schedule is resolved here, from the modality of the corpus, and given the run's seed.
+        """
+        from rcp_ndcg.llm import RubricSchedule, TournamentSchedule
+
+        kind = TournamentSchedule if stage == "tournament" else RubricSchedule
+        schedule = getattr(self.config, stage)
+        if schedule is not None or self.config.seed == kind.model_fields["seed"].default:
+            return schedule
+        return kind.for_modality(self._corpus_modality()).model_copy(update={"seed": self.config.seed})
+
+    def _corpus_modality(self) -> str:
+        """``"video"``, ``"image"`` or ``"text"``: what the documents carry (the choice of the paper's schedule)."""
+        from rcp_ndcg_core.content import Modality
+
+        modalities = {document.as_content.modality for document in self.dataset.corpus.values()}
+        if Modality.VIDEO in modalities:
+            return "video"
+        return "image" if modalities - {Modality.TEXT} else "text"
+
+    def plan(self, *, resume: bool = True) -> list[dict[str, Any]]:
+        """What :meth:`run` with the same ``resume`` would do, without doing it (``--dry-run``)."""
+        rows = []
+        for step in self.steps:
+            current = resume and self._is_current(step)
+            rows.append({"step": step, "status": "would skip" if current else "would run"})
+        return rows
+
+    def run(self, *, resume: bool = True) -> RunManifest:
+        """Run the configured steps in order (those of ``only``, when given) and return the final manifest.
+
+        A resume that changes the config (overrides, a budget) keeps the change only when it succeeds, or stops at
+        its budget. When it fails, or is refused, the recorded config, ``run.yaml``, status and budget are restored,
+        so the run resumes as it was without the change. The steps it re-ran before failing keep their new records,
+        so the next resume redoes them under the recorded config. One exception: once a judging step has claimed its
+        store under the changed config (a stage judged for the first time), that store holds judgements of the new
+        config, so the new config stays and the run is ``failed``.
+
+        The run is ``completed`` when every step of its config is done; after ``only`` left some undone, it is
+        ``partial`` until a resume runs them.
+
+        Raises:
+            IdentityError: a judging step's store holds judgements of another identity (a resume with a changed
+                judge, schedule, dataset or preprocessing). The run is left as it was (see above).
+        """
+        recorded = self.manifest.model_copy(deep=True)
+        claims = self._store_claims()
+        self.layout.ensure()
+        self._write_config()
+        self.manifest.status = RunStatus.RUNNING
+        self.manifest.save(self.layout)
+        if self.config.candidates.source == "dataset" and set(self.config.steps) - {"retrieve"}:
+            # A reranker rescores the whole first stage; the depth cut comes after it.
+            pools = self._dataset_pools()
+            if "rerank" not in self.config.steps:
+                pools = {query: pool[: self.config.candidates.depth] for query, pool in pools.items()}
+            _write_rankings(self._first_stage, Rankings.from_orders(pools, system=CANDIDATES))
+        ran: set[str] = set()
+        for step in self.steps:
+            try:
+                if self._run_step(step, resume=resume):
+                    ran.add(step)
+            except BudgetError as exc:
+                logger.warning("[run] %s: %s", step, exc.message)
+                self.manifest.finish_step(step, status=StepStatus.PARTIAL, usage=self._judge_usage, error=exc.message)
+                self.manifest.status = RunStatus.PARTIAL
+                self.manifest.save(self.layout)
+                return self.manifest
+            except IdentityError as exc:
+                self._refused(ran, recorded)
+                store = self.layout.path("judgements", f"{step}.jsonl")
+                exc.hint = exc.cli_hint = (
+                    f"start a new run with the changed config (`rcp-ndcg run start`), or move {store} aside to "
+                    f"judge the {step} step again in this run"
+                )
+                raise
+            except BaseException as exc:
+                if self.config.resolved() != recorded.config and self._store_claims() == claims:
+                    logger.warning("[run] %s failed; the run keeps its recorded config: %s", step, exc)
+                    self._refused(ran, recorded)
+                elif isinstance(exc, Exception):
+                    self.manifest.finish_step(step, status=StepStatus.FAILED, error=f"{type(exc).__name__}: {exc}")
+                    self.manifest.status = RunStatus.FAILED
+                    self.manifest.save(self.layout)
+                raise
+            self.manifest.save(self.layout)
+        done = all((record := self.manifest.step(step)) is not None and record.succeeded for step in self.config.steps)
+        self.manifest.status = RunStatus.COMPLETED if done else RunStatus.PARTIAL
+        self.manifest.save(self.layout)
+        return self.manifest
+
+    def _store_claims(self) -> dict[str, Any]:
+        """The judgement store's recorded identities (``{}`` before a judging step first claimed it)."""
+        from rcp_ndcg.llm.store import JudgementStore
+
+        return JudgementStore(self.layout.judgements).identities()
+
+    def _refused(self, ran: set[str], recorded: RunManifest) -> None:
+        """Undo what a refused or failed change wrote: the recorded config, status and budget, and the records of
+        every step but those that ran (``ran``: their outputs were rewritten, and their identity now differs from
+        the recorded config's, so the next resume redoes them)."""
+        self.manifest.steps = [
+            record if record.name in ran else recorded.step(record.name)
+            for record in self.manifest.steps
+            if record.name in ran or recorded.step(record.name) is not None
+        ]
+        self.manifest.config = recorded.config
+        self.manifest.status = recorded.status
+        self.manifest.budget_usd = recorded.budget_usd
+        self.config = RunConfig.from_data(recorded.config)
+        self._write_config()
+        self.manifest.save(self.layout)
+
+    # ------------------------------------------------------------------
+    # Dispatch and resume
+    # ------------------------------------------------------------------
+
+    def _run_step(self, step: str, *, resume: bool) -> bool:
+        """Run ``step`` unless it is current; return whether it ran."""
+        if resume and self._is_current(step):
+            # The record stays as it was: completed, with the time it took when it ran.
+            logger.info("[run] %s: done with the same identity and inputs, skipping", step)
+            return False
+        logger.info("[run] %s: starting", step)
+        self.manifest.start_step(step, identity=self._identity(step))
+        self.manifest.save(self.layout)
+        inputs = self._inputs(step)
+        outputs, usage = getattr(self, f"_step_{step}")()
+        self.manifest.finish_step(step, inputs=inputs, outputs=outputs, usage=usage)
+        return True
+
+    def _is_current(self, step: str) -> bool:
+        """A recorded step is current when it succeeded with the same identity and inputs and its outputs exist."""
+        record = self.manifest.step(step)
+        if record is None or not record.succeeded or record.identity_hash != hash_payload(self._identity(step)):
+            return False
+        if {(r.path, r.sha256) for r in record.inputs} != {(r.path, r.sha256) for r in self._inputs(step)}:
+            return False
+        return all(Path(self.layout.resolve(ref.path)).exists() for ref in record.outputs)
+
+    @property
+    def _first_stage(self) -> str:
+        """Where the first-stage pools live: ``candidates.parquet``, or beside it when a reranker reorders them."""
+        if "rerank" in self.config.steps:
+            return self.layout.path("work", "first_stage.parquet")
+        return self.layout.candidates
+
+    def _identity(self, step: str) -> dict[str, Any]:
+        """Everything that decides a step's output (runtime knobs excluded)."""
+        config = self.config
+        # The dataset's identity carries the commit a Hub source resolves to, so a moved upstream re-runs.
+        dataset = {"dataset": config.dataset.identity()}
+        common = {**dataset, "limit": config.limit, "seed": config.seed}
+        if step == "retrieve":
+            # Retrieval covers every query of the dataset and draws nothing at random: no limit, no seed.
+            candidates = config.candidates.model_dump(mode="json", by_alias=True, exclude={"rerank"})
+            return {**dataset, "candidates": candidates, "output": self.layout.relative(self._first_stage)}
+        if step == "rerank":
+            rerank = config.candidates.rerank.model_dump(mode="json") if config.candidates.rerank else None
+            return {**common, "rerank": rerank, "depth": config.candidates.depth}
+        if step in JUDGE_STEPS:
+            schedule = self.schedule(step)
+            return {
+                **common,
+                "depth": config.candidates.depth,
+                "judge": config.judge_config().identity(),
+                "schedule": schedule.model_dump(mode="json") if schedule is not None else None,
+                "preprocessing": config.preprocessing.model_dump(mode="json") if config.preprocessing else None,
+            }
+        if step == "calibrate":
+            return config.calibration.model_dump(mode="json")
+        if step == "evaluate":
+            # The seed draws the bootstrap intervals; the dataset's qrels give qrel-nDCG; limit and depth cut the pools.
+            return {**common, "depth": config.candidates.depth, "evaluation": config.evaluation.model_dump(mode="json")}
+        raise ConfigError(f"unknown step {step!r}")
+
+    def _inputs(self, step: str) -> list[ArtifactRef]:
+        layout = self.layout
+        paths: list[str] = []
+        if step == "retrieve" and self.config.candidates.source == "rankings":
+            paths = [str(self.config.candidates.rankings)]
+        elif step == "rerank":
+            paths = [self._first_stage]
+        elif step in ("tournament", "rubric"):
+            paths = [layout.candidates]
+        elif step == "calibrate":
+            paths = [layout.path("judgements", f"{stage}.jsonl") for stage in ("tournament", "rubric")]
+        elif step == "evaluate":
+            paths = [
+                layout.candidates,
+                layout.path("calibration", "items.json"),
+                layout.path("calibration", "thetas.parquet"),
+                *(location.partition("#")[0] for location in self.config.evaluation.systems.values()),
+            ]
+        return [artifact_ref(path, layout=layout) for path in paths if Path(path).exists()]
+
+    # ------------------------------------------------------------------
+    # Steps
+    # ------------------------------------------------------------------
+
+    def _step_retrieve(self) -> tuple[list[ArtifactRef], Usage | None]:
+
+        candidates = self.config.candidates
+        output = self._first_stage
+        if candidates.source == "rankings":
+            first = Rankings.from_orders(self._supplied_pools(), system=CANDIDATES)
+        else:
+            from rcp_ndcg.retrieval import retrieve
+
+            assert candidates.retrieval is not None
+            retrieved = retrieve(
+                self.dataset, candidates.retrieval, depth=candidates.depth, out=self.layout.path("work", "index")
+            )
+            first = Rankings.from_scores(retrieved.queries(), system=CANDIDATES)
+        _write_rankings(output, first)
+        return [artifact_ref(output, layout=self.layout)], None
+
+    def _supplied_pools(self) -> dict[str, list[str]]:
+        """Each query's pool, best first, from the rankings file of a ``from: rankings`` run (its one system)."""
+        from rcp_ndcg.data import load_rankings
+
+        path = str(self.config.candidates.rankings)
+        supplied = load_rankings(path)
+        system = self.config.candidates.system or _only_system(supplied, path)
+        return {query: _order(scores) for query, scores in supplied.queries(system=system).items()}
+
+    def _step_rerank(self) -> tuple[list[ArtifactRef], Usage | None]:
+        from rcp_ndcg.retrieval import rerank
+
+        reranker = self.config.candidates.rerank
+        assert reranker is not None
+        first = _read_rankings(self._first_stage)
+        pools = self._limited(first.queries())
+        depth = max((len(pool) for pool in pools.values()), default=1)
+        rescored = rerank(
+            self.dataset,
+            Rankings.from_scores({query: first.for_query(query) for query in pools}, system=CANDIDATES),
+            reranker,
+            depth=depth,
+            out=self.layout.path("work", "rerank"),
+        )
+        # The whole first stage in the reranker's order; the judging steps take its best ``depth``.
+        _write_rankings(self.layout.candidates, Rankings.from_scores(rescored.queries(), system=CANDIDATES))
+        return [artifact_ref(self.layout.candidates, layout=self.layout)], None
+
+    def _step_tournament(self) -> tuple[list[ArtifactRef], Usage | None]:
+        return self._judge("tournament")
+
+    def _step_rubric(self) -> tuple[list[ArtifactRef], Usage | None]:
+        return self._judge("rubric")
+
+    def _judge(self, stage: str) -> tuple[list[ArtifactRef], Usage | None]:
+        from rcp_ndcg.llm.client import JudgeClient
+        from rcp_ndcg.llm.judging import judge
+        from rcp_ndcg.llm.store import JudgementStore
+
+        client = JudgeClient.from_config(self.config.judge_config())
+        budget = None
+        if self.config.budget_usd is not None:
+            budget = max(self.config.budget_usd - (self.manifest.usage.cost_usd or 0.0), 0.0)
+        try:
+            judge(
+                self.dataset,
+                self._judging_input(),
+                client,
+                stage=stage,  # type: ignore[arg-type]
+                out=self.layout.judgements,
+                schedule=self.schedule(stage),
+                preprocessing=self.config.preprocessing,
+                budget_usd=budget,
+            )
+        finally:
+            self._judge_usage = client.usage
+            record = self.manifest.step(stage)
+            if record is not None:
+                record.engines = client.engines
+        for entry in JudgementStore(self.layout.judgements).identities().values():
+            from rcp_ndcg_core.schemas import Family
+
+            family = Family.model_validate(entry["family"])
+            self.manifest.families[family.key] = family
+        store_file = self.layout.path("judgements", f"{stage}.jsonl")
+        return [artifact_ref(store_file, layout=self.layout)], client.usage
+
+    def _step_calibrate(self) -> tuple[list[ArtifactRef], Usage | None]:
+        from rcp_ndcg.calibration import calibrate, judged_bt_l2, read_judgements
+
+        options = self.config.calibration
+        calibration = calibrate(
+            read_judgements(self.layout.judgements),
+            mode=options.mode,
+            judges=options.judges,
+            priors=options.priors,
+            judged_bt_l2=judged_bt_l2(self.layout.judgements),
+        )
+        calibration.save(self.layout.calibration)
+        return [
+            artifact_ref(self.layout.path("calibration", name), layout=self.layout)
+            for name in ("items.json", "queries.parquet", "thetas.parquet")
+        ], None
+
+    def _step_evaluate(self) -> tuple[list[ArtifactRef], Usage | None]:
+        from rcp_ndcg.eval import compare
+
+        report = self.evaluation_report()
+        Path(self.layout.metrics).write_text(report.to_json(indent=2), encoding="utf-8")
+        outputs = [artifact_ref(self.layout.metrics, layout=self.layout)]
+        if len(report.systems) > 1:
+            comparison = compare(report, baseline="candidates", seed=self.config.seed)
+            Path(self.layout.comparison).write_text(comparison.to_json(indent=2), encoding="utf-8")
+            outputs.append(artifact_ref(self.layout.comparison, layout=self.layout))
+        # The judge's own order scores RCP-nDCG 1 by construction: it is in the report, not in the headline.
+        self.manifest.metrics = {
+            f"{row.system}/{row.metric}@{row.k}": row.value
+            for row in report.summary
+            if row.system != JUDGE and row.value is not None
+        }
+        return outputs, None
+
+    def evaluation_report(self):
+        """The run's :class:`~rcp_ndcg.eval.EvalReport`: every system scored with the run's calibration.
+
+        The systems are the candidate order (``candidates``), the judge's calibrated abilities (``judge``) and
+        the configured ``evaluation.systems``, on the queries the calibration covers. qrel-nDCG is added when
+        the dataset has labels for them.
+        """
+        from rcp_ndcg.calibration import Calibration
+        from rcp_ndcg.eval import evaluate
+
+        calibration = Calibration.load(self.layout.calibration)
+        name = self.dataset.name
+        gains = calibration.gains(name)
+        thetas = calibration.theta_map(dataset=name)
+        pools = {query: pool for query, pool in self._judging_input().items() if query in gains}
+        parts = [Rankings.from_orders(pools, system=CANDIDATES)]
+        names = {CANDIDATES: "the run's candidate order", JUDGE: "the judge's abilities"}
+        for key, location in self.config.evaluation.systems.items():
+            for system, queries in _evaluation_systems(key, location).items():
+                if system in names:
+                    raise DataError(
+                        f"evaluation.systems.{key}: system {system!r} is already scored ({names[system]})",
+                        hint="rename the system, or pick one system of the file with <file>#<system>",
+                    )
+                names[system] = location
+                kept = {q: docs for q, docs in queries.items() if q in gains}
+                parts.append(Rankings.from_scores(kept, system=system))
+        parts.append(Rankings.from_scores(thetas, system=JUDGE))
+        qrels = {query: dict(self.dataset.qrels[query]) for query in pools if self.dataset.qrels.get(query)}
+        dataset = Dataset(name=name, qrels=qrels, candidates=pools)
+        return evaluate(
+            Rankings.concat(parts),
+            dataset=dataset,
+            gains=gains,
+            protocol="plain",
+            k=self.config.evaluation.k,
+            metrics=("rcp_ndcg", "qrel_ndcg") if qrels else ("rcp_ndcg",),
+            seed=self.config.seed,
+        )
+
+    # ------------------------------------------------------------------
+    # Inputs of the judging steps
+    # ------------------------------------------------------------------
+
+    def _dataset_pools(self) -> dict[str, list[str]]:
+        """The dataset's own pools: its candidates, else each query's judged documents (``from: dataset``)."""
+        dataset = self.dataset
+        if dataset.candidates is not None:
+            return self._limited({query: list(pool) for query, pool in dataset.candidates.items()})
+        return self._limited({query: list(docs) for query, docs in dataset.qrels.items() if docs})
+
+    def _limited(self, pools: dict[str, Any]) -> dict[str, Any]:
+        """The first ``limit`` queries of ``pools`` (all without a limit)."""
+        if self.config.limit is None:
+            return pools
+        return dict(list(pools.items())[: self.config.limit])
+
+    def _judging_input(self) -> dict[str, list[str]]:
+        """Each query's pool, best first, at the configured depth: what the judging steps judge.
+
+        Raises:
+            MissingInputError: the candidates come from retrieval or rankings and the retrieve step has not
+                written them.
+        """
+        path = self.layout.candidates
+        if not Path(path).exists():
+            if self.config.candidates.source != "dataset":
+                raise MissingInputError(
+                    f"{path} does not exist yet: the candidates come from {self.config.candidates.source}",
+                    hint="run the retrieve step first",
+                )
+            pools = self._dataset_pools()
+        else:
+            pools = {query: _order(scores) for query, scores in _read_rankings(path).queries().items()}
+        depth = self.config.candidates.depth
+        return {query: pool[:depth] for query, pool in self._limited(pools).items()}
+
+    def _write_config(self) -> None:
+        import yaml
+
+        resolved = self.config.resolved()
+        self.manifest.config = resolved
+        self.manifest.budget_usd = self.config.budget_usd
+        Path(self.layout.config).write_text(yaml.safe_dump(resolved, sort_keys=False), encoding="utf-8")
+        if self.manifest.dataset is None:
+            resolved = self.config.dataset.identity().get("resolved")
+            self.manifest.dataset = DatasetRef(
+                name=self.dataset.name, revisions={self.config.dataset.uri: resolved} if resolved else None
+            )
+
+
+#: The system name of a run's candidate pools in its rankings files.
+CANDIDATES = "candidates"
+#: The system name of the judge's calibrated abilities in a run's evaluation.
+JUDGE = "judge"
+
+
+def _order(scores: dict[str, float]) -> list[str]:
+    """Document ids best first (ties by document id, descending: the order ``Rankings.top`` keeps)."""
+    return sorted(scores, key=lambda doc: (scores[doc], doc), reverse=True)
+
+
+def _only_system(rankings: Rankings, where: str) -> str:
+    if len(rankings.systems) != 1:
+        raise DataError(
+            f"{where} holds {len(rankings.systems)} systems {rankings.systems}; name the one to use",
+            hint="set candidates.system",
+        )
+    return rankings.systems[0]
+
+
+def _evaluation_systems(key: str, location: str) -> dict[str, dict[str, dict[str, float]]]:
+    """``{system name: {query_id: {doc_id: score}}}`` of one ``evaluation.systems`` entry.
+
+    A file of one system is named ``key``; ``<file>#<system>`` picks that system, named ``key``; a file of several
+    systems without ``#`` gives each under its own name.
+    """
+    from rcp_ndcg.data import load_rankings
+
+    path, _, system = location.partition("#")
+    supplied = load_rankings(path)
+    if system:
+        if system not in supplied.systems:
+            raise DataError(
+                f"evaluation.systems.{key}: {path} holds no system {system!r}; it holds {supplied.systems}",
+                hint=f"write {path}#<one of {supplied.systems}>",
+            )
+        return {key: supplied.queries(system=system)}
+    if len(supplied.systems) == 1:
+        return {key: supplied.queries()}
+    return {name: supplied.queries(system=name) for name in supplied.systems}
+
+
+def _write_rankings(path: str, rankings: Rankings) -> None:
+    rankings.save(path, format="parquet")
+
+
+def _read_rankings(path: str) -> Rankings:
+    from rcp_ndcg.data import load_rankings
+
+    return load_rankings(path, format="parquet")
+
+
+__all__ = ["Pipeline"]

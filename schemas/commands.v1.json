@@ -1,0 +1,191 @@
+{
+  "$defs": {
+    "CommandInfo": {
+      "description": "One command or group of the tree.",
+      "properties": {
+        "deprecated": {
+          "title": "Deprecated",
+          "type": "boolean"
+        },
+        "group": {
+          "title": "Group",
+          "type": "boolean"
+        },
+        "help": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Help"
+        },
+        "hidden": {
+          "title": "Hidden",
+          "type": "boolean"
+        },
+        "no_args_is_help": {
+          "title": "No Args Is Help",
+          "type": "boolean"
+        },
+        "output_schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The schema id of the command's --json data, if declared.",
+          "title": "Output Schema"
+        },
+        "params": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ParamInfo"
+          },
+          "title": "Params",
+          "type": "object"
+        }
+      },
+      "required": [
+        "group",
+        "hidden",
+        "deprecated",
+        "no_args_is_help",
+        "params",
+        "output_schema"
+      ],
+      "title": "CommandInfo",
+      "type": "object"
+    },
+    "ParamInfo": {
+      "description": "One argument or option of a command.",
+      "properties": {
+        "default": {
+          "title": "Default"
+        },
+        "envvar": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Envvar"
+        },
+        "help": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Help"
+        },
+        "hidden": {
+          "title": "Hidden",
+          "type": "boolean"
+        },
+        "is_flag": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Flag"
+        },
+        "multiple": {
+          "title": "Multiple",
+          "type": "boolean"
+        },
+        "nargs": {
+          "title": "Nargs",
+          "type": "integer"
+        },
+        "opts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Opts",
+          "type": "array"
+        },
+        "param_type_name": {
+          "enum": [
+            "argument",
+            "option"
+          ],
+          "title": "Param Type Name",
+          "type": "string"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "secondary_opts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Secondary Opts",
+          "type": "array"
+        },
+        "type": {
+          "additionalProperties": true,
+          "description": "'name', plus 'choices' for a choice.",
+          "title": "Type",
+          "type": "object"
+        }
+      },
+      "required": [
+        "param_type_name",
+        "opts",
+        "secondary_opts",
+        "type",
+        "required",
+        "multiple",
+        "nargs",
+        "default",
+        "envvar",
+        "hidden"
+      ],
+      "title": "ParamInfo",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/commands.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The whole CLI, keyed by command path (``\"rcp-ndcg data inspect\"``).",
+  "properties": {
+    "commands": {
+      "additionalProperties": {
+        "$ref": "#/$defs/CommandInfo"
+      },
+      "title": "Commands",
+      "type": "object"
+    }
+  },
+  "required": [
+    "commands"
+  ],
+  "title": "CommandTree",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.commands.v1"
+}

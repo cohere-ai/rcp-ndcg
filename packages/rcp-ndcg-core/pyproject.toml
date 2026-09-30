@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rcp-ndcg-core"
+version = "0.1.0"
+description = "RCP-nDCG metric, IRT estimators and canonical schemas -- the dependency-light core."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [
+  { name = "RCP-nDCG contributors" },
+]
+keywords = ["information-retrieval", "evaluation", "ndcg", "irt"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+]
+# The metric, interpretation and evaluation surface is numpy + pydantic only.
+# Anything heavier (torch for the IRT estimators) is an extra so that
+# `pip install rcp-ndcg-core` stays viable on any platform.
+dependencies = [
+  "numpy>=1.26",
+  "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+# IRT estimators (Bradley-Terry, Rasch, 2PL calibration) -- pure-PyTorch
+# optimisers, CPU is fine.
+irt = [
+  "scipy>=1.11",
+  "torch>=2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/cohere-ai/rcp-ndcg"
+Repository = "https://github.com/cohere-ai/rcp-ndcg"
+Paper = "https://arxiv.org/abs/2609.35739"
+
+[tool.setuptools.packages.find]
+where = ["src"]

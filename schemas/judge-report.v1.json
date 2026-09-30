@@ -1,0 +1,282 @@
+{
+  "$defs": {
+    "CostEstimate": {
+      "description": "A projected judging pass.",
+      "properties": {
+        "assumptions": {
+          "description": "What the numbers rest on.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Assumptions",
+          "type": "array"
+        },
+        "calls": {
+          "description": "Judge calls (an upper bound: the adaptive phase can stop early).",
+          "title": "Calls",
+          "type": "integer"
+        },
+        "input_token_count": {
+          "description": "``\"exact\"`` when the text was counted with the judge's tokenizer, ``\"approximate\"`` when it was estimated from characters (the judge names no tokenizer).",
+          "enum": [
+            "exact",
+            "approximate"
+          ],
+          "title": "Input Token Count",
+          "type": "string"
+        },
+        "input_tokens": {
+          "description": "Prompt tokens (exact or approximate: ``input_token_count``).",
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "description": "Completion tokens (approximate).",
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "schema": {
+          "const": "rcp-ndcg.cost-estimate.v1",
+          "default": "rcp-ndcg.cost-estimate.v1",
+          "title": "Schema",
+          "type": "string"
+        },
+        "stages": {
+          "additionalProperties": {
+            "$ref": "#/$defs/StageEstimate"
+          },
+          "description": "Per stage.",
+          "title": "Stages",
+          "type": "object"
+        },
+        "usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Cost in USD, or ``None`` when the judge has no price.",
+          "title": "Usd"
+        },
+        "wall_s": {
+          "description": "Wall time in seconds at the judge's concurrency (approximate).",
+          "title": "Wall S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "calls",
+        "input_tokens",
+        "output_tokens",
+        "usd",
+        "wall_s",
+        "stages",
+        "input_token_count",
+        "assumptions"
+      ],
+      "title": "CostEstimate",
+      "type": "object"
+    },
+    "StageEstimate": {
+      "description": "One stage's share of a CostEstimate.",
+      "properties": {
+        "calls": {
+          "title": "Calls",
+          "type": "integer"
+        },
+        "input_tokens": {
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Usd"
+        }
+      },
+      "required": [
+        "calls",
+        "input_tokens",
+        "output_tokens",
+        "usd"
+      ],
+      "title": "StageEstimate",
+      "type": "object"
+    },
+    "Usage": {
+      "description": "Calls, tokens and cost accumulated by a client.\n\n``cost_usd`` is ``None`` when the judge has no price: an unknown cost is reported as unknown, never as 0.",
+      "properties": {
+        "cached_input_tokens": {
+          "default": 0,
+          "title": "Cached Input Tokens",
+          "type": "integer"
+        },
+        "cost_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost Usd"
+        },
+        "failed_requests": {
+          "default": 0,
+          "title": "Failed Requests",
+          "type": "integer"
+        },
+        "input_tokens": {
+          "default": 0,
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "default": 0,
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "requests": {
+          "default": 0,
+          "title": "Requests",
+          "type": "integer"
+        }
+      },
+      "title": "Usage",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/judge-report.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What a judging command did (``judged``) or would cost (``estimate``).",
+  "properties": {
+    "dataset": {
+      "title": "Dataset",
+      "type": "string"
+    },
+    "documents": {
+      "description": "Documents in the judged pools.",
+      "title": "Documents",
+      "type": "integer"
+    },
+    "estimate": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CostEstimate"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "families": {
+      "description": "The judgement family keys.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Families",
+      "type": "array"
+    },
+    "judgements": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Judgements of the judged queries now in the store.",
+      "title": "Judgements"
+    },
+    "mode": {
+      "enum": [
+        "judged",
+        "estimate"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "out": {
+      "title": "Out",
+      "type": "string"
+    },
+    "queries": {
+      "description": "Queries judged (or to be judged).",
+      "title": "Queries",
+      "type": "integer"
+    },
+    "schema": {
+      "const": "rcp-ndcg.judge-report.v1",
+      "type": "string"
+    },
+    "stage": {
+      "enum": [
+        "tournament",
+        "rubric"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "stored": {
+      "description": "Windows of this stage in the store before the command ran.",
+      "title": "Stored",
+      "type": "integer"
+    },
+    "usage": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Usage"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Calls, tokens and cost of this command."
+    },
+    "valid": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Of which parsed into placements.",
+      "title": "Valid"
+    }
+  },
+  "required": [
+    "schema",
+    "stage",
+    "mode",
+    "out",
+    "dataset",
+    "queries",
+    "documents",
+    "stored"
+  ],
+  "title": "JudgeReport",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.judge-report.v1"
+}

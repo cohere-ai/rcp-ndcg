@@ -1,0 +1,146 @@
+{
+  "$defs": {
+    "ItemSummary": {
+      "description": "The criterion parameters: discrimination ``gamma`` (dimensionless) and difficulty ``beta`` (logits).",
+      "properties": {
+        "beta": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Beta",
+          "type": "array"
+        },
+        "criteria": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Criteria",
+          "type": "array"
+        },
+        "gamma": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Gamma",
+          "type": "array"
+        }
+      },
+      "required": [
+        "criteria",
+        "gamma",
+        "beta"
+      ],
+      "title": "ItemSummary",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/calibration-summary.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A calibration at a glance: its mode, items, what it covers and how reliable it is.",
+  "properties": {
+    "calibration": {
+      "description": "The calibration directory.",
+      "title": "Calibration",
+      "type": "string"
+    },
+    "coverage": {
+      "additionalProperties": true,
+      "title": "Coverage",
+      "type": "object"
+    },
+    "datasets": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Datasets",
+      "type": "array"
+    },
+    "diagnostics": {
+      "additionalProperties": true,
+      "title": "Diagnostics",
+      "type": "object"
+    },
+    "documents": {
+      "description": "Documents with an ability, from the fit and from extensions.",
+      "title": "Documents",
+      "type": "integer"
+    },
+    "families": {
+      "additionalProperties": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "description": "The judgement families fitted, by family key.",
+      "title": "Families",
+      "type": "object"
+    },
+    "fingerprint": {
+      "title": "Fingerprint",
+      "type": "string"
+    },
+    "items": {
+      "$ref": "#/$defs/ItemSummary"
+    },
+    "judge_severity": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "description": "Per-judge logit offsets of a pooled fit.",
+      "title": "Judge Severity",
+      "type": "object"
+    },
+    "mode": {
+      "enum": [
+        "tournament",
+        "rubric_only"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "queries": {
+      "title": "Queries",
+      "type": "integer"
+    },
+    "schema": {
+      "const": "rcp-ndcg.calibration-summary.v1",
+      "type": "string"
+    },
+    "sources": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "description": "Abilities per source: fit, scored, inserted.",
+      "title": "Sources",
+      "type": "object"
+    },
+    "warnings": {
+      "description": "The fit's typed warnings (code, message), e.g. INVALID_WINDOWS.",
+      "items": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "calibration",
+    "mode",
+    "fingerprint",
+    "datasets",
+    "queries",
+    "documents",
+    "sources",
+    "items",
+    "families",
+    "judge_severity",
+    "coverage",
+    "diagnostics"
+  ],
+  "title": "CalibrationSummary",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.calibration-summary.v1"
+}

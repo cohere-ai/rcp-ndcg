@@ -1,0 +1,575 @@
+"""judge(): one judging path over an append-only store, with the fake judge standing in for a model."""
+
+from __future__ import annotations
+
+import html
+import json
+import logging
+from pathlib import Path
+from typing import Any
+
+import httpx
+import openai
+import pytest
+from rcp_ndcg_core._records import RankingExample
+
+from rcp_ndcg.data.preprocess import ChunkPolicy, Preprocessing, TextPolicy, chunk_ranking_example
+from rcp_ndcg.data.tokenizer import load_tokenizer
+from rcp_ndcg.errors import BudgetError, CapabilityError, ConfigError, DataError, IdentityError
+from rcp_ndcg.llm import JudgeClient, JudgeConfig, JudgementStore, Price, RubricSchedule, judge
+from rcp_ndcg.llm._fake import _DOC_BLOCK
+from rcp_ndcg.llm._parsing.schema import response_format
+from rcp_ndcg.llm.client import BackendUnavailableError, Completion, CompletionInput
+from rcp_ndcg.llm.judging import CHAT_TEMPLATE_TOKENS, MAX_ATTEMPTS, prompt_overhead_tokens, window_tokens
+from rcp_ndcg.llm.prompts import load_prompt
+from rcp_ndcg.testing import TINY_RUBRIC, TINY_TOURNAMENT, FakeJudge, tiny_rows
+
+ROWS, ABILITY = tiny_rows()
+
+
+def _fake(**kwargs) -> FakeJudge:
+    return FakeJudge(lambda text: ABILITY[text.split()[-1]], **kwargs)
+
+
+def _tournament(out: Path, judge_client: FakeJudge | None = None, **kwargs):
+    return judge(ROWS, None, judge_client or _fake(), stage="tournament", out=out, schedule=TINY_TOURNAMENT, **kwargs)
+
+
+def _rubric(out: Path, judge_client: FakeJudge | None = None, **kwargs):
+    kwargs.setdefault("schedule", TINY_RUBRIC)
+    return judge(ROWS, None, judge_client or _fake(), stage="rubric", out=out, **kwargs)
+
+
+def _tokenized(fake: FakeJudge, tokenizer: Path | str, **update) -> FakeJudge:
+    """``fake`` with a tokenizer (and any other config fields) on its judge config."""
+    fake.config = fake.config.model_copy(update={"tokenizer": str(tokenizer), **update})
+    return fake
+
+
+class TestAPass:
+    def test_every_window_is_stored_valid_under_one_family(self, tmp_path: Path) -> None:
+        result = _rubric(tmp_path)
+        (family,) = result.families.values()
+        assert (family.judge_model, family.criteria) == ("fake", ("C1", "C2", "C3", "C4", "C5"))
+        assert result.query_ids() == [("dataset", "q1"), ("dataset", "q2")]
+        assert all(j.valid and j.family_key == family.key for j in result.judgements)
+        assert all(set(p.criteria) == set(family.criteria) for j in result.judgements for p in j.placements)
+        assert len(JudgementStore(tmp_path).records("rubric")) == len(result.judgements)
+        identity = json.loads((tmp_path / "identity.json").read_text())
+        assert identity["stages"]["rubric"]["family_key"] == family.key
+
+    def test_the_tournament_scores_follow_ability(self, tmp_path: Path) -> None:
+        result = _tournament(tmp_path)
+        assert all(j.valid and j.ranking for j in result.judgements)
+        wins = sum(
+            (a.score > b.score) == (ABILITY[a.doc_id] > ABILITY[b.doc_id])
+            for j in result.judgements
+            for a in j.placements
+            for b in j.placements
+            if a.doc_id < b.doc_id
+        )
+        pairs = sum(len(j.placements) * (len(j.placements) - 1) // 2 for j in result.judgements)
+        assert wins / pairs > 0.8
+
+    def test_the_same_judge_writes_the_same_records(self, tmp_path: Path) -> None:
+        def records(out: Path) -> list[tuple]:
+            result = _tournament(out)
+            return [(j.record_id, tuple(p.score for p in j.placements)) for j in result.judgements]
+
+        assert records(tmp_path / "a") == records(tmp_path / "b")
+
+    def test_the_schedule_seed_decides_the_window_draws(self, tmp_path: Path) -> None:
+        def windows(seed: int, out: Path) -> list[tuple[str, ...]]:
+            schedule = TINY_TOURNAMENT.model_copy(update={"seed": seed})
+            result = judge(ROWS, None, _fake(), stage="tournament", out=out, schedule=schedule)
+            return [tuple(p.doc_id for p in j.placements) for j in result.judgements]
+
+        assert windows(42, tmp_path / "a") == windows(42, tmp_path / "b")
+        assert windows(42, tmp_path / "a") != windows(7, tmp_path / "c")
+
+
+class TestResume:
+    def test_a_rerun_asks_only_for_missing_windows(self, tmp_path: Path) -> None:
+        first = _fake()
+        full = _tournament(tmp_path, first)
+        again = _fake()
+        assert _tournament(tmp_path, again).judgements == full.judgements
+        assert again.usage.requests == 0
+
+        path = JudgementStore(tmp_path).path("tournament")
+        lines = path.read_text().splitlines(keepends=True)
+        path.write_text("".join(lines[:-3]) + lines[-3][:40])  # three windows lost, the last one torn mid-write
+        resumed = _fake()
+        result = _tournament(tmp_path, resumed)
+        assert resumed.usage.requests == 3
+        assert {j.record_id for j in result.judgements} == {j.record_id for j in full.judgements}
+
+    def test_another_identity_is_refused_by_name_unless_forced(self, tmp_path: Path) -> None:
+        _rubric(tmp_path)
+        other = RubricSchedule(window=4, windows_per_query=6, random_windows=3)
+        with pytest.raises(IdentityError, match="schedule.window") as caught:
+            _rubric(tmp_path, schedule=other)
+        assert any("schedule.window" in line for line in caught.value.details["differences"])
+        result = _rubric(tmp_path, schedule=other, force=True)
+        assert all(len(j.placements) <= 4 for j in result.judgements)
+        assert list((tmp_path / ".superseded").glob("*/rubric.jsonl"))
+
+    def test_an_identity_change_of_shape_is_named_not_crashed_on(self, tmp_path: Path) -> None:
+        store = JudgementStore(tmp_path)
+        family = _rubric(tmp_path / "x").families.popitem()[1]
+        store.claim("rubric", {"judge": {"chat_template_kwargs": None}}, family)
+        with pytest.raises(IdentityError, match="chat_template_kwargs"):
+            store.claim("rubric", {"judge": {"chat_template_kwargs": {"enable_thinking": False}}}, family)
+
+
+class TestSubsets:
+    def test_docs_judges_only_those_documents(self, tmp_path: Path) -> None:
+        pools = {row.id: row.doc_ids[:8] for row in ROWS}
+        subset = {"q2": ["q2-d10", "q2-d11"]}
+        result = judge(ROWS, None, _fake(), stage="rubric", out=tmp_path, schedule=TINY_RUBRIC, docs=subset)
+        assert result.query_ids() == [("dataset", "q2")]
+        assert {p.doc_id for j in result.judgements for p in j.placements} == set(subset["q2"])
+        with pytest.raises(DataError, match="not among its candidates"):
+            judge(ROWS, pools, _fake(), stage="rubric", out=tmp_path / "y", schedule=TINY_RUBRIC, docs=subset)
+
+    def test_candidates_restrict_and_order_the_pool(self, tmp_path: Path) -> None:
+        pools = {"q1": ["q1-d09", "q1-d01", "q1-d05"]}
+        result = judge(ROWS, pools, _fake(), stage="rubric", out=tmp_path, schedule=TINY_RUBRIC)
+        assert result.query_ids() == [("dataset", "q1")]
+        assert {p.doc_id for j in result.judgements for p in j.placements} == set(pools["q1"])
+
+
+class TestBudget:
+    PRICE = Price(input_usd_per_mtok=1_000.0, output_usd_per_mtok=1_000.0)
+
+    def test_a_budget_needs_a_price(self, tmp_path: Path) -> None:
+        with pytest.raises(ConfigError, match="price"):
+            _rubric(tmp_path, budget_usd=1.0)
+
+    def test_the_ceiling_stops_the_pass_and_keeps_what_was_judged(self, tmp_path: Path) -> None:
+        with pytest.raises(BudgetError) as caught:
+            _rubric(tmp_path, _fake(price=self.PRICE), budget_usd=1.0)
+        assert caught.value.details["partial_out"] == str(tmp_path)
+        assert caught.value.details["spent_usd"] >= caught.value.details["budget_usd"] == 1.0
+        kept = len(JudgementStore(tmp_path).records("rubric"))
+        assert kept > 0
+        resumed = _fake(price=self.PRICE)
+        result = _rubric(tmp_path, resumed, budget_usd=1_000.0)
+        assert resumed.usage.requests == len(result.judgements) - kept > 0
+
+
+class _Garbled(FakeJudge):
+    async def _send(self, request: CompletionInput, replica: Any = None) -> Completion:
+        self.usage = self.usage.merged_with(type(self.usage)(requests=1))
+        return Completion(response="I think doc_1 is great.")
+
+
+class _Refuses(FakeJudge):
+    """An endpoint that refuses every request with HTTP 400."""
+
+    async def _send(self, request: CompletionInput, replica: Any = None) -> Completion:
+        response = httpx.Response(400, request=httpx.Request("POST", "http://judge.test/v1/chat/completions"))
+        raise openai.BadRequestError("prompt too long", response=response, body=None)
+
+
+class _Broken(FakeJudge):
+    """A judge client with a defect in it."""
+
+    async def _send(self, request: CompletionInput, replica: Any = None) -> Completion:
+        raise TypeError("a defect, not an answer")
+
+
+class _GoesDown(FakeJudge):
+    def __init__(self, after: int, **kwargs) -> None:
+        super().__init__(lambda text: ABILITY[text.split()[-1]], **kwargs)
+        self.after = after
+
+    async def _send(self, request: CompletionInput, replica: Any = None) -> Completion:
+        if self.usage.requests >= self.after:
+            raise BackendUnavailableError("down")
+        return await super()._send(request, replica)
+
+
+class TestFailures:
+    def test_an_unparseable_answer_is_asked_again_then_recorded_invalid(self, tmp_path: Path) -> None:
+        garbled = _Garbled()
+        result = judge(ROWS[:1], {"q1": ["q1-d00", "q1-d01"]}, garbled, stage="rubric", out=tmp_path)
+        assert result.judgements and not any(j.valid for j in result.judgements)
+        assert all(j.invalid_category == "no_json" for j in result.judgements)
+        assert all(j.response == "I think doc_1 is great." and j.finish_reason == "stop" for j in result.judgements)
+        assert garbled.usage.requests == MAX_ATTEMPTS * len(result.judgements)
+
+    def test_an_unparseable_answer_is_kept_when_the_pass_resumes(self, tmp_path: Path) -> None:
+        pools = {"q1": ["q1-d00", "q1-d01"]}
+        first = judge(ROWS[:1], pools, _Garbled(), stage="rubric", out=tmp_path)
+        resumed = _fake()
+        again = judge(ROWS[:1], pools, resumed, stage="rubric", out=tmp_path)
+        assert resumed.usage.requests == 0
+        assert again.judgements == first.judgements
+
+    def test_a_refused_request_is_recorded_and_asked_again_when_the_pass_resumes(self, tmp_path: Path) -> None:
+        pools = {"q1": ["q1-d00", "q1-d01"]}
+        refusing = _Refuses()
+        refused = judge(ROWS[:1], pools, refusing, stage="rubric", out=tmp_path)
+        assert refused.judgements and not any(j.valid or j.response for j in refused.judgements)
+        assert all("RequestRejectedError: HTTP 400" in (j.invalid_reason or "") for j in refused.judgements)
+        assert all(j.invalid_category == "refused" for j in refused.judgements)
+        assert refusing.usage.failed_requests == MAX_ATTEMPTS * len(refused.judgements)
+
+        # Resumed, every refused window is asked again; with answers in hand the schedule also
+        # reaches its stratified window, which the refused pass had no preliminary ability for.
+        resumed = _fake()
+        again = judge(ROWS[:1], pools, resumed, stage="rubric", out=tmp_path)
+        assert resumed.usage.requests == len(again.judgements) == len(refused.judgements) + 1
+        assert all(j.valid for j in again.judgements)
+        assert {j.record_id for j in refused.judgements} < {j.record_id for j in again.judgements}
+
+    def test_a_defect_in_the_judge_propagates_and_stores_nothing(self, tmp_path: Path) -> None:
+        with pytest.raises(TypeError, match="a defect"):
+            _rubric(tmp_path, _Broken())
+        assert not JudgementStore(tmp_path).records("rubric")
+
+    def test_an_outage_propagates_and_keeps_the_answers_received(self, tmp_path: Path) -> None:
+        with pytest.raises(BackendUnavailableError):
+            _rubric(tmp_path, _GoesDown(after=5))
+        assert len(JudgementStore(tmp_path).records("rubric")) == 5
+
+    def test_a_prompt_written_for_pages_is_refused_on_prose(self, tmp_path: Path) -> None:
+        with pytest.raises(ConfigError, match="rubric_vision"):
+            _rubric(tmp_path, schedule=TINY_RUBRIC.model_copy(update={"prompt": "rubric_vision"}))
+
+    def test_a_schedule_of_the_other_stage_is_refused(self, tmp_path: Path) -> None:
+        with pytest.raises(ConfigError, match="RubricSchedule"):
+            _rubric(tmp_path, schedule=TINY_TOURNAMENT)
+
+
+def test_chunked_documents_are_judged_by_chunk_and_recorded_under_their_document(
+    tmp_path: Path, word_tokenizer_file: Path
+) -> None:
+    long = RankingExample(
+        query_id="q",
+        query="tiny query",
+        doc_ids=["a", "b"],
+        docs=["intro " * 30 + "tiny document q1-d09", "tiny document q1-d00"],
+    )
+    policy = Preprocessing(chunk=ChunkPolicy(max_tokens=20, overlap_tokens=3))
+    fake = _tokenized(FakeJudge(lambda text: 2.0 if text.endswith("q1-d09") else -2.0), word_tokenizer_file)
+    result = judge([long], None, fake, stage="rubric", out=tmp_path, preprocessing=policy, schedule=TINY_RUBRIC)
+    assert all(j.valid for j in result.judgements)
+    placements = [p for j in result.judgements for p in j.placements]
+    assert {p.doc_id for p in placements} == {"a", "b"}
+    assert {p.chunk_id for p in placements if p.doc_id == "a"} >= {"a#0", "a#1"}
+    assert {p.chunk_id for p in placements if p.doc_id == "b"} == {None}
+    (family,) = result.families.values()
+    assert family.preprocessing == Preprocessing(chunk=policy.chunk).key
+
+
+def test_the_rubric_asks_enough_windows_to_show_every_chunk(tmp_path: Path, word_tokenizer_file: Path) -> None:
+    """The window floor counts what the windows show: two documents of three chunks each take three windows of two."""
+    rows = [
+        RankingExample(
+            query_id="q",
+            query="tiny query",
+            doc_ids=["a", "b"],
+            docs=["x " * 240 + "tiny document q1-d09", "y " * 240 + "tiny document q1-d00"],
+        )
+    ]
+    policy = Preprocessing(chunk=ChunkPolicy(max_tokens=100, overlap_tokens=10))
+    schedule = RubricSchedule(window=2, windows_per_query=2, random_windows=1)
+    fake = _tokenized(FakeJudge(lambda text: 1.0), word_tokenizer_file)
+    result = judge(rows, None, fake, stage="rubric", out=tmp_path, preprocessing=policy, schedule=schedule)
+    tokenizer = load_tokenizer(str(word_tokenizer_file))
+    assert len(chunk_ranking_example(rows[0], policy.chunk, tokenizer).doc_ids) == 6
+    assert len(result.judgements) == 3  # counting documents, the floor would be ceil(2 / 2) = 1, so 2 windows
+
+
+class _Recording(FakeJudge):
+    """The fake judge, keeping every request it answers."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.requests: list[CompletionInput] = []
+
+    async def _send(self, request: CompletionInput, replica: Any = None) -> Completion:
+        self.requests.append(request)
+        return await super()._send(request, replica)
+
+
+class TestTheWindowTextBudget:
+    """A judge that declares its context and tokenizer gets each document cut to its window's share of tokens.
+
+    The documents are full of ``&``, which the prompt escapes to ``&amp;`` (three word-level tokens for one), so a
+    budget counted on the raw text instead of the text as the prompt carries it would overflow the context.
+    """
+
+    CONTEXT, OUTPUT = 2_000, 200
+    DOCS = {doc: f"{doc} " + "the & " * 600 for doc in ("a", "b", "c", "d")}
+    ROWS = [RankingExample(query_id="q", query="a query", doc_ids=list(DOCS), docs=list(DOCS.values()))]
+    SCHEDULE = RubricSchedule(window=2, windows_per_query=4, random_windows=2)
+
+    def _judge(self, tmp_path: Path, tokenizer: Path) -> tuple[_Recording, int, list]:
+        fake = _Recording(lambda text: {"a": 2.0, "b": 1.0, "c": -1.0, "d": -2.0}[text.split()[0]])
+        _tokenized(fake, tokenizer, context_tokens=self.CONTEXT, max_output_tokens=self.OUTPUT)
+        result = judge(self.ROWS, None, fake, stage="rubric", out=tmp_path, schedule=self.SCHEDULE)
+        words = load_tokenizer(str(tokenizer))
+        overhead = prompt_overhead_tokens(load_prompt("rubric"), "rubric", "a query", 2, words)
+        budget = window_tokens(fake.config, 2, overhead_tokens=overhead)
+        assert budget is not None and 0 < budget < words.count(html.escape(self.DOCS["a"]))
+        return fake, budget, list(result.judgements)
+
+    def test_every_request_fits_the_context_counted_with_the_tokenizer(
+        self, tmp_path: Path, word_tokenizer_file: Path
+    ) -> None:
+        fake, _, _ = self._judge(tmp_path, word_tokenizer_file)
+        words = load_tokenizer(str(word_tokenizer_file))
+        room = self.CONTEXT - self.OUTPUT - CHAT_TEMPLATE_TOKENS
+        counts = [words.count(request.user_prompt) for request in fake.requests]
+        assert counts and all(room - 8 <= count <= room for count in counts)  # within the context, and tight
+
+    def test_each_document_is_a_verbatim_prefix_within_the_budget(
+        self, tmp_path: Path, word_tokenizer_file: Path
+    ) -> None:
+        fake, budget, judgements = self._judge(tmp_path, word_tokenizer_file)
+        words = load_tokenizer(str(word_tokenizer_file))
+        bodies = [body for request in fake.requests for _, body in _DOC_BLOCK.findall(request.user_prompt)]
+        assert len(bodies) == sum(len(j.placements) for j in judgements) > 0
+        for body in bodies:
+            assert budget - 2 <= words.count(body) <= budget  # counted as sent, escaped
+            assert self.DOCS[body.split()[0]].startswith(html.unescape(body))
+
+    def test_each_cut_is_a_row_of_the_preprocessing_record(self, tmp_path: Path, word_tokenizer_file: Path) -> None:
+        _, _, judgements = self._judge(tmp_path, word_tokenizer_file)
+        rows = [json.loads(line) for line in (tmp_path / "preprocessing.jsonl").read_text().splitlines()]
+        cuts = [row for row in rows if row["mechanism"] == "window_budget"]
+        shown = sorted(p.doc_id for j in judgements for p in j.placements)
+        assert sorted(row["doc_id"] for row in cuts) == shown
+        assert all(
+            (row["query_id"], row["original_tokens"], row["original_chars"]) == ("q", 1_201, len(self.DOCS["a"]))
+            and row["kept_tokens"] < row["original_tokens"]
+            for row in cuts
+        )
+
+    def test_without_a_tokenizer_documents_are_sent_whole_and_the_judge_is_warned(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        fake = _Recording(lambda text: {"a": 2.0, "b": 1.0, "c": -1.0, "d": -2.0}[text.split()[0]])
+        fake.config = fake.config.model_copy(update={"context_tokens": self.CONTEXT})
+        with caplog.at_level(logging.WARNING):
+            judge(self.ROWS, None, fake, stage="rubric", out=tmp_path, schedule=self.SCHEDULE)
+        bodies = [body for request in fake.requests for _, body in _DOC_BLOCK.findall(request.user_prompt)]
+        assert bodies and all(html.unescape(body) == self.DOCS[body.split()[0]].strip() for body in bodies)
+        assert "no tokenizer" in caplog.text
+
+
+class TestTheTokenizer:
+    def test_a_policy_that_cuts_without_a_tokenizer_is_refused_before_a_call(self, tmp_path: Path) -> None:
+        for policy in (
+            Preprocessing(text=TextPolicy(on_overflow="truncate", max_tokens=10)),
+            Preprocessing(chunk=ChunkPolicy(max_tokens=10, overlap_tokens=2)),
+        ):
+            fake = _fake()
+            with pytest.raises(ConfigError, match="tokenizer"):
+                _rubric(tmp_path, fake, preprocessing=policy)
+            assert fake.usage.requests == 0
+
+    def test_the_family_key_changes_with_the_tokenizer_and_the_rubric_key_does_not(
+        self, tmp_path: Path, word_tokenizer_file: Path
+    ) -> None:
+        from tests._tokenizers import byte_bpe_tokenizer, save
+
+        (tmp_path / "bpe").mkdir()
+        bpe_file = save(byte_bpe_tokenizer(), tmp_path / "bpe")
+        (plain,) = _rubric(tmp_path / "none").families.values()
+        (words,) = _rubric(tmp_path / "words", _tokenized(_fake(), word_tokenizer_file)).families.values()
+        (bpe,) = _rubric(tmp_path / "bpe_store", _tokenized(_fake(), bpe_file)).families.values()
+        assert plain.tokenizer is None
+        assert words.tokenizer == load_tokenizer(str(word_tokenizer_file)).sha256
+        assert len({plain.key, words.key, bpe.key}) == 3
+        assert plain.rubric_key == words.rubric_key == bpe.rubric_key  # the tokenizer is the judge's
+
+    def test_the_preprocessing_identity_names_the_tokenizer(self, tmp_path: Path, word_tokenizer_file: Path) -> None:
+        _rubric(tmp_path, _tokenized(_fake(), word_tokenizer_file))
+        (entry,) = JudgementStore(tmp_path).identities().values()
+        recorded = entry["identity"]["preprocessing"]["tokenizer"]
+        assert recorded == load_tokenizer(str(word_tokenizer_file)).identity()
+        assert entry["identity"]["judge"]["tokenizer"] == str(word_tokenizer_file)
+
+
+def test_the_load_time_cuts_are_recorded_once_per_store(tmp_path: Path, word_tokenizer_file: Path) -> None:
+    policy = Preprocessing(text=TextPolicy(on_overflow="truncate", max_tokens=2))
+    store = tmp_path / "store"
+    record = store / "preprocessing.jsonl"
+
+    def cuts() -> list[tuple[str, str]]:
+        rows = [json.loads(line) for line in record.read_text().splitlines()] if record.is_file() else []
+        return sorted((row["mechanism"], row["doc_id"]) for row in rows)
+
+    _rubric(store, _tokenized(FakeJudge(lambda text: 0.0), word_tokenizer_file), preprocessing=policy)
+    first = cuts()
+    _rubric(store, _tokenized(FakeJudge(lambda text: 0.0), word_tokenizer_file), preprocessing=policy)
+
+    shown = sorted({doc for row in ROWS for doc in row.doc_ids})
+    assert first == [("doc_policy", doc) for doc in shown]
+    assert cuts() == first
+
+
+def test_the_window_text_budget_follows_the_context() -> None:
+    judge_cfg = JudgeConfig(base_url="http://h/v1", model="m", context_tokens=10_000, max_output_tokens=1_000)
+    assert window_tokens(judge_cfg.model_copy(update={"context_tokens": None}), 10, overhead_tokens=500) is None
+    assert window_tokens(judge_cfg, 10, overhead_tokens=500) == (10_000 - 500 - 1_000) // 10
+    with pytest.raises(CapabilityError, match="images 10,000"):
+        window_tokens(judge_cfg, 10, overhead_tokens=500, media_tokens_per_doc=1_000)
+
+
+class _SchemaEndpoint:
+    """An in-process OpenAI-compatible endpoint: records every request payload and answers as the fake judge."""
+
+    def __init__(self, version: str = "1.0") -> None:
+        self.fake = _fake()
+        self.version = version
+        self.requests: list[dict] = []
+
+    async def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/v1/models":
+            model = {"id": "m", "object": "model", "owned_by": "engine", "max_model_len": 32768}
+            return httpx.Response(
+                200,
+                json={"object": "list", "data": [model]},
+                headers={"server": "uvicorn", "x-engine-version": self.version},
+            )
+        payload = json.loads(request.content)
+        self.requests.append(payload)
+        answer = await self.fake._send(CompletionInput(user_prompt=payload["messages"][-1]["content"]))
+        return httpx.Response(
+            200,
+            json={
+                "id": "x",
+                "object": "chat.completion",
+                "created": 0,
+                "model": payload["model"],
+                "choices": [
+                    {"index": 0, "message": {"role": "assistant", "content": answer.response}, "finish_reason": "stop"}
+                ],
+                "system_fingerprint": f"engine-{self.version}",
+            },
+        )
+
+    def client(self, **fields) -> JudgeClient:
+        config = JudgeConfig(base_url="http://judge.test/v1", model="m", **fields)
+        return JudgeClient(config, http_client=httpx.AsyncClient(transport=httpx.MockTransport(self)))
+
+
+def test_the_store_records_what_the_endpoint_serves_beside_the_identity(tmp_path: Path) -> None:
+    first = judge(ROWS, None, _SchemaEndpoint("1.0").client(), stage="rubric", out=tmp_path, schedule=TINY_RUBRIC)
+    (entry,) = JudgementStore(tmp_path).identities().values()
+    assert entry["engines"] == [
+        {
+            "url": "http://judge.test/v1",
+            "model": "m",
+            "owned_by": "engine",
+            "max_model_len": 32768,
+            "headers": {"server": "uvicorn", "x-engine-version": "1.0"},
+            "system_fingerprint": "engine-1.0",
+        }
+    ]
+    # The same engine again, with nothing left to ask: its report (no fingerprint this time) is already recorded.
+    judge(ROWS, None, _SchemaEndpoint("1.0").client(), stage="rubric", out=tmp_path, schedule=TINY_RUBRIC)
+    assert len(JudgementStore(tmp_path).identities()["rubric"]["engines"]) == 1
+    # Another engine version is runtime information: the store is resumed, not refused, and both are recorded.
+    endpoint = _SchemaEndpoint("2.0")
+    second = judge(ROWS, None, endpoint.client(), stage="rubric", out=tmp_path, schedule=TINY_RUBRIC)
+    assert first.families == second.families and endpoint.requests == []
+    (entry,) = JudgementStore(tmp_path).identities().values()
+    assert [engine["headers"]["x-engine-version"] for engine in entry["engines"]] == ["1.0", "2.0"]
+
+
+class TestStructuredOutput:
+    """A judge declared to constrain output gets each window's answer schema; the family records the decoding."""
+
+    @pytest.mark.parametrize("stage", ["tournament", "rubric"])
+    def test_a_declared_endpoint_is_sent_the_stages_schema_for_each_window(self, tmp_path: Path, stage) -> None:
+        endpoint = _SchemaEndpoint()
+        schedule = TINY_TOURNAMENT if stage == "tournament" else TINY_RUBRIC
+        result = judge(
+            ROWS, None, endpoint.client(decoding="json_schema"), stage=stage, out=tmp_path, schedule=schedule
+        )
+        (family,) = result.families.values()
+        assert family.decoding == "json_schema"
+        assert all(j.valid for j in result.judgements)
+        assert len(endpoint.requests) == len(result.judgements)
+        for payload in endpoint.requests:
+            window = payload["messages"][-1]["content"].count('<doc id="doc_')
+            assert payload["response_format"] == response_format(stage, window, family.criteria)
+            assert payload["response_format"]["type"] == "json_schema"
+
+    def test_an_undeclared_endpoint_decodes_freely_under_another_family(self, tmp_path: Path) -> None:
+        free, constrained = _SchemaEndpoint(), _SchemaEndpoint()
+        loose = judge(ROWS, None, free.client(), stage="rubric", out=tmp_path / "a", schedule=TINY_RUBRIC)
+        strict = judge(
+            ROWS,
+            None,
+            constrained.client(decoding="json_schema"),
+            stage="rubric",
+            out=tmp_path / "b",
+            schedule=TINY_RUBRIC,
+        )
+        assert free.requests and not any("response_format" in payload for payload in free.requests)
+        (loose_family,), (strict_family,) = loose.families.values(), strict.families.values()
+        assert loose_family.decoding == "free"
+        assert loose_family.key != strict_family.key
+
+
+def test_a_remote_store_is_refused_before_the_judge_is_asked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from rcp_ndcg.errors import ConfigError
+    from rcp_ndcg.llm import judge as judge_pass
+    from rcp_ndcg.testing import FakeJudge
+
+    monkeypatch.chdir(tmp_path)  # a regression must not write a store into the checkout
+    with pytest.raises(ConfigError, match="local") as refused:
+        judge_pass(None, {}, FakeJudge(), stage="rubric", out="gs://bucket/store")
+    assert "--mirror" in (refused.value.hint or "")
+
+
+class TestThePrompt:
+    def test_a_prompt_without_the_passages_placeholder_is_refused_before_any_call(self, tmp_path: Path) -> None:
+        from rcp_ndcg.llm.prompts import load_prompt
+
+        prompt = tmp_path / "rubric.txt"
+        prompt.write_text(load_prompt("rubric").text.replace("{passages_placeholder}", ""), encoding="utf-8")
+        judge_client = _fake()
+        with pytest.raises(ConfigError, match="passages_placeholder"):
+            _rubric(tmp_path / "store", judge_client, schedule=TINY_RUBRIC.model_copy(update={"prompt": str(prompt)}))
+        assert judge_client.usage.requests == 0
+        assert not (tmp_path / "store").exists()
+
+    def test_the_store_keeps_each_prompts_text_by_its_hash(self, tmp_path: Path) -> None:
+        from rcp_ndcg.llm.prompts import load_prompt
+
+        tournament, rubric = _tournament(tmp_path), _rubric(tmp_path)
+        for judged, name in ((tournament, "tournament"), (rubric, "rubric")):
+            (family,) = judged.families.values()
+            kept = tmp_path / "prompts" / f"{family.prompt_hash}.txt"
+            assert kept.read_text(encoding="utf-8") == load_prompt(name).text
+
+
+class TestPlannedWindows:
+    def test_exactly_the_given_windows_are_asked_each_with_its_mirror(self, tmp_path: Path) -> None:
+        judge_client = _fake()
+        q1 = ROWS[0].doc_ids
+        windows = {ROWS[0].id: [[q1[0], q1[1], q1[2]], [q1[0], q1[3]]]}
+        judged = _tournament(tmp_path, judge_client, windows=windows)
+
+        assert judge_client.usage.requests == 4  # two windows, each also asked reversed (the schedule mirrors)
+        shown = sorted(tuple(p.doc_id for p in j.placements) for j in judged.judgements)
+        assert shown == sorted([(q1[0], q1[1], q1[2]), (q1[2], q1[1], q1[0]), (q1[0], q1[3]), (q1[3], q1[0])])
+        assert {j.phase for j in judged.judgements} == {None}
+        again = _fake()
+        _tournament(tmp_path, again, windows=windows)
+        assert again.usage.requests == 0  # asked once: a rerun reuses the stored windows
+
+    def test_windows_and_docs_are_exclusive_and_ids_must_be_candidates(self, tmp_path: Path) -> None:
+        q1 = ROWS[0].doc_ids
+        with pytest.raises(ConfigError, match="docs"):
+            _tournament(tmp_path, windows={ROWS[0].id: [[q1[0], q1[1]]]}, docs={ROWS[0].id: [q1[0]]})
+        with pytest.raises(DataError, match="nope"):
+            _tournament(tmp_path, windows={ROWS[0].id: [[q1[0], "nope"]]})

@@ -1,0 +1,265 @@
+{
+  "$defs": {
+    "Price": {
+      "additionalProperties": false,
+      "description": "Token prices of the judge, in USD per million tokens.",
+      "properties": {
+        "cached_input_usd_per_mtok": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Prompt tokens served from the vendor's cache; ``None`` bills them as input.",
+          "title": "Cached Input Usd Per Mtok"
+        },
+        "input_usd_per_mtok": {
+          "description": "Prompt tokens.",
+          "minimum": 0,
+          "title": "Input Usd Per Mtok",
+          "type": "number"
+        },
+        "output_usd_per_mtok": {
+          "description": "Completion tokens (reasoning included).",
+          "minimum": 0,
+          "title": "Output Usd Per Mtok",
+          "type": "number"
+        }
+      },
+      "required": [
+        "input_usd_per_mtok",
+        "output_usd_per_mtok"
+      ],
+      "title": "Price",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/judge-config.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One judge: an OpenAI-compatible Endpoint with sampling settings.\n\nThe endpoint fields (``model``, ``revision``, ``api_key_env``, ``concurrency``, the timeouts and\nretries) are Endpoint's; ``revision`` is recorded in the judgement\nfamily, so two checkpoints served under one name never pool.",
+  "properties": {
+    "allow_floating_model": {
+      "default": false,
+      "description": "Accept an undated model alias on the OpenAI API. An alias (``gpt-5``) moves between snapshots, so judgements recorded against it are not reproducible; by default only a dated snapshot (``gpt-5-2025-08-07``) is accepted.",
+      "title": "Allow Floating Model",
+      "type": "boolean"
+    },
+    "api_key_env": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Environment variable holding the API key; ``None`` sends no key.",
+      "title": "Api Key Env"
+    },
+    "base_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "The endpoint, e.g. ``http://localhost:8000/v1``, or a list of replica URLs of the same served model (each request goes to the live replica with the fewest requests in flight); ``fake://`` for the offline judge. Required.",
+      "title": "Base Url"
+    },
+    "concurrency": {
+      "default": 64,
+      "description": "Requests in flight at once.",
+      "minimum": 1,
+      "title": "Concurrency",
+      "type": "integer"
+    },
+    "connect_timeout_s": {
+      "default": 5.0,
+      "description": "TCP connect timeout, seconds.",
+      "exclusiveMinimum": 0,
+      "title": "Connect Timeout S",
+      "type": "number"
+    },
+    "context_tokens": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The prompt and completion tokens one request may hold (the served context window, or a hosted API's input limit when that is lower); sizes the per-window text budget, counted with ``tokenizer``. ``None``, or no ``tokenizer``, sends every document whole.",
+      "title": "Context Tokens"
+    },
+    "decoding": {
+      "default": "free",
+      "description": "``\"json_schema\"``: each tournament and rubric request carries the stage's answer schema as ``response_format`` (vLLM, SGLang and the OpenAI API constrain the answer to it), and the judgement family records it; an endpoint that refuses the schema fails the pass with a CapabilityError. ``\"free\"`` (the default): the judge answers in free text.",
+      "enum": [
+        "json_schema",
+        "free"
+      ],
+      "title": "Decoding",
+      "type": "string"
+    },
+    "extra_body": {
+      "additionalProperties": true,
+      "description": "Further request fields the endpoint understands (e.g. ``reasoning_effort``, ``chat_template_kwargs``).",
+      "title": "Extra Body",
+      "type": "object"
+    },
+    "image_processor": {
+      "anyOf": [
+        {
+          "enum": [
+            "qwen2_vl",
+            "qwen2_5_vl",
+            "qwen3_vl"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The served model's image processor family (``qwen2_vl``, ``qwen2_5_vl``, ``qwen3_vl``; PROCESSORS). The client resizes every image and video frame exactly as that processor would, within the pass's pixel budget, so the engine needs no media flags. ``None`` (the default): the family is unknown, and images are sent unchanged, as stored.",
+      "title": "Image Processor"
+    },
+    "max_images": {
+      "default": 0,
+      "description": "Images the served model accepts per request; 0 (the default) means it reads none.",
+      "minimum": 0,
+      "title": "Max Images",
+      "type": "integer"
+    },
+    "max_output_tokens": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Completion token cap per request, reasoning included (sent as ``max_completion_tokens``); ``None`` leaves it to the endpoint.",
+      "title": "Max Output Tokens"
+    },
+    "max_retries": {
+      "default": 2,
+      "description": "Retries of a transient failure before it counts as an outage.",
+      "minimum": 0,
+      "title": "Max Retries",
+      "type": "integer"
+    },
+    "max_videos": {
+      "default": 0,
+      "description": "Video containers the served model accepts per request; 0 (the default) means it reads none. There is no \"unlimited\": a multimodal judge declares its limits, which the server's per-request media limits must allow, and which are the ceiling a window's media is checked against.",
+      "minimum": 0,
+      "title": "Max Videos",
+      "type": "integer"
+    },
+    "model": {
+      "description": "The served model name, sent as the request's ``model``.",
+      "minLength": 1,
+      "title": "Model",
+      "type": "string"
+    },
+    "price": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Price"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Token prices; ``None`` when unknown (costs are then reported as unknown, never 0)."
+    },
+    "revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+      "title": "Revision"
+    },
+    "temperature": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Sampling temperature; ``None`` (the default) sends none, so the server's default applies (some reasoning models reject a temperature).",
+      "title": "Temperature"
+    },
+    "timeout_s": {
+      "default": 600.0,
+      "description": "Per-request timeout, seconds.",
+      "exclusiveMinimum": 0,
+      "title": "Timeout S",
+      "type": "number"
+    },
+    "tokenizer": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The served model's tokenizer, in whose tokens text limits and the window budget are counted: a Hugging Face repository id with an optional ``@revision`` (``Qwen/Qwen3.5-397B-A17B-FP8``), or a local path to a ``tokenizer.json`` (load_tokenizer; ``[hf]`` extra). ``None`` (the default): no text is cut, so only ``on_overflow: keep`` runs, and estimates approximate tokens from characters. The file's SHA-256 enters the judgement family.",
+      "title": "Tokenizer"
+    },
+    "wait_on_outage_s": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "How long a request waits while the endpoint is down before BackendUnavailableError; ``None`` waits indefinitely.",
+      "title": "Wait On Outage S"
+    }
+  },
+  "required": [
+    "base_url",
+    "model"
+  ],
+  "title": "JudgeConfig",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.judge-config.v1"
+}

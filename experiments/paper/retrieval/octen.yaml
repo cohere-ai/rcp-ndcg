@@ -1,0 +1,11 @@
+# Octen-Embedding-8B, one of the paper's three first-stage retrievers: a retriever config
+# (rcp_ndcg.retrieval.RetrieverConfig) for `rcp-ndcg retrieval index|search --retriever <this file>`.
+# Runs in process (the [local] extra) and needs a GPU; the model pools the last token. Documents are encoded as
+# "- " + text and queries as they are, as in the paper.
+kind: dense
+encoder:
+  provider: local
+  model: Octen/Octen-Embedding-8B
+  pooling: last
+  doc_prompt: "- "
+  batch_size: 32

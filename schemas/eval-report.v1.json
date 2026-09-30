@@ -1,0 +1,465 @@
+{
+  "$defs": {
+    "DatasetValue": {
+      "description": "The mean of one metric over one dataset's queries.",
+      "properties": {
+        "dataset": {
+          "title": "Dataset",
+          "type": "string"
+        },
+        "k": {
+          "title": "K",
+          "type": "integer"
+        },
+        "metric": {
+          "enum": [
+            "rcp_ndcg",
+            "qrel_ndcg",
+            "count_ndcg"
+          ],
+          "title": "Metric",
+          "type": "string"
+        },
+        "num_queries": {
+          "title": "Num Queries",
+          "type": "integer"
+        },
+        "system": {
+          "title": "System",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "system",
+        "dataset",
+        "metric",
+        "k",
+        "value",
+        "num_queries"
+      ],
+      "title": "DatasetValue",
+      "type": "object"
+    },
+    "Protocol": {
+      "additionalProperties": false,
+      "description": "How one suite's runs are scored.",
+      "properties": {
+        "drop_identical_ids": {
+          "default": false,
+          "description": "Also exclude the document whose id equals the query id (BEIR's ``ignore_identical_ids``), for data without an excluded list.",
+          "title": "Drop Identical Ids",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "Preset name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "qrel_gain": {
+          "default": "linear",
+          "description": "``\"linear\"`` (the grade; the paper) or ``\"exponential\"`` (``2**grade - 1``).",
+          "enum": [
+            "linear",
+            "exponential"
+          ],
+          "title": "Qrel Gain",
+          "type": "string"
+        },
+        "restrict_to_candidates": {
+          "default": false,
+          "description": "Rank only the query's judged pool; other scored documents are dropped.",
+          "title": "Restrict To Candidates",
+          "type": "boolean"
+        },
+        "round_digits": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Round qrel-nDCG to this many decimals (BEIR uses 5); RCP-nDCG is never rounded.",
+          "title": "Round Digits"
+        },
+        "ties": {
+          "description": "The tie rule for equal scores.",
+          "enum": [
+            "doc_id_desc",
+            "group_mean",
+            "input_order"
+          ],
+          "title": "Ties",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "ties"
+      ],
+      "title": "Protocol",
+      "type": "object"
+    },
+    "QueryValue": {
+      "description": "One metric value of one system on one query (``value`` is ``None`` when the metric is undefined).",
+      "properties": {
+        "dataset": {
+          "title": "Dataset",
+          "type": "string"
+        },
+        "k": {
+          "title": "K",
+          "type": "integer"
+        },
+        "metric": {
+          "enum": [
+            "rcp_ndcg",
+            "qrel_ndcg",
+            "count_ndcg"
+          ],
+          "title": "Metric",
+          "type": "string"
+        },
+        "query_id": {
+          "title": "Query Id",
+          "type": "string"
+        },
+        "system": {
+          "title": "System",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "system",
+        "dataset",
+        "query_id",
+        "metric",
+        "k",
+        "value"
+      ],
+      "title": "QueryValue",
+      "type": "object"
+    },
+    "ReportInputs": {
+      "additionalProperties": false,
+      "description": "Where a report's inputs came from, as the command line that scored them names them.\n\n``rcp-ndcg eval score --out`` records them, and ``rcp-ndcg eval explain --report`` reads them again; a report\nfrom evaluate in Python has none (it keeps the objects it scored instead).",
+      "properties": {
+        "calibration": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The calibration (or run) directory whose gains were scored, or ``None``.",
+          "title": "Calibration"
+        },
+        "dataset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The dataset URI scored against, or ``None``.",
+          "title": "Dataset"
+        },
+        "rankings": {
+          "description": "The rankings file.",
+          "title": "Rankings",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Hub revision.",
+          "title": "Revision"
+        },
+        "subset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The subset of a ``hf://`` or ``suite:`` dataset.",
+          "title": "Subset"
+        },
+        "suite": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The public suite scored against, or ``None``.",
+          "title": "Suite"
+        }
+      },
+      "required": [
+        "rankings"
+      ],
+      "title": "ReportInputs",
+      "type": "object"
+    },
+    "ReportWarning": {
+      "description": "A typed warning: a ``code`` from a closed list and a message.\n\nThe report's own codes, plus the warnings of the calibration whose gains it scores\n(rcp_ndcg.errors.WarningCode, e.g. ``INVALID_WINDOWS``).",
+      "properties": {
+        "code": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNRANKED_QUERIES",
+                "NO_POSITIVE_QRELS"
+              ],
+              "type": "string"
+            },
+            {
+              "enum": [
+                "BT_L2_MISMATCH",
+                "INVALID_WINDOWS",
+                "UNREADABLE_RUN"
+              ],
+              "type": "string"
+            }
+          ],
+          "title": "Code"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ReportWarning",
+      "type": "object"
+    },
+    "SummaryValue": {
+      "description": "One system's headline number for a metric: the protocol's aggregate, with a bootstrap interval.",
+      "properties": {
+        "ci_high": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ci High"
+        },
+        "ci_low": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ci Low"
+        },
+        "k": {
+          "title": "K",
+          "type": "integer"
+        },
+        "metric": {
+          "enum": [
+            "rcp_ndcg",
+            "qrel_ndcg",
+            "count_ndcg"
+          ],
+          "title": "Metric",
+          "type": "string"
+        },
+        "num_datasets": {
+          "title": "Num Datasets",
+          "type": "integer"
+        },
+        "num_queries": {
+          "title": "Num Queries",
+          "type": "integer"
+        },
+        "system": {
+          "title": "System",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "system",
+        "metric",
+        "k",
+        "value",
+        "ci_low",
+        "ci_high",
+        "num_queries",
+        "num_datasets"
+      ],
+      "title": "SummaryValue",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/eval-report.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The result of evaluate.",
+  "properties": {
+    "gains_source": {
+      "description": "Where the RCP gains came from: ``\"gains\"`` (passed in), ``\"calibration\"`` (its ``gains()``), ``\"dataset\"`` (the released gains), or ``\"none\"`` (RCP-nDCG not computed).",
+      "enum": [
+        "gains",
+        "calibration",
+        "dataset",
+        "none"
+      ],
+      "title": "Gains Source",
+      "type": "string"
+    },
+    "inputs": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReportInputs"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The input files, when the command line recorded them (ReportInputs); ``None`` from Python."
+    },
+    "k": {
+      "description": "The cutoffs.",
+      "items": {
+        "type": "integer"
+      },
+      "title": "K",
+      "type": "array"
+    },
+    "metrics": {
+      "description": "The metrics computed.",
+      "items": {
+        "enum": [
+          "rcp_ndcg",
+          "qrel_ndcg",
+          "count_ndcg"
+        ],
+        "type": "string"
+      },
+      "title": "Metrics",
+      "type": "array"
+    },
+    "per_dataset": {
+      "description": "The mean per (system, dataset, metric, k).",
+      "items": {
+        "$ref": "#/$defs/DatasetValue"
+      },
+      "title": "Per Dataset",
+      "type": "array"
+    },
+    "per_query": {
+      "description": "Every value, one row per (system, dataset, query, metric, k).",
+      "items": {
+        "$ref": "#/$defs/QueryValue"
+      },
+      "title": "Per Query",
+      "type": "array"
+    },
+    "protocol": {
+      "$ref": "#/$defs/Protocol",
+      "description": "The scoring protocol every value was computed under."
+    },
+    "schema": {
+      "const": "rcp-ndcg.eval-report.v1",
+      "default": "rcp-ndcg.eval-report.v1",
+      "description": "``\"rcp-ndcg.eval-report.v1\"`` (serialised as ``schema``).",
+      "title": "Schema",
+      "type": "string"
+    },
+    "summary": {
+      "description": "The aggregate per (system, metric, k), with its bootstrap interval.",
+      "items": {
+        "$ref": "#/$defs/SummaryValue"
+      },
+      "title": "Summary",
+      "type": "array"
+    },
+    "warnings": {
+      "default": [],
+      "description": "What the numbers do not show on their own.",
+      "items": {
+        "$ref": "#/$defs/ReportWarning"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocol",
+    "gains_source",
+    "metrics",
+    "k",
+    "per_query",
+    "per_dataset",
+    "summary"
+  ],
+  "title": "EvalReport",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.eval-report.v1"
+}

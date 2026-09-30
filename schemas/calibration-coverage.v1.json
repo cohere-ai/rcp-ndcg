@@ -1,0 +1,271 @@
+{
+  "$defs": {
+    "CoverageFlag": {
+      "additionalProperties": false,
+      "description": "A query and stage whose invalid windows warrant a warning.",
+      "properties": {
+        "invalid": {
+          "description": "Of which invalid.",
+          "title": "Invalid",
+          "type": "integer"
+        },
+        "invalid_adaptive": {
+          "description": "Invalid adaptive windows.",
+          "title": "Invalid Adaptive",
+          "type": "integer"
+        },
+        "query": {
+          "description": "``<dataset>||<query_id>``.",
+          "title": "Query",
+          "type": "string"
+        },
+        "reasons": {
+          "description": "``\"share\"`` (more than INVALID_WINDOW_SHARE invalid) and/or ``\"adaptive\"``.",
+          "items": {
+            "enum": [
+              "share",
+              "adaptive"
+            ],
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "share": {
+          "description": "``invalid / windows``.",
+          "title": "Share",
+          "type": "number"
+        },
+        "stage": {
+          "description": "The stage.",
+          "enum": [
+            "tournament",
+            "rubric"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "windows": {
+          "description": "Its windows of the stage.",
+          "title": "Windows",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "query",
+        "stage",
+        "windows",
+        "invalid",
+        "share",
+        "invalid_adaptive",
+        "reasons"
+      ],
+      "title": "CoverageFlag",
+      "type": "object"
+    },
+    "DegenerateCounts": {
+      "additionalProperties": false,
+      "description": "Documents that failed, or passed, every criterion in every placement.",
+      "properties": {
+        "all_fail": {
+          "title": "All Fail",
+          "type": "integer"
+        },
+        "all_pass": {
+          "title": "All Pass",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "all_fail",
+        "all_pass"
+      ],
+      "title": "DegenerateCounts",
+      "type": "object"
+    },
+    "QueryCounts": {
+      "additionalProperties": false,
+      "description": "Queries with rubric judgements, with tournament judgements, and with calibrated abilities.",
+      "properties": {
+        "calibrated": {
+          "title": "Calibrated",
+          "type": "integer"
+        },
+        "rubric": {
+          "title": "Rubric",
+          "type": "integer"
+        },
+        "tournament": {
+          "title": "Tournament",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rubric",
+        "tournament",
+        "calibrated"
+      ],
+      "title": "QueryCounts",
+      "type": "object"
+    },
+    "StageWindows": {
+      "additionalProperties": false,
+      "description": "One query's windows of one stage.",
+      "properties": {
+        "invalid": {
+          "description": "Of which invalid.",
+          "title": "Invalid",
+          "type": "integer"
+        },
+        "invalid_by_category": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "Invalid windows per failure category.",
+          "title": "Invalid By Category",
+          "type": "object"
+        },
+        "invalid_by_phase": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "Invalid windows per schedule phase.",
+          "title": "Invalid By Phase",
+          "type": "object"
+        },
+        "share": {
+          "description": "``invalid / windows``.",
+          "title": "Share",
+          "type": "number"
+        },
+        "windows": {
+          "description": "Windows judged.",
+          "title": "Windows",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "windows",
+        "invalid",
+        "share"
+      ],
+      "title": "StageWindows",
+      "type": "object"
+    },
+    "WindowCount": {
+      "additionalProperties": false,
+      "description": "Windows of one stage over every query, and how many were invalid.",
+      "properties": {
+        "invalid": {
+          "default": 0,
+          "title": "Invalid",
+          "type": "integer"
+        },
+        "windows": {
+          "default": 0,
+          "title": "Windows",
+          "type": "integer"
+        }
+      },
+      "title": "WindowCount",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/calibration-coverage.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What a calibration covers, and which of its windows it could not read.",
+  "properties": {
+    "degenerate_documents": {
+      "$ref": "#/$defs/DegenerateCounts",
+      "description": "Documents that failed, or passed, every criterion."
+    },
+    "documents": {
+      "description": "Documents with rubric verdicts.",
+      "title": "Documents",
+      "type": "integer"
+    },
+    "flagged_queries": {
+      "description": "The flagged queries and stages.",
+      "items": {
+        "$ref": "#/$defs/CoverageFlag"
+      },
+      "title": "Flagged Queries",
+      "type": "array"
+    },
+    "invalid_window_share": {
+      "description": "The share above which a query is flagged.",
+      "title": "Invalid Window Share",
+      "type": "number"
+    },
+    "invalid_windows": {
+      "additionalProperties": {
+        "additionalProperties": {
+          "$ref": "#/$defs/StageWindows"
+        },
+        "type": "object"
+      },
+      "description": "``{query: {stage: StageWindows}}`` for the queries with an invalid window.",
+      "title": "Invalid Windows",
+      "type": "object"
+    },
+    "mode": {
+      "description": "The fit's mode.",
+      "enum": [
+        "tournament",
+        "rubric_only"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "per_dataset": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "description": "Calibrated queries per dataset.",
+      "title": "Per Dataset",
+      "type": "object"
+    },
+    "queries": {
+      "$ref": "#/$defs/QueryCounts",
+      "description": "Queries per stage, and those calibrated."
+    },
+    "schema": {
+      "const": "rcp-ndcg.calibration-coverage.v1",
+      "default": "rcp-ndcg.calibration-coverage.v1",
+      "title": "Schema",
+      "type": "string"
+    },
+    "uncalibrated_queries": {
+      "description": "Queries judged but without calibrated abilities.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Uncalibrated Queries",
+      "type": "array"
+    },
+    "windows": {
+      "additionalProperties": {
+        "$ref": "#/$defs/WindowCount"
+      },
+      "description": "Windows per stage over every query.",
+      "title": "Windows",
+      "type": "object"
+    }
+  },
+  "required": [
+    "mode",
+    "queries",
+    "uncalibrated_queries",
+    "windows",
+    "invalid_windows",
+    "invalid_window_share",
+    "flagged_queries",
+    "documents",
+    "degenerate_documents",
+    "per_dataset"
+  ],
+  "title": "CalibrationCoverage",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.calibration-coverage.v1"
+}

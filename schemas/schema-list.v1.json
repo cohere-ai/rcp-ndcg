@@ -1,0 +1,64 @@
+{
+  "$defs": {
+    "SchemaInfo": {
+      "description": "One exported schema.",
+      "properties": {
+        "id": {
+          "description": "rcp-ndcg.<name>.v1, the value payloads carry in their 'schema' field.",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "config",
+            "artifact",
+            "cli-output",
+            "mcp"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "url": {
+          "description": "The $id: the committed copy under schemas/ in the repository.",
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "id",
+        "url"
+      ],
+      "title": "SchemaInfo",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/schema-list.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Every exported schema.",
+  "properties": {
+    "schema": {
+      "const": "rcp-ndcg.schema-list.v1",
+      "type": "string"
+    },
+    "schemas": {
+      "items": {
+        "$ref": "#/$defs/SchemaInfo"
+      },
+      "title": "Schemas",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "schemas"
+  ],
+  "title": "SchemaList",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.schema-list.v1"
+}

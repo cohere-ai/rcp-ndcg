@@ -1,0 +1,4 @@
+# zeroentropy/zerank-1: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
+# `rcp-ndcg retrieval rerank --reranker <this file>`. Runs in process (the [local] extra); the model family is picked from the model id.
+provider: local
+model: zeroentropy/zerank-1

@@ -1,0 +1,71 @@
+{
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/data-fetch.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Where the downloaded files are.",
+  "properties": {
+    "dataset": {
+      "title": "Dataset",
+      "type": "string"
+    },
+    "files": {
+      "description": "Number of files under that directory.",
+      "title": "Files",
+      "type": "integer"
+    },
+    "path": {
+      "description": "The local directory holding the repository's files.",
+      "title": "Path",
+      "type": "string"
+    },
+    "repo_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The HuggingFace repository; null for the packaged example.",
+      "title": "Repo Id"
+    },
+    "revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Revision"
+    },
+    "schema": {
+      "const": "rcp-ndcg.data-fetch.v1",
+      "type": "string"
+    },
+    "subset": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Subset"
+    }
+  },
+  "required": [
+    "schema",
+    "dataset",
+    "repo_id",
+    "subset",
+    "revision",
+    "path",
+    "files"
+  ],
+  "title": "DataFetch",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.data-fetch.v1"
+}

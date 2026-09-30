@@ -1,0 +1,269 @@
+{
+  "$defs": {
+    "EngineInfo": {
+      "additionalProperties": false,
+      "description": "What one replica says about itself, read best effort: runtime information, never part of an identity.\n\nRead from the standard ``GET <base_url>/models`` (the entry of the served model) and the response headers,\nand from the ``system_fingerprint`` of the replica's first completion; nothing engine-specific is asked.",
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why the endpoint could not be read; the other fields are then empty.",
+          "title": "Error"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The response's ``server`` header and any header naming a version.",
+          "title": "Headers",
+          "type": "object"
+        },
+        "max_model_len": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The served context in tokens, when the endpoint reports it.",
+          "title": "Max Model Len"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The served model id the endpoint lists (the judge's ``model`` when listed, else the first).",
+          "title": "Model"
+        },
+        "owned_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The entry's ``owned_by``; open-source engines put their own name there.",
+          "title": "Owned By"
+        },
+        "system_fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``system_fingerprint`` of the first completion, when the endpoint sends one (some engines put their version in it).",
+          "title": "System Fingerprint"
+        },
+        "url": {
+          "description": "The replica's base URL.",
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "EngineInfo",
+      "type": "object"
+    },
+    "Family": {
+      "additionalProperties": false,
+      "description": "The poolability token of a set of judgements.\n\nTwo judgements measure the same thing -- and may enter one fit -- only when\nevery field matches: the stage, the judge (model, checkpoint and tokenizer), the prompt,\nthe criteria, the parser, the decoding and the preprocessing that shaped\nwhat the judge saw. key digests them; rubric_key leaves out the judge, which\nis the precondition for pooling several judges with a severity term.",
+      "properties": {
+        "criteria": {
+          "default": [],
+          "description": "The rubric's criterion labels (``C1..C5``); empty for the tournament.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Criteria",
+          "type": "array"
+        },
+        "decoding": {
+          "default": "free",
+          "description": "``\"json_schema\"`` when the endpoint was made to answer in the stage's JSON schema, ``\"free\"`` when it answered in free text (Decoding).",
+          "enum": [
+            "json_schema",
+            "free"
+          ],
+          "title": "Decoding",
+          "type": "string"
+        },
+        "judge_model": {
+          "description": "The served model name (``\"fake\"`` for the offline fake judge).",
+          "title": "Judge Model",
+          "type": "string"
+        },
+        "judge_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge config's ``revision`` as configured (not resolved against the Hub), or ``None``.",
+          "title": "Judge Revision"
+        },
+        "parse_version": {
+          "description": "Version of the parser that reads the answers.",
+          "title": "Parse Version",
+          "type": "integer"
+        },
+        "preprocessing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Digest of the effective preprocessing policy (text caps, chunking, image and video policies), or ``None`` when nothing was declared.",
+          "title": "Preprocessing"
+        },
+        "prompt_hash": {
+          "description": "SHA-256 of the prompt template text.",
+          "title": "Prompt Hash",
+          "type": "string"
+        },
+        "stage": {
+          "description": "``\"tournament\"`` or ``\"rubric\"``.",
+          "enum": [
+            "tournament",
+            "rubric"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "SHA-256 of the judge's ``tokenizer.json``, in whose tokens the text limits and the window budget were counted, or ``None`` when the judge names no tokenizer. It is the judge's, so rubric_key leaves it out with the model.",
+          "title": "Tokenizer"
+        }
+      },
+      "required": [
+        "stage",
+        "judge_model",
+        "prompt_hash",
+        "parse_version"
+      ],
+      "title": "Family",
+      "type": "object"
+    },
+    "StageEntry": {
+      "additionalProperties": false,
+      "description": "One stage's entry in a store's ``identity.json``: the identity its judgements answer for, and when and by\nwhat it was claimed.",
+      "properties": {
+        "created_at": {
+          "description": "When the stage was claimed (ISO 8601, UTC).",
+          "title": "Created At",
+          "type": "string"
+        },
+        "engines": {
+          "description": "What the endpoints said they serve, one entry per distinct report (runtime information, never part of the identity).",
+          "items": {
+            "$ref": "#/$defs/EngineInfo"
+          },
+          "title": "Engines",
+          "type": "array"
+        },
+        "family": {
+          "$ref": "#/$defs/Family",
+          "description": "The family of the stage's judgements."
+        },
+        "family_key": {
+          "description": "Its key.",
+          "title": "Family Key",
+          "type": "string"
+        },
+        "identity": {
+          "additionalProperties": true,
+          "description": "The identity of the judging pass that writes the stage; a later pass into the store is compared with it field by field. Its keys: ``stage``, ``family`` (the Family), ``judge`` (the judge config's content fields), ``schedule``, ``prompt`` (the prompt's name), ``dataset`` (its name, and for a loaded dataset its URI and resolved revision), ``preprocessing`` (the effective policy, with the tokenizer's identity), and for the tournament ``bt_l2`` (the penalty of the live Bradley-Terry fit that chose its adaptive windows).",
+          "title": "Identity",
+          "type": "object"
+        },
+        "package_version": {
+          "description": "The rcp-ndcg version that claimed it.",
+          "title": "Package Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "identity",
+        "family",
+        "family_key",
+        "created_at",
+        "package_version"
+      ],
+      "title": "StageEntry",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/judgement-store.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "``identity.json`` of a judgement store (``rcp-ndcg.judgement-store.v1``): an entry per stage it holds.",
+  "properties": {
+    "schema": {
+      "const": "rcp-ndcg.judgement-store.v1",
+      "default": "rcp-ndcg.judgement-store.v1",
+      "title": "Schema",
+      "type": "string"
+    },
+    "stages": {
+      "additionalProperties": {
+        "$ref": "#/$defs/StageEntry"
+      },
+      "description": "``{stage: StageEntry}`` for each stage written into the store.",
+      "propertyNames": {
+        "enum": [
+          "tournament",
+          "rubric"
+        ]
+      },
+      "title": "Stages",
+      "type": "object"
+    }
+  },
+  "required": [
+    "stages"
+  ],
+  "title": "StoreIdentity",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.judgement-store.v1"
+}

@@ -1,0 +1,188 @@
+"""Media resolution: content-addressed caching and verify-on-write."""
+
+from __future__ import annotations
+
+import io
+from pathlib import Path
+
+import pytest
+from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+
+from rcp_ndcg.data.media import MediaError, MediaResolver, sha256_of
+
+PIL = pytest.importorskip("PIL.Image")
+
+
+@pytest.fixture
+def png_bytes() -> bytes:
+    buffer = io.BytesIO()
+    PIL.new("RGB", (64, 32), color=(10, 20, 30)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+@pytest.fixture
+def image_file(tmp_path, png_bytes) -> tuple[str, str]:
+    path = tmp_path / "source" / "page_1.png"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(png_bytes)
+    return str(path), sha256_of(png_bytes)
+
+
+@pytest.fixture
+def resolver(tmp_path, monkeypatch) -> MediaResolver:
+    monkeypatch.setenv("RCP_NDCG_MEDIA_CACHE", str(tmp_path / "cache"))
+    return MediaResolver()
+
+
+class TestCacheLayout:
+    def test_hashed_refs_are_keyed_by_content(self, resolver):
+        """Two URIs with the same content share one cache entry."""
+        digest = "a" * 64
+        first = resolver.cache_path(MediaRef(uri="gs://bucket/a.png", sha256=digest))
+        second = resolver.cache_path(MediaRef(uri="s3://other/b.png", sha256=digest))
+        assert first == second
+
+    def test_hashed_refs_shard_by_prefix(self, resolver):
+        digest = "ab" + "c" * 62
+        assert resolver.cache_path(MediaRef(uri="x.png", sha256=digest)).parent.name == "ab"
+
+    def test_unhashed_refs_are_keyed_by_uri(self, resolver):
+        first = resolver.cache_path(MediaRef(uri="gs://bucket/a.png"))
+        second = resolver.cache_path(MediaRef(uri="gs://bucket/b.png"))
+        assert first != second
+        assert "by-uri" in str(first)
+
+    def test_suffix_is_preserved_for_tooling(self, resolver):
+        path = resolver.cache_path(MediaRef(uri="gs://bucket/page.png", sha256="a" * 64))
+        assert path.suffix == ".png"
+
+    def test_absurd_suffixes_are_dropped(self, resolver):
+        path = resolver.cache_path(MediaRef(uri="gs://bucket/page.thisisnotanextension", sha256="a" * 64))
+        assert path.suffix == ""
+
+
+class TestResolution:
+    def test_bytes_round_trip(self, resolver, image_file, png_bytes):
+        uri, digest = image_file
+        assert resolver.bytes_of(MediaRef(uri=uri, sha256=digest)) == png_bytes
+
+    def test_first_read_populates_the_cache(self, resolver, image_file):
+        uri, digest = image_file
+        ref = MediaRef(uri=uri, sha256=digest)
+        assert not resolver.cache_path(ref).exists()
+        resolver.bytes_of(ref)
+        assert resolver.cache_path(ref).exists()
+
+    def test_cached_reads_survive_the_source_disappearing(self, resolver, image_file, tmp_path):
+        """A cache hit must need nothing from the backend, network included."""
+        uri, digest = image_file
+        ref = MediaRef(uri=uri, sha256=digest)
+        resolver.bytes_of(ref)
+        (tmp_path / "source" / "page_1.png").unlink()
+        assert len(resolver.bytes_of(ref)) > 0
+
+    def test_image_decodes_to_rgb(self, resolver, image_file):
+        uri, digest = image_file
+        image = resolver.image(MediaRef(uri=uri, sha256=digest))
+        assert image.mode == "RGB"
+        assert image.size == (64, 32)
+
+    def test_greyscale_is_converted(self, resolver, tmp_path):
+        path = tmp_path / "grey.png"
+        PIL.new("L", (8, 8), color=128).save(path)
+        assert resolver.image(MediaRef(uri=str(path))).mode == "RGB"
+
+    def test_missing_media_names_the_uri(self, resolver, tmp_path):
+        with pytest.raises(MediaError, match="nope.png"):
+            resolver.bytes_of(MediaRef(uri=str(tmp_path / "nope.png")))
+
+    def test_images_of_content_preserves_order(self, resolver, tmp_path, png_bytes):
+        refs = []
+        for index in range(3):
+            path = tmp_path / f"p{index}.png"
+            PIL.new("RGB", (8 + index, 8)).save(path)
+            refs.append(MediaRef(uri=str(path)))
+        content = Content.from_parts([ImagePart(ref=ref) for ref in refs])
+        assert [image.width for image in resolver.images_of(content)] == [8, 9, 10]
+
+
+class TestVerification:
+    def test_a_wrong_hash_is_refused_at_fetch(self, resolver, image_file):
+        uri, _ = image_file
+        with pytest.raises(MediaError, match="hash mismatch"):
+            resolver.bytes_of(MediaRef(uri=uri, sha256="b" * 64))
+
+    def test_a_refused_fetch_is_not_cached(self, resolver, image_file):
+        """Caching bytes under a hash they do not have poisons every consumer."""
+        uri, _ = image_file
+        bad = MediaRef(uri=uri, sha256="b" * 64)
+        with pytest.raises(MediaError):
+            resolver.bytes_of(bad)
+        assert not resolver.cache_path(bad).exists()
+
+
+class TestHydrate:
+    def test_hydrate_fills_hash_size_and_dimensions(self, resolver, image_file, png_bytes):
+        uri, digest = image_file
+        hydrated = resolver.hydrate(MediaRef(uri=uri))
+        assert hydrated.sha256 == digest
+        assert hydrated.num_bytes == len(png_bytes)
+        assert (hydrated.width, hydrated.height) == (64, 32)
+
+    def test_hydrate_caches_under_the_discovered_hash(self, resolver, image_file):
+        uri, _ = image_file
+        hydrated = resolver.hydrate(MediaRef(uri=uri))
+        assert resolver.cache_path(hydrated).exists()
+
+    def test_hydrate_leaves_a_complete_ref_alone(self, resolver, image_file):
+        uri, digest = image_file
+        original = MediaRef(uri=uri, sha256=digest, width=64, height=32, num_bytes=1)
+        assert resolver.hydrate(original) == original
+
+    def test_hydrate_tolerates_a_non_image(self, resolver, tmp_path):
+        path = tmp_path / "notes.txt"
+        path.write_text("not an image")
+        hydrated = resolver.hydrate(MediaRef(uri=str(path)))
+        assert hydrated.sha256 is not None
+        assert hydrated.width is None
+
+
+class TestWhereTheCacheLives:
+    """Resolvable wherever this package is installed, not only in the checkout.
+
+    The default used to come from the repository's ``[tool.rcp_ndcg] cache_dir``,
+    which every consumer that installs this as a *dependency* -- the UI, an MCP
+    server, a user's venv -- has no way to read: constructing a resolver there
+    raised a ``KeyError`` about a config key the caller had never heard of.
+    """
+
+    def test_the_environment_wins(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("RCP_NDCG_MEDIA_CACHE", str(tmp_path / "elsewhere"))
+
+        assert MediaResolver().cache_dir == tmp_path / "elsewhere"
+
+    def test_a_tilde_is_expanded(self, monkeypatch):
+        """A mounted volume is usually written as a path, and a literal ``~``
+        directory next to the process is not what anyone meant."""
+        monkeypatch.setenv("RCP_NDCG_MEDIA_CACHE", "~/media-cache")
+
+        assert MediaResolver().cache_dir == Path.home() / "media-cache"
+
+    def test_it_falls_back_to_the_user_cache(self, tmp_path, monkeypatch):
+        """An installed package has no project to read a cache location from."""
+        monkeypatch.delenv("RCP_NDCG_MEDIA_CACHE", raising=False)
+        monkeypatch.delenv("RCP_NDCG_CACHE_DIR", raising=False)
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+
+        assert MediaResolver().cache_dir == tmp_path / "xdg" / "rcp-ndcg" / "media"
+
+
+def test_stored_media_is_where_the_resolver_reads_it(resolver, png_bytes) -> None:
+    """A released page image written into the cache must not be copied a second time when it is read."""
+    from rcp_ndcg.data.media import store_media
+
+    ref = store_media(png_bytes, ".png", width=64, height=32)
+
+    assert Path(ref.uri) == resolver.cache_path(ref)
+    assert resolver.bytes_of(ref) == png_bytes
+    assert (ref.sha256, ref.mime, ref.num_bytes) == (sha256_of(png_bytes), "image/png", len(png_bytes))

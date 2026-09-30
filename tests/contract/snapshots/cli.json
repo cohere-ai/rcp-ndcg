@@ -1,0 +1,4296 @@
+{
+  "rcp-ndcg": {
+    "deprecated": false,
+    "group": true,
+    "hidden": false,
+    "no_args_is_help": true,
+    "output_schema": null,
+    "params": {
+      "env_file": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--env-file"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "file"
+        }
+      },
+      "log_file": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--log-file"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "file"
+        }
+      },
+      "quiet": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "-q",
+          "--quiet"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "verbose": {
+        "default": 0,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "-v",
+          "--verbose"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer range"
+        }
+      },
+      "version": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--version"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      }
+    }
+  },
+  "rcp-ndcg calibration": {
+    "deprecated": false,
+    "group": true,
+    "hidden": false,
+    "no_args_is_help": true,
+    "output_schema": null,
+    "params": {}
+  },
+  "rcp-ndcg calibration fit": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.calibration-summary.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "judgements": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--judgements"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "judges": {
+        "default": "single",
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judges"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "choices": [
+            "single",
+            "pooled"
+          ],
+          "name": "choice"
+        }
+      },
+      "mode": {
+        "default": "auto",
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--mode"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "choices": [
+            "auto",
+            "tournament",
+            "rubric_only"
+          ],
+          "name": "choice"
+        }
+      },
+      "out": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "strict": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--strict"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      }
+    }
+  },
+  "rcp-ndcg calibration insert": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.insert-result.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "calibration": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--calibration"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "dataset_name": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--dataset-name"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "doc": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--doc"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "judgements": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judgements"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "max_gain_shift": {
+        "default": 0.01,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--max-gain-shift"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "float"
+        }
+      },
+      "min_opponents": {
+        "default": 5,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--min-opponents"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "n": {
+        "default": 9,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--n"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "out": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "plan": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--plan"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "query": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--query"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "se_target": {
+        "default": 0.5,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--se-target"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "float"
+        }
+      },
+      "window": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--window"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      }
+    }
+  },
+  "rcp-ndcg calibration score": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.extension-result.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "calibration": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--calibration"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "judgements": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judgements"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "out": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "se_target": {
+        "default": 0.5,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--se-target"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "float"
+        }
+      }
+    }
+  },
+  "rcp-ndcg calibration show": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.calibration-summary.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "calibration": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--calibration"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg data": {
+    "deprecated": false,
+    "group": true,
+    "hidden": false,
+    "no_args_is_help": true,
+    "output_schema": null,
+    "params": {}
+  },
+  "rcp-ndcg data convert": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.conversion.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "dry_run": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--dry-run"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "format": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--format"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "limit": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--limit"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "out": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "set": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--set"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "shape": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--shape"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "choices": [
+            "corpus",
+            "ranking"
+          ],
+          "name": "choice"
+        }
+      },
+      "source": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--source"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "to": {
+        "default": "jsonl",
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--to"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg data fetch": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.data-fetch.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "dataset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--dataset"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "out": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "revision": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--revision"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "subset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--subset"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg data formats": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.data-formats.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      }
+    }
+  },
+  "rcp-ndcg data inspect": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.dataset-summary.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "dataset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--dataset"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "revision": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--revision"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "subset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--subset"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg data validate": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.validation-report.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "dataset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--dataset"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "rankings": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--rankings"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "revision": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--revision"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "subset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--subset"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg doctor": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.doctor-report.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "judge_url": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judge-url"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "timeout_s": {
+        "default": 5.0,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--timeout-s"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "float"
+        }
+      }
+    }
+  },
+  "rcp-ndcg eval": {
+    "deprecated": false,
+    "group": true,
+    "hidden": false,
+    "no_args_is_help": true,
+    "output_schema": null,
+    "params": {}
+  },
+  "rcp-ndcg eval compare": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.comparison.v1",
+    "params": {
+      "alpha": {
+        "default": 0.05,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--alpha"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "float"
+        }
+      },
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "baseline": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--baseline"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "bootstrap": {
+        "default": 10000,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--bootstrap"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "include_reference": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--include-reference"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "k": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--k"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "metric": {
+        "default": "rcp_ndcg",
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--metric"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "choices": [
+            "rcp_ndcg",
+            "qrel_ndcg",
+            "count_ndcg"
+          ],
+          "name": "choice"
+        }
+      },
+      "report": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--report"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "run": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--run"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "seed": {
+        "default": 0,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--seed"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      }
+    }
+  },
+  "rcp-ndcg eval explain": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.query-explanation.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "include_text": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--include-text"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "k": {
+        "default": 10,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--k"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "query_id": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--query-id"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "report": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--report"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "run": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--run"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "subset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--subset"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg eval score": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.eval-score.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "bootstrap": {
+        "default": 1000,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--bootstrap"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "calibration": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--calibration"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "dataset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--dataset"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "fields": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--fields"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "k": {
+        "default": [
+          10
+        ],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--k"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "metrics": {
+        "default": [
+          "rcp_ndcg",
+          "qrel_ndcg"
+        ],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--metrics"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "choices": [
+            "rcp_ndcg",
+            "qrel_ndcg"
+          ],
+          "name": "choice"
+        }
+      },
+      "out": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "per_query": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--per-query"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "protocol": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--protocol"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "rankings": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--rankings"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "revision": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--revision"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "seed": {
+        "default": 0,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--seed"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "subset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--subset"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "suite": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--suite"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg judge": {
+    "deprecated": false,
+    "group": true,
+    "hidden": false,
+    "no_args_is_help": true,
+    "output_schema": null,
+    "params": {}
+  },
+  "rcp-ndcg judge reparse": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.reparse-report.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "judgements": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judgements"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "out": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg judge rubric": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.judge-report.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "budget_usd": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--budget-usd"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "float"
+        }
+      },
+      "candidates": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--candidates"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "dataset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--dataset"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "depth": {
+        "default": 150,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--depth"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "docs": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--docs"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "estimate": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--estimate"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "force": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--force"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "judge": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judge"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "judge_model": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judge-model"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "judge_url": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judge-url"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "limit": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--limit"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "mirror": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--mirror"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "out": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "plan": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--plan"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "revision": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--revision"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "seed": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--seed"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "set": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--set"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "subset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--subset"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "system": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--system"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg judge tournament": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.judge-report.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "budget_usd": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--budget-usd"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "float"
+        }
+      },
+      "candidates": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--candidates"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "dataset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--dataset"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "depth": {
+        "default": 150,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--depth"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "docs": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--docs"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "estimate": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--estimate"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "force": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--force"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "judge": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judge"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "judge_model": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judge-model"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "judge_url": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judge-url"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "limit": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--limit"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "mirror": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--mirror"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "out": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "plan": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--plan"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "revision": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--revision"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "seed": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--seed"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "set": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--set"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "subset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--subset"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "system": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--system"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg mcp": {
+    "deprecated": false,
+    "group": true,
+    "hidden": false,
+    "no_args_is_help": true,
+    "output_schema": null,
+    "params": {}
+  },
+  "rcp-ndcg mcp serve": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": null,
+    "params": {
+      "allow_spend": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--allow-spend"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      }
+    }
+  },
+  "rcp-ndcg mcp tools": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.mcp-manifest.v1",
+    "params": {
+      "allow_spend": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--allow-spend"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "args": {
+        "default": "{}",
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--args"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "call": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--call"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg retrieval": {
+    "deprecated": false,
+    "group": true,
+    "hidden": false,
+    "no_args_is_help": true,
+    "output_schema": null,
+    "params": {}
+  },
+  "rcp-ndcg retrieval fuse": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.rankings-file.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "depth": {
+        "default": 150,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--depth"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "out": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "rankings": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--rankings"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "rrf_k": {
+        "default": 60,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--rrf-k"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      }
+    }
+  },
+  "rcp-ndcg retrieval index": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.index-build.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "dataset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--dataset"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "out": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "retriever": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--retriever"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "revision": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--revision"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "set": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--set"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "subset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--subset"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg retrieval rerank": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.rankings-file.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "checkpoints": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--checkpoints"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "dataset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--dataset"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "depth": {
+        "default": 150,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--depth"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "out": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "rankings": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--rankings"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "reranker": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--reranker"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "revision": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--revision"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "set": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--set"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "subset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--subset"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "system": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--system"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg retrieval search": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.rankings-file.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "dataset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--dataset"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "depth": {
+        "default": 150,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--depth"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "index": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--index"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "out": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "retriever": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--retriever"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "revision": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--revision"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "set": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--set"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "subset": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--subset"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg run": {
+    "deprecated": false,
+    "group": true,
+    "hidden": false,
+    "no_args_is_help": true,
+    "output_schema": null,
+    "params": {}
+  },
+  "rcp-ndcg run cancel": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.run-status.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "run": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--run"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg run list": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.run-list.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "limit": {
+        "default": 50,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--limit"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      },
+      "runs_dir": {
+        "default": null,
+        "envvar": "RCP_NDCG_RUNS_DIR",
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--runs-dir"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg run logs": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.run-log.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "run": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--run"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "tail": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--tail"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
+        }
+      }
+    }
+  },
+  "rcp-ndcg run resume": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.run-start.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "budget_usd": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--budget-usd"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "float"
+        }
+      },
+      "dry_run": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--dry-run"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "estimate": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--estimate"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "judge": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judge"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "judge_model": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judge-model"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "judge_url": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judge-url"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "judge_urls": {
+        "default": null,
+        "envvar": "RCP_NDCG_JUDGE_URLS",
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judge-urls"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "mirror": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--mirror"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "only": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--only"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "choices": [
+            "retrieve",
+            "rerank",
+            "tournament",
+            "rubric",
+            "calibrate",
+            "evaluate"
+          ],
+          "name": "choice"
+        }
+      },
+      "resume": {
+        "default": true,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--resume"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [
+          "--no-resume"
+        ],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "run": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--run"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "set": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--set"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg run show": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.run-summary.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "run": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--run"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg run start": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.run-start.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "budget_usd": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--budget-usd"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "float"
+        }
+      },
+      "config": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "config"
+        ],
+        "param_type_name": "argument",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "detach": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--detach"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "dry_run": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--dry-run"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "estimate": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--estimate"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "judge": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judge"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "judge_model": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judge-model"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "judge_url": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--judge-url"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "label": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--label"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "mirror": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--mirror"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "only": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--only"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "choices": [
+            "retrieve",
+            "rerank",
+            "tournament",
+            "rubric",
+            "calibrate",
+            "evaluate"
+          ],
+          "name": "choice"
+        }
+      },
+      "runner": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--runner"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "runs_dir": {
+        "default": null,
+        "envvar": "RCP_NDCG_RUNS_DIR",
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--runs-dir"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
+      "set": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--set"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg run status": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.run-status.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "run": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--run"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg schema": {
+    "deprecated": false,
+    "group": true,
+    "hidden": false,
+    "no_args_is_help": true,
+    "output_schema": null,
+    "params": {}
+  },
+  "rcp-ndcg schema export": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.schema-export.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "out": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--out"
+        ],
+        "param_type_name": "option",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  },
+  "rcp-ndcg schema list": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "rcp-ndcg.schema-list.v1",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      }
+    }
+  },
+  "rcp-ndcg schema show": {
+    "deprecated": false,
+    "group": false,
+    "hidden": false,
+    "no_args_is_help": false,
+    "output_schema": "https://json-schema.org/draft/2020-12/schema",
+    "params": {
+      "as_json": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--json"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "full": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--full"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
+      "name": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "name"
+        ],
+        "param_type_name": "argument",
+        "required": true,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      }
+    }
+  }
+}

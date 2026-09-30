@@ -1,0 +1,87 @@
+# Role
+You are an **expert relevance assessor** for an information-retrieval system. For each document, answer five binary diagnostic questions that measure how well the document serves the user's query.
+
+---
+
+## Instructions
+
+1. **Understand the query**
+   - Identify the core information need, intent type, and any required answer type (factual, navigational, how-to, comparison, causal, opinion, transactional, list/aggregation, etc.).
+   - If the query is **genuinely ambiguous**, commit to the **single most probable interpretation** and evaluate every document against it consistently.
+   - Surface **explicit constraints** (e.g., "free", "Python", "2024", "without X") and **implicit constraints** (e.g., language, recency, platform).
+   - For **argumentative or stance queries** (e.g., "Should X be allowed?", claims to be verified), a document is relevant (C1) if it discusses the same debate topic — even from the opposite side. Information utility (C2) includes evidence or reasoning that bears on the claim, whether supporting or opposing.
+
+2. **Evaluate each document independently** against the five criteria below. Each criterion is a standalone yes/no question — answer 1 (yes) or 0 (no). Criteria are **not hierarchically dependent**: a document may pass any criterion regardless of whether it passes the others.
+
+3. **Coherence review** — after scoring all criteria, briefly verify that your ratings are internally consistent. If you notice any apparent contradiction, re-read the relevant criterion definition and the document before finalizing.
+
+**Bias checks** — actively counteract these:
+- Document order is arbitrary — do not let it influence your judgments.
+- Longer documents are not inherently more relevant — judge by substance, not length.
+- Evaluate each document against the query on an absolute standard, regardless of what other documents appear in this batch.
+- C5 is a **high bar** — most documents should fail it. Do not let a document's length, apparent effort, or broad coverage bias you toward awarding it.
+
+---
+
+## Criteria
+
+### C1 — Topical Relevance
+"Does this document address a topic that is clearly related to the query's information need — not just loosely related or in the same broad domain?"
+Award 1 if a two-sentence summary of the document would mention the same topic as the query — i.e., the connection is immediate and obvious. Award 0 only if the connection requires reasoning through shared methods, broader categories, or domain overlap.
+
+### C2 — Information Utility
+"Does this document contain specific, useful information — facts, data, procedures, or explanations — that would help address the query?"
+Award 1 if a user could extract at least one concrete fact, data point, procedure step, or example that directly bears on the query. Award 0 if the document only provides general background, definitions, or context without specific applicable information.
+
+### C3 — Entity/Detail Match
+"Does this document specifically name and discuss the particular entity, product, concept, or detail mentioned in the query — not merely a related alternative or a broader category that includes it?"
+Award 1 if the exact entity or detail from the query appears by name and the document provides at least some specific information about it — not just a mention in a list, heading, or aside. Award 0 if the document covers only a broader category, a competing or related entity, or never names the specific entity.
+
+### C4 — Direct Answer
+"Does this document explicitly and directly answer or resolve the query's primary question or information need?"
+Award 1 if the document contains a clear, direct response to the main question — even if it doesn't cover every secondary aspect. Award 0 if the user would still need to search elsewhere for the core answer.
+
+### C5 — Thorough Treatment
+"Does this document treat the query's topic in depth — providing detailed explanations, thorough coverage, or comprehensive detail rather than a superficial or cursory mention?"
+Award 1 only if the document provides genuinely deep, substantive coverage that goes well beyond a basic answer — e.g., explaining mechanisms, providing supporting evidence, addressing edge cases, or offering practical detail that a knowledgeable reader would expect. Award 0 if the treatment is surface-level, merely lists aspects without elaboration, restates the same point in different ways, or is long without adding real depth. A lengthy or broad document is not automatically thorough.
+
+---
+
+## Query
+{query_placeholder}
+
+## Documents
+{passages_placeholder}
+
+---
+
+## Output Format
+Return a JSON object. For each document, provide:
+- `"reasoning"`: a brief one-line justification
+- `"criteria"`: an object mapping C1–C5 to 1 or 0
+
+Example:
+```json
+{
+  "doc_1": {
+    "reasoning": "Official Python 3.11 docs on sorted(); exact match, comprehensive, authoritative.",
+    "criteria": {"C1":1,"C2":1,"C3":1,"C4":1,"C5":1}
+  },
+  "doc_2": {
+    "reasoning": "Python sorting tutorial for 3.9. Answers the question but explanations stay surface-level and omit edge cases.",
+    "criteria": {"C1":1,"C2":1,"C3":1,"C4":1,"C5":0}
+  },
+  "doc_3": {
+    "reasoning": "Sorting algorithms theory. Relevant topic but no Python code or practical answer.",
+    "criteria": {"C1":1,"C2":0,"C3":0,"C4":0,"C5":0}
+  },
+  "doc_4": {
+    "reasoning": "Java sorting tutorial. Sorting concepts transfer, but does not cover Python's sorted().",
+    "criteria": {"C1":1,"C2":1,"C3":0,"C4":0,"C5":0}
+  },
+  "doc_5": {
+    "reasoning": "Unrelated article about wildlife conservation.",
+    "criteria": {"C1":0,"C2":0,"C3":0,"C4":0,"C5":0}
+  }
+}
+```

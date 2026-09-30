@@ -1,0 +1,293 @@
+"""A run as an object: :class:`Run` over a run directory, and the steps that fill it.
+
+:func:`prepare` builds the :class:`~rcp_ndcg.runs.pipeline.Pipeline` of a new run, :func:`reopen` that of a run
+directory, and :func:`execute_run` runs one in this process, writing the pipeline's log to ``logs/run.log``. The
+one entry point for running a config is :func:`rcp_ndcg.run` (:func:`rcp_ndcg.runs.execution.run`), which also
+hands a run to a job runner (SLURM, Kubernetes, a plugin).
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from collections.abc import Iterator, Sequence
+from contextlib import ExitStack, contextmanager
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+from rcp_ndcg.errors import MissingInputError
+from rcp_ndcg.runs.config import RunConfig
+from rcp_ndcg.runs.layout import RunLayout
+from rcp_ndcg.runs.manifest import RunManifest, RunStatus
+from rcp_ndcg.runs.mirror import MirrorState, mirrored, read_state
+from rcp_ndcg.support.logging import BASE_LOGGER_NAME
+
+#: The run statuses after which nothing more happens without a new command.
+TERMINAL = frozenset({RunStatus.COMPLETED, RunStatus.PARTIAL, RunStatus.FAILED, RunStatus.CANCELLED})
+
+
+class StepProgress(BaseModel):
+    """How far a judging step has got, in judge windows.
+
+    Attributes:
+        done: Windows judged and stored so far.
+        planned: The windows the step's schedule asks at most for its pools (the tournament's adaptive phase can
+            stop early); ``None`` until the pools and the schedule are known.
+    """
+
+    done: int
+    planned: int | None = None
+
+
+class StepState(BaseModel):
+    """One planned step of a run: its status, time, error and, for a judging step, its progress."""
+
+    name: str
+    status: str = Field(description="pending, running, completed, partial or failed.")
+    duration_s: float | None = None
+    error: str | None = None
+    progress: StepProgress | None = Field(default=None, description="Judge windows done and planned (judging steps).")
+
+
+class JobState(BaseModel):
+    """One job a runner was handed for the run."""
+
+    name: str
+    handle: str
+    status: str = Field(description="pending, running, succeeded, failed, cancelled or unknown.")
+
+
+class RunState(BaseModel):
+    """Where a run stands: its status, every step, spend and usage, and its jobs when a runner holds it."""
+
+    run_id: str
+    run_dir: str
+    status: str = Field(description="submitted, running, completed, partial, failed or cancelled.")
+    done: bool = Field(description="Whether the status is terminal (completed, partial, failed or cancelled).")
+    steps: list[StepState] = Field(description="Every planned step in run order; one not started yet is pending.")
+    cost_usd: float | None = Field(description="The judge's spend so far in USD; null when the judge has no price.")
+    budget_usd: float | None
+    requests: int = Field(description="Judge requests made so far.")
+    metrics: dict[str, float] = Field(
+        description="`<system>/<metric>@<k>` -> value of every system but the judge's own order (the full report "
+        "with confidence intervals: metrics/report.json)."
+    )
+    runner: str | None = Field(default=None, description="The job runner holding the run, if any.")
+    jobs: list[JobState] = Field(default_factory=list)
+    mirror: MirrorState | None = Field(default=None, description="The mirror's last upload and lag, if mirrored.")
+
+
+class Run:
+    """A run directory: its manifest, its config and its artifacts.
+
+    Args:
+        run_dir: The run directory (``<runs dir>/<run_id>``).
+
+    Raises:
+        MissingInputError: The directory holds no manifest.
+    """
+
+    def __init__(self, run_dir: str | Path) -> None:
+        self.layout = RunLayout.at(run_dir)
+        if not Path(self.layout.manifest).exists():
+            raise MissingInputError(
+                f"no manifest at {self.layout.root}", hint="pass a run directory (runs/<run_id>), not the runs root"
+            )
+
+    @property
+    def dir(self) -> str:
+        """The run directory."""
+        return self.layout.root
+
+    @property
+    def manifest(self) -> RunManifest:
+        """The manifest, read now."""
+        return RunManifest.load(self.layout)
+
+    @property
+    def config(self) -> RunConfig:
+        """The run's resolved config."""
+        return RunConfig.from_data(self.manifest.config)
+
+    def artifacts(self) -> dict[str, str]:
+        """``{name: path}`` of the layout's artifacts that exist."""
+        layout = self.layout
+        paths = {
+            "config": layout.config,
+            "candidates": layout.candidates,
+            "tournament": layout.path("judgements", "tournament.jsonl"),
+            "rubric": layout.path("judgements", "rubric.jsonl"),
+            "calibration": layout.calibration,
+            "report": layout.metrics,
+            "comparison": layout.comparison,
+            "log": layout.log,
+            "jobs": layout.jobs,
+        }
+        present = {name: path for name, path in paths.items() if Path(path).exists()}
+        if "calibration" in present and not Path(layout.path("calibration", "items.json")).exists():
+            del present["calibration"]
+        return present
+
+    def jobs(self) -> dict[str, Any] | None:
+        """The jobs record (``logs/jobs.json``): ``{"runner", "options", "jobs": [{"name", "handle"}]}``."""
+        if not Path(self.layout.jobs).exists():
+            return None
+        return json.loads(Path(self.layout.jobs).read_text(encoding="utf-8"))
+
+    def status(self) -> RunState:
+        """The run's state as its manifest records it (a runner's live job states: :mod:`rcp_ndcg.runners`)."""
+        from rcp_ndcg.runs.inspect import step_states
+
+        manifest = self.manifest
+        jobs = self.jobs()
+        return RunState(
+            run_id=manifest.run_id,
+            run_dir=self.dir,
+            status=manifest.status.value,
+            done=manifest.status in TERMINAL,
+            steps=step_states(self.layout, manifest),
+            cost_usd=manifest.cost_usd,
+            budget_usd=manifest.budget_usd,
+            requests=manifest.usage.requests,
+            metrics=manifest.metrics,
+            mirror=read_state(self.layout.mirror_state),
+            runner=jobs["runner"] if jobs else None,
+            jobs=[
+                JobState(name=j["name"], handle=j["handle"] or "", status="unknown")
+                for j in (jobs or {}).get("jobs", [])
+            ],
+        )
+
+    def log(self, *, tail: int | None = None) -> str:
+        """The pipeline's log (``logs/run.log``); ``tail`` keeps the last lines.
+
+        Raises:
+            MissingInputError: The run has no log (it was not run in this process's way yet).
+        """
+        if not Path(self.layout.log).exists():
+            raise MissingInputError(f"{self.layout.run_id} has no log yet", hint="the run has not started")
+        lines = Path(self.layout.log).read_text(encoding="utf-8").splitlines(keepends=True)
+        return "".join(lines if tail is None else lines[-tail:] if tail > 0 else [])
+
+    def __repr__(self) -> str:
+        return f"Run({self.dir!r})"
+
+
+@contextmanager
+def _logged(layout: RunLayout) -> Iterator[None]:
+    """Also write the package's log records to the run's ``logs/run.log`` while the block runs."""
+    Path(layout.log).parent.mkdir(parents=True, exist_ok=True)
+    handler = logging.FileHandler(layout.log, encoding="utf-8")
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"))
+    logger = logging.getLogger(BASE_LOGGER_NAME)
+    previous = logger.level
+    logger.addHandler(handler)
+    if logger.level == logging.NOTSET or logger.level > logging.INFO:
+        logger.setLevel(logging.INFO)
+    try:
+        yield
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous)
+        handler.close()
+
+
+def prepare(
+    config: RunConfig | str | Path,
+    *,
+    overrides: Sequence[str] = (),
+    runs_dir: str | None = None,
+    label: str | None = None,
+    steps: Sequence[str] | None = None,
+    budget_usd: float | None = None,
+):
+    """The :class:`~rcp_ndcg.runs.pipeline.Pipeline` of a new run of ``config`` (nothing written yet).
+
+    Args:
+        config: A :class:`RunConfig`, or the path of a run config YAML.
+        overrides: ``key=value`` overrides applied to the config.
+        runs_dir: Where the run directory is created; default ``$RCP_NDCG_RUNS_DIR``, else ``runs``.
+        label: The readable fragment of the run id (overrides ``label``).
+        steps: Run only these steps (overrides ``steps``).
+        budget_usd: The spend ceiling in USD (overrides ``budget_usd``).
+    """
+    from rcp_ndcg.runs.pipeline import Pipeline
+
+    if isinstance(config, RunConfig):
+        data = config.resolved()
+    else:
+        data = RunConfig.load(config, overrides=overrides).resolved()
+        overrides = ()
+    updates = {"label": label, "steps": list(steps) if steps else None, "budget_usd": budget_usd}
+    data.update({key: value for key, value in updates.items() if value is not None})
+    return Pipeline(RunConfig.from_data(data, overrides=overrides), runs_dir=runs_dir)
+
+
+def reopen(
+    run_dir: str | Path,
+    *,
+    overrides: Sequence[str] = (),
+    steps: Sequence[str] | None = None,
+    budget_usd: float | None = None,
+):
+    """The :class:`~rcp_ndcg.runs.pipeline.Pipeline` of an existing run directory, with changes applied.
+
+    Args:
+        run_dir: The run directory.
+        overrides: ``key=value`` overrides applied to the recorded config (each value a YAML literal). They are
+            kept only when the resumed run succeeds (:meth:`~rcp_ndcg.runs.pipeline.Pipeline.run`).
+        steps: Run only these steps now; the run's recorded ``steps`` are not changed.
+        budget_usd: A new spend ceiling in USD.
+    """
+    from rcp_ndcg.runs.pipeline import Pipeline
+
+    pipeline = Pipeline.resume(run_dir, overrides=list(overrides), only=steps)
+    if budget_usd is not None:
+        data = pipeline.config.resolved()
+        data["budget_usd"] = budget_usd
+        pipeline.config = RunConfig.from_data(data)
+    return pipeline
+
+
+def execute_run(pipeline, *, resume: bool = True) -> Run:
+    """Run a prepared pipeline in this process, logging to the run's ``logs/run.log``; return the :class:`Run`.
+
+    With a ``mirror`` in the config, the run directory is restored from it first and mirrored while the pipeline
+    runs (:func:`rcp_ndcg.runs.mirror.mirrored`).
+    """
+    layout = pipeline.layout.ensure()
+    config = pipeline.config
+    with ExitStack() as stack:
+        if config.mirror is not None:
+            stack.enter_context(
+                mirrored(
+                    layout.root, config.mirror, interval_s=config.mirror_interval_s, state_file=layout.mirror_state
+                )
+            )
+        stack.enter_context(_logged(layout))
+        pipeline.run(resume=resume)
+    return Run(layout.root)
+
+
+def mark(run: Run, status: RunStatus) -> None:
+    """Record ``status`` as the run's status in its manifest."""
+    manifest = run.manifest
+    manifest.status = status
+    manifest.save(run.layout)
+
+
+__all__ = [
+    "TERMINAL",
+    "JobState",
+    "Run",
+    "RunState",
+    "StepProgress",
+    "StepState",
+    "execute_run",
+    "mark",
+    "prepare",
+    "reopen",
+]

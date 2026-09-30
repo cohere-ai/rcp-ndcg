@@ -1,0 +1,144 @@
+# What must hold before a change lands. No job needs a secret, and every job runs on CPU torch.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      # The version pinned in uv.lock; ruff needs nothing else from the environment.
+      - run: echo "RUFF=ruff@$(grep -A1 '^name = "ruff"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" >> "$GITHUB_ENV"
+      - run: uvx "$RUFF" format --check .
+      - run: uvx "$RUFF" check .
+
+  types:
+    name: basedpyright
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: .github/scripts/cpu-env.sh dev
+      # src/ and the core package (pyproject.toml [tool.basedpyright] include): zero errors, and it stays that way.
+      - run: uv run --no-sync basedpyright
+
+  test:
+    name: pytest (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # macOS is a non-blocking leg: it catches a torch-only or Linux-only import in the CPU path.
+    continue-on-error: ${{ matrix.os == 'macos-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: .github/scripts/cpu-env.sh dev
+      - run: uv run --no-sync pytest tests/ -q -n 4
+      # Tests write only to temporary directories: the checkout must be as clean as before.
+      - name: the tests left the checkout clean
+        run: |
+          git status --porcelain --untracked-files=all
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+  contract:
+    name: public surface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: .github/scripts/cpu-env.sh dev
+      # The CLI tree, exit codes, public names and JSON Schemas against tests/contract/snapshots and schemas/.
+      - run: uv run --no-sync pytest tests/contract -q
+
+  docs:
+    name: docs, links and examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: .github/scripts/cpu-env.sh dev docs
+      # Every Markdown link and heading anchor resolves, the navigation lists every page, and every offline
+      # snippet and example runs.
+      - run: uv run --no-sync pytest tests/docs -q
+      - run: uv run --no-sync mkdocs build --strict --site-dir "$RUNNER_TEMP/site"
+
+  core-standalone:
+    name: core installs alone
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      # rcp-ndcg-core promises the metric with numpy and pydantic only: install it outside the workspace and check
+      # that it computes RCP-nDCG without importing torch.
+      - run: uv venv "$RUNNER_TEMP/core" --python 3.12
+      - run: uv pip install --python "$RUNNER_TEMP/core/bin/python" ./packages/rcp-ndcg-core
+      - run: |
+          "$RUNNER_TEMP/core/bin/python" - <<'PY'
+          import sys
+
+          from rcp_ndcg_core import PROTOCOLS, gain, ndcg, score_query
+
+          items = {"gamma": [1.2, 1.0, 1.1, 0.9, 0.8], "beta": [-2.0, -0.5, 0.0, 0.8, 1.7]}
+          gains = {d: gain(t, items) for d, t in {"d1": 1.4, "d2": -0.3, "d3": 0.6}.items()}
+          scores = {"d1": 0.9, "d2": 0.7, "d3": 0.2}
+          assert abs(ndcg(scores, gains, k=10) - score_query(scores, gains, protocol=PROTOCOLS["plain"])) < 1e-12
+          assert "torch" not in sys.modules, "rcp_ndcg_core imported torch"
+          print("rcp_ndcg_core alone:", ndcg(scores, gains, k=10))
+          PY
+
+  mteb:
+    name: mteb tasks (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: .github/scripts/cpu-env.sh dev mteb
+      # These tests read the public datasets from the Hugging Face Hub, without a token.
+      - run: uv run --no-sync pytest tests/eval/mteb -q
+        env:
+          RCP_NDCG_NETWORK_TESTS: "1"
+
+  changelog:
+    name: CHANGELOG entry for public-surface changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # A pull request that changes the pinned public surface (tests/contract/snapshots/ or schemas/) must say so in
+      # CHANGELOG.md.
+      - run: |
+          changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          if grep -qE '^(tests/contract/snapshots/|schemas/)' <<<"$changed" && ! grep -qx 'CHANGELOG.md' <<<"$changed"; then
+            echo "The public surface changed (tests/contract/snapshots/ or schemas/) but CHANGELOG.md did not."
+            exit 1
+          fi

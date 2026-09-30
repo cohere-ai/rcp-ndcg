@@ -1,0 +1,178 @@
+{
+  "$defs": {
+    "Family": {
+      "additionalProperties": false,
+      "description": "The poolability token of a set of judgements.\n\nTwo judgements measure the same thing -- and may enter one fit -- only when\nevery field matches: the stage, the judge (model, checkpoint and tokenizer), the prompt,\nthe criteria, the parser, the decoding and the preprocessing that shaped\nwhat the judge saw. key digests them; rubric_key leaves out the judge, which\nis the precondition for pooling several judges with a severity term.",
+      "properties": {
+        "criteria": {
+          "default": [],
+          "description": "The rubric's criterion labels (``C1..C5``); empty for the tournament.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Criteria",
+          "type": "array"
+        },
+        "decoding": {
+          "default": "free",
+          "description": "``\"json_schema\"`` when the endpoint was made to answer in the stage's JSON schema, ``\"free\"`` when it answered in free text (Decoding).",
+          "enum": [
+            "json_schema",
+            "free"
+          ],
+          "title": "Decoding",
+          "type": "string"
+        },
+        "judge_model": {
+          "description": "The served model name (``\"fake\"`` for the offline fake judge).",
+          "title": "Judge Model",
+          "type": "string"
+        },
+        "judge_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge config's ``revision`` as configured (not resolved against the Hub), or ``None``.",
+          "title": "Judge Revision"
+        },
+        "parse_version": {
+          "description": "Version of the parser that reads the answers.",
+          "title": "Parse Version",
+          "type": "integer"
+        },
+        "preprocessing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Digest of the effective preprocessing policy (text caps, chunking, image and video policies), or ``None`` when nothing was declared.",
+          "title": "Preprocessing"
+        },
+        "prompt_hash": {
+          "description": "SHA-256 of the prompt template text.",
+          "title": "Prompt Hash",
+          "type": "string"
+        },
+        "stage": {
+          "description": "``\"tournament\"`` or ``\"rubric\"``.",
+          "enum": [
+            "tournament",
+            "rubric"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "SHA-256 of the judge's ``tokenizer.json``, in whose tokens the text limits and the window budget were counted, or ``None`` when the judge names no tokenizer. It is the judge's, so rubric_key leaves it out with the model.",
+          "title": "Tokenizer"
+        }
+      },
+      "required": [
+        "stage",
+        "judge_model",
+        "prompt_hash",
+        "parse_version"
+      ],
+      "title": "Family",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/calibration.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "``items.json``, the file of a calibration directory that names its layout (``rcp-ndcg.calibration.v1``).",
+  "properties": {
+    "beta": {
+      "description": "Difficulty per criterion (logits).",
+      "items": {
+        "type": "number"
+      },
+      "title": "Beta",
+      "type": "array"
+    },
+    "criteria": {
+      "description": "The criterion labels ``C1..CK``, for a person reading the file; ``K`` is the length of ``gamma``.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Criteria",
+      "type": "array"
+    },
+    "families": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Family"
+      },
+      "description": "``{family_key: Family}`` of the judgements fitted (both stages).",
+      "title": "Families",
+      "type": "object"
+    },
+    "fingerprint": {
+      "description": "16-hex digest of the fit (items, queries, the fit's own abilities), for a person reading the file; extensions record it and are checked against the fit itself.",
+      "title": "Fingerprint",
+      "type": "string"
+    },
+    "gamma": {
+      "description": "Discrimination per criterion (dimensionless, > 0).",
+      "items": {
+        "type": "number"
+      },
+      "title": "Gamma",
+      "type": "array"
+    },
+    "judge_severity": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "description": "``{judge: logit offset}`` of a pooled fit; empty for one judge.",
+      "title": "Judge Severity",
+      "type": "object"
+    },
+    "mode": {
+      "description": "``\"tournament\"`` or ``\"rubric_only\"``.",
+      "enum": [
+        "tournament",
+        "rubric_only"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "schema": {
+      "const": "rcp-ndcg.calibration.v1",
+      "default": "rcp-ndcg.calibration.v1",
+      "title": "Schema",
+      "type": "string"
+    }
+  },
+  "required": [
+    "mode",
+    "criteria",
+    "gamma",
+    "beta",
+    "judge_severity",
+    "families",
+    "fingerprint"
+  ],
+  "title": "CalibrationItems",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.calibration.v1"
+}

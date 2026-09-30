@@ -1,0 +1,2501 @@
+{
+  "$defs": {
+    "BM25Config": {
+      "additionalProperties": false,
+      "description": "Okapi BM25 with ``bm25s``.",
+      "properties": {
+        "kind": {
+          "const": "bm25",
+          "default": "bm25",
+          "title": "Kind",
+          "type": "string"
+        },
+        "stemmer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A Snowball stemmer language of PyStemmer (``english``, ``german``, ``french``, ...) that corpus and queries are stemmed with, or ``None`` for no stemming.",
+          "title": "Stemmer"
+        }
+      },
+      "title": "BM25Config",
+      "type": "object"
+    },
+    "CalibrationOptions": {
+      "additionalProperties": false,
+      "description": "How the calibrate step fits (see rcp_ndcg.calibration.calibrate).",
+      "properties": {
+        "judges": {
+          "default": "single",
+          "enum": [
+            "single",
+            "pooled"
+          ],
+          "title": "Judges",
+          "type": "string"
+        },
+        "mode": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "tournament",
+            "rubric_only"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "priors": {
+          "$ref": "#/$defs/Priors",
+          "default": {
+            "ability_sd": 1.0,
+            "bt_l2": 0.0001,
+            "l2_beta": 0.0001,
+            "l2_gamma": 0.0001,
+            "sigma_alpha": 2.0,
+            "sigma_tau": 1.0
+          }
+        }
+      },
+      "title": "CalibrationOptions",
+      "type": "object"
+    },
+    "CandidatesConfig": {
+      "additionalProperties": false,
+      "description": "Where each query's candidate pool comes from.",
+      "properties": {
+        "depth": {
+          "default": 150,
+          "description": "Candidates per query kept for judging.",
+          "minimum": 1,
+          "title": "Depth",
+          "type": "integer"
+        },
+        "from": {
+          "default": "dataset",
+          "description": "``\"dataset\"`` (the dataset's own pools, else its judged documents), ``\"rankings\"`` (a rankings file of load_rankings) or ``\"retrieval\"`` (first-stage retrieval). Written ``from:`` in YAML.",
+          "enum": [
+            "dataset",
+            "rankings",
+            "retrieval"
+          ],
+          "title": "From",
+          "type": "string"
+        },
+        "rankings": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The rankings file, for ``from: rankings``.",
+          "title": "Rankings"
+        },
+        "rerank": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "cohere": "#/$defs/Cohere",
+                  "local": "#/$defs/Local",
+                  "openai_compatible": "#/$defs/OpenAICompatibleReranker",
+                  "voyage": "#/$defs/Voyage"
+                },
+                "propertyName": "provider"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/Local"
+                },
+                {
+                  "$ref": "#/$defs/OpenAICompatibleReranker"
+                },
+                {
+                  "$ref": "#/$defs/Cohere"
+                },
+                {
+                  "$ref": "#/$defs/Voyage"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A reranker applied to the pools (the ``rerank`` step).",
+          "title": "Rerank"
+        },
+        "retrieval": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "bm25": "#/$defs/BM25Config",
+                  "dense": "#/$defs/DenseConfig",
+                  "late_interaction": "#/$defs/LateInteractionConfig"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/BM25Config"
+                },
+                {
+                  "$ref": "#/$defs/DenseConfig"
+                },
+                {
+                  "$ref": "#/$defs/LateInteractionConfig"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The retriever (RetrieverConfig), for ``from: retrieval``.",
+          "title": "Retrieval"
+        },
+        "system": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The system of a rankings file that holds several.",
+          "title": "System"
+        }
+      },
+      "title": "CandidatesConfig",
+      "type": "object"
+    },
+    "ChunkPolicy": {
+      "additionalProperties": false,
+      "description": "How a long document is split for judging, in tokens of the judge's tokenizer.\n\nA document longer than ``max_tokens`` is split into consecutive chunks of at\nmost ``max_tokens`` tokens, each repeating the last ``overlap_tokens``\ntokens of the previous one, so evidence straddling a boundary is seen\nwhole by one chunk. A chunk is a verbatim slice of the document between\ntoken boundaries. Chunk ``k`` of document ``d`` has the id ``d#k`` (``k``\nfrom 0). The judge sees every chunk, and a document's judgements are pooled\nby ``aggregate``: within one window, a document passes a criterion when any\nof its chunks does, and its tournament score is its best chunk's.",
+      "properties": {
+        "aggregate": {
+          "const": "max",
+          "default": "max",
+          "description": "How chunk judgements pool onto their document (``\"max\"``).",
+          "title": "Aggregate",
+          "type": "string"
+        },
+        "max_tokens": {
+          "description": "The largest chunk, and the length above which a document is split (tokens).",
+          "minimum": 1,
+          "title": "Max Tokens",
+          "type": "integer"
+        },
+        "overlap_tokens": {
+          "description": "Tokens shared by consecutive chunks (``< max_tokens``).",
+          "minimum": 0,
+          "title": "Overlap Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_tokens",
+        "overlap_tokens"
+      ],
+      "title": "ChunkPolicy",
+      "type": "object"
+    },
+    "Cohere": {
+      "additionalProperties": false,
+      "description": "Cohere's public API: Embed v4 (``embed-v4.0``, which also embeds page images) and Rerank 4 Pro and Fast\n(``rerank-v4.0-pro``, ``rerank-v4.0-fast``). The key is read from ``api_key_env``, else ``CO_API_KEY`` or\n``COHERE_API_KEY``. A rerank request carries up to ``batch_size`` documents (default 100, the API's search\nunit).",
+      "properties": {
+        "api_key_env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "title": "Base Url"
+        },
+        "batch_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Batch Size"
+        },
+        "concurrency": {
+          "default": 64,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "max_retries": {
+          "default": 8,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "provider": {
+          "const": "cohere",
+          "default": "cohere",
+          "title": "Provider",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "timeout_s": {
+          "default": 120.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "title": "Cohere",
+      "type": "object"
+    },
+    "DatasetSource": {
+      "anyOf": [
+        {
+          "description": "The dataset URI alone.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The dataset of a run: a load_dataset URI and its arguments.\n\nWritten as the URI alone (``dataset: jsonl:rows.jsonl``) or as a mapping.\n\nAttributes:\n    uri: The dataset URI (``hf://``, ``suite:``, ``beir:``, ``jsonl:``, ``images:``, ...).\n    subset: The subset of a ``hf://`` repository or ``suite:``.\n    revision: The Hub revision.\n    options: Reader options of the reader schemes (e.g. ``qrels_uri`` for ``images:``).",
+          "properties": {
+            "options": {
+              "additionalProperties": true,
+              "title": "Options",
+              "type": "object"
+            },
+            "revision": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Revision"
+            },
+            "subset": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Subset"
+            },
+            "uri": {
+              "title": "Uri",
+              "type": "string"
+            }
+          },
+          "required": [
+            "uri"
+          ],
+          "title": "DatasetSource",
+          "type": "object"
+        }
+      ]
+    },
+    "DenseConfig": {
+      "additionalProperties": false,
+      "description": "One vector per text, searched by inner product.",
+      "properties": {
+        "encoder": {
+          "discriminator": {
+            "mapping": {
+              "cohere": "#/$defs/Cohere",
+              "gemini": "#/$defs/Gemini",
+              "local": "#/$defs/LocalEncoder",
+              "openai_compatible": "#/$defs/OpenAICompatibleEncoder",
+              "voyage": "#/$defs/Voyage"
+            },
+            "propertyName": "provider"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/LocalEncoder"
+            },
+            {
+              "$ref": "#/$defs/OpenAICompatibleEncoder"
+            },
+            {
+              "$ref": "#/$defs/Cohere"
+            },
+            {
+              "$ref": "#/$defs/Voyage"
+            },
+            {
+              "$ref": "#/$defs/Gemini"
+            }
+          ],
+          "title": "Encoder"
+        },
+        "kind": {
+          "const": "dense",
+          "default": "dense",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "encoder"
+      ],
+      "title": "DenseConfig",
+      "type": "object"
+    },
+    "EvaluationOptions": {
+      "additionalProperties": false,
+      "description": "What the evaluate step scores.",
+      "properties": {
+        "k": {
+          "default": 10,
+          "description": "The metric cutoff.",
+          "minimum": 1,
+          "title": "K",
+          "type": "integer"
+        },
+        "systems": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "``{name: rankings file}`` of further systems to score with the run's calibration, next to the run's reference systems (``candidates``, the pool order, and ``judge``, the judge's own abilities). A file of one system is scored under ``name``; ``<file>#<system>`` picks one system of a file that holds several; a file of several systems without ``#`` scores each under its own name.",
+          "title": "Systems",
+          "type": "object"
+        }
+      },
+      "title": "EvaluationOptions",
+      "type": "object"
+    },
+    "Gemini": {
+      "additionalProperties": false,
+      "description": "Google's Gemini embedding API (``gemini-embedding-001``). The key is read from ``api_key_env``, else\n``GEMINI_API_KEY`` or ``GOOGLE_API_KEY``.",
+      "properties": {
+        "api_key_env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "title": "Base Url"
+        },
+        "batch_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Batch Size"
+        },
+        "concurrency": {
+          "default": 64,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "max_retries": {
+          "default": 8,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "provider": {
+          "const": "gemini",
+          "default": "gemini",
+          "title": "Provider",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "timeout_s": {
+          "default": 120.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "title": "Gemini",
+      "type": "object"
+    },
+    "ImagePolicy": {
+      "additionalProperties": false,
+      "description": "The pixel budget every page image and video frame is resized to, and the processor whose resize is used.\n\nBudget both or neither: without one, images go at their stored size and the engine's processor decides\n(native), so their token cost cannot be counted. With a known processor the budget must lie within\nthe engines' default budget for it (PROCESSORS), so the engine keeps the prepared size.",
+      "properties": {
+        "max_px": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The most pixels an image is scaled down to.",
+          "title": "Max Px"
+        },
+        "min_px": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The fewest pixels an image is scaled up to.",
+          "title": "Min Px"
+        },
+        "processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge's image processor family (ImageProcessor). Left unset in a declared policy: the judging pass takes it from the judge config's ``image_processor`` (for_processor), so the recorded policy names it. ``None`` in an effective policy means the family is unknown, and images are sent unchanged.",
+          "title": "Processor"
+        }
+      },
+      "title": "ImagePolicy",
+      "type": "object"
+    },
+    "JudgeConfig": {
+      "additionalProperties": false,
+      "description": "One judge: an OpenAI-compatible Endpoint with sampling settings.\n\nThe endpoint fields (``model``, ``revision``, ``api_key_env``, ``concurrency``, the timeouts and\nretries) are Endpoint's; ``revision`` is recorded in the judgement\nfamily, so two checkpoints served under one name never pool.",
+      "properties": {
+        "allow_floating_model": {
+          "default": false,
+          "description": "Accept an undated model alias on the OpenAI API. An alias (``gpt-5``) moves between snapshots, so judgements recorded against it are not reproducible; by default only a dated snapshot (``gpt-5-2025-08-07``) is accepted.",
+          "title": "Allow Floating Model",
+          "type": "boolean"
+        },
+        "api_key_env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``, or a list of replica URLs of the same served model (each request goes to the live replica with the fewest requests in flight); ``fake://`` for the offline judge. Required.",
+          "title": "Base Url"
+        },
+        "concurrency": {
+          "default": 64,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "context_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The prompt and completion tokens one request may hold (the served context window, or a hosted API's input limit when that is lower); sizes the per-window text budget, counted with ``tokenizer``. ``None``, or no ``tokenizer``, sends every document whole.",
+          "title": "Context Tokens"
+        },
+        "decoding": {
+          "default": "free",
+          "description": "``\"json_schema\"``: each tournament and rubric request carries the stage's answer schema as ``response_format`` (vLLM, SGLang and the OpenAI API constrain the answer to it), and the judgement family records it; an endpoint that refuses the schema fails the pass with a CapabilityError. ``\"free\"`` (the default): the judge answers in free text.",
+          "enum": [
+            "json_schema",
+            "free"
+          ],
+          "title": "Decoding",
+          "type": "string"
+        },
+        "extra_body": {
+          "additionalProperties": true,
+          "description": "Further request fields the endpoint understands (e.g. ``reasoning_effort``, ``chat_template_kwargs``).",
+          "title": "Extra Body",
+          "type": "object"
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The served model's image processor family (``qwen2_vl``, ``qwen2_5_vl``, ``qwen3_vl``; PROCESSORS). The client resizes every image and video frame exactly as that processor would, within the pass's pixel budget, so the engine needs no media flags. ``None`` (the default): the family is unknown, and images are sent unchanged, as stored.",
+          "title": "Image Processor"
+        },
+        "max_images": {
+          "default": 0,
+          "description": "Images the served model accepts per request; 0 (the default) means it reads none.",
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
+        "max_output_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Completion token cap per request, reasoning included (sent as ``max_completion_tokens``); ``None`` leaves it to the endpoint.",
+          "title": "Max Output Tokens"
+        },
+        "max_retries": {
+          "default": 2,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "max_videos": {
+          "default": 0,
+          "description": "Video containers the served model accepts per request; 0 (the default) means it reads none. There is no \"unlimited\": a multimodal judge declares its limits, which the server's per-request media limits must allow, and which are the ceiling a window's media is checked against.",
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "price": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Price"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Token prices; ``None`` when unknown (costs are then reported as unknown, never 0)."
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "temperature": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Sampling temperature; ``None`` (the default) sends none, so the server's default applies (some reasoning models reject a temperature).",
+          "title": "Temperature"
+        },
+        "timeout_s": {
+          "default": 600.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The served model's tokenizer, in whose tokens text limits and the window budget are counted: a Hugging Face repository id with an optional ``@revision`` (``Qwen/Qwen3.5-397B-A17B-FP8``), or a local path to a ``tokenizer.json`` (load_tokenizer; ``[hf]`` extra). ``None`` (the default): no text is cut, so only ``on_overflow: keep`` runs, and estimates approximate tokens from characters. The file's SHA-256 enters the judgement family.",
+          "title": "Tokenizer"
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How long a request waits while the endpoint is down before BackendUnavailableError; ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
+        }
+      },
+      "required": [
+        "base_url",
+        "model"
+      ],
+      "title": "JudgeConfig",
+      "type": "object"
+    },
+    "KubernetesOptions": {
+      "additionalProperties": false,
+      "description": "The ``kubernetes`` runner's options.",
+      "properties": {
+        "backoff_limit": {
+          "default": 0,
+          "description": "Pod retries before the Job fails; a retried pod resumes the run from its mirror.",
+          "minimum": 0,
+          "title": "Backoff Limit",
+          "type": "integer"
+        },
+        "context": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The kubectl context; default the current one.",
+          "title": "Context"
+        },
+        "engine_node_selector": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The engine pods' node selector (a StatefulSet of several replicas).",
+          "title": "Engine Node Selector",
+          "type": "object"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Env",
+          "type": "object"
+        },
+        "image": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The coordinator's image: a stock image with uv and Python 3.12 (default COORDINATOR_IMAGE); a job's own image wins.",
+          "title": "Image"
+        },
+        "namespace": {
+          "default": "default",
+          "description": "Where the Job goes.",
+          "title": "Namespace",
+          "type": "string"
+        },
+        "node_selector": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The coordinator pod's node selector.",
+          "title": "Node Selector",
+          "type": "object"
+        },
+        "resources": {
+          "$ref": "#/$defs/Resources",
+          "default": {
+            "cpus": null,
+            "gpus": 0,
+            "memory_gb": null,
+            "time_limit_s": null
+          }
+        },
+        "secrets": {
+          "description": "Secret names exposed to every container as environment (``envFrom``), e.g. an HF token or the mirror's credentials.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Secrets",
+          "type": "array"
+        },
+        "service_account": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The pods' service account.",
+          "title": "Service Account"
+        },
+        "ttl_seconds_after_finished": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When a finished Job (and the engines it owns) is deleted.",
+          "title": "Ttl Seconds After Finished"
+        }
+      },
+      "title": "KubernetesOptions",
+      "type": "object"
+    },
+    "KubernetesRunnerConfig": {
+      "additionalProperties": false,
+      "description": "Run as one Kubernetes ``batch/v1`` Job.",
+      "properties": {
+        "name": {
+          "const": "kubernetes",
+          "title": "Name",
+          "type": "string"
+        },
+        "options": {
+          "$ref": "#/$defs/KubernetesOptions",
+          "default": {
+            "backoff_limit": 0,
+            "context": null,
+            "engine_node_selector": {},
+            "env": {},
+            "image": null,
+            "namespace": "default",
+            "node_selector": {},
+            "resources": {
+              "cpus": null,
+              "gpus": 0,
+              "memory_gb": null,
+              "time_limit_s": null
+            },
+            "secrets": [],
+            "service_account": null,
+            "ttl_seconds_after_finished": null
+          }
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "KubernetesRunnerConfig",
+      "type": "object"
+    },
+    "LateInteractionConfig": {
+      "additionalProperties": false,
+      "description": "One vector per token, searched by MaxSim; the encoder is a vLLM model with ``pooling: token``.",
+      "properties": {
+        "encoder": {
+          "discriminator": {
+            "mapping": {
+              "local": "#/$defs/LocalEncoder",
+              "openai_compatible": "#/$defs/OpenAICompatibleEncoder"
+            },
+            "propertyName": "provider"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/LocalEncoder"
+            },
+            {
+              "$ref": "#/$defs/OpenAICompatibleEncoder"
+            }
+          ],
+          "title": "Encoder"
+        },
+        "kind": {
+          "const": "late_interaction",
+          "default": "late_interaction",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "encoder"
+      ],
+      "title": "LateInteractionConfig",
+      "type": "object"
+    },
+    "Local": {
+      "additionalProperties": false,
+      "description": "Weights this package loads in process (the ``[local]`` extra).\n\nAs a reranker: Qwen3-Reranker, ZeRank, ctxl-rerank or Jina reranker v3, the implementation picked from the model\nid.",
+      "properties": {
+        "batch_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Texts per forward pass; ``None`` for the model's default. ZeRank and Jina batch on their own and refuse it.",
+          "title": "Batch Size"
+        },
+        "model": {
+          "description": "The Hub repo id or a local path.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "provider": {
+          "const": "local",
+          "default": "local",
+          "title": "Provider",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Hub revision (commit, tag or branch) loaded; ``None`` is the default branch.",
+          "title": "Revision"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "title": "Local",
+      "type": "object"
+    },
+    "LocalEncoder": {
+      "additionalProperties": false,
+      "description": "An embedding model run in this process.",
+      "properties": {
+        "batch_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Texts per forward pass; ``None`` for the model's default. ZeRank and Jina batch on their own and refuse it.",
+          "title": "Batch Size"
+        },
+        "doc_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Text prepended to every document, as the model's recipe defines it (Octen: ``\"- \"``).",
+          "title": "Doc Prompt"
+        },
+        "engine": {
+          "default": "hf",
+          "description": "``hf`` (transformers, last-token pooling) or ``vllm`` (an in-process vLLM engine, the ``[vllm]`` extra; for corpus-scale late-interaction indexes, whose vectors are too many to send over HTTP).",
+          "enum": [
+            "hf",
+            "vllm"
+          ],
+          "title": "Engine",
+          "type": "string"
+        },
+        "model": {
+          "description": "The Hub repo id or a local path.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "pooling": {
+          "description": "``last``, ``mean`` or ``cls`` for one vector per text, ``token`` for one per token (late interaction). ``hf`` pools the last token; ``vllm`` serves ``token`` as its ``token_embed`` task and the others as ``embed`` (the model's own pooler).",
+          "enum": [
+            "mean",
+            "cls",
+            "last",
+            "token"
+          ],
+          "title": "Pooling",
+          "type": "string"
+        },
+        "provider": {
+          "const": "local",
+          "default": "local",
+          "title": "Provider",
+          "type": "string"
+        },
+        "query_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Text prepended to every query (``vllm``).",
+          "title": "Query Prompt"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Hub revision (commit, tag or branch) loaded; ``None`` is the default branch.",
+          "title": "Revision"
+        }
+      },
+      "required": [
+        "model",
+        "pooling"
+      ],
+      "title": "LocalEncoder",
+      "type": "object"
+    },
+    "LocalOptions": {
+      "additionalProperties": false,
+      "description": "The ``local`` runner's options.",
+      "properties": {
+        "cwd": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The working directory; default the caller's.",
+          "title": "Cwd"
+        },
+        "detach": {
+          "default": false,
+          "description": "Return at once and run the jobs in the background (needs ``log_dir``).",
+          "title": "Detach",
+          "type": "boolean"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Env",
+          "type": "object"
+        },
+        "log_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Each job's output goes to ``<log_dir>/<name>.log`` instead of the terminal.",
+          "title": "Log Dir"
+        },
+        "resources": {
+          "$ref": "#/$defs/Resources",
+          "default": {
+            "cpus": null,
+            "gpus": 0,
+            "memory_gb": null,
+            "time_limit_s": null
+          }
+        }
+      },
+      "title": "LocalOptions",
+      "type": "object"
+    },
+    "LocalRunnerConfig": {
+      "additionalProperties": false,
+      "description": "Run on this host (in this process, unless ``run start --runner local`` or ``--detach``).",
+      "properties": {
+        "name": {
+          "const": "local",
+          "default": "local",
+          "title": "Name",
+          "type": "string"
+        },
+        "options": {
+          "$ref": "#/$defs/LocalOptions",
+          "default": {
+            "cwd": null,
+            "detach": false,
+            "env": {},
+            "log_dir": null,
+            "resources": {
+              "cpus": null,
+              "gpus": 0,
+              "memory_gb": null,
+              "time_limit_s": null
+            }
+          }
+        }
+      },
+      "title": "LocalRunnerConfig",
+      "type": "object"
+    },
+    "OpenAICompatibleEncoder": {
+      "additionalProperties": false,
+      "description": "A served embedding model.\n\nOne vector per text through ``POST <base_url>/embeddings`` (vLLM's OpenAI-compatible route, or OpenAI's API at\n``https://api.openai.com/v1`` with ``api_key_env: OPENAI_API_KEY``); with ``pooling: token``, one vector per\ntoken through vLLM's ``/pooling`` route (late interaction).",
+      "properties": {
+        "api_key_env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "minLength": 1,
+          "title": "Base Url",
+          "type": "string"
+        },
+        "batch_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Batch Size"
+        },
+        "concurrency": {
+          "default": 8,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "doc_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Text prepended to every document.",
+          "title": "Doc Prompt"
+        },
+        "max_retries": {
+          "default": 4,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "pooling": {
+          "anyOf": [
+            {
+              "const": "token",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``token`` for late interaction; ``None`` (the server's pooler) for one vector per text.",
+          "title": "Pooling"
+        },
+        "provider": {
+          "const": "openai_compatible",
+          "default": "openai_compatible",
+          "title": "Provider",
+          "type": "string"
+        },
+        "query_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Text prepended to every query.",
+          "title": "Query Prompt"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "timeout_s": {
+          "default": 600.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "base_url",
+        "model"
+      ],
+      "title": "OpenAICompatibleEncoder",
+      "type": "object"
+    },
+    "OpenAICompatibleReranker": {
+      "additionalProperties": false,
+      "description": "A served ``/rerank`` endpoint (``vllm serve <model> --runner pooling``); ``base_url`` is the server root.",
+      "properties": {
+        "api_key_env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "minLength": 1,
+          "title": "Base Url",
+          "type": "string"
+        },
+        "batch_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Batch Size"
+        },
+        "concurrency": {
+          "default": 8,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "max_retries": {
+          "default": 4,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "provider": {
+          "const": "openai_compatible",
+          "default": "openai_compatible",
+          "title": "Provider",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "timeout_s": {
+          "default": 600.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "base_url",
+        "model"
+      ],
+      "title": "OpenAICompatibleReranker",
+      "type": "object"
+    },
+    "PluginRunnerConfig": {
+      "additionalProperties": false,
+      "description": "Run on a runner another installed package registers under the ``rcp_ndcg.runners`` entry-point group; its\noptions are that runner's (``resources``, ``image`` and ``env`` describe the job).",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "options": {
+          "additionalProperties": true,
+          "title": "Options",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "PluginRunnerConfig",
+      "type": "object"
+    },
+    "Preprocessing": {
+      "additionalProperties": false,
+      "description": "The effective preprocessing of one judging pass: part of its identity and of its judgement family.",
+      "properties": {
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The chunk geometry in effect: the text policy's own (``on_overflow: chunk``) or one the judging pass applies to candidates longer than ``chunk.max_tokens``. ``None``: documents are judged whole."
+        },
+        "image": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The pixel budget of page images and video frames, or ``None`` for text."
+        },
+        "text": {
+          "$ref": "#/$defs/TextPolicy",
+          "default": {
+            "max_tokens": null,
+            "on_overflow": "keep"
+          },
+          "description": "The per-document text policy."
+        },
+        "video": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Which frames of a video the judge sees and how they travel, or ``None`` (no video, or every frame as the corpus holds it)."
+        }
+      },
+      "title": "Preprocessing",
+      "type": "object"
+    },
+    "Price": {
+      "additionalProperties": false,
+      "description": "Token prices of the judge, in USD per million tokens.",
+      "properties": {
+        "cached_input_usd_per_mtok": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Prompt tokens served from the vendor's cache; ``None`` bills them as input.",
+          "title": "Cached Input Usd Per Mtok"
+        },
+        "input_usd_per_mtok": {
+          "description": "Prompt tokens.",
+          "minimum": 0,
+          "title": "Input Usd Per Mtok",
+          "type": "number"
+        },
+        "output_usd_per_mtok": {
+          "description": "Completion tokens (reasoning included).",
+          "minimum": 0,
+          "title": "Output Usd Per Mtok",
+          "type": "number"
+        }
+      },
+      "required": [
+        "input_usd_per_mtok",
+        "output_usd_per_mtok"
+      ],
+      "title": "Price",
+      "type": "object"
+    },
+    "Priors": {
+      "additionalProperties": false,
+      "description": "The priors and penalties of the calibration fit; the defaults are the paper's.",
+      "properties": {
+        "ability_sd": {
+          "default": 1.0,
+          "description": "Prior standard deviation of the latent ability (rubric-only mode; logits).",
+          "exclusiveMinimum": 0,
+          "title": "Ability Sd",
+          "type": "number"
+        },
+        "bt_l2": {
+          "default": 0.0001,
+          "description": "L2 penalty of the Bradley-Terry abilities the tournament mode refits from the tournament's windows (logits^-2). The default is the paper's, which the tournament's live fit uses while judging; the judgement store records it.",
+          "minimum": 0,
+          "title": "Bt L2",
+          "type": "number"
+        },
+        "l2_beta": {
+          "default": 0.0001,
+          "description": "L2 penalty on ``beta_k`` (tournament mode; logits^-2).",
+          "minimum": 0,
+          "title": "L2 Beta",
+          "type": "number"
+        },
+        "l2_gamma": {
+          "default": 0.0001,
+          "description": "L2 penalty on ``log gamma_k`` (tournament mode).",
+          "minimum": 0,
+          "title": "L2 Gamma",
+          "type": "number"
+        },
+        "sigma_alpha": {
+          "default": 2.0,
+          "description": "Prior standard deviation of ``alpha_q`` (tournament mode; logits).",
+          "exclusiveMinimum": 0,
+          "title": "Sigma Alpha",
+          "type": "number"
+        },
+        "sigma_tau": {
+          "default": 1.0,
+          "description": "Prior standard deviation of ``tau_q - 1`` (tournament mode; dimensionless).",
+          "exclusiveMinimum": 0,
+          "title": "Sigma Tau",
+          "type": "number"
+        }
+      },
+      "title": "Priors",
+      "type": "object"
+    },
+    "Resources": {
+      "additionalProperties": false,
+      "description": "What one task of a job needs from the scheduler. ``None`` leaves it to the scheduler's default.",
+      "properties": {
+        "cpus": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cpus"
+        },
+        "gpus": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Gpus",
+          "type": "integer"
+        },
+        "memory_gb": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Gb"
+        },
+        "time_limit_s": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time Limit S"
+        }
+      },
+      "title": "Resources",
+      "type": "object"
+    },
+    "RubricSchedule": {
+      "additionalProperties": false,
+      "description": "The Stage B schedule; the defaults are the paper's.",
+      "properties": {
+        "prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A prompt name or file; ``None`` uses the shipped rubric prompt (criteria C1..C5) for the corpus's modality.",
+          "title": "Prompt"
+        },
+        "random_windows": {
+          "default": 50,
+          "description": "How many of them are balanced random windows; the rest are stratified.",
+          "minimum": 1,
+          "title": "Random Windows",
+          "type": "integer"
+        },
+        "seed": {
+          "default": 42,
+          "description": "Seed of the window draws (each query draws from its own stream).",
+          "title": "Seed",
+          "type": "integer"
+        },
+        "window": {
+          "default": 10,
+          "description": "Documents per window.",
+          "minimum": 1,
+          "title": "Window",
+          "type": "integer"
+        },
+        "windows_per_query": {
+          "default": 100,
+          "description": "Windows per query (raised to ``ceil(n / window)`` so every document, or every chunk of a chunked document, is seen).",
+          "minimum": 1,
+          "title": "Windows Per Query",
+          "type": "integer"
+        }
+      },
+      "title": "RubricSchedule",
+      "type": "object"
+    },
+    "ServeConfig": {
+      "additionalProperties": false,
+      "description": "The engine replicas a run's job starts for its judge.",
+      "properties": {
+        "command": {
+          "description": "The command that starts one replica, verbatim: an argv list, or one shell-quoted string. It must serve the judge's ``model`` name on ``port`` on all interfaces (``--host 0.0.0.0``) when there are several replicas.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Command",
+          "type": "array"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Environment of the engine (e.g. ``HF_HOME``).",
+          "title": "Env",
+          "type": "object"
+        },
+        "image": {
+          "description": "The engine's container image, e.g. ``vllm/vllm-openai:<tag>`` or ``lmsysorg/sglang:<tag>``; pin the tag. With the SLURM runner's ``container_runtime: none``, the command runs on the node instead.",
+          "minLength": 1,
+          "title": "Image",
+          "type": "string"
+        },
+        "nodes_per_replica": {
+          "default": 1,
+          "description": "Nodes one replica spans. Reserved: only 1 is implemented.",
+          "minimum": 1,
+          "title": "Nodes Per Replica",
+          "type": "integer"
+        },
+        "outage_timeout_s": {
+          "default": 900,
+          "description": "Seconds the judge of the job waits while every replica is down before it fails with ``BackendUnavailableError`` (it becomes the judge's ``wait_on_outage_s`` in the job).",
+          "minimum": 0,
+          "title": "Outage Timeout S",
+          "type": "integer"
+        },
+        "port": {
+          "default": 8000,
+          "description": "The port each replica serves on.",
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        },
+        "readiness_path": {
+          "default": "/v1/models",
+          "description": "The path that answers once a replica serves (``GET``, any 2xx).",
+          "pattern": "^/[A-Za-z0-9/_.~%=&?-]*$",
+          "title": "Readiness Path",
+          "type": "string"
+        },
+        "replicas": {
+          "default": 1,
+          "description": "Independent engine replicas, one URL each; the judge sends each request to the one with the fewest requests in flight.",
+          "minimum": 1,
+          "title": "Replicas",
+          "type": "integer"
+        },
+        "resources": {
+          "$ref": "#/$defs/Resources",
+          "default": {
+            "cpus": null,
+            "gpus": 0,
+            "memory_gb": null,
+            "time_limit_s": null
+          },
+          "description": "What one replica needs (``gpus``, ``cpus``, ``memory_gb``)."
+        },
+        "startup_timeout_s": {
+          "default": 1800,
+          "description": "Seconds a job waits for a replica to answer ``readiness_path`` before it fails; an engine that exits before it answers fails the job at once. 0 fails unless the first probe answers.",
+          "minimum": 0,
+          "title": "Startup Timeout S",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "image",
+        "command"
+      ],
+      "title": "ServeConfig",
+      "type": "object"
+    },
+    "SlurmOptions": {
+      "additionalProperties": false,
+      "description": "The ``slurm`` runner's options.",
+      "properties": {
+        "account": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``--account``.",
+          "title": "Account"
+        },
+        "container_mounts": {
+          "description": "``host:container`` bind mounts (the run directory, an HF cache).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Container Mounts",
+          "type": "array"
+        },
+        "container_runtime": {
+          "default": "none",
+          "description": "``none``, ``apptainer`` or ``pyxis``; applies to the coordinator and the engines.",
+          "enum": [
+            "none",
+            "apptainer",
+            "pyxis"
+          ],
+          "title": "Container Runtime",
+          "type": "string"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Env",
+          "type": "object"
+        },
+        "image": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The coordinator's container image, for a container runtime (default COORDINATOR_IMAGE); a job's own image wins.",
+          "title": "Image"
+        },
+        "log_dir": {
+          "default": "logs/slurm",
+          "description": "Where ``--output`` goes (``<log_dir>/<job>-<id>.out``).",
+          "title": "Log Dir",
+          "type": "string"
+        },
+        "partition": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``--partition``.",
+          "title": "Partition"
+        },
+        "qos": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``--qos``.",
+          "title": "Qos"
+        },
+        "resources": {
+          "$ref": "#/$defs/Resources",
+          "default": {
+            "cpus": null,
+            "gpus": 0,
+            "memory_gb": null,
+            "time_limit_s": null
+          }
+        },
+        "sbatch_args": {
+          "description": "Further ``#SBATCH`` arguments, verbatim (e.g. ``--constraint=a100``).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Sbatch Args",
+          "type": "array"
+        },
+        "setup": {
+          "description": "Shell lines run first (``module load``, venv activation).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Setup",
+          "type": "array"
+        },
+        "workdir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The directory the coordinator runs in (default: sbatch's working directory).",
+          "title": "Workdir"
+        }
+      },
+      "title": "SlurmOptions",
+      "type": "object"
+    },
+    "SlurmRunnerConfig": {
+      "additionalProperties": false,
+      "description": "Run as one ``sbatch`` job.",
+      "properties": {
+        "name": {
+          "const": "slurm",
+          "title": "Name",
+          "type": "string"
+        },
+        "options": {
+          "$ref": "#/$defs/SlurmOptions",
+          "default": {
+            "account": null,
+            "container_mounts": [],
+            "container_runtime": "none",
+            "env": {},
+            "image": null,
+            "log_dir": "logs/slurm",
+            "partition": null,
+            "qos": null,
+            "resources": {
+              "cpus": null,
+              "gpus": 0,
+              "memory_gb": null,
+              "time_limit_s": null
+            },
+            "sbatch_args": [],
+            "setup": [],
+            "workdir": null
+          }
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SlurmRunnerConfig",
+      "type": "object"
+    },
+    "TextPolicy": {
+      "additionalProperties": false,
+      "description": "What happens to a document's text before a judge reads it (see OnOverflow).\n\nFrozen: a policy is config, and a mutable config object is how \"which cap\napplied\" stops being answerable after the fact.",
+      "properties": {
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``chunk`` only: the chunk geometry."
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The cap, in tokens of the judge's tokenizer (``judge.tokenizer``). ``truncate`` and ``fail`` default it to DEFAULT_MAX_TOKENS; ``chunk`` takes it from ``chunk.max_tokens``; ``keep`` has none.",
+          "title": "Max Tokens"
+        },
+        "on_overflow": {
+          "default": "keep",
+          "description": "``keep``, ``truncate``, ``chunk`` or ``fail``.",
+          "enum": [
+            "keep",
+            "truncate",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
+        }
+      },
+      "title": "TextPolicy",
+      "type": "object"
+    },
+    "TournamentSchedule": {
+      "additionalProperties": false,
+      "description": "The Stage A schedule; the defaults are the paper's.",
+      "properties": {
+        "adaptive_batches": {
+          "default": 7,
+          "description": "Adaptive batches, with a Bradley-Terry refit after each.",
+          "minimum": 0,
+          "title": "Adaptive Batches",
+          "type": "integer"
+        },
+        "adaptive_depth": {
+          "default": 150,
+          "description": "Adaptive windows are drawn from the top ``adaptive_depth`` documents.",
+          "minimum": 2,
+          "title": "Adaptive Depth",
+          "type": "integer"
+        },
+        "adaptive_window": {
+          "default": 10,
+          "description": "Documents per adaptive window.",
+          "minimum": 2,
+          "title": "Adaptive Window",
+          "type": "integer"
+        },
+        "adaptive_windows_per_batch": {
+          "default": 8,
+          "description": "Adaptive windows per batch.",
+          "minimum": 0,
+          "title": "Adaptive Windows Per Batch",
+          "type": "integer"
+        },
+        "mirror": {
+          "default": true,
+          "description": "Also send every random and stratified window in reverse order.",
+          "title": "Mirror",
+          "type": "boolean"
+        },
+        "overlap_discount": {
+          "default": 0.3,
+          "description": "Factor applied to a boundary's value once a selected window covers it.",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Overlap Discount",
+          "type": "number"
+        },
+        "prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A prompt name or file; ``None`` uses the shipped tournament prompt for the corpus's modality.",
+          "title": "Prompt"
+        },
+        "random_windows": {
+          "default": 53,
+          "description": "Balanced random windows per query.",
+          "minimum": 0,
+          "title": "Random Windows",
+          "type": "integer"
+        },
+        "seed": {
+          "default": 42,
+          "description": "Seed of the window draws (each query draws from its own stream).",
+          "title": "Seed",
+          "type": "integer"
+        },
+        "stratified_windows": {
+          "default": 27,
+          "description": "Windows over tiers of the preliminary ability, per query.",
+          "minimum": 0,
+          "title": "Stratified Windows",
+          "type": "integer"
+        },
+        "window": {
+          "default": 10,
+          "description": "Documents per random and stratified window.",
+          "minimum": 2,
+          "title": "Window",
+          "type": "integer"
+        }
+      },
+      "title": "TournamentSchedule",
+      "type": "object"
+    },
+    "VideoPolicy": {
+      "additionalProperties": false,
+      "description": "Which frames of a video the judge is shown, and which videos it may be shown at all.\n\nOne sampling rule: ``num_frames`` frames at uniformly spaced indices over the\nwhole clip (uniform_frame_indices), the rule both serving engines apply\nto a decoded container. It is the only rule whose realised frame count is fixed\nby the policy -- a frames-per-second rule shows a 10-second clip 20 frames and a\n10-minute clip 1200, so two runs \"at 2 fps\" would share a judgement family while\nshowing the judge different amounts of video.\n\nA clip with fewer frames than ``num_frames`` is refused, not shown whole: the\nengines disagree about it (SGLang rejects the request, vLLM resamples at its\nprocessor's own rate), so no single number of frames could be recorded for it.\nA container's frame count must therefore be recorded at ingest\n(``hash_media=True``) before it can be judged over ``video_url``.\n\n``wire`` is how the judge receives the frames, and it is part of the\ninstrument. ``frames`` (client-sampled): the client picks the frames from the\ncorpus's pre-extracted frames and sends each, sized by the image policy, as its\nown image, which any OpenAI-compatible endpoint accepts. ``video_url``\n(engine-sampled, an opt-in for models with a native video encoder): the container\nis sent unchanged and the engine decodes and samples it (Qwen-VL towers then merge\nframe pairs in time and see timestamps). The same clips judged both ways are\ndifferent measurements, so the wire is part of the policy and a corpus whose\nvideos do not match it is refused.\n\n``max_duration_s`` is a refusal, not a cut: uniform sampling of a long clip\nspreads the same frame budget ever thinner, so a corpus that declares it refuses\nany video whose recorded duration exceeds it -- or whose duration was never\nrecorded -- rather than judging it at a density nobody chose.",
+      "properties": {
+        "max_duration_s": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Duration S"
+        },
+        "num_frames": {
+          "exclusiveMinimum": 0,
+          "title": "Num Frames",
+          "type": "integer"
+        },
+        "wire": {
+          "enum": [
+            "frames",
+            "video_url"
+          ],
+          "title": "Wire",
+          "type": "string"
+        }
+      },
+      "required": [
+        "num_frames",
+        "wire"
+      ],
+      "title": "VideoPolicy",
+      "type": "object"
+    },
+    "Voyage": {
+      "additionalProperties": false,
+      "description": "Voyage AI's public API (``voyage-3-large``, ``rerank-2.5``, ``rerank-2.5-lite``, ...). The key is read from\n``api_key_env``, else ``VOYAGE_API_KEY``. A rerank request carries up to ``batch_size`` documents (default 20).",
+      "properties": {
+        "api_key_env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "title": "Base Url"
+        },
+        "batch_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Batch Size"
+        },
+        "concurrency": {
+          "default": 64,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "max_retries": {
+          "default": 8,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "provider": {
+          "const": "voyage",
+          "default": "voyage",
+          "title": "Provider",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "timeout_s": {
+          "default": 120.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "title": "Voyage",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/run-config.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The resolved configuration of one run.",
+  "properties": {
+    "budget_usd": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Spend ceiling of the judging steps, USD.",
+      "title": "Budget Usd"
+    },
+    "calibration": {
+      "$ref": "#/$defs/CalibrationOptions",
+      "default": {
+        "judges": "single",
+        "mode": "auto",
+        "priors": {
+          "ability_sd": 1.0,
+          "bt_l2": 0.0001,
+          "l2_beta": 0.0001,
+          "l2_gamma": 0.0001,
+          "sigma_alpha": 2.0,
+          "sigma_tau": 1.0
+        }
+      },
+      "description": "How the calibrate step fits."
+    },
+    "candidates": {
+      "$ref": "#/$defs/CandidatesConfig",
+      "default": {
+        "depth": 150,
+        "from": "dataset",
+        "rankings": null,
+        "rerank": null,
+        "retrieval": null,
+        "system": null
+      },
+      "description": "Where the candidate pools come from, and their depth."
+    },
+    "dataset": {
+      "$ref": "#/$defs/DatasetSource",
+      "description": "The dataset (its queries, corpus, labels and pools), by URI."
+    },
+    "evaluation": {
+      "$ref": "#/$defs/EvaluationOptions",
+      "default": {
+        "k": 10,
+        "systems": {}
+      },
+      "description": "What the evaluate step scores."
+    },
+    "judge": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JudgeConfig"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The judge: an inline JudgeConfig, a shipped config's name, a path to one, or ``\"fake\"`` for the offline judge.",
+      "title": "Judge"
+    },
+    "label": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "A readable fragment of the run id.",
+      "title": "Label"
+    },
+    "limit": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Judge only the first ``limit`` queries.",
+      "title": "Limit"
+    },
+    "mirror": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Any fsspec URI (e.g. ``s3://bucket/runs``) the run directory is mirrored to while it runs, and restored from on resume (rcp_ndcg.runs.mirror).",
+      "title": "Mirror"
+    },
+    "mirror_interval_s": {
+      "default": 60.0,
+      "description": "Seconds between two uploads of the mirror.",
+      "exclusiveMinimum": 0,
+      "title": "Mirror Interval S",
+      "type": "number"
+    },
+    "preprocessing": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Preprocessing"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The text policy, chunking and image policy the judging steps apply."
+    },
+    "rubric": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RubricSchedule"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The rubric schedule; ``None`` is the paper's for the corpus's modality."
+    },
+    "runner": {
+      "default": {
+        "name": "local",
+        "options": {
+          "cwd": null,
+          "detach": false,
+          "env": {},
+          "log_dir": null,
+          "resources": {
+            "cpus": null,
+            "gpus": 0,
+            "memory_gb": null,
+            "time_limit_s": null
+          }
+        }
+      },
+      "description": "Where the steps run.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/LocalRunnerConfig"
+        },
+        {
+          "$ref": "#/$defs/SlurmRunnerConfig"
+        },
+        {
+          "$ref": "#/$defs/KubernetesRunnerConfig"
+        },
+        {
+          "$ref": "#/$defs/PluginRunnerConfig"
+        }
+      ],
+      "title": "Runner"
+    },
+    "seed": {
+      "default": 42,
+      "description": "The run's seed: of the judging schedules that set none (default: the schedules' own), of the offline judge (``judge: fake``) and of the evaluation's bootstrap intervals.",
+      "title": "Seed",
+      "type": "integer"
+    },
+    "serve": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ServeConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The judge's engine, started beside the run's job by the ``slurm`` or ``kubernetes`` runner (ServeConfig); the judge then uses its replicas' URLs. Omit it to bring your own endpoint (``judge.base_url``)."
+    },
+    "steps": {
+      "description": "The steps to run (run in STEPS order whatever order they are listed in).",
+      "items": {
+        "enum": [
+          "retrieve",
+          "rerank",
+          "tournament",
+          "rubric",
+          "calibrate",
+          "evaluate"
+        ],
+        "type": "string"
+      },
+      "title": "Steps",
+      "type": "array"
+    },
+    "tournament": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TournamentSchedule"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The tournament schedule; ``None`` is the paper's for the corpus's modality."
+    }
+  },
+  "required": [
+    "dataset"
+  ],
+  "title": "RunConfig",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.run-config.v1"
+}

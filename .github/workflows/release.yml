@@ -1,0 +1,76 @@
+# Publish a release: on a tag v<version>, build both distributions, check their versions against the tag, publish
+# them to PyPI with trusted publishing (OIDC, no secret), and attach the constraints file to the GitHub release.
+#
+# One-time setup on pypi.org, for each of rcp-ndcg and rcp-ndcg-core: add a trusted publisher (a pending one before
+# the first upload) with owner cohere-ai, repository rcp-ndcg, workflow release.yml and environment pypi; then create
+# the environment `pypi` in the repository's settings.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build and check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: build rcp-ndcg and rcp-ndcg-core
+        run: uv build --all-packages --out-dir dist
+      - name: the versions are the tag's
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          expected=(
+            "dist/rcp_ndcg-${version}-py3-none-any.whl" "dist/rcp_ndcg-${version}.tar.gz"
+            "dist/rcp_ndcg_core-${version}-py3-none-any.whl" "dist/rcp_ndcg_core-${version}.tar.gz"
+          )
+          ls -a dist
+          for file in "${expected[@]}"; do test -f "$file" || { echo "missing $file: the tag is not the version"; exit 1; }; done
+          test "$(find dist -type f -not -name '.*' | wc -l)" -eq "${#expected[@]}" || { echo "dist/ holds other versions"; exit 1; }
+          grep -qx "  \"rcp-ndcg-core==${version}\"," pyproject.toml || { echo "rcp-ndcg does not pin rcp-ndcg-core==${version}"; exit 1; }
+      - name: the constraints file is the lock's export
+        run: |
+          command=$(sed -n '2s/^#    //p' requirements-constraints.txt)
+          eval "${command/ -o requirements-constraints.txt/ --no-header -o $RUNNER_TEMP/exported.txt}"
+          diff <(grep -v '^#' requirements-constraints.txt) <(grep -v '^#' "$RUNNER_TEMP/exported.txt")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    name: GitHub release with the constraints file
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      # The rendered jobs install against the constraints file attached here.
+      - run: gh release create "$GITHUB_REF_NAME" requirements-constraints.txt dist/* --verify-tag --notes-from-tag
+        env:
+          GH_TOKEN: ${{ github.token }}

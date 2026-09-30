@@ -1,0 +1,19 @@
+# Qwen3.6-27B in its FP8 release (Qwen/Qwen3.6-27B-FP8), the paper's TREC-DL judge, served by vLLM or SGLang on
+# this host under the served name below, e.g.
+#   vllm serve Qwen/Qwen3.6-27B-FP8 --served-model-name qwen3.6-27b-fp8 --reasoning-parser qwen3
+# No temperature is sent: the server's default sampling, as the paper's runs used. The checkpoint revision the
+# paper's run used is not recorded; set `revision` to the commit you serve.
+base_url: http://127.0.0.1:8000/v1
+model: qwen3.6-27b-fp8
+revision: null
+temperature: null
+max_output_tokens: 16384
+# Text limits and the window budget are counted in this tokenizer's tokens (its tokenizer.json on the Hub).
+tokenizer: Qwen/Qwen3.6-27B-FP8
+concurrency: 256
+# The server constrains each answer to the stage's JSON schema (response_format json_schema). Serve the model with
+# its reasoning parser, so the schema applies to the answer, not the reasoning (docs/concepts/serving.md).
+decoding: json_schema
+# The checkpoint's image processor (patch 16 x merge 2): the client sizes every image and video frame as it does,
+# so the engine needs no media flags. Set max_images (and max_videos) to judge page-image or video corpora.
+image_processor: qwen3_vl

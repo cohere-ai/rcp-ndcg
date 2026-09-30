@@ -1,0 +1,320 @@
+{
+  "$defs": {
+    "AnchorReport": {
+      "additionalProperties": false,
+      "description": "Do the fitted tournament windows, refitted, reproduce the calibration's abilities? Old against new.",
+      "properties": {
+        "documents_checked": {
+          "description": "Documents compared.",
+          "title": "Documents Checked",
+          "type": "integer"
+        },
+        "max_abs_gain_shift": {
+          "description": "Largest gain movement, gain units.",
+          "title": "Max Abs Gain Shift",
+          "type": "number"
+        },
+        "max_abs_theta_shift": {
+          "description": "Largest ability movement, logits.",
+          "title": "Max Abs Theta Shift",
+          "type": "number"
+        },
+        "max_gain_shift": {
+          "description": "The tolerance, gain units.",
+          "title": "Max Gain Shift",
+          "type": "number"
+        },
+        "ok": {
+          "description": "Whether ``max_abs_gain_shift <= max_gain_shift``.",
+          "title": "Ok",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "documents_checked",
+        "max_abs_theta_shift",
+        "max_abs_gain_shift",
+        "max_gain_shift",
+        "ok"
+      ],
+      "title": "AnchorReport",
+      "type": "object"
+    },
+    "DocumentEstimate": {
+      "additionalProperties": false,
+      "description": "One document's estimated ability.",
+      "properties": {
+        "flags": {
+          "$ref": "#/$defs/EstimateFlags",
+          "default": {
+            "degenerate": null,
+            "low_information": false
+          },
+          "description": "What to read before comparing it with others."
+        },
+        "information": {
+          "description": "The Fisher information of the document's own evidence at ``theta`` (logits^-2).",
+          "title": "Information",
+          "type": "number"
+        },
+        "se": {
+          "description": "Its standard error (logits).",
+          "title": "Se",
+          "type": "number"
+        },
+        "theta": {
+          "description": "The ability (logits) on the scale of the items or abilities it was estimated against.",
+          "title": "Theta",
+          "type": "number"
+        }
+      },
+      "required": [
+        "theta",
+        "se",
+        "information"
+      ],
+      "title": "DocumentEstimate",
+      "type": "object"
+    },
+    "EstimateFlags": {
+      "additionalProperties": false,
+      "description": "What to read before comparing a document's estimated ability with others'.",
+      "properties": {
+        "degenerate": {
+          "anyOf": [
+            {
+              "enum": [
+                "all_fail",
+                "all_pass"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``\"all_fail\"`` or ``\"all_pass\"`` when the document failed (passed) every criterion in every placement: the likelihood has no interior maximum and the estimate rests on the prior. ``None`` otherwise.",
+          "title": "Degenerate"
+        },
+        "low_information": {
+          "default": false,
+          "description": "The document's own evidence falls short of the standard-error target.",
+          "title": "Low Information",
+          "type": "boolean"
+        }
+      },
+      "title": "EstimateFlags",
+      "type": "object"
+    },
+    "Extension": {
+      "additionalProperties": false,
+      "description": "The documents score_documents or insert_documents added, and the anchor report.\n\nApply it with Calibration.extended. ``anchor_report`` is ``None`` for scored documents:\nscoring recomputes no row of the calibration, so there is nothing to compare.",
+      "properties": {
+        "anchor_report": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AnchorReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "calibration": {
+          "title": "Calibration",
+          "type": "string"
+        },
+        "records": {
+          "items": {
+            "$ref": "#/$defs/ExtensionRecord"
+          },
+          "title": "Records",
+          "type": "array"
+        },
+        "schema": {
+          "const": "rcp-ndcg.extension.v1",
+          "default": "rcp-ndcg.extension.v1",
+          "title": "Schema",
+          "type": "string"
+        },
+        "skipped": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Skipped",
+          "type": "array"
+        }
+      },
+      "required": [
+        "calibration",
+        "records"
+      ],
+      "title": "Extension",
+      "type": "object"
+    },
+    "ExtensionRecord": {
+      "additionalProperties": false,
+      "description": "One document added to a calibration.",
+      "properties": {
+        "calibration": {
+          "description": "The fingerprint of the calibration it was computed against.",
+          "title": "Calibration",
+          "type": "string"
+        },
+        "created_at": {
+          "description": "When it was computed.",
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "dataset": {
+          "description": "The dataset of the query.",
+          "title": "Dataset",
+          "type": "string"
+        },
+        "doc_id": {
+          "description": "The document.",
+          "title": "Doc Id",
+          "type": "string"
+        },
+        "estimate": {
+          "$ref": "#/$defs/DocumentEstimate",
+          "description": "The ability on the calibration's scale (logits), its standard error and information, and its flags. An inserted document has no flag set: an insertion that fails a check is refused."
+        },
+        "judgements": {
+          "description": "Digest of the judgement records it was computed from.",
+          "title": "Judgements",
+          "type": "string"
+        },
+        "query_id": {
+          "description": "The query (not namespaced).",
+          "title": "Query Id",
+          "type": "string"
+        },
+        "record_key": {
+          "default": "",
+          "description": "Digest of the slot, the source, the calibration, the judgements and the estimate.",
+          "title": "Record Key",
+          "type": "string"
+        },
+        "source": {
+          "description": "``\"scored\"`` (from its own rubric answers, items frozen: the posterior mean and SD) or ``\"inserted\"`` (from tournament comparisons, opponents frozen: the conditional MLE).",
+          "enum": [
+            "scored",
+            "inserted"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "dataset",
+        "query_id",
+        "doc_id",
+        "estimate",
+        "calibration",
+        "judgements",
+        "created_at"
+      ],
+      "title": "ExtensionRecord",
+      "type": "object"
+    },
+    "OpponentPlan": {
+      "description": "The windows to judge a new document in, against opponents from the calibration.",
+      "properties": {
+        "calls": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Judge calls the windows take under the store's schedule (each window twice when it mirrors); null without --judgements.",
+          "title": "Calls"
+        },
+        "doc_id": {
+          "title": "Doc Id",
+          "type": "string"
+        },
+        "query_id": {
+          "title": "Query Id",
+          "type": "string"
+        },
+        "windows": {
+          "description": "Each window: the new document first, then its opponents. Judge exactly these windows into the calibration's tournament store: `judge tournament --plan <this plan's file> --out <store>`.",
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Windows",
+          "type": "array"
+        }
+      },
+      "required": [
+        "query_id",
+        "doc_id",
+        "windows"
+      ],
+      "title": "OpponentPlan",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/insert-result.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "``insert --plan``: the opponent windows; otherwise the extension and the extended calibration.",
+  "properties": {
+    "extension": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Extension"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "out": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Out"
+    },
+    "plan": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OpponentPlan"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "schema": {
+      "const": "rcp-ndcg.insert-result.v1",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema"
+  ],
+  "title": "InsertResult",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.insert-result.v1"
+}

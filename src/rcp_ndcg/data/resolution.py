@@ -1,0 +1,538 @@
+"""How page images and video are prepared before a judge sees them -- declared, not implied.
+
+Every vision-language model resizes its input, and the choice changes both the *cost* (token count) and the
+*content* (what is legible at that resolution). Two judging passes at different pixel budgets are two different
+measurements, so the policy is a declared, recorded object (part of
+:class:`~rcp_ndcg.data.preprocess.Preprocessing`, and so of the judgement family) rather than a processor default
+that happens to be in effect.
+
+The client prepares every image itself (:mod:`rcp_ndcg.data.prepare`), so a stock engine needs no media flags:
+
+* :class:`ImagePolicy` -- the pixel budget ``[min_px, max_px]`` and the judge's image processor family
+  (:data:`ImageProcessor`, :data:`PROCESSORS`). Under a known family each image is resized exactly as that
+  processor would (:func:`smart_resize`: both edges snapped to a multiple of the family's factor, aspect ratio
+  kept), and the budget is checked to lie inside the engines' default budget, so the engine's own resize of the
+  prepared image is a no-op. Without a budget, or without a known family, the image is sent unchanged and the
+  processor decides, which also means its token cost is unknown.
+* :class:`VideoPolicy` -- ``num_frames`` uniformly spaced frames per clip, and how they travel. With ``wire:
+  frames`` the client samples the frames (:func:`uniform_frame_indices`) and sizes each by the image policy;
+  with ``wire: video_url`` the container is sent unchanged and the engine samples it. :func:`sample_video_part`
+  is the one place a video's frames are chosen, and :func:`content_media_tokens` prices exactly what it returns.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Literal, NamedTuple, Self
+
+import numpy as np
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+
+from rcp_ndcg.errors import ConfigError, DataError
+
+ImageProcessor = Literal["qwen2_vl", "qwen2_5_vl", "qwen3_vl"]
+"""The image processor families whose resize the client reproduces (the judge config's ``image_processor``).
+
+``qwen2_vl`` is Qwen2-VL, ``qwen2_5_vl`` is Qwen2.5-VL, and ``qwen3_vl`` is Qwen3-VL and the natively multimodal
+Qwen3.5-397B and Qwen3.6-27B, whose checkpoints ship the same image processor with a 16-pixel patch."""
+
+
+class ProcessorGeometry(NamedTuple):
+    """How one processor family sizes an image, and the budget both engines apply when started without media flags.
+
+    Attributes:
+        factor: Pixels per token edge: the vision patch times the spatial merge. Both edges of a resized image are
+            multiples of it, and each ``factor x factor`` block costs one token.
+        min_pixels: The engines' default floor, in pixels.
+        max_pixels: The engines' default ceiling, in pixels. Where vLLM and SGLang differ, the lower one.
+    """
+
+    factor: int
+    min_pixels: int
+    max_pixels: int
+
+
+PROCESSORS: dict[str, ProcessorGeometry] = {
+    # Qwen2-VL checkpoints: patch 14 x merge 2 and {min,max}_pixels 3136..12845056 in preprocessor_config.json,
+    # which vLLM applies; SGLang overrides the ceiling to 1003520 for model_type qwen2_vl
+    # (sglang python/sglang/srt/utils/hf_transformers/processor.py:279-281 @ 45c8ddd).
+    "qwen2_vl": ProcessorGeometry(factor=28, min_pixels=56 * 56, max_pixels=28 * 28 * 1280),
+    # Qwen2.5-VL checkpoints: the same processor and budget, which both engines apply as shipped.
+    "qwen2_5_vl": ProcessorGeometry(factor=28, min_pixels=56 * 56, max_pixels=28 * 28 * 16384),
+    # Qwen3-VL, Qwen3.5-397B and Qwen3.6-27B checkpoints: patch 16 x merge 2 and size {shortest_edge: 65536,
+    # longest_edge: 16777216} in preprocessor_config.json, which both engines apply as shipped.
+    "qwen3_vl": ProcessorGeometry(factor=32, min_pixels=65536, max_pixels=16777216),
+}
+"""Every :data:`ImageProcessor` family's geometry. The resize itself is transformers' ``Qwen2VLImageProcessor``
+(``smart_resize`` with ``factor = patch_size * merge_size``, BICUBIC), which vLLM and SGLang both run for these
+models with the checkpoint's own size: vLLM in ``Qwen2VLProcessingInfo._get_vision_size`` /
+``Qwen3VLProcessingInfo._get_vision_info`` (vllm/model_executor/models/qwen2_vl.py:952-978,
+qwen3_vl.py:957-1003 @ 3627a6a), SGLang through the HF processor (python/sglang/srt/multimodal/processors/
+base_processor.py:838-927 @ 45c8ddd)."""
+
+
+class VideoPolicy(BaseModel):
+    """Which frames of a video the judge is shown, and which videos it may be shown at all.
+
+    One sampling rule: ``num_frames`` frames at uniformly spaced indices over the
+    whole clip (:func:`uniform_frame_indices`), the rule both serving engines apply
+    to a decoded container. It is the only rule whose realised frame count is fixed
+    by the policy -- a frames-per-second rule shows a 10-second clip 20 frames and a
+    10-minute clip 1200, so two runs "at 2 fps" would share a judgement family while
+    showing the judge different amounts of video.
+
+    A clip with fewer frames than ``num_frames`` is refused, not shown whole: the
+    engines disagree about it (SGLang rejects the request, vLLM resamples at its
+    processor's own rate), so no single number of frames could be recorded for it.
+    A container's frame count must therefore be recorded at ingest
+    (``hash_media=True``) before it can be judged over ``video_url``.
+
+    ``wire`` is how the judge receives the frames, and it is part of the
+    instrument. ``frames`` (client-sampled): the client picks the frames from the
+    corpus's pre-extracted frames and sends each, sized by the image policy, as its
+    own image, which any OpenAI-compatible endpoint accepts. ``video_url``
+    (engine-sampled, an opt-in for models with a native video encoder): the container
+    is sent unchanged and the engine decodes and samples it (Qwen-VL towers then merge
+    frame pairs in time and see timestamps). The same clips judged both ways are
+    different measurements, so the wire is part of the policy and a corpus whose
+    videos do not match it is refused.
+
+    ``max_duration_s`` is a refusal, not a cut: uniform sampling of a long clip
+    spreads the same frame budget ever thinner, so a corpus that declares it refuses
+    any video whose recorded duration exceeds it -- or whose duration was never
+    recorded -- rather than judging it at a density nobody chose.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    num_frames: int = Field(gt=0)
+    """Frames shown per video, sampled uniformly over the clip."""
+
+    wire: Literal["frames", "video_url"]
+    """``frames``: sampled frames sent as images. ``video_url``: the container, decoded by the engine."""
+
+    max_duration_s: float | None = Field(default=None, gt=0)
+    """Longest clip, in seconds, this corpus may be judged on; ``None`` for no limit.
+
+    Checked against :attr:`MediaRef.duration_s`, which ingest records for
+    containers (``hash_media=True``)."""
+
+    @property
+    def descriptor(self) -> str:
+        """Human-readable one-liner, e.g. ``frames-n8`` or ``video_url-n8``."""
+        return f"{self.wire}-n{self.num_frames}"
+
+
+def uniform_frame_indices(total_frames: int, num_frames: int) -> list[int]:
+    """The frame indices uniform sampling shows, ``[0, total_frames)``.
+
+    ``np.linspace(0, total - 1, n)`` truncated to integers -- what vLLM's default
+    video loader (``VideoBackend.compute_frames_index_to_sample``,
+    vllm/multimodal/video.py:236-238 @ 3627a6a) and SGLang's Qwen-VL
+    ``preprocess_video`` (python/sglang/srt/multimodal/processors/qwen_vl.py:264 @ 45c8ddd)
+    do to a decoded container. The first and last frame are included whenever
+    ``num_frames`` is at least 2; with ``num_frames >= total_frames`` every frame is
+    returned once.
+
+    Args:
+        total_frames: Frames available in the clip (> 0).
+        num_frames: Frames requested (> 0).
+
+    Returns:
+        Strictly increasing indices, ``min(num_frames, total_frames)`` of them.
+    """
+    if total_frames <= 0 or num_frames <= 0:
+        raise ValueError(f"need positive frame counts, got total={total_frames}, requested={num_frames}")
+    if num_frames >= total_frames:
+        return list(range(total_frames))
+    return [int(index) for index in np.linspace(0, total_frames - 1, num_frames, dtype=np.int64)]
+
+
+def smart_resize(
+    height: int,
+    width: int,
+    *,
+    factor: int,
+    min_pixels: int,
+    max_pixels: int,
+) -> tuple[int, int]:
+    """Qwen-VL ``smart_resize``: snap both edges to ``factor`` and fit the pixel budget.
+
+    A faithful port of transformers' ``smart_resize``
+    (models/qwen2_vl/image_processing_qwen2_vl.py:63-89 @ 528c267): round each edge to
+    the nearest multiple of ``factor``; if the area then exceeds ``max_pixels``, scale
+    down by ``sqrt(area / max_pixels)`` and floor each edge to the factor (at least one
+    factor); if it falls below ``min_pixels``, scale up by ``sqrt(min_pixels / area)``
+    and ceil each edge to the factor.
+
+    Args:
+        height, width: The image's size, in pixels.
+        factor: The processor family's :attr:`ProcessorGeometry.factor`.
+        min_pixels, max_pixels: The pixel budget.
+
+    Returns:
+        ``(height, width)`` the processor resizes to.
+
+    Raises:
+        ValueError: a non-positive edge, or an aspect ratio above 200 (the processor refuses it too).
+    """
+    if min(height, width) <= 0:
+        raise ValueError(f"image dimensions must be positive, got {height}x{width}")
+    if max(height, width) / min(height, width) > 200:
+        raise ValueError(f"aspect ratio must be below 200, got {max(height, width) / min(height, width):.1f}")
+
+    h_bar = round(height / factor) * factor
+    w_bar = round(width / factor) * factor
+    if h_bar * w_bar > max_pixels:
+        beta = math.sqrt((height * width) / max_pixels)
+        h_bar = max(factor, math.floor(height / beta / factor) * factor)
+        w_bar = max(factor, math.floor(width / beta / factor) * factor)
+    elif h_bar * w_bar < min_pixels:
+        beta = math.sqrt(min_pixels / (height * width))
+        h_bar = math.ceil(height * beta / factor) * factor
+        w_bar = math.ceil(width * beta / factor) * factor
+    return h_bar, w_bar
+
+
+def _budget_problem(min_px: int, max_px: int, processor: str) -> str | None:
+    """Why a stock engine serving ``processor`` would resize the budget ``[min_px, max_px]`` again, if it would."""
+    geometry = PROCESSORS[processor]
+    if min_px < geometry.min_pixels or max_px > geometry.max_pixels:
+        return (
+            f"the pixel budget {min_px}-{max_px}px lies outside what a stock engine serving the {processor} "
+            f"processor keeps ({geometry.min_pixels}-{geometry.max_pixels}px), so the engine would resize the "
+            f"prepared image again. Declare a budget inside that range."
+        )
+    return None
+
+
+class ImagePolicy(BaseModel):
+    """The pixel budget every page image and video frame is resized to, and the processor whose resize is used.
+
+    Attributes:
+        min_px: The fewest pixels an image is scaled up to.
+        max_px: The most pixels an image is scaled down to.
+        processor: The judge's image processor family (:data:`ImageProcessor`). Left unset in a declared policy:
+            the judging pass takes it from the judge config's ``image_processor`` (:meth:`for_processor`), so the
+            recorded policy names it. ``None`` in an effective policy means the family is unknown, and images are
+            sent unchanged.
+
+    Budget both or neither: without one, images go at their stored size and the engine's processor decides
+    (:meth:`native`), so their token cost cannot be counted. With a known processor the budget must lie within
+    the engines' default budget for it (:data:`PROCESSORS`), so the engine keeps the prepared size.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    min_px: int | None = Field(default=None, gt=0)
+    max_px: int | None = Field(default=None, gt=0)
+    processor: ImageProcessor | None = None
+
+    @model_validator(mode="after")
+    def _both_or_neither(self) -> Self:
+        if (self.min_px is None) != (self.max_px is None):
+            raise ValueError("an image pixel budget needs both `min_px` and `max_px` (or neither, for native size)")
+        if self.min_px is not None and self.max_px is not None:
+            if self.min_px > self.max_px:
+                raise ValueError(f"min_px ({self.min_px}) exceeds max_px ({self.max_px})")
+            if self.processor is not None and (problem := _budget_problem(self.min_px, self.max_px, self.processor)):
+                raise ValueError(problem)
+        return self
+
+    @property
+    def is_native(self) -> bool:
+        """Whether the image goes at its stored size (no pixel budget)."""
+        return self.max_px is None
+
+    @property
+    def resizes(self) -> bool:
+        """Whether the client resizes images: a pixel budget under a known processor family."""
+        return not self.is_native and self.processor is not None
+
+    @property
+    def descriptor(self) -> str:
+        """Human-readable one-liner, e.g. ``65536-1003520px qwen3_vl``, ``3136-1003520px`` or ``native``."""
+        if self.is_native:
+            return "native"
+        return f"{self.min_px}-{self.max_px}px" + (f" {self.processor}" if self.processor else "")
+
+    def for_processor(self, processor: ImageProcessor | None) -> ImagePolicy:
+        """This policy under the judge's processor family: the effective policy a judging pass records.
+
+        Args:
+            processor: The judge config's ``image_processor``; ``None`` when it declares none.
+
+        Raises:
+            ConfigError: the policy names a different processor than the judge, or the budget lies outside the
+                engines' default budget for the judge's processor.
+        """
+        if self.processor is not None and processor is not None and self.processor != processor:
+            raise ConfigError(
+                f"the image policy names the {self.processor} processor, but the judge's image_processor is "
+                f"{processor}",
+                hint="leave preprocessing.image.processor unset: the judge config decides it",
+            )
+        chosen = self.processor or processor
+        if chosen is not None and self.min_px is not None and self.max_px is not None:
+            problem = _budget_problem(self.min_px, self.max_px, chosen)
+            if problem is not None:
+                geometry = PROCESSORS[chosen]
+                raise ConfigError(
+                    problem,
+                    hint=f"e.g. preprocessing.image: {{min_px: {geometry.min_pixels}, max_px: "
+                    f"{min(geometry.max_pixels, 1280 * geometry.factor**2)}}}",
+                )
+        return self.model_copy(update={"processor": chosen})
+
+    def target_size(self, height: int, width: int) -> tuple[int, int]:
+        """The ``(height, width)`` the client sends: the processor's resize under this budget, else unchanged.
+
+        Raises:
+            DataError: the resized size is not one a stock engine keeps: flooring or ceiling to the factor left it
+                outside the engines' default budget, so the engine would resize the prepared image again, or left
+                an aspect ratio above 200, which the engine refuses.
+        """
+        if not self.resizes:
+            return height, width
+        assert self.min_px is not None and self.max_px is not None and self.processor is not None
+        geometry = PROCESSORS[self.processor]
+        target = smart_resize(height, width, factor=geometry.factor, min_pixels=self.min_px, max_pixels=self.max_px)
+        try:
+            kept = smart_resize(
+                *target, factor=geometry.factor, min_pixels=geometry.min_pixels, max_pixels=geometry.max_pixels
+            )
+        except ValueError as exc:  # the resized image's aspect ratio is one the processor refuses
+            raise DataError(
+                f"a {height}x{width} image resizes to {target[0]}x{target[1]} under the budget {self.descriptor}, "
+                f"which a stock engine serving the {self.processor} processor refuses ({exc}); crop the image at "
+                "ingest"
+            ) from exc
+        if kept != target:
+            raise DataError(
+                f"a {height}x{width} image resizes to {target[0]}x{target[1]} under the budget {self.descriptor}, "
+                f"which a stock engine serving the {self.processor} processor would resize again to "
+                f"{kept[0]}x{kept[1]}; widen the budget, or crop the image at ingest"
+            )
+        return target
+
+    def _factor(self, what: str) -> int:
+        if self.is_native:
+            raise ConfigError(
+                f"Cannot {what} for a native-size image policy: the processor decides the geometry.",
+                hint="declare a pixel budget (preprocessing.image: {min_px, max_px}) to get an estimate",
+            )
+        if self.processor is None:
+            raise ConfigError(
+                f"Cannot {what}: the judge declares no image_processor, so images are sent unchanged and the "
+                "engine's processor decides their geometry.",
+                hint=f"set image_processor in the judge config (one of {', '.join(PROCESSORS)})",
+            )
+        return PROCESSORS[self.processor].factor
+
+    def image_tokens(self, height: int, width: int) -> int:
+        """How many tokens one image of this size costs under this policy.
+
+        Raises:
+            ConfigError: the policy is native or its processor is unknown: the engine decides the geometry, and a
+                guess would silently corrupt a budget estimate.
+        """
+        factor = self._factor("count tokens")
+        target_h, target_w = self.target_size(height, width)
+        return (target_h // factor) * (target_w // factor)
+
+    @property
+    def max_image_tokens(self) -> int:
+        """The most one image can cost, whatever its dimensions: the bound a cost preflight uses when an image's
+        size was never recorded (over-estimating is the safe direction for a budget ceiling).
+
+        Raises:
+            ConfigError: the policy is native or its processor is unknown (no ceiling to report).
+        """
+        factor = self._factor("bound tokens")
+        assert self.max_px is not None
+        return self.max_px // (factor**2)
+
+    @classmethod
+    def native(cls) -> ImagePolicy:
+        """No budget: the image goes at its stored size and the processor decides."""
+        return cls()
+
+
+class MediaTokenCount(NamedTuple):
+    """Token cost of some content's media, and how much of it was a bound.
+
+    ``bounded`` counts the references whose dimensions were never recorded, so a
+    caller can say "at most N tokens" honestly instead of presenting a ceiling as
+    a measurement.
+    """
+
+    tokens: int
+    bounded: int
+
+
+class VideoPolicyError(ValueError):
+    """A video the declared frame policy refuses to show the judge."""
+
+
+def sample_video_part(part: VideoPart, video: VideoPolicy | None) -> VideoPart:
+    """*part* as the judge is shown it under the frame policy *video*.
+
+    The one place a video's frames are chosen; token accounting and the media
+    preparation (:func:`rcp_ndcg.data.prepare.prepare_content`) both go through it,
+    so the frames priced are the frames sent.
+
+    * ``wire: frames`` -- the uniformly sampled subset of ``part.frames``, with
+      ``frame_indices`` recording which source frames were kept. A container
+      ``ref`` on the same part stays provenance and is not sent.
+    * ``wire: video_url`` -- the container ``ref`` alone, unchanged. The engine
+      decodes and samples it with its own video loader (engine-sampled).
+    * **No frame policy** -- the part as it is: every frame, or the container at
+      the engine's own defaults, which :func:`content_media_tokens` then refuses
+      to price.
+
+    Raises:
+        VideoPolicyError: when the part lacks what its declared wire sends (frames
+            for ``frames``, a container for ``video_url``); when it has fewer frames
+            than ``num_frames`` (or, for a container, no recorded frame count); or
+            when ``max_duration_s`` is declared and the video's duration exceeds it
+            or was never recorded.
+    """
+    frame_policy = video
+    if frame_policy is None:
+        return part
+    _check_duration(part, frame_policy)
+    if frame_policy.wire == "video_url":
+        if part.ref is None:
+            raise VideoPolicyError(
+                f"{part.frames[0].uri}: the video policy declares `wire: video_url`, but this video "
+                "is a frame directory with no container. Declare `wire: frames` for frame-directory corpora."
+            )
+        _check_frame_count(part.ref.uri, part.ref.num_frames, frame_policy)
+        return VideoPart(ref=part.ref)
+    if not part.frames:
+        assert part.ref is not None
+        raise VideoPolicyError(
+            f"{part.ref.uri}: the video policy declares `wire: frames`, but this video is a "
+            "container with no extracted frames. Declare `wire: video_url` to have the engine decode it, or "
+            "ingest the clip as frames (the `frames` reader)."
+        )
+    source = part.frame_indices if part.frame_indices is not None else list(range(len(part.frames)))
+    if len(source) != len(part.frames):
+        raise ValueError(
+            f"VideoPart records {len(source)} frame_indices for {len(part.frames)} frames; they must align"
+        )
+    _check_frame_count(part.frames[0].uri.rsplit("/", 1)[0], len(part.frames), frame_policy)
+    keep = uniform_frame_indices(len(part.frames), frame_policy.num_frames)
+    return VideoPart(frames=[part.frames[i] for i in keep], frame_indices=[source[i] for i in keep])
+
+
+def _check_duration(part: VideoPart, frame_policy: VideoPolicy) -> None:
+    limit = frame_policy.max_duration_s
+    if limit is None:
+        return
+    duration = part.ref.duration_s if part.ref is not None else None
+    where = part.ref.uri if part.ref is not None else (part.frames[0].uri if part.frames else "<empty>")
+    if duration is None:
+        raise VideoPolicyError(
+            f"{where}: the video policy declares `max_duration_s: {limit:g}`, but this video's "
+            "duration was never recorded. Ingest containers with `hash_media=True` so the header is probed, "
+            "or drop `max_duration_s`."
+        )
+    if duration > limit:
+        raise VideoPolicyError(
+            f"{where}: {duration:.1f}s exceeds the declared `max_duration_s: {limit:g}`. "
+            f"{frame_policy.num_frames} uniform frames over this clip would be sparser than the corpus "
+            "declared; raise the limit knowingly, or split the clip at ingest."
+        )
+
+
+def _check_frame_count(where: str, available: int | None, frame_policy: VideoPolicy) -> None:
+    """Refuse a clip that cannot supply the declared number of frames, or whose count is unknown."""
+    wanted = frame_policy.num_frames
+    if available is None:
+        raise VideoPolicyError(
+            f"{where}: the frame policy shows {wanted} frames per video, but this container's frame count was "
+            "never recorded, so it cannot be checked. Ingest with `hash_media=True` (MP4, MOV and AVI headers "
+            "are read; re-encode WebM/MKV to MP4)."
+        )
+    if available < wanted:
+        raise VideoPolicyError(
+            f"{where}: {available} frames, fewer than the declared `num_frames: {wanted}`. A short clip "
+            "is not shown whole: the engines disagree about it, so its judgement would not be the one "
+            "recorded. Lower num_frames knowingly, or drop the clip at ingest."
+        )
+
+
+def content_media_tokens(content: Content, image: ImagePolicy, video: VideoPolicy | None = None) -> MediaTokenCount:
+    """What *content*'s images and videos cost under the image policy and the frame policy.
+
+    Uses each reference's recorded ``width`` / ``height`` where present -- our own
+    ingest records them, so a page corpus prices exactly -- and
+    :attr:`ImagePolicy.max_image_tokens` where they are absent. It never
+    fetches bytes: a preflight that downloaded the corpus to price it would cost
+    more than the thing it is pricing.
+
+    Videos are priced as shown (:func:`sample_video_part`, which refuses clips
+    shorter than the frame budget): a frame directory as its sampled frames, a
+    container as ``num_frames`` frames of its recorded size, or at the
+    policy's bound -- counted in ``bounded`` -- when its size was never recorded.
+
+    Raises:
+        ValueError: for a container without a video policy --
+            the engine's own default sampling decides its cost, and nothing here
+            can know it.
+        ConfigError: for an image under a native policy or an unknown processor
+            (:meth:`ImagePolicy.image_tokens`).
+    """
+    tokens = 0
+    bounded = 0
+    for part in content.parts:
+        if isinstance(part, TextPart):
+            continue
+        if isinstance(part, ImagePart):
+            cost, unpriced = _ref_tokens(part.ref, image)
+            tokens, bounded = tokens + cost, bounded + unpriced
+            continue
+        shown = sample_video_part(part, video)
+        if shown.frames:
+            for ref in shown.frames:
+                cost, unpriced = _ref_tokens(ref, image)
+                tokens, bounded = tokens + cost, bounded + unpriced
+            continue
+        assert shown.ref is not None
+        cost, unpriced = _container_tokens(shown.ref, image, video)
+        tokens, bounded = tokens + cost, bounded + unpriced
+    return MediaTokenCount(tokens=tokens, bounded=bounded)
+
+
+def _ref_tokens(ref: MediaRef, image: ImagePolicy) -> tuple[int, int]:
+    if ref.width and ref.height:
+        return image.image_tokens(ref.height, ref.width), 0
+    return image.max_image_tokens, 1
+
+
+def _container_tokens(ref: MediaRef, image: ImagePolicy, video: VideoPolicy | None) -> tuple[int, int]:
+    if video is None:
+        raise ValueError(
+            f"{ref.uri} is a video container, but no video policy is declared, so the engine's default sampling "
+            "would decide how many frames the judge sees. Declare `preprocessing.video: {num_frames: N, wire: "
+            "video_url}`."
+        )
+    per_frame, unpriced = _ref_tokens(ref, image)
+    return video.num_frames * per_frame, unpriced
+
+
+__all__ = [
+    "PROCESSORS",
+    "ImagePolicy",
+    "ImageProcessor",
+    "MediaTokenCount",
+    "ProcessorGeometry",
+    "VideoPolicy",
+    "VideoPolicyError",
+    "content_media_tokens",
+    "sample_video_part",
+    "smart_resize",
+    "uniform_frame_indices",
+]

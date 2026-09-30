@@ -1,0 +1,32 @@
+{
+  "error_classes": {
+    "BudgetError": "BUDGET",
+    "CapabilityError": "CAPABILITY",
+    "ConfigError": "CONFIG",
+    "CredentialsError": "CREDENTIALS",
+    "DataError": "DATA",
+    "DependencyError": "DEPENDENCY",
+    "IdentityError": "IDENTITY",
+    "Interrupted": "INTERRUPTED",
+    "MissingInputError": "MISSING_INPUT",
+    "ProviderError": "PROVIDER",
+    "RcpNdcgError": "INTERNAL",
+    "RcpNdcgWarning": null,
+    "UsageError": "USAGE"
+  },
+  "exit_codes": {
+    "BUDGET": 7,
+    "CAPABILITY": 8,
+    "CONFIG": 3,
+    "CREDENTIALS": 5,
+    "DATA": 12,
+    "DEPENDENCY": 10,
+    "IDENTITY": 11,
+    "INTERNAL": 1,
+    "INTERRUPTED": 9,
+    "MISSING_INPUT": 4,
+    "PROVIDER": 6,
+    "SUCCESS": 0,
+    "USAGE": 2
+  }
+}

@@ -1,0 +1,461 @@
+"""The conformance suite every reader and writer is run through.
+
+This is the mechanism the plan calls "one tested contract each".  The failure it
+exists to prevent is the one in ``rerank``, where three independent
+``SampleV1``-to-text extractors disagree and a teacher and a student read
+different text from the same row.  A new reader is added to :data:`READER_CASES`
+and is then held to the same invariants as every other one -- so a format that
+loses text, drops media, reorders records between passes, or invents metadata it
+cannot support fails here rather than three phases downstream.
+"""
+
+from __future__ import annotations
+
+import io
+import json
+from pathlib import Path
+
+import pytest
+from rcp_ndcg_core._records import RankingExample
+from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+
+from rcp_ndcg.data.io import available_readers, available_writers, get_reader, get_writer
+from rcp_ndcg.data.io.base import SourceReader
+from rcp_ndcg.data.io.hf import HfReader
+from rcp_ndcg.errors import ConfigError, DataError
+
+PIL = pytest.importorskip("PIL.Image")
+
+
+# -- fixtures building one small dataset in each format ---------------------
+
+
+@pytest.fixture
+def ranking_jsonl(tmp_path) -> str:
+    """Two queries, text documents, graded qrels."""
+    path = tmp_path / "rank" / "data.jsonl"
+    path.parent.mkdir(parents=True)
+    records = [
+        RankingExample(
+            query_id="q1",
+            query="what is a tortoise",
+            doc_ids=["d1", "d2"],
+            docs=["a tortoise is a reptile", "unrelated passage"],
+            qrels={"d1": 2, "d2": 0},
+        ),
+        RankingExample(
+            query_id="q2",
+            query="how long do they live",
+            doc_ids=["d3"],
+            docs=["tortoises can live over a century"],
+            qrels={"d3": 1},
+        ),
+    ]
+    path.write_text("".join(record.serialize_jsonl() + "\n" for record in records))
+    return str(path)
+
+
+@pytest.fixture
+def image_ranking_jsonl(tmp_path) -> str:
+    """One query over two page images, so media survives the round trip."""
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    refs = []
+    for index in range(2):
+        page = pages / f"page_{index}.png"
+        PIL.new("RGB", (32, 48), color=(index * 10, 0, 0)).save(page)
+        refs.append(MediaRef(uri=str(page), mime="image/png", width=32, height=48))
+    path = tmp_path / "img" / "data.jsonl"
+    path.parent.mkdir(parents=True)
+    record = RankingExample(
+        query_id="q1",
+        query="find the invoice total",
+        doc_ids=["p0", "p1"],
+        contents=[Content.from_parts([ImagePart(ref=ref, page=i + 1)]) for i, ref in enumerate(refs)],
+        qrels={"p0": 1, "p1": 0},
+    )
+    path.write_text(record.serialize_jsonl() + "\n")
+    return str(path)
+
+
+@pytest.fixture
+def beir_dir(tmp_path) -> str:
+    root = tmp_path / "beir"
+    (root / "qrels").mkdir(parents=True)
+    (root / "corpus.jsonl").write_text(
+        "".join(
+            json.dumps(row) + "\n"
+            for row in [
+                {"_id": "d1", "title": "Tortoises", "text": "a tortoise is a reptile"},
+                {"_id": "d2", "title": "", "text": "unrelated passage"},
+                {"_id": "d3", "title": "", "text": "tortoises can live over a century"},
+            ]
+        )
+    )
+    (root / "queries.jsonl").write_text(
+        "".join(
+            json.dumps(row) + "\n"
+            for row in [{"_id": "q1", "text": "what is a tortoise"}, {"_id": "q2", "text": "how long do they live"}]
+        )
+    )
+    (root / "qrels" / "test.tsv").write_text("query-id\tcorpus-id\tscore\nq1\td1\t2\nq1\td2\t0\nq2\td3\t1\n")
+    return str(root)
+
+
+@pytest.fixture
+def image_dir(tmp_path) -> str:
+    root = tmp_path / "images"
+    (root / "docA").mkdir(parents=True)
+    (root / "docB").mkdir(parents=True)
+    for doc in ("docA", "docB"):
+        for page in (1, 2):
+            PIL.new("RGB", (40, 60)).save(root / doc / f"page_{page}.png")
+    queries = tmp_path / "queries.jsonl"
+    queries.write_text(json.dumps({"query_id": "q1", "text": "the invoice total"}) + "\n")
+    qrels = tmp_path / "qrels.jsonl"
+    qrels.write_text(json.dumps({"query_id": "q1", "qrels": {"docA/page_1": 1}}) + "\n")
+    return str(root)
+
+
+@pytest.fixture
+def video_dir(tmp_path) -> str:
+    """Two decodable clips plus sidecars, in the image-directory layout."""
+    from tests.conftest import write_mjpeg_avi
+
+    root = tmp_path / "videos"
+    write_mjpeg_avi(root / "cooking" / "knot.avi", frames=6)
+    write_mjpeg_avi(root / "sports" / "knot.avi", frames=4)
+    (tmp_path / "video_queries.jsonl").write_text(json.dumps({"query_id": "q1", "text": "tying a knot"}) + "\n")
+    (tmp_path / "video_qrels.jsonl").write_text(json.dumps({"query_id": "q1", "qrels": {"cooking/knot": 1}}) + "\n")
+    return str(root)
+
+
+@pytest.fixture
+def frame_dir(tmp_path) -> str:
+    """Two clips as per-clip frame directories."""
+    root = tmp_path / "frames"
+    for clip, count in (("clip_a", 5), ("clip_b", 3)):
+        (root / clip).mkdir(parents=True)
+        for index in range(count):
+            PIL.new("RGB", (16, 12), color=(index * 30, 0, 0)).save(root / clip / f"{index:04d}.jpg")
+    return str(root)
+
+
+READER_CASES = {
+    "jsonl": lambda fixture: get_reader("jsonl", uri=fixture("ranking_jsonl")),
+    "jsonl_images": lambda fixture: get_reader("jsonl", uri=fixture("image_ranking_jsonl")),
+    "beir": lambda fixture: get_reader("beir", uri=fixture("beir_dir")),
+    "image_dir": lambda fixture: get_reader(
+        "images",
+        uri=fixture("image_dir"),
+        queries_uri=fixture("image_dir").replace("/images", "/queries.jsonl"),
+        qrels_uri=fixture("image_dir").replace("/images", "/qrels.jsonl"),
+    ),
+    # Corpus-only sources: nothing to search them for, which is a shape the
+    # contract has to cover rather than a reader to leave untested.  Their absence
+    # is how the base class's queries/examples mutual recursion survived.
+    "image_dir_unqueried": lambda fixture: get_reader("images", uri=fixture("image_dir")),
+    "pdf": lambda fixture: get_reader("pdf", uri=fixture("pdf_file"), dpi=72),
+    "video_dir": lambda fixture: get_reader(
+        "videos",
+        uri=fixture("video_dir"),
+        queries_uri=fixture("video_dir").replace("/videos", "/video_queries.jsonl"),
+        qrels_uri=fixture("video_dir").replace("/videos", "/video_qrels.jsonl"),
+        hash_media=True,
+    ),
+    "frame_dir": lambda fixture: get_reader("frames", uri=fixture("frame_dir")),
+}
+
+
+@pytest.fixture
+def pdf_file(tmp_path) -> str:
+    pytest.importorskip("pypdfium2")
+    PIL.init()
+    pages = [PIL.new("RGB", (612, 792), color=(255, 255 - index * 40, 255)) for index in range(2)]
+    target = tmp_path / "report.pdf"
+    pages[0].save(target, save_all=True, append_images=pages[1:], resolution=72.0)
+    return str(target)
+
+
+@pytest.fixture(params=sorted(READER_CASES))
+def reader(request) -> SourceReader:
+    """Each case builds only the fixtures it names, so one reader's optional
+    dependency (``pypdfium2`` for ``pdf``) skips that reader, not the suite."""
+    return READER_CASES[request.param](request.getfixturevalue)
+
+
+# -- the contract ----------------------------------------------------------
+
+
+class TestReaderContract:
+    """Invariants every registered reader must satisfy."""
+
+    def test_declares_a_registry_name(self, reader):
+        assert reader.name
+        assert reader.name in available_readers()
+
+    def test_declares_at_least_one_shape(self, reader):
+        assert reader.shapes
+
+    def test_the_source_locator_is_called_uri(self, reader):
+        """``get_reader`` and ``data ingest`` pass it by keyword, so a reader that
+        names it ``path`` is unreachable through the registry."""
+        import inspect as inspect_module
+
+        parameters = list(inspect_module.signature(type(reader).__init__).parameters)
+        assert parameters[1] == "uri", f"{type(reader).__name__} takes {parameters[1]!r} rather than 'uri'"
+
+    def test_examples_are_reiterable(self, reader):
+        """A reader is read more than once; a generator consumed once is a bug."""
+        first = [example.id for example in reader.examples()]
+        second = [example.id for example in reader.examples()]
+        assert first == second
+
+    def test_examples_exist_exactly_when_something_is_judged(self, reader):
+        """The ranking shape *is* the judged candidate lists.
+
+        A corpus with no qrels -- a PDF, a bare image directory -- has no examples
+        to give, and must say so by yielding none rather than by fabricating a
+        candidate list or by recursing while trying to derive one.
+        """
+        assert bool(list(reader.examples())) == bool(reader.qrels())
+
+    def test_documents_are_reiterable(self, reader):
+        first = [doc.id for doc in reader.documents()]
+        second = [doc.id for doc in reader.documents()]
+        assert first == second
+        assert first
+
+    def test_document_ids_are_unique(self, reader):
+        ids = [doc.id for doc in reader.documents()]
+        assert len(ids) == len(set(ids))
+
+    def test_query_ids_are_unique(self, reader):
+        ids = [query.id for query in reader.queries()]
+        assert len(ids) == len(set(ids))
+
+    def test_every_document_has_text_or_media(self, reader):
+        """An empty document is unembeddable and unjudgeable; none should exist."""
+        for doc in reader.documents():
+            assert doc.text or doc.has_media, f"{doc.id} has neither text nor media"
+
+    def test_qrels_reference_known_ids(self, reader):
+        doc_ids = {doc.id for doc in reader.documents()}
+        query_ids = {query.id for query in reader.queries()}
+        for query_id, judged in reader.qrels().items():
+            if query_ids:
+                assert query_id in query_ids, f"qrels reference unknown query {query_id}"
+            for doc_id in judged:
+                assert doc_id in doc_ids, f"qrels reference unknown doc {doc_id}"
+
+    def test_examples_align_their_document_fields(self, reader):
+        for example in reader.examples():
+            assert example.doc_ids
+            if example.docs is not None:
+                assert len(example.docs) == len(example.doc_ids)
+            if example.contents is not None:
+                assert len(example.contents) == len(example.doc_ids)
+
+    def test_doc_contents_never_raises(self, reader):
+        """What every encoder and judge calls; it must work for any reader."""
+        for example in reader.examples():
+            contents = example.doc_contents
+            assert len(contents) == len(example.doc_ids)
+
+    def test_media_refs_are_resolvable(self, reader, tmp_path):
+        from rcp_ndcg.data.media import MediaResolver, probe_video_header
+
+        resolver = MediaResolver()
+        for doc in reader.documents():
+            for ref in doc.media:
+                if ref.mime and ref.mime.startswith("video/"):
+                    assert probe_video_header(resolver.bytes_of(ref)) is not None
+                else:
+                    assert resolver.image(ref).width > 0
+
+
+class TestRoundTrip:
+    """Reading what we wrote must give back what we had."""
+
+    def test_jsonl_round_trip_preserves_text_and_qrels(self, tmp_path, ranking_jsonl):
+        original = list(get_reader("jsonl", uri=ranking_jsonl).examples())
+        out = str(tmp_path / "out" / "data.jsonl")
+        assert get_writer("jsonl").write_examples(original, out) == len(original)
+
+        restored = list(get_reader("jsonl", uri=out).examples())
+        assert [ex.id for ex in restored] == [ex.id for ex in original]
+        assert [ex.docs for ex in restored] == [ex.docs for ex in original]
+        assert [ex.qrels for ex in restored] == [ex.qrels for ex in original]
+
+    def test_jsonl_round_trip_preserves_media_refs(self, tmp_path, image_ranking_jsonl):
+        original = list(get_reader("jsonl", uri=image_ranking_jsonl).examples())
+        out = str(tmp_path / "out" / "data.jsonl")
+        get_writer("jsonl").write_examples(original, out)
+
+        restored = list(get_reader("jsonl", uri=out).examples())
+        assert [ref.uri for ref in restored[0].doc_contents[0].media] == [
+            ref.uri for ref in original[0].doc_contents[0].media
+        ]
+        assert restored[0].doc_contents[0].media[0].width == 32
+
+    def test_beir_round_trip_preserves_the_corpus(self, tmp_path, beir_dir):
+        source = get_reader("beir", uri=beir_dir)
+        out = str(tmp_path / "beir-out")
+        get_writer("beir").write_corpus(source.documents(), source.queries(), source.qrels(), out)
+
+        restored = get_reader("beir", uri=out)
+        assert {doc.id for doc in restored.documents()} == {doc.id for doc in source.documents()}
+        assert restored.qrels() == source.qrels()
+
+    def test_beir_writer_refuses_media_rather_than_dropping_it(self, tmp_path, image_ranking_jsonl):
+        """Silently writing an empty document would be the worse outcome."""
+        source = get_reader("jsonl", uri=image_ranking_jsonl)
+        with pytest.raises(ConfigError, match="cannot express"):
+            get_writer("beir").write_corpus(source.documents(), source.queries(), source.qrels(), str(tmp_path / "b"))
+
+    def test_ranking_to_corpus_derivation(self, ranking_jsonl):
+        """A ranking source serves the corpus shape without knowing about it."""
+        reader = get_reader("jsonl", uri=ranking_jsonl)
+        assert {doc.id for doc in reader.documents()} == {"d1", "d2", "d3"}
+        assert {query.id for query in reader.queries()} == {"q1", "q2"}
+
+    def test_corpus_to_ranking_derivation(self, beir_dir):
+        """A corpus source is judgeable with no intervening retrieval run."""
+        examples = list(get_reader("beir", uri=beir_dir).examples())
+        assert {ex.id for ex in examples} == {"q1", "q2"}
+        by_id = {ex.id: ex for ex in examples}
+        assert set(by_id["q1"].doc_ids) == {"d1", "d2"}
+        assert dict(zip(by_id["q1"].doc_ids, by_id["q1"].docs, strict=True))["d1"].startswith("Tortoises")
+
+
+class TestReaderTable:
+    def test_every_format_is_listed_under_its_uri_scheme(self):
+        assert available_readers() == ["beir", "frames", "hf", "images", "jsonl", "pdf", "videos"]
+        assert available_writers() == ["beir", "jsonl"]
+
+    def test_an_unknown_format_names_the_alternatives(self):
+        with pytest.raises(ConfigError, match="Available:"):
+            get_reader("parquet_of_dreams")
+        with pytest.raises(ConfigError, match="Available:"):
+            get_writer("stone_tablet")
+
+
+class TestImageDirSpecifics:
+    def test_doc_ids_are_paths_so_pages_do_not_collide(self, image_dir):
+        ids = {doc.id for doc in get_reader("images", uri=image_dir).documents()}
+        assert ids == {"docA/page_1", "docA/page_2", "docB/page_1", "docB/page_2"}
+
+    def test_hashing_is_opt_in(self, image_dir):
+        unhashed = next(iter(get_reader("images", uri=image_dir).documents()))
+        assert unhashed.media[0].sha256 is None
+
+        hashed = next(iter(get_reader("images", uri=image_dir, hash_media=True).documents()))
+        assert hashed.media[0].sha256 is not None
+        assert (hashed.media[0].width, hashed.media[0].height) == (40, 60)
+
+
+class TestJsonlSpecifics:
+    def test_a_directory_with_one_jsonl_is_accepted(self, ranking_jsonl):
+        from pathlib import Path
+
+        directory = str(Path(ranking_jsonl).parent)
+        assert len(list(get_reader("jsonl", uri=directory).examples())) == 2
+
+    def test_an_ambiguous_directory_is_refused(self, tmp_path, ranking_jsonl):
+        from pathlib import Path
+        from shutil import copyfile
+
+        directory = Path(ranking_jsonl).parent
+        copyfile(ranking_jsonl, directory / "other.jsonl")
+        with pytest.raises(ConfigError, match="name one explicitly"):
+            list(get_reader("jsonl", uri=str(directory)).examples())
+
+
+class TestBeirSpecifics:
+    def test_title_is_prefixed_the_beir_way(self, beir_dir):
+        docs = {doc.id: doc.text for doc in get_reader("beir", uri=beir_dir).documents()}
+        assert docs["d1"] == "Tortoises\n\na tortoise is a reptile"
+
+    def test_headerless_qrels_are_accepted(self, tmp_path, beir_dir):
+        from pathlib import Path
+
+        qrels = Path(beir_dir) / "qrels" / "test.tsv"
+        qrels.write_text("q1\td1\t2\nq2\td3\t1\n")
+        assert get_reader("beir", uri=beir_dir).qrels() == {"q1": {"d1": 2}, "q2": {"d3": 1}}
+
+    def test_a_missing_corpus_names_what_it_looked_for(self, tmp_path):
+        (tmp_path / "empty").mkdir()
+        with pytest.raises(FileNotFoundError, match="corpus.jsonl"):
+            list(get_reader("beir", uri=str(tmp_path / "empty")).documents())
+
+
+def test_a_reader_that_implements_nothing_fails_at_definition():
+    """A half-implemented reader must not return an empty dataset silently.
+
+    Caught when the class is defined rather than when it is read, because each
+    shape's default is written in terms of the other: left to run, the two derive
+    from each other until the stack ends.
+    """
+    from rcp_ndcg.data.io.base import DataShape as Shape
+    from rcp_ndcg.data.io.base import SourceReader as Base
+
+    with pytest.raises(TypeError, match="overrides neither"):
+
+        class Hollow(Base):
+            name = "hollow-test-only"
+            shapes = frozenset({Shape.RANKING})
+
+
+def test_encoded_image_bytes_are_stable(tmp_path):
+    """The same page must hash the same way twice, or caching is pointless."""
+    from rcp_ndcg.data.media import sha256_of
+
+    buffer = io.BytesIO()
+    PIL.new("RGB", (16, 16), color=(1, 2, 3)).save(buffer, format="PNG")
+    first = sha256_of(buffer.getvalue())
+
+    buffer = io.BytesIO()
+    PIL.new("RGB", (16, 16), color=(1, 2, 3)).save(buffer, format="PNG")
+    assert sha256_of(buffer.getvalue()) == first
+
+
+def test_a_fractional_qrels_label_is_kept_as_a_float(beir_dir, tmp_path) -> None:
+    """A continuous label (0.7) is a grade like any other: no floor, no refusal."""
+    qrels = Path(beir_dir) / "qrels" / "test.tsv"
+    qrels.write_text("query-id\tcorpus-id\tscore\nq1\td1\t0.7\nq1\td2\t2\n")
+    reader = get_reader("beir", uri=beir_dir)
+
+    assert reader.qrels() == {"q1": {"d1": 0.7, "d2": 2.0}}
+    get_writer("beir").write_corpus(reader.documents(), reader.queries(), reader.qrels(), str(tmp_path / "out"))
+    assert (tmp_path / "out" / "qrels" / "test.tsv").read_text().splitlines()[1:] == ["q1\td1\t0.7", "q1\td2\t2"]
+
+
+def test_a_non_numeric_qrels_label_is_a_data_error(beir_dir) -> None:
+    (Path(beir_dir) / "qrels" / "test.tsv").write_text("query-id\tcorpus-id\tscore\nq1\td1\tnan\n")
+    with pytest.raises(DataError, match="not a finite number"):
+        get_reader("beir", uri=beir_dir).qrels()
+
+
+def test_hf_qrels_keep_fractional_labels(monkeypatch) -> None:
+    """HF qrels are floats: a 0.5 label once raised (and before that was floored to 0)."""
+
+    class Split(list):
+        column_names = ["query-id", "corpus-id", "score"]
+
+    rows = Split(
+        [{"query-id": "q1", "corpus-id": "d1", "score": 0.5}, {"query-id": "q1", "corpus-id": "d2", "score": 2}]
+    )
+    reader = HfReader(uri="x", corpus_split="corpus", queries_split=None, qrels_split="qrels")
+    monkeypatch.setattr(type(reader), "_split", lambda self, split: rows, raising=False)
+
+    assert reader.qrels() == {"q1": {"d1": 0.5, "d2": 2.0}}
+
+
+def test_image_dir_qrels_keep_fractional_labels(image_dir) -> None:
+    """The sidecar qrels of an image corpus were read with ``int()``: 0.5 became 0 without a word."""
+    qrels = Path(image_dir.replace("/images", "/qrels.jsonl"))
+    qrels.write_text('{"query_id": "q1", "qrels": {"docA/page_1": 0.5}}\n')
+
+    reader = get_reader("images", uri=image_dir, qrels_uri=str(qrels))
+
+    assert reader.qrels() == {"q1": {"docA/page_1": 0.5}}

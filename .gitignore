@@ -1,0 +1,33 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.basedpyright/
+.ipynb_checkpoints/
+
+# Build and documentation output
+/build/
+/dist/
+/site/
+
+# Local run output (runs, logs, caches written by the CLI)
+/runs/
+/logs/
+/.cache/
+/results/
+
+# Credentials: never committed
+.env
+credentials*.json
+client_secret*.json
+service_account*.json
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/

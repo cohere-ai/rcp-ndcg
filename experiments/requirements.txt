@@ -1,0 +1,6 @@
+# Extra packages for the reproduction scripts. Install the library first, from PyPI or from the repository root:
+#   pip install rcp-ndcg   (or, in a checkout: uv sync)
+# then:
+#   pip install -r experiments/requirements.txt
+huggingface-hub>=0.34
+pyarrow>=15

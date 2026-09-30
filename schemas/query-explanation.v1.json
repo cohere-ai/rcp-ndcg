@@ -1,0 +1,291 @@
+{
+  "$defs": {
+    "CriterionContribution": {
+      "description": "One criterion at a document's calibrated ability (its ``gamma`` and ``beta``: QueryExplanation.items).",
+      "properties": {
+        "contribution": {
+          "description": "``gamma * p_pass / sum(gamma)``; the contributions sum to the gain.",
+          "title": "Contribution",
+          "type": "number"
+        },
+        "criterion": {
+          "description": "``\"C1\"`` ... ``\"C5\"``.",
+          "title": "Criterion",
+          "type": "string"
+        },
+        "p_pass": {
+          "description": "``sigmoid(gamma * (theta - beta))``, in ``(0, 1)``.",
+          "title": "P Pass",
+          "type": "number"
+        }
+      },
+      "required": [
+        "criterion",
+        "p_pass",
+        "contribution"
+      ],
+      "title": "CriterionContribution",
+      "type": "object"
+    },
+    "CriterionParams": {
+      "description": "One criterion's calibrated item parameters.",
+      "properties": {
+        "beta": {
+          "description": "Difficulty, in logits.",
+          "title": "Beta",
+          "type": "number"
+        },
+        "criterion": {
+          "description": "``\"C1\"`` ... ``\"C5\"``.",
+          "title": "Criterion",
+          "type": "string"
+        },
+        "gamma": {
+          "description": "Discrimination (dimensionless).",
+          "title": "Gamma",
+          "type": "number"
+        }
+      },
+      "required": [
+        "criterion",
+        "gamma",
+        "beta"
+      ],
+      "title": "CriterionParams",
+      "type": "object"
+    },
+    "RankedDocument": {
+      "description": "A document in a system's top k.",
+      "properties": {
+        "criteria": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CriterionContribution"
+          },
+          "title": "Criteria",
+          "type": "array"
+        },
+        "doc_id": {
+          "title": "Doc Id",
+          "type": "string"
+        },
+        "gain": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Gain"
+        },
+        "grade": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Grade"
+        },
+        "rank": {
+          "title": "Rank",
+          "type": "integer"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        },
+        "theta": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Theta"
+        }
+      },
+      "required": [
+        "rank",
+        "doc_id",
+        "score",
+        "gain",
+        "grade",
+        "theta"
+      ],
+      "title": "RankedDocument",
+      "type": "object"
+    },
+    "ScoreDelta": {
+      "description": "The RCP-nDCG gap between two systems' displayed orders (B minus A), split into selection and ordering.\n\nThe cutoff is the explanation's ``k`` (the documents shown), which may differ from the report's cutoffs in\nSystemExplanation.values. ``selection`` is what choosing other documents for the top k changes, and\n``ordering`` what arranging them differently changes; the two sum to ``total``.",
+      "properties": {
+        "ordering": {
+          "title": "Ordering",
+          "type": "number"
+        },
+        "selection": {
+          "title": "Selection",
+          "type": "number"
+        },
+        "system_a": {
+          "title": "System A",
+          "type": "string"
+        },
+        "system_b": {
+          "title": "System B",
+          "type": "string"
+        },
+        "total": {
+          "title": "Total",
+          "type": "number"
+        }
+      },
+      "required": [
+        "system_a",
+        "system_b",
+        "total",
+        "selection",
+        "ordering"
+      ],
+      "title": "ScoreDelta",
+      "type": "object"
+    },
+    "SystemExplanation": {
+      "description": "One system on the query: its metric values and its top k.",
+      "properties": {
+        "system": {
+          "title": "System",
+          "type": "string"
+        },
+        "top": {
+          "items": {
+            "$ref": "#/$defs/RankedDocument"
+          },
+          "title": "Top",
+          "type": "array"
+        },
+        "values": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Values",
+          "type": "object"
+        }
+      },
+      "required": [
+        "system",
+        "values",
+        "top"
+      ],
+      "title": "SystemExplanation",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/query-explanation.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A QueryExplanation, with the texts it is about when asked for (--include-text).",
+  "properties": {
+    "dataset": {
+      "description": "The dataset (subset) of the query.",
+      "title": "Dataset",
+      "type": "string"
+    },
+    "deltas": {
+      "description": "Every system against the first, at cutoff ``k``.",
+      "items": {
+        "$ref": "#/$defs/ScoreDelta"
+      },
+      "title": "Deltas",
+      "type": "array"
+    },
+    "items": {
+      "default": [],
+      "description": "The criteria's item parameters behind every document's ``criteria`` (empty without a calibration).",
+      "items": {
+        "$ref": "#/$defs/CriterionParams"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "k": {
+      "description": "The documents shown per system, and the cutoff of ``deltas``.",
+      "title": "K",
+      "type": "integer"
+    },
+    "protocol": {
+      "description": "The name of the report's scoring protocol.",
+      "title": "Protocol",
+      "type": "string"
+    },
+    "query": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The query text (with --include-text).",
+      "title": "Query"
+    },
+    "query_id": {
+      "description": "The query.",
+      "title": "Query Id",
+      "type": "string"
+    },
+    "schema": {
+      "const": "rcp-ndcg.query-explanation.v1",
+      "type": "string"
+    },
+    "systems": {
+      "description": "Each system's values (at the report's cutoffs) and its top k.",
+      "items": {
+        "$ref": "#/$defs/SystemExplanation"
+      },
+      "title": "Systems",
+      "type": "array"
+    },
+    "texts": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "description": "{doc_id: text} of every shown document (with --include-text).",
+      "title": "Texts",
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "dataset",
+    "query_id",
+    "k",
+    "protocol",
+    "systems",
+    "deltas"
+  ],
+  "title": "ExplainedQuery",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.query-explanation.v1"
+}

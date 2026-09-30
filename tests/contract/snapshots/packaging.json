@@ -1,0 +1,29 @@
+{
+  "entry_point_groups_read": [
+    "rcp_ndcg.runners"
+  ],
+  "heavy_imports": {
+    "rcp_ndcg": [],
+    "rcp_ndcg.cli.main": [],
+    "rcp_ndcg_core": []
+  },
+  "projects": {
+    "rcp-ndcg": {
+      "entry_points": {
+        "rcp_ndcg.runners": [
+          "kubernetes",
+          "local",
+          "slurm"
+        ]
+      },
+      "scripts": {
+        "rcp-ndcg": "rcp_ndcg.cli.main:main"
+      }
+    },
+    "rcp-ndcg-core": {
+      "entry_points": {},
+      "scripts": {}
+    }
+  },
+  "pydantic_version": "2.13.5"
+}

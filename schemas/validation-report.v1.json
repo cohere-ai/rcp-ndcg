@@ -1,0 +1,114 @@
+{
+  "$defs": {
+    "ValidationCheck": {
+      "description": "One problem found; ``error`` means the numbers computed from this input would be wrong.",
+      "properties": {
+        "code": {
+          "description": "The check's code (see the module docstring).",
+          "title": "Code",
+          "type": "string"
+        },
+        "count": {
+          "description": "How many items it found.",
+          "title": "Count",
+          "type": "integer"
+        },
+        "examples": {
+          "description": "Up to five of them, as ``query_id/doc_id`` (or ``query_id``), sorted.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Examples",
+          "type": "array"
+        },
+        "message": {
+          "description": "What the check found.",
+          "title": "Message",
+          "type": "string"
+        },
+        "severity": {
+          "description": "``\"error\"`` or ``\"warning\"``.",
+          "enum": [
+            "error",
+            "warning"
+          ],
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "count"
+      ],
+      "title": "ValidationCheck",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/validation-report.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The problems found; ``ok`` when none is an error.",
+  "properties": {
+    "checks": {
+      "description": "The problems found.",
+      "items": {
+        "$ref": "#/$defs/ValidationCheck"
+      },
+      "title": "Checks",
+      "type": "array"
+    },
+    "dataset": {
+      "description": "The dataset's name.",
+      "title": "Dataset",
+      "type": "string"
+    },
+    "ok": {
+      "description": "Whether no check is an error.",
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "schema": {
+      "const": "rcp-ndcg.validation-report.v1",
+      "type": "string"
+    },
+    "systems": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The systems of the checked rankings (``None`` without rankings).",
+      "title": "Systems"
+    },
+    "uri": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The URI it was loaded from (``None`` for a dataset built in memory).",
+      "title": "Uri"
+    }
+  },
+  "required": [
+    "schema",
+    "dataset",
+    "ok",
+    "checks"
+  ],
+  "title": "ValidationReport",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.validation-report.v1"
+}
