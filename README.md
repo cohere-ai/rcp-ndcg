@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cohere-logo-dark.svg">
+    <img src="docs/assets/cohere-logo.svg" alt="Cohere" height="36">
+  </picture>
+</p>
+
 # RCP-nDCG
 
 RCP-nDCG is nDCG whose gains come from calibrated LLM judgements instead of sparse human relevance labels. An LLM
@@ -6,6 +13,11 @@ document; a two-parameter item-response model then puts the tournament scores of
 document's gain is its discrimination-weighted probability of passing the criteria. The method and its validation
 are in the paper
 [Rubric-Calibrated Preferences: Cross-Query Calibration of LLM Judgments via Item Response Theory](https://arxiv.org/abs/2609.35739).
+
+<p align="center">
+  <img src="docs/assets/rcp-pipeline.png" alt="The RCP-nDCG pipeline: an LLM judge runs a listwise tournament (Stage A) and answers five binary criteria (Stage B); an item-response model calibrates every query's tournament scores onto one shared scale; each document's gain is its discrimination-weighted probability of passing the criteria." width="100%">
+</p>
+<p align="center"><em>The RCP-nDCG pipeline (Figure 2 of the paper).</em></p>
 
 This repository holds the library and command line (`rcp-ndcg`), the scripts that reproduce the paper's tables from
 the public data (`experiments/`), and runnable examples (`examples/`).
