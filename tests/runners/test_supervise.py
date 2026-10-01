@@ -9,12 +9,16 @@ from __future__ import annotations
 import shutil
 import signal
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 import pytest
 
 from rcp_ndcg.runners import JobSpec, KubernetesRunner, Resources, ServeConfig, SlurmRunner
+
+# The job scripts run on Linux cluster nodes: the stubs need bash >= 4.3, setsid and /proc, which macOS lacks.
+pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="the job scripts target Linux nodes")
 
 SERVE = ServeConfig(
     image="vllm/vllm-openai:v0.30.0",

@@ -12,6 +12,7 @@ __pycache__/
 
 # Build and documentation output
 /build/
+/packages/*/build/
 /dist/
 /site/
 

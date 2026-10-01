@@ -116,6 +116,15 @@ def test_a_warning_code_comes_from_the_closed_list() -> None:
         RcpNdcgWarning("SOMETHING_ELSE", "x")  # type: ignore[arg-type]
 
 
+def test_an_offline_cache_miss_is_not_reported_as_a_missing_file() -> None:
+    hub_errors = pytest.importorskip("huggingface_hub.errors")
+    offline = classify(hub_errors.LocalEntryNotFoundError("not in the cache"))
+    missing = classify(hub_errors.EntryNotFoundError("404"))
+    assert offline.exit_code == missing.exit_code == ExitCode.MISSING_INPUT
+    assert "HF_HUB_OFFLINE" in (offline.hint or "")
+    assert "HF_HUB_OFFLINE" not in (missing.hint or "")
+
+
 def test_a_provider_failure_names_the_concurrency_setting_that_exists() -> None:
     hint = errors.classify(ConnectionError("refused")).hint
     assert "--concurrency" not in hint and "judge.concurrency" in hint

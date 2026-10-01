@@ -612,11 +612,13 @@ def _hub_file(repo: str, path: str, revision: str | None) -> Path | None:
     """The local copy of one file of a public dataset repository (downloaded once), or ``None`` if it is absent."""
     try:
         from huggingface_hub import hf_hub_download
-        from huggingface_hub.errors import EntryNotFoundError
+        from huggingface_hub.errors import EntryNotFoundError, LocalEntryNotFoundError
     except ImportError as exc:
         raise ImportError("downloading the released data needs huggingface_hub: pip install 'rcp-ndcg[hf]'") from exc
     try:
         return Path(hf_hub_download(repo, path, repo_type="dataset", revision=revision))
+    except LocalEntryNotFoundError:
+        raise  # offline and not cached: the file may well exist
     except EntryNotFoundError:
         return None
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
@@ -26,18 +27,31 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _hub_is_offline_and_empty(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch):
-    """No test reaches the HuggingFace Hub or reads the developer's hub cache.
+def _hub_is_offline_and_empty(
+    request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+):
+    """No test reaches the HuggingFace Hub or reads the developer's hub cache, except those marked ``network``.
 
     Revision resolution (``rcp_ndcg.data.revisions``) runs whenever an identity
     names a Hub model or dataset. Offline with an empty cache it records the
     revision as unverified; tests that need a resolved commit install a fake Hub
     or write a cache ref themselves.
+
+    huggingface_hub reads ``HF_HUB_OFFLINE`` once, when it is first imported, so the
+    already-imported flag is set too: a network test in a worker that imported the
+    library offline would otherwise stay offline.
     """
     from rcp_ndcg.data.revisions import resolve_revision
 
-    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
-    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path_factory.getbasetemp() / "empty_hub_cache"))
+    offline = request.node.get_closest_marker("network") is None
+    if offline:
+        monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+        monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path_factory.getbasetemp() / "empty_hub_cache"))
+    else:
+        monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    hub = sys.modules.get("huggingface_hub.constants")
+    if hub is not None:
+        monkeypatch.setattr(hub, "HF_HUB_OFFLINE", offline)
     resolve_revision.cache_clear()
     yield
     resolve_revision.cache_clear()

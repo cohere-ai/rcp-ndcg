@@ -47,8 +47,6 @@ def test_network_snippets_run(page: Path, tmp_path: Path, monkeypatch: pytest.Mo
     blocks = [b for b in _python_blocks(page) if b.marker == "network"]
     if not blocks:
         pytest.skip("no network snippet")
-    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
-    monkeypatch.delenv("HF_HUB_CACHE", raising=False)
     if any("import mteb" in block.text for block in blocks):
         pytest.importorskip("mteb")
     monkeypatch.chdir(tmp_path)

@@ -324,6 +324,13 @@ def classify(exc: BaseException) -> RcpNdcgError:
     if isinstance(exc, ImportError) and _INSTALL_MARKER in str(exc):
         text = str(exc)
         return DependencyError(text, hint=text[text.find("pip install") :] if "pip install" in text else None)
+    # before FileNotFoundError, which it subclasses: an offline cache miss is not a missing file
+    if _named(exc, "huggingface_hub.errors", "LocalEntryNotFoundError"):
+        return MissingInputError(
+            name,
+            hint="the file is not in the local Hub cache and Hub access is off (HF_HUB_OFFLINE); "
+            "unset HF_HUB_OFFLINE or download the file first",
+        )
     if isinstance(exc, FileNotFoundError):
         details = {"path": str(exc.filename)} if exc.filename is not None else None
         return MissingInputError(str(exc), hint="check the path, or run the step that produces it", details=details)

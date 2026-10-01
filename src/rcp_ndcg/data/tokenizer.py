@@ -110,12 +110,14 @@ def load_tokenizer(spec: str) -> TextTokenizer:
     _backend_class()  # a missing library fails before the download
     try:
         from huggingface_hub import hf_hub_download
-        from huggingface_hub.errors import EntryNotFoundError
+        from huggingface_hub.errors import EntryNotFoundError, LocalEntryNotFoundError
     except ModuleNotFoundError as exc:
         raise dependency_error("huggingface_hub", needed_for="loading the judge's tokenizer from the Hub") from exc
     repo, _, revision = spec.partition("@")
     try:
         file = hf_hub_download(repo, TOKENIZER_FILE, revision=revision or None)
+    except LocalEntryNotFoundError:
+        raise  # offline and not cached: classify() says so
     except EntryNotFoundError as exc:
         raise MissingInputError(
             f"the Hub repository {repo!r} has no {TOKENIZER_FILE}" + (f" at revision {revision}" if revision else ""),

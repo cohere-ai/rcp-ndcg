@@ -46,9 +46,8 @@ def test_unknown_suites_and_modes_are_refused() -> None:
 
 @pytest.mark.network
 @pytest.mark.skipif(not os.environ.get("RCP_NDCG_NETWORK_TESTS"), reason="set RCP_NDCG_NETWORK_TESTS=1 (HF Hub)")
-def test_the_bright_tasks_carry_the_published_names(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_bright_tasks_carry_the_published_names() -> None:
     pytest.importorskip("mteb")
-    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
 
     tasks = get_tasks("bright", ["aops"])
 
