@@ -1760,8 +1760,8 @@ name = "httpcore2"
 version = "2.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11", marker = "sys_platform != 'emscripten' or (extra == 'extra-8-rcp-ndcg-local' and extra == 'extra-8-rcp-ndcg-vllm')" },
-    { name = "truststore", marker = "sys_platform != 'emscripten' or (extra == 'extra-8-rcp-ndcg-local' and extra == 'extra-8-rcp-ndcg-vllm')" },
+    { name = "h11", marker = "sys_platform != 'emscripten'" },
+    { name = "truststore", marker = "sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/15/8c/e925b1c92018abb3a1863ce1549d76d2381e334d21d65d4ac8f65dabd78a/httpcore2-2.13.0.tar.gz", hash = "sha256:2adc8be4fb285fbcd6d894298db3b52c177e74b6674eda3a76bd36be3292a3db", size = 67740, upload-time = "2026-09-14T14:18:04.717Z" }
 wheels = [
@@ -1824,12 +1824,12 @@ name = "httpx2"
 version = "2.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "anyio", marker = "sys_platform != 'emscripten' or (extra == 'extra-8-rcp-ndcg-local' and extra == 'extra-8-rcp-ndcg-vllm')" },
-    { name = "httpcore2", marker = "sys_platform != 'emscripten' or (extra == 'extra-8-rcp-ndcg-local' and extra == 'extra-8-rcp-ndcg-vllm')" },
-    { name = "httpx2-jsfetch", marker = "sys_platform == 'emscripten' or (extra == 'extra-8-rcp-ndcg-local' and extra == 'extra-8-rcp-ndcg-vllm')" },
+    { name = "anyio", marker = "sys_platform != 'emscripten'" },
+    { name = "httpcore2", marker = "sys_platform != 'emscripten'" },
+    { name = "httpx2-jsfetch", marker = "sys_platform == 'emscripten'" },
     { name = "idna" },
-    { name = "truststore", marker = "sys_platform != 'emscripten' or (extra == 'extra-8-rcp-ndcg-local' and extra == 'extra-8-rcp-ndcg-vllm')" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-8-rcp-ndcg-local' and extra == 'extra-8-rcp-ndcg-vllm')" },
+    { name = "truststore", marker = "sys_platform != 'emscripten'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b9/a0/e9deef4654132857b5a5dbe4eddd0ac59c2814500e11f2f5044cd81103ee/httpx2-2.13.0.tar.gz", hash = "sha256:81bd07dc67a3701729ef1f777a3c00c915d4539604fdb5afd327f8682f6b7b44", size = 100290, upload-time = "2026-09-14T14:18:05.486Z" }
 wheels = [
@@ -4912,7 +4912,6 @@ dependencies = [
     { name = "httpx" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-8-rcp-ndcg-vllm'" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-8-rcp-ndcg-local' or extra != 'extra-8-rcp-ndcg-vllm'" },
-    { name = "openai" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.14' and extra == 'extra-8-rcp-ndcg-vllm') or (extra == 'extra-8-rcp-ndcg-local' and extra == 'extra-8-rcp-ndcg-vllm')" },
     { name = "pandas", version = "3.0.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' or extra == 'extra-8-rcp-ndcg-local' or extra != 'extra-8-rcp-ndcg-vllm'" },
     { name = "pillow" },
@@ -5005,7 +5004,6 @@ requires-dist = [
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5" },
     { name = "mteb", marker = "extra == 'mteb'", specifier = ">=2.10.5" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "openai", specifier = ">=1.0" },
     { name = "pandas", specifier = ">=2.2" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "pyarrow", specifier = ">=15.0" },

@@ -39,9 +39,8 @@ dependencies = [
   "click>=8.1",
   # Read only by ``rcp-ndcg --env-file``; the package never loads a .env file on its own.
   "python-dotenv>=1.0",
-  "openai>=1.0",
-  # The judge client (llm/client.py) and the hosted embedding and rerank clients import httpx directly;
-  # openai >= 3 depends on httpx2 (openai 2.x still pulled httpx in), so httpx must be declared, not inherited.
+  # The judge client (llm/client.py) and the hosted embedding and rerank clients send their requests over
+  # httpx through the shared transport (rcp_ndcg.inference); there is no second HTTP stack.
   "httpx>=0.27",
   # Storage: fsspec is the universal path layer (rcp_ndcg.storage); gcsfs keeps
   # gs:// URIs working out of the box.  Other protocols are extras below, so a

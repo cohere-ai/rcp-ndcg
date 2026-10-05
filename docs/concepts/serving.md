@@ -13,6 +13,7 @@ command, verbatim, beside the run's job (on SLURM without a container runtime, y
 | Field | Meaning |
 |---|---|
 | `base_url`, `model` | the OpenAI-compatible endpoint (`.../v1`), or a list of replica URLs of the same model, and the served model name |
+| `api` | the wire adapter that speaks the endpoint's protocol; unset (the default) is the judge's `openai_chat` wire (`POST {base_url}/chat/completions` over the shared transport; [the inference layer](inference.md)). A third-party adapter from the `rcp_ndcg.adapters` entry-point group enters the identity: it decides what is computed |
 | `revision` | the checkpoint commit; recorded in every judgement |
 | `temperature` | the sampling temperature; `None` (the default) sends none, so the server's default applies |
 | `max_output_tokens`, `extra_body` | the completion cap (reasoning included) and further request fields, e.g. `reasoning_effort` |
@@ -132,7 +133,9 @@ the judge is one of its roles.
 - **Refusals.** HTTP 401 or 403 stops the pass with `CredentialsError` (exit code 5), and HTTP 404 (no such route or
   model) with `ProviderError`: both concern every request, not one window. Any other refusal of one request, such
   as HTTP 400 for an over-long prompt, is that window's: it is asked again up to three attempts, then recorded as
-  an invalid judgement, and a resumed pass asks it again. Failures of the OpenAI SDK and of httpx map alike.
+  an invalid judgement, and a resumed pass asks it again. Every request goes over `httpx` through the shared
+  transport (the package ships no second HTTP stack), so the refusals, the retries and their delays are the
+  transport's, described in [the inference layer](inference.md).
 - **Answers.** The client records the endpoint's `finish_reason` as it comes, any string or none; only the answer's
   text is parsed.
 - **Window budget.** Each document's text is cut to the tokens its window leaves it, and every cut is recorded

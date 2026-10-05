@@ -125,11 +125,11 @@ role's wire, deterministically (every draw is a hash of the endpoint's seed and 
 | Route | Wire |
 |---|---|
 | `GET /models` | names the endpoint's model |
+| `POST /chat/completions` | the judge's fake (registered by `rcp_ndcg.llm._fake`): it reads the documents out of the real rendered prompt and answers in the JSON the real parsers read, so `JudgeConfig.fake(seed)` runs a real client over the real transport |
 | `POST /embeddings` | OpenAI shape; hash-seeded unit vectors, dimension from the URL's `?dim=` query (default 64), cut to the request's `dimensions` when it carries one |
 | `POST /pooling` | vLLM `task: token_embed`; ragged per-token vectors, as floats or base64-packed in the request's `embed_dtype` (default `float16`) |
 | `POST /rerank` | Cohere shape; each document scored by the same hidden ability the fake judge reads, so a tiny run's rerank and judge agree |
 
 The fakes sit *below* the transport, so routing, retries, parking and usage run in every offline test. A seed
 comes from the URL's numeric path tail (`fake://seed/3`); the vector dimension from its `?dim=` query. Extra
-routes (the judge's chat completions, a third party's) register with
-`register_fake_route(method, path, handler)`.
+routes (a third party's, or another role's) register with `register_fake_route(method, path, handler)`.

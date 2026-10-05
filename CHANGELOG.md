@@ -222,6 +222,40 @@ released together.
   runtime fields.
 - New layering charter (`AGENTS.md`): `data → inference → retrieval`; enforced by the new
   `tests/test_layering.py` (eager imports only; the current tree has no outward import).
+- **The judge is ported onto the shared transport and the `openai_chat` wire adapter**:
+  - `inference.adapters.chat` (new module, registered at import of `rcp_ndcg.inference.adapters`):
+    `OpenAIChat` (role `judge`, name `openai_chat`) -- the judge's wire adapter. `calls()` builds the
+    `POST {base_url}/chat/completions` body exactly as the OpenAI SDK built it (`messages`, `temperature` only
+    when set, `max_completion_tokens` from `max_output_tokens`, the window's `response_format`, `extra_body`
+    merged at the top level) and runs the pre-send media gate against `max_images`/`max_videos`; `interpret()`
+    reads the first choice's `message.content`, the reasoning channel from `reasoning_content` or `reasoning`,
+    `finish_reason` and `usage`, runs the reasoning watch under an answer schema (one warning after 8 answers
+    without reasoning), and maps the refusals: a media-count text (HTTP 400/422) and a refusal of the answer
+    schema are `CapabilityError`, every other returned 4xx and an answer with no choices are
+    `RequestRejectedError`; `usage(reply)` reads the token report; `fingerprint(reply)` reads
+    `system_fingerprint`. The judge's message/media lowering (`build_messages`, `media_counts`,
+    `MAX_VIDEO_BYTES`, `VIDEO_CACHE_SIZE`) moved here unchanged from the internal `rcp_ndcg.llm._payload`
+    (deleted; the layering forbids `inference` importing `llm`), importable at the new home.
+  - `JudgeClient` keeps its public API (`from_config`, `complete`, `probe`, `engines`, `model`, `usage`) and is
+    thin: it builds the adapter from `api` (unset resolves to `openai_chat` and stays out of the identity
+    payload, so every identity is unchanged) and sends through the shared `Transport` (routing, retries,
+    parking, credentials, token usage). Its constructor takes `httpx_transport` (the transport wraps it with
+    the endpoint's timeouts and pool) instead of `http_client` (which used to replace both); `config` and
+    `usage` are properties now (assigning a `model_copy` of the config rebuilds the wire at the next call);
+    the client-level `usage` keeps its shape (requests, failed_requests, tokens; `cached_input_tokens` stays
+    at 0 -- the wire reports tokens and calls only, the layer's usage decision). `is_unavailable` and the judge's
+    private status table are gone: the shared status map in `rcp_ndcg.errors` is the one home.
+  - `JudgeConfig.api` stays unset by default (the judge's `openai_chat` wire is resolved from it), so judge
+    identity payloads are byte-identical: no shipped preset, and not `JudgeConfig.fake`, changes key.
+  - The offline fake judge answers behind the transport: `fake://` endpoints answer `POST /chat/completions`
+    through the route registered by `rcp_ndcg.llm._fake`, so `JudgeConfig.fake(seed)` builds a real
+    `JudgeClient` over the real transport; `rcp_ndcg.testing.FakeJudge` stays importable and keeps its ability
+    mapping and severity, answering through its own in-process endpoint below the transport with the same
+    answer logic (its test doubles override `FakeJudge._answer`, the wire handler, where they used to override
+    the client's `_send`).
+- **`Reply` gains `url`** (default `None`): the replica base URL that answered, set by the transport -- a role
+  client needs it to record a per-replica fact such as a completion's `system_fingerprint` (the judge calls
+  `transport.note_system_fingerprint(reply.url, ...)` for its first completion per replica, as it did).
 
 ### Fixed
 
@@ -269,6 +303,27 @@ released together.
   widened, and the retrieval configs' `base_url` described per its type: one URL, required for the served
   ones, optional for the hosted ones); `tests/test_errors.py` now requires one *root* class per exit code,
   since the moved outage and refusal types are `ProviderError` subclasses and exit codes do not change.
+- **The judge's retry delays are the transport's** (the one visible change of the port): within-request
+  retries back off 1 s doubling capped at 60 s, or the server's `Retry-After`, where the OpenAI SDK used its
+  own delays; the set-aside and parking numbers (5 s doubling to 60 s) are unchanged. `requirements-constraints.txt`
+  regenerated without `openai` (and without `httpx2`, its transport, and `jiter`): the judge sends over `httpx`
+  through the shared transport. `openai` and `httpx2` remain in `uv.lock` only as the `[vllm]` extra's engine
+  package's own dependency (vLLM's server speaks the OpenAI protocol with its own client); the `rcp-ndcg`
+  package itself declares and resolves neither.
+- `tests/contract` snapshots and the exported schemas (`schemas/judge-config.v1.json`,
+  `schemas/run-config.v1.json`) regenerated for the judge port: `OpenAIChat` exported from
+  `rcp_ndcg.inference`, `Reply.url`, `JudgeClient`'s `httpx_transport` keyword and its `config`/`usage`
+  properties, and the `api`/`extra_body` field descriptions.
+
+### Removed
+
+- **The OpenAI SDK dependency** (`openai` left `pyproject.toml`'s dependencies; the accepted design of the
+  unified inference layer): the judge's chat completions go over `httpx` through the shared transport and the
+  `openai_chat` wire adapter, so the package ships one HTTP stack, one retry policy and one error mapping.
+  What the judge sent and read is unchanged (the request body, the reasoning channel, the refusals and the
+  usage), the judgement family keys do not move, and the only visible difference is the retry delays, which
+  now follow the transport's policy. `requirements-constraints.txt` no longer carries `openai`, `httpx2` or
+  `jiter`; in `uv.lock` the two remain only as the `[vllm]` extra's engine package's own dependency.
 
 ## 0.1.0
 
