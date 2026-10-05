@@ -87,7 +87,8 @@ class Adapter(Protocol[Req, Res]):
 
 
 _BUILTINS: dict[str, type[Adapter[Any, Any]]] = {}
-"""The adapters registered in this process; the shipped ones register at import (none yet)."""
+"""The adapters registered in this process; the shipped ones register at import of
+:mod:`rcp_ndcg.inference.adapters` (the pooling adapter today)."""
 
 _PLUGINS: dict[str, type[Adapter[Any, Any]]] | None = None
 """The adapters of the entry-point group, loaded once on first use (``None``: not loaded yet)."""
@@ -160,8 +161,9 @@ def get_adapter(name: str) -> type[Adapter[Any, Any]]:
             hint = f"known wire adapters: {', '.join(known)}"
         else:
             hint = (
-                "no wire adapter is registered yet; the shipped ones arrive with the transport, and a "
-                f"third party's in the {ADAPTER_ENTRY_POINTS!r} entry-point group"
+                "no wire adapter is registered in this process; importing ``rcp_ndcg.inference.adapters`` "
+                "registers the shipped ones, and a third party's in the "
+                f"{ADAPTER_ENTRY_POINTS!r} entry-point group"
             )
         raise ConfigError(f"unknown adapter {name!r}", hint=hint, details={"known": list(known)})
     return adapter
