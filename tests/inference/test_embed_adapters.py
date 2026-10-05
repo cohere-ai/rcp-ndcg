@@ -85,6 +85,13 @@ class TestOpenAIShape:
         vectors = self.adapter.interpret(request(texts=("a", "b", "c")), [reply(200, body)])
         assert vectors.as_matrix()[:, 0].tolist() == [1.0, 0.0, 1.0]  # items 0, 1, 2 -- not reply order
 
+    def test_a_reply_without_indices_is_read_in_reply_order(self) -> None:
+        """A reply with no ``index`` at all (no engine ships one, but the shape has no field to trust) is read
+        in reply order, which aligns with the request's items."""
+        body = {"data": [{"embedding": [1.0, 0.0]}, {"embedding": [0.0, 1.0]}]}
+        vectors = self.adapter.interpret(request(texts=("a", "b")), [reply(200, body)])
+        assert vectors.as_matrix()[:, 0].tolist() == [1.0, 0.0]
+
     def test_a_base64_reply_decodes_as_float32(self) -> None:
         body = {"data": [{"index": 0, "embedding": base64_f32([0.25, -0.5, 0.75])}]}
         vectors = self.adapter.interpret(request(), [reply(200, body)])
@@ -98,6 +105,8 @@ class TestOpenAIShape:
     def test_usage_reads_prompt_tokens(self) -> None:
         assert self.adapter.usage(reply(200, {"data": [], "usage": {"prompt_tokens": 7}})) == TokenCount(7)
         assert self.adapter.usage(reply(200, {"data": []})) is None
+        assert self.adapter.usage(reply(200, {"data": [], "usage": {"prompt_tokens": "abc"}})) is None
+        assert self.adapter.usage(reply(200, {"data": [], "usage": {"prompt_tokens": [1]}})) is None
 
 
 class TestCohereShape:

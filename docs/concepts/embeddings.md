@@ -93,8 +93,8 @@ print(config.api, config.batch_size, config.concurrency)
 `client.encode(contents, role)` is synchronous and `client.aencode(contents, role)` asynchronous; both return
 an `Embeddings` with one vector per content, in the input's order. The client:
 
-* prepends `query_prompt` / `doc_prompt` per side, through `_prepare` -- the one seam the text-budget mechanism
-  plugs into when it lands (until then a config that sets `max_tokens` is refused with a `ConfigError`, never
+* prepends `query_prompt` / `doc_prompt` per side, through one private seam the text-budget mechanism plugs
+  into when it lands (until then a config that sets `max_tokens` is refused with a `ConfigError`, never
   silently ignored);
 * slices the items into `batch_size`-sized requests and keeps at most `concurrency` in flight, reassembling in
   the input's order whatever order the replies arrive in;
@@ -103,7 +103,9 @@ an `Embeddings` with one vector per content, in the input's order. The client:
   header, so the transport never adds a second one.
 
 The vectors are raw float32 from the adapter -- the normalisation is the client's content decision, not the
-wire's. `dimensions` changes what the server computes and is content; `base_url`, `batch_size`, `concurrency`
+wire's. Each adapter's `usage()` reports the input tokens its API names (OpenAI's `usage.prompt_tokens`,
+Cohere's billed units; Gemini reports none), for the transport's accounting. `dimensions` changes what the
+server computes and is content; `base_url`, `batch_size`, `concurrency`
 and the credentials change where and how fast, and are runtime.
 
 ## Identity

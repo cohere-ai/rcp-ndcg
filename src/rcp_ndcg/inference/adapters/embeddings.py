@@ -242,7 +242,8 @@ class _EmbedAdapter:
     def usage(self, reply: Reply) -> TokenCount | None:
         """The tokens the reply reports (``usage.prompt_tokens``, the OpenAI shape), or ``None``.
 
-        Input tokens only: embeddings answer no completions, so there are no output tokens.
+        Input tokens only: embeddings answer no completions, so there are no output tokens. A malformed
+        report reads as no report, never a crash: usage is accounting, the vectors are the answer.
         """
         body = reply.body
         if not isinstance(body, dict):
@@ -251,7 +252,12 @@ class _EmbedAdapter:
         if not isinstance(usage, dict):
             return None
         prompt = usage.get("prompt_tokens")
-        return TokenCount(input_tokens=int(prompt)) if prompt is not None else None
+        if prompt is None:
+            return None
+        try:
+            return TokenCount(input_tokens=int(prompt))
+        except (TypeError, ValueError):
+            return None
 
     # -- hooks --------------------------------------------------------------
     def _path(self, model: str) -> str:
@@ -373,14 +379,20 @@ class CohereEmbeddings(_EmbedAdapter):
         return [_one_vector(raw, adapter=self.name, where="an 'embeddings.float' entry") for raw in embeddings["float"]]
 
     def usage(self, reply: Reply) -> TokenCount | None:
-        """The billed input tokens (``meta.billed_units.input_tokens``), or ``None`` when the reply names none."""
+        """The billed input tokens (``meta.billed_units.input_tokens``), or ``None`` when the reply names none
+        usable."""
         body = reply.body
         if not isinstance(body, dict):
             return None
         meta = body.get("meta")
         units = meta.get("billed_units") if isinstance(meta, dict) else None
         prompt = units.get("input_tokens") if isinstance(units, dict) else None
-        return TokenCount(input_tokens=int(prompt)) if prompt is not None else None
+        if prompt is None:
+            return None
+        try:
+            return TokenCount(input_tokens=int(prompt))
+        except (TypeError, ValueError):
+            return None
 
 
 @register_adapter

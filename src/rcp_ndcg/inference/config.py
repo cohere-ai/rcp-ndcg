@@ -69,7 +69,7 @@ class EmbeddingEndpoint(Endpoint):
     def identity_extra(self) -> dict[str, str]:
         """The identity fields beyond :func:`rcp_ndcg.support.identity.identity_payload`: the tokenizer's SHA-256.
 
-        RFC 7.4's rule, the judge's rule for ``JudgeConfig.tokenizer``: what cuts (or, later, budgets) the text
+        The judge's rule for ``JudgeConfig.tokenizer``: what cuts (or, later, budgets) the text
         enters every identity by the SHA-256 of its ``tokenizer.json``, never by how it is named -- the name is
         RUNTIME. The step identity of a retrieval step (``runs/pipeline.py``) will merge this into the config's
         ``identity_payload`` when the retrieval wiring moves onto this layer.
