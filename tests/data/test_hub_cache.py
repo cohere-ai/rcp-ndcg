@@ -146,6 +146,40 @@ def test_offline_unpinned_without_a_recorded_ref_names_the_revision_fix(cache: P
     assert error.details["path"] == f"{SUBSET}/qrels.parquet"
 
 
+def test_a_hub_without_the_private_absence_sentinel_never_reports_silent_absence(
+    cache: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A hub that lost its private ``_CACHED_NO_EXIST`` sentinel: an unmarked file is "not cached", never absent.
+
+    Without the sentinel the cache cannot tell "absent upstream" from "not cached", so the file is treated as
+    not cached: the load refuses with the offline hint (one debug line says why), and an optional table is never
+    silently ``None``. The stub stands in for a future huggingface_hub that dropped the private name.
+    """
+    import logging
+
+    import huggingface_hub
+
+    real_getattr = huggingface_hub.__getattr__  # the lazy loader (PEP 562): every public name resolves through it
+
+    def lazy_without_sentinel(name: str) -> object:
+        if name == "_CACHED_NO_EXIST":
+            raise AttributeError(name)  # a future huggingface_hub that dropped the private sentinel
+        return real_getattr(name)
+
+    monkeypatch.setattr(huggingface_hub, "__getattr__", lazy_without_sentinel)
+
+    stage(cache, files={f"{SUBSET}/qrels.parquet": _TABLES[f"{SUBSET}/qrels.parquet"]})  # top_ranked: unmarked
+
+    with caplog.at_level(logging.DEBUG, logger="rcp_ndcg.data.dataset"):
+        with pytest.raises(MissingInputError) as caught:
+            load_dataset(f"hf://{REPO}/{SUBSET}", revision=SHA)
+
+    assert caught.value.details["path"] == f"{SUBSET}/top_ranked.parquet"
+    assert "HF_HUB_OFFLINE" in (caught.value.hint or ""), "the offline hint, not a silent absence"
+    assert f"{SUBSET}/top_ranked.parquet does not exist" not in caught.value.message
+    assert "_CACHED_NO_EXIST" in caplog.text, "one debug line records the missing sentinel"
+
+
 def test_offline_pinned_run_serves_an_absent_optional_table(cache: Path) -> None:
     """The pinned offline run: ``.no_exist`` marks a table the repository has never had; the run loads."""
     stage(cache, files=_TABLES, absent=(f"{SUBSET}/excluded.parquet",))

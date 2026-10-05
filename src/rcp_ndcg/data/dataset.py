@@ -637,9 +637,20 @@ def _hub_absent(repo: str, path: str, revision: str | None) -> bool:
 
     An online download writes the ``.no_exist`` marker when the Hub answers 404; offline it is the only way to
     tell "absent upstream" from "not cached" (``huggingface_hub.try_to_load_from_cache``).
-    """
-    from huggingface_hub import _CACHED_NO_EXIST, try_to_load_from_cache
 
+    The marker's sentinel is a private name (``_CACHED_NO_EXIST``); a huggingface_hub without it cannot tell the
+    two apart, so the file is treated as "not cached" — the caller then raises with the offline hint instead of
+    reporting a silent absence (an optional table never reads as ``None``, a required one never as upstream-404).
+    One debug line records the degradation.
+    """
+    try:
+        from huggingface_hub import _CACHED_NO_EXIST, try_to_load_from_cache
+    except ImportError:
+        logger.debug(
+            f"huggingface_hub has no _CACHED_NO_EXIST; treating hf://{repo}/{path} at {revision} as not cached "
+            "rather than absent"
+        )
+        return False
     return try_to_load_from_cache(repo, path, repo_type="dataset", revision=revision) is _CACHED_NO_EXIST
 
 

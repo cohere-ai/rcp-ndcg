@@ -240,6 +240,11 @@ released together.
 
 ### Fixed
 
+- `_hub_absent` no longer crashes when huggingface_hub drops its private `_CACHED_NO_EXIST` sentinel: without
+  the sentinel the cache cannot tell "absent upstream" from "not cached", so the file is treated as not cached
+  (the load refuses with the offline hint and one debug line records it; an optional table is never silently
+  `None`, a required one never reported as upstream-404).
+
 - The MCP server logs the typed warnings a tool call collects (its results have no `warnings` field, so the
   server's log is where e.g. `UNPINNED_REVISION` surfaces there).
 - Changing a served encoder's or reranker's URL no longer re-runs retrieval or reranking: the `retrieve` and
