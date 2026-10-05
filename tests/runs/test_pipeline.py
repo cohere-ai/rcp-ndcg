@@ -15,6 +15,7 @@ from rcp_ndcg.llm import TournamentSchedule
 from rcp_ndcg.runs import Pipeline, RunManifest, RunStatus, StepStatus
 from rcp_ndcg.support.identity import check_declarations, identity_payload
 from rcp_ndcg.testing import TINY_TOURNAMENT, tiny_rows
+from tests._tokenizers import byte_bpe_tokenizer
 from tests.runs.conftest import STEPS, tiny_config
 
 
@@ -488,6 +489,42 @@ class TestTheRetrieveAndRerankIdentities:
     ) -> None:
         one, two = self._two(data, tmp_path, {"rerank": reranker}, {"rerank": {**reranker, field: value}}, "rerank")
         assert one != two
+
+    def test_the_tokenizer_sha_splices_into_the_step_identities(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The endpoint's tokenizer digest (``identity_extra()``) is spliced in at the encoder and the reranker:
+        two tokenizers with the same bytes (different names) share an identity, different bytes do not, and a
+        URL change still never re-keys."""
+        from tests._tokenizers import save, word_tokenizer
+
+        def config_with(reranker: dict[str, Any]) -> dict[str, Any]:
+            return {"rerank": reranker}
+
+        for directory in ("one", "two", "other"):
+            (tmp_path / directory).mkdir()
+        first = save(word_tokenizer(), tmp_path / "one")
+        second = save(word_tokenizer(), tmp_path / "two")  # same bytes, different path
+        other = save(byte_bpe_tokenizer(), tmp_path / "other")
+
+        def identity(reranker: dict[str, Any]) -> dict[str, Any]:
+            return Pipeline(
+                tiny_config(data, candidates={"rerank": reranker}, steps=["rerank"]), runs_dir=str(tmp_path / "runs")
+            )._identity("rerank")
+
+        named = {"api": "rerank", "model": "rr", "base_url": "http://h:8000/v1", "tokenizer": str(first)}
+        same_sha = {**named, "tokenizer": str(second)}  # same bytes, different path
+        moved = {**named, "base_url": "http://moved:8000/v1"}
+        other_sha = {**named, "tokenizer": str(other)}
+
+        base = identity({"api": "rerank", "model": "rr", "base_url": "http://h:8000/v1"})
+        with_digest = identity(named)
+
+        assert "tokenizer" not in base, "the name is runtime"
+        assert "tokenizer_sha256" in with_digest["rerank"], "the digest is spliced in"
+        assert identity(same_sha) == with_digest, "the same tokenizer bytes (any path) share the identity"
+        assert identity(moved) == with_digest, "a moved URL does not re-key"
+        assert identity(other_sha) != with_digest, "different tokenizer bytes re-key"
 
     def test_the_encoders_pooling_rekeys_the_retrieve_step(self, data: Path, tmp_path: Path) -> None:
         """``pooling: token`` is the late-interaction route (``/pooling``), not the one-vector one."""
