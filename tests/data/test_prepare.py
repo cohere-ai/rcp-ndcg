@@ -18,7 +18,7 @@ from rcp_ndcg.data import Preprocessing
 from rcp_ndcg.data.prepare import MediaCensus, prepare_content, prepare_image
 from rcp_ndcg.data.resolution import PROCESSORS, ImagePolicy, VideoPolicy, smart_resize, uniform_frame_indices
 from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.llm._payload import build_messages
+from rcp_ndcg.inference.adapters.chat import build_messages
 from rcp_ndcg.llm.client import CompletionInput
 from tests.data import _media_reference as ref
 

@@ -26,7 +26,7 @@ def vendor_payload(api: str, vectors: list[list[float]]) -> dict[str, Any]:
     raise ValueError(f"unknown embedding api {api!r}")
 
 
-def openai_data(vectors: list[list[float]], *, indices: list[int] | None = None) -> dict[str, Any]:
+def embeddings_data(vectors: list[list[float]], *, indices: list[int] | None = None) -> dict[str, Any]:
     """An OpenAI-shaped ``data`` list, optionally with the entries' ``index`` fields in a given order."""
     order = indices if indices is not None else list(range(len(vectors)))
     return {"data": [{"index": index, "embedding": vectors[index]} for index in order]}

@@ -323,19 +323,25 @@ def _clean_registry() -> Iterator[None]:
 
 
 class TestAdapterRegistry:
-    def test_an_unknown_adapter_with_an_empty_registry_promises_nothing_shipped(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_an_unknown_adapter_with_an_empty_registry_promises_nothing_shipped(self) -> None:
+        """The empty-registry test clears the registry in place: rebinding the module attribute through
+        ``monkeypatch`` would leave every later client in the process with no shipped adapter (the undo runs
+        after this fixture's own teardown, restoring an emptied dict object)."""
         import rcp_ndcg.inference.adapters.base as adapter_base
 
-        monkeypatch.setattr(adapter_base, "_BUILTINS", {})
-        monkeypatch.setattr(adapter_base, "_PLUGINS", {})
-        with pytest.raises(ConfigError) as caught:
-            get_adapter("nope")
-        hint = caught.value.hint or ""
-        assert "no wire adapter is registered in this process" in hint
-        assert "importing ``rcp_ndcg.inference.adapters`` registers the shipped ones" in hint
-        assert "arrive with the transport" not in hint  # no promise of adapters that do not exist
+        plugins = adapter_base._PLUGINS
+        adapter_base._BUILTINS.clear()  # the autouse fixture already emptied it
+        adapter_base._PLUGINS = {}
+        try:
+            with pytest.raises(ConfigError) as caught:
+                get_adapter("nope")
+            hint = caught.value.hint or ""
+            assert "no wire adapter is registered in this process" in hint
+            assert "importing ``rcp_ndcg.inference.adapters`` registers the shipped ones" in hint
+            assert "arrive with the transport" not in hint  # no promise of adapters that do not exist
+        finally:
+            adapter_base._BUILTINS.clear()
+            adapter_base._PLUGINS = plugins
 
     def test_an_adapter_is_registered_under_its_name_and_returned_by_it(self) -> None:
         register_adapter(_ProbeAdapter)

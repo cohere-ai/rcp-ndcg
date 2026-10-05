@@ -33,9 +33,12 @@ UPDATE_HINT = "Run `pytest tests/contract --update-snapshots` and add a CHANGELO
 #: Names exported with two different defining modules (two homes for one concept). May only shrink.
 KNOWN_SECOND_HOMES: frozenset[str] = frozenset(
     {
-        # Temporary: the judge's per-client usage (rcp_ndcg.llm.client.Usage: requests, failed_requests) and the
-        # transport's wire usage (rcp_ndcg.inference.types.Usage: calls, failed_calls, with __add__) coexist
-        # until lane L2 ports the judge onto the transport, which merges them and removes this entry.
+        # Deliberate: two Usage types with different vocabularies and different consumers. The run manifest
+        # serialises the judge's per-client usage (rcp_ndcg.llm.client.Usage: requests, failed_requests,
+        # cached_input_tokens) into every run; the transport's wire usage
+        # (rcp_ndcg.inference.types.Usage: calls, failed_calls, with __add__) is the transport's own
+        # accounting, and the judge maps one onto the other. Merging them would rename the manifest's
+        # serialized fields for no gain.
         "Usage",
     }
 )
