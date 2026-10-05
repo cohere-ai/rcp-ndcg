@@ -642,6 +642,20 @@
         "frozen": true,
         "kind": "pydantic_model",
         "members": {
+          "identity_extra": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, Any]"
+              }
+            ]
+          },
           "urls": "property"
         }
       },
@@ -1925,7 +1939,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.support.serve.ServeConfig | None"
+            "type": "rcp_ndcg.support.serve.ServeByRole | None"
           },
           "steps": {
             "alias": null,
@@ -1945,6 +1959,20 @@
         "frozen": false,
         "kind": "pydantic_model",
         "members": {
+          "engine_uses": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, frozenset[EngineRole]]"
+              }
+            ]
+          },
           "from_data": {
             "kind": "classmethod",
             "signature": [
@@ -2130,6 +2158,26 @@
         "frozen": true,
         "kind": "pydantic_model",
         "members": {
+          "adaptive_batches_for": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "int",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "n_docs"
+              },
+              {
+                "returns": "int"
+              }
+            ]
+          },
           "calls_per_query": {
             "kind": "method",
             "signature": [
@@ -8219,23 +8267,7 @@
           }
         },
         "frozen": true,
-        "kind": "pydantic_model",
-        "members": {
-          "identity_extra": {
-            "kind": "method",
-            "signature": [
-              {
-                "annotation": null,
-                "default": "<required>",
-                "kind": "positional_or_keyword",
-                "name": "self"
-              },
-              {
-                "returns": "dict[str, str]"
-              }
-            ]
-          }
-        }
+        "kind": "pydantic_model"
       },
       "Embeddings": {
         "bases": [],
@@ -8489,6 +8521,20 @@
         "frozen": true,
         "kind": "pydantic_model",
         "members": {
+          "identity_extra": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, Any]"
+              }
+            ]
+          },
           "urls": "property"
         }
       },
@@ -8982,6 +9028,16 @@
         "frozen": true,
         "kind": "pydantic_model"
       },
+      "ROLES": {
+        "kind": "constant",
+        "type": "tuple",
+        "value": [
+          "judge",
+          "embed",
+          "rerank",
+          "multi_vector"
+        ]
+      },
       "Reply": {
         "bases": [],
         "defined_in": "rcp_ndcg.inference.types",
@@ -9330,23 +9386,7 @@
           }
         },
         "frozen": true,
-        "kind": "pydantic_model",
-        "members": {
-          "tokenizer_identity": {
-            "kind": "method",
-            "signature": [
-              {
-                "annotation": null,
-                "default": "<required>",
-                "kind": "positional_or_keyword",
-                "name": "self"
-              },
-              {
-                "returns": "dict[str, str] | None"
-              }
-            ]
-          }
-        }
+        "kind": "pydantic_model"
       },
       "RerankRequest": {
         "bases": [],
@@ -9804,6 +9844,12 @@
             "name": "name"
           },
           {
+            "annotation": "AdapterRole",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "role"
+          },
+          {
             "returns": "type[Adapter[Any, Any]]"
           }
         ]
@@ -9812,6 +9858,12 @@
         "defined_in": "rcp_ndcg.inference.adapters.base",
         "kind": "function",
         "signature": [
+          {
+            "annotation": "AdapterRole | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "role"
+          },
           {
             "returns": "tuple[str, ...]"
           }
@@ -10764,6 +10816,26 @@
         "frozen": true,
         "kind": "pydantic_model",
         "members": {
+          "adaptive_batches_for": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "int",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "n_docs"
+              },
+              {
+                "returns": "int"
+              }
+            ]
+          },
           "calls_per_query": {
             "kind": "method",
             "signature": [
@@ -11814,10 +11886,10 @@
           },
           "base_url": {
             "alias": null,
-            "default": "<required>",
+            "default": null,
             "frozen": false,
-            "required": true,
-            "type": "str"
+            "required": false,
+            "type": "str | None"
           },
           "batch_size": {
             "alias": null,
@@ -11937,10 +12009,10 @@
           },
           "base_url": {
             "alias": null,
-            "default": "<required>",
+            "default": null,
             "frozen": false,
-            "required": true,
-            "type": "str"
+            "required": false,
+            "type": "str | None"
           },
           "batch_size": {
             "alias": null,
@@ -12433,6 +12505,31 @@
             ]
           }
         }
+      },
+      "JobPhase": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.runners.base",
+        "extra": "forbid",
+        "fields": {
+          "argv": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "tuple[str, Ellipsis]"
+          },
+          "engines": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "collections.abc.Mapping[Literal['judge', 'encoder', 'reranker'], rcp_ndcg.support.serve.ServeConfig]"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
       },
       "JobRunner": {
         "bases": [
@@ -13758,6 +13855,12 @@
             "name": "only"
           },
           {
+            "annotation": "Mapping[EngineRole, EngineURLs] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "engines"
+          },
+          {
             "returns": null
           }
         ],
@@ -13864,6 +13967,12 @@
                 "default": null,
                 "kind": "keyword_only",
                 "name": "only"
+              },
+              {
+                "annotation": "Mapping[EngineRole, EngineURLs] | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "engines"
               },
               {
                 "returns": "Pipeline"
@@ -14016,7 +14125,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.support.serve.ServeConfig | None"
+            "type": "rcp_ndcg.support.serve.ServeByRole | None"
           },
           "steps": {
             "alias": null,
@@ -14036,6 +14145,20 @@
         "frozen": false,
         "kind": "pydantic_model",
         "members": {
+          "engine_uses": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, frozenset[EngineRole]]"
+              }
+            ]
+          },
           "from_data": {
             "kind": "classmethod",
             "signature": [

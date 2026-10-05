@@ -9,7 +9,7 @@ import yaml
 from pydantic import ValidationError
 
 from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.llm import JudgeConfig, RubricSchedule, TournamentSchedule
+from rcp_ndcg.llm import JudgeConfig, TournamentSchedule
 from rcp_ndcg.runs import RunConfig
 from rcp_ndcg.support.config import apply_overrides, load_config
 
@@ -73,10 +73,69 @@ class TestValidation:
             RunConfig.model_validate({"dataset": DATASET, **fields})
 
     def test_schedules_default_to_none_and_validate_when_given(self) -> None:
+        from rcp_ndcg.llm import RubricSchedule
+
         config = RunConfig(dataset=DATASET, judge="fake", tournament={"window": 5}, rubric={"placements_per_doc": 13.0})
         assert isinstance(config.tournament, TournamentSchedule) and config.tournament.window == 5
         assert isinstance(config.rubric, RubricSchedule) and config.rubric.placements_per_doc == 13.0
         assert RunConfig(dataset=DATASET, judge="fake").tournament is None
+
+
+class TestServe:
+    """``serve:`` names one engine per role; a served role must name a config the engine can serve."""
+
+    SERVED = {
+        "from": "retrieval",
+        "retrieval": {"kind": "dense", "encoder": {"provider": "openai_compatible", "model": "e"}},
+    }
+    ENGINE = {"command": ["vllm", "serve", "e", "--host", "0.0.0.0", "--port", "8000"]}
+
+    def test_a_served_encoder_needs_no_judge(self) -> None:
+        """A retrieval-only run serves its encoder without a judge at all (the old any-serve check is gone)."""
+        config = RunConfig.model_validate(
+            {"dataset": DATASET, "candidates": self.SERVED, "steps": ["retrieve"], "serve": {"encoder": self.ENGINE}}
+        )
+        assert config.serve is not None and config.serve.encoder is not None
+        assert RunConfig.model_validate(
+            {
+                "dataset": DATASET,
+                "judge": "fake",
+                "candidates": self.SERVED,
+                "steps": ["retrieve"],
+                "serve": {"encoder": self.ENGINE},
+            }
+        ).engine_uses()["retrieve"] == frozenset({"encoder"})
+
+    def test_a_served_role_with_base_url_is_refused(self) -> None:
+        from rcp_ndcg.errors import ConfigError
+
+        served = {
+            "from": "retrieval",
+            "retrieval": {
+                "kind": "dense",
+                "encoder": {"provider": "openai_compatible", "model": "e", "base_url": "http://elsewhere/v1"},
+            },
+        }
+        with pytest.raises(ConfigError, match="sets base_url") as refused:
+            RunConfig.model_validate(
+                {"dataset": DATASET, "candidates": served, "steps": ["retrieve"], "serve": {"encoder": self.ENGINE}}
+            )
+        assert "RCP_NDCG_ENGINES" in (refused.value.hint or "")
+
+    def test_the_recorded_config_round_trip_re_validates_the_defaults_it_dumps(self) -> None:
+        """run.yaml holds a full dump; re-validating it (a resume, run status) must not refuse its own defaults."""
+        config = RunConfig.model_validate(
+            {
+                "dataset": DATASET,
+                "judge": "fake",
+                "candidates": {
+                    "from": "retrieval",
+                    "retrieval": {"kind": "dense", "encoder": {"provider": "cohere", "model": "embed-v4.0"}},
+                },
+                "steps": ["retrieve"],
+            }
+        )
+        assert RunConfig.from_data(config.resolved()).candidates.retrieval == config.candidates.retrieval
 
 
 class TestJudge:

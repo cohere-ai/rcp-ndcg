@@ -282,10 +282,10 @@ class TestTokenizerIdentity:
         file = save(word_tokenizer(), directory)
         config = RerankEndpoint(base_url="http://a:8000/v1", model="m", tokenizer=str(file))
 
-        assert config.tokenizer_identity() == {"sha256": hashlib.sha256(file.read_bytes()).hexdigest()}
+        assert config.identity_extra() == {"tokenizer_sha256": hashlib.sha256(file.read_bytes()).hexdigest()}
 
-    def test_without_a_tokenizer_the_identity_is_none(self) -> None:
-        assert RerankEndpoint(base_url="http://a:8000/v1", model="m").tokenizer_identity() is None
+    def test_without_a_tokenizer_the_identity_is_empty(self) -> None:
+        assert RerankEndpoint(base_url="http://a:8000/v1", model="m").identity_extra() == {}
 
     def test_the_name_stays_runtime(self) -> None:
         """The sha enters the identity; the tokenizer's name never does (as the judge's already works)."""
@@ -318,7 +318,7 @@ def test_an_incomplete_rerank_wire_subclass_is_refused_at_construction() -> None
 
 def test_an_adapter_of_another_role_is_refused_by_the_client() -> None:
     """A registered adapter of the wrong role (a judge's, say, selected by typo) is a config error, not a
-    silent no-op."""
+    silent no-op: it is unknown in the rerank registry, and the error names where the name does live."""
     from rcp_ndcg.inference.adapters import register_adapter
     from rcp_ndcg.inference.adapters.base import AdapterRole
 
@@ -327,7 +327,7 @@ def test_an_adapter_of_another_role_is_refused_by_the_client() -> None:
         role: ClassVar[AdapterRole] = "judge"
 
     register_adapter(_JudgeShaped)
-    with pytest.raises(ConfigError, match="not a rerank wire adapter.*judge"):
+    with pytest.raises(ConfigError, match="unknown rerank adapter 'wrong_role_probe'"):
         RerankClient(RerankEndpoint(api="wrong_role_probe", base_url="http://a:8000/v1", model="m"), sender=_server())
 
 

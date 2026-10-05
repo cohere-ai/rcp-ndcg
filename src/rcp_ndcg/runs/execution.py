@@ -1,15 +1,18 @@
 """Runs handed to job runners, and :func:`run`, the one entry point for running a config.
 
-A runner transports one job per run: its argv is ``rcp-ndcg run resume --run <run_dir>``, so the job re-enters
-the same pipeline, resume logic included, wherever it lands. The runner's options and the job are validated first;
-only then is the run directory created (config and manifest written, status ``submitted``), and the job record
-``logs/jobs.json`` names the runner, its options and the handles; ``run status``, ``run logs`` and ``run cancel``
-ask the runner through it. A runner whose jobs do not see this host's files (``run_root``: Kubernetes) gets the run
-through its mirror: the prepared directory is uploaded to the mirror before the job is submitted, and the job
-restores it into ``run_root``.
+A runner transports one job per run: the job runs ``rcp-ndcg run resume --run <run_dir>``, phase by phase, so it
+re-enters the same pipeline, resume logic included, wherever it lands. The runner's options and the job are
+validated first; only then is the run directory created (config and manifest written, status ``submitted``), and
+the job record ``logs/jobs.json`` names the runner, its options and the handles; ``run status``, ``run logs`` and
+``run cancel`` ask the runner through it. A runner whose jobs do not see this host's files (``run_root``:
+Kubernetes) gets the run through its mirror: the prepared directory is uploaded to the mirror before the job is
+submitted, and the job restores it into ``run_root``.
 
-A run config's ``serve:`` (:class:`~rcp_ndcg.support.serve.ServeConfig`) goes into the job, and the runner starts the
-judge's engine beside it; the local runner and a run in this process start none, and refuse it.
+A run config's ``serve:`` (:class:`~rcp_ndcg.support.serve.ServeByRole`) becomes the job's
+:class:`~rcp_ndcg.runners.JobPhase` s (:func:`rcp_ndcg.support.serve.plan_phases`): the job runs the run in
+phases, each starting only the engines its steps use and handing their URLs to the coordinator through
+``RCP_NDCG_ENGINES``. The local runner starts no engine; a run in this process starts none either, and both
+refuse a phase that would start one.
 
 Three keys of a run config's ``runner.options`` (typed per runner: :mod:`rcp_ndcg.runs.config`) describe the job
 rather than the runner (:data:`JOB_OPTIONS`): ``resources`` (:class:`~rcp_ndcg.runners.Resources`: ``gpus``,
@@ -39,6 +42,7 @@ from rcp_ndcg.runs.config import RunConfig
 from rcp_ndcg.runs.layout import MANIFEST_NAME, RunLayout, slugify
 from rcp_ndcg.runs.manifest import RunManifest, RunStatus
 from rcp_ndcg.runs.run import JobState, Run, RunState, execute_run, mark, prepare, reopen
+from rcp_ndcg.support.serve import Phase, ServeByRole
 
 if TYPE_CHECKING:
     from rcp_ndcg.llm.cost import CostEstimate
@@ -55,14 +59,18 @@ def _split_options(options: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str
     return runner, job
 
 
-def run_argv(run_dir: str, mirror: str | None = None, outage_timeout_s: int | None = None) -> tuple[str, ...]:
-    """The command a job runs to execute a prepared run directory (restored from ``mirror`` when it is missing).
+def run_argv(run_dir: str, mirror: str | None = None, only: Sequence[str] = ()) -> tuple[str, ...]:
+    """The command one phase of a job runs to execute a prepared run directory (restored from ``mirror`` when it
+    is missing), narrowed to the phase's steps with ``--only``.
 
-    A job that starts its judge's engine passes ``outage_timeout_s`` (``serve.outage_timeout_s``): its judge then
-    stops waiting for an engine that stopped answering after that many seconds (``judge.wait_on_outage_s``).
+    A phase's engines reach the command through ``RCP_NDCG_ENGINES``, which the coordinator applies as a runtime
+    overlay; nothing about them is passed on the command line.
     """
-    wait = ("--set", f"judge.wait_on_outage_s={outage_timeout_s}") if outage_timeout_s is not None else ()
-    return ("rcp-ndcg", "run", "resume", "--run", run_dir, *(("--mirror", mirror) if mirror else ()), *wait)
+    argv = ["rcp-ndcg", "run", "resume", "--run", run_dir]
+    if mirror:
+        argv += ["--mirror", mirror]
+    argv += [flag for step in only for flag in ("--only", step)]
+    return tuple(argv)
 
 
 def job_for(
@@ -84,9 +92,8 @@ def job_for(
             this host's files is given a run without a mirror, or a run that reads inputs from this host.
         DependencyError: no installed filesystem serves the run's mirror.
     """
-    from pydantic import ValidationError
-
     from rcp_ndcg.runs.mirror import check_target
+    from rcp_ndcg.support.serve import ServeByRole, plan_phases
 
     config: RunConfig = pipeline.config
     layout: RunLayout = pipeline.layout
@@ -106,16 +113,65 @@ def job_for(
     if config.mirror is not None:
         check_target(config.mirror)
     run_dir = root if run_root is None else f"{run_root}/{layout.run_id}"
+    serve = config.serve or ServeByRole()
+    phases = plan_phases(config.ordered_steps, serve, config.engine_uses())
+    job = _phased_job(
+        runner,
+        backend,
+        name=slugify(f"rcp-{layout.run_id}", max_length=60),
+        run_dir=run_dir,
+        mirror=config.mirror,
+        phases=phases,
+        serve=serve,
+        fields=fields,
+    )
+    return backend, job, runner_options
+
+
+def _phased_job(
+    runner: str,
+    backend: Any,
+    *,
+    name: str,
+    run_dir: str,
+    mirror: str | None,
+    phases: Sequence[Phase],
+    serve: ServeByRole,
+    fields: dict[str, Any],
+) -> JobSpec:
+    """The :class:`~rcp_ndcg.runners.JobSpec` of the run's phase plan: one :class:`~rcp_ndcg.runners.JobPhase`
+    per planned phase, with the engines it starts and its coordinator argv; ``argv`` is the whole-run command a
+    runner that does not render phases executes (which is also every engine-free phase, in order).
+
+    Raises:
+        ConfigError: the job's fields do not validate, or ``runner`` cannot render a job that starts engines
+            (only the local runner runs phases without rendering them, and it refuses the ones with engines).
+    """
+    from pydantic import ValidationError
+
+    from rcp_ndcg.runners.base import JobPhase
+
+    if any(phase.engines for phase in phases) and not getattr(backend, "renders_phases", False):
+        raise ConfigError(
+            f"the {runner} runner does not start a phase's engines yet (the phased rendering lands with the "
+            "runners' support)",
+            hint="start the engines yourself (docs/concepts/serving.md) and resume with --engine <role>=<url>[,<url>]",
+        )
     try:
-        job = JobSpec(
-            name=slugify(f"rcp-{layout.run_id}", max_length=60),
-            argv=run_argv(run_dir, config.mirror, config.serve.outage_timeout_s if config.serve else None),
-            serve=config.serve,
+        return JobSpec(
+            name=name,
+            argv=run_argv(run_dir, mirror),
+            phases=tuple(
+                JobPhase(
+                    engines={role: getattr(serve, role) for role in phase.engines},
+                    argv=run_argv(run_dir, mirror, only=list(phase.steps)),
+                )
+                for phase in phases
+            ),
             **fields,
         )
     except ValidationError as exc:
         raise ConfigError(f"runner.options: {exc}", hint=f"the job's keys are {', '.join(JOB_OPTIONS)}") from exc
-    return backend, job, runner_options
 
 
 def _refuse_host_inputs(config: RunConfig, runner: str) -> None:
@@ -410,8 +466,8 @@ def recorded_options(run_dir: str | Path, runner: str) -> dict[str, Any] | None:
 def refuse_serving_here(config: RunConfig) -> None:
     """Refuse to start a run with a ``serve:`` section in this process, which starts no engine.
 
-    A job of the ``slurm`` or ``kubernetes`` runner resumes its run here with the engine already up beside it, so
-    only a new run is refused.
+    A job of a runner that starts engines resumes its run here with the engines already up beside it, so only a
+    new run is refused.
 
     Raises:
         ConfigError: ``config`` has a ``serve:`` section.
@@ -419,8 +475,8 @@ def refuse_serving_here(config: RunConfig) -> None:
     if config.serve is not None:
         raise ConfigError(
             "this run has a serve: section, and a run in this process (or on the local runner) starts no engine",
-            hint="start the engine yourself (docs/concepts/serving.md) and pass its URL with --judge-url and "
-            "--judge-model; or hand the run to a runner that starts it: --runner slurm | kubernetes",
+            hint="start the engine(s) yourself (docs/concepts/serving.md), drop serve:, and pass the URLs with "
+            "RCP_NDCG_ENGINES (or run resume --engine <role>=<url>[,<url>])",
         )
 
 

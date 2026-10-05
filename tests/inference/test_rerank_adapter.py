@@ -383,13 +383,13 @@ class TestUsage:
 def test_the_rerank_adapters_register_under_their_api_names() -> None:
     from rcp_ndcg.inference.adapters import get_adapter, known_adapters
 
-    assert {"rerank", "cohere", "voyage"} <= set(known_adapters())
+    assert {"rerank", "cohere", "voyage"} <= set(known_adapters("rerank"))
     for name, adapter in (
         ("rerank", RerankAdapter),
         ("cohere", CohereRerankAdapter),
         ("voyage", VoyageRerankAdapter),
     ):
-        assert get_adapter(name) is adapter
+        assert get_adapter(name, role="rerank") is adapter
 
 
 def test_an_empty_candidate_set_makes_no_call() -> None:

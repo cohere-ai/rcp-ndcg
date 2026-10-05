@@ -25,6 +25,33 @@ released together.
 
 ### Public surface
 
+- `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
+  larger than `adaptive_window` runs one batch, not one per batch: every adaptive window of such a pool holds
+  the whole pool, so a further batch asks the same documents again (in the refit order) and covers only what
+  the first window's answers already hold. `phase_calls` and `calls_per_query` count it, so the estimates and
+  the passes agree; the paper's counts at a pool of 150 are unchanged.
+- `schemas/run-config.v1.json`: the `adaptive_batches` description states the one-batch rule; the Python-surface
+  snapshot records the new method.
+- **The adapter registry is scoped by role** (one namespace per role): `register_adapter(cls)` keys
+  on `(cls.role, cls.name)`, `get_adapter(name, *, role)` resolves a config's `api` within its role's names,
+  and `known_adapters(role=None)` lists one role's names (or every registered name once without a role). The
+  same name registers once per role, so the embed role's `cohere`, `voyage` and the rerank role's `cohere`,
+  `voyage` coexist; a wrong-role lookup fails with a hint listing that role's names (and, when the name is
+  registered in another role, says so). The embedding profiles take the roles' plain names: `cohere`,
+  `voyage`, `gemini` for the embed role. The
+  `rcp_ndcg.adapters` entry-point group names its entries `<role>.<name>` (e.g. `embed.bedrock`); an entry
+  whose class role disagrees with its prefix is refused with a `ConfigError`, as is an entry without a role
+  prefix. The role clients pass their role to the registry (an unknown or wrong-role `api` is refused there),
+  and each role config's default `api` is unchanged (`openai_embeddings`, `rerank`, `vllm_pooling`). The role
+  list is public as `ROLES` (`rcp_ndcg.inference`, `rcp_ndcg.inference.adapters`), and an entry point's name
+  must spell the class's registered name, not just its role.
+- **One tokenizer-identity method for every role config**: `Endpoint.identity_extra()` (default `{}`) returns
+  `{"tokenizer_sha256": <sha>}` — the SHA-256 of the config's `tokenizer.json` through the one helper
+  `rcp_ndcg.data.tokenizer.tokenizer_identity` (over the judge's existing `load_tokenizer`; no second hashing
+  function) — for every role config that declares a `tokenizer` (the judge's, the embedding, pooling and
+  rerank configs). `RerankEndpoint.tokenizer_identity()` is removed; the judge's identity payload keeps its
+  existing keys (the judgement family's tokenizer digest and the preprocessing record's `sha256`) and is
+  byte-identical for every shipped judge preset, so no judgement family re-keys.
 - `JobSpec` gains `phases` (a tuple of `JobPhase`: the engines one phase starts, by role, and the command it runs
   while they serve); a job sets `phases` or `serve`, not both.
 - **`rcp_ndcg.inference` gains the embedding wire adapters and the embedding role client** (dense embeddings over
@@ -32,10 +59,12 @@ released together.
   - `inference.adapters.embeddings`: four registered adapters of role `embed` — `openai_embeddings` (OpenAI
     `POST {base_url}/embeddings`: `model`, `input`, `encoding_format: "float"`, `dimensions` only when set;
     reply read from `data[].embedding` in `data[].index` order, float lists or base64 float32) and the hosted
-    profiles `cohere_embed` (v2 `POST {base_url}/embed`, `input_type` `search_query`/`search_document`, reply
-    `embeddings.float`, cap 96), `voyage_embed` (the OpenAI body with `input_type` `query`/`document`, cap 128)
-    and `gemini_embed` (`POST {base_url}/models/{model}:batchEmbedContents`, `taskType`
+    profiles `cohere` (v2 `POST {base_url}/embed`, `input_type` `search_query`/`search_document`, reply
+    `embeddings.float`, cap 96), `voyage` (the OpenAI body with `input_type` `query`/`document`, cap 128)
+    and `gemini` (`POST {base_url}/models/{model}:batchEmbedContents`, `taskType`
     `RETRIEVAL_QUERY`/`RETRIEVAL_DOCUMENT`, key in `x-goog-api-key`, reply `embeddings[].values`, cap 100).
+    Names are scoped by role: the rerank role registers its own `cohere` and `voyage`, and an embed config's
+    `api` resolves only among the embed role's names.
     Each profile carries its public base URL and key variables for when the config sets no `base_url`, and
     takes no `dimensions` parameter (its API fixes the output dimension): a config that sets one is refused at
     construction and the adapter refuses such a request, never silently ignored. Media raises
@@ -93,7 +122,7 @@ released together.
     set makes no request. Preparation runs through one seam (`RerankClient._prepare`); until the text-budget
     mechanism is wired the client cuts nothing and refuses a config that sets `max_tokens` with a
     `ConfigError`.
-  - `RerankEndpoint.tokenizer_identity()`: `{"sha256": ...}` of the named tokenizer's `tokenizer.json`, the
+  - `Endpoint.identity_extra()`: `{"tokenizer_sha256": ...}` of the named tokenizer's `tokenizer.json`, the
     content identity a rerank step records (the name stays runtime, as the judge's already works).
   - The facade `rcp_ndcg.inference` additionally exports `RerankClient`, `RerankAdapter`,
     `CohereRerankAdapter`, `VoyageRerankAdapter` (and `rcp_ndcg.inference.adapters` re-exports them with
@@ -137,6 +166,7 @@ released together.
   imported (`known_adapters()` now reports `vllm_pooling`).
 - `tests/contract/snapshots/python_api.json` regenerated; it also records the already-committed additive
   `JobSpec.phases` field, which its own commit left out of the snapshot.
+    `RerankWire`); `known_adapters("rerank")` now lists `cohere`, `rerank` and `voyage`.
 - `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
   the step identities (its `IDENTITY_ROLES` declarations); no property changed.
 - **New public module `rcp_ndcg.inference`**: the inference layer between `rcp_ndcg.data` and
@@ -215,7 +245,7 @@ released together.
   replica list is refused there.
 - **`rcp_ndcg.support.serve` gains the serve-by-role types**: `EngineRole`, `EngineConfig` (an alias of the
   unchanged `ServeConfig`), `ServeByRole`, `Phase`, `ENGINES_ENV = "RCP_NDCG_ENGINES"`, `EngineURLs`,
-  `parse_engines_env`, and the frozen `plan_phases(steps, serve, uses)` signature (behaviour arrives with the serve-phases work).
+  `parse_engines_env`, and `plan_phases(steps, serve, uses)`, the pure phase plan.
 - **`rcp_ndcg.llm.client` gains `api` and `headers_env`** through `Endpoint`; `wait_on_outage_s` moves up to
   `Endpoint` and the judge keeps declaring it only through that inheritance. A judge's identity payload is
   unchanged: `api` defaults to `None` (omitted from identities until a role config sets it), the other two are
@@ -266,11 +296,44 @@ released together.
 - **`Reply` gains `url`** (default `None`): the replica base URL that answered, set by the transport -- a role
   client needs it to record a per-replica fact such as a completion's `system_fingerprint` (the judge calls
   `transport.note_system_fingerprint(reply.url, ...)` for its first completion per replica, as it did).
+- **`serve:` names one engine per role, and a job runs the run in phases** (each phase starts only the engines its steps use).
+  `RunConfig.serve` is a `ServeByRole` (`judge`, `encoder`, `reranker`; the old single-engine mapping is refused
+  with a hint showing the new shape), and `plan_phases(steps, serve, uses)` builds the phase plan: consecutive
+  steps that call the same served engines share a phase, steps that call no served engine form an engine-free
+  phase, and the paper run becomes four phases. `RunConfig.engine_uses()` derives the per-step engine roles from
+  the config. `runs.execution` builds the job's `JobSpec(phases=...)`: per phase the engines by role and the
+  coordinator argv `rcp-ndcg run resume --run <dir> --only <steps>`; `run_argv` lost its outage argument —
+  `wait_on_outage_s` travels in `RCP_NDCG_ENGINES` per role now. A runner that neither renders nor runs phases
+  refuses a job that would start engines; the local runner runs the engine-free phases and refuses the ones with
+  engines. `rcp_ndcg.runners` exports `JobPhase`, the per-phase engine set and coordinator command.
+- **`RCP_NDCG_ENGINES` is the runtime overlay that carries the engines' URLs to the steps.** The coordinator
+  applies each role's `urls` and `wait_on_outage_s` to the role config in memory — never written into `run.yaml`,
+  never in a step identity, so a run is byte-identical with and without the variable; the
+  `--set judge.wait_on_outage_s=<outage_timeout_s>` job argument is gone. A failed resume keeps treating the
+  injected URLs as no config change: `_substance` subtracts every declared RUNTIME field of the candidates'
+  nested configs too.
+- **Served-role refusals.** A role config whose engine is served must not set `base_url` (the job's URLs for it
+  reach the step at runtime; setting both is refused, never silently overridden): enforced for `encoder` and
+  `reranker`, whose `base_url` is now optional, omitted exactly when served; a retrieval client built without a
+  URL is refused rather than silently addressing a vendor's public API. A hosted or in-process model, a BM25
+  retriever, a role no step of the run calls, and more than one replica for a retrieval role are refused with a
+  hint. A served encoder needs no judge (the old any-`serve:` check is gone); `serve.judge` needs a real judge
+  (not `fake`) and a judging step. The judge's own `base_url` stays required (the judge client requires it) and
+  is the placeholder the job's runtime URLs replace. `EngineURLs` refuses a replica listed twice.
+- **`rcp-ndcg doctor --endpoint <url>`** replaces `--judge-url` and probes any role's endpoint URL
+  (`GET <url>/models`).
+- The `ServeConfig` fields' schema descriptions are role-neutral (the same engine shape serves the judge, the
+  retrieval encoder and the reranker); no property changed.
 
 ### Fixed
 
 - The MCP server logs the typed warnings a tool call collects (its results have no `warnings` field, so the
   server's log is where e.g. `UNPINNED_REVISION` surfaces there).
+- A recorded config (run.yaml, the manifest) re-validates without refusing its own defaults: a hosted or served
+  encoder's or reranker's `concurrency` equal to its default no longer fails `run start`, a resume or `run status`
+  with `drop concurrency`. The one-at-a-time check compares the value against the field's default (a full dump
+  cannot preserve which fields the user set); an explicitly non-default `concurrency` on a provider that sends one
+  request at a time is still refused.
 - Changing a served encoder's or reranker's URL no longer re-runs retrieval or reranking: the `retrieve` and
   `rerank` step identities hold the candidates config's content payload (`identity_payload`, as the judge steps
   already do), so its runtime fields (`base_url`, `api_key_env`, `concurrency`, the timeouts and retries,
@@ -335,6 +398,19 @@ released together.
   now follow the transport's policy. One reading edge, declared: the adapter reads an answer's **first**
   choice, where the SDK era read the last; the judge never sends a `n` above 1, so no shipped answer moves. `requirements-constraints.txt` no longer carries `openai`, `httpx2` or
   `jiter`; in `uv.lock` the two remain only as the `[vllm]` extra's engine package's own dependency.
+- The release workflow publishes three packages, one GitHub environment each: the build job builds `rcp-ndcg`,
+  `rcp-ndcg-core` and `rcp-ndcg-vllm` (the last from its own directory, outside the uv workspace), checks each
+  version against the tag, `rcp-ndcg`'s exact `rcp-ndcg-core` pin and the constraints file against the lock, runs
+  `twine check` on every file, and uploads one artifact per package; `publish-core` (environment `pypi-core`),
+  `publish-rcp-ndcg` (`pypi`, after the core it pins exactly) and `publish-vllm` (`pypi-vllm`) publish by trusted
+  publishing, and the GitHub release still attaches the constraints file. The one-time PyPI trusted-publisher
+  registration for the three environments (`pypi`, `pypi-core`, `pypi-vllm`) is done; `AGENTS.md` "Releasing" and
+  the workflow header describe it.
+- **`run resume --judge-urls` and its environment variable** (`RCP_NDCG_JUDGE_URLS` as the
+  coordinator's input): pass `run resume --engine judge=url[,url]` instead (repeatable; the runtime overlay of
+  the engines you started yourself). The single-engine `serve:` mapping (`serve: {image: ...}`) on a run
+  config: `serve:` now maps roles to engines (`serve: {judge: {...}}`). The doctor's `--judge-url` flag is
+  `--endpoint <url>`, which probes any role's endpoint.
 
 ## 0.1.0
 

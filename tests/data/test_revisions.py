@@ -120,7 +120,8 @@ class TestResolveRevision:
         ref.write_bytes(b"\xff\xfe not utf-8")
         monkeypatch.setenv("HF_HUB_OFFLINE", "1")
 
-        resolved = resolve_revision("BeIR/fiqa", None)
+        with pytest.warns(RcpNdcgWarning):  # offline with the corrupt ref gone, nothing is resolved: it warns
+            resolved = resolve_revision("BeIR/fiqa", None)
 
         assert (resolved.commit, resolved.verified) == (None, False)
         assert not ref.exists(), "the corrupt ref is gone; the next online resolution rewrites it"

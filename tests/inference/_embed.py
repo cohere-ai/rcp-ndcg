@@ -17,11 +17,11 @@ from rcp_ndcg.inference.types import Call, Reply, Usage
 
 def vendor_payload(api: str, vectors: list[list[float]]) -> dict[str, Any]:
     """The reply body ``api`` answers a batch of ``vectors`` with (the shapes of today's ``api_dense``)."""
-    if api in ("openai_embeddings", "voyage_embed"):
+    if api in ("openai_embeddings", "voyage"):
         return {"data": [{"index": index, "embedding": vector} for index, vector in enumerate(vectors)]}
-    if api == "cohere_embed":
+    if api == "cohere":
         return {"embeddings": {"float": vectors}}
-    if api == "gemini_embed":
+    if api == "gemini":
         return {"embeddings": [{"values": vector} for vector in vectors]}
     raise ValueError(f"unknown embedding api {api!r}")
 

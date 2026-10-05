@@ -64,7 +64,7 @@ class PoolingClient:
         if config.max_tokens is not None:
             raise ConfigError("max_tokens needs the text-budget mechanism, which is not wired yet")
         self._config = config
-        self._adapter: Adapter[PoolRequest, Embeddings] = get_adapter(config.api)()
+        self._adapter: Adapter[PoolRequest, Embeddings] = get_adapter(config.api, role="multi_vector")()
         self._sender: Sender = sender if sender is not None else Transport(config)
 
     @property

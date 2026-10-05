@@ -517,10 +517,17 @@
           "title": "Api Key Env"
         },
         "base_url": {
-          "description": "The served endpoint (required), e.g. ``http://localhost:8000/v1``; one URL, not a replica list.",
-          "minLength": 1,
-          "title": "Base Url",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint; ``None`` only when the run's job starts the encoder's engine (``serve.encoder``): the engine's URLs then reach the step at runtime, through ``RCP_NDCG_ENGINES``, and setting both is refused rather than silently overridden.",
+          "title": "Base Url"
         },
         "batch_size": {
           "anyOf": [
@@ -652,7 +659,6 @@
         }
       },
       "required": [
-        "base_url",
         "model"
       ],
       "title": "OpenAICompatibleEncoder",

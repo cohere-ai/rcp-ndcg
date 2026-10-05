@@ -18,7 +18,7 @@ An embedding endpoint is an `EmbeddingEndpoint` (`rcp_ndcg.inference.config`): t
 
 | Field | What it does |
 |---|---|
-| `api` | The wire adapter: `openai_embeddings` (default), `cohere_embed`, `voyage_embed`, `gemini_embed`, or a third party's from the `rcp_ndcg.adapters` entry-point group |
+| `api` | The wire adapter, from the embed role's registry: `openai_embeddings` (default), `cohere`, `voyage`, `gemini`, or a third party's from the `rcp_ndcg.adapters` entry-point group (entries named `embed.<name>`) |
 | `base_url` | The endpoint; `null` for a hosted API, which then uses the profile's public URL |
 | `api_key_env` | The variable holding the key; when unset, a hosted profile reads its own (e.g. `CO_API_KEY` or `COHERE_API_KEY`) |
 | `query_prompt`, `doc_prompt` | Text prepended to every query / document (an asymmetric embedder's instruction prefix) |
@@ -40,11 +40,11 @@ are registered under their names and are stateless:
 
 * `openai_embeddings` sends `{"model", "input": [texts], "encoding_format": "float"}` plus `dimensions` when
   the config sets one, and reads `data[].embedding` in `data[].index` order (float lists or base64 float32).
-* `cohere_embed` sends `{"model", "texts", "input_type", "embedding_types": ["float"]}` to `POST {base_url}/embed`,
+* `cohere` sends `{"model", "texts", "input_type", "embedding_types": ["float"]}` to `POST {base_url}/embed`,
   with `input_type` `search_query` / `search_document`, and reads `embeddings.float`.
-* `voyage_embed` sends the OpenAI body with an `input_type` of `query` / `document`, and reads the OpenAI
+* `voyage` sends the OpenAI body with an `input_type` of `query` / `document`, and reads the OpenAI
   `data[].embedding` shape.
-* `gemini_embed` sends `POST {base_url}/models/{model}:batchEmbedContents` with one `requests` entry per text
+* `gemini` sends `POST {base_url}/models/{model}:batchEmbedContents` with one `requests` entry per text
   (`models/<model>`, `taskType` `RETRIEVAL_QUERY` / `RETRIEVAL_DOCUMENT`), puts the key in `x-goog-api-key`,
   and reads `embeddings[].values`.
 
@@ -53,7 +53,9 @@ now), maps an over-length HTTP 400 ("maximum context length") onto a `Capability
 `max_tokens` and `batch_size`, and a batch-cap HTTP 413 onto a `CapabilityError` naming `batch_size`. Any other
 HTTP 400 or 422 is a `RequestRejectedError` for that one request.
 
-The adapters are usable on their own -- build the role's request, read the calls, parse the replies:
+Names are scoped by role: the rerank role registers its own `cohere` and `voyage` wires, and a config selects
+only among its own role's names. The adapters are usable on their own -- build the role's request, read the
+calls, parse the replies:
 
 ```python
 from rcp_ndcg.inference import EncodeRole, get_adapter
@@ -64,7 +66,7 @@ request = EmbedRequest(
     contents=(Content.from_text("a query about foxes"),),
     role=EncodeRole.QUERY,
 )
-call = get_adapter("cohere_embed")().calls(request, model="embed-v4.0")[0]
+call = get_adapter("cohere", role="embed")().calls(request, model="embed-v4.0")[0]
 print(call.path, sorted(call.json))
 ```
 
@@ -113,10 +115,12 @@ and the credentials change where and how fast, and are runtime.
 Two runs share an index only if they computed the same vectors. Which model, checkpoint and wire adapter
 computed them (`api`, `model`, `revision`, `recipe`, the prompts, `normalize`, `dimensions`) is content and
 enters the identity; where and how fast (`base_url`, `batch_size`, `concurrency`, the timeouts) is runtime and
-never does. The tokenizer's name is runtime too: `EmbeddingEndpoint.identity_extra()` returns the SHA-256 of
+never does. The tokenizer's name is runtime too: the config inherits `Endpoint.identity_extra()`, which
+returns the SHA-256 of
 its `tokenizer.json` (`{"tokenizer_sha256": ...}`), which is what a retrieval step identity will carry instead
 of the name once the retrieval wiring moves onto this layer -- the same rule the judge applies to its
-`tokenizer`.
+`tokenizer`. Every role config with a `tokenizer` (the judge's, the embedding, pooling and rerank configs)
+carries the digest under this one key, from the one helper in `rcp_ndcg.data.tokenizer`.
 
 ## Text limits
 

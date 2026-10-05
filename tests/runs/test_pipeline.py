@@ -635,6 +635,138 @@ class TestTheRetrieveAndRerankIdentities:
         assert manifest.status is RunStatus.COMPLETED
 
 
+class TestTheEnginesOverlay:
+    """``RCP_NDCG_ENGINES`` is the runtime channel between a phase's engines and the steps that call them: the
+    coordinator applies each role's URLs and outage wait to the role config in memory, never to ``run.yaml`` and
+    never to an identity, so a run is byte-identical with and without the variable."""
+
+    @staticmethod
+    def _dense(**encoder: Any) -> dict[str, Any]:
+        served = {"model": "embedder", "base_url": "http://engine.test/v1", **encoder}
+        return {
+            "from": "retrieval",
+            "retrieval": {"kind": "dense", "encoder": {"provider": "openai_compatible", **served}},
+        }
+
+    def test_the_encoder_overlay_reaches_the_step_and_never_the_config(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config = tiny_config(data, candidates=self._dense(), steps=["retrieve"])
+        plain = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+        assert plain._overlaid_retrieval().encoder.base_url == "http://engine.test/v1"
+        monkeypatch.setenv(
+            "RCP_NDCG_ENGINES", json.dumps({"encoder": {"urls": ["http://node1:8000/v1"], "wait_on_outage_s": 900}})
+        )
+        overlaid = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+        encoder = overlaid._overlaid_retrieval().encoder
+        assert (encoder.base_url, encoder.wait_on_outage_s) == ("http://node1:8000/v1", 900.0)
+        # The recorded config is untouched: run.yaml and every identity are what they would be without the var.
+        assert plain.config.resolved() == overlaid.config.resolved()
+        for step in plain.config.ordered_steps:
+            assert plain._identity(step) == overlaid._identity(step)
+
+    def test_the_judge_overlay_reaches_the_client_and_never_the_config(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config = tiny_config(data, judge={"base_url": "http://judge.test/v1", "model": "m"})
+        monkeypatch.setenv(
+            "RCP_NDCG_ENGINES",
+            json.dumps({"judge": {"urls": ["http://n1:8000/v1", "http://n2:8000/v1"], "wait_on_outage_s": 120}}),
+        )
+        pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+        overlaid = pipeline._judge_client_config()
+        assert (overlaid.urls, overlaid.wait_on_outage_s) == (("http://n1:8000/v1", "http://n2:8000/v1"), 120.0)
+        assert pipeline.config.judge_config().urls == ("http://judge.test/v1",)
+        for step in config.ordered_steps:
+            assert Pipeline(config, runs_dir=str(tmp_path / "runs"))._identity(step) == pipeline._identity(step)
+
+    def test_run_yaml_and_identities_are_byte_identical_with_and_without_the_variable(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A full run under the overlay writes what the same run writes without it."""
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        def embeddings_server() -> ThreadingHTTPServer:
+            class Embeddings(BaseHTTPRequestHandler):
+                def do_POST(self) -> None:
+                    body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+                    payload = json.dumps({"data": [{"embedding": [1.0, 0.5, 0.25]} for _ in body["input"]]}).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+
+                def log_message(self, *args) -> None:
+                    pass
+
+            server = ThreadingHTTPServer(("127.0.0.1", 0), Embeddings)
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            return server
+
+        first, second = embeddings_server(), embeddings_server()
+        config = tiny_config(
+            data, candidates=self._dense(base_url=f"http://127.0.0.1:{first.server_port}/v1"), steps=["retrieve"]
+        )
+        one = Pipeline(config, runs_dir=str(tmp_path / "one"))
+        one.run()
+        monkeypatch.setenv(
+            "RCP_NDCG_ENGINES", json.dumps({"encoder": {"urls": [f"http://127.0.0.1:{second.server_port}/v1"]}})
+        )
+        two = Pipeline(config, runs_dir=str(tmp_path / "two"))
+        two.run()
+
+        one_yaml = Path(one.layout.config).read_text(encoding="utf-8")
+        two_yaml = Path(two.layout.config).read_text(encoding="utf-8")
+        assert one_yaml == two_yaml, "the overlay must not reach run.yaml"
+        assert one.manifest.config == two.manifest.config
+        for record in one.manifest.steps:
+            assert record.identity_hash == two.manifest.step(record.name).identity_hash
+
+    def test_the_overlay_refuses_roles_this_run_cannot_point_at_an_engine(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from rcp_ndcg.support.serve import ENGINES_ENV
+
+        def refused(variable: str, match: str) -> None:
+            monkeypatch.setenv(ENGINES_ENV, json.dumps(variable))
+            with pytest.raises(ConfigError, match=match):
+                Pipeline(tiny_config(data), runs_dir=str(tmp_path / "runs"))
+
+        refused({"judge": {"urls": ["http://n1:8000/v1"]}}, "this run's judge is the offline fake")  # judge: fake
+        refused({"encoder": {"urls": ["http://n1:8000/v1"]}}, "no served encoder")
+        refused({"reranker": {"urls": ["http://n1:8000/v1"]}}, "no served reranker")
+        refused({"judge": {"urls": []}}, "at least 1 item after validation")
+
+    def test_a_retrieval_role_takes_one_replica_url(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from rcp_ndcg.support.serve import ENGINES_ENV
+
+        monkeypatch.setenv(
+            ENGINES_ENV,
+            json.dumps({"encoder": {"urls": ["http://n1:8000/v1", "http://n2:8000/v1"]}}),
+        )
+        with pytest.raises(ConfigError, match="addresses one URL"):
+            Pipeline(tiny_config(data, candidates=self._dense(), steps=["retrieve"]), runs_dir=str(tmp_path / "runs"))
+
+    def test_a_substance_of_the_candidates_ignores_their_runtime_fields(self, data: Path) -> None:
+        """An injected engine URL (a --set or an overlay) is no config change: a failed resume keeps it."""
+        from rcp_ndcg.runs.pipeline import _substance
+
+        base = self._rerank()
+        one = tiny_config(data, candidates=base, steps=["rerank", "tournament", "rubric", "calibrate", "evaluate"])
+        two = tiny_config(data, candidates=self._rerank(base_url="http://elsewhere.test:9000"), steps=one.steps)
+        assert _substance(one) == _substance(two)
+        assert _substance(one) != _substance(tiny_config(data, candidates=self._rerank(model="other"), steps=one.steps))
+
+    @staticmethod
+    def _rerank(**reranker: Any) -> dict[str, Any]:
+        served = {"model": "reranker", "base_url": "http://engine.test:8000", **reranker}
+        return {"rerank": {"provider": "openai_compatible", **served}}
+
+
 class TestTheEvaluateIdentity:
     def test_a_changed_seed_redoes_the_evaluation_whose_bootstrap_it_draws(self, run_dir: Path) -> None:
         calibrated = RunManifest.load(run_dir).step("calibrate")
@@ -708,11 +840,11 @@ class TestEvaluationSystems:
 
 
 class TestFailures:
-    def test_a_jobs_runtime_overrides_are_no_config_change_so_its_failure_is_recorded(
+    def test_a_jobs_engines_overlay_is_no_config_change_so_its_failure_is_recorded(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A job that starts its engine passes the replica URLs and the outage wait; its failure rolled the run back
-        to 'submitted' with no error, as if a --set change had failed."""
+        """A job that starts engines hands them to its steps through RCP_NDCG_ENGINES; its failure keeps the run's
+        recorded config (the overlay is runtime only) and is recorded failed."""
         import yaml
         from click.testing import CliRunner
 
@@ -727,10 +859,14 @@ class TestFailures:
         pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
         pipeline.layout.ensure()
         pipeline._write_config()
+        run_yaml = Path(pipeline.layout.config).read_text(encoding="utf-8")
         pipeline.manifest.status = RunStatus.SUBMITTED
         pipeline.manifest.save(pipeline.layout)
-        monkeypatch.setenv("RCP_NDCG_JUDGE_URLS", "http://node1:8000/v1,http://node2:8000/v1")
-        args = ["run", "resume", "--run", pipeline.layout.root, "--set", "judge.wait_on_outage_s=900", "--json"]
+        monkeypatch.setenv(
+            "RCP_NDCG_ENGINES",
+            json.dumps({"judge": {"urls": ["http://node1:8000/v1", "http://node2:8000/v1"], "wait_on_outage_s": 900}}),
+        )
+        args = ["run", "resume", "--run", pipeline.layout.root, "--json"]
         assert CliRunner().invoke(cli, args).exit_code == 4
 
         manifest = RunManifest.load(pipeline.layout)
@@ -739,10 +875,9 @@ class TestFailures:
             manifest.step("retrieve").status is StepStatus.FAILED
             and "missing.parquet" in manifest.step("retrieve").error
         )
-        assert yaml.safe_load(Path(pipeline.layout.config).read_text())["judge"]["base_url"] == [
-            "http://node1:8000/v1",
-            "http://node2:8000/v1",
-        ]
+        # The overlay never reaches run.yaml: the recorded config still names its own judge URL.
+        assert Path(pipeline.layout.config).read_text(encoding="utf-8") == run_yaml
+        assert yaml.safe_load(run_yaml)["judge"]["base_url"] == "http://engine:8000/v1"
 
     def test_a_failed_change_leaves_a_run_that_never_ran_failed_not_submitted(self, data: Path, tmp_path: Path) -> None:
         pipeline = Pipeline(tiny_config(data, steps=["tournament"]), runs_dir=str(tmp_path / "runs"))

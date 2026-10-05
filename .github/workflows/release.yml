@@ -1,9 +1,18 @@
-# Publish a release: on a tag v<version>, build both distributions, check their versions against the tag, publish
-# them to PyPI with trusted publishing (OIDC, no secret), and attach the constraints file to the GitHub release.
+# Publish a release: on a tag v<version>, build the three distributions (rcp-ndcg, rcp-ndcg-core, rcp-ndcg-vllm),
+# check each version against the tag, publish every package to its own PyPI project with trusted publishing (OIDC,
+# no secret), and attach the constraints file to the GitHub release.
 #
-# One-time setup on pypi.org, for each of rcp-ndcg and rcp-ndcg-core: add a trusted publisher (a pending one before
-# the first upload) with owner cohere-ai, repository rcp-ndcg, workflow release.yml and environment pypi; then create
-# the environment `pypi` in the repository's settings.
+# Each package publishes through its own GitHub environment, because PyPI identifies a pending trusted publisher by
+# owner, repository, workflow file and environment only (not the project name). One-time setup on pypi.org, done:
+# for each project in the table below, add a trusted publisher (a pending one before the first upload) with owner
+# cohere-ai, repository rcp-ndcg, workflow release.yml and the environment from the table; the environments exist in
+# the repository's settings (one protection rule each, set by the owner).
+#
+#   | PyPI project  | GitHub environment |
+#   |---------------|--------------------|
+#   | rcp-ndcg      | pypi               |
+#   | rcp-ndcg-core | pypi-core          |
+#   | rcp-ndcg-vllm | pypi-vllm          |
 
 name: release
 
@@ -21,14 +30,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - name: build rcp-ndcg and rcp-ndcg-core
-        run: uv build --all-packages --out-dir dist
+      - name: build rcp-ndcg, rcp-ndcg-core and rcp-ndcg-vllm
+        run: |
+          uv build --all-packages --out-dir dist
+          # rcp-ndcg-vllm is deliberately outside the uv workspace: build it from its own directory.
+          (cd packages/rcp-ndcg-vllm && uv build --out-dir ../../dist)
       - name: the versions are the tag's
         run: |
           version="${GITHUB_REF_NAME#v}"
           expected=(
             "dist/rcp_ndcg-${version}-py3-none-any.whl" "dist/rcp_ndcg-${version}.tar.gz"
             "dist/rcp_ndcg_core-${version}-py3-none-any.whl" "dist/rcp_ndcg_core-${version}.tar.gz"
+            "dist/rcp_ndcg_vllm-${version}-py3-none-any.whl" "dist/rcp_ndcg_vllm-${version}.tar.gz"
           )
           ls -a dist
           for file in "${expected[@]}"; do test -f "$file" || { echo "missing $file: the tag is not the version"; exit 1; }; done
@@ -39,14 +52,43 @@ jobs:
           command=$(sed -n '2s/^#    //p' requirements-constraints.txt)
           eval "${command/ -o requirements-constraints.txt/ --no-header -o $RUNNER_TEMP/exported.txt}"
           diff <(grep -v '^#' requirements-constraints.txt) <(grep -v '^#' "$RUNNER_TEMP/exported.txt")
+      - name: twine check every file
+        run: uvx twine check dist/*
       - uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist/
+          name: dist-rcp-ndcg-core
+          path: dist/rcp_ndcg_core-*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-rcp-ndcg
+          path: dist/rcp_ndcg-*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-rcp-ndcg-vllm
+          path: dist/rcp_ndcg_vllm-*
 
-  publish:
-    name: publish to PyPI
+  # One publish job per package, each with its own environment: the PyPI project in it is a pending trusted publisher
+  # identified by owner, repository, workflow file and environment only.
+  publish-core:
+    name: publish rcp-ndcg-core to PyPI
     needs: build
+    runs-on: ubuntu-latest
+    environment: pypi-core
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-rcp-ndcg-core
+          path: dist/rcp-ndcg-core
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/rcp-ndcg-core
+
+  # rcp-ndcg pins rcp-ndcg-core==<version> exactly, so the core must exist on PyPI first.
+  publish-rcp-ndcg:
+    name: publish rcp-ndcg to PyPI
+    needs: publish-core
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -54,13 +96,31 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: dist
-          path: dist/
+          name: dist-rcp-ndcg
+          path: dist/rcp-ndcg
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/rcp-ndcg
+
+  publish-vllm:
+    name: publish rcp-ndcg-vllm to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi-vllm
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-rcp-ndcg-vllm
+          path: dist/rcp-ndcg-vllm
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/rcp-ndcg-vllm
 
   github-release:
     name: GitHub release with the constraints file
-    needs: publish
+    needs: [publish-core, publish-rcp-ndcg, publish-vllm]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -68,9 +128,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: dist
-          path: dist/
+          name: dist-rcp-ndcg
+          path: dist/rcp-ndcg
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-rcp-ndcg-core
+          path: dist/rcp-ndcg-core
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-rcp-ndcg-vllm
+          path: dist/rcp-ndcg-vllm
       # The rendered jobs install against the constraints file attached here.
-      - run: gh release create "$GITHUB_REF_NAME" requirements-constraints.txt dist/* --verify-tag --notes-from-tag
+      - run: gh release create "$GITHUB_REF_NAME" requirements-constraints.txt dist/*/* --verify-tag --notes-from-tag
         env:
           GH_TOKEN: ${{ github.token }}

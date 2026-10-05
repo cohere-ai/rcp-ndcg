@@ -1351,10 +1351,17 @@
           "title": "Api Key Env"
         },
         "base_url": {
-          "description": "The served endpoint (required), e.g. ``http://localhost:8000/v1``; one URL, not a replica list.",
-          "minLength": 1,
-          "title": "Base Url",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint; ``None`` only when the run's job starts the encoder's engine (``serve.encoder``): the engine's URLs then reach the step at runtime, through ``RCP_NDCG_ENGINES``, and setting both is refused rather than silently overridden.",
+          "title": "Base Url"
         },
         "batch_size": {
           "anyOf": [
@@ -1486,7 +1493,6 @@
         }
       },
       "required": [
-        "base_url",
         "model"
       ],
       "title": "OpenAICompatibleEncoder",
@@ -1494,7 +1500,7 @@
     },
     "OpenAICompatibleReranker": {
       "additionalProperties": false,
-      "description": "A served ``/rerank`` endpoint (``vllm serve <model> --runner pooling``); ``base_url`` is the server root.",
+      "description": "A served ``/rerank`` endpoint (``vllm serve <model> --runner pooling``); ``base_url`` is the server root.\n\n``base_url`` is ``None`` only when the run's job starts the reranker's engine (``serve.reranker``): the\nengine's URL then reaches the step at runtime, through ``RCP_NDCG_ENGINES``, and setting both is refused\nrather than silently overridden.",
       "properties": {
         "api": {
           "anyOf": [
@@ -1524,10 +1530,17 @@
           "title": "Api Key Env"
         },
         "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
           "description": "The served endpoint (required), e.g. ``http://localhost:8000/v1``; one URL, not a replica list.",
-          "minLength": 1,
-          "title": "Base Url",
-          "type": "string"
+          "title": "Base Url"
         },
         "batch_size": {
           "anyOf": [
@@ -1619,7 +1632,6 @@
         }
       },
       "required": [
-        "base_url",
         "model"
       ],
       "title": "OpenAICompatibleReranker",
@@ -1856,12 +1868,56 @@
       "title": "RubricSchedule",
       "type": "object"
     },
+    "ServeByRole": {
+      "additionalProperties": false,
+      "description": "The engines of a run, by role: at most one engine per role, each an EngineConfig.",
+      "properties": {
+        "encoder": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServeConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The engine serving the retrieval config's encoder."
+        },
+        "judge": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServeConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The engine serving the judge, when the job starts one (``None``: the judge is reached at the URLs its config already holds)."
+        },
+        "reranker": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServeConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The engine serving the retrieval config's reranker."
+        }
+      },
+      "title": "ServeByRole",
+      "type": "object"
+    },
     "ServeConfig": {
       "additionalProperties": false,
-      "description": "The engine replicas a run's job starts for its judge.",
+      "description": "The engine replicas a run's job starts for one role's config (the judge, the retrieval encoder, the\nreranker).",
       "properties": {
         "command": {
-          "description": "The command that starts one replica, verbatim: an argv list, or one shell-quoted string. It must serve the judge's ``model`` name on ``port`` on all interfaces (``--host 0.0.0.0``) when there are several replicas.",
+          "description": "The command that starts one replica, verbatim: an argv list, or one shell-quoted string. It must serve the role config's ``model`` name on ``port`` on all interfaces (``--host 0.0.0.0``) when there are several replicas.",
           "items": {
             "type": "string"
           },
@@ -1900,7 +1956,7 @@
         },
         "outage_timeout_s": {
           "default": 900,
-          "description": "Seconds the judge of the job waits while every replica is down before it fails with ``BackendUnavailableError`` (it becomes the judge's ``wait_on_outage_s`` in the job).",
+          "description": "Seconds the step that calls this engine waits while every replica is down before it fails with ``BackendUnavailableError`` (the phase carries it to the role config's ``wait_on_outage_s``).",
           "minimum": 0,
           "title": "Outage Timeout S",
           "type": "integer"
@@ -1922,7 +1978,7 @@
         },
         "replicas": {
           "default": 1,
-          "description": "Independent engine replicas, one URL each; the judge sends each request to the one with the fewest requests in flight.",
+          "description": "Independent engine replicas, one URL each; a client that reaches several sends each request to the live one with the fewest requests in flight (the judge; a retrieval role takes one replica).",
           "minimum": 1,
           "title": "Replicas",
           "type": "integer"
@@ -2171,7 +2227,7 @@
       "properties": {
         "adaptive_batches": {
           "default": 7,
-          "description": "Adaptive batches, with a Bradley-Terry refit after each.",
+          "description": "Adaptive batches, with a Bradley-Terry refit after each. A pool no larger than ``adaptive_window`` runs one batch, whatever this says (see adaptive_batches_for).",
           "minimum": 0,
           "title": "Adaptive Batches",
           "type": "integer"
@@ -2607,14 +2663,14 @@
     "serve": {
       "anyOf": [
         {
-          "$ref": "#/$defs/ServeConfig"
+          "$ref": "#/$defs/ServeByRole"
         },
         {
           "type": "null"
         }
       ],
       "default": null,
-      "description": "The judge's engine, started beside the run's job by the ``slurm`` or ``kubernetes`` runner (ServeConfig); the judge then uses its replicas' URLs. Omit it to bring your own endpoint (``judge.base_url``)."
+      "description": "The engines the run's job starts, by role (``judge`` serves the judge, ``encoder`` the retrieval config's encoder, ``reranker`` its reranker; ServeByRole). A job runs the run in phases, each starting only the engines its steps use; the engines' URLs reach the steps at runtime, through ``RCP_NDCG_ENGINES`` (never through this config). Omit it to bring your own endpoints (the role configs' ``base_url``)."
     },
     "steps": {
       "description": "The steps to run (run in STEPS order whatever order they are listed in).",

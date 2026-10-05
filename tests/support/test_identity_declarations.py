@@ -15,6 +15,7 @@ import pytest
 from pydantic import BaseModel, ConfigDict, Field
 
 from rcp_ndcg.llm import JudgeConfig
+from rcp_ndcg.runs.config import CandidatesConfig
 from rcp_ndcg.support.identity import (
     FieldRole,
     IdentityDeclarationError,
@@ -54,7 +55,7 @@ def identity_models(*roots: type[BaseModel]) -> list[type[BaseModel]]:
 
 
 #: Every model that feeds a judgement identity or a step identity.
-IDENTITY_ROOTS = (JudgeConfig,)
+IDENTITY_ROOTS = (JudgeConfig, CandidatesConfig)
 
 
 class _Nested(BaseModel):

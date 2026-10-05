@@ -28,9 +28,9 @@ from tests.inference._embed import embeddings_data, vendor_payload
 #: Every shipped embedding adapter, under its registered name.
 ADAPTERS: dict[str, type] = {
     "openai_embeddings": OpenAIEmbeddings,
-    "cohere_embed": CohereEmbeddings,
-    "voyage_embed": VoyageEmbeddings,
-    "gemini_embed": GeminiEmbeddings,
+    "cohere": CohereEmbeddings,
+    "voyage": VoyageEmbeddings,
+    "gemini": GeminiEmbeddings,
 }
 
 
@@ -58,10 +58,21 @@ def calls_with(name: str, content: Content) -> Any:
 
 class TestRegistry:
     def test_every_profile_is_registered_under_its_name_and_role(self) -> None:
-        assert {"openai_embeddings", "cohere_embed", "voyage_embed", "gemini_embed"} <= set(known_adapters())
+        assert {"openai_embeddings", "cohere", "voyage", "gemini"} <= set(known_adapters("embed"))
         for name, cls in ADAPTERS.items():
-            assert get_adapter(name) is cls
+            assert get_adapter(name, role="embed") is cls
             assert cls.role == "embed"
+
+    def test_the_embed_names_resolve_inside_their_role_only(self) -> None:
+        """The registry is scoped by role: ``cohere`` is shared with the rerank role, whose lookup resolves to
+        the rerank wire, never to the embedding profile."""
+        from rcp_ndcg.errors import ConfigError
+        from rcp_ndcg.inference.adapters.rerank import CohereRerankAdapter
+
+        assert get_adapter("cohere", role="rerank") is CohereRerankAdapter
+        assert get_adapter("cohere", role="embed") is CohereEmbeddings
+        with pytest.raises(ConfigError, match="unknown judge adapter 'gemini'"):
+            get_adapter("gemini", role="judge")
 
     def test_the_adapters_satisfy_the_protocol(self) -> None:
         for cls in ADAPTERS.values():
@@ -125,7 +136,7 @@ class TestCohereShape:
         assert document["input_type"] == "search_document"
 
     def test_the_reply_is_read_from_embeddings_float(self) -> None:
-        vectors = self.adapter.interpret(request(), [reply(200, vendor_payload("cohere_embed", [[3.0, 4.0]]))])
+        vectors = self.adapter.interpret(request(), [reply(200, vendor_payload("cohere", [[3.0, 4.0]]))])
         assert vectors.as_matrix()[0].tolist() == [3.0, 4.0]
 
     def test_usage_reads_the_billed_units(self) -> None:
@@ -163,7 +174,7 @@ class TestGeminiShape:
         assert document["requests"][0]["taskType"] == "RETRIEVAL_DOCUMENT"
 
     def test_the_reply_is_read_from_values(self) -> None:
-        vectors = self.adapter.interpret(request(), [reply(200, vendor_payload("gemini_embed", [[2.0, 0.0]]))])
+        vectors = self.adapter.interpret(request(), [reply(200, vendor_payload("gemini", [[2.0, 0.0]]))])
         assert vectors.as_matrix()[0].tolist() == [2.0, 0.0]
 
     def test_a_reply_without_embeddings_is_rejected(self) -> None:
@@ -175,17 +186,17 @@ class TestProfiles:
     def test_every_profile_declares_its_published_batch_cap(self) -> None:
         assert {name: cls.MAX_BATCH for name, cls in ADAPTERS.items()} == {
             "openai_embeddings": 128,
-            "cohere_embed": 96,
-            "voyage_embed": 128,
-            "gemini_embed": 100,
+            "cohere": 96,
+            "voyage": 128,
+            "gemini": 100,
         }
 
     def test_every_profile_names_its_public_base_url(self) -> None:
         assert {name: cls.DEFAULT_BASE_URL for name, cls in ADAPTERS.items()} == {
             "openai_embeddings": "https://api.openai.com/v1",
-            "cohere_embed": "https://api.cohere.com/v2",
-            "voyage_embed": "https://api.voyageai.com/v1",
-            "gemini_embed": "https://generativelanguage.googleapis.com/v1beta",
+            "cohere": "https://api.cohere.com/v2",
+            "voyage": "https://api.voyageai.com/v1",
+            "gemini": "https://generativelanguage.googleapis.com/v1beta",
         }
 
     def test_the_hosted_profiles_require_a_key_and_openai_does_not(self) -> None:
@@ -205,7 +216,7 @@ class TestProfiles:
 class TestRefusals:
     adapter: ClassVar[OpenAIEmbeddings] = OpenAIEmbeddings()
 
-    @pytest.mark.parametrize("name", ["cohere_embed", "voyage_embed", "gemini_embed"])
+    @pytest.mark.parametrize("name", ["cohere", "voyage", "gemini"])
     def test_a_hosted_profile_refuses_a_dimensions_request(self, name: str) -> None:
         """The hosted APIs take no dimensions parameter; sending one would be silently ignored, which is
         refused instead -- a Matryoshka cut that never reaches the wire would change the vectors."""

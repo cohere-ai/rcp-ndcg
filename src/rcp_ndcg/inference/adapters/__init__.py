@@ -1,9 +1,15 @@
-"""The adapter seam: the :class:`Adapter` protocol, its registry, the entry-point group (C2) and the shipped
-adapters, which register at import of this package (the judge chat-completions wire, the embedding, rerank and
-multi-vector pooling wires)."""
+"""The adapter seam: the :class:`Adapter` protocol, its role-scoped registry and the entry-point group (C2).
+
+The shipped adapters register at import of this package, each under its role's namespace: the judge role's
+``openai_chat`` (:mod:`rcp_ndcg.inference.adapters.chat`), the embed role's OpenAI shape and its hosted profiles
+(:mod:`rcp_ndcg.inference.adapters.embeddings`), the rerank role's Cohere-shaped wire and its hosted profiles
+(:mod:`rcp_ndcg.inference.adapters.rerank`), and the multi-vector role's ``vllm_pooling``
+(:mod:`rcp_ndcg.inference.adapters.pooling`).
+"""
 
 from rcp_ndcg.inference.adapters.base import (
     ADAPTER_ENTRY_POINTS,
+    ROLES,
     Adapter,
     AdapterRole,
     get_adapter,
@@ -21,10 +27,11 @@ from rcp_ndcg.inference.adapters.rerank import (
 
 __all__ = [
     "ADAPTER_ENTRY_POINTS",
+    "OpenAIChat",
+    "ROLES",
     "Adapter",
     "AdapterRole",
     "CohereRerankAdapter",
-    "OpenAIChat",
     "RerankAdapter",
     "RerankWire",
     "VoyageRerankAdapter",
