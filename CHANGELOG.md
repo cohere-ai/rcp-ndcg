@@ -80,6 +80,8 @@ released together.
 
 ### Fixed
 
+- The MCP server logs the typed warnings a tool call collects (its results have no `warnings` field, so the
+  server's log is where e.g. `UNPINNED_REVISION` surfaces there).
 - Changing a served encoder's or reranker's URL no longer re-runs retrieval or reranking: the `retrieve` and
   `rerank` step identities hold the candidates config's content payload (`identity_payload`, as the judge steps
   already do), so its runtime fields (`base_url`, `api_key_env`, `concurrency`, the timeouts and retries,

@@ -10,7 +10,8 @@ was judged record the commit it resolved to instead (a judge's ``revision`` is r
   resolves the same commit from it; a download pinned to a commit cannot write that ref itself, which is why a
   cache an online run filled otherwise serves nothing offline.
 * When neither answers, the commit is ``None`` and the result is not verified. Nothing is invented, and a typed
-  warning (``UNPINNED_REVISION``, one per repository and revision per process) names the repository and the fix;
+  warning (``UNPINNED_REVISION``, one per repository and revision argument per process) names the repository and
+  the fix;
   the CLI collects it into its ``--json`` envelope's ``warnings`` and prints it on stderr otherwise.
 
 The result is cached per ``(repo_id, revision)`` for the life of the process, so an identity that is computed many
@@ -102,8 +103,7 @@ def resolve_revision(repo_id: str, revision: str | None = None) -> ResolvedRevis
         warnings.warn(
             RcpNdcgWarning(
                 "UNPINNED_REVISION",
-                f"Dataset {repo_id}@{ref} resolved to no commit (the Hub is unreachable or offline, and the local "
-                f"cache at {hub_cache_dir()} has no ref for it), so the identity records it as unverified: pin the "
+                f"Dataset {repo_id}@{ref} resolved to no commit, so the identity records it as unverified: pin the "
                 "exact revision with --revision <full sha> to make the run reproducible.",
             ),
             stacklevel=2,

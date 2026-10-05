@@ -125,6 +125,21 @@ class TestResolveRevision:
         assert (resolved.commit, resolved.verified) == (None, False)
         assert not ref.exists(), "the corrupt ref is gone; the next online resolution rewrites it"
 
+    def test_a_corrupt_cache_ref_offline_warns_unpinned(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """The sanitized-offline resolution still warns UNPINNED_REVISION: nothing is resolved."""
+        import os
+
+        monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+        ref = Path(os.environ["HF_HUB_CACHE"]) / "datasets--BeIR--fiqa" / "refs" / "main"
+        ref.parent.mkdir(parents=True)
+        ref.write_bytes(b"\xff\xfe not utf-8")
+        monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+
+        with pytest.warns(RcpNdcgWarning) as seen:
+            resolve_revision("BeIR/fiqa", None)
+
+        assert [record.message.code for record in seen] == ["UNPINNED_REVISION"]
+
     def test_a_corrupt_cache_ref_is_rewritten_online_and_absent_offline(
         self, hub: FakeHub, monkeypatch: pytest.MonkeyPatch
     ) -> None:
