@@ -15,6 +15,7 @@ lazily imported module is exempt: its cost is paid when it runs, not when its la
 from __future__ import annotations
 
 import ast
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -60,12 +61,26 @@ def _module_layer(dotted: str) -> str:
     return parts[0] if parts else "rcp_ndcg"
 
 
-def _targets_of_import(node: ast.Import | ast.ImportFrom) -> Iterator[str]:
-    """The layers one import statement binds, as layers of ``rcp_ndcg`` (relative imports bind none)."""
+def _targets_of_import(node: ast.Import | ast.ImportFrom, *, module: str, is_package: bool) -> Iterator[str]:
+    """The layers one import statement binds, as layers of ``rcp_ndcg``.
+
+    A relative import is resolved to its absolute module from the importing module's package (``module``: the
+    package itself when ``is_package``, i.e. a package's ``__init__``) and ``node.level``, and then checked like
+    an absolute one (``from ..retrieval import x`` in a ``data`` module is a ``retrieval`` import).
+    """
     if isinstance(node, ast.ImportFrom):
-        if node.level:  # a relative import stays inside its own layer
-            return
-        module = node.module or ""
+        if node.level:
+            # `module` is relative to the package (``data.dataset``): resolve against the real dotted name, whose
+            # root is ``rcp_ndcg`` (the facade's own ``__init__`` already carries it).
+            real = module if module == "rcp_ndcg" else f"rcp_ndcg.{module}"
+            anchor = real if is_package else real.rpartition(".")[0]
+            parts = anchor.split(".")
+            parts = parts[: len(parts) - (node.level - 1)]
+            if not parts or not all(parts):  # relative beyond the top-level package: unresolvable statically
+                return
+            module = ".".join([*parts, node.module or ""])
+        else:
+            module = node.module or ""
         names = [alias.name for alias in node.names]
     else:
         module = ""
@@ -121,6 +136,7 @@ def outward_imports() -> list[str]:
     findings: list[str] = []
     for path in sorted(SRC.rglob("*.py")):
         module = ".".join(path.relative_to(SRC).with_suffix("").parts)
+        is_package = path.name == "__init__.py"
         if module == "__init__":
             module = "rcp_ndcg"  # the facade itself
         elif module.endswith(".__init__"):
@@ -133,7 +149,7 @@ def outward_imports() -> list[str]:
             )
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node, line in _eager_imports(tree):
-            for target in _targets_of_import(node):
+            for target in _targets_of_import(node, module=module, is_package=is_package):
                 if target not in _LAYER or target == layer:
                     continue
                 if _LAYER[target] <= _LAYER[layer]:
@@ -146,6 +162,25 @@ def outward_imports() -> list[str]:
 
 def test_no_eager_import_points_outward() -> None:
     assert outward_imports() == [], "eager imports point outward in the charter order"
+
+
+def test_a_relative_import_across_layers_is_checked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A relative import is resolved to its absolute module: `from ..retrieval import x` in a data module fails.
+
+    The mutation injects the outward relative import into a tree under ``tmp_path`` (the checkout is never
+    written); the same-layer relative imports beside it stay legal. The module names then read like the real
+    tree's (relative to the package).
+    """
+    for name in ("data", "retrieval"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "data" / "broken.py").write_text("from ..retrieval import anything\n", encoding="utf-8")
+    (tmp_path / "data" / "same_layer.py").write_text("from .broken import anything\n", encoding="utf-8")
+    (tmp_path / "data" / "up_one.py").write_text("from .. import data\n", encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "SRC", tmp_path)
+
+    # every finding is prefixed with the checkout's own src/rcp_ndcg, whatever SRC reads now
+    assert outward_imports() == ["src/rcp_ndcg/data/broken.py:1: data -> retrieval (outward)"]
 
 
 def test_a_top_level_module_that_is_not_placed_fails_loudly(monkeypatch: pytest.MonkeyPatch) -> None:
