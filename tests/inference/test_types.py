@@ -332,8 +332,10 @@ class TestAdapterRegistry:
         monkeypatch.setattr(adapter_base, "_PLUGINS", {})
         with pytest.raises(ConfigError) as caught:
             get_adapter("nope")
-        assert "no wire adapter is registered yet" in (caught.value.hint or "")
-        assert "arrive with the transport" not in (caught.value.hint or "")  # nothing is shipped yet
+        hint = caught.value.hint or ""
+        assert "no wire adapter is registered in this process" in hint
+        assert "importing ``rcp_ndcg.inference.adapters`` registers the shipped ones" in hint
+        assert "arrive with the transport" not in hint  # no promise of adapters that do not exist
 
     def test_an_adapter_is_registered_under_its_name_and_returned_by_it(self) -> None:
         register_adapter(_ProbeAdapter)
