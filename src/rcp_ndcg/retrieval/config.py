@@ -14,9 +14,9 @@ both are unions discriminated on ``provider``, each variant carrying only the fi
 ``gemini``              Google's Gemini embedding API                                yes        no
 ======================  ==========================================================  =========  ========
 
-The served and hosted variants are :class:`~rcp_ndcg.support.endpoint.Endpoint` s, so they share its fields
-(``base_url``, ``model``, ``revision``, ``api_key_env``, the timeouts and retries). A field a provider cannot use is
-refused, never ignored.
+The served and hosted variants are :class:`~rcp_ndcg.inference.endpoint.Endpoint` s, so they share its fields
+(``base_url``, ``model``, ``revision``, ``api_key_env``, the timeouts and retries). A field a provider cannot use
+is refused, never ignored.
 
 Every config declares ``IDENTITY_ROLES``: what the model computes (the model, its revision, its pooling and prompts)
 enters an index's identity; where and how fast it is asked does not.
@@ -28,7 +28,7 @@ from typing import Annotated, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from rcp_ndcg.support.endpoint import Endpoint
+from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.support.identity import FieldRole
 
 _CONTENT, _RUNTIME = FieldRole.CONTENT, FieldRole.RUNTIME

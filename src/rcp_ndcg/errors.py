@@ -144,6 +144,25 @@ class ProviderError(RcpNdcgError):
     retryable = True
 
 
+class BackendUnavailableError(ProviderError):
+    """Every replica of an endpoint stayed unavailable for longer than its ``wait_on_outage_s``.
+
+    The public outage type of the inference layer (``api_key``, routing, parking and retries are the
+    transport's; RFC-0001 section 4.2): a run against dead servers parks instead of turning the outage into
+    missing judgements, and this error says the parking gave up. Retryable: the endpoint may come back.
+    """
+
+
+class RequestRejectedError(ProviderError):
+    """An endpoint refused this one request (e.g. HTTP 400 for a prompt over the context) or answered it empty.
+
+    Specific to the request, unlike :class:`BackendUnavailableError`: the endpoint serves other requests, so a
+    judging pass records the window as invalid and goes on, and a resumed pass asks it again.
+    """
+
+    retryable = False
+
+
 class CapabilityError(RcpNdcgError):
     """The judge or endpoint cannot take what a request carries.
 
@@ -362,6 +381,7 @@ def classify(exc: BaseException) -> RcpNdcgError:
 __all__ = [
     "EXTRA_FOR_MODULE",
     "WARNING_CODES",
+    "BackendUnavailableError",
     "CapabilityError",
     "ConfigError",
     "CredentialsError",
@@ -372,6 +392,7 @@ __all__ = [
     "Interrupted",
     "MissingInputError",
     "ProviderError",
+    "RequestRejectedError",
     "RcpNdcgError",
     "RcpNdcgWarning",
     "UsageError",
