@@ -155,10 +155,11 @@ rcp-ndcg run resume --run runs/<run_id> --mirror s3://bucket/runs/nano --json
 ```
 
 Serve the judge on the cluster with the run (the user's image and command, verbatim; SLURM or Kubernetes, never the
-local runner): add a `serve:` section (`image`, `command`, `resources`, `replicas`) to the run config, check what
-would be submitted, then submit. On SLURM the image needs `container_runtime: apptainer` or `pyxis`; with the default
-`none` the command runs on the node and `image` is refused. The job hands the engine replicas' URLs to the judge;
-`run logs` shows both. A job that failed (`run status`: `failed`, with a `note` when the job ended without recording
+local runner): declare the engines per phase of the job (`image`, `command`, `resources`, `replicas`, each under
+its role), check what would be submitted, then submit. On SLURM the image needs `container_runtime: apptainer` or
+`pyxis`; with the default `none` the command runs on the node and `image` is refused. The job hands each phase's
+engine URLs to the coordinator in `RCP_NDCG_ENGINES`; `run logs` shows both. (Until a run config declares engines
+per phase, a `serve:` section is refused at submission: start the engine yourself and pass `--judge-url`.) A job that failed (`run status`: `failed`, with a `note` when the job ended without recording
 it) is submitted again, engine included, with `run resume --runner`; it asks only for the windows its stores lack.
 
 ```bash

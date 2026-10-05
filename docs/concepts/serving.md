@@ -3,8 +3,8 @@
 rcp-ndcg's contract with a model is one OpenAI-compatible URL. Serve the judge with any engine and image you choose
 (vLLM, SGLang, a gateway in front of several workers) or use a hosted API, describe it in a judge config, and run the
 judging steps here or through a job runner on SLURM or Kubernetes. The package never builds an image, never pins an
-engine and never translates engine flags. A run config's `serve:` section (below) starts your image with your
-command, verbatim, beside the run's job (on SLURM without a container runtime, your command on the node).
+engine and never translates engine flags. A job's phases (`JobSpec.phases`, below) start your image with your
+command, verbatim, in the run's own allocation (on SLURM without a container runtime, your command on the node).
 
 ## The judge config
 
@@ -119,8 +119,9 @@ gateway or a Kubernetes Service is simply a list of one.
   replica. A replica that answers again is used again.
 - **When every replica is down,** requests wait and are re-sent with backoff until one answers, or until
   `wait_on_outage_s` passes (`BackendUnavailableError`). A run against dead servers therefore parks instead of
-  turning the outage into missing judgements. A job that starts its own engine (`serve:`) waits at most
-  `serve.outage_timeout_s` (900 s by default) and then fails, since its engine will not come back on its own.
+  turning the outage into missing judgements. A job whose phases start its engines waits at most the engine's
+  `outage_timeout_s` (900 s by default, carried in `RCP_NDCG_ENGINES`) and then fails, since its engine will not
+  come back on its own.
 - **A request that keeps failing on a replica that answers other requests** is that request's failure: it is
   refused and recorded like any refused window.
 
@@ -218,18 +219,23 @@ runner:
 ```
 
 - **SLURM.** Resources become `--gres=gpu:N`, `--cpus-per-task`, `--mem` and `--time`, and `sbatch_args` passes
-  anything else through. With `serve:`, a node holds an engine replica and, on the first node, the coordinator: the
-  GPUs are the larger of the two requests, CPUs and memory add up, and an engine whose `memory_gb` is unstated gets
-  the node's whole memory (`--mem=0`), whatever the coordinator asks. The job runs in the node's environment (`setup`) or in a container
+  anything else through. A job with phases asks for the maximum nodes and GPUs over its phases, and a node holds
+  one of the phase's engine replicas and, on the first node, the coordinator: the GPUs are the larger of the two
+  requests, CPUs and memory add up, and an engine whose `memory_gb` is unstated gets the node's whole memory
+  (`--mem=0`), whatever the coordinator asks. Each role's replicas are pinned to their slice of the allocation's
+  nodes (`srun --nodelist`); on a one-node allocation the engine answers on `localhost`. The job runs in the node's
+  environment (`setup`) or in a container
   (`container_runtime: apptainer` or `pyxis`, with `container_mounts`); a container runs the stock coordinator image
   below unless `image` names another. Runs, stores and caches live on the cluster's shared filesystem. A node without
   internet access needs the weights and data staged beforehand: set `HF_HOME` to a shared cache and
   `HF_HUB_OFFLINE=1`.
 - **Kubernetes.** Each run is a `batch/v1` Job, applied with the `kubectl` on your `PATH` (and `context`, if set).
-  Resources become the coordinator's requests and limits (`nvidia.com/gpu`, `cpu`, `memory`) and the Job's
-  `activeDeadlineSeconds`. With one engine replica, its one container asks for the larger of the two GPU requests,
-  and for the engine's CPUs and memory plus the coordinator's; a CPU or memory amount the engine leaves unstated is
-  left unlimited, whatever the coordinator asks, so the coordinator's share never caps the engine; `secrets` are exposed to every container as environment (an HF token, the mirror's
+  Resources become the containers' requests and limits (`nvidia.com/gpu`, `cpu`, `memory`) and the Job's
+  `activeDeadlineSeconds`; each phase runs in its own container (an init container, except the last phase, which is
+  the main one) and asks for the engine's CPUs and memory plus the coordinator's, with the larger of the two GPU
+  requests; a CPU or memory amount the engine leaves unstated is left unlimited, whatever the coordinator asks, so
+  the coordinator's share never caps the engine; `secrets` are exposed to every container as environment (an HF token,
+  the mirror's
   credentials). The pod's disk is scratch, an `emptyDir` at `/scratch`, so a Kubernetes run needs a `mirror:`
   ([durability](#durability-local-runs-and-a-mirror)). The pod does not see the submitting host's files either,
   so every input must be a URI it can read (`hf://`, `s3://`, `gs://`, `https://`): a run that names a local dataset,
@@ -257,85 +263,65 @@ has a package and fails. On Kubernetes uv's cache lives on the scratch volume. W
 repository instead: `--from 'rcp-ndcg[calibrate,hf,s3,azure] @ git+https://github.com/cohere-ai/rcp-ndcg@v<version>'`
 in the larger `ghcr.io/astral-sh/uv:python3.12-trixie` image, which has git.
 
-### Starting the engine with the run: `serve:`
+### The job's phases and its engines
 
-Without `serve:`, the job runs the coordinator only, and the judge's `base_url` is used as it is: your own engine,
-gateway or hosted API. With `serve:`, the `slurm` and `kubernetes` runners start the judge's engine inside the run's
-own job, so the engine and the coordinator are scheduled together and end together, and the coordinator gets the
-replicas' URLs as its judge's `base_url` list (in `RCP_NDCG_JUDGE_URLS`, which `run resume --judge-urls` reads):
+A job runs its work as **phases** in order in one allocation (`JobSpec.phases`, `rcp_ndcg.runners`): each phase
+names the engines it starts, by the role whose config each one serves (`judge`, `encoder`, `reranker`), and the
+command to run while they serve. The runner starts the phase's engines, waits until each role has a replica
+answering its readiness path, exports their URLs to the phase's command in `RCP_NDCG_ENGINES` (JSON of
+`role -> {urls, wait_on_outage_s}`, applied as a runtime overlay: never written into a config, never reaching an
+identity), runs the command, and stops the engines; only then does the next phase start. A phase without engines
+runs its command directly, with an empty `RCP_NDCG_ENGINES`, so no engine of an earlier phase reaches it. The
+single-engine `serve:` section of a run config is no longer submitted — a run whose engines the job should own
+names them per phase; until the run config does, start the engine yourself and pass `--judge-url`.
 
 ```yaml
 judge: gpt_oss_120b
-serve:
-  image: vllm/vllm-openai:v0.30.0                  # your engine and your tag
-  command: [vllm, serve, openai/gpt-oss-120b, --served-model-name, gpt-oss-120b, --reasoning-parser, openai_gptoss,
-            --max-model-len, "131072", --tensor-parallel-size, "4", --data-parallel-size, "2",
-            --host, 0.0.0.0, --port, "8000"]
-  env: {HF_HOME: /models}
-  resources: {gpus: 8}                            # per replica
-  replicas: 1                                     # one URL per replica
-  port: 8000
-  readiness_path: /v1/models                      # GET answers 2xx once a replica serves
-  startup_timeout_s: 1800                         # fail the job if no replica answers by then
-  outage_timeout_s: 900                           # fail the run if every replica stops answering this long
+mirror: s3://my-bucket/runs/nano-gpt-oss
 runner:
   name: kubernetes
   options: {namespace: eval, secrets: [hf-token]}
-mirror: s3://my-bucket/runs/nano-gpt-oss
 ```
 
-The `command` is yours, verbatim (an argv list or one string): it must serve the judge's `model` name on `port`,
-on all interfaces when there are several replicas. `nodes_per_replica` must be 1: a replica that spans several nodes
-is not implemented, and another value fails when the config is read. The `image` is required on Kubernetes and with
-the SLURM runner's `container_runtime: apptainer` or `pyxis`. With `container_runtime: none` (the SLURM default) the
-command runs on the node itself, so `serve.image` is refused there: set a container runtime to run the engine in its
-image, or drop `image` to run the command on the node. The local runner, and a run in this process, start no engine and refuse `serve:`:
-start the engine yourself and pass `--judge-url`.
+The `command` of an engine is yours, verbatim (an argv list or one string): it must serve its role's `model` name
+on its `port`, on all interfaces when there are several replicas. `nodes_per_replica` must be 1: a replica that
+spans several nodes is not implemented, and another value fails when the config is read. The `image` is required on
+Kubernetes and with the SLURM runner's `container_runtime: apptainer` or `pyxis`. With `container_runtime: none`
+(the SLURM default) the command runs on the node itself, so an engine's `image` is refused there: set a container
+runtime to run the engine in its image, or drop `image` to run the command on the node. The local runner, and a run
+in this process, start no engine and refuse a job whose phases start engines: start the engine yourself and pass
+`--judge-url`.
 
 What the runners submit:
 
-| | One replica | Several replicas |
+| | One replica per engine | Several replicas of an engine |
 |---|---|---|
-| **Kubernetes** | one Job whose pod has one container, in the engine's `image`: its command is the supervision script below, which starts the engine and the coordinator side by side and talks to the engine on `localhost` | the coordinator Job, plus a StatefulSet of engine pods (`podManagementPolicy: Parallel`) behind a headless Service, both owned by the Job, so `run cancel` or the Job's TTL deletes them; the URLs are the pods' stable names, and the coordinator waits at most `startup_timeout_s` until one replica answers |
-| **SLURM** | one sbatch running the supervision script: the engine is a background step (`srun --overlap`) | one sbatch over as many nodes running the supervision script: one engine per node in one step, the URLs built from the node list, the coordinator on the first node |
+| **Kubernetes** | each engine phase is an init container in the engine's image (all of a phase's engines share one image), the last phase the main container; the container's command is the supervision script below, which starts the phase's engines and its coordinator side by side and talks to them on `localhost`; `restartPolicy: Never` fails the pod on the first phase that exits non-zero, and the run directory on the pod's `emptyDir` is mounted by every container | the coordinator Job, plus one StatefulSet of engine pods (`podManagementPolicy: Parallel`) behind a headless Service per role with several replicas, both owned by the Job, so `run cancel` or the Job's TTL deletes them; such engines are **run-scoped** — they live for the whole run, not one phase — and the phases that use them wait for the pods' stable names, at most `startup_timeout_s` until one replica answers |
+| **SLURM** | one sbatch asking for the maximum nodes and GPUs over the phases, one supervision block per engine phase: each role's engines are one background step (`srun --overlap`, one replica per node, pinned to their slice of the allocation's nodes), the URLs built from the node list, the coordinator on the first node | the same, with the several-replica roles' steps on their slices; the whole allocation holds the largest phase |
 
 ### When the engine fails, the job fails
 
-A job that starts its engine never outlives it. Holding an allocation for a dead or hung engine costs more than
+A job that starts an engine never outlives it. Holding an allocation for a dead or hung engine costs more than
 starting again: the judgement stores are append-only, a mirror keeps them, and `run resume` asks only for the windows
-they lack. The supervision script, the same on SLURM and in a Kubernetes pod of one replica, therefore:
+they lack. The supervision script, the same on SLURM and in a Kubernetes container, therefore:
 
-- starts the engine once, in the background, and never restarts it;
-- waits until a replica answers `readiness_path`, for at most `startup_timeout_s` (1800 s by default); an engine
-  that exits before it answers fails the job at once, with its status and its own output in the job's log;
-- then runs the coordinator in the background and ends with whichever ends first: when the engine exits, the
-  coordinator is stopped (`SIGTERM`, then `SIGKILL` 20 s later) and the job exits 1 with a message naming the
-  engine; when the coordinator exits, the engine is stopped and the job exits with the coordinator's status;
-- stops both when the scheduler cancels or preempts the job (`SIGTERM` or `SIGINT`), so no engine keeps running.
+- starts each of the phase's engines once, in the background, and never restarts them;
+- waits until every role has a replica answering `readiness_path`, for at most `startup_timeout_s` (1800 s by
+  default); an engine that exits before it answers fails the job at once, with its status and its own output in the
+  job's log;
+- then runs the phase's coordinator in the background and ends the phase with whichever ends first: when an engine
+  exits, the coordinator is stopped (`SIGTERM`, then `SIGKILL` 20 s later) and the job exits 1 with a message naming
+  the engine; when the coordinator exits, the phase's engines are stopped and — only if it exited 0 — the next
+  phase starts. A failing phase ends the job with the coordinator's status;
+- stops the phase's engines and the coordinator when the scheduler cancels or preempts the job (`SIGTERM` or
+  `SIGINT`), so no engine keeps running.
 
-On SLURM with several replicas, the engine step runs with `srun --kill-on-bad-exit=1 --wait=10`: one replica that
-fails ends the whole step at once (one that exits with status 0 ends it 10 s later), and with it the job. On
-Kubernetes with several replicas, the StatefulSet restarts an engine pod that dies, and the run relies on the judge
-instead: a job that starts its engine runs `run resume` with `--set judge.wait_on_outage_s=<outage_timeout_s>`, so
-a judge that finds no replica answering for `outage_timeout_s` (900 s by default) stops with
-`BackendUnavailableError` and a non-zero exit. The same bound applies to every job with `serve:`, so an engine that
-hangs without exiting fails the run too. A judge without `serve:` keeps its own `wait_on_outage_s`.
-
-A failed job is not retried by default. To run it again, engine included, submit the run again with
-`rcp-ndcg run resume --run <dir> --runner slurm` (or `kubernetes`): it takes the runner options of the run's last
-job and its `serve:` section, restores the directory from the mirror first when the run has one, and the new job
-resumes the run where it stopped, asking only for the windows its stores lack. `run resume` without `--runner`
-resumes in this process, which starts no engine. On Kubernetes, `backoff_limit` (0 by default) lets the Job retry a
-failed pod by itself, and a retried pod resumes the run from its mirror.
-
-The pod of one replica needs nothing from the cluster but an image and a command, so any launcher that takes those
-two runs it, and no Kubernetes feature beyond a plain Job is used. The engine image needs `bash` 4.3 or later,
-`python3` and `pip`; the stock vLLM and SGLang images have them. The readiness probe uses Python's standard library,
-and the coordinator runs in the engine image through `uvx`: an image without uv gets it first with
-`python3 -m pip install --target`, which needs `pip` and access to PyPI (an image that has uv needs no `pip`). The
-job checks these before it starts the engine. An image without `bash` fails to start the container; one without a
-recent enough `bash`, without `python3`, or without both uv and `pip` stops the job at once with a message naming
-what is missing. On SLURM, the node that runs the batch script is checked for `bash` 4.3 and `python3` the same way.
+On SLURM, an engine step runs with `srun --kill-on-bad-exit=1 --wait=10`: one replica that fails ends the whole step
+at once (one that exits with status 0 ends it 10 s later), and with it the job. On Kubernetes with several
+replicas, the StatefulSet restarts an engine pod that dies, and the run relies on the judge instead: the judge
+waits at most the engine's `outage_timeout_s` (900 s by default, carried in `RCP_NDCG_ENGINES`) for a replica to
+answer before it stops with `BackendUnavailableError` and a non-zero exit, so an engine that hangs without exiting
+fails the run too. A judge whose engine the job does not start keeps its own `wait_on_outage_s`.
 
 ### Deployment modes
 
@@ -345,9 +331,9 @@ datasets are judged:
 
 | | One node | Several nodes |
 |---|---|---|
-| **One dataset or a suite, Kubernetes** | `serve: {replicas: 1}`: the engine and the coordinator in one container of the Job's pod, engine-native data parallelism inside the node | `serve: {replicas: N}`: N engine pods, one coordinator balancing over them |
-| **One dataset or a suite, SLURM** | `serve: {replicas: 1}`: one sbatch, the engine as a background step | `serve: {replicas: N}`: one N-node sbatch, one engine per node |
-| **A shared or long-lived engine** | no `serve:`: point `judge.base_url` at it (below) | no `serve:`: list the replicas in `judge.base_url`, or point it at their gateway |
+| **One dataset or a suite, Kubernetes** | one engine phase with `replicas: 1`: the engine and the coordinator in one container of the Job's pod, engine-native data parallelism inside the node | `replicas: N`: N engine pods, one coordinator balancing over them |
+| **One dataset or a suite, SLURM** | one engine phase with `replicas: 1`: one sbatch, the engine as a background step | `replicas: N`: one N-node sbatch, one engine per node |
+| **A shared or long-lived engine** | the job starts no engine: point `judge.base_url` at it (below) | the job starts no engine: list the replicas in `judge.base_url`, or point it at their gateway |
 
 Replicas are independent engines. Do not span one engine's data parallelism over nodes for a mixture-of-experts
 judge (both paper judges are): its expert layers then synchronise every forward pass across the nodes.
@@ -356,30 +342,41 @@ judge (both paper judges are): its expert layers then synchronise every forward 
 
 `rcp_ndcg.runners.get_runner(name, **options)` returns the `local`, `slurm` or `kubernetes` runner, or a runner
 that another installed package registers under the `rcp_ndcg.runners` entry-point group. A job is one command line
-with its image, resources, environment and optional engine (`JobSpec`). `render` shows what would be submitted
-without submitting anything:
+with its image, resources and environment, or its phases with their engines (`JobSpec`, `JobPhase`). `render` shows
+what would be submitted without submitting anything:
 
 ```python
-from rcp_ndcg.runners import JobSpec, Resources, ServeConfig, get_runner
+from rcp_ndcg.runners import JobPhase, JobSpec, Resources, ServeConfig, get_runner
 
+resume = ("rcp-ndcg", "run", "resume", "--run", "/shared/runs/nano-nfcorpus")
 job = JobSpec(
     name="nano-nfcorpus",
-    argv=("rcp-ndcg", "run", "resume", "--run", "/shared/runs/nano-nfcorpus"),
+    argv=resume,
     resources=Resources(cpus=8, memory_gb=32, time_limit_s=86400),
     env={"HF_HOME": "/shared/hf"},
-    serve=ServeConfig(
-        image="vllm/vllm-openai:v0.30.0",
-        command="vllm serve openai/gpt-oss-120b --served-model-name gpt-oss-120b --reasoning-parser openai_gptoss",
-        resources=Resources(gpus=8),
+    phases=(
+        JobPhase(  # the judging steps run beside the job's own engine
+            engines={
+                "judge": ServeConfig(
+                    image="vllm/vllm-openai:v0.30.0",
+                    command="vllm serve openai/gpt-oss-120b --served-model-name gpt-oss-120b "
+                            "--reasoning-parser openai_gptoss --host 0.0.0.0 --port 8000",
+                    resources=Resources(gpus=8),
+                )
+            },
+            argv=(*resume, "--only", "tournament", "rubric"),
+        ),
+        JobPhase(argv=(*resume, "--only", "calibrate", "evaluate")),  # no engines: runs directly
     ),
 )
 
 slurm = get_runner("slurm", partition="gpu", account="my-project", log_dir="logs/slurm",
-                   container_runtime="pyxis")  # the engine runs in serve.image
-print(slurm.render([job])["nano-nfcorpus"])  # the sbatch script
+                   container_runtime="pyxis")  # the engine runs in its image
+print(slurm.render([job])["nano-nfcorpus"])  # the sbatch script: one supervision block per engine phase
 
 kubernetes = get_runner("kubernetes", namespace="eval", secrets=["hf-token"])
-print(kubernetes.render([job])["nano-nfcorpus"])  # the batch/v1 Job: one container, the engine and the coordinator
+print(kubernetes.render([job])["nano-nfcorpus"])  # the Job: engine phases as init containers, the last phase the
+# main container, several-replica engines as run-scoped StatefulSets owned by the Job
 ```
 
 `runner.submit([job])` submits and returns handles; `runner.status(handle)`, `runner.logs(handle, tail=100)` and

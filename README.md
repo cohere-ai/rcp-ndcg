@@ -114,8 +114,7 @@ The run judges the released NanoNFCorpus pools on both stages, fits the calibrat
 writes every artifact to `runs/<run_id>/`. For long passes, add `--mirror <any fsspec URI>` (S3, GCS, Azure, or
 your own backend) so a preempted job resumes where it stopped; see
 [durability](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/concepts/serving.md#durability-local-runs-and-a-mirror).
-[Serving](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/concepts/serving.md) gives the vLLM and SGLang commands for each shipped judge, and a run config's
-`serve:` section starts the engine inside a SLURM or Kubernetes job. To rehearse offline, the same pipeline runs
+[Serving](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/concepts/serving.md) gives the vLLM and SGLang commands for each shipped judge, and a job's phases start engines by role inside a SLURM or Kubernetes allocation. To rehearse offline, the same pipeline runs
 with a deterministic fake judge:
 
 ```bash
