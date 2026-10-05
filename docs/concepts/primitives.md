@@ -132,7 +132,13 @@ calibration's abilities.
 ### Pool two judges
 
 ```python
-pooled = calibrate(read_judgements("tiny/judgements", "tiny/lenient"), judges="pooled")
+import warnings
+
+# The stores also hold the re-judged documents, so the pooled fit warns about them (the warning is expected):
+with warnings.catch_warnings(record=True) as caught:
+    warnings.simplefilter("always")
+    pooled = calibrate(read_judgements("tiny/judgements", "tiny/lenient"), judges="pooled")
+assert {getattr(w.message, "code", None) for w in caught} == {"UNCALIBRATED_DOCUMENTS"}
 print(pooled.judge_severity)   # one offset per judge, in logits
 ```
 

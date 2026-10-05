@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import pytest
 from rcp_ndcg_core.schemas import Judgement, JudgementSet, judgement_record_id
 
 from rcp_ndcg.calibration import Calibration, calibrate
+from rcp_ndcg.errors import RcpNdcgWarning
 
 
 def _later(judgement: Judgement, **update) -> Judgement:
@@ -32,7 +34,8 @@ def test_the_latest_valid_judgement_of_a_window_wins_whatever_the_order(judgemen
 def test_a_window_judged_twice_is_counted_once(judgements: JudgementSet) -> None:
     rubric = [j for j in judgements.judgements if j.stage == "rubric"]
     repeated = JudgementSet(judgements=(*judgements.judgements, *rubric[:5]), families=judgements.families)
-    once, twice = calibrate(judgements), calibrate(repeated)
+    with pytest.warns(RcpNdcgWarning, match="rubric verdicts but no tournament ability"):
+        once, twice = calibrate(judgements), calibrate(repeated)  # the store's rubric-only documents
     assert twice.coverage.model_dump() == once.coverage.model_dump()
     assert twice.thetas == once.thetas and twice.items == once.items
 
