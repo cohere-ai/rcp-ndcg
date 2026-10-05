@@ -300,8 +300,14 @@ class TestPhases:
                 JobPhase(engines={"judge": SERVE}, argv=("c",)),
                 JobPhase(argv=("d",)),
             ),
+            # One node: every phase has at most one engine, and the phases' engines are reused across phases.
+            (
+                JobPhase(engines={"judge": SERVE}, argv=("a",)),
+                JobPhase(engines={"encoder": ENCODER}, argv=("b",)),
+                JobPhase(engines={"judge": SERVE}, argv=("c",)),
+            ),
         ],
-        ids=["one", "three", "four"],
+        ids=["one", "three", "four", "one-node-three"],
     )
     def test_the_rendered_script_is_valid_bash(self, runtime: str, phases: tuple[JobPhase, ...]) -> None:
         rendered = _on_node(phases) if runtime == "none" else phases

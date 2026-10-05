@@ -383,7 +383,7 @@ def supervise(engines: Sequence[EngineStep], *, coordinator: str, engines_env: s
     return [
         *require_tools(uv=uv),
         "rcp_ndcg_stop() {  # SIGTERM the processes, SIGKILL what is left after the grace period, and reap them",
-        "  local pid waited=0 es",
+        "  local pid waited=0",
         "  local -a left",
         '  for pid in "$@"; do kill -TERM "$pid" 2>/dev/null || true; done',
         "  while true; do",
@@ -398,8 +398,7 @@ def supervise(engines: Sequence[EngineStep], *, coordinator: str, engines_env: s
         "    waited=$((waited + 1))",
         "  done",
         '  for pid in "$@"; do  # reap what this script started, so the next phase\'s wait -n cannot see it',
-        "    es=0",
-        '    wait "$pid" 2>/dev/null || es=$?',
+        '    wait "$pid" 2>/dev/null || true',
         "  done",
         "}",
         "rcp_ndcg_cleanup() {",
@@ -415,8 +414,13 @@ def supervise(engines: Sequence[EngineStep], *, coordinator: str, engines_env: s
         *started,
         *readiness_functions(),
         *waits,
-        f"export {ENGINES_ENV}",
-        f"{ENGINES_ENV}={engines_env}",
+        # A command substitution is declared and assigned separately (shellcheck SC2155); a quoted literal is
+        # exported in one line (assigning it separately trips SC2089/SC2090).
+        *(
+            [f"export {ENGINES_ENV}", f"{ENGINES_ENV}={engines_env}"]
+            if engines_env.startswith('"$(')
+            else [f"export {ENGINES_ENV}={engines_env}"]
+        ),
         f"{coordinator} &",
         "RCP_NDCG_COORDINATOR_PID=$!",
         "status=0",
@@ -446,8 +450,14 @@ def supervise(engines: Sequence[EngineStep], *, coordinator: str, engines_env: s
                 "  fi",
                 "done",
                 'if [ "$failed" -ne 0 ]; then',
-                '  echo "rcp-ndcg: an engine exited with status $failed while the run was going; stopping the run '
-                '(submit it again with rcp-ndcg run resume --run <run dir> --runner <this runner>)" >&2',
+                '  echo "rcp-ndcg: '
+                + (
+                    f"the {next(step.role for step, pid in steps if step.start)} engine exited"
+                    if len(pid_vars) == 1
+                    else "an engine exited"
+                )
+                + " with status $failed while the run was going; stopping the run (submit it again with "
+                'rcp-ndcg run resume --run <run dir> --runner <this runner>)" >&2',
                 f"  exit {ENGINE_FAILED}",
                 "fi",
             ]
