@@ -208,7 +208,7 @@ class TestPhases:
             'bash -c "$ENGINE_JUDGE"'
         )
         supervision = supervise(
-            [EngineStep(serve=SERVE, start=engine, hosts="127.0.0.1")],
+            [EngineStep(serve=SERVE, role="judge", start=engine, hosts="127.0.0.1")],
             coordinator='bash -c "$WORKER_1"',
             engines_env=f"'{engines_env_value({'judge': SERVE}, {'judge': ['http://127.0.0.1:8000/v1']})}'",
         )

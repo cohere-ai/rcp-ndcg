@@ -1,10 +1,11 @@
-"""The engines a run starts beside its job: :class:`ServeConfig`, and the serve-by-role types that phase
+"""The engines a job starts by role: :class:`ServeConfig` (an engine), and the serve-by-role types that phase
 planning builds on.
 
-A leaf model, like :class:`~rcp_ndcg.support.resources.Resources`: the run config declares it (``serve:``) and the
-job runners render it, without the run layer importing the runners.
+A leaf model, like :class:`~rcp_ndcg.support.resources.Resources`: a job's phases declare their engines
+(``JobPhase.engines``) and the job runners render them, without the run layer importing the runners; the single
+``serve:`` section of a run config is no longer submitted (it is refused).
 
-rcp-ndcg's contract with a model is one OpenAI-compatible URL. ``serve:`` does not change that: the package never
+rcp-ndcg's contract with a model is one OpenAI-compatible URL. An engine does not change that: the package never
 builds, translates or reads an engine's flags. It starts the user's image with the user's command, waits until
 ``GET <readiness_path>`` answers, and hands the replicas' URLs to the run's judge as its ``base_url`` list.
 

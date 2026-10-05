@@ -228,7 +228,7 @@ class TestPhases:
             env={"UV_CACHE_DIR": "/scratch/uv-cache", "UV_LINK_MODE": "copy"},
         )
         supervision = supervise(
-            [EngineStep(serve=SERVE, start='bash -c "$ENGINE_JUDGE"', hosts="127.0.0.1")],
+            [EngineStep(serve=SERVE, role="judge", start='bash -c "$ENGINE_JUDGE"', hosts="127.0.0.1")],
             coordinator='bash -c "$WORKER_1"',
             engines_env=('\'{"judge": {"urls": ["http://127.0.0.1:8000/v1"], "wait_on_outage_s": 900}}\''),
             uv=True,

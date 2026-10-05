@@ -242,6 +242,12 @@ class SlurmRunner:
             command = self._in_container(image, worker_var, srun=[]) if container else f'bash -c "${worker_var}"'
             return [*heredoc(worker_var, worker), command]
         roles = sorted(phase.engines)
+        if one_node and len({phase.engines[role].port for role in roles}) != len(roles):
+            raise ConfigError(
+                f"phase {index} of job {job.name!r} starts several engines on one port on the one-node "
+                f"allocation ({[phase.engines[role].port for role in roles]}), where only one of them can listen",
+                hint="give the phase's engines distinct ports",
+            )
         lines = [*heredoc(worker_var, self._phase_worker(job, phase.argv, install=container))]
         steps: list[EngineStep] = []
         offset = 0
@@ -256,7 +262,7 @@ class SlurmRunner:
                 nodelist = f'"$(IFS=,; echo "${{HOSTS_{upper}[*]}}")"'
                 offset += serve.replicas
             start = self._engine_start(role, serve, nodelist)
-            steps.append(EngineStep(serve=serve, start=start, hosts=hosts))
+            steps.append(EngineStep(serve=serve, role=role, start=start, hosts=hosts))
             lines += heredoc(f"ENGINE_{upper}", engine_script(serve))
         if one_node:
             engines_env = shlex.quote(

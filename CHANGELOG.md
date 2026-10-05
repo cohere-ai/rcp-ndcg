@@ -42,9 +42,12 @@ released together.
   - `SlurmRunner`: one `sbatch` asks for the maximum nodes and GPUs over the phases; each role's engines run as
     one `srun --overlap` step, pinned to their slice of the allocation's nodes on a multi-node allocation; a
     one-node allocation answers on `localhost`.
-  - `KubernetesRunner`: each engine phase is an init container in the engine's image (a phase's engines share one
-    image and, if several, need distinct ports), the last phase the main container; several-replica engines are
-    StatefulSets owned by the Job as before, run-scoped (they live for the whole run) and named `<job>-engine-<role>`.
+  - `KubernetesRunner`: each engine phase is an init container whose engines run in one container of the (single)
+    engine's image (a phase's engines share one image and, if several, need distinct ports; a phase whose engines
+    are all StatefulSet replicas waits in the coordinator's image), the last phase the main container;
+    several-replica engines are StatefulSets owned by the Job as before, run-scoped (they live for the whole run)
+    and named `<job>-engine-<role>`. A phase's failure message names its engine's role (`supervise`'s `EngineStep`
+    gains a `role` field).
   - `JobSpec.serve` and the runners' `JUDGE_URLS_ENV`/`RCP_NDCG_JUDGE_URLS` exports are gone;
     `support.serve.JUDGE_URLS_ENV` remains only for `run resume --judge-urls`, marked for deletion. A run config's
     `serve:` section is refused at submission (the runners no longer render a single serve: engine; the schema and

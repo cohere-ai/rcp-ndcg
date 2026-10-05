@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import sys
 import time
 from pathlib import Path
@@ -129,13 +130,16 @@ def test_the_local_runner_starts_no_engine() -> None:
     with pytest.raises(ConfigError, match="starts no engine") as caught:
         LocalRunner().render([JobSpec(name="j", argv=("true",), phases=phases)])
     assert "--judge-url" in (caught.value.hint or "")
-    # Engine-free phases run in order, in one script.
+    # Engine-free phases run in order, in one script; each gets an empty RCP_NDCG_ENGINES.
     script = LocalRunner(cwd="/work").render([JobSpec(name="j", argv=("true",), phases=(phases[1],))])["j"]
-    assert script == (
+    inner = (
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
-        "bash -c '#!/usr/bin/env bash\nset -euo pipefail\ncd /work\nexec rcp-ndcg run resume --only evaluate'\n"
+        "cd /work\n"
+        "export RCP_NDCG_ENGINES='{}'\n"
+        "exec rcp-ndcg run resume --only evaluate\n"
     )
+    assert script == (f"#!/usr/bin/env bash\nset -euo pipefail\nbash -c {shlex.quote(inner.rstrip(chr(10)))}\n")
 
 
 def test_options_are_config_errors() -> None:

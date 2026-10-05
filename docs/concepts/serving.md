@@ -24,7 +24,7 @@ command, verbatim, in the run's own allocation (on SLURM without a container run
 | `max_images`, `max_videos` | what the served model accepts per request; 0 (the default) means it reads none |
 | `image_processor` | the model's image processor family (`qwen2_vl`, `qwen2_5_vl`, `qwen3_vl`); the client sizes every image as it does ([preprocessing](preprocessing.md)) |
 | `allow_floating_model` | accept an undated model alias on the OpenAI API (`gpt-5`); by default only a dated snapshot (`gpt-5-2025-08-07`) is accepted, since an alias moves between snapshots and its judgements are not reproducible |
-| `wait_on_outage_s` | how long a request waits while every replica is down, counted from its first failed send (time queued behind `concurrency` never counts); `None` waits indefinitely, except in a job that starts its own engine, where it is `serve.outage_timeout_s` |
+| `wait_on_outage_s` | how long a request waits while every replica is down, counted from its first failed send (time queued behind `concurrency` never counts); `None` waits indefinitely, except in a job whose phases start its engine, where it is the engine's `outage_timeout_s` (carried in `RCP_NDCG_ENGINES`) |
 
 Only the content fields (model, revision, sampling settings, context, tokenizer, image processor) enter the judgement
 identity. The transport, the URLs included, can be retuned between runs, and a store still resumes. The shipped

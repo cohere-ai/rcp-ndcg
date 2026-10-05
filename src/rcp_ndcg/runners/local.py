@@ -33,6 +33,7 @@ from pydantic import model_validator
 from rcp_ndcg.errors import ConfigError, ExitCode, RcpNdcgError, error_class
 from rcp_ndcg.runners.base import JobHandle, JobOptions, JobSpec, JobStatus, RunnerError, tail_lines
 from rcp_ndcg.runners.script import worker_script
+from rcp_ndcg.support.serve import ENGINES_ENV
 
 log = logging.getLogger(__name__)
 
@@ -94,11 +95,19 @@ class LocalRunner:
         return {job.name: self._phased_script(self.options.defaults_for(job)) for job in jobs}
 
     def _phased_script(self, job: JobSpec) -> str:
-        """The job's worker script: its phases run in order, each its command; a job without phases runs ``argv``."""
+        """The job's worker script: its phases run in order, each its command; a job without phases runs ``argv``.
+
+        Every phase gets an empty ``RCP_NDCG_ENGINES``, so no engine of an earlier phase reaches it.
+        """
         if not job.phases:
             return worker_script(job, install=False, workdir=self.cwd)
         steps = [
-            worker_script(job.model_copy(update={"argv": phase.argv}), install=False, workdir=self.cwd)
+            worker_script(
+                job.model_copy(update={"argv": phase.argv}),
+                install=False,
+                workdir=self.cwd,
+                env={ENGINES_ENV: "{}"},
+            )
             for phase in job.phases
         ]
         return (

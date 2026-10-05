@@ -56,14 +56,13 @@ def _split_options(options: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str
     return runner, job
 
 
-def run_argv(run_dir: str, mirror: str | None = None, outage_timeout_s: int | None = None) -> tuple[str, ...]:
+def run_argv(run_dir: str, mirror: str | None = None) -> tuple[str, ...]:
     """The command a job runs to execute a prepared run directory (restored from ``mirror`` when it is missing).
 
-    A job that starts its judge's engine passes ``outage_timeout_s`` (its ``outage_timeout_s``): its judge then
-    stops waiting for an engine that stopped answering after that many seconds (``judge.wait_on_outage_s``).
+    A job's engines reach their coordinator as a runtime overlay (``RCP_NDCG_ENGINES``), never on this command
+    line, so nothing here enters an identity.
     """
-    wait = ("--set", f"judge.wait_on_outage_s={outage_timeout_s}") if outage_timeout_s is not None else ()
-    return ("rcp-ndcg", "run", "resume", "--run", run_dir, *(("--mirror", mirror) if mirror else ()), *wait)
+    return ("rcp-ndcg", "run", "resume", "--run", run_dir, *(("--mirror", mirror) if mirror else ()))
 
 
 def job_for(

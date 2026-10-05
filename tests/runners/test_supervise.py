@@ -204,7 +204,7 @@ def test_an_engine_that_never_answers_fails_the_job_after_the_startup_timeout(pl
 def test_an_engine_that_dies_mid_run_stops_the_coordinator_and_fails_the_job(platform: str, stubs: Path) -> None:
     done = _run(_script(platform), stubs, engine="dies", coordinator="runs")
     assert done.returncode == 1
-    assert "rcp-ndcg: the engine exited with status 7 while the run was going" in done.stderr
+    assert "rcp-ndcg: the judge engine exited with status 7 while the run was going" in done.stderr
     assert "run resume" in done.stderr
     assert _gone(stubs / "engine-1.pid")
 

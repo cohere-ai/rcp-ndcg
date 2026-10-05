@@ -326,12 +326,15 @@ class EngineStep:
 
     Attributes:
         serve: The replicas' configuration (port, readiness path, startup timeout, outage timeout).
+        role: The role whose config the engines serve (``judge``, ``encoder`` or ``reranker``); it names the
+            failure message.
         start: The command line that starts the replicas, one per host, without ``&``; ``None`` when they are
             already running elsewhere (a Kubernetes StatefulSet, run-scoped), so the script only waits for them.
         hosts: Shell words that expand to the replicas' hosts (e.g. ``"${HOSTS_JUDGE[@]}"`` or ``127.0.0.1``).
     """
 
     serve: ServeConfig
+    role: str
     start: str | None
     hosts: str
 
@@ -412,25 +415,34 @@ def supervise(engines: Sequence[EngineStep], *, coordinator: str, engines_env: s
         "status=0",
         "wait -n || status=$?",
         'if kill -0 "$RCP_NDCG_COORDINATOR_PID" 2>/dev/null; then',
-        '  echo "rcp-ndcg: the engine exited with status $status while the run was going; stopping the run (submit '
-        'it again with rcp-ndcg run resume --run <run dir> --runner <this runner>)" >&2'
-        if len(pid_vars) == 1
-        else '  echo "rcp-ndcg: an engine exited with status $status while the run was going; stopping the run '
-        '(submit it again with rcp-ndcg run resume --run <run dir> --runner <this runner>)" >&2',
+        '  echo "rcp-ndcg: '
+        + (
+            f"the {next(step.role for step, pid in steps if step.start)} engine exited"
+            if len(pid_vars) == 1
+            else "an engine exited"
+        )
+        + " with status $status while the run was going; stopping the run (submit it again with rcp-ndcg run resume "
+        '--run <run dir> --runner <this runner>)" >&2',
         f"  exit {ENGINE_FAILED}",
         "fi",
-        "if "
-        + " && ".join(f'! kill -0 "${pid}" 2>/dev/null' for pid in pid_vars)
-        + f"; then  # the {'engine has' if len(pid_vars) == 1 else 'engines have'} ended too: the status is the "
-        "coordinator's",
-        "  status=0",
-        '  wait "$RCP_NDCG_COORDINATOR_PID" || status=$?',
-        "fi",
+        *(
+            [
+                "if "
+                + " && ".join(f'! kill -0 "${pid}" 2>/dev/null' for pid in pid_vars)
+                + "; then  # the {'engine has' if len(pid_vars) == 1 else 'engines have'} ended too: the status is "
+                "the coordinator's",
+                "  status=0",
+                '  wait "$RCP_NDCG_COORDINATOR_PID" || status=$?',
+                "fi",
+            ]
+            if pid_vars
+            else []
+        ),
         'if [ "$status" -ne 0 ]; then',
         '  exit "$status"',
         "fi",
         # The coordinator exited 0: stop the engines that outlived it before the next phase starts.
-        f"rcp_ndcg_stop {' '.join(f'"${pid}"' for pid in pid_vars)}",
+        *([f"rcp_ndcg_stop {' '.join(f'"${pid}"' for pid in pid_vars)}"] if pid_vars else []),
     ]
 
 

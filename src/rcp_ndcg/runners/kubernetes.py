@@ -317,7 +317,7 @@ class KubernetesRunner:
         urls: dict[EngineRole, list[str]] = {}
         for role, serve in remote.items():
             hosts = self._engine_hosts(serve, role, job)
-            steps.append(EngineStep(serve=serve, start=None, hosts=" ".join(hosts)))
+            steps.append(EngineStep(serve=serve, role=role, start=None, hosts=" ".join(hosts)))
             urls[role] = [serve.url(host) for host in hosts]
         if local:
             images = {serve.image for serve in local.values()}
@@ -338,7 +338,9 @@ class KubernetesRunner:
             image = _engine_image(next(iter(local.values())))
             script = ["#!/usr/bin/env bash", "set -euo pipefail"]
             for role, serve in local.items():
-                steps.append(EngineStep(serve=serve, start=f'bash -c "$ENGINE_{role.upper()}"', hosts="127.0.0.1"))
+                steps.append(
+                    EngineStep(serve=serve, role=role, start=f'bash -c "$ENGINE_{role.upper()}"', hosts="127.0.0.1")
+                )
                 urls[role] = [serve.url("127.0.0.1")]
             script += [
                 *heredoc(
@@ -390,11 +392,9 @@ class KubernetesRunner:
             name, job.image or self.options.image or COORDINATOR_IMAGE, script, mounts, job.resources
         )
 
-    def _coordinator(
-        self, job: JobSpec, env: dict[str, str], mounts: list[dict[str, str]], prologue: list[str] | None = None
-    ) -> dict[str, Any]:
+    def _coordinator(self, job: JobSpec, env: dict[str, str], mounts: list[dict[str, str]]) -> dict[str, Any]:
         """The coordinator's container: the stock image (or the job's), installing the release when it starts."""
-        script = worker_script(job, install=True, workdir=None, env=env, prologue=prologue or ())
+        script = worker_script(job, install=True, workdir=None, env=env)
         return self._container(
             "coordinator", job.image or self.options.image or COORDINATOR_IMAGE, script, mounts, job.resources
         )
