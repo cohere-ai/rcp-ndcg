@@ -248,6 +248,11 @@ def _start(recipe: Recipe, gpus: list[int], slot: int, out: Path, vllm_cmd: str 
     return run
 
 
+def _mark_serve_step(run: _EngineRun, state: str, **fields: Any) -> None:
+    """Record the serve step's final state in the recipe's status."""
+    run.status["steps"]["serve"] = {"state": state, "port": run.port, "gpus": run.gpus}
+
+
 def _finalise(
     run: _EngineRun,
     results: dict[str, dict[str, Any]],
@@ -274,15 +279,22 @@ def _finalise(
             run.status["steps"]["equivalence"] = _equivalence(run.recipe, base_url, out, pairs_dir)
             if record:
                 run.status["steps"]["record"] = _record(run.recipe, base_url, out)
-            run.status["state"] = "verified" if run.status["steps"]["equivalence"].get("passed") else "failed"
+            steps = run.status["steps"]
+            run.status["state"] = (
+                "verified"
+                if steps["smoke"].get("state") == "passed" and steps["equivalence"].get("passed")
+                else "failed"
+            )
         else:
             run.status["state"] = "failed"
             run.status["error"] = error
             run.status["steps"]["serve"] = {"state": "failed", "error": error}
-    except HarnessError as step_error:
+    except Exception as step_error:  # noqa: BLE001 - one recipe's failure never stops the wave
         run.status["state"] = "failed"
-        run.status["error"] = str(step_error)
+        run.status["error"] = f"{type(step_error).__name__}: {step_error}"
     finally:
+        serve_state = "failed" if (error is not None or run.status["state"] == "failed") else "passed"
+        _mark_serve_step(run, serve_state)
         run.stop()
         run.status["finished"] = _now()
         _write_status(run)

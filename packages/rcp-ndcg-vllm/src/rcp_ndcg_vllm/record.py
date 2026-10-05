@@ -88,13 +88,13 @@ def _exchanges(recipe: Recipe, model: str) -> list[tuple[str, str, dict[str, Any
             "post-v1-embeddings-float.json",
             "/v1/embeddings",
             {},
-            {"input": texts_of(recipe), "encoding_format": "float"},
+            {"input": _texts_of(recipe), "encoding_format": "float"},
         ),  # fmt: skip
         (
             "post-v1-embeddings-base64.json",
             "/v1/embeddings",
             {},
-            {"input": texts_of(recipe), "encoding_format": "base64"},
+            {"input": _texts_of(recipe), "encoding_format": "base64"},
         ),  # fmt: skip
         ("post-pooling-float.json", "/pooling", {}, pooling),
         ("post-pooling-base64.json", "/pooling", {}, pooling_b64),
@@ -116,12 +116,12 @@ def _exchanges(recipe: Recipe, model: str) -> list[tuple[str, str, dict[str, Any
             "post-v1-embeddings-unknown-field.json",
             "/v1/embeddings",
             {},
-            {"input": texts_of(recipe), "encoding_format": "float", "unknown_field": "sent-to-map-the-error"},
+            {"input": _texts_of(recipe), "encoding_format": "float", "unknown_field": "sent-to-map-the-error"},
         ),  # fmt: skip
     ]
 
 
-def texts_of(recipe: Recipe) -> list[str]:
+def _texts_of(recipe: Recipe) -> list[str]:
     """The two recorded input texts, with the recipe's client-side prompts applied as the adapters would send."""
     return [recipe.client.query_prompt + _SNIPPET_TEXT, recipe.client.doc_prompt + _SNIPPET_DOCUMENTS[0]]
 

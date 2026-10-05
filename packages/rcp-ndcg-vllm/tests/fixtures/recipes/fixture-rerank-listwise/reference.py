@@ -6,11 +6,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from deterministic import FixtureTokenizer, score, token_id, tokens, vector  # noqa: E402
+from deterministic import FixtureTokenizer, token_id, tokens  # noqa: E402
+from deterministic import score as _pair_score  # noqa: E402
 
 INSTRUCTION = "Rank by recency."
 _TEMPLATE_HEAD = (
@@ -41,19 +40,13 @@ def render(query: str, document: str, instruction: str | None) -> list[int]:
     return [token_id(word) for word in tokens(prompt(query, document, instruction))]
 
 
-def score_query(query: str, documents: list[str], instruction: str | None) -> list[float]:
+def score(query: str, documents: list[str], instruction: str | None) -> list[float]:
     """Stage 2: one probability score per document (the instruction does not change the fixture's numbers)."""
     del instruction
-    return [score(query, doc) for doc in documents]
+    return [_pair_score(query, doc) for doc in documents]
 
 
-def embed(texts: list[str], role: str) -> list[np.ndarray]:
-    """Stage 2 for embedding roles (unused by this fixture)."""
-    assert _loaded
-    return [vector(text, f"embed-{role}").astype(np.float16) for text in texts]
-
-
-__all__ = ["embed", "load", "prompt", "render", "score_query", "tokens", "vector"]
+__all__ = ["load", "prompt", "render", "score", "tokens"]
 
 
 def tokenizer() -> FixtureTokenizer:

@@ -43,16 +43,18 @@ tar -xzf "$WORK/code.tar.gz" -C "$WORK/code"
 cd "$WORK/code"
 
 # Packages whose dependencies the image already satisfies (vLLM brings torch, transformers, numpy, pydantic,
-# httpx, PyYAML and jinja2): install from the tarball without resolving dependencies.
+# httpx, PyYAML and jinja2): install from the tarball without resolving dependencies, so pip never touches the
+# image's vLLM or torch. The extras are named for the record; with --no-deps pip skips their resolution.
 pip install --no-deps \
   "$WORK/code/packages/rcp-ndcg-core" \
-  "$WORK/code/packages/rcp-ndcg-vllm"
+  "$WORK/code/packages/rcp-ndcg-vllm[reference,metrics]"
 # The pipeline package (rcp-ndcg): same mode, then its remaining runtime dependencies, which the image does not
-# carry, from the public index - never replacing the image's vLLM or torch.
+# carry, from the public index - constrained to the image's own torch and transformers so pip cannot replace them.
+pip freeze | grep -iE '^(torch|torchvision|transformers)==' >"$WORK/constraints.txt" || true
 pip install --no-deps "$WORK/code"
 pip install --no-deps -r "$WORK/code/requirements-node.txt" 2>/dev/null || true
-pip install pandas scipy pyarrow bm25s PyStemmer click tqdm python-dotenv openai fsspec gcsfs Pillow \
-  sentence-transformers jinja2
+pip install --constraint "$WORK/constraints.txt" pandas scipy pyarrow bm25s PyStemmer click tqdm \
+  python-dotenv openai fsspec gcsfs Pillow sentence-transformers jinja2
 
 # A wave may ship vllm.general_plugins plugin packages; plugins.txt lists their directories, one per line.
 if [[ -f "$WORK/code/plugins.txt" ]]; then

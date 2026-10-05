@@ -6,7 +6,15 @@ import json
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_vllm import Recipe, RecipeError, client_config, iter_recipes, load_recipe, recipe_json_schema, serve_argv
+from rcp_ndcg_vllm import (
+    Recipe,
+    RecipeError,
+    client_config,
+    iter_recipes,
+    load_recipe,
+    recipe_json_schema,
+    serve_argv,
+)
 from rcp_ndcg_vllm.errors import HarnessError
 
 from tests.fixtures import OTHER_REV, REV, recipe_data
@@ -285,3 +293,62 @@ def test_stored_scores_stage2_is_refused_clearly() -> None:
     broken = recipe.model_copy(update={"reference": recipe.reference.model_copy(update={"kind": "stored_scores"})})
     with pytest.raises(HarnessError, match="stored_scores"):
         stage2_scores(broken, "http://127.0.0.1:1", [], None)
+
+
+def test_serve_argv_embed_and_multi_vector_are_golden() -> None:
+    """The embedding roles render their flags in the same fixed order, with an empty pooler object."""
+    embed = load_recipe(recipe_dirs_path() / "fixture-embed")
+    argv = serve_argv(embed, port=8102, served_model_name="fixture-embed")
+    assert argv[:9] == ["vllm", "serve", "fixtures/DenseEmbedder", "--revision", REV, "--served-model-name",
+                        "fixture-embed", "--host", "0.0.0.0"]  # fmt: skip
+    assert argv[argv.index("--pooler-config") + 1] == '{"normalize": true}'
+    assert "--chat-template" not in argv
+    multi = load_recipe(recipe_dirs_path() / "fixture-multi-vector")
+    argv = serve_argv(multi, port=8103, served_model_name="fixture-multi-vector")
+    assert argv[argv.index("--pooler-config") + 1] == '{"task": "token_embed"}'
+    assert "--trust-remote-code" not in argv
+
+
+def test_use_activation_is_rerank_only(tmp_path_factory: pytest.TempPathFactory) -> None:
+    with pytest.raises(RecipeError, match="use_activation"):
+        _load_with(tmp_path_factory.mktemp("useact"), {"client.use_activation": False}, base="fixture-embed")
+
+
+def test_default_instruction_with_instruction_none_is_refused(tmp_path_factory: pytest.TempPathFactory) -> None:
+    with pytest.raises(RecipeError, match="default_instruction"):
+        _load_with(
+            tmp_path_factory.mktemp("definstr"),
+            {"client.instruction": "none", "client.default_instruction": "fold me"},
+        )
+
+
+def test_startup_timeout_must_be_positive(tmp_path_factory: pytest.TempPathFactory) -> None:
+    with pytest.raises(RecipeError, match="startup_timeout_s"):
+        _load_with(tmp_path_factory.mktemp("timeout"), {"engine.startup_timeout_s": 0})
+
+
+def test_gates_reject_out_of_range_values(tmp_path_factory: pytest.TempPathFactory) -> None:
+    with pytest.raises(RecipeError, match="tau_min"):
+        _load_with(tmp_path_factory.mktemp("gates"), {"gates": {"tau_min": 2.0}})
+    with pytest.raises(RecipeError, match="vec_min_cosine"):
+        _load_with(tmp_path_factory.mktemp("gates2"), {"gates": {"vec_min_cosine": 2.0}})
+
+
+def test_pooler_task_must_be_token_embed_for_multi_vector(tmp_path_factory: pytest.TempPathFactory) -> None:
+    with pytest.raises(RecipeError, match="token_embed"):
+        _load_with(
+            tmp_path_factory.mktemp("pooler"), {"serve.pooler_config": {"task": "embed"}}, base="fixture-multi-vector"
+        )
+
+
+def test_cli_reports_a_recipe_error_without_a_traceback(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A bad recipe reaches the operator as one error line and exit 2, not a traceback."""
+    from rcp_ndcg_vllm.equivalence import main
+
+    directory = tmp_path / "wrong-name"
+    directory.mkdir()
+    (directory / "recipe.yaml").write_text(_to_yaml(recipe_data("fixture-embed")), encoding="utf-8")
+    (tmp_path / "pairs.jsonl").write_text('{"query": "q", "documents": ["d"]}\n', encoding="utf-8")
+    argv = ["--recipe", str(directory), "--pairs", str(tmp_path / "pairs.jsonl"), "--out", str(tmp_path / "o")]
+    assert main(argv) == 2
+    assert "must equal the directory name" in capsys.readouterr().err

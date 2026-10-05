@@ -331,34 +331,90 @@ def test_rerank_summary_gate_rows_follow_the_scale() -> None:
     per_query = [{"query_index": 0, "query": "q", "documents": 2, "kendall_tau": 1.0, "within": True}]
     # cosine scale, one document at |delta| 0.015 (within the probability gates, beyond the cosine gate):
     per_document = [
-        {"query_index": 0, "document_index": 0, "served": 0.5, "reference": 0.47, "abs_delta": 0.03,
-         "bound": 0.01, "within": False},  # fmt: skip
-        {"query_index": 0, "document_index": 1, "served": 0.5, "reference": 0.495, "abs_delta": 0.005,
-         "bound": 0.01, "within": True},  # fmt: skip
+        {
+            "query_index": 0,
+            "document_index": 0,
+            "served": 0.5,
+            "reference": 0.47,
+            "abs_delta": 0.03,
+            "bound": 0.01,
+            "within": False,
+        },  # fmt: skip
+        {
+            "query_index": 0,
+            "document_index": 1,
+            "served": 0.5,
+            "reference": 0.495,
+            "abs_delta": 0.005,
+            "bound": 0.01,
+            "within": True,
+        },  # fmt: skip
     ]
     document = _rerank_summary(per_document, per_query, gates, "cosine")
     assert document["passed"] is False  # was wrongly True when the probability gates decided
     logit_document = [
-        {"query_index": 0, "document_index": 0, "served": 5.0, "reference": 4.5, "abs_delta": 0.2,
-         "bound": 0.05 * 5.5, "within": True},  # fmt: skip
-        {"query_index": 0, "document_index": 1, "served": 1.0, "reference": 1.0, "abs_delta": 0.0,
-         "bound": 0.1, "within": True},  # fmt: skip
+        {
+            "query_index": 0,
+            "document_index": 0,
+            "served": 5.0,
+            "reference": 4.5,
+            "abs_delta": 0.2,
+            "bound": 0.05 * 5.5,
+            "within": True,
+        },  # fmt: skip
+        {
+            "query_index": 0,
+            "document_index": 1,
+            "served": 1.0,
+            "reference": 1.0,
+            "abs_delta": 0.0,
+            "bound": 0.1,
+            "within": True,
+        },  # fmt: skip
     ]
     document = _rerank_summary(logit_document, per_query, gates, "logit")
     assert document["passed"] is True  # 0.2 <= 0.05*(1+4.5)=0.275: the relative bound decides, not 0.05
     probability_document = [
-        {"query_index": 0, "document_index": 0, "served": 0.5, "reference": 0.47, "abs_delta": 0.03,
-         "bound": 0.05, "within": True},  # fmt: skip
-        {"query_index": 0, "document_index": 1, "served": 0.5, "reference": 0.495, "abs_delta": 0.005,
-         "bound": 0.05, "within": True},  # fmt: skip
+        {
+            "query_index": 0,
+            "document_index": 0,
+            "served": 0.5,
+            "reference": 0.47,
+            "abs_delta": 0.03,
+            "bound": 0.05,
+            "within": True,
+        },  # fmt: skip
+        {
+            "query_index": 0,
+            "document_index": 1,
+            "served": 0.5,
+            "reference": 0.495,
+            "abs_delta": 0.005,
+            "bound": 0.05,
+            "within": True,
+        },  # fmt: skip
     ]
     document = _rerank_summary(probability_document, per_query, gates, "probability")
     assert document["passed"] is False  # p99 of two deltas is their max: 0.03 > 0.02 fails the 99%-of-documents rule
     small = [
-        {"query_index": 0, "document_index": 0, "served": 0.5, "reference": 0.49, "abs_delta": 0.01,
-         "bound": 0.05, "within": True},  # fmt: skip
-        {"query_index": 0, "document_index": 1, "served": 0.5, "reference": 0.495, "abs_delta": 0.005,
-         "bound": 0.05, "within": True},  # fmt: skip
+        {
+            "query_index": 0,
+            "document_index": 0,
+            "served": 0.5,
+            "reference": 0.49,
+            "abs_delta": 0.01,
+            "bound": 0.05,
+            "within": True,
+        },  # fmt: skip
+        {
+            "query_index": 0,
+            "document_index": 1,
+            "served": 0.5,
+            "reference": 0.495,
+            "abs_delta": 0.005,
+            "bound": 0.05,
+            "within": True,
+        },  # fmt: skip
     ]
     document = _rerank_summary(small, per_query, gates, "probability")
     assert document["passed"] is True  # p99 0.01 <= 0.02, max 0.01 <= 0.05

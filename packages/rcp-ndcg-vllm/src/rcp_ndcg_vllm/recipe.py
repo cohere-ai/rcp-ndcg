@@ -218,7 +218,7 @@ class Gates(BaseModel):
     """Overrides of the stage-2 gate defaults for one recipe's ``reference.score_scale``.
 
     Every field defaults to ``None`` (= the published default for the scale).  The defaults, and what each field
-    means, are in :mod:`rcp_ndcg_vllm.equivalence.gates`; ``kendall_tau_min`` applies to every scored scale,
+    means, are in :mod:`rcp_ndcg_vllm.equivalence.gates`; ``tau_min`` applies to every scored scale,
     ``metrics_max_abs`` to stage 3.
     """
 

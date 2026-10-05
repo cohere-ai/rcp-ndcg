@@ -40,28 +40,48 @@ class Reference:
 
     def load(self, device: str) -> Any:
         """``load(device)`` of the reference module, exactly once per process (later calls are no-ops)."""
-        return self._module.load(device)
+        try:
+            return self._module.load(device)
+        except HarnessError:
+            raise
+        except Exception as error:
+            raise HarnessError(f"{self.path} load({device!r}) failed: {error}") from error
 
     def score(self, query: str, documents: list[str], instruction: str | None) -> list[float]:
         """``score(query, documents, instruction)`` of the reference module (rerank recipes)."""
-        function = getattr(self._module, "score_query", None) or getattr(self._module, "score", None)
+        function = getattr(self._module, "score", None) or getattr(self._module, "score_query", None)
         if function is None:
-            raise HarnessError(f"{self.path} defines neither score_query nor score(query, documents, instruction)")
-        return [float(value) for value in function(query, documents, instruction)]
+            raise HarnessError(f"{self.path} defines neither score nor score_query(query, documents, instruction)")
+        try:
+            return [float(value) for value in function(query, documents, instruction)]
+        except HarnessError:
+            raise
+        except Exception as error:
+            raise HarnessError(f"{self.path} score(...) failed: {error}") from error
 
     def embed(self, texts: list[str], role: str) -> list[Any]:
         """``embed(texts, role)`` of the reference module (embedding recipes)."""
         function = getattr(self._module, "embed", None)
         if function is None:
             raise HarnessError(f"{self.path} does not define embed(texts, role); an embedding recipe needs it")
-        return function(texts, role)
+        try:
+            return function(texts, role)
+        except HarnessError:
+            raise
+        except Exception as error:
+            raise HarnessError(f"{self.path} embed(...) failed: {error}") from error
 
     def render(self, query: str, document: str, instruction: str | None) -> list[int]:
         """``render(query, document, instruction)`` of the reference module (stage 1)."""
         function = getattr(self._module, "render", None)
         if function is None:
             raise HarnessError(f"{self.path} does not define render(query, document, instruction)")
-        return [int(value) for value in function(query, document, instruction)]
+        try:
+            return [int(value) for value in function(query, document, instruction)]
+        except HarnessError:
+            raise
+        except Exception as error:
+            raise HarnessError(f"{self.path} render(...) failed: {error}") from error
 
 
 def load_reference(recipe_dir: str | Path, entry: str = "reference.py") -> Reference:

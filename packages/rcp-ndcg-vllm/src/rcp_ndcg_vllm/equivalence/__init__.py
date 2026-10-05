@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from ..errors import HarnessError
+from ..errors import HarnessError, RecipeError
 from ..recipe import Recipe, load_recipe
 from .gates import ResolvedGates, kendall_tau_b, resolve_gates
 from .metrics import stage3_metrics
@@ -170,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
             limit=args.limit,
             device=args.device,
         )
-    except HarnessError as error:
+    except (HarnessError, RecipeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     print(f"equivalence for {document['recipe']}: {'PASS' if document['passed'] else 'FAIL'}")

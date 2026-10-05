@@ -1,7 +1,5 @@
-"""Job execution: the wave runner, the node bootstrap and the operator's submit script."""
+"""Job execution: the wave runner, the node bootstrap and the operator's submit script.
 
-from __future__ import annotations
-
-from .run_wave import main, run_wave
-
-__all__ = ["main", "run_wave"]
+``run_wave`` is imported as a module (``python -m rcp_ndcg_vllm.jobs.run_wave``); this package keeps a bare
+namespace so that name stays unambiguous.
+"""

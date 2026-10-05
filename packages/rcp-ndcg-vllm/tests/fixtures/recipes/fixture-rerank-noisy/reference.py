@@ -15,7 +15,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from deterministic import DIM, FixtureTokenizer, score, token_id, token_vectors, tokens, vector  # noqa: E402
+from deterministic import DIM, FixtureTokenizer, token_id, token_vectors, tokens, vector  # noqa: E402
+from deterministic import score as _pair_score  # noqa: E402
 
 FOLD = "Follow the task."
 _TEMPLATE_HEAD = "SYSTEM: Judge whether the Document answers the Query. Answer yes or no.\nUSER:\nQuery: "
@@ -27,7 +28,7 @@ _loaded: Any = None
 def load(device: str) -> Any:
     """Load the reference model (a fixture: nothing to load)."""
     global _loaded
-    _loaded = f"fixture-rerank-reference@{device}"
+    _loaded = f"fixture-noisy-reference@{device}"
     return _loaded
 
 
@@ -48,10 +49,10 @@ def render(query: str, document: str, instruction: str | None) -> list[int]:
     return [token_id(word) for word in tokens(prompt(query, document, instruction))]
 
 
-def score_query(query: str, documents: list[str], instruction: str | None) -> list[float]:
+def score(query: str, documents: list[str], instruction: str | None) -> list[float]:
     """Stage 2: one probability score per document, on the folded query as the client sends it."""
     folded = fold(instruction, query)
-    return [score(folded, doc) for doc in documents]
+    return [_pair_score(folded, doc) for doc in documents]
 
 
 def embed(texts: list[str], role: str) -> list[np.ndarray]:
@@ -67,7 +68,7 @@ def token_embed(contents: list[str], role: str) -> list[np.ndarray]:
     return [token_vectors(f"doc: {content}", "tok") for content in contents]
 
 
-__all__ = ["DIM", "embed", "fold", "load", "prompt", "render", "score_query", "token_embed", "tokens", "vector"]
+__all__ = ["DIM", "embed", "fold", "load", "prompt", "render", "score", "token_embed", "tokens", "vector"]
 
 
 def tokenizer() -> FixtureTokenizer:

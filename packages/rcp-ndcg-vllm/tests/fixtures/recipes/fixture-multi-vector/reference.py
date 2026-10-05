@@ -10,7 +10,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from deterministic import DIM, FixtureTokenizer, token_id, token_vectors, tokens, vector  # noqa: E402
+from deterministic import DIM, FixtureTokenizer, token_id, token_vectors, tokens  # noqa: E402
 
 QUERY_PROMPT = "query: "
 DOC_PROMPT = "doc: "
@@ -38,13 +38,7 @@ def embed(texts: list[str], role: str) -> list[np.ndarray]:
     return [token_vectors(prefix + text, "tok") for text in texts]
 
 
-def embed_dense(texts: list[str], role: str) -> list[np.ndarray]:
-    """The dense shape, unused by this fixture (kept so the module satisfies the reference interface)."""
-    assert _loaded
-    return [vector(text, f"embed-{role}").astype(np.float16) for text in texts]
-
-
-__all__ = ["DIM", "DOC_PROMPT", "QUERY_PROMPT", "embed", "embed_dense", "load", "render", "tokens"]
+__all__ = ["DIM", "DOC_PROMPT", "QUERY_PROMPT", "embed", "load", "render", "tokens"]
 
 
 def tokenizer() -> FixtureTokenizer:

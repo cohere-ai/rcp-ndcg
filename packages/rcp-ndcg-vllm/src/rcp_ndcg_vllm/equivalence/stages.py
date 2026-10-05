@@ -23,6 +23,7 @@ from .reference import Reference
 __all__ = ["load_pairs", "stage1_prompts", "stage2_scores"]
 
 _SNIPPET = 80
+_DTYPE_NUMPY = {"float16": np.float16, "float32": np.float32}
 
 
 def load_pairs(path: str | Path) -> list[dict[str, Any]]:
@@ -318,9 +319,9 @@ def _compare_vectors(
         reference_array = np.asarray(reference_vector)
         if multi:
             served = _reshape_tokens(flat, shape, reference_array.shape[0], reference_array.shape[1])
-            reference_f16 = reference_array.astype(np.float16).astype(np.float32)
-            for token_index in range(min(served.shape[0], reference_f16.shape[0])):
-                cosine = _cosine(served[token_index], reference_f16[token_index])
+            reference_cast = reference_array.astype(_DTYPE_NUMPY[gates.embed_dtype]).astype(np.float32)
+            for token_index in range(min(served.shape[0], reference_cast.shape[0])):
+                cosine = _cosine(served[token_index], reference_cast[token_index])
                 per_vector.append(
                     {
                         "referent": f"{referents[position]} token {token_index}",
@@ -328,13 +329,13 @@ def _compare_vectors(
                         "within": bool(cosine >= gates.vec_min_cosine),
                     }
                 )
-            if served.shape[0] != reference_f16.shape[0]:
+            if served.shape[0] != reference_cast.shape[0]:
                 per_vector.append(
                     {
                         "referent": f"{referents[position]} token count",
                         "cosine": None,
                         "within": False,
-                        "note": f"engine returned {served.shape[0]} tokens, reference {reference_f16.shape[0]}",
+                        "note": f"engine returned {served.shape[0]} tokens, reference {reference_cast.shape[0]}",
                     }
                 )
         else:
