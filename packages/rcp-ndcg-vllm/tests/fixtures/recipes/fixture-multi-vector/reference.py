@@ -46,3 +46,20 @@ __all__ = ["DIM", "DOC_PROMPT", "QUERY_PROMPT", "embed", "load", "render", "toke
 def tokenizer() -> FixtureTokenizer:
     """The fixture tokenizer for stage 1 (a production reference omits this; the harness loads client.tokenizer)."""
     return FixtureTokenizer()
+
+
+def render_shape(shape: str, query: str, document: str, instruction: str | None) -> list[int]:
+    """The optional per-shape stage-1 hook: the same assembly for every declared shape."""
+    del instruction
+    from deterministic import reserve_and_append, token_id, tokens
+
+    shapes = {
+        "query": ({token_id("query: ")} and [token_id(word) for word in tokens("query: ")], []),
+        "document": ([token_id(word) for word in tokens(DOC_PROMPT)], []),
+    }
+    if shape == "query":
+        prefix_ids, suffix_ids = shapes["query"]
+    else:
+        prefix_ids, suffix_ids = shapes["document"]
+    content_ids = [token_id(word) for word in tokens(query if shape == "query" else document)]
+    return reserve_and_append(prefix_ids, content_ids, suffix_ids, MAX_TOKENS)

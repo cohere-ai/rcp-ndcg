@@ -50,8 +50,8 @@ __all__ = [
 ]
 
 _PINNED_VLLM_REF = "d0d6e5f3a"
-"""The vLLM source checkout the PoolerConfig field list below was read at
-(``/refs/vllm`` in the rcp-ndcg repository; image ``vllm/vllm-openai:v0.31.0``)."""
+"""The upstream vLLM commit the PoolerConfig field list below was read at
+(the ``.refs/vllm`` checkout of the rcp-ndcg working copy; image ``vllm/vllm-openai:v0.31.0``)."""
 
 PINNED_POOLER_CONFIG_FIELDS = (
     "task",
@@ -251,14 +251,7 @@ class TemplateSpec(BaseModel):
         for name, segments in shapes.items():
             if not any(segment.content is not None for segment in segments):
                 raise ValueError(f"template.{name} needs at least one content span (the cuttable part)")
-            fixed = lambda segment: segment.content is None  # noqa: E731
-            if self.anchor == "last" and not fixed(segments[-1]):
-                if not (self.anchor_markers and segments[-1].content is not None):
-                    raise ValueError(
-                        f"template.{name}: anchor=last requires the shape to end with a fixed segment (or pin "
-                        "client.add_special_tokens: true for a post-processor end token)"
-                    )
-            if self.anchor == "first" and not fixed(segments[0]):
+            if self.anchor == "first" and segments[0].content is not None:
                 raise ValueError(f"template.{name}: anchor=first requires the shape to start with a fixed segment")
         if self.anchor == "marker" and not self.anchor_markers:
             raise ValueError("anchor=marker needs template.anchor_markers (the token ids the model reads)")
@@ -538,6 +531,27 @@ class Recipe(BaseModel):
             raise ValueError("client.blocking is only valid for a listwise reranker")
         if self.client.aggregation is not None and self.client.on_overflow != "chunk":
             raise ValueError("client.aggregation only applies to chunked inputs: set client.on_overflow: chunk")
+        if self.client.template is not None:
+            for shape_name in ("query", "document", "pair"):
+                segments = getattr(self.client.template, shape_name)
+                if not segments:
+                    continue
+                if (
+                    self.client.template.anchor == "last"
+                    and segments[-1].content is not None
+                    and self.client.add_special_tokens is not True
+                ):
+                    raise ValueError(
+                        f"template.{shape_name}: anchor=last requires the shape to end with a fixed segment, or "
+                        "pin client.add_special_tokens: true to declare the tokenizer's end token as the anchor"
+                    )
+            if self.client.template.query_max_tokens is not None:
+                if self.client.template.query_max_tokens >= self.client.max_tokens:
+                    raise ValueError(
+                        f"template.query_max_tokens ({self.client.template.query_max_tokens}) must leave room for "
+                        f"the document span and the fixed segments inside client.max_tokens "
+                        f"({self.client.max_tokens})"
+                    )
         if self.client.max_tokens > self.serve.max_model_len:
             raise ValueError(
                 f"client.max_tokens ({self.client.max_tokens}) must not exceed engine.max_model_len "

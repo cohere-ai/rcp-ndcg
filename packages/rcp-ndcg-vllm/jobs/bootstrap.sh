@@ -62,9 +62,8 @@ for manifest in (
         continue
     data = tomllib.loads(manifest.read_text(encoding="utf-8"))
     requirements.extend(data["project"]["dependencies"])
-    if manifest.name == "pyproject.toml" and manifest.parent.name != "rcp-ndcg-core":
-        pass
 # The reference extra of this package, whose torch/transformers the image provides but
+# sentence-transformers it does not., whose torch/transformers the image provides but
 # sentence-transformers it does not.
 vllm_manifest = tomllib.loads((root / "packages" / "rcp-ndcg-vllm" / "pyproject.toml").read_text())
 requirements += vllm_manifest["project"].get("optional-dependencies", {}).get("reference", [])

@@ -175,10 +175,12 @@ assembled from segments, or the `template.jinja` file under a jinja2 environment
 `lstrip_blocks` on, a stripped trailing newline and undefined variables refused (with the instruction variable
 carrying the recipe's `default_instruction` in `field` mode, and empty in `fold` mode, where the query text
 already carries it) — tokenises with the recipe's tokenizer and requires exact equality with
-`reference.render`. It also samples over-length inputs on purpose (at least 20 per declared shape) and asserts
-every anchor survived the cut on both the served render and `reference.render(...)` — reported as
-`anchor_check`, separately from the token-id mismatches — and, when `serve.chat_template` is set, proves the
-declared shapes render to the same token ids as the template file.
+`reference.render`. Each declared shape is sampled on its own (at least 20 over-length
+inputs per shape, padded in that shape's own content span), and the audit asserts every anchor survived the cut
+on the served render and — when the reference provides the optional `render_shape(shape, query, document,
+instruction)` hook — on the reference's render of the same shape. The result is reported as `anchor_check`,
+separately from the token-id mismatches; when `serve.chat_template` is set, stage 1 also proves the declared
+shapes render to the same token ids as the template file.
 
 Stage 2 scores or embeds the same pairs against the served engine (plain `httpx` to `/rerank`, `/v1/embeddings`,
 `/pooling`) and applies the gates: probability |Δ| ≤ 0.02 for 99% of documents and ≤ 0.05 for all; logit |Δ| ≤
@@ -201,8 +203,14 @@ The exit code is 0 only when every gate passes; `equivalence.json` carries every
 ## Submitting a wave
 
 ```bash
+export RCP_KJOBS_CONFIG=/path/to/jobs-config.yaml    # the job CLI's -f config (required, no default)
+export RCP_GCS_AUTH_FILE=/path/to/gcs_auth.sh        # mounted at /etc/rcp/gcs_auth.sh; named, never read
 packages/rcp-ndcg-vllm/jobs/submit.sh <wave-name> <recipes-file> gs://YOUR-BUCKET/stage gs://YOUR-BUCKET/waves
 ```
+
+`RCP_KJOBS_CONFIG` and `RCP_GCS_AUTH_FILE` are required — the script refuses to run without them, because no
+tracked file may name a machine's paths. `EXTRA_DIRS` (space-separated directories staged into the tarball) and
+`KJOBS=echo` (print the commands instead of running them) are optional.
 
 The script stages a tarball of the current commit (plus any directories in `EXTRA_DIRS`, and the recipes file),
 uploads it to `<stage-prefix>/<wave-name>/code.tar.gz`, and submits the job `rcp-<wave-name>`; on the node,

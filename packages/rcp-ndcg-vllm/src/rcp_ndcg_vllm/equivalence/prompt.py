@@ -224,8 +224,6 @@ def _segment_text(recipe: Recipe, tokenizer: Any, segment: Any, shape: str, posi
     if segment.text is not None:
         return segment.text
     if segment.special is not None:
-        ids = _fixed_ids(recipe, tokenizer, shape)  # cheap; the resolved id's token string is the literal
-        del ids
         table = tokenizer.special_tokens()
         candidates = (segment.special, f"<|{segment.special}|>", f"<{segment.special}>")
         match = next((candidate for candidate in candidates if candidate in table), None)
@@ -247,8 +245,11 @@ def _content_budgets(recipe: Recipe, tokenizer: Any, shape: str) -> dict[str, in
         recipe.client.max_tokens - shape_overhead(recipe, tokenizer, shape) - len(_specials_ids(recipe, tokenizer))
     )
     if shape == "pair":
-        query_max = recipe.client.template.query_max_tokens or remaining
-        return {"query": min(query_max, remaining), "document": max(remaining - min(query_max, remaining), 0)}
+        assert recipe.client.template.query_max_tokens is not None  # the pair-shape validator
+        return {
+            "query": min(recipe.client.template.query_max_tokens, remaining),
+            "document": max(remaining - recipe.client.template.query_max_tokens, 0),
+        }
     return {"query": remaining, "document": remaining}
 
 
@@ -299,9 +300,15 @@ def anchor_report(recipe: Recipe, tokenizer: Any, shape: str, ids: list[int]) ->
     segments = getattr(template, shape) or []
     fixed = [segment for segment in segments if segment.content is None]
     failures: list[dict[str, Any]] = []
-    if template.anchor == "last" and fixed:
-        tail = _fixed_ids(recipe, tokenizer, shape)[-1] + _specials_ids(recipe, tokenizer)
-        if ids[-len(tail) :] != tail:
+    if template.anchor == "last":
+        if fixed:
+            tail = _fixed_ids(recipe, tokenizer, shape)[-1] + _specials_ids(recipe, tokenizer)
+        else:
+            # A content-final shape pins add_special_tokens: true: the tokenizer's post-processor end token IS
+            # the anchor. The specials block (everything the tokenizer appends) must sit at the very tail; a
+            # post-processor that also prepends a token makes this assertion fail loudly rather than silently.
+            tail = _specials_ids(recipe, tokenizer)
+        if not tail or ids[-len(tail) :] != tail:
             failures.append({"check": "tail", "expected_tail_ids": tail, "actual_tail_ids": ids[-len(tail) :]})
     elif template.anchor == "first" and fixed:
         head = _fixed_ids(recipe, tokenizer, shape)[0]

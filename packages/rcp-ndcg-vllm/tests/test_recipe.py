@@ -448,3 +448,59 @@ def test_aggregation_requires_chunking(tmp_path_factory: pytest.TempPathFactory)
 def test_client_budget_must_fit_the_engine_context(tmp_path_factory: pytest.TempPathFactory) -> None:
     with pytest.raises(RecipeError, match="max_model_len"):
         _load_with(tmp_path_factory.mktemp("budget"), {"client.max_tokens": 4096})
+
+
+def test_query_max_tokens_must_leave_room_for_the_document(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """A query share that swallows the budget would cut the document span to zero — refused, not silent."""
+    with pytest.raises(RecipeError, match="must leave room"):
+        _load_with(
+            tmp_path_factory.mktemp("qshare"),
+            {
+                "client.template": {
+                    "pair": [{"text": "head "}, {"content": "query"}, {"content": "document"}, {"text": " tail"}],
+                    "anchor": "last",
+                    "query_max_tokens": 10000,
+                }
+            },  # fmt: skip
+        )
+
+
+def test_instruction_system_mode_is_declared(tmp_path_factory: pytest.TempPathFactory) -> None:
+    recipe = _load_with(tmp_path_factory.mktemp("sys"), {"client.instruction": "system"})
+    assert recipe.client.instruction == "system"
+
+
+def test_truncation_side_field_does_not_exist(tmp_path_factory: pytest.TempPathFactory) -> None:
+    with pytest.raises(RecipeError, match="truncation_side"):
+        _load_with(tmp_path_factory.mktemp("tside"), {"client.truncation_side": "right"})
+
+
+def test_effective_embed_dtype_defaults_to_float16_with_the_field_unset(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    from rcp_ndcg_vllm import effective_embed_dtype
+
+    recipe = _load_with(tmp_path_factory.mktemp("dtype"), {"client.embed_dtype": None}, base="fixture-multi-vector")
+    assert recipe.client.embed_dtype is None
+    assert effective_embed_dtype(recipe) == "float16"  # the owner decision; the engine default is float32
+
+
+def test_serve_argv_carries_the_mm_flags() -> None:
+    """The multimodal engine fields render into the argv when set (sorted JSON, omitted when null)."""
+    recipe = load_recipe(recipe_dirs_path() / "fixture-embed")
+    argv = serve_argv(recipe, port=8104, served_model_name="x")
+    assert "--mm-processor-kwargs" not in argv and "--limit-mm-per-prompt" not in argv
+    changed = recipe.model_copy(
+        update={
+            "serve": recipe.serve.model_copy(
+                update={
+                    "mm_processor_kwargs": {"max_pixels": 10, "min_pixels": 2},
+                    "limit_mm_per_prompt": {"image": 2},
+                }
+            )
+        }
+    )
+    argv = serve_argv(changed, port=8104, served_model_name="x")
+    assert argv[argv.index("--mm-processor-kwargs") + 1] == '{"max_pixels": 10, "min_pixels": 2}'
+    assert argv[argv.index("--limit-mm-per-prompt") + 1] == '{"image": 2}'
+    assert serve_argv(changed, port=8104, served_model_name="x") == argv  # deterministic, both flags re-render

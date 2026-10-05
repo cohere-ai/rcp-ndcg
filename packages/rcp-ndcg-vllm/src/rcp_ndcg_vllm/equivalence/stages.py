@@ -95,9 +95,6 @@ def stage1_prompts(
     }
 
 
-__all__ = ["load_pairs", "stage1_prompts", "stage2_scores"]
-
-_SNIPPET = 80
 _DTYPE_NUMPY = {"float16": np.float16, "float32": np.float32}
 
 
@@ -193,17 +190,6 @@ def _score_bound(gates: ResolvedGates, scale: str, reference_score: float) -> fl
     return gates.cos_max_abs
 
 
-def _pair_over_cap(recipe: Recipe, tokenizer: TokenizerAdapter, query: str, document: str) -> int:
-    """The token length of one pair's UNCUT served prompt (the wire never carries more than the budget)."""
-    served_prompt_text_len = len(
-        tokenizer.encode(
-            served_prompt_text(recipe, _served_query(recipe, query), document, tokenizer),
-            add_special_tokens=bool(recipe.client.add_special_tokens),
-        )
-    )
-    return served_prompt_text_len
-
-
 def _rerank_stage2(
     recipe: Recipe,
     pairs: list[dict[str, Any]],
@@ -254,16 +240,19 @@ def _rerank_stage2(
             if over and deviation:
                 continue  # declared deviation: the over-cap pair is reported, never gated
             per_document.append(entry)
-        if not deviation or any(
+        under_cap_flags = [
             _pair_tokens(recipe, row["query"], document, tokenizer) <= recipe.client.max_tokens
             for document in row["documents"]
-        ):
-            tau = kendall_tau_b(served, values)
+        ]
+        if not deviation or all(under_cap_flags):
+            tau_served = [s for s, under in zip(served, under_cap_flags, strict=True) if under]
+            tau_values = [v for v, under in zip(values, under_cap_flags, strict=True) if under]
+            tau = kendall_tau_b(tau_served, tau_values)
             per_query.append(
                 {
                     "query_index": row_index,
                     "query": row["query"],
-                    "documents": len(served),
+                    "documents": len(tau_served),
                     "kendall_tau": tau,
                     "within": bool(tau is not None and tau >= gates.tau_min),
                 }
@@ -527,28 +516,30 @@ def stage1_anchor_check(
     *,
     over_length_per_shape: int = 20,
 ) -> dict[str, Any]:
-    """The anchor audit: over-length inputs must keep every anchor after the client's cut.
+    """The anchor audit: over-length inputs must keep every anchor after the client's cut, per declared shape.
 
-    For every declared shape, ``over_length_per_shape`` inputs are padded beyond ``client.max_tokens``; the
-    assembled render and ``reference.render(...)`` are both asserted to carry every anchor — the tail (or head)
-    fixed segments plus the post-processor end token, or the declared markers.  The result is reported
-    separately from the token-id mismatches in ``equivalence.json``.
+    Each declared shape is sampled on its own: ``over_length_per_shape`` inputs padded beyond
+    ``client.max_tokens`` in that shape's own content span (the query for the query shape, the document for the
+    document shape, both for the pair), rendered with ``shape=shape``, and asserted — on the served render and,
+    when the reference provides ``render_shape(shape, query, document, instruction)``, on the reference's render
+    of the same shape — to carry every anchor (the tail/head fixed segments, the post-processor end token when
+    ``add_special_tokens`` pins it, or the declared markers).  Reported separately from the token-id mismatches.
     """
     seed = pairs[0] if pairs else {"query": "anchor check", "documents": ["anchor check document"]}
     failures: list[dict[str, Any]] = []
+    default_shape = "pair" if recipe.role == "rerank" else "document"
     for shape in _shape_names(recipe):
         for index in range(max(over_length_per_shape, 1)):
-            document = _over_length_text(seed["documents"][0], recipe.client.max_tokens, tokenizer, index)
+            contents = _over_length_contents(recipe, shape, seed, tokenizer, index)
             served_ids = tokenizer.encode(
-                served_prompt_text(recipe, seed["query"], document, tokenizer),
+                served_prompt_text(recipe, contents["query"], contents["document"], tokenizer, shape=shape),
                 add_special_tokens=bool(recipe.client.add_special_tokens),
             )
             served_report = anchor_report(recipe, tokenizer, shape, served_ids)
             if not served_report["passed"]:
                 failures.append({"side": "served", "shape": shape, "index": index, **served_report})
-            reference_ids = reference.render(seed["query"], document, recipe.client.default_instruction)
-            reference_report = anchor_report(recipe, tokenizer, shape, reference_ids)
-            if not reference_report["passed"]:
+            reference_report = _reference_anchor_report(recipe, reference, tokenizer, shape, contents, default_shape)
+            if reference_report is not None and not reference_report["passed"]:
                 failures.append(
                     {
                         "side": "reference",
@@ -556,7 +547,7 @@ def stage1_anchor_check(
                         "index": index,
                         "passed": False,
                         "failures": reference_report["failures"],
-                        "note": "reference.render lost an anchor on an over-cap pair",
+                        "note": "the reference's render of this shape lost an anchor on an over-cap pair",
                     }
                 )
     return {
@@ -566,6 +557,44 @@ def stage1_anchor_check(
         "passed": not failures,
         "failures": failures,
     }
+
+
+def _over_length_contents(
+    recipe: Recipe, shape: str, seed: dict[str, Any], tokenizer: TokenizerAdapter, index: int
+) -> dict[str, str]:
+    """Over-length content for one shape's own spans: the query padded for query shapes, the document for
+    document shapes, both for the pair."""
+    padded_query = _over_length_text(seed["query"], recipe.client.max_tokens, tokenizer, index)
+    padded_document = _over_length_text(seed["documents"][0], recipe.client.max_tokens, tokenizer, index)
+    if shape == "query":
+        return {"query": padded_query, "document": seed["documents"][0]}
+    if shape == "document":
+        return {"query": seed["query"], "document": padded_document}
+    return {"query": padded_query, "document": padded_document}
+
+
+def _reference_anchor_report(
+    recipe: Recipe,
+    reference: Reference,
+    tokenizer: TokenizerAdapter,
+    shape: str,
+    contents: dict[str, str],
+    default_shape: str,
+) -> dict[str, Any] | None:
+    """The reference-side anchor assertion for one shape.
+
+    A reference implements ``render(query, document, instruction)`` for the default shape and may add
+    ``render_shape(shape, query, document, instruction)`` for the others; without the hook, only the default
+    shape's reference-side assertion is possible and the other shapes report ``None`` (skipped).
+    """
+    instruction = recipe.client.default_instruction
+    if reference.has_render_shape():
+        ids = reference.render_shape(shape, contents["query"], contents["document"], instruction)
+    elif shape == default_shape:
+        ids = reference.render(contents["query"], contents["document"], instruction)
+    else:
+        return None
+    return anchor_report(recipe, tokenizer, shape, ids)
 
 
 def stage1_template_check(

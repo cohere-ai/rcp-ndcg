@@ -111,6 +111,8 @@ def test_submit_fails_with_a_usage_message_without_the_env(tmp_path: Path, monke
 def test_bootstrap_derives_its_light_dependencies_from_the_manifests(tmp_path: Path) -> None:
     """bootstrap.sh reads the packages' pyproject.toml files (tomllib) instead of a hand-mirrored list."""
 
+    if not (JOBS.parent.parent.parent / "pyproject.toml").is_file():
+        pytest.skip("the derivation reads all three manifests; a fresh archive of this package has only one")
     script = (JOBS / "bootstrap.sh").read_text(encoding="utf-8")
     start = script.index('python3 - "$1" <<')
     body = script[script.index("\n", start) + 1 :]

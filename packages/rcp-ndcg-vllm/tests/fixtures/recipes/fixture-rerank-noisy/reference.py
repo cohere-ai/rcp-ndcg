@@ -43,8 +43,23 @@ def prompt(query: str, document: str, instruction: str | None) -> str:
 
 
 def render(query: str, document: str, instruction: str | None) -> list[int]:
-    """Stage 1: the reference token ids of the served prompt for one (query, document) pair."""
-    return [token_id(word) for word in tokens(prompt(query, document, instruction))]
+    """Stage 1, pair shape: every fixed segment reserved, only the document span cut.
+
+    The shape is [head text][content: query]["\nDocument: "][content: document]["\nASSISTANT:"]; the query
+    keeps its share (template.query_max_tokens) and the document span is cut to the remainder.
+    """
+    head_ids = [token_id(word) for word in tokens(_TEMPLATE_HEAD)]
+    between_ids = [token_id(word) for word in tokens("\nDocument: ")]
+    tail_ids = [token_id(word) for word in tokens("\nASSISTANT:")]
+    query_ids = [token_id(word) for word in tokens(fold(instruction, query))]
+    content_ids = [token_id(word) for word in tokens(document)]
+    doc_budget = MAX_TOKENS - len(head_ids) - len(between_ids) - len(tail_ids) - min(len(query_ids), QUERY_MAX_TOKENS)
+    body = query_ids[:QUERY_MAX_TOKENS] + between_ids + content_ids[:doc_budget] + tail_ids
+    return head_ids + body
+
+
+QUERY_MAX_TOKENS = 256  # the recipe's template.query_max_tokens
+MAX_TOKENS = 512  # the recipe's client.max_tokens
 
 
 def score(query: str, documents: list[str], instruction: str | None) -> list[float]:

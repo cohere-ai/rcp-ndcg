@@ -73,7 +73,7 @@ class Reference:
             raise HarnessError(f"{self.path} embed(...) failed: {error}") from error
 
     def render(self, query: str, document: str, instruction: str | None) -> list[int]:
-        """``render(query, document, instruction)`` of the reference module (stage 1)."""
+        """``render(query, document, instruction)`` of the reference module (stage 1, the default shape)."""
         function = getattr(self._module, "render", None)
         if function is None:
             raise HarnessError(f"{self.path} does not define render(query, document, instruction)")
@@ -83,6 +83,26 @@ class Reference:
             raise
         except Exception as error:
             raise HarnessError(f"{self.path} render(...) failed: {error}") from error
+
+    def has_render_shape(self) -> bool:
+        """Whether the reference module implements the optional ``render_shape`` hook (per-shape stage 1)."""
+        return callable(getattr(self._module, "render_shape", None))
+
+    def render_shape(self, shape: str, query: str, document: str, instruction: str | None) -> list[int]:
+        """``render_shape(shape, query, document, instruction)`` of the reference module, when it defines it.
+
+        The optional per-shape stage-1 hook: recipes whose declared shapes differ beyond the default need it
+        for the reference side of the anchor audit.  Raises :class:`HarnessError` when the module lacks it.
+        """
+        function = getattr(self._module, "render_shape", None)
+        if function is None:
+            raise HarnessError(f"{self.path} does not define render_shape(shape, query, document, instruction)")
+        try:
+            return [int(value) for value in function(shape, query, document, instruction)]
+        except HarnessError:
+            raise
+        except Exception as error:
+            raise HarnessError(f"{self.path} render_shape(...) failed: {error}") from error
 
 
 def load_reference(recipe_dir: str | Path, entry: str = "reference.py") -> Reference:
