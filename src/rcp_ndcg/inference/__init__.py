@@ -12,11 +12,14 @@ paths send their requests through one set of names:
   :func:`l2_normalize`; the rerankers' :class:`RerankRequest` and :class:`RerankResult`)
   (:mod:`rcp_ndcg.inference.types`);
 * :class:`Adapter` and its registry -- the one seam a third party implements (C2), selected from a config with
-  ``api: <name>`` (:mod:`rcp_ndcg.inference.adapters.base`);
+  ``api: <name>`` (:mod:`rcp_ndcg.inference.adapters.base`; the shipped adapters register when
+  :mod:`rcp_ndcg.inference.adapters` imports, and the pooling adapter ``VllmPooling`` ships today);
 * :class:`Sender` and :class:`Transport` -- the transport's frozen interface; behaviour arrives with the transport work
   (:mod:`rcp_ndcg.inference.transport`);
 * the role endpoint configs -- :class:`EmbeddingEndpoint`, :class:`PoolingEndpoint`, :class:`RerankEndpoint`
   (:mod:`rcp_ndcg.inference.config`);
+* :class:`PoolingClient` -- the pooling role client: prompts per role, the transfer dtype, per-token
+  normalisation, batching and concurrency (:mod:`rcp_ndcg.inference.clients.pool`);
 * :data:`FAKE_SCHEME` -- the offline fakes' URL scheme (:mod:`rcp_ndcg.inference.fake`).
 """
 
@@ -28,6 +31,8 @@ from rcp_ndcg.inference.adapters.base import (
     known_adapters,
     register_adapter,
 )
+from rcp_ndcg.inference.adapters.pooling import VllmPooling
+from rcp_ndcg.inference.clients.pool import PoolingClient
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.fake import FAKE_SCHEME
@@ -64,6 +69,7 @@ __all__ = [
     "Endpoint",
     "FAKE_SCHEME",
     "PoolRequest",
+    "PoolingClient",
     "PoolingEndpoint",
     "RerankEndpoint",
     "RerankRequest",
@@ -73,6 +79,7 @@ __all__ = [
     "TokenCount",
     "Transport",
     "Usage",
+    "VllmPooling",
     "get_adapter",
     "known_adapters",
     "l2_normalize",
