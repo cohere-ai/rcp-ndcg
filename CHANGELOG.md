@@ -174,7 +174,8 @@ released together.
     `rcp_ndcg.retrieval.encoder` (re-exported there and from `rcp_ndcg.retrieval`); and the new role request and
     result types `EmbedRequest`, `PoolRequest`, `RerankRequest` and `RerankResult` (whose
     `RerankResult.aligned(request, scores)` refuses a score count that does not match the request's documents).
-  - `inference.adapters`: the `Adapter` protocol (generic in request and result) and its registry
+  - `inference.adapters`: the `Adapter` protocol (generic in request and result), the `AdapterRole` literal
+    (`"judge"`, `"embed"`, `"rerank"`, `"multi_vector"`) and its registry
     (`register_adapter`, `get_adapter`, `known_adapters`, constant `ADAPTER_ENTRY_POINTS =
     "rcp_ndcg.adapters"`). The `vllm_pooling` adapter ships below.
   - `inference.transport`: the `Sender` protocol and the `Transport` class -- the transport's frozen interface
