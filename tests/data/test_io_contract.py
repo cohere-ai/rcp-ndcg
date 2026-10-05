@@ -365,6 +365,10 @@ class TestImageDirSpecifics:
         (tmp_path / "pdfs" / "a").mkdir(parents=True)
         for name in ("report.pdf", "report.PDF"):
             (tmp_path / "pdfs" / "a" / name).write_bytes(b"%PDF-1.4\n")
+        if len(list((tmp_path / "pdfs" / "a").iterdir())) != 2:
+            # A case-insensitive filesystem folds the two names into one file: the collision this test refuses
+            # cannot be set up there, and reading the one file would render it (and need pypdfium2).
+            pytest.skip("the filesystem holds the two names as one file, so there is no collision to refuse")
 
         with pytest.raises(DataError, match="are both document 'a/report'"):
             list(get_reader("pdf", uri=str(tmp_path / "pdfs")).documents())
