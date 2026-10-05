@@ -113,6 +113,42 @@ def test_score_needs_exactly_one_data_source(tmp_path: Path) -> None:
     assert "--suite" in document["error"]["message"]
 
 
+def test_rankings_of_another_dataset_exit_12_not_a_table_of_zeros(dataset: str, tmp_path: Path) -> None:
+    """A `dataset` column that names no scored subset (issue #5, case 1): the error envelope, exit 12."""
+    rankings = tmp_path / "wrong_dataset.parquet"
+    Rankings.from_orders({"q1": ["b", "a", "c"]}, system="mine", dataset="hr").save(rankings)
+
+    document = _invoke("score", "--rankings", str(rankings), "--dataset", dataset, "--metrics", "qrel_ndcg")
+
+    assert document["exit_code"] == 12 and document["ok"] is False
+    assert document["error"]["code"] == "DATA"
+    assert "no rankings of dataset" in document["error"]["message"]
+    assert "exact dataset name" in document["error"]["hint"]
+
+
+def test_rankings_of_another_corpus_exit_12_not_a_table_of_zeros(dataset: str, tmp_path: Path) -> None:
+    """Doc ids that match no pool or label (issue #5, case 2): the error envelope, exit 12."""
+    rankings = tmp_path / "no_prefix.parquet"
+    Rankings.from_orders({"q1": ["x1", "x2", "x3"]}, system="mine").save(rankings)
+
+    document = _invoke("score", "--rankings", str(rankings), "--dataset", dataset, "--metrics", "qrel_ndcg")
+
+    assert document["exit_code"] == 12 and document["ok"] is False
+    assert document["error"]["code"] == "DATA"
+    assert "no ranked document is in the pools or labels" in document["error"]["message"]
+
+
+def test_explain_refuses_a_report_whose_rankings_stopped_matching(scored: dict) -> None:
+    """The checks live in evaluate(), so `eval explain --report` gets them: a rankings file rewritten after
+    scoring is a data error, not a table of zeros."""
+    Rankings.from_orders({"q1": ["other-1"], "q2": ["other-2"]}, system="forward").save(scored["args"][1])
+
+    document = _invoke("explain", "--report", str(scored["report"]), "--query-id", "q1")
+
+    assert document["exit_code"] == 12 and document["ok"] is False
+    assert "no ranked document is in the pools or labels" in document["error"]["message"]
+
+
 def test_count_ndcg_is_not_offered_by_eval_score(dataset: str, tmp_path: Path) -> None:
     # Count-nDCG needs count gains, which no option of eval score supplies: the value is refused at parse.
     rankings = tmp_path / "run.jsonl"

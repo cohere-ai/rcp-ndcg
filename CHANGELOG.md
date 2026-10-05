@@ -35,6 +35,12 @@ released together.
   already do), so its runtime fields (`base_url`, `api_key_env`, `concurrency`, the timeouts and retries,
   `batch_size`) never reach a key. The payload keys candidates by field name (`source`), not by its YAML alias
   (`from:`), and unset optional fields are omitted; step identities change once accordingly.
+- `eval score`, `eval explain --report` and `evaluate()` refuse rankings that match nothing of the scored dataset
+  instead of scoring every query 0 with `ok` (issue #5): a `DataError` (exit 12) when no row of a system names
+  any subset of the scored dataset (the `dataset` column must hold the exact subset name), and when not one of
+  its ranked document ids is in the dataset's pools or labels (the message shows one ranked id next to one
+  dataset id). Partial overlap keeps scoring as before, and the `UNRANKED_QUERIES` warning names the subsets it
+  counts when the scored dataset has more than one.
 
 ## 0.1.0
 
