@@ -234,5 +234,6 @@ def test_is_commit_is_public_and_the_private_pattern_stays_home() -> None:
     assert not is_commit("main"), "a branch is not a commit"
     assert not is_commit(sha.upper()), "a sha is lowercase hex"
     assert not is_commit(sha[:39]) and not is_commit(sha + "0"), "exactly 40 characters"
+    assert not is_commit(sha + "\n"), "no trailing newline"
     assert not is_commit(None)
     assert "_COMMIT" not in inspect.getsource(dataset_module), "dataset.py reads revisions through the public name"

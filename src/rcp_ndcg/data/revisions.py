@@ -73,7 +73,7 @@ def is_commit(revision: str | None) -> bool:
     Returns:
         ``True`` when *revision* is exactly 40 hex characters; ``False`` otherwise, and for ``None``.
     """
-    return revision is not None and bool(_COMMIT.match(revision))
+    return revision is not None and bool(_COMMIT.fullmatch(revision))
 
 
 def hub_offline() -> bool:
