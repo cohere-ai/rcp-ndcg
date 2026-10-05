@@ -32,7 +32,7 @@ from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
 from rcp_ndcg.data.io import READERS, JsonlReader, get_reader, grade
 from rcp_ndcg.data.io.base import join_title
 from rcp_ndcg.data.revisions import resolve_revision
-from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
+from rcp_ndcg.errors import ConfigError, DataError, MissingInputError, RcpNdcgError, classify
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -577,11 +577,29 @@ def _cache_image(cell: Any) -> MediaRef:
 
 
 def _read_hub_table(repo: str, path: str, revision: str | None, *, optional: bool = False) -> pd.DataFrame | None:
-    local = _hub_file(repo, path, revision)
+    """One table of a public repository, read at one commit; ``None`` for an optional table the repository lacks.
+
+    An offline (or unreachable-Hub) cache miss raises the typed failure :func:`classify` picks from the download's
+    cause, with the table's location in ``details``. An optional table is ``None`` only when the cache records the
+    repository as having no such file (a ``.no_exist`` marker, written by an online download); a file the cache
+    knows nothing about raises like a required table, never a silent absence.
+    """
+    from huggingface_hub.errors import LocalEntryNotFoundError
+
+    try:
+        local = _hub_file(repo, path, revision)
+    except LocalEntryNotFoundError as exc:
+        if optional and _hub_absent(repo, path, revision):
+            return None
+        raise _hub_miss(exc, repo, path, revision) from exc
     if local is None:
         if optional:
             return None
-        raise MissingInputError(f"hf://{repo}: {path} does not exist" + (f" at {revision}" if revision else ""))
+        raise MissingInputError(
+            f"hf://{repo}: {path} does not exist" + (f" at {revision}" if revision else ""),
+            hint="check the subset and the revision: the repository has no such table at it",
+            details={"repo": repo, "path": path},
+        )
     try:
         import pandas as pd
         import pyarrow  # noqa: F401  (pandas' parquet engine)
@@ -590,11 +608,40 @@ def _read_hub_table(repo: str, path: str, revision: str | None, *, optional: boo
     return pd.read_parquet(local)
 
 
+def _hub_absent(repo: str, path: str, revision: str | None) -> bool:
+    """Whether the local cache records the repository as having no ``path`` at ``revision``.
+
+    An online download writes the ``.no_exist`` marker when the Hub answers 404; offline it is the only way to
+    tell "absent upstream" from "not cached" (``huggingface_hub.try_to_load_from_cache``).
+    """
+    from huggingface_hub import _CACHED_NO_EXIST, try_to_load_from_cache
+
+    return try_to_load_from_cache(repo, path, repo_type="dataset", revision=revision) is _CACHED_NO_EXIST
+
+
+def _hub_miss(exc: BaseException, repo: str, path: str, revision: str | None) -> RcpNdcgError:
+    """The typed failure of a table the cache cannot serve: :func:`classify` picks it from the cause's chain.
+
+    Offline with nothing to resolve that is a non-retryable :class:`MissingInputError` whose hint pins
+    ``--revision <full sha>``; a Hub that cannot be reached is a retryable :class:`ProviderError`. The details
+    name what was looked for, whatever the cause.
+    """
+    typed = classify(exc)
+    typed.details.update({"repo": repo, "path": path, "revision": revision})
+    return typed
+
+
 def _card_paths(repo: str, revision: str | None) -> dict[str, list[str]]:
     """``{config_name: [path patterns]}`` from the dataset card's YAML header."""
     import yaml
+    from huggingface_hub.errors import LocalEntryNotFoundError
 
-    card = _hub_file(repo, "README.md", revision)
+    try:
+        card = _hub_file(repo, "README.md", revision)
+    except LocalEntryNotFoundError as exc:
+        if _hub_absent(repo, "README.md", revision):
+            return {}
+        raise _hub_miss(exc, repo, "README.md", revision) from exc
     if card is None:
         return {}
     text = card.read_text(encoding="utf-8")
