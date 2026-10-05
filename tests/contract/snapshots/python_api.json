@@ -580,7 +580,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "str | None"
+            "type": "str | list[str] | None"
           },
           "concurrency": {
             "alias": null,
@@ -640,7 +640,10 @@
           }
         },
         "frozen": true,
-        "kind": "pydantic_model"
+        "kind": "pydantic_model",
+        "members": {
+          "urls": "property"
+        }
       },
       "EvalReport": {
         "bases": [
@@ -6189,6 +6192,10 @@
         ],
         "kind": "exception"
       },
+      "UNAVAILABLE_STATUSES": {
+        "kind": "constant",
+        "type": "frozenset"
+      },
       "UsageError": {
         "bases": [
           "rcp_ndcg.errors.RcpNdcgError"
@@ -6300,6 +6307,60 @@
           },
           {
             "returns": "type[RcpNdcgError] | None"
+          }
+        ]
+      },
+      "status_error": {
+        "defined_in": "rcp_ndcg.errors",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "status"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "url"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "path"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "model"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "body"
+          },
+          {
+            "returns": "RcpNdcgError | None"
+          }
+        ]
+      },
+      "status_is_unavailable": {
+        "defined_in": "rcp_ndcg.errors",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "status"
+          },
+          {
+            "returns": "bool"
           }
         ]
       }
@@ -7934,7 +7995,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "str | None"
+            "type": "str | list[str] | None"
           },
           "batch_size": {
             "alias": null,
@@ -8230,7 +8291,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "str | None"
+            "type": "str | list[str] | None"
           },
           "concurrency": {
             "alias": null,
@@ -8290,7 +8351,10 @@
           }
         },
         "frozen": true,
-        "kind": "pydantic_model"
+        "kind": "pydantic_model",
+        "members": {
+          "urls": "property"
+        }
       },
       "EngineInfo": {
         "bases": [
@@ -8357,6 +8421,40 @@
         "type": "str",
         "value": "fake://"
       },
+      "FakeEndpoint": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.fake",
+        "init": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "url"
+          },
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "seed"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "model"
+          },
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "dim"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
       "PoolRequest": {
         "bases": [],
         "defined_in": "rcp_ndcg.inference.types",
@@ -8405,7 +8503,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "str | None"
+            "type": "str | list[str] | None"
           },
           "batch_size": {
             "alias": null,
@@ -8584,7 +8682,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "str | None"
+            "type": "str | list[str] | None"
           },
           "batch_size": {
             "alias": null,
@@ -8886,6 +8984,67 @@
               }
             ]
           },
+          "add_usage": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "TokenCount | None",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "tokens"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "close": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "engines": "property",
+          "note_system_fingerprint": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "url"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "fingerprint"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
           "probe": {
             "kind": "method",
             "signature": [
@@ -8939,7 +9098,8 @@
                 "returns": "list[Reply]"
               }
             ]
-          }
+          },
+          "usage": "property"
         }
       },
       "Usage": {
@@ -9027,6 +9187,33 @@
           },
           {
             "returns": "type[Adapter[Any, Any]]"
+          }
+        ]
+      },
+      "register_fake_route": {
+        "defined_in": "rcp_ndcg.inference.fake",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "method"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "annotation": "FakeRouteHandler",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "handler"
+          },
+          {
+            "returns": "None"
           }
         ]
       }
@@ -11722,6 +11909,13 @@
             "frozen": false,
             "required": true,
             "type": "str"
+          },
+          "phases": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[rcp_ndcg.runners.base.JobPhase, Ellipsis]"
           },
           "resources": {
             "alias": null,

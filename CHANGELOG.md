@@ -28,8 +28,8 @@ released together.
 - `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
   the step identities (its `IDENTITY_ROLES` declarations); no property changed.
 - **New public module `rcp_ndcg.inference`**: the inference layer between `rcp_ndcg.data` and
-  `rcp_ndcg.retrieval`, with the frozen interfaces the transport, the adapters and the role clients build on. No
-  transport behaviour yet: every behavioural method raises `NotImplementedError`, naming the lane that owns it.
+  `rcp_ndcg.retrieval`, with the wire types, the adapter seam, the transport, the probe and the offline fakes
+  the roles (the judge, the encoders, the rerankers) build on.
   - `inference.endpoint`: `Endpoint` moved here from `rcp_ndcg.support.endpoint` (that module is deleted), with
     new fields `api` (CONTENT; the wire adapter, each role config sets its default), `headers_env` (RUNTIME;
     header name -> environment variable name, values read from the environment only) and `wait_on_outage_s`
@@ -45,9 +45,34 @@ released together.
   - `inference.adapters`: the `Adapter` protocol (generic in request and result) and its registry
     (`register_adapter`, `get_adapter`, `known_adapters`, constant `ADAPTER_ENTRY_POINTS =
     "rcp_ndcg.adapters"`). No adapter is registered yet.
-  - `inference.transport`: the `Sender` protocol and the `Transport` class -- the transport's frozen interface
-    only (`send`, `probe`, `run`, `aclose`); its routing, retries, parking and status-map behaviour is the transport lane's.
-  - `inference.fake`: `FAKE_SCHEME = "fake://"` and the offline fakes' contract; no implementation yet.
+  - `inference.transport`: the `Sender` protocol and the `Transport`, now implemented -- the judge client's
+    behaviour over `httpx` instead of the OpenAI SDK, with the same numbers: least-busy replica routing, a
+    semaphore and an HTTP pool sized to `concurrency`, the within-request retries (exponential backoff, the
+    server's `Retry-After` honoured, capped at 60 s), the set-aside of a failing replica (5 s doubling to 60 s),
+    parking until `wait_on_outage_s` (the outage clock starts when the request holds a slot; the message states
+    how long the endpoint was unavailable), the rejection rule, and the shared status map (outages retried then
+    parked; 401 and 403 raise `CredentialsError`; 404 raises a non-retryable `ProviderError` naming the URL and
+    the model; every other 4xx is returned as a `Reply` for the adapter to interpret). Credentials and
+    `headers_env` are read from the environment at send time and never logged; JSON bodies are decoded and
+    `application/octet-stream` stays `bytes`; a caller-supplied `httpx_transport` is wrapped in the transport's
+    own client with the endpoint's timeouts and pool limits. The sync bridge `run` reuses one event loop and
+    one pool across calls and runs on a private background thread when a loop is already running in the thread;
+    `aclose` (and `close`, and the context manager) close the pool. `Transport` carries the provenance probe
+    (`probe`, `engines`, `note_system_fingerprint`, over the new module `inference.probe`'s `read_replica`) and
+    the usage accounting (`usage`, and `add_usage` for the tokens the adapter's `usage(reply)` reports).
+  - `inference.fake`: the offline fakes, implemented. A `fake://` base URL makes the transport send through an
+    in-process `httpx.MockTransport` speaking each role's wire: `GET /models`; `POST /embeddings` (OpenAI shape;
+    deterministic hash-seeded unit vectors, dimension from the URL's `?dim=` query, default 64, cut to a
+    request's `dimensions`); `POST /pooling` (vLLM `task: token_embed`; ragged per-token vectors, as floats or
+    base64-packed in the request's `embed_dtype`, default `float16`); `POST /rerank` (Cohere shape; each
+    document scored by the same hidden ability the fake judge reads, so a tiny run's rerank and judge agree).
+    `register_fake_route(method, path, handler)` registers extra routes (the judge's chat completions arrive
+    with the judge port); the shared draws `fake_uniform` and `hidden_ability` are the fake judge's too. The
+    fakes sit below the transport, so routing, retries, parking and usage run in every offline test; the
+    package exports `register_fake_route` and `FakeEndpoint`.
+  - `inference.probe`: `read_replica`, one replica's best-effort `GET {url}/models` into `EngineInfo` (an
+    unreadable endpoint recorded with its `error`, never raised; a server that does not list the endpoint's
+    model named in a warning).
   - `inference.config`: the role endpoint configs `EmbeddingEndpoint` (`api` default `openai_embeddings`),
     `PoolingEndpoint` (default `vllm_pooling`, with `embed_dtype: float16` by default, `float32` opt-in) and
     `RerankEndpoint` (default `rerank`, `instruction: fold` default, a `batch_size` refused for a `listwise`
@@ -55,6 +80,16 @@ released together.
 - **`rcp_ndcg.errors` gains `BackendUnavailableError` and `RequestRejectedError`**, moved unchanged from
   `rcp_ndcg.llm.client` (still importable and exported there). Exit codes do not change: both remain
   `ProviderError` subclasses at `PROVIDER`, `RequestRejectedError` non-retryable.
+- **`rcp_ndcg.errors` gains the shared status map**: `UNAVAILABLE_STATUSES` (408 and 429), `status_is_unavailable`
+  and `status_error` (401/403 → `CredentialsError`; 404 → a non-retryable `ProviderError` naming the URL and the
+  model; every other 4xx → `None`, a reply for the wire adapter). One table, in one place, for every role's
+  transport.
+- **`Endpoint.base_url` takes a replica list** (one URL, or a non-empty list of replicas of the same served
+  model, without duplicates, never mixing the offline fakes with real URLs), and `Endpoint` gains the `urls`
+  property; the widening moves the judge's list normalisation onto `Endpoint`, whose `JudgeConfig` keeps its own
+  (required, and unchanged in behaviour and identity payloads). The retrieval layer's hosted configs
+  (`rcp_ndcg.retrieval.config._Hosted`) keep `base_url` a single optional URL until the retrieval port: a
+  replica list is refused there.
 - **`rcp_ndcg.support.serve` gains the serve-by-role types**: `EngineRole`, `EngineConfig` (an alias of the
   unchanged `ServeConfig`), `ServeByRole`, `Phase`, `ENGINES_ENV = "RCP_NDCG_ENGINES"`, `EngineURLs`,
   `parse_engines_env`, and the frozen `plan_phases(steps, serve, uses)` signature (behaviour arrives with the serve-phases work).
@@ -81,10 +116,13 @@ released together.
 
 ### Changed
 
-- `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/judge-config.v1.json`,
-  `schemas/run-config.v1.json`) regenerated for the moved and new fields; `tests/test_errors.py` now requires
-  one *root* class per exit code, since the moved outage and refusal types are `ProviderError` subclasses and
-  exit codes do not change.
+- The fake judge's deterministic draws (`_uniform`, `_hidden_ability` in `rcp_ndcg.llm._fake`) now come from
+  `rcp_ndcg.inference.fake` (`fake_uniform`, `hidden_ability`): one home for the mechanism the fakes share;
+  identical values, and both names stay importable from `rcp_ndcg.llm._fake`.
+- `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/run-config.v1.json`)
+  regenerated for the transport, the fakes and the status map (new names and members, `Endpoint.base_url`
+  widened); `tests/test_errors.py` now requires one *root* class per exit code, since the moved outage and
+  refusal types are `ProviderError` subclasses and exit codes do not change.
 
 ## 0.1.0
 
