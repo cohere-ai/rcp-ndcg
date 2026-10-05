@@ -25,6 +25,35 @@ released together.
 
 ### Public surface
 
+- **The rerank role goes on the wire** (in `rcp_ndcg.inference`, whose transport behaviour is still the
+  transport work's; a role client used with an injected `Sender` runs today):
+  - `inference.adapters.rerank`: the shipped wire adapters, registered at import and selectable from a config's
+    `api` field -- `RerankAdapter` (`api: rerank`, the served Cohere-shaped `POST {base_url}/rerank`),
+    `CohereRerankAdapter` (`api: cohere`, `https://api.cohere.com/v2/rerank`, at most 1000 documents per
+    request) and `VoyageRerankAdapter` (`api: voyage`, `https://api.voyageai.com/v1/rerank`, at most 1000
+    documents, requests of one query spaced half a second apart), all subclasses of the new `RerankWire`.
+    Requests are `model`, `query`, `documents`, `top_n`; the served engine's `instruction` and
+    `use_activation` travel only when the config sets them. `interpret` parses the `results`, Voyage `data`
+    and SGLang bare-list answer shapes and realigns the scores by `index`; an index missing, duplicated or out
+    of range is a non-retryable `ProviderError` naming the server, an over-length 400/422 a `CapabilityError`
+    hinting `max_tokens`, any other refusal a `RequestRejectedError`. A candidate set above the cap (or a set
+    `batch_size`) is split into requests and merged; a `listwise` config refuses to split
+    (`CapabilityError`).
+  - `inference.clients`: `RerankClient(config, *, sender=None)` with `rerank`/`arerank` (one query's whole
+    candidate set per request, scores aligned to the input documents), `rerank_many`/`arerank_many`
+    (`concurrency` queries in flight, the per-query `checkpoint(query_id, scores)` of today's served path)
+    and `close`. The query text follows one rule for every path, from the config's `instruction` mode:
+    `fold` (default) sends `Task: <instruction>\nQuery: <text>` exactly as the served path did, `field` sends
+    the bare query plus the engine's `instruction` field (served only), `none` the bare query. Empty
+    documents are sent as given (the hosted profiles' old empty-document filter is gone); an empty candidate
+    set makes no request. Preparation runs through one seam (`RerankClient._prepare`); until the text-budget
+    mechanism is wired the client cuts nothing and refuses a config that sets `max_tokens` with a
+    `ConfigError`.
+  - `RerankEndpoint.tokenizer_identity()`: `{"sha256": ...}` of the named tokenizer's `tokenizer.json`, the
+    content identity a rerank step records (the name stays runtime, as the judge's already works).
+  - The facade `rcp_ndcg.inference` additionally exports `RerankClient`, `RerankAdapter`,
+    `CohereRerankAdapter`, `VoyageRerankAdapter` (and `rcp_ndcg.inference.adapters` re-exports them with
+    `RerankWire`); `known_adapters()` now lists `cohere`, `rerank` and `voyage`.
 - `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
   the step identities (its `IDENTITY_ROLES` declarations); no property changed.
 - **New public module `rcp_ndcg.inference`**: the inference layer between `rcp_ndcg.data` and
@@ -84,7 +113,8 @@ released together.
 - `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/judge-config.v1.json`,
   `schemas/run-config.v1.json`) regenerated for the moved and new fields; `tests/test_errors.py` now requires
   one *root* class per exit code, since the moved outage and refusal types are `ProviderError` subclasses and
-  exit codes do not change.
+  exit codes do not change. The `python_api` snapshot regeneration also records `JobSpec.phases`, which its
+  commit (the job-phase shape) had left out.
 
 ## 0.1.0
 
