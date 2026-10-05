@@ -66,7 +66,7 @@ by the engine.
 
 A rerank endpoint keys on its `api`, `model` and `revision` (content); where and how fast it is asked
 (`base_url`, `concurrency`, timeouts, `batch_size`) never enters an identity. `max_tokens` is content, and
-with it the tokenizer's SHA-256: `RerankEndpoint.identity_extra()` returns `{"tokenizer_sha256": ...}` of the
+with it the tokenizer's SHA-256: `identity_extra()` (inherited from `Endpoint`) returns `{"tokenizer_sha256": ...}` of the
 named `tokenizer.json` (the name itself stays runtime), so two passes whose tokenizers differ never pool.
 Every role config with a `tokenizer` -- the judge's, the embedding, pooling and rerank configs -- carries the
 digest under this one key (`Endpoint.identity_extra()`), computed by the one helper in

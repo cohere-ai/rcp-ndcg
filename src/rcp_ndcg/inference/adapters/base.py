@@ -196,7 +196,7 @@ def _load_plugins() -> dict[tuple[str, str], type[Adapter[Any, Any]]]:
             if key in _BUILTINS:
                 raise ConfigError(
                     f"the adapter entry point {entry.name!r} ({entry.value}) registers {key[1]!r} for the "
-                    f"{prefix} role, where the shipped adapter {_BUILTINS[key].__name__} is already registered"
+                    f"{prefix} role, where {_BUILTINS[key].__name__} is already registered"
                 )
             if key in loaded:
                 raise ConfigError(
