@@ -63,6 +63,27 @@ class EmbeddingEndpoint(Endpoint):
     dimensions: int | None = Field(default=None, ge=1)
     batch_size: int = Field(default=32, ge=1)
 
+    def identity_extra(self) -> dict[str, str]:
+        """The identity fields beyond :func:`rcp_ndcg.support.identity.identity_payload`: the tokenizer's SHA-256.
+
+        RFC 7.4's rule, the judge's rule for ``JudgeConfig.tokenizer``: what cuts (or, later, budgets) the text
+        enters every identity by the SHA-256 of its ``tokenizer.json``, never by how it is named -- the name is
+        RUNTIME. The step identity of a retrieval step (``runs/pipeline.py``) merges this into the config's
+        ``identity_payload``.
+
+        Returns:
+            ``{"tokenizer_sha256": <sha>}`` when the config names a tokenizer, else ``{}``.
+
+        Raises:
+            DependencyError: ``tokenizers`` (or, for a Hub id, ``huggingface_hub``) is not installed.
+            MissingInputError: The named tokenizer file or repository does not exist.
+        """
+        if self.tokenizer is None:
+            return {}
+        from rcp_ndcg.data.tokenizer import load_tokenizer
+
+        return {"tokenizer_sha256": load_tokenizer(self.tokenizer).sha256}
+
 
 class PoolingEndpoint(EmbeddingEndpoint):
     """A multi-vector (late interaction) endpoint speaking vLLM ``POST {base_url}/pooling`` (task ``token_embed``).
