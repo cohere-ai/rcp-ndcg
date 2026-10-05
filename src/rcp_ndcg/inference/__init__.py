@@ -33,9 +33,8 @@ from rcp_ndcg.inference.adapters.base import (
     known_adapters,
     register_adapter,
 )
-from rcp_ndcg.inference.clients import EmbeddingClient
 from rcp_ndcg.inference.adapters.rerank import CohereRerankAdapter, RerankAdapter, VoyageRerankAdapter
-from rcp_ndcg.inference.clients import RerankClient
+from rcp_ndcg.inference.clients import EmbeddingClient, RerankClient
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.fake import FAKE_SCHEME
