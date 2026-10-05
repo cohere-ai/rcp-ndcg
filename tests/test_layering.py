@@ -88,7 +88,7 @@ def _eager_imports(tree: ast.Module) -> Iterator[tuple[ast.Import | ast.ImportFr
     they count.
     """
 
-    def scan(stmts: list[ast.stmt]) -> None:
+    def scan(stmts: list[ast.stmt]) -> Iterator[tuple[ast.Import | ast.ImportFrom, int]]:
         for statement in stmts:
             if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
@@ -124,6 +124,11 @@ def outward_imports() -> list[str]:
         elif module.endswith(".__init__"):
             module = module[: -len(".__init__")]
         layer = _module_layer(module)
+        if layer not in _LAYER:
+            raise AssertionError(
+                f"{module} is a module of the package but its top-level layer is not placed in LAYERS; "
+                "add it where the charter puts it"
+            )
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node, line in _eager_imports(tree):
             for target in _targets_of_import(node):

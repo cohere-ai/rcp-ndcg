@@ -343,6 +343,7 @@ class TestAdapterRegistry:
         with pytest.raises(ConfigError) as caught:
             get_adapter("nope")
         assert caught.value.details["known"] == ["probe_adapter"]
+        assert "probe_adapter" in (caught.value.hint or "")
 
     def test_the_entry_point_group_name_is_the_charter_s(self) -> None:
         assert ADAPTER_ENTRY_POINTS == "rcp_ndcg.adapters"
