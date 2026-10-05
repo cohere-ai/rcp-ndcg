@@ -50,6 +50,7 @@ def run(
     rankings_dir: str | Path | None = None,
     served_model_name: str | None = None,
     limit: int | None = None,
+    device: str = "cpu",
 ) -> dict[str, Any]:
     """Run the requested stages of the equivalence check for one recipe; write and return the report document.
 
@@ -83,7 +84,7 @@ def run(
         if base_url is None:
             raise HarnessError("stage 2 needs the engine's --base-url")
         document["stage2"] = stage2_scores(
-            recipe, base_url, pairs, reference, served_model_name=served_model_name or recipe.id
+            recipe, base_url, pairs, reference, served_model_name=served_model_name or recipe.id, device=device
         )
     if 3 in stages:
         if rankings_dir is None:
@@ -146,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--stages", default="1,2", help="stages to run, comma-separated (default: 1,2)")
     parser.add_argument("--rankings-dir", default=None, help="rankings directory for stage 3")
     parser.add_argument("--limit", type=int, default=None, help="check only the first N pairs (a quick run)")
+    parser.add_argument("--device", default="cpu", help="device for the in-process reference in stage 2 (default: cpu)")
     args = parser.parse_args(argv)
     stages = sorted({int(stage.strip()) for stage in args.stages.split(",") if stage.strip()})
     if not stages or any(stage not in (1, 2, 3) for stage in stages):
@@ -163,6 +165,7 @@ def main(argv: list[str] | None = None) -> int:
             stages=stages,
             rankings_dir=args.rankings_dir,
             limit=args.limit,
+            device=args.device,
         )
     except HarnessError as error:
         print(f"error: {error}", file=sys.stderr)

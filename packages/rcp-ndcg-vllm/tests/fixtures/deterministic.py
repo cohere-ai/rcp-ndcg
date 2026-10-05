@@ -24,16 +24,18 @@ def score(query: str, doc: str, *, noise: float = 0.0) -> float:
     """A probability-scale score in [0, 1) for one (query, document) pair."""
     value = int.from_bytes(_digest("score", query, doc)[:4], "big") / 2**32
     if noise:
-        value += _noise("score-noise", query, doc, noise)
+        value += _noise("score-noise", f"{query}\x00{doc}", noise)
     return float(min(max(value, 0.0), 1.0))
 
 
 def vector(text: str, tag: str, *, noise: float = 0.0) -> np.ndarray:
-    """A unit L2 float32 vector of :data:`DIM` dimensions for one text."""
+    """A unit L2 float32 vector of :data:`DIM` dimensions for one text; ``noise`` perturbs it deterministically."""
     raw = np.frombuffer(_digest("vector", tag, text)[:DIM], dtype=np.uint8).astype(np.float32) - 127.5
     if noise:
-        raw = raw + np.frombuffer(_digest("vector-noise", tag, text)[:DIM], dtype=np.uint8).astype(np.float32)
-        raw = raw * noise
+        perturbation = (
+            np.frombuffer(_digest("vector-noise", tag, text)[:DIM], dtype=np.uint8).astype(np.float32) - 127.5
+        )
+        raw = raw + perturbation * noise
     norm = float(np.linalg.norm(raw))
     return raw / norm if norm else raw
 

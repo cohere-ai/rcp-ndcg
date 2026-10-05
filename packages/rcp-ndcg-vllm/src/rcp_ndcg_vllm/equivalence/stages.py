@@ -101,6 +101,7 @@ def stage2_scores(
     *,
     served_model_name: str | None = None,
     timeout_s: float | None = None,
+    device: str = "cpu",
 ) -> dict[str, Any]:
     """Stage 2: served scores or vectors against the in-process reference, under the recipe's gates.
 
@@ -108,11 +109,13 @@ def stage2_scores(
     the number of documents); an ``embed`` recipe compares dense vectors from ``/v1/embeddings``; a
     ``multi_vector`` recipe compares per-token vectors from ``/pooling`` after the same float16 cast.  The report
     carries every number with its referent and one row per gate; ``passed`` is true only when every gate holds.
+    The reference's model is loaded first (``device``, ``cpu`` by default: the wave's engines hold the GPUs).
     """
     if recipe.reference.kind == "stored_scores":
         raise HarnessError(
             "stage 2 needs a runnable reference; reference.kind=stored_scores supports stage 1 and stage 3 only"
         )
+    reference.load(device)
     gates = resolve_gates(recipe)
     with EngineClient(recipe, base_url, served_model_name=served_model_name, timeout_s=timeout_s or 300.0) as client:
         if recipe.role == "rerank":

@@ -376,7 +376,7 @@ def load_recipe(path: str | Path) -> Recipe:
         raise RecipeError(f"{yaml_path}: {error}") from error
     directory = path if path.is_dir() else yaml_path.parent
     recipe._dir = directory
-    if directory.name != recipe.id:
+    if path.is_dir() and directory.name != recipe.id:
         raise RecipeError(
             f"{directory / 'recipe.yaml'}: id {recipe.id!r} must equal the directory name {directory.name!r}"
         )

@@ -82,11 +82,19 @@ class EngineClient:
         self.close()
 
     def _post(self, route: str, payload: dict[str, Any]) -> httpx.Response:
-        return _checked(self._http.post(route, json={"model": self.model, **payload}), route)
+        try:
+            return _checked(self._http.post(route, json={"model": self.model, **payload}), route)
+        except httpx.HTTPError as error:
+            raise HarnessError(f"the engine at {self.root} failed {route}: {error}") from error
 
     def models(self) -> dict[str, Any]:
         """``GET /v1/models``: the served model list."""
-        return _checked(self._http.get("/v1/models"), "/v1/models").json()
+        try:
+            return _checked(self._http.get("/v1/models"), "/v1/models").json()
+        except HarnessError:
+            raise
+        except httpx.HTTPError as error:
+            raise HarnessError(f"the engine at {self.root} failed /v1/models: {error}") from error
 
     def embeddings(self, texts: list[str], *, encoding_format: str = "float") -> list[np.ndarray]:
         """``POST /v1/embeddings``: one dense float32 vector per text."""

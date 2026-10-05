@@ -1,0 +1,612 @@
+{
+  "$defs": {
+    "ClientConfig": {
+      "additionalProperties": false,
+      "description": "The ``rcp-ndcg`` endpoint fields this recipe implies.\n\nThe fields mirror the design's configuration section for a served encoder or reranker.  Role-dependent fields\nare validated in :class:`Recipe`: ``instruction`` and ``use_activation`` exist only for a reranker,\n``normalize`` only for ``embed`` and ``multi_vector``, ``embed_dtype`` only for ``multi_vector``, and a\n``listwise`` reranker has no ``batch_size`` (the whole candidate set is one request).\n\nAttributes:\n    api: Which route the client speaks: ``openai_embeddings`` (dense), ``vllm_pooling`` (late interaction,\n        ``POST /pooling`` with ``task: token_embed``) or ``rerank`` (Cohere shape).\n    query_prompt: Text prepended to every query client-side (embedding models with a query prefix).\n    doc_prompt: Text prepended to every document client-side (Octen-style ``\"- \"``).\n    instruction: How the client passes a reranker instruction: ``none`` (drop it), ``field`` (the endpoint's\n        ``instruction`` field) or ``fold`` (appended to the query text).\n    default_instruction: The instruction used when the caller passes none; required when ``instruction`` is\n        ``field`` or ``fold``, because those move the instruction's text to the client.\n    tokenizer: The tokenizer the client cuts text with, ``repo@revision`` (40-hex revision).\n    max_tokens: The pair (or text) budget in tokens; the client cuts at token boundaries with the tokenizer.\n    normalize: L2-normalise returned vectors (``embed`` and ``multi_vector`` only).\n    dimensions: Matryoshka cut requested through the endpoint's ``dimensions`` field.\n    embed_dtype: The transfer precision of ``/pooling`` vectors; ``multi_vector`` only, ``float16`` by default\n        (set ``float32`` to opt out; the field must stay unset for other roles).\n    use_activation: Rerank request field for raw-logit rerankers (``false``) or activated scores (``true``);\n        ``None`` sends nothing and the server's default applies.\n    batch_size: Texts per request, where a batch is meaningful; a listwise reranker must leave it unset.",
+      "properties": {
+        "api": {
+          "enum": [
+            "openai_embeddings",
+            "vllm_pooling",
+            "rerank"
+          ],
+          "title": "Api",
+          "type": "string"
+        },
+        "query_prompt": {
+          "default": "",
+          "title": "Query Prompt",
+          "type": "string"
+        },
+        "doc_prompt": {
+          "default": "",
+          "title": "Doc Prompt",
+          "type": "string"
+        },
+        "instruction": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "field",
+                "fold"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
+        "default_instruction": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Instruction"
+        },
+        "tokenizer": {
+          "description": "repo@revision of the tokenizer the client cuts with",
+          "pattern": "^[^@\\s]+/[^@\\s]+@[0-9a-f]{40}$",
+          "title": "Tokenizer",
+          "type": "string"
+        },
+        "max_tokens": {
+          "exclusiveMinimum": 0,
+          "title": "Max Tokens",
+          "type": "integer"
+        },
+        "normalize": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalize"
+        },
+        "dimensions": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dimensions"
+        },
+        "embed_dtype": {
+          "anyOf": [
+            {
+              "enum": [
+                "float16",
+                "float32"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Embed Dtype"
+        },
+        "use_activation": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Use Activation"
+        },
+        "batch_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Batch Size"
+        }
+      },
+      "required": [
+        "api",
+        "tokenizer",
+        "max_tokens"
+      ],
+      "title": "ClientConfig",
+      "type": "object"
+    },
+    "EngineSpec": {
+      "additionalProperties": false,
+      "description": "The engine image a recipe is served with.\n\nAttributes:\n    name: The engine family; this package serves ``vllm``.\n    image: The container image, ``repository:tag`` (public names only).\n    min_version: The engine version the recipe is known to work with, ``MAJOR.MINOR.PATCH``.\n    startup_timeout_s: How long :mod:`rcp_ndcg_vllm.jobs.run_wave` waits for ``GET /v1/models`` before it\n        declares the recipe failed (seconds).  Large models override this per recipe.",
+      "properties": {
+        "name": {
+          "const": "vllm",
+          "title": "Name",
+          "type": "string"
+        },
+        "image": {
+          "description": "repository:tag of the engine image",
+          "minLength": 1,
+          "title": "Image",
+          "type": "string"
+        },
+        "min_version": {
+          "description": "known-good engine version",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "title": "Min Version",
+          "type": "string"
+        },
+        "startup_timeout_s": {
+          "default": 1800,
+          "exclusiveMinimum": 0,
+          "title": "Startup Timeout S",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "image",
+        "min_version"
+      ],
+      "title": "EngineSpec",
+      "type": "object"
+    },
+    "Gates": {
+      "additionalProperties": false,
+      "description": "Overrides of the stage-2 gate defaults for one recipe's ``reference.score_scale``.\n\nEvery field defaults to ``None`` (= the published default for the scale).  The defaults, and what each field\nmeans, are in :mod:`rcp_ndcg_vllm.equivalence.gates`; ``kendall_tau_min`` applies to every scored scale,\n``metrics_max_abs`` to stage 3.",
+      "properties": {
+        "prob_p99_abs": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prob P99 Abs"
+        },
+        "prob_max_abs": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prob Max Abs"
+        },
+        "logit_rel_abs": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Logit Rel Abs"
+        },
+        "cos_max_abs": {
+          "anyOf": [
+            {
+              "maximum": 2,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cos Max Abs"
+        },
+        "vec_min_cosine": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": -1,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vec Min Cosine"
+        },
+        "tau_min": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tau Min"
+        },
+        "metrics_max_abs": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metrics Max Abs"
+        }
+      },
+      "title": "Gates",
+      "type": "object"
+    },
+    "ReferenceSpec": {
+      "additionalProperties": false,
+      "description": "The in-process reference implementation the equivalence harness compares the served engine against.\n\nAttributes:\n    kind: Where the reference comes from: ``transformers`` (an HF checkpoint run in process),\n        ``sentence_transformers`` (a sentence-transformers checkpoint), ``remote_code`` (the checkpoint's\n        trusted code) or ``stored_scores`` (scores stored with the paper's runs; no ``reference.py``).\n    score_scale: The scale ``reference.score`` returns, which selects the stage-2 gates: ``probability``,\n        ``logit`` or ``cosine``.  Embedding recipes always compare vectors (cosine per vector or per token).\n    entry: The reference module file in the recipe directory; it defines ``load(device)``,\n        ``embed(texts, role)``, ``score(query, documents, instruction)`` and ``render(query, document,\n        instruction)``.  Not needed for ``stored_scores``.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "transformers",
+            "sentence_transformers",
+            "remote_code",
+            "stored_scores"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "score_scale": {
+          "enum": [
+            "probability",
+            "logit",
+            "cosine"
+          ],
+          "title": "Score Scale",
+          "type": "string"
+        },
+        "entry": {
+          "default": "reference.py",
+          "description": "reference module file inside the recipe directory",
+          "title": "Entry",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "score_scale"
+      ],
+      "title": "ReferenceSpec",
+      "type": "object"
+    },
+    "Resources": {
+      "additionalProperties": false,
+      "description": "The GPUs one engine instance of the recipe occupies.\n\nAttributes:\n    gpus: How many GPUs ``vllm serve --tensor-parallel-size`` gets; the wave runner packs recipes onto the\n        node's GPUs by this count.",
+      "properties": {
+        "gpus": {
+          "minimum": 1,
+          "title": "Gpus",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "gpus"
+      ],
+      "title": "Resources",
+      "type": "object"
+    },
+    "ServeConfig": {
+      "additionalProperties": false,
+      "description": "Everything rendered into the ``vllm serve`` argv \u2014 nothing implicit.\n\nSee :func:`serve_argv` for the exact argv.  ``plugin`` is the one field that never reaches the argv: it names\na ``vllm.general_plugins`` pip package that must be installed into the image before the engine starts\n(bootstrap installs the directories a wave's ``plugins.txt`` lists).",
+      "properties": {
+        "runner": {
+          "description": "vLLM --runner; the rcp-ndcg routes need pooling",
+          "enum": [
+            "pooling",
+            "generate"
+          ],
+          "title": "Runner",
+          "type": "string"
+        },
+        "convert": {
+          "anyOf": [
+            {
+              "enum": [
+                "embed",
+                "classify"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "vLLM --convert, for a decoder checkpoint turned into an embed or classify model",
+          "title": "Convert"
+        },
+        "hf_overrides": {
+          "additionalProperties": true,
+          "description": "vLLM --hf-overrides, a JSON object sent verbatim (keys sorted)",
+          "title": "Hf Overrides",
+          "type": "object"
+        },
+        "chat_template": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "chat template file in the recipe directory, given to vLLM --chat-template",
+          "title": "Chat Template"
+        },
+        "pooler_config": {
+          "additionalProperties": true,
+          "description": "vLLM --pooler-config, a JSON object sent verbatim (keys sorted)",
+          "title": "Pooler Config",
+          "type": "object"
+        },
+        "trust_remote_code": {
+          "default": false,
+          "description": "vLLM --trust-remote-code flag",
+          "title": "Trust Remote Code",
+          "type": "boolean"
+        },
+        "max_model_len": {
+          "description": "vLLM --max-model-len",
+          "exclusiveMinimum": 0,
+          "title": "Max Model Len",
+          "type": "integer"
+        },
+        "dtype": {
+          "description": "vLLM --dtype",
+          "enum": [
+            "auto",
+            "float16",
+            "bfloat16",
+            "float32",
+            "float8",
+            "half"
+          ],
+          "title": "Dtype",
+          "type": "string"
+        },
+        "plugin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "pip spec of a vllm.general_plugins package, installed before the engine starts",
+          "title": "Plugin"
+        },
+        "extra_args": {
+          "description": "further vllm serve flags, verbatim (one argv element per item)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Extra Args",
+          "type": "array"
+        }
+      },
+      "required": [
+        "runner",
+        "max_model_len",
+        "dtype"
+      ],
+      "title": "ServeConfig",
+      "type": "object"
+    },
+    "StatusSpec": {
+      "additionalProperties": false,
+      "description": "Where the recipe stands in the verification workflow.\n\nAttributes:\n    state: ``unverified`` (written, not yet checked), ``verified`` (the harness passed every gate) or\n        ``failed`` (a gate failed; the report says which).\n    image: The engine image the recipe was last verified against.\n    date: ISO date of the last verification.\n    report: Path or URL of the equivalence report.",
+      "properties": {
+        "state": {
+          "default": "unverified",
+          "enum": [
+            "unverified",
+            "verified",
+            "failed"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "image": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image"
+        },
+        "date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Date"
+        },
+        "report": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Report"
+        }
+      },
+      "title": "StatusSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One served model: how vLLM serves it, how ``rcp-ndcg`` reads it, and what it is checked against.\n\nConstruct it through :func:`load_recipe` (which also checks the referenced files exist and that ``id`` equals\nthe directory name); the model itself is frozen and refuses unknown fields.\n\nAttributes:\n    id: The recipe identifier, ``^[a-z0-9][a-z0-9.-]*$``, equal to the directory name; also the\n        ``--served-model-name`` the engine serves and the ``model`` field of the client config.\n    model: The Hugging Face repo id to serve.\n    revision: The exact commit of ``model`` (40 hex); serving and client cutting pin it.\n    role: What the model produces: ``embed`` (one dense vector), ``multi_vector`` (one vector per token) or\n        ``rerank`` (query-document scores).\n    input: The input modalities the model accepts, a non-empty subset of ``[text, image, video]``.\n    scoring: Rerank only: ``pointwise`` (documents scored independently) or ``listwise`` (one request carries\n        the whole candidate set).\n    licence: SPDX identifier of the model's licence, or ``see-model-card``.\n    engine: The engine image and the startup timeout.\n    resources: The GPUs the engine occupies (``--tensor-parallel-size``).\n    serve: Everything rendered into ``vllm serve`` argv.\n    client: The ``rcp-ndcg`` endpoint fields the recipe implies.\n    reference: The in-process reference the harness compares against.\n    gates: Overrides of the stage-2 gate defaults.\n    status: Where the recipe stands in the verification workflow.\n    sources: URLs and ``path:line`` references the recipe rests on.\n    notes: Free-form notes.",
+  "properties": {
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9.-]*$",
+      "title": "Id",
+      "type": "string"
+    },
+    "model": {
+      "description": "Hugging Face repo id",
+      "minLength": 1,
+      "title": "Model",
+      "type": "string"
+    },
+    "revision": {
+      "description": "40-hex commit of model",
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Revision",
+      "type": "string"
+    },
+    "role": {
+      "enum": [
+        "embed",
+        "multi_vector",
+        "rerank"
+      ],
+      "title": "Role",
+      "type": "string"
+    },
+    "input": {
+      "items": {
+        "enum": [
+          "text",
+          "image",
+          "video"
+        ],
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Input",
+      "type": "array"
+    },
+    "scoring": {
+      "anyOf": [
+        {
+          "enum": [
+            "pointwise",
+            "listwise"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scoring"
+    },
+    "licence": {
+      "minLength": 1,
+      "title": "Licence",
+      "type": "string"
+    },
+    "engine": {
+      "$ref": "#/$defs/EngineSpec"
+    },
+    "resources": {
+      "$ref": "#/$defs/Resources"
+    },
+    "serve": {
+      "$ref": "#/$defs/ServeConfig"
+    },
+    "client": {
+      "$ref": "#/$defs/ClientConfig"
+    },
+    "reference": {
+      "$ref": "#/$defs/ReferenceSpec"
+    },
+    "gates": {
+      "$ref": "#/$defs/Gates"
+    },
+    "status": {
+      "$ref": "#/$defs/StatusSpec"
+    },
+    "sources": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "notes": {
+      "default": "",
+      "title": "Notes",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "model",
+    "revision",
+    "role",
+    "input",
+    "licence",
+    "engine",
+    "resources",
+    "serve",
+    "client",
+    "reference"
+  ],
+  "title": "Recipe",
+  "type": "object"
+}

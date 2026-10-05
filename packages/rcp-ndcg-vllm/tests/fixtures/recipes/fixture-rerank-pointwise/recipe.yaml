@@ -12,7 +12,7 @@ serve:
   convert: null
   hf_overrides:
     architectures: [FixtureForSequenceClassification]
-    classifier_from_token: [no, "yes"]
+    classifier_from_token: ["no", "yes"]
     is_original_fixture_reranker: true
   chat_template: template.jinja
   pooler_config: {activation: sigmoid}
