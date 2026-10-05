@@ -130,11 +130,14 @@ def _offline(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_offline_unpinned_without_a_recorded_ref_names_the_revision_fix(cache: Path) -> None:
     """A cache with no ref to resolve says so, with the revision fix, and never reports missing data."""
+    from rcp_ndcg.errors import RcpNdcgWarning
+
     stage(cache, files=_TABLES)
 
-    with pytest.raises(MissingInputError) as caught:
-        load_dataset(f"hf://{REPO}/{SUBSET}")
+    with pytest.raises(MissingInputError) as caught, pytest.warns(RcpNdcgWarning) as seen:
+        load_dataset(f"hf://{REPO}/{SUBSET}")  # the resolution warns UNPINNED_REVISION, the load refuses
 
+    assert [record.message.code for record in seen] == ["UNPINNED_REVISION"]
     error = caught.value
     assert error.retryable is False
     assert "--revision" in (error.hint or "")
@@ -329,6 +332,8 @@ def test_a_snapshot_listing_needs_a_commit(cache: Path) -> None:
 
 def test_an_unreachable_hub_is_a_retryable_provider_error(cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A Hub that cannot be reached is not missing data: the failure is retryable and names the endpoint."""
+    from rcp_ndcg.errors import RcpNdcgWarning
+
     _online(monkeypatch, {})  # the fake Hub has no ref: every lookup raises
     import httpx
     import huggingface_hub
@@ -342,8 +347,8 @@ def test_an_unreachable_hub_is_a_retryable_provider_error(cache: Path, monkeypat
 
     monkeypatch.setattr(huggingface_hub, "hf_hub_download", unreachable)
 
-    with pytest.raises(ProviderError) as caught:
-        load_dataset(f"hf://{REPO}/{SUBSET}")
+    with pytest.raises(ProviderError) as caught, pytest.warns(RcpNdcgWarning):
+        load_dataset(f"hf://{REPO}/{SUBSET}")  # nothing is pinned either, so the resolution also warns
 
     error = caught.value
     assert error.retryable is True
@@ -354,6 +359,8 @@ def test_a_required_table_that_does_not_exist_upstream_says_so_with_what_to_chec
     cache: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Online, a required table the repository lacks stays a missing input, naming the file and a hint."""
+    from rcp_ndcg.errors import RcpNdcgWarning
+
     _online(monkeypatch, {})
     import huggingface_hub
     from huggingface_hub.errors import EntryNotFoundError
@@ -364,8 +371,8 @@ def test_a_required_table_that_does_not_exist_upstream_says_so_with_what_to_chec
         lambda *args, **kwargs: (_ for _ in ()).throw(EntryNotFoundError("404")),
     )
 
-    with pytest.raises(MissingInputError) as caught:
-        load_dataset(f"hf://{REPO}/{SUBSET}")
+    with pytest.raises(MissingInputError) as caught, pytest.warns(RcpNdcgWarning):
+        load_dataset(f"hf://{REPO}/{SUBSET}")  # the fake Hub holds no ref for the branch either: the resolution warns
 
     error = caught.value
     assert f"{SUBSET}/qrels.parquet does not exist" in error.message
@@ -378,6 +385,8 @@ def test_a_read_only_cache_skips_the_ref_write(
 ) -> None:
     """A cache that refuses the ref write costs one debug line: the resolution still returns the commit."""
     import logging
+
+    from rcp_ndcg.errors import RcpNdcgWarning
 
     stage(cache, files=_TABLES, absent=(f"{SUBSET}/excluded.parquet",))
     (cache / f"datasets--{REPO.replace('/', '--')}" / "refs").write_text("a file blocks the refs directory")
@@ -392,7 +401,7 @@ def test_a_read_only_cache_skips_the_ref_write(
 
     resolve_revision.cache_clear()
     _offline(monkeypatch)
-    with pytest.raises(MissingInputError) as caught:
-        load_dataset(f"hf://{REPO}/{SUBSET}")
+    with pytest.raises(MissingInputError) as caught, pytest.warns(RcpNdcgWarning):
+        load_dataset(f"hf://{REPO}/{SUBSET}")  # offline without the ref: the load refuses, the resolution warns
 
     assert "--revision" in (caught.value.hint or ""), "without the ref the offline run says what to do"
