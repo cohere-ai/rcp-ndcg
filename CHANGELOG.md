@@ -21,6 +21,18 @@ Every artifact schema carries its own version (`rcp-ndcg.<name>.v1`), bumped onl
 incompatibly, independently of the package version. `rcp-ndcg` pins `rcp-ndcg-core` to its own version; the two are
 released together.
 
+## Unreleased
+
+### Fixed
+
+- An offline run over a hub cache an online run filled now works without `--revision`: the online resolution
+  records the commit behind the branch (`refs/<ref>` in the cache), which a download pinned to a commit never
+  wrote. Offline with nothing to resolve, the failure is a non-retryable `MISSING_INPUT` whose hint says to pass
+  `--revision <full sha>` (it no longer reports a cached file as "does not exist" with a null hint); a Hub that
+  cannot be reached is a retryable `PROVIDER` naming `HF_ENDPOINT`. Offline, an optional table (`excluded.parquet`,
+  `top_ranked.parquet`) is treated as absent only when the cache records it so (`.no_exist`); an uncached optional
+  table is an error with the offline hint, never a silently empty pool, and the pinned offline run keeps working.
+
 ## 0.1.0
 
 The first public release, accompanying the paper

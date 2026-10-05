@@ -224,7 +224,10 @@ runner:
   (`container_runtime: apptainer` or `pyxis`, with `container_mounts`); a container runs the stock coordinator image
   below unless `image` names another. Runs, stores and caches live on the cluster's shared filesystem. A node without
   internet access needs the weights and data staged beforehand: set `HF_HOME` to a shared cache and
-  `HF_HUB_OFFLINE=1`.
+  `HF_HUB_OFFLINE=1`. The shared cache is filled by the online runs themselves: a dataset run resolves its
+  revision online once and records the commit behind the branch (`refs/<ref>` in the cache), so an offline run
+  without `--revision` loads the same data. A cache with no recorded ref (staged by a download pinned to a
+  commit) needs `--revision <full sha>`; a file the cache truly lacks is an error, not an empty table.
 - **Kubernetes.** Each run is a `batch/v1` Job, applied with the `kubectl` on your `PATH` (and `context`, if set).
   Resources become the coordinator's requests and limits (`nvidia.com/gpu`, `cpu`, `memory`) and the Job's
   `activeDeadlineSeconds`. With one engine replica, its one container asks for the larger of the two GPU requests,
