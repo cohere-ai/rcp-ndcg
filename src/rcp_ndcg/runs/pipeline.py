@@ -34,7 +34,7 @@ from rcp_ndcg.runs.layout import RunLayout, new_run_id
 from rcp_ndcg.runs.manifest import DatasetRef, RunManifest, RunStatus, StepStatus
 from rcp_ndcg.storage import local_dir
 from rcp_ndcg.storage.artifacts import ArtifactRef, artifact_ref
-from rcp_ndcg.support.identity import hash_payload
+from rcp_ndcg.support.identity import hash_payload, identity_payload
 from rcp_ndcg.support.logging import get_logger
 from rcp_ndcg.support.paths import runs_dir as default_runs_dir
 
@@ -376,11 +376,15 @@ class Pipeline:
         dataset = {"dataset": config.dataset.identity()}
         common = {**dataset, "limit": config.limit, "seed": config.seed}
         if step == "retrieve":
-            # Retrieval covers every query of the dataset and draws nothing at random: no limit, no seed.
-            candidates = config.candidates.model_dump(mode="json", by_alias=True, exclude={"rerank"})
+            # Retrieval covers every query of the dataset and draws nothing at random: no limit, no seed. The
+            # content payload only: a served encoder's URL, key variable, concurrency, timeouts and retries move
+            # the work, not the numbers (the reranker keys the rerank step, not the retrieval).
+            candidates = identity_payload(config.candidates)
+            candidates.pop("rerank", None)
             return {**dataset, "candidates": candidates, "output": self.layout.relative(self._first_stage)}
         if step == "rerank":
-            rerank = config.candidates.rerank.model_dump(mode="json") if config.candidates.rerank else None
+            reranker = config.candidates.rerank
+            rerank = identity_payload(reranker) if reranker is not None else None
             return {**common, "rerank": rerank, "depth": config.candidates.depth}
         if step in JUDGE_STEPS:
             schedule = self.schedule(step)
