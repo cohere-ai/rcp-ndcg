@@ -263,6 +263,24 @@ class TestRunnersAndServe:
         assert error["exit_code"] == 3 and "does not start a phase's engines yet" in error["message"]
         assert "--engine" in error["hint"] and not (tmp_path / "runs").exists()
 
+    def test_a_served_encoder_run_reaches_the_refusal_through_prepare(self, data: Path, tmp_path: Path) -> None:
+        """`run start` of a served-encoder run (no judge) reaches the runners' phase refusal — not the recorded
+        config's re-validation of its own defaults."""
+        config = tmp_path / "run.yaml"
+        fields = {
+            "candidates": {
+                "from": "retrieval",
+                "retrieval": {"kind": "dense", "encoder": {"provider": "openai_compatible", "model": "e"}},
+            },
+            "steps": ["retrieve"],
+            "serve": {"encoder": {"command": ["vllm", "serve", "e", "--host", "0.0.0.0", "--port", "8000"]}},
+            "runner": SLURM_PYXIS,
+        }
+        config.write_text(yaml.safe_dump(tiny_config(data, **fields).resolved()), encoding="utf-8")
+        error = _failed("start", str(config), "--runs-dir", str(tmp_path / "runs"), "--dry-run")
+        assert error["exit_code"] == 3 and "does not start a phase's engines yet" in error["message"]
+        assert not (tmp_path / "runs").exists()
+
     def test_a_replica_over_several_nodes_is_a_config_error(self, data: Path, tmp_path: Path) -> None:
         """It failed as INTERNAL (exit 1, 'this is a bug')."""
         config = tmp_path / "run.yaml"

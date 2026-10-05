@@ -424,8 +424,6 @@ class RunConfig(BaseModel):
             raise ValueError("the rerank step needs candidates.rerank (the reranker's settings)")
         if JUDGE_STEPS & set(self.steps) and self.judge is None:
             raise ValueError("the tournament and rubric steps need a judge (judge: <config path> | fake | {...})")
-        if self.serve is not None and (self.judge is None or self.judge == "fake"):
-            raise ValueError("serve: starts the judge's engine, and this run has no served judge (judge: fake | none)")
         return self
 
     @model_validator(mode="after")

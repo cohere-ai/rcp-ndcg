@@ -82,16 +82,22 @@ released together.
   nested configs too.
 - **Served-role refusals.** A role config whose engine is served must not set `base_url` (the job's URLs for it
   reach the step at runtime; setting both is refused, never silently overridden): enforced for `encoder` and
-  `reranker` (whose `base_url` is now optional, omitted exactly when served; a client built without one is
-  refused rather than silently addressing a vendor's public API). A hosted or in-process model, a BM25 retriever,
-  a role no step of the run calls, and more than one replica for a retrieval role are refused with a hint;
-  `serve.judge` needs a real judge (not `fake`) and a judging step. The judge's own `base_url` stays required
-  (the judge client requires it) and is the placeholder the job's runtime URLs replace.
+  `reranker`, whose `base_url` is now optional, omitted exactly when served; a retrieval client built without a
+  URL is refused rather than silently addressing a vendor's public API. A hosted or in-process model, a BM25
+  retriever, a role no step of the run calls, and more than one replica for a retrieval role are refused with a
+  hint. A served encoder needs no judge (the old any-`serve:` check is gone); `serve.judge` needs a real judge
+  (not `fake`) and a judging step. The judge's own `base_url` stays required (the judge client requires it) and
+  is the placeholder the job's runtime URLs replace. `EngineURLs` refuses a replica listed twice.
 - **`rcp-ndcg doctor --endpoint <url>`** replaces `--judge-url` and probes any role's endpoint URL
   (`GET <url>/models`).
 
 ### Fixed
 
+- A recorded config (run.yaml, the manifest) re-validates without refusing its own defaults: a hosted or served
+  encoder's or reranker's `concurrency` equal to its default no longer fails `run start`, a resume or `run status`
+  with `drop concurrency`. The one-at-a-time check compares the value against the field's default (a full dump
+  cannot preserve which fields the user set); an explicitly non-default `concurrency` on a provider that sends one
+  request at a time is still refused.
 - Changing a served encoder's or reranker's URL no longer re-runs retrieval or reranking: the `retrieve` and
   `rerank` step identities hold the candidates config's content payload (`identity_payload`, as the judge steps
   already do), so its runtime fields (`base_url`, `api_key_env`, `concurrency`, the timeouts and retries,

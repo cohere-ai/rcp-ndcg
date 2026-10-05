@@ -421,10 +421,12 @@ def test_a_served_model_without_a_url_is_refused_where_its_client_is_built() -> 
     """``base_url`` is omitted only when the run's job starts the model's engine (``serve.``); building the
     retrieval client without one is refused, never silently pointed at a vendor's public API."""
     from rcp_ndcg.retrieval import _api as retrieval_api
-    from rcp_ndcg.retrieval.config import OpenAICompatibleEncoder
+    from rcp_ndcg.retrieval.config import OpenAICompatibleEncoder, OpenAICompatibleReranker
 
     with pytest.raises(ConfigError, match="has no base_url"):
         retrieval_api._encoder(OpenAICompatibleEncoder(model="m"))
+    with pytest.raises(ConfigError, match="has no base_url"):
+        retrieval_api._rerank_settings(OpenAICompatibleReranker(model="m"))
 
 
 @pytest.mark.parametrize("model", ["jinaai/jina-reranker-v3", "zeroentropy/zerank-2"])

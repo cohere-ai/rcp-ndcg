@@ -33,7 +33,7 @@ rcp-ndcg run          start       run a config (a YAML file or a packaged config
                       show        one run's manifest and artifacts
 rcp-ndcg schema       list | show NAME | export --out DIR
 rcp-ndcg mcp          serve | tools [--call TOOL --args JSON]
-rcp-ndcg doctor       check the environment: versions, extras, credentials present, endpoint reachable
+rcp-ndcg doctor       [--endpoint URL] check the environment: versions, extras, credentials present, endpoint reachable
 rcp-ndcg --version
 ```
 

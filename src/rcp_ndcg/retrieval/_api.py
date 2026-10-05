@@ -420,6 +420,12 @@ def _rerank_settings(config: RerankerConfig) -> Any:
             model_name=config.model, framework=framework, revision=config.revision, external_batch_size=batch
         )
     if isinstance(config, OpenAICompatibleReranker):
+        if config.base_url is None:
+            raise ConfigError(
+                "the served reranker has no base_url",
+                hint="give rerank.base_url, or start its engine with serve.reranker in the run config (the job "
+                "then passes the URL at runtime)",
+            )
         return RerankSettings(
             model_name=config.model,
             framework="vllm",

@@ -337,6 +337,10 @@ What the runners submit:
 | **Kubernetes** | one Job whose pod has one container, in the engine's `image`: its command is the supervision script below, which starts the engine and the coordinator side by side and talks to the engine on `localhost` | the coordinator Job, plus a StatefulSet of engine pods (`podManagementPolicy: Parallel`) behind a headless Service, both owned by the Job, so `run cancel` or the Job's TTL deletes them; the URLs are the pods' stable names, and the coordinator waits at most `startup_timeout_s` until one replica answers |
 | **SLURM** | one sbatch running the supervision script: the engine is a background step (`srun --overlap`) | one sbatch over as many nodes running the supervision script: one engine per node in one step, the URLs built from the node list, the coordinator on the first node |
 
+Until the runners render phased jobs, a run with `serve:` handed to the `slurm` or `kubernetes` runner is refused
+before anything is written (start the engines yourself and pass their URLs with `--engine`, or run the steps in
+this process); the table describes what the phase rendering, which lands with the runners' support, will submit.
+
 ### When the engine fails, the job fails
 
 A job that starts its engine never outlives it. Holding an allocation for a dead or hung engine costs more than

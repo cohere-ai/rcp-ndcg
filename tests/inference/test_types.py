@@ -419,6 +419,12 @@ class TestEnginesEnv:
         with pytest.raises(ValidationError):
             EngineURLs(urls=["http://a:8000/v1", ""])
 
+    def test_urls_must_not_list_a_replica_twice(self) -> None:
+        with pytest.raises(ValidationError, match="twice"):
+            EngineURLs(urls=["http://a:8000/v1", "http://a:8000/v1/"])
+        with pytest.raises(ConfigError, match="twice"):
+            parse_engines_env('{"judge": {"urls": ["http://a:8000/v1", "http://a:8000/v1"]}}')
+
     def test_the_variable_name_is_the_charter_s(self) -> None:
         assert ENGINES_ENV == "RCP_NDCG_ENGINES"
 

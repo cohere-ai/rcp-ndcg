@@ -476,8 +476,7 @@ def refuse_serving_here(config: RunConfig) -> None:
         raise ConfigError(
             "this run has a serve: section, and a run in this process (or on the local runner) starts no engine",
             hint="start the engine(s) yourself (docs/concepts/serving.md), drop serve:, and pass the URLs with "
-            "RCP_NDCG_ENGINES (or run resume --engine <role>=<url>[,<url>]); or hand the run to a runner that "
-            "starts them: --runner slurm | kubernetes",
+            "RCP_NDCG_ENGINES (or run resume --engine <role>=<url>[,<url>])",
         )
 
 

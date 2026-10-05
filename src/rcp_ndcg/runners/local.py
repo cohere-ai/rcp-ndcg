@@ -93,8 +93,7 @@ class LocalRunner:
                     f"job {job.name!r} starts engine(s) for role(s) {', '.join(serving)}, and the local runner "
                     "starts no engine",
                     hint="start the engine(s) yourself (docs/concepts/serving.md) and pass the URLs: "
-                    "rcp-ndcg run resume --run <run dir> --engine <role>=<url>[,<url>]; or hand the run to a "
-                    "runner that starts them: --runner slurm | kubernetes",
+                    "rcp-ndcg run resume --run <run dir> --engine <role>=<url>[,<url>]",
                 )
         return {
             job.name: worker_script(self.options.defaults_for(job), install=False, workdir=self.cwd) for job in jobs

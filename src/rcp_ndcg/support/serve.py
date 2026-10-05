@@ -164,6 +164,8 @@ class EngineURLs(BaseModel):
         urls = tuple(url.rstrip("/") for url in value)
         if any(not url for url in urls):
             raise ValueError("urls: every entry must be a non-empty base URL")
+        if len(set(urls)) < len(urls):
+            raise ValueError(f"urls lists a replica twice: {list(urls)}")
         return urls
 
 

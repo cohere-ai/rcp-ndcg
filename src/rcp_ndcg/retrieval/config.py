@@ -82,7 +82,10 @@ class _Hosted(Endpoint):
 
     @model_validator(mode="after")
     def _one_request_at_a_time(self) -> _Hosted:
-        if "concurrency" in self.model_fields_set and not getattr(self, "_CONCURRENT", False):
+        # Compared against the field's own default, not ``model_fields_set``: a recorded config (run.yaml) is a
+        # full dump, and re-validating it must not refuse the defaults it carries.
+        default = type(self).model_fields["concurrency"].default
+        if self.concurrency != default and not getattr(self, "_CONCURRENT", False):
             raise ValueError(f"{self.provider} requests are sent one at a time: drop concurrency")  # type: ignore[attr-defined]
         return self
 
