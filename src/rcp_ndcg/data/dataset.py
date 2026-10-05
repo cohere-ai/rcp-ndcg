@@ -31,7 +31,7 @@ from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
 
 from rcp_ndcg.data.io import READERS, JsonlReader, get_reader, grade
 from rcp_ndcg.data.io.base import join_title
-from rcp_ndcg.data.revisions import _COMMIT, hub_cache_dir, hub_offline, resolve_revision
+from rcp_ndcg.data.revisions import hub_cache_dir, hub_offline, is_commit, resolve_revision
 from rcp_ndcg.errors import (
     ConfigError,
     DataError,
@@ -656,7 +656,7 @@ def _hub_miss(exc: BaseException, repo: str, path: str, revision: str | None) ->
     typed = classify(exc)
     offline = hub_offline() or _named_offline(exc)
     if isinstance(typed, MissingInputError) and offline:
-        if revision is not None and _COMMIT.match(revision):
+        if revision is not None and is_commit(revision):
             typed.hint = (
                 "the file is not in the local Hub cache and the Hub is unreachable (HF_HUB_OFFLINE); run once "
                 "online to download it"
@@ -783,7 +783,7 @@ def _hub_unreachable_errors() -> tuple[type[BaseException], ...]:
 
 def _snapshot_listing(repo: str, revision: str | None) -> list[str] | None:
     """The file paths of the local snapshot for *revision*, or ``None`` when the cache holds no snapshot of it."""
-    if revision is None or not _COMMIT.match(revision):
+    if revision is None or not is_commit(revision):
         return None  # the snapshot tree is per commit; without one there is nothing this cache can list
     snapshot = hub_cache_dir() / f"datasets--{repo.replace('/', '--')}" / "snapshots" / revision
     if not snapshot.is_dir():

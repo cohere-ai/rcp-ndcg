@@ -61,6 +61,21 @@ class ResolvedRevision:
         return {"commit": self.commit, "verified": self.verified}
 
 
+def is_commit(revision: str | None) -> bool:
+    """Whether *revision* is already a full 40-character lowercase hex commit (the shape the Hub caches by).
+
+    The public form of the pattern ``revisions.py`` resolves with: a caller that must tell a commit from a branch
+    or tag (a snapshot listing is per commit, an offline hint is per resolved revision) reads it from here.
+
+    Args:
+        revision: The revision as given (a branch, tag, commit, or ``None``).
+
+    Returns:
+        ``True`` when *revision* is exactly 40 hex characters; ``False`` otherwise, and for ``None``.
+    """
+    return revision is not None and bool(_COMMIT.match(revision))
+
+
 def hub_offline() -> bool:
     """``HF_HUB_OFFLINE``, read now (``huggingface_hub`` freezes it at import)."""
     return os.environ.get("HF_HUB_OFFLINE", "").strip().lower() in _TRUE
@@ -223,5 +238,6 @@ __all__ = [
     "dataset_uri_revision",
     "hub_cache_dir",
     "hub_offline",
+    "is_commit",
     "resolve_revision",
 ]
