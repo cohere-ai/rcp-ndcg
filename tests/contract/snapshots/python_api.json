@@ -11730,6 +11730,13 @@
             "required": true,
             "type": "str"
           },
+          "phases": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[rcp_ndcg.runners.base.JobPhase, Ellipsis]"
+          },
           "resources": {
             "alias": null,
             "default": "Resources(gpus=0, cpus=None, memory_gb=None, time_limit_s=None)",
