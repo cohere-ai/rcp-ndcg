@@ -325,9 +325,7 @@ class RunConfig(BaseModel):
         if serve.judge is not None:
             if self.judge is None:
                 raise ConfigError("serve.judge starts the judge's engine, and this run has no judge (judge: <config>)")
-            if self.judge == "fake" or (
-                isinstance(self.judge, JudgeConfig) and self.judge.is_fake
-            ):
+            if self.judge == "fake" or (isinstance(self.judge, JudgeConfig) and self.judge.is_fake):
                 raise ConfigError(
                     "serve: starts the judge's engine, and this run has no served judge (judge: fake | none)",
                     hint="the offline fake judge is answered in process: judge: <config>",

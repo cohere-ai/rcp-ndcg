@@ -49,26 +49,28 @@ ENGINES_ENV = "RCP_NDCG_ENGINES"
 
 
 class ServeConfig(BaseModel):
-    """The engine replicas a run's job starts for its judge.
+    """The engine replicas a run's job starts for one role's config (the judge, the retrieval encoder, the
+    reranker).
 
     Attributes:
         image: The engine's container image, e.g. ``vllm/vllm-openai:<tag>`` or ``lmsysorg/sglang:<tag>``; pin the
             tag. Kubernetes and the SLURM runner's container runtimes need it; with the SLURM runner's
             ``container_runtime: none`` the command runs on the node, and an image is refused (it would be ignored).
         command: The command that starts one replica, verbatim: an argv list, or one shell-quoted string. It must
-            serve the judge's ``model`` name on ``port`` on all interfaces (``--host 0.0.0.0``) when there are
-            several replicas.
+            serve the role config's ``model`` name on ``port`` on all interfaces (``--host 0.0.0.0``) when there
+            are several replicas.
         env: Environment of the engine (e.g. ``HF_HOME``).
         resources: What one replica needs (``gpus``, ``cpus``, ``memory_gb``).
-        replicas: Independent engine replicas, one URL each; the judge sends each request to the one with the
-            fewest requests in flight.
+        replicas: Independent engine replicas, one URL each; a client that reaches several sends each request to
+            the live one with the fewest requests in flight (the judge; a retrieval role takes one replica).
         port: The port each replica serves on.
         readiness_path: The path that answers once a replica serves (``GET``, any 2xx).
         nodes_per_replica: Nodes one replica spans; only 1 is implemented (another value fails validation).
         startup_timeout_s: Seconds a job waits for a replica to answer ``readiness_path`` before it fails; an engine
             that exits before it answers fails the job at once. 0 fails unless the first probe answers.
-        outage_timeout_s: Seconds the judge of the job waits while every replica is down before it fails with
-            ``BackendUnavailableError`` (it becomes the judge's ``wait_on_outage_s`` in the job).
+        outage_timeout_s: Seconds the step that calls this engine waits while every replica is down before it
+            fails with ``BackendUnavailableError`` (the phase carries it to the role config's
+            ``wait_on_outage_s``).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

@@ -1909,10 +1909,10 @@
     },
     "ServeConfig": {
       "additionalProperties": false,
-      "description": "The engine replicas a run's job starts for its judge.",
+      "description": "The engine replicas a run's job starts for one role's config (the judge, the retrieval encoder, the\nreranker).",
       "properties": {
         "command": {
-          "description": "The command that starts one replica, verbatim: an argv list, or one shell-quoted string. It must serve the judge's ``model`` name on ``port`` on all interfaces (``--host 0.0.0.0``) when there are several replicas.",
+          "description": "The command that starts one replica, verbatim: an argv list, or one shell-quoted string. It must serve the role config's ``model`` name on ``port`` on all interfaces (``--host 0.0.0.0``) when there are several replicas.",
           "items": {
             "type": "string"
           },
@@ -1951,7 +1951,7 @@
         },
         "outage_timeout_s": {
           "default": 900,
-          "description": "Seconds the judge of the job waits while every replica is down before it fails with ``BackendUnavailableError`` (it becomes the judge's ``wait_on_outage_s`` in the job).",
+          "description": "Seconds the step that calls this engine waits while every replica is down before it fails with ``BackendUnavailableError`` (the phase carries it to the role config's ``wait_on_outage_s``).",
           "minimum": 0,
           "title": "Outage Timeout S",
           "type": "integer"
@@ -1973,7 +1973,7 @@
         },
         "replicas": {
           "default": 1,
-          "description": "Independent engine replicas, one URL each; the judge sends each request to the one with the fewest requests in flight.",
+          "description": "Independent engine replicas, one URL each; a client that reaches several sends each request to the live one with the fewest requests in flight (the judge; a retrieval role takes one replica).",
           "minimum": 1,
           "title": "Replicas",
           "type": "integer"

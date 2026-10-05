@@ -709,13 +709,11 @@ def _substance(config: RunConfig) -> dict[str, Any]:
 
 
 def _engines_overlay(config: RunConfig) -> dict[EngineRole, EngineURLs]:
-    """The engines ``RCP_NDCG_ENGINES`` carries for this invocation, checked against the run's configs."""
+    """The engines ``RCP_NDCG_ENGINES`` carries for this invocation (unchecked; the caller checks them)."""
     text = os.environ.get(ENGINES_ENV)
     if not text:
         return {}
-    engines = parse_engines_env(text)
-    _check_engines(config, engines)
-    return engines
+    return parse_engines_env(text)
 
 
 def _check_engines(config: RunConfig, engines: Mapping[EngineRole, EngineURLs]) -> None:

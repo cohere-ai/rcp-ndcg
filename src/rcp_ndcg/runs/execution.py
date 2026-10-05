@@ -153,9 +153,9 @@ def _phased_job(
 
     if any(phase.engines for phase in phases) and not getattr(backend, "renders_phases", False):
         raise ConfigError(
-            f"the {runner} runner does not start a phase's engines yet (the phased rendering is RFC-0001 L4b)",
-            hint="start the engines yourself (docs/concepts/serving.md) and resume with "
-            "--engine <role>=<url>[,<url>], or wait for the runners' phase rendering",
+            f"the {runner} runner does not start a phase's engines yet (the phased rendering lands with the "
+            "runners' support)",
+            hint="start the engines yourself (docs/concepts/serving.md) and resume with --engine <role>=<url>[,<url>]",
         )
     try:
         return JobSpec(

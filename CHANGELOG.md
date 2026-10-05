@@ -90,6 +90,8 @@ released together.
   is the placeholder the job's runtime URLs replace. `EngineURLs` refuses a replica listed twice.
 - **`rcp-ndcg doctor --endpoint <url>`** replaces `--judge-url` and probes any role's endpoint URL
   (`GET <url>/models`).
+- The `ServeConfig` fields' schema descriptions are role-neutral (the same engine shape serves the judge, the
+  retrieval encoder and the reranker); no property changed.
 
 ### Fixed
 
