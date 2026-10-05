@@ -364,14 +364,15 @@ class _EmbedProbeAlias(_EmbedProbe):
 
 
 @pytest.fixture(autouse=True)
-def _clean_registry() -> Iterator[None]:
-    """Run each registry test against an empty registry, restoring whatever was there."""
-    saved_builtins, saved_plugins = dict(_adapters.base._BUILTINS), _adapters.base._PLUGINS
-    _adapters.base._BUILTINS.clear()
+def _clean_registry(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Run each registry test against an empty registry, restoring whatever was there.
+
+    One mechanism (``monkeypatch``) saves and restores both attributes: a teardown that mutated the old dict
+    object while another test had replaced the module attribute lost the shipped adapters for the rest of the
+    process (any later test that needs a shipped adapter failed)."""
+    monkeypatch.setattr(_adapters.base, "_BUILTINS", {})
+    monkeypatch.setattr(_adapters.base, "_PLUGINS", _adapters.base._PLUGINS)
     yield
-    _adapters.base._BUILTINS.clear()
-    _adapters.base._BUILTINS.update(saved_builtins)
-    _adapters.base._PLUGINS = saved_plugins
 
 
 class TestAdapterRegistry:
