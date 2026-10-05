@@ -62,7 +62,9 @@ def record(
                 if request_body is None:
                     response = http.get(route)
                 else:
-                    response = http.post(route, json={"model": model, **request_body})
+                    body = {"model": model, **request_body}
+                    recorded_request["body"] = body
+                    response = http.post(route, json=body)
             except httpx.HTTPError as error:
                 raise HarnessError(f"recording {route} against {root} failed: {error}") from error
             written.append(_write_exchange(out / file_name, route, recorded_request, response))
