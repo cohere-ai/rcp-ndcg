@@ -84,13 +84,6 @@ class PoolingServer:
         return response
 
 
-def message_texts(body: dict[str, Any]) -> list[str]:
-    """The texts of a ``messages``-shaped pooling request."""
-    return [
-        part["text"] for message in body.get("messages", []) for part in message["content"] if part["type"] == "text"
-    ]
-
-
 class RecordingSender:
     """The sender the tests inject: real ``httpx`` requests over ``httpx.MockTransport``, canned replies.
 

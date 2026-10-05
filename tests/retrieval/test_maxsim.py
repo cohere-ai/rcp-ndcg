@@ -96,6 +96,18 @@ class TestMaxSimTopk:
         assert scores[0][0] == pytest.approx(2.0)
         assert np.isfinite(scores[0][1]) and scores[0][1] < -1e30
 
+    def test_a_trailing_empty_document_or_query_does_not_crash(self) -> None:
+        """An empty item at the END of either side sits past the last column/row, where reduceat's index goes
+        out of bounds; it is an ordinary empty item, not a crash."""
+        docs = Embeddings.ragged([np.array([[1.0, 0.0]]), np.zeros((0, 2))])
+        queries = Embeddings.ragged([np.array([[1.0, 0.0]]), np.zeros((0, 2))])
+
+        scores, indices = maxsim_topk(docs, queries, k=2)
+
+        assert indices[0].tolist() == [0, 1]
+        np.testing.assert_allclose(scores[0][0], 1.0)
+        np.testing.assert_allclose(scores[1][0], 0.0)  # an empty query scores 0, like the reference definition
+
     def test_ties_break_toward_the_lower_index(self) -> None:
         vector = np.array([[1.0, 0.0]])
         docs = Embeddings.ragged([vector, vector, vector])

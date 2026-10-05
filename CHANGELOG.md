@@ -34,10 +34,11 @@ released together.
   model's chat template to image placeholders). `interpret` accepts nested float lists (shape as sent), flat
   base64 frames (reshaped to `(tokens, dim)` from the declared `dim`) and the framed `bytes` encoding (per-item
   `start`/`end`/`shape` metadata from the response header; `bytes_only` has no framing and is refused, naming
-  the lane that will pin it). Over-length HTTP 400 refusals raise `CapabilityError`; any other client error
-  raises `RequestRejectedError`; a reply whose decoded token counts disagree with its own `usage.prompt_tokens`
-  (a `token_embed` answer has one vector per prompt token) raises `ProviderError` — a mistyped `dim` is a loud
-  error, never a silently mis-shaped corpus.
+  the lane that will pin it). Over-length HTTP 400 and 422 refusals raise `CapabilityError`; any other client
+  error raises `RequestRejectedError`; a reply whose decoded token counts disagree with its own
+  `usage.prompt_tokens` (a `token_embed` answer has one vector per prompt token) raises `ProviderError` — a
+  mistyped `dim` is a loud error, never a silently mis-shaped corpus. `maxsim_topk` no longer raises
+  `IndexError` when an empty item sits at the end of a ragged buffer.
 - **`PoolingClient`** (`rcp_ndcg.inference.clients.pool`, exported from `rcp_ndcg.inference`): a
   `PoolingEndpoint` plus a `Sender` becomes ragged `Embeddings`. It prepends the role's prompt (`_prepare`, the
   one seam the text budget will join), splits into `batch_size`-sized requests, keeps at most `concurrency` in

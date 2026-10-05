@@ -93,7 +93,7 @@ class PoolingClient:
 
         Returns:
             Ragged embeddings in the transfer dtype (one slice of vectors per item), or single-vector
-            embeddings when the served task pooled instead.
+            embeddings when the served task pooled instead and the reply reported no usage.
         """
         bridge = getattr(self._sender, "run", None)
         if callable(bridge):
@@ -118,7 +118,8 @@ class PoolingClient:
 
         Returns:
             Ragged embeddings in the transfer dtype, in input order. An empty batch is the zero-item value
-            and sends nothing.
+            and sends nothing. A served task that pooled instead of token-embedding shows up as one vector
+            per item, which the adapter refuses when the reply reports usage.
         """
         prepared = self._prepare(contents, role)
         if not prepared:

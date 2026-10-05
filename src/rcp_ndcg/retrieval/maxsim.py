@@ -15,15 +15,13 @@ unrelated content, and pooling it into one vector averages the answer away.
 
 Full scores are ``query_tokens x doc_tokens`` per pair, so both axes are
 blocked: peak memory is bounded by the tile budget instead of by the corpus.
-The vectors are accepted as float16 or float32 and stay in their stored dtype
-between blocks; each query block and each document block is upcast to float32
-as it is scored, so the dot products and the per-query sum accumulate in
+the dot products and the per-query sum accumulate in
 float32 without ever materialising a float32 copy of the corpus. The peak
-working set is one query block (at most ``_QUERY_BLOCK_TOKENS`` rows), one
-document block (at most ``_MAX_BLOCK_TOKENS`` rows, and its float32 copy at
-most ``_TILE_BYTES`` -- 64 MiB), and one score tile of at most ``_TILE_BYTES``:
-a float16 token vector costs 2 bytes stored and, transiently, 4 more per block;
-a float32 one, 4. Upcasting blockwise is exact (every float16 value is a
+working set is one query block (budgeted at ``_QUERY_BLOCK_TOKENS`` rows by the
+mean token counts), one document block (its float32 copy at most ``_TILE_BYTES``
+-- 64 MiB), and one score tile of at most ``_TILE_BYTES``: a float16 token
+vector costs 2 bytes stored and, transiently, 4 more per block; a float32 one,
+4. Upcasting blockwise is exact (every float16 value is a
 float32 value), so a float32 corpus is scored bit for bit as before and a
 float16 corpus gains only what its storage precision costs.
 
@@ -78,9 +76,11 @@ def _grouped_max(scores: np.ndarray, starts: np.ndarray, lengths: np.ndarray) ->
     zero-length group rather than the identity, so empty items are zeroed here
     and given their real score (:data:`_EMPTY_DOC_SCORE`) once, after the sum -- summing infinities
     per query token overflows instead.  Without this, a document with no vectors
-    would score as whatever document happened to follow it.
+    would score as whatever document happened to follow it. An empty item at the
+    very end would put its start index one past the last column, where reduceat
+    raises, so the indices are clamped and the empty groups overwritten below.
     """
-    reduced = np.maximum.reduceat(scores, starts, axis=1)
+    reduced = np.maximum.reduceat(scores, np.minimum(starts, scores.shape[1] - 1), axis=1)
     empty = lengths == 0
     if empty.any():
         reduced[:, empty] = 0.0
@@ -88,8 +88,8 @@ def _grouped_max(scores: np.ndarray, starts: np.ndarray, lengths: np.ndarray) ->
 
 
 def _grouped_sum(values: np.ndarray, starts: np.ndarray, lengths: np.ndarray) -> np.ndarray:
-    """Sum over each item's rows: ``(num_items, cols)``. Same reduceat caveat."""
-    reduced = np.add.reduceat(values, starts, axis=0)
+    """Sum over each item's rows: ``(num_items, cols)``. Same reduceat caveat, clamped the same way."""
+    reduced = np.add.reduceat(values, np.minimum(starts, values.shape[0] - 1), axis=0)
     empty = lengths == 0
     if empty.any():
         reduced[empty, :] = 0.0
@@ -167,8 +167,8 @@ def maxsim_topk(
     for q_start in range(0, num_queries, query_block_items):
         q_stop = min(q_start + query_block_items, num_queries)
         q_slice = slice(int(query_embeddings.offsets[q_start]), int(query_embeddings.offsets[q_stop]))
-        # The float32 the scoring runs in, one query block at a time (at most
-        # _QUERY_BLOCK_TOKENS rows).
+        # The float32 the scoring runs in, one query block at a time (budgeted
+        # at _QUERY_BLOCK_TOKENS rows by the mean token counts).
         q_block = _f32_block(queries[q_slice])
         # Re-base the query offsets to this block's local token indexing.
         local_query_starts = query_starts[q_start:q_stop] - int(query_embeddings.offsets[q_start])

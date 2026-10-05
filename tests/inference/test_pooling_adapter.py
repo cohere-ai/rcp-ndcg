@@ -178,6 +178,65 @@ class TestDecoding:
         with pytest.raises(ProviderError, match="not a multiple of the declared dim 4"):
             adapter.interpret(request([Content.from_text("a")], dim=4), [reply])
 
+    def test_a_frame_whose_bytes_do_not_even_fill_one_element_is_a_typed_error(self) -> None:
+        """Seven float16 bytes hold no whole element: frombuffer raises before the dim check, and the
+        refusal is the adapter's typed ProviderError, never a raw ValueError."""
+        adapter = VllmPooling()
+        frame = base64.b64encode(np.ones(7, dtype=np.uint8).tobytes()).decode("ascii")
+        reply = Reply(status=200, body={"data": [{"index": 0, "data": frame}]}, headers={})
+        with pytest.raises(ProviderError, match="does not decode"):
+            adapter.interpret(request([Content.from_text("a")], dim=4), [reply])
+
+    def test_bytes_framing_that_disagrees_with_the_frame_is_a_typed_error(self) -> None:
+        adapter = VllmPooling()
+        frame = np.ones((2, 2), dtype="<f2").tobytes()
+        metadata = {
+            "data": [
+                {
+                    "index": 0,
+                    "embed_dtype": "float16",
+                    "endianness": "little",
+                    "start": 0,
+                    "end": len(frame),
+                    "shape": [3, 2],
+                }
+            ]
+        }
+        reply = Reply(200, frame, {"metadata": json.dumps(metadata)})
+        with pytest.raises(ProviderError, match="framing metadata does not fit"):
+            adapter.interpret(request([Content.from_text("a")]), [reply])
+
+    def test_a_reply_mixing_one_vector_and_per_token_items_is_refused(self) -> None:
+        """The mixing guard holds whichever item came first: 1-D first, 2-D second is a refusal, not an
+        np.stack crash."""
+        adapter = VllmPooling()
+        reply = Reply(
+            200,
+            {"data": [{"index": 0, "data": [1.0, 0.0]}, {"index": 1, "data": [[1.0, 0.0]]}]},
+            {},
+        )
+        with pytest.raises(ProviderError, match="mixes one-vector and per-token items"):
+            adapter.interpret(request([Content.from_text("a"), Content.from_text("b")], dim=2), [reply])
+
+    def test_usage_reads_a_bytes_reply_s_metadata(self) -> None:
+        adapter = VllmPooling()
+        frame = np.ones((2, 2), dtype="<f2").tobytes()
+        metadata = {
+            "data": [
+                {
+                    "index": 0,
+                    "embed_dtype": "float16",
+                    "endianness": "little",
+                    "start": 0,
+                    "end": len(frame),
+                    "shape": [2, 2],
+                }
+            ],
+            "usage": {"prompt_tokens": 2},
+        }
+        reply = Reply(200, frame, {"metadata": json.dumps(metadata)})
+        assert adapter.usage(reply) == TokenCount(input_tokens=2)
+
     def test_a_mistyped_dim_is_caught_by_the_reply_s_own_usage(self) -> None:
         """A token_embed answer has one vector per prompt token: the wrong width decodes the wrong count.
 

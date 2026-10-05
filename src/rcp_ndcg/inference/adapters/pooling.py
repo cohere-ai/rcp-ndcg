@@ -33,15 +33,18 @@ Wire contract, verified field by field against the vLLM checkout (``vllm/entrypo
 The replies are accepted in three shapes (the layout of the answer is what says which pooling task ran, never
 configuration that could disagree with the server): nested float lists decode as they arrive (2-D -> ragged,
 1-D -> one vector per item, today's ``VllmPoolingClient._as_embeddings`` rule), base64 strings decode in the
-declared dtype and reshape to ``(tokens, dim)``, and a bytes body decodes through the framing metadata. Every
-vector is stored in the transfer dtype the config declared (float16 by default, float32 opt-in), so an index
-built from float16 vectors stores float16; the bytes per token vector are 2 for float16 and 4 for float32.
+declared dtype and reshape to ``(tokens, dim)``, and a bytes body decodes through the framing metadata. A reply
+that reports ``usage`` (every vLLM JSON reply does) is refused when it answered one vector per item: a pooled
+task, not the requested ``token_embed``. Every vector is stored in the transfer dtype the config declared
+(float16 by default, float32 opt-in), so an index built from float16 vectors stores float16; the bytes per
+token vector are 2 for float16 and 4 for float32.
 """
 
 from __future__ import annotations
 
 import base64
 import json
+import math
 from collections.abc import Sequence
 from typing import Any, ClassVar, Final
 
@@ -169,8 +172,10 @@ class VllmPooling:
 
         Returns:
             Ragged embeddings (one slice per item, in request order) in the request's transfer dtype -- or a
-            single-vector buffer when the server answered one vector per item (the served task was not
-            ``token_embed``; the layout of the answer, not the config, decides).
+            single-vector buffer when the server answered one vector per item and reported no usage (the
+            served task was not ``token_embed``; the layout of the answer, not the config, decides). A reply
+            that reports ``usage`` -- every vLLM JSON reply does -- is refused in that case, because one
+            vector per item contradicts one vector per prompt token.
 
         Raises:
             CapabilityError: An input was longer than the engine's context (HTTP 400 naming it).
@@ -178,7 +183,10 @@ class VllmPooling:
             ProviderError: A reply is not a ``/pooling`` answer (no ``data``), its items do not match the
                 request, a frame does not fit the declared ``dim``, or the decoded token counts disagree with
                 the reply's own ``usage``.
-            ConfigError: A base64 frame arrived with no ``dim`` declared on the request.
+            ConfigError: A base64 frame arrived with no ``dim`` declared on the request, or the request
+                names an ``embed_dtype`` the adapter cannot decode.
+            NotImplementedError: A ``bytes_only`` reply arrived: it sends no framing and cannot be split
+                (lane L7 pins the framing).
         """
         if not request.contents:
             return Embeddings.empty(0, multi_vector=True, dtype=request.embed_dtype)
@@ -200,17 +208,30 @@ class VllmPooling:
             )
         if not arrays:
             return Embeddings.empty(0, multi_vector=True, dtype=request.embed_dtype)
-        if arrays[0].ndim == 1:
+        kinds = {array.ndim for array in arrays}
+        if kinds == {1}:
             return Embeddings.single(np.stack(arrays))
-        if any(array.ndim != 2 for array in arrays):
-            raise ProviderError(
-                "the /pooling answer mixes one-vector and per-token items; refusing to guess which pooling task ran"
-            )
-        return Embeddings.ragged(arrays, dtype=request.embed_dtype)
+        if kinds == {2}:
+            return Embeddings.ragged(arrays, dtype=request.embed_dtype)
+        raise ProviderError(
+            "the /pooling answer mixes one-vector and per-token items; refusing to guess which pooling task ran"
+        )
 
     def usage(self, reply: Reply) -> TokenCount | None:
-        """The prompt tokens one reply reports (``usage.prompt_tokens``), or ``None`` when absent."""
+        """The prompt tokens one reply reports (``usage.prompt_tokens``), or ``None`` when absent.
+
+        A JSON reply reports them in its body; a bytes reply reports them in the framing metadata header.
+        """
         body = reply.body
+        if isinstance(body, bytes):
+            metadata = reply.headers.get("metadata")
+            if metadata is None:
+                return None
+            try:
+                prompt_tokens = (json.loads(metadata).get("usage") or {}).get("prompt_tokens")
+            except json.JSONDecodeError:
+                return None
+            return TokenCount(input_tokens=int(prompt_tokens)) if prompt_tokens is not None else None
         if not isinstance(body, dict):
             return None
         prompt_tokens = (body.get("usage") or {}).get("prompt_tokens")
@@ -269,7 +290,10 @@ class VllmPooling:
                     f"embed_dtype {embed_dtype!r} has no NumPy frame dtype; the pooling endpoint speaks "
                     "float16 and float32"
                 )
-            flat = np.frombuffer(raw, dtype=_FRAME_DTYPES[embed_dtype])
+            try:
+                flat = np.frombuffer(raw, dtype=_FRAME_DTYPES[embed_dtype])
+            except ValueError as exc:
+                raise ProviderError(f"the /pooling base64 frame does not decode in {embed_dtype}: {exc}") from exc
             if flat.size % dim:
                 raise ProviderError(
                     f"the /pooling base64 frame holds {flat.size} value(s), not a multiple of the declared dim "
@@ -307,6 +331,11 @@ class VllmPooling:
                 start, end, shape = int(item["start"]), int(item["end"]), tuple(item["shape"])
             except (KeyError, TypeError, ValueError) as exc:
                 raise ProviderError(f"the /pooling bytes framing metadata is incomplete: {item!r}") from exc
+            if math.prod(shape) * frame_dtype.itemsize != end - start:
+                raise ProviderError(
+                    f"the /pooling bytes framing metadata does not fit its frame: shape {shape} needs "
+                    f"{math.prod(shape) * frame_dtype.itemsize} byte(s), the framing allots {end - start}"
+                )
             flat = np.frombuffer(reply.body[start:end], dtype=frame_dtype)
             arrays.append(flat.reshape(shape))
         self._check_usage(metadata.get("usage"), arrays)

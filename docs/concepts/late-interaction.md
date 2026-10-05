@@ -31,10 +31,11 @@ below are verified against the vLLM entrypoints (`vllm/entrypoints/pooling/` and
 | `embed_dtype` | the config's `embed_dtype` | the transfer precision (below) |
 | `endianness` | `"little"` | explicit, so the frame decodes on any server platform |
 
-Two shapes the server applies its chat template to exist: a text-only batch
-travels as one `input` list, and a media item (a page image, for the ColPali and
-ColQwen3 checkpoints) travels as its own `messages` request — the only shape in
-which the template reaches the image placeholders. `dimensions` is never sent:
+Two request shapes exist, and only one of them runs the server's chat template:
+a text-only batch travels as one `input` list (tokenised raw), while a media
+item (a page image, for the ColPali and ColQwen3 checkpoints) travels as its own
+`messages` request — the only shape in which the template reaches the image
+placeholders. `dimensions` is never sent:
 `/pooling` refuses it.
 
 A media batch of one page and one caption therefore becomes two requests, and the
@@ -48,6 +49,11 @@ pooling task ran:
   decoded as they arrive;
 * **the framed `bytes` encoding**: per-item `start`/`end`/`shape` metadata from
   the response header (`bytes_only` sends no framing and is refused).
+
+A reply that reports one vector per item and a `usage` line — the shape a
+pooled (not `token_embed`) server answers — is refused, because one vector per
+item contradicts one vector per prompt token; without a `usage` line it passes
+through as one vector per item.
 
 ```python
 import numpy as np
