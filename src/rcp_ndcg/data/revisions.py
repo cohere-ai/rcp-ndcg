@@ -91,6 +91,7 @@ def resolve_revision(repo_id: str, revision: str | None = None) -> ResolvedRevis
     ref = revision or "main"
     if _COMMIT.match(ref):
         return ResolvedRevision(repo_id, ref)
+    _remove_corrupt_ref(repo_id, ref)
     commit = None if hub_offline() else _hub_commit(repo_id, ref)
     if commit is None:
         commit = _cached_commit(repo_id, ref)
@@ -101,6 +102,27 @@ def resolve_revision(repo_id: str, revision: str | None = None) -> ResolvedRevis
             "revision to make it exact."
         )
     return ResolvedRevision(repo_id, commit)
+
+
+def _remove_corrupt_ref(repo_id: str, ref: str) -> None:
+    """Remove a ``refs/<ref>`` the readers cannot use (bytes that are not valid UTF-8), best effort.
+
+    huggingface_hub reads the ref unguarded, both in ``HfApi.resolve_revision`` and in ``hf_hub_download``, so a
+    corrupt file would crash them; removing it costs the cached commit, which the next online resolution rewrites.
+    """
+    path = hub_cache_dir() / f"datasets--{repo_id.replace('/', '--')}" / "refs" / ref
+    try:
+        if not path.is_file():
+            return
+        path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        try:
+            path.unlink()
+        except OSError:
+            return
+        logger.warning(f"Removed the corrupt hub cache ref {path}; the next online resolution rewrites it.")
+    except OSError:
+        pass  # unreadable for another reason (permissions): leave it to the caller's own error handling
 
 
 def _hub_commit(repo_id: str, ref: str) -> str | None:

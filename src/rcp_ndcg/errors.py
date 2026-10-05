@@ -380,6 +380,14 @@ def classify(exc: BaseException) -> RcpNdcgError:
             hint="the file is not in the local Hub cache and Hub access is off (HF_HUB_OFFLINE); "
             "unset HF_HUB_OFFLINE or download the file first",
         )
+    if _named(exc, "huggingface_hub.errors", "HfHubHTTPError") and (
+        (status := getattr(getattr(exc, "response", None), "status_code", 0)) >= 500 or status == 429
+    ):
+        # the Hub answered but is down or rate-limiting: the same retryable provider failure as a connection one
+        return ProviderError(
+            name,
+            hint="the Hugging Face Hub could not be reached; check connectivity and HF_ENDPOINT, then retry",
+        )
     if isinstance(exc, FileNotFoundError):
         details = {"path": str(exc.filename)} if exc.filename is not None else None
         return MissingInputError(str(exc), hint="check the path, or run the step that produces it", details=details)

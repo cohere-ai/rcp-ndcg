@@ -32,10 +32,20 @@ from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
 from rcp_ndcg.data.io import READERS, JsonlReader, get_reader, grade
 from rcp_ndcg.data.io.base import join_title
 from rcp_ndcg.data.revisions import _COMMIT, hub_cache_dir, hub_offline, resolve_revision
-from rcp_ndcg.errors import ConfigError, DataError, MissingInputError, RcpNdcgError, classify
+from rcp_ndcg.errors import (
+    ConfigError,
+    DataError,
+    MissingInputError,
+    ProviderError,
+    RcpNdcgError,
+    classify,
+)
+from rcp_ndcg.support.logging import get_logger
 
 if TYPE_CHECKING:
     import pandas as pd
+
+logger = get_logger(__name__)
 
 
 class Suite(NamedTuple):
@@ -639,11 +649,13 @@ def _hub_miss(exc: BaseException, repo: str, path: str, revision: str | None) ->
     Offline that is a non-retryable :class:`MissingInputError`; its hint is the revision fix when nothing is
     resolved (the cache was filled by a commit-pinned download, so only a recorded ref resolves a branch), and
     the cache-miss one when the revision is a commit the file is simply not cached at — it never tells a caller
-    to pass a revision they already passed. A Hub that cannot be reached is a retryable :class:`ProviderError`.
-    The details name what was looked for, whatever the cause.
+    to pass a revision they already passed, and never overrides what a non-offline cause (a repository that does
+    not exist, say) asked the caller to check. A Hub that cannot be reached is a retryable
+    :class:`ProviderError` naming ``HF_ENDPOINT``. The details name what was looked for, whatever the cause.
     """
     typed = classify(exc)
-    if isinstance(typed, MissingInputError):
+    offline = hub_offline() or _named_offline(exc)
+    if isinstance(typed, MissingInputError) and offline:
         if revision is not None and _COMMIT.match(revision):
             typed.hint = (
                 "the file is not in the local Hub cache and the Hub is unreachable (HF_HUB_OFFLINE); run once "
@@ -654,8 +666,21 @@ def _hub_miss(exc: BaseException, repo: str, path: str, revision: str | None) ->
                 "the cache has no ref to resolve and the Hub is unreachable offline (HF_HUB_OFFLINE): pass "
                 "--revision <full sha> (the cache was filled by a commit-pinned download), or run once online"
             )
+    elif isinstance(typed, ProviderError):
+        typed.hint = "the Hugging Face Hub could not be reached; check connectivity and HF_ENDPOINT, then retry"
     typed.details.update({"repo": repo, "path": path, "revision": revision})
     return typed
+
+
+def _named_offline(exc: BaseException) -> bool:
+    """Whether *exc* is the library's offline refusal, or its cache miss chained from one."""
+    from huggingface_hub.errors import OfflineModeIsEnabled
+
+    if isinstance(exc, OfflineModeIsEnabled):
+        return True
+    if isinstance(exc, _local_entry_not_found()):
+        return isinstance(exc.__cause__ or exc.__context__, OfflineModeIsEnabled)
+    return False
 
 
 def _card_paths(repo: str, revision: str | None) -> dict[str, list[str]]:
@@ -699,29 +724,42 @@ def _hub_file(repo: str, path: str, revision: str | None) -> Path | None:
 def _hub_listing(repo: str, revision: str | None) -> list[str]:
     """Every file path of a public dataset repository at one commit.
 
-    Online the Hub answers. Offline, or with the Hub unreachable, the local snapshot for the commit stands in —
-    it holds the files the download left — and with no snapshot the failure is the classified cache miss, so a
-    run materializes its corpus from a cache an online run filled.
+    Online the Hub answers. Offline, or with the Hub unreachable or down, the local snapshot for the commit
+    stands in — it holds the files the download left — with one warning that it does; with no snapshot the
+    failure names the real cause (see :func:`_hub_miss`), so a run materializes its corpus from a cache an
+    online run filled.
     """
     import httpx
     from huggingface_hub import HfApi
-    from huggingface_hub.errors import OfflineModeIsEnabled
+    from huggingface_hub.errors import HfHubHTTPError, OfflineModeIsEnabled
 
+    unreachable: Exception | None = None
     try:
         if not hub_offline():
             return list(HfApi().list_repo_files(repo, repo_type="dataset", revision=revision))
-    except (httpx.TransportError, OfflineModeIsEnabled):
-        pass  # the cache stands in, as the downloads themselves do
+    except (httpx.TransportError, OfflineModeIsEnabled, HfHubHTTPError) as exc:
+        status = getattr(getattr(exc, "response", None), "status_code", 0)
+        if isinstance(exc, HfHubHTTPError) and status < 500 and status != 429:
+            raise  # the Hub answered: the repository, the revision or the credentials are the problem
+        unreachable = exc
     listing = _snapshot_listing(repo, revision)
     if listing is not None:
+        logger.warning(
+            f"Serving the file listing of hf://{repo} from the local snapshot at {revision} (the Hub is "
+            "unreachable); it holds only the files a download left, and a partial cache reads as missing data."
+        )
         return listing
+    if unreachable is not None:
+        raise _hub_miss(unreachable, repo, "(file listing)", revision) from unreachable
     offline = OfflineModeIsEnabled(f"cannot list the files of hf://{repo} offline (HF_HUB_OFFLINE)")
     raise _hub_miss(offline, repo, "(file listing)", revision) from offline
 
 
 def _snapshot_listing(repo: str, revision: str | None) -> list[str] | None:
     """The file paths of the local snapshot for *revision*, or ``None`` when the cache holds no snapshot of it."""
-    snapshot = hub_cache_dir() / f"datasets--{repo.replace('/', '--')}" / "snapshots" / (revision or "")
+    if revision is None or not _COMMIT.match(revision):
+        return None  # the snapshot tree is per commit; without one there is nothing this cache can list
+    snapshot = hub_cache_dir() / f"datasets--{repo.replace('/', '--')}" / "snapshots" / revision
     if not snapshot.is_dir():
         return None
     return sorted(str(path.relative_to(snapshot)) for path in snapshot.rglob("*") if path.is_file())

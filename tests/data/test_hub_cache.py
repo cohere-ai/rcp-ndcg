@@ -8,6 +8,7 @@ stand-in for revision resolution. Nothing here reaches the network.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -182,8 +183,12 @@ def test_offline_pinned_required_table_the_cache_marks_absent_says_does_not_exis
     assert caught.value.hint
 
 
-def test_offline_corpus_materializes_from_the_snapshot(cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_offline_corpus_materializes_from_the_snapshot(
+    cache: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     """Offline, the repository listing comes from the local snapshot, so a run reads its corpus from the cache."""
+    import logging
+
     card = (
         "---\nconfigs:\n- config_name: hr__english-corpus\n  data_files:\n  - path: hr__english/corpus/*.parquet\n---\n"
     )
@@ -193,9 +198,11 @@ def test_offline_corpus_materializes_from_the_snapshot(cache: Path, monkeypatch:
     (snapshot / "README.md").write_text(card)
     _offline(monkeypatch)
 
-    dataset = load_dataset(f"hf://{REPO}/{SUBSET}", revision=SHA)
+    with caplog.at_level(logging.WARNING, logger="rcp_ndcg.data.dataset"):
+        dataset = load_dataset(f"hf://{REPO}/{SUBSET}", revision=SHA)
 
     assert {d: doc.text for d, doc in dataset.corpus.items()} == {"a": "A\n\nalpha", "b": "beta"}
+    assert "snapshot" in caplog.text, "a listing served from a partial snapshot says so"
 
 
 def test_offline_listing_without_a_snapshot_names_the_revision_fix(cache: Path) -> None:
@@ -207,6 +214,81 @@ def test_offline_listing_without_a_snapshot_names_the_revision_fix(cache: Path) 
 
     assert caught.value.retryable is False
     assert "--revision" in (caught.value.hint or "")
+
+
+def test_a_hub_down_on_the_listing_serves_the_snapshot_or_is_a_retryable_provider_error(
+    cache: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A Hub answering 5xx on the listing is not a bug: the snapshot stands in, or the failure is retryable."""
+    import logging
+
+    import httpx
+    import huggingface_hub
+    from huggingface_hub.errors import HfHubHTTPError
+
+    from rcp_ndcg.data.dataset import _hub_listing
+
+    def down(*args: object, **kwargs: object):
+        response = httpx.Response(503, request=httpx.Request("GET", "https://hub.example/tree"))
+        raise HfHubHTTPError("503 Service Unavailable", response=response)
+
+    card = (
+        "---\nconfigs:\n- config_name: hr__english-corpus\n  data_files:\n  - path: hr__english/corpus/*.parquet\n---\n"
+    )
+    corpus = pd.DataFrame({"id": ["a"], "text": ["alpha"]})
+    snapshot = stage(
+        cache, files={**_TABLES, f"{SUBSET}/corpus/part-0.parquet": corpus}, absent=(f"{SUBSET}/excluded.parquet",)
+    )
+    (snapshot / "README.md").write_text(card)
+    _online(monkeypatch, {(REPO, "main"): SHA})
+    monkeypatch.setattr(huggingface_hub.HfApi(), "list_repo_files", down, raising=False)  # HfApi() is _online's fake
+
+    with caplog.at_level(logging.WARNING, logger="rcp_ndcg.data.dataset"):
+        listing = _hub_listing(REPO, SHA)
+
+    assert f"{SUBSET}/corpus/part-0.parquet" in listing
+    assert "snapshot" in caplog.text, "a listing served from a partial snapshot says so"
+
+    shutil.rmtree(snapshot)  # no snapshot left to stand in
+    with pytest.raises(ProviderError) as caught:
+        _hub_listing(REPO, SHA)
+
+    assert caught.value.retryable is True
+    assert "HF_ENDPOINT" in (caught.value.hint or "")
+
+
+def test_an_unreachable_hub_on_the_listing_is_a_retryable_provider_error_not_offline(
+    cache: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Online, a listing the Hub cannot be reached for is a provider failure, never an offline one."""
+    import httpx
+    import huggingface_hub
+
+    from rcp_ndcg.data.dataset import _hub_listing
+
+    stage(cache, files=_TABLES)
+    _online(monkeypatch, {(REPO, "main"): SHA})  # env online: the offline flag is not the cause
+
+    def unreachable(*args: object, **kwargs: object):
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(huggingface_hub.HfApi(), "list_repo_files", unreachable, raising=False)  # _online's fake
+    shutil.rmtree(next((cache / f"datasets--{REPO.replace('/', '--')}").glob("snapshots/*")))
+
+    with pytest.raises(ProviderError) as caught:
+        _hub_listing(REPO, SHA)
+
+    assert caught.value.retryable is True
+    assert "HF_ENDPOINT" in (caught.value.hint or "")
+
+
+def test_a_snapshot_listing_needs_a_commit(cache: Path) -> None:
+    """An unresolved revision lists nothing: the snapshot tree is per commit, never across commits."""
+    from rcp_ndcg.data.dataset import _snapshot_listing
+
+    stage(cache, files=_TABLES, sha=SHA)
+
+    assert _snapshot_listing(REPO, None) is None
 
 
 def test_an_unreachable_hub_is_a_retryable_provider_error(cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:
