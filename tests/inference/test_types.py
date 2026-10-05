@@ -14,6 +14,7 @@ import pytest
 from pydantic import ValidationError
 from rcp_ndcg_core.content import Content
 
+from rcp_ndcg.data.resolution import ImagePolicy, VideoPolicy
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference import (
     ADAPTER_ENTRY_POINTS,
@@ -288,6 +289,74 @@ class TestRoleConfigs:
             config.listwise = True  # type: ignore[misc]
         with pytest.raises(ValidationError):
             RerankEndpoint(base_url="http://a:8000/v1", model="m", surprise=1)  # type: ignore[call-arg]
+
+
+class TestRoleMediaPolicy:
+    """Every retrieval role declares the media it sends, with the judge's own policy types (p-media D1):
+    one preparation path, the same pixel budget semantics, so a page costs an encoder what it costs the
+    judge. The policies and the processor family change the input the model sees: content."""
+
+    IMAGE = ImagePolicy(min_px=65536, max_px=1280 * 32 * 32)
+    VIDEO = VideoPolicy(num_frames=8, wire="frames")
+
+    @pytest.mark.parametrize(
+        "config_cls", [EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint], ids=lambda cls: cls.__name__
+    )
+    def test_every_role_declares_the_media_fields(self, config_cls: type[Endpoint]) -> None:
+        config = config_cls(
+            base_url="http://a:8000/v1",
+            model="m",
+            image_processor="qwen3_vl",
+            image_policy=self.IMAGE,
+            video_policy=self.VIDEO,
+            max_images=4,
+            max_videos=1,
+        )
+        assert config.image_processor == "qwen3_vl"
+        assert config.image_policy == self.IMAGE and config.video_policy == self.VIDEO
+        assert config.max_images == 4 and config.max_videos == 1
+        check_declarations(config_cls)
+
+    @pytest.mark.parametrize("config_cls", [EmbeddingEndpoint, RerankEndpoint], ids=lambda cls: cls.__name__)
+    def test_the_media_policy_is_content_and_the_media_limits_are_runtime(self, config_cls: type[Endpoint]) -> None:
+        """What the model sees (the processor family, the pixel and frame budgets) is content; the server's
+        per-request media limits, like the judge's, are runtime."""
+        payload = identity_payload(config_cls(base_url="http://a:8000/v1", model="m"))
+        assert "image_processor" not in payload and "image_policy" not in payload
+        configured = identity_payload(
+            config_cls(
+                base_url="http://a:8000/v1",
+                model="m",
+                image_processor="qwen3_vl",
+                image_policy=self.IMAGE,
+                video_policy=self.VIDEO,
+                max_images=4,
+                max_videos=1,
+            )
+        )
+        assert configured["image_processor"] == "qwen3_vl"
+        # identity_payload omits None-valued fields (an unset optional is the absence of a declaration)
+        assert configured["image_policy"] == identity_payload(self.IMAGE)
+        assert configured["video_policy"] == identity_payload(self.VIDEO)
+        assert "max_images" not in configured and "max_videos" not in configured
+
+    def test_a_different_pixel_budget_is_a_different_identity(self) -> None:
+        other = EmbeddingEndpoint(
+            base_url="http://a:8000/v1", model="m", image_policy=ImagePolicy(min_px=65536, max_px=65536)
+        )
+        assert (
+            identity_payload(other)["image_policy"]
+            != identity_payload(EmbeddingEndpoint(base_url="http://a:8000/v1", model="m", image_policy=self.IMAGE))[
+                "image_policy"
+            ]
+        )
+
+    def test_the_media_fields_default_to_a_text_only_role(self) -> None:
+        for config_cls in (EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint):
+            config = config_cls(base_url="http://a:8000/v1", model="m")
+            assert config.image_processor is None
+            assert config.image_policy is None and config.video_policy is None
+            assert config.max_images == 0 and config.max_videos == 0
 
 
 # ---------------------------------------------------------------------------------------------------------------

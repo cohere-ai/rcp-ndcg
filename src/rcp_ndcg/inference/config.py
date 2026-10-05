@@ -12,15 +12,63 @@ from typing import ClassVar, Literal
 
 from pydantic import Field, model_validator
 
+from rcp_ndcg.data.resolution import ImagePolicy, ImageProcessor, VideoPolicy
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.support.identity import FieldRole
 
 
-class EmbeddingEndpoint(Endpoint):
+class _MediaEndpoint(Endpoint):
+    """The media fields every retrieval role shares: what it declares about the media it sends.
+
+    The judge declares the same fields (:class:`~rcp_ndcg.llm.JudgeConfig`); these reuse its policy types
+    (``rcp_ndcg.data.resolution``, no copies), so one preparation path --
+    :func:`~rcp_ndcg.data.prepare.prepare_request` -- sizes an encoder's pages exactly as it sizes the
+    judge's, and the token counts the role's text budget subtracts are the judge's.
+    """
+
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {
+        "image_processor": FieldRole.CONTENT,
+        "image_policy": FieldRole.CONTENT,
+        "video_policy": FieldRole.CONTENT,
+        "max_images": FieldRole.RUNTIME,
+        "max_videos": FieldRole.RUNTIME,
+    }
+
+    image_processor: ImageProcessor | None = None
+    """The served model's image processor family (``qwen2_vl``, ``qwen2_5_vl``, ``qwen3_vl``;
+    :data:`~rcp_ndcg.data.resolution.PROCESSORS`). The client resizes every image and video frame exactly as
+    that processor would, within the image policy's budget, so the engine needs no media flags. ``None``
+    (the default): the family is unknown, and images are sent unchanged, as stored. Content: it changes the
+    input the model sees."""
+
+    image_policy: ImagePolicy | None = None
+    """The pixel budget every image and video frame is resized to -- the same
+    :class:`~rcp_ndcg.data.resolution.ImagePolicy` the judge's ``preprocessing.image`` is, under this
+    role's ``image_processor`` -- or ``None`` (the default) for a text-only role. Content: the budget decides
+    the pixels (and with them the token count) the model sees."""
+
+    video_policy: VideoPolicy | None = None
+    """Which frames of a video the role sends and how they travel -- the judge's
+    :class:`~rcp_ndcg.data.resolution.VideoPolicy`, or ``None`` (the default) for a text-only role. Content:
+    the frame count and the wire change the input the model sees."""
+
+    max_images: int = Field(default=0, ge=0)
+    """Images one request may carry; 0 (the default) means the model reads none. There is no "unlimited":
+    a role that sends images declares its limit, which the server's per-request media limit
+    (``--limit-mm-per-prompt``) must allow. Runtime: a gate on what is sent, like the judge's."""
+
+    max_videos: int = Field(default=0, ge=0)
+    """Video containers one request may carry; 0 (the default) means the model reads none. There is no
+    "unlimited". Runtime: like :attr:`max_images`."""
+
+
+class EmbeddingEndpoint(_MediaEndpoint):
     """A dense-embedding endpoint speaking OpenAI ``POST {base_url}/embeddings``.
 
     The package owns every content decision itself: it applies the prompts in the text, cuts at token
-    boundaries with the declared tokenizer, sends ``dimensions`` only when set, and L2-normalises the result.
+    boundaries with the declared tokenizer, prepares the media under the role's policies
+    (:func:`~rcp_ndcg.data.prepare.prepare_request`), sends ``dimensions`` only when set, and L2-normalises
+    the result.
 
     Attributes:
         api: The wire adapter; ``"openai_embeddings"`` by default (a hosted profile overrides it in its own
@@ -91,7 +139,7 @@ class PoolingEndpoint(EmbeddingEndpoint):
     embed_dtype: Literal["float16", "float32"] = "float16"
 
 
-class RerankEndpoint(Endpoint):
+class RerankEndpoint(_MediaEndpoint):
     """A reranking endpoint speaking the Cohere-shaped ``POST {base_url}/rerank``.
 
     One query's whole candidate set goes per request (the engine reuses the query prefix, and a listwise model
