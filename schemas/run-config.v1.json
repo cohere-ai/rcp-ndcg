@@ -2171,7 +2171,7 @@
       "properties": {
         "adaptive_batches": {
           "default": 7,
-          "description": "Adaptive batches, with a Bradley-Terry refit after each.",
+          "description": "Adaptive batches, with a Bradley-Terry refit after each. A pool no larger than ``adaptive_window`` runs one batch, whatever this says (see adaptive_batches_for).",
           "minimum": 0,
           "title": "Adaptive Batches",
           "type": "integer"

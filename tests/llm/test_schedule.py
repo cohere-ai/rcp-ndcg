@@ -62,11 +62,12 @@ def test_small_pools_and_subsets() -> None:
     assert TournamentSchedule().calls_per_query(1) == 0
     # A pool smaller than a window: windows of the whole pool, so the placements per document hold.
     assert TournamentSchedule().windows_for(4) == (4, 2, 1)  # round(3.53), round(1.8), round(0.53)
-    assert TournamentSchedule().calls_per_query(4) == 2 * (4 + 2) + 7
+    assert TournamentSchedule().calls_per_query(4) == 2 * (4 + 2) + 1
     assert TournamentSchedule().windows_for(8) == (4, 2, 1)
-    # A pool no larger than the adaptive window: one adaptive window per batch, whatever the placements.
+    # A pool no larger than the adaptive window: one adaptive window in total, whatever the placements -- every
+    # batch would ask the whole pool in its current order, and a repeated window answers the same thing again.
     assert TournamentSchedule(stratified_placements=5, adaptive_placements=20).windows_for(8) == (4, 5, 1)
-    assert TournamentSchedule(stratified_placements=5, adaptive_placements=20).calls_per_query(8) == 2 * (4 + 5) + 7
+    assert TournamentSchedule(stratified_placements=5, adaptive_placements=20).calls_per_query(8) == 2 * (4 + 5) + 1
     assert TournamentSchedule(adaptive_batches=0).windows_for(8) == (4, 2, 0)
     rubric = RubricSchedule()
     assert rubric.windows_for(0) == (0, 0)
@@ -79,6 +80,20 @@ def test_small_pools_and_subsets() -> None:
     assert sum(RubricSchedule(placements_per_doc=0.2).windows_for(15, n_units=95)) == 10
     # At least one random window, however small the share.
     assert RubricSchedule(random_share=0.01).windows_for(20) == (1, 12)
+
+
+def test_a_pool_no_larger_than_the_adaptive_window_runs_one_adaptive_batch() -> None:
+    """Every adaptive window of such a pool is the whole pool in its current order, so another batch repeats it."""
+    schedule = TournamentSchedule()
+    assert schedule.adaptive_batches_for(2) == 1
+    assert schedule.adaptive_batches_for(10) == 1
+    assert schedule.adaptive_batches_for(11) == 7  # above the adaptive window, distinct windows are possible again
+    assert schedule.adaptive_batches_for(150) == 7
+    assert TournamentSchedule(adaptive_batches=0).adaptive_batches_for(8) == 0
+    assert TournamentSchedule(adaptive_batches=3).adaptive_batches_for(8) == 1
+    # The estimate and the pass read the same rule.
+    assert schedule.phase_calls(8) == (2 * (4 + 2), 1)
+    assert schedule.phase_calls(150) == (2 * (53 + 27), 56)
 
 
 @pytest.mark.parametrize("n", [2, 4, 7, 10, 12, 23, 150])

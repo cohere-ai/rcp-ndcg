@@ -2127,6 +2127,26 @@
         "frozen": true,
         "kind": "pydantic_model",
         "members": {
+          "adaptive_batches_for": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "int",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "n_docs"
+              },
+              {
+                "returns": "int"
+              }
+            ]
+          },
           "calls_per_query": {
             "kind": "method",
             "signature": [
@@ -10255,6 +10275,26 @@
         "frozen": true,
         "kind": "pydantic_model",
         "members": {
+          "adaptive_batches_for": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "int",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "n_docs"
+              },
+              {
+                "returns": "int"
+              }
+            ]
+          },
           "calls_per_query": {
             "kind": "method",
             "signature": [

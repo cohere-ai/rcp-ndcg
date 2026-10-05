@@ -26,9 +26,9 @@ the placements per document hold for any pool: a pool of 4 gets
    ``adaptive_depth`` documents, chosen by the information of their adjacent
    boundaries (Fisher information x nDCG discount x novelty, covered boundaries
    discounted by ``overlap_discount``), with a Bradley-Terry refit between batches.
-   A pool no larger than ``adaptive_window`` has one adaptive window per batch:
-   every adaptive window would be the whole pool in its current order, so a
-   second one in the same batch would repeat the first.
+   A pool no larger than ``adaptive_window`` has one adaptive window in total
+   (one batch): every adaptive window would be the whole pool in its current
+   order, so a further batch would repeat the first.
 
 The defaults give the paper's schedule at its pool of 150: 53 + 27 mirrored windows
 of 10 (160 calls) and 7 x 8 = 56 adaptive calls, 216 calls per query.
@@ -81,7 +81,8 @@ class TournamentSchedule(BaseModel):
         mirror: Also send every random and stratified window in reverse order.
         adaptive_window: Documents per adaptive window.
         adaptive_depth: Adaptive windows are drawn from the top ``adaptive_depth`` documents.
-        adaptive_batches: Adaptive batches, with a Bradley-Terry refit after each.
+        adaptive_batches: Adaptive batches, with a Bradley-Terry refit after each. A pool no larger than
+            ``adaptive_window`` runs one batch, whatever this says (see :meth:`adaptive_batches_for`).
         adaptive_placements: Placements per document over all adaptive batches (7 batches of 8 windows of 10 at a
             pool of 150).
         overlap_discount: Factor applied to a boundary's value once a selected window covers it.
@@ -108,8 +109,8 @@ class TournamentSchedule(BaseModel):
 
         Each count is ``round(placements * n_docs / w)`` with the effective window ``w = min(window, n_docs)``
         (``min(adaptive_window, n_docs)`` for the adaptive phase, whose count is shared by the batches). A pool no
-        larger than ``adaptive_window`` has at most one adaptive window per batch. A pool of fewer than two
-        documents has no windows.
+        larger than ``adaptive_window`` has at most one adaptive window per batch, and runs one batch in total
+        (:meth:`adaptive_batches_for`). A pool of fewer than two documents has no windows.
         """
         if n_docs < 2:
             return (0, 0, 0)
@@ -126,14 +127,26 @@ class TournamentSchedule(BaseModel):
             per_batch,
         )
 
+    def adaptive_batches_for(self, n_docs: int) -> int:
+        """Adaptive batches the tournament runs for a pool of ``n_docs`` documents.
+
+        A pool no larger than ``adaptive_window`` runs one batch: every adaptive window of such a pool is the
+        whole pool in its current order, so a further batch would ask the same window again, and at temperature
+        0 a repeated window is answered identically. Above the adaptive window the pool is the schedule's own
+        ``adaptive_batches``. A pool of fewer than two documents runs none.
+        """
+        if not self.adaptive_batches or n_docs < 2:
+            return 0
+        return 1 if n_docs <= self.adaptive_window else self.adaptive_batches
+
     def phase_calls(self, n_docs: int) -> tuple[int, int]:
         """``(calls in random and stratified windows, calls in adaptive windows)`` for a pool of ``n_docs``.
 
         The first are the random and stratified windows (twice when mirrored), the second the adaptive ones, at
-        most (see :meth:`windows_for`).
+        most (see :meth:`windows_for` and :meth:`adaptive_batches_for`).
         """
         random_windows, stratified, per_batch = self.windows_for(n_docs)
-        return (random_windows + stratified) * (2 if self.mirror else 1), self.adaptive_batches * per_batch
+        return (random_windows + stratified) * (2 if self.mirror else 1), self.adaptive_batches_for(n_docs) * per_batch
 
     def calls_per_query(self, n_docs: int) -> int:
         """The most judge calls one query of ``n_docs`` candidates takes (:meth:`phase_calls` summed).
