@@ -26,7 +26,7 @@ An embedding endpoint is an `EmbeddingEndpoint` (`rcp_ndcg.inference.config`): t
 | `dimensions` | The Matryoshka cut, sent only when set |
 | `batch_size` | Texts per request, refused above the profile's published cap (Cohere 96, Voyage 128, Gemini 100, the OpenAI route 128) |
 | `concurrency` | Batch requests in flight at once |
-| `recipe`, `max_tokens`, `tokenizer` | Declared for the served engine's settings and the client-side text budget (see below) |
+| `recipe`, `max_tokens`, `tokenizer` | Declared for the served engine's settings and the client-side text budget (see below). The hosted profiles take no `dimensions` (their APIs fix the output dimension); a config that sets `dimensions` on one is refused |
 
 Two hosted shortcuts: a config with no `base_url` points at the profile's public URL
 (`https://api.cohere.com/v2` for Cohere, and so on), and a profile that requires a key raises a
@@ -111,8 +111,9 @@ Two runs share an index only if they computed the same vectors. Which model, che
 computed them (`api`, `model`, `revision`, `recipe`, the prompts, `normalize`, `dimensions`) is content and
 enters the identity; where and how fast (`base_url`, `batch_size`, `concurrency`, the timeouts) is runtime and
 never does. The tokenizer's name is runtime too: `EmbeddingEndpoint.identity_extra()` returns the SHA-256 of
-its `tokenizer.json` (`{"tokenizer_sha256": ...}`), which is what a step identity carries instead of the name
--- the same rule the judge applies to its `tokenizer`.
+its `tokenizer.json` (`{"tokenizer_sha256": ...}`), which is what a retrieval step identity will carry instead
+of the name once the retrieval wiring moves onto this layer -- the same rule the judge applies to its
+`tokenizer`.
 
 ## Text limits
 

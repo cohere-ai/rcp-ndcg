@@ -68,8 +68,8 @@ class EmbeddingEndpoint(Endpoint):
 
         RFC 7.4's rule, the judge's rule for ``JudgeConfig.tokenizer``: what cuts (or, later, budgets) the text
         enters every identity by the SHA-256 of its ``tokenizer.json``, never by how it is named -- the name is
-        RUNTIME. The step identity of a retrieval step (``runs/pipeline.py``) merges this into the config's
-        ``identity_payload``.
+        RUNTIME. The step identity of a retrieval step (``runs/pipeline.py``) will merge this into the config's
+        ``identity_payload`` when the retrieval wiring moves onto this layer.
 
         Returns:
             ``{"tokenizer_sha256": <sha>}`` when the config names a tokenizer, else ``{}``.

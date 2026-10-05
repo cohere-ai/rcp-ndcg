@@ -96,6 +96,11 @@ class EmbeddingClient:
                 "max_tokens needs the text-budget mechanism, which is not wired yet",
                 hint="drop max_tokens and send text that already fits, or wait for the text-budget wiring",
             )
+        if config.dimensions is not None and not _profile(adapter_cls, "SUPPORTS_DIMENSIONS", True):
+            raise ConfigError(
+                f"the {config.api} embedding API takes no dimensions parameter; the cut would be silently ignored",
+                hint="drop dimensions, or use api: openai_embeddings for a Matryoshka cut",
+            )
         _check_batch_size(adapter_cls, config.batch_size)
 
         self.config = config
@@ -137,9 +142,9 @@ class EmbeddingClient:
         """
         prepared = self._prepare(contents, role)
         size = self._request_size(batch_size)
-        auth = self._auth_headers()
         if not prepared:
             return Embeddings.empty(0)
+        auth = self._auth_headers()
 
         requests = [
             EmbedRequest(contents=tuple(prepared[offset : offset + size]), role=role, dimensions=self.config.dimensions)
@@ -194,15 +199,19 @@ class EmbeddingClient:
         Raises:
             CredentialsError: The profile requires a key and none of its variables is set; the hint names them.
         """
-        names = (
-            (self.config.api_key_env,)
-            if self.config.api_key_env is not None
-            else _profile(self._adapter_cls, "API_KEY_ENV", ())
-        )
+        if self.config.api_key_env is not None:
+            # The config names the variable itself: silence would drop the key, so an unset one is an error
+            # whatever the profile's own rule is.
+            names = (self.config.api_key_env,)
+            required = True
+        else:
+            names = _profile(self._adapter_cls, "API_KEY_ENV", ())
+            required = _profile(self._adapter_cls, "KEY_REQUIRED", False)
         key = next((os.environ[name] for name in names if os.environ.get(name)), None)
-        if key is None and _profile(self._adapter_cls, "KEY_REQUIRED", False):
+        if key is None and required:
             raise CredentialsError(
-                f"the {self.config.api} embedding API needs an API key", hint=f"export {' or '.join(names)}=..."
+                f"the {self.config.api} embedding API needs an API key ({' or '.join(names)} is not set)",
+                hint=f"export {' or '.join(names)}=...",
             )
         if not key:
             return {}

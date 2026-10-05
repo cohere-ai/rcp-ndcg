@@ -196,6 +196,40 @@ class TestProfiles:
 class TestRefusals:
     adapter: ClassVar[OpenAIEmbeddings] = OpenAIEmbeddings()
 
+    @pytest.mark.parametrize("name", ["cohere_embed", "voyage_embed", "gemini_embed"])
+    def test_a_hosted_profile_refuses_a_dimensions_request(self, name: str) -> None:
+        """The hosted APIs take no dimensions parameter; sending one would be silently ignored, which is
+        refused instead -- a Matryoshka cut that never reaches the wire would change the vectors."""
+        with pytest.raises(CapabilityError, match="dimensions"):
+            ADAPTERS[name]().calls(request(dimensions=256), model="m")
+
+    def test_an_openai_shaped_reply_with_duplicate_indices_is_rejected(self) -> None:
+        body = {
+            "data": [
+                {"index": 0, "embedding": [9.0]},
+                {"index": 0, "embedding": [1.0]},
+                {"index": 1, "embedding": [0.0]},
+            ]
+        }
+        with pytest.raises(RequestRejectedError, match="index"):
+            self.adapter.interpret(request(texts=("a", "b", "c")), [reply(200, body)])
+
+    def test_a_reply_with_only_some_indices_is_rejected(self) -> None:
+        body = {"data": [{"index": 0, "embedding": [1.0]}, {"embedding": [0.0]}]}
+        with pytest.raises(RequestRejectedError, match="index"):
+            self.adapter.interpret(request(texts=("a", "b")), [reply(200, body)])
+
+    @pytest.mark.parametrize("raw", [[1.0, None], [], 3.0])
+    def test_an_empty_non_finite_or_scalar_embedding_is_rejected(self, raw: Any) -> None:
+        body = {"data": [{"index": 0, "embedding": raw}]}
+        with pytest.raises(RequestRejectedError, match="embedding"):
+            self.adapter.interpret(request(), [reply(200, body)])
+
+    def test_a_short_base64_embedding_is_rejected(self) -> None:
+        body = {"data": [{"index": 0, "embedding": base64.b64encode(b"abc").decode("ascii")}]}
+        with pytest.raises(RequestRejectedError, match="embedding"):
+            self.adapter.interpret(request(), [reply(200, body)])
+
     @pytest.mark.parametrize("name", sorted(ADAPTERS))
     def test_an_image_part_is_refused_with_its_media_type(self, name: str) -> None:
         content = Content(root=[ImagePart(ref=MediaRef(uri="gs://bucket/page_1.png")), TextPart(text="caption")])

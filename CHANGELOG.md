@@ -34,17 +34,24 @@ released together.
     `embeddings.float`, cap 96), `voyage_embed` (the OpenAI body with `input_type` `query`/`document`, cap 128)
     and `gemini_embed` (`POST {base_url}/models/{model}:batchEmbedContents`, `taskType`
     `RETRIEVAL_QUERY`/`RETRIEVAL_DOCUMENT`, key in `x-goog-api-key`, reply `embeddings[].values`, cap 100).
-    Each profile carries its public base URL and key variables for when the config sets no `base_url`. Media
-    raises `CapabilityError` naming the media type; an over-length HTTP 400 ("maximum context length") maps to
+    Each profile carries its public base URL and key variables for when the config sets no `base_url`, and
+    takes no `dimensions` parameter (its API fixes the output dimension): a config that sets one is refused at
+    construction and the adapter refuses such a request, never silently ignored. Media raises
+    `CapabilityError` naming the media type; a malformed reply (an index list that is not exactly one
+    `0..n-1` per entry, an empty, scalar, non-finite or non-float32 embedding) raises `RequestRejectedError`; an
+    over-length HTTP 400 ("maximum context length") maps to
     `CapabilityError` with a hint naming `max_tokens`/`batch_size`; HTTP 413 maps to `CapabilityError` naming
     `batch_size`; other 400/422 are `RequestRejectedError`; `usage()` reads the API's token report.
   - `inference.clients` (new public module): `EmbeddingClient` — the role client for `EmbeddingEndpoint`. It
-    applies `query_prompt`/`doc_prompt` per side through one `_prepare` seam, sends `dimensions` only when set,
-    L2-normalises when `normalize`, slices into `batch_size`-sized requests with at most `concurrency` in
+    applies `query_prompt`/`doc_prompt` per side through one `_prepare` seam, sends `dimensions` only when set
+    (refused for the hosted profiles, which have no such parameter), L2-normalises when `normalize`, slices
+    into `batch_size`-sized requests with at most `concurrency` in
     flight and reassembles in input order, resolves the API key from `api_key_env` (else the profile's
-    variables) into the profile's header, and refuses media, a `batch_size` over a profile's cap, an unknown
-    or wrong-role `api`, and — until the text-budget mechanism is wired — any `max_tokens` (`ConfigError`:
-    "max_tokens needs the text-budget mechanism, which is not wired yet").
+    variables) into the profile's header — an explicitly named but unset `api_key_env` variable is a
+    `CredentialsError`, never a silent missing header — and refuses media, a `batch_size` over a profile's
+    cap, an unknown or wrong-role `api`, and — until the text-budget mechanism is wired — any `max_tokens`
+    (`ConfigError`: "max_tokens needs the text-budget mechanism, which is not wired yet"). An empty call makes
+    no request and needs no key.
   - `inference.config`: `EmbeddingEndpoint.identity_extra()` returns `{"tokenizer_sha256": <sha>}` — the
     SHA-256 of the named tokenizer's `tokenizer.json` for a step identity, never its name (the name stays
     RUNTIME; the judge's rule for `JudgeConfig.tokenizer`). `check_declarations` is unchanged.

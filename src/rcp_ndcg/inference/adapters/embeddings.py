@@ -22,6 +22,7 @@ typed errors -- and the token usage its API reports.
 from __future__ import annotations
 
 import base64
+import binascii
 from collections.abc import Sequence
 from typing import Any, ClassVar
 
@@ -71,26 +72,41 @@ def _body_text(body: Any) -> str:
     return str(body)
 
 
-def _base64_vector(raw: str) -> Any:
-    """One embedding sent as base64: little-endian float32 bytes, decoded (the OpenAI/vLLM framing)."""
-    return np.frombuffer(base64.b64decode(raw), dtype="<f4")
-
-
 def _one_vector(raw: Any, *, adapter: str, where: str) -> Any:
-    """One embedding as a float32 vector: a JSON list of floats, or a base64 float32 string; an empty entry is
-    a refused answer, never a silent NaN."""
+    """One embedding as a 1-D finite float32 vector: a JSON list of floats, or a base64 float32 string.
+
+    Anything else the endpoint could answer -- an empty or partial entry, a scalar, a non-finite value, a
+    base64 frame that is not whole float32 words -- is a refused answer with a typed error, never a silent
+    NaN or an untyped exception.
+    """
     if isinstance(raw, str):
-        return _base64_vector(raw)
-    if raw is None:
+        try:
+            decoded = np.frombuffer(base64.b64decode(raw), dtype="<f4")
+        except (binascii.Error, ValueError) as exc:
+            raise RequestRejectedError(
+                f"{adapter} answered {where} as a base64 string that is not little-endian float32: {exc}"
+            ) from exc
+        vector: Any = decoded
+    elif raw is None:
         raise RequestRejectedError(f"{adapter} answered an entry without {where}")
-    return np.asarray(raw, dtype=np.float32)
+    else:
+        vector = np.asarray(raw, dtype=np.float32)
+    if vector.ndim != 1 or vector.size == 0 or not bool(np.isfinite(vector).all()):
+        shape = "scalar" if vector.ndim == 0 else f"{vector.ndim}-D of {vector.size}"
+        raise RequestRejectedError(
+            f"{adapter} answered an unusable {where} ({shape}, empty or non-finite); one embedding is a "
+            "1-D list of finite floats"
+        )
+    return vector
 
 
 def _data_vectors(body: dict[str, Any], *, adapter: str) -> list[Any]:
     """The vectors of the OpenAI-shaped reply ``{'data': [{'index', 'embedding'}, ...]}``, in ``index`` order.
 
     The endpoint may answer the entries out of order; a request's vectors must align to its items, so the
-    ``index`` field (present on every entry of the OpenAI, vLLM, SGLang and TEI replies) sorts them back.
+    ``index`` field (present on every entry of the OpenAI, vLLM, SGLang and TEI replies) sorts them back. A
+    reply whose indices are not exactly one ``0..n-1`` each (duplicates, gaps, an entry without one) is
+    refused: a silent misalignment would hand a request's item the wrong vector.
     """
     data = body.get("data")
     if not isinstance(data, list):
@@ -98,8 +114,17 @@ def _data_vectors(body: dict[str, Any], *, adapter: str) -> list[Any]:
             f"{adapter} answered without a 'data' list; the OpenAI embeddings shape is "
             "{'data': [{'index', 'embedding'}, ...]}"
         )
-    if all(isinstance(item, dict) and isinstance(item.get("index"), int) for item in data):
+    indices = [item.get("index") if isinstance(item, dict) else None for item in data]
+    seen = [index for index in indices if isinstance(index, int)]
+    if len(seen) == len(data):
+        if sorted(seen) != list(range(len(data))):
+            raise RequestRejectedError(
+                f"{adapter} answered indices {sorted(seen)}; exactly one 0..{len(data) - 1} index per "
+                "entry, in any order"
+            )
         data = sorted(data, key=lambda item: item["index"])
+    elif seen:
+        raise RequestRejectedError(f"{adapter} answered an 'index' on only some of its 'data' entries")
     return [
         _one_vector(item.get("embedding") if isinstance(item, dict) else None, adapter=adapter, where="embedding")
         for item in data
@@ -138,6 +163,10 @@ class _EmbedAdapter:
     #: The ``encoding_format`` request field; ``None`` leaves it out (the routes that have no such field).
     ENCODING_FORMAT: ClassVar[str | None] = None
 
+    #: Whether this route takes a ``dimensions`` parameter: the OpenAI shape does (a Matryoshka cut), the
+    #: hosted profiles fix the output dimension server-side and have no such field.
+    SUPPORTS_DIMENSIONS: ClassVar[bool] = True
+
     # -- the wire -----------------------------------------------------------
     def calls(self, request: Any, *, model: str) -> list[Call]:
         """The one ``POST`` ``request`` becomes: its texts as ``input``, the model, the cut dimension.
@@ -151,8 +180,14 @@ class _EmbedAdapter:
             One call: this adapter sends a whole request's items in one HTTP request.
 
         Raises:
-            CapabilityError: An item carries an image or a video part (these adapters are text-only).
+            CapabilityError: An item carries an image or a video part (these adapters are text-only), or the
+                request names a ``dimensions`` cut this route has no parameter for.
         """
+        if request.dimensions is not None and not self.SUPPORTS_DIMENSIONS:
+            raise CapabilityError(
+                f"the {self.name} embedding API takes no dimensions parameter; the cut would be silently ignored",
+                hint="drop dimensions, or use api: openai_embeddings for a Matryoshka cut",
+            )
         texts = _texts(request.contents, adapter=self.name)
         return [Call("POST", self._path(model), self._body(texts, request, model))]
 
@@ -302,6 +337,7 @@ class CohereEmbeddings(_EmbedAdapter):
     DEFAULT_BASE_URL: ClassVar[str | None] = "https://api.cohere.com/v2"
     API_KEY_ENV: ClassVar[tuple[str, ...]] = ("CO_API_KEY", "COHERE_API_KEY")
     KEY_REQUIRED: ClassVar[bool] = True
+    SUPPORTS_DIMENSIONS: ClassVar[bool] = False
 
     def _path(self, model: str) -> str:
         return "/embed"
@@ -348,7 +384,7 @@ class VoyageEmbeddings(_EmbedAdapter):
     DEFAULT_BASE_URL: ClassVar[str | None] = "https://api.voyageai.com/v1"
     API_KEY_ENV: ClassVar[tuple[str, ...]] = ("VOYAGE_API_KEY",)
     KEY_REQUIRED: ClassVar[bool] = True
-    ENCODING_FORMAT: ClassVar[str | None] = "float"
+    SUPPORTS_DIMENSIONS: ClassVar[bool] = False
 
     def _path(self, model: str) -> str:
         return "/embeddings"
@@ -380,6 +416,7 @@ class GeminiEmbeddings(_EmbedAdapter):
     API_KEY_ENV: ClassVar[tuple[str, ...]] = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
     KEY_REQUIRED: ClassVar[bool] = True
     AUTH_HEADER: ClassVar[str | None] = "x-goog-api-key"
+    SUPPORTS_DIMENSIONS: ClassVar[bool] = False
 
     def _path(self, model: str) -> str:
         return f"/models/{model}:batchEmbedContents"

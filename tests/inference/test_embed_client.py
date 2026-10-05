@@ -144,6 +144,14 @@ class TestContentDecisions:
         assert vectors.num_items == 0
         assert sender.calls == []
 
+    def test_empty_input_needs_no_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An empty call makes no request, so a missing key must not fail it (api_dense's behaviour)."""
+        monkeypatch.delenv("CO_API_KEY", raising=False)
+        monkeypatch.delenv("COHERE_API_KEY", raising=False)
+        client = EmbeddingClient(endpoint("cohere_embed"), sender=FakeSender(handler("cohere_embed", {})))
+
+        assert client.encode([], EncodeRole.DOCUMENT).num_items == 0
+
     def test_media_is_refused_with_its_media_type_and_nothing_is_sent(self) -> None:
         sender = FakeSender(handler("openai_embeddings", {}))
         client = EmbeddingClient(endpoint(), sender=sender)
@@ -246,6 +254,23 @@ class TestConstruction:
     def test_max_tokens_is_refused_until_the_text_budget_mechanism_is_wired(self) -> None:
         with pytest.raises(ConfigError, match=r"max_tokens needs the text-budget mechanism, which is not wired yet"):
             EmbeddingClient(endpoint(max_tokens=8192), sender=FakeSender(handler("openai_embeddings", {})))
+
+    @pytest.mark.parametrize("api", ("cohere_embed", "voyage_embed", "gemini_embed"))
+    def test_a_hosted_config_refuses_a_dimensions_cut(self, api: str) -> None:
+        """The hosted profiles have no dimensions parameter; a cut that silently never reaches the wire would
+        change the vectors without an error."""
+        with pytest.raises(ConfigError, match="dimensions"):
+            EmbeddingClient(endpoint(api, dimensions=256), sender=FakeSender(handler(api, {})))
+
+    def test_an_explicit_api_key_env_that_is_unset_is_an_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("MISSING_KEY_ENV", raising=False)
+        client = EmbeddingClient(
+            endpoint(base_url="http://127.0.0.1:8000/v1", api_key_env="MISSING_KEY_ENV"),
+            sender=FakeSender(handler("openai_embeddings", {})),
+        )
+
+        with pytest.raises(CredentialsError, match="MISSING_KEY_ENV"):
+            client.encode(texts("x"), EncodeRole.DOCUMENT)
 
     def test_an_unknown_api_names_the_known_adapters(self) -> None:
         with pytest.raises(ConfigError) as caught:
