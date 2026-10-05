@@ -332,6 +332,14 @@ released together.
   widened, and the retrieval configs' `base_url` described per its type: one URL, required for the served
   ones, optional for the hosted ones); `tests/test_errors.py` now requires one *root* class per exit code,
   since the moved outage and refusal types are `ProviderError` subclasses and exit codes do not change.
+- The release workflow publishes three packages, one GitHub environment each: the build job builds `rcp-ndcg`,
+  `rcp-ndcg-core` and `rcp-ndcg-vllm` (the last from its own directory, outside the uv workspace), checks each
+  version against the tag, `rcp-ndcg`'s exact `rcp-ndcg-core` pin and the constraints file against the lock, runs
+  `twine check` on every file, and uploads one artifact per package; `publish-core` (environment `pypi-core`),
+  `publish-rcp-ndcg` (`pypi`, after the core it pins exactly) and `publish-vllm` (`pypi-vllm`) publish by trusted
+  publishing, and the GitHub release still attaches the constraints file. The one-time PyPI trusted-publisher
+  registration for the three environments (`pypi`, `pypi-core`, `pypi-vllm`) is done; `AGENTS.md` "Releasing" and
+  the workflow header describe it.
 
 ### Removed
 

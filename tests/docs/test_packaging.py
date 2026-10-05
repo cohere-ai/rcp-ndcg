@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tomllib
 
+import pytest
 from packaging.requirements import Requirement
 from packaging.version import Version
 
@@ -124,17 +125,69 @@ def test_the_constraints_file_is_the_locks_export_for_the_coordinators_extras() 
         assert _pins(exported) == pins
 
 
-def test_the_release_workflow_publishes_both_distributions_with_trusted_publishing() -> None:
+RELEASE_PUBLISH_JOBS = {
+    # job -> (GitHub environment, PyPI project): PyPI identifies a pending trusted publisher by owner, repository,
+    # workflow file and environment only, so each package publishes through its own environment.
+    "publish-core": ("pypi-core", "rcp-ndcg-core"),
+    "publish-rcp-ndcg": ("pypi", "rcp-ndcg"),
+    "publish-vllm": ("pypi-vllm", "rcp-ndcg-vllm"),
+}
+
+
+def _release_workflow() -> tuple[dict, str]:
     import yaml
 
     text = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-    workflow = yaml.safe_load(text)
+    return yaml.safe_load(text), text
+
+
+def _assert_one_environment_per_package(workflow: dict) -> None:
+    """The release contract: one build, then one publish job per package, each in its own GitHub environment."""
+    jobs = workflow["jobs"]
     assert workflow[True]["push"]["tags"] == ["v*"]  # YAML reads the key `on` as true
-    publish = workflow["jobs"]["publish"]
-    assert publish["environment"] == "pypi" and publish["permissions"] == {"id-token": "write"}
-    assert any(step.get("uses", "").startswith("pypa/gh-action-pypi-publish@") for step in publish["steps"])
+    assert set(jobs) == {"build", *RELEASE_PUBLISH_JOBS, "github-release"}
+    build = str(jobs["build"])
+    assert "uv build --all-packages" in build and "packages/rcp-ndcg-vllm" in build, (
+        "rcp-ndcg-vllm is outside the uv workspace: the build job must build it from its own directory"
+    )
+    assert "twine check" in build and "requirements-constraints.txt" in build
+    # One artifact per package, each holding only that package's sdist and wheel.
+    uploads = [s for s in jobs["build"]["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact@")]
+    artifacts = {upload["with"]["name"]: upload["with"]["path"] for upload in uploads}
+    assert artifacts == {
+        f"dist-{project}": f"dist/{project.replace('-', '_')}-*" for _, project in RELEASE_PUBLISH_JOBS.values()
+    }
+    for job, (environment, project) in RELEASE_PUBLISH_JOBS.items():
+        publish = jobs[job]
+        assert publish["environment"] == environment, f"{job} must publish {project} from environment {environment!r}"
+        assert publish["permissions"] == {"id-token": "write"}
+        downloads = [s for s in publish["steps"] if str(s.get("uses", "")).startswith("actions/download-artifact@")]
+        assert len(downloads) == 1, f"{job} downloads only its own artifact"
+        assert downloads[0]["with"]["name"] == f"dist-{project}"
+        directory = downloads[0]["with"]["path"]
+        assert directory == f"dist/{project}", f"{job} works in a directory that holds only {project}'s files"
+        published = [s for s in publish["steps"] if str(s.get("uses", "")).startswith("pypa/gh-action-pypi-publish@")]
+        assert len(published) == 1 and published[0]["with"]["packages-dir"] == directory
+    assert jobs["publish-core"]["needs"] == "build"
+    assert jobs["publish-rcp-ndcg"]["needs"] == "publish-core"  # it pins the core exactly: the core goes first
+    assert jobs["publish-vllm"]["needs"] == "build"
+    assert set(jobs["github-release"]["needs"]) == set(RELEASE_PUBLISH_JOBS)
+    tokenised = {name for name, job in jobs.items() if (job.get("permissions") or {}).get("id-token") == "write"}
+    assert tokenised == set(RELEASE_PUBLISH_JOBS), "id-token: write belongs to exactly the publish jobs"
+
+
+def test_the_release_workflow_publishes_three_packages_one_environment_each() -> None:
+    workflow, text = _release_workflow()
     assert "secrets." not in text  # trusted publishing: no token anywhere
-    assert "uv build --all-packages" in text and "requirements-constraints.txt" in text
+    _assert_one_environment_per_package(workflow)
+
+
+def test_the_release_workflow_check_fails_when_two_environments_are_swapped() -> None:
+    workflow, _ = _release_workflow()
+    workflow["jobs"]["publish-core"]["environment"] = "pypi"
+    workflow["jobs"]["publish-rcp-ndcg"]["environment"] = "pypi-core"
+    with pytest.raises(AssertionError):
+        _assert_one_environment_per_package(workflow)
 
 
 def test_both_distributions_ship_the_license_and_the_notice() -> None:

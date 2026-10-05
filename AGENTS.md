@@ -80,13 +80,23 @@ returns typed results and raises typed errors from `rcp_ndcg.errors`.
 
 ## Releasing
 
-Push a tag `v<version>` whose version is that of both `pyproject.toml` files. `.github/workflows/release.yml` builds
-`rcp-ndcg` and `rcp-ndcg-core`, checks their versions against the tag and `requirements-constraints.txt` against the
-lock, publishes both to PyPI with trusted publishing, and attaches the constraints file to the GitHub release. When
-`uv.lock` changes, regenerate the constraints file with the command in its header. One-time setup: on pypi.org, add
-a trusted publisher to each project (a pending one before the first upload) with owner `cohere-ai`, repository
-`rcp-ndcg`, workflow `release.yml` and environment `pypi`, and create the environment `pypi` in the repository's
-settings. No secret is needed.
+Push a tag `v<version>` whose version is that of all three `pyproject.toml` files (the root one,
+`packages/rcp-ndcg-core` and `packages/rcp-ndcg-vllm`). `.github/workflows/release.yml` builds the three distributions
+(`rcp-ndcg-vllm` from its own directory: it is deliberately outside the uv workspace), checks each version against the
+tag, that `rcp-ndcg` pins `rcp-ndcg-core==<version>`, and `requirements-constraints.txt` against the lock, and runs
+`twine check` on every file. Each package publishes to PyPI with trusted publishing through its own GitHub environment
+(one publish job per package, below), because PyPI identifies a pending trusted publisher by owner, repository,
+workflow file and environment only, not the project name; `publish-rcp-ndcg` waits for `publish-core`, which it pins
+exactly. The GitHub release attaches the constraints file. When `uv.lock` changes, regenerate the constraints file
+with the command in its header. One-time setup (done): on pypi.org, add a trusted publisher to each project (a
+pending one before the first upload) with owner `cohere-ai`, repository `rcp-ndcg`, workflow `release.yml` and the
+environment from the table, and create each environment in the repository's settings. No secret is needed.
+
+| PyPI project | GitHub environment |
+|---|---|
+| `rcp-ndcg` | `pypi` |
+| `rcp-ndcg-core` | `pypi-core` |
+| `rcp-ndcg-vllm` | `pypi-vllm` |
 
 ## Where to look
 
