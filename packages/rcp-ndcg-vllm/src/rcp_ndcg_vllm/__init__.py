@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from .errors import HarnessError, RecipeError
 from .recipe import (
+    PINNED_POOLER_CONFIG_FIELDS,
+    BlockingSpec,
     ClientConfig,
     EngineSpec,
     Gates,
@@ -16,6 +18,8 @@ from .recipe import (
     Resources,
     ServeConfig,
     StatusSpec,
+    TemplateSegment,
+    TemplateSpec,
     client_config,
     default_recipes_root,
     effective_embed_dtype,
@@ -28,16 +32,20 @@ from .recipe import (
 __version__ = "0.0.1"
 
 __all__ = [
+    "BlockingSpec",
     "ClientConfig",
     "EngineSpec",
     "Gates",
     "HarnessError",
+    "PINNED_POOLER_CONFIG_FIELDS",
     "Recipe",
     "RecipeError",
     "ReferenceSpec",
     "Resources",
     "ServeConfig",
     "StatusSpec",
+    "TemplateSegment",
+    "TemplateSpec",
     "client_config",
     "default_recipes_root",
     "effective_embed_dtype",
