@@ -1,4 +1,17 @@
-# zeroentropy/zerank-1-small: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
-# `rcp-ndcg retrieval rerank --reranker <this file>`. Runs in process (the [local] extra); the model family is picked from the model id.
-provider: local
-model: zeroentropy/zerank-1-small
+# zeroentropy/zerank-1-small, served: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
+# `rcp-ndcg retrieval rerank --reranker <this file>`. Served by recipe `zerank-1-small` (the
+# classifier_from_token, score template and logit_sigma of packages/rcp-ndcg-vllm; reference:
+# experiments/paper/rerankers/reference/zerank.py). `base_url` is the placeholder the runner's
+# engines overlay (serve.reranker) replaces; `model` is the --served-model-name. The checkpoint
+# is zeroentropy/zerank-1-small-reranker (its tokenizer is identical to zerank-1's).
+# Budgets are the paper's: the 8192-token pair budget (whole-prompt right truncation), queries
+# capped at 4096; the release's in-process path passed the bare query, hence `instruction: none`.
+api: rerank
+base_url: http://127.0.0.1:8000/v1
+model: zerank-1-small
+revision: a65fd51c450e9b47fdddab98e31166ecad21af8d
+recipe: zerank-1-small
+tokenizer: zeroentropy/zerank-1-small-reranker@a65fd51c450e9b47fdddab98e31166ecad21af8d
+max_tokens: 8192
+query_max_tokens: 4096
+instruction: none

@@ -1,4 +1,17 @@
-# zeroentropy/zerank-2: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
-# `rcp-ndcg retrieval rerank --reranker <this file>`. Runs in process (the [local] extra); the model family is picked from the model id.
-provider: local
-model: zeroentropy/zerank-2
+# zeroentropy/zerank-2, served: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
+# `rcp-ndcg retrieval rerank --reranker <this file>`. Served by recipe `zerank-2-reranker` (the
+# classifier_from_token, score template and pooler settings of packages/rcp-ndcg-vllm; reference:
+# experiments/paper/rerankers/reference/zerank.py). `base_url` is the placeholder the runner's
+# engines overlay (serve.reranker) replaces; `model` is the --served-model-name. The checkpoint
+# is zeroentropy/zerank-2-reranker.
+# Budgets are the paper's: the 8192-token pair budget (whole-prompt right truncation), queries
+# capped at 4096; the release's in-process path passed the bare query, hence `instruction: none`.
+api: rerank
+base_url: http://127.0.0.1:8000/v1
+model: zerank-2
+revision: 5eae30d5ee3c6b2df2ef6d723bde45172d761c4c
+recipe: zerank-2-reranker
+tokenizer: zeroentropy/zerank-2-reranker@5eae30d5ee3c6b2df2ef6d723bde45172d761c4c
+max_tokens: 8192
+query_max_tokens: 4096
+instruction: none

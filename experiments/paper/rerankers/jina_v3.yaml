@@ -1,4 +1,18 @@
-# jinaai/jina-reranker-v3: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
-# `rcp-ndcg retrieval rerank --reranker <this file>`. Jina reranker v3, in process (the [local] extra).
-provider: local
-model: jinaai/jina-reranker-v3
+# jinaai/jina-reranker-v3, served: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
+# `rcp-ndcg retrieval rerank --reranker <this file>`. Served by recipe `jina-reranker-v3`
+# (JinaForRanking, listwise: the whole candidate set travels in one prompt; reference:
+# experiments/paper/rerankers/reference/jina.py). `base_url` is the placeholder the runner's
+# engines overlay (serve.reranker) replaces; `model` is the --served-model-name.
+# Budgets are the paper's 8192-token pair budget; queries capped at 4096. The checkpoint's own
+# caps (query 512, per-document 2048) apply server-side inside the recipe; the recipe lane pins
+# them. `listwise: true` — a batch_size is refused, the model scores the whole set in one prompt.
+api: rerank
+base_url: http://127.0.0.1:8000/v1
+model: jina-reranker-v3
+revision: d7d7e73b6ea138ced340b83865931b5dfb6c97aa
+recipe: jina-reranker-v3
+tokenizer: jinaai/jina-reranker-v3@d7d7e73b6ea138ced340b83865931b5dfb6c97aa
+max_tokens: 8192
+query_max_tokens: 4096
+instruction: none
+listwise: true

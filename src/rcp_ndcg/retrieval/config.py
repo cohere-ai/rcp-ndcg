@@ -2,237 +2,196 @@
 
 A retriever is a union discriminated on ``kind``: :class:`BM25Config`, :class:`DenseConfig` or
 :class:`LateInteractionConfig`. Dense and late-interaction retrievers carry an encoder, and a reranker is a model;
-both are unions discriminated on ``provider``, each variant carrying only the fields its provider uses:
+all three are :mod:`rcp_ndcg.inference` role configs selected by ``api`` (RFC-0001 section 7.2), each variant
+carrying only the fields its wire uses:
 
-======================  ==========================================================  =========  ========
-``provider``            where the model runs                                        encoder    reranker
-======================  ==========================================================  =========  ========
-``local``               in this process, weights loaded from the Hub (``[local]``)   yes        yes
-``openai_compatible``   a served endpoint: vLLM, a gateway, or OpenAI's own API      yes        yes
-``cohere``              Cohere's public API (Embed v4, Rerank 4 Pro and Fast)        yes        yes
-``voyage``              Voyage AI's public API                                       yes        yes
-``gemini``              Google's Gemini embedding API                                yes        no
-======================  ==========================================================  =========  ========
+=====================  ==========================================================  =========  ========
+``api``                where the model runs                                         encoder    reranker
+=====================  ============================================================  =========  ========
+``openai_embeddings``  a served endpoint (vLLM, SGLang, TEI, Infinity), one vector per text   yes   no
+``vllm_pooling``       a served multi-vector engine (late interaction)               yes        no
+``rerank``             a served ``/rerank`` endpoint (one query's candidates per request)   no   yes
+``cohere``             Cohere's public API (Embed v4; Rerank 4 Pro and Fast)         yes        yes
+``voyage``             Voyage AI's public API                                        yes        yes
+``gemini``             Google's Gemini embedding API                                 yes        no
+=====================  ============================================================  =========  ========
 
-The served and hosted variants are :class:`~rcp_ndcg.inference.endpoint.Endpoint` s, so they share its fields
-(``base_url``, ``model``, ``revision``, ``api_key_env``, the timeouts and retries). A field a provider cannot use
-is refused, never ignored.
+The hosted APIs (``cohere``, ``voyage``, ``gemini``) are reached at their public roots -- their wire adapters
+declare them -- so a hosted config omits ``base_url`` (or names a proxy with it); a served one names the engine's
+URL (``None`` only when the run's job starts the engine, whose URLs then reach the step at runtime). Every
+variant is an :class:`~rcp_ndcg.inference.endpoint.Endpoint`, so all of them share its fields (``base_url``,
+``model``, ``revision``, ``api_key_env``, ``headers_env``, ``concurrency``, the timeouts and retries, the outage
+wait), and every role client -- :class:`~rcp_ndcg.inference.clients.EmbeddingClient`,
+:class:`~rcp_ndcg.inference.clients.PoolingClient`, :class:`~rcp_ndcg.inference.clients.RerankClient` -- runs
+them over the shared transport. A field a variant cannot use is refused, never ignored; an old config shape
+(``provider:``) is refused with a hint that shows the new one.
 
-Every config declares ``IDENTITY_ROLES``: what the model computes (the model, its revision, its pooling and prompts)
-enters an index's identity; where and how fast it is asked does not.
+Every config declares ``IDENTITY_ROLES``: what the model computes (the model, its revision, its recipe, its
+prompts and budgets, the tokenizer's SHA-256 through ``Endpoint.identity_extra()``) enters an index's or a
+step's identity; where and how fast it is asked does not.
 """
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar, Literal
+from typing import Annotated, Any, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
-from rcp_ndcg.inference.endpoint import Endpoint
+from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp_ndcg.support.identity import FieldRole
 
 _CONTENT, _RUNTIME = FieldRole.CONTENT, FieldRole.RUNTIME
 
+_OLD_SHAPE_HINT = (
+    "retrieval configs select their wire with api, not provider; an encoder is `api: openai_embeddings` "
+    "(served, with base_url) or `api: cohere | voyage | gemini` (hosted, base_url omitted), and a "
+    "late-interaction encoder is `api: vllm_pooling`; a reranker is `api: rerank` (served, with base_url) or "
+    "`api: cohere | voyage` (hosted). In-process models (provider: local) are served now: start the engine "
+    "and point api at it"
+)
+"""The hint an old config shape carries: what replaced ``provider``, in the shape a config file spells."""
 
-# ---------------------------------------------------------------------------
-# Providers
-# ---------------------------------------------------------------------------
 
+class _ApiSelected(BaseModel):
+    """The base the retrieval role variants share: frozen, closed, and refusing the pre-``api`` shapes.
 
-class Local(BaseModel):
-    """Weights this package loads in process (the ``[local]`` extra).
+    Runs before field validation, so ``provider: local`` and friends answer with the migration hint instead of
+    a bare "unknown key" or "api: Field required".
 
-    As a reranker: Qwen3-Reranker, ZeRank, ctxl-rerank or Jina reranker v3, the implementation picked from the model
-    id.
-
-    Attributes:
-        model: The Hub repo id or a local path.
-        revision: The Hub revision (commit, tag or branch) loaded; ``None`` is the default branch.
-        batch_size: Texts per forward pass; ``None`` for the model's default. ZeRank and Jina batch on their own
-            and refuse it.
+    Raises:
+        ValueError: the data is a mapping that names a removed field (``provider``, ``engine``) or an encoder's
+            ``pooling`` without an ``api``.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {
-        "provider": _CONTENT,
-        "model": _CONTENT,
-        "revision": _CONTENT,
-        "batch_size": _RUNTIME,
-    }
-
-    provider: Literal["local"] = "local"
-    model: str = Field(min_length=1)
-    revision: str | None = None
-    batch_size: int | None = Field(default=None, gt=0)
-
-
-class _Hosted(Endpoint):
-    """An endpoint the client reaches over HTTP, with its request size.
-
-    Requests go one at a time with the endpoint's timeout and retries; ``batch_size`` is the documents per rerank
-    request or the texts per embedding request (``None`` for the provider's default).
-
-    Attributes:
-        base_url: One URL, or none for the provider's own public API; the hosted APIs take no replica list yet
-            (the retrieval port moves them onto the shared transport).
-    """
-
-    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"batch_size": _RUNTIME}
-
-    timeout_s: float = Field(default=120.0, gt=0)
-    max_retries: int = Field(default=8, ge=0)
-    batch_size: int | None = Field(default=None, gt=0)
-    base_url: str | None = None  # type: ignore[assignment]  # one URL: the hosted APIs take no replica list yet
-
-    @model_validator(mode="after")
-    def _one_request_at_a_time(self) -> _Hosted:
-        # Compared against the field's own default, not ``model_fields_set``: a recorded config (run.yaml) is a
-        # full dump, and re-validating it must not refuse the defaults it carries.
-        default = type(self).model_fields["concurrency"].default
-        if self.concurrency != default and not getattr(self, "_CONCURRENT", False):
-            raise ValueError(f"{self.provider} requests are sent one at a time: drop concurrency")  # type: ignore[attr-defined]
-        return self
+    @model_validator(mode="before")
+    @classmethod
+    def _refuse_old_shapes(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            removed = sorted(key for key in ("provider", "engine") if key in data)
+            if removed:
+                given = ", ".join(f"{key}: {data[key]!r}" for key in removed)
+                raise ValueError(f"{cls.__name__} is selected by api, not by {' or '.join(removed)} ({given})")
+            if "pooling" in data and "api" not in data:
+                raise ValueError(f"{cls.__name__} takes no pooling: late interaction is its own retriever kind")
+        return data
 
 
-class OpenAICompatible(_Hosted):
-    """A served model: vLLM (``vllm serve``), a gateway in front of it, or OpenAI's own API.
+# ---------------------------------------------------------------------------
+# Encoders, by api
+# ---------------------------------------------------------------------------
 
-    As a reranker, ``POST <base_url>/rerank`` (``vllm serve --runner pooling``), one query's candidates per request,
-    ``concurrency`` requests in flight; a late-interaction checkpoint scores MaxSim on the server. ``base_url`` is
-    required.
+
+class ServedEmbedding(_ApiSelected, EmbeddingEndpoint):
+    """A served embedding model: vLLM (``vllm serve``), SGLang, TEI, Infinity, or OpenAI's own API, through
+    ``POST <base_url>/embeddings``.
 
     Attributes:
-        base_url: The served endpoint (required), e.g. ``http://localhost:8000/v1``; one URL, not a replica list.
+        base_url: The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` only when the run's job starts the
+            encoder's engine (``serve.encoder``): the engine's URLs then reach the step at runtime, through
+            ``RCP_NDCG_ENGINES``, and setting both is refused rather than silently overridden.
     """
 
-    _CONCURRENT: ClassVar[bool] = True
-
-    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"provider": _CONTENT}
-
-    provider: Literal["openai_compatible"] = "openai_compatible"
-    concurrency: int = Field(default=8, ge=1)
-    timeout_s: float = Field(default=600.0, gt=0)
-    max_retries: int = Field(default=4, ge=0)
+    api: Literal["openai_embeddings"] = "openai_embeddings"  # type: ignore[assignment]
 
 
-class Cohere(_Hosted):
-    """Cohere's public API: Embed v4 (``embed-v4.0``, which also embeds page images) and Rerank 4 Pro and Fast
-    (``rerank-v4.0-pro``, ``rerank-v4.0-fast``). The key is read from ``api_key_env``, else ``CO_API_KEY`` or
-    ``COHERE_API_KEY``. A rerank request carries up to ``batch_size`` documents (default 100, the API's search
-    unit)."""
+class CohereEmbedding(_ApiSelected, EmbeddingEndpoint):
+    """Cohere's public API: Embed v4 (``embed-v4.0``, which also embeds page images). The key is read from
+    ``api_key_env``, else ``CO_API_KEY`` or ``COHERE_API_KEY``; ``base_url`` is omitted (the profile's public
+    URL) unless it names a proxy."""
 
-    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"provider": _CONTENT}
-
-    provider: Literal["cohere"] = "cohere"
+    api: Literal["cohere"] = "cohere"  # type: ignore[assignment]
 
 
-class Voyage(_Hosted):
-    """Voyage AI's public API (``voyage-3-large``, ``rerank-2.5``, ``rerank-2.5-lite``, ...). The key is read from
-    ``api_key_env``, else ``VOYAGE_API_KEY``. A rerank request carries up to ``batch_size`` documents (default 20)."""
+class VoyageEmbedding(_ApiSelected, EmbeddingEndpoint):
+    """Voyage AI's public API (``voyage-3-large``, ...). The key is read from ``api_key_env``, else
+    ``VOYAGE_API_KEY``; ``base_url`` is omitted unless it names a proxy."""
 
-    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"provider": _CONTENT}
-
-    provider: Literal["voyage"] = "voyage"
+    api: Literal["voyage"] = "voyage"  # type: ignore[assignment]
 
 
-class Gemini(_Hosted):
+class GeminiEmbedding(_ApiSelected, EmbeddingEndpoint):
     """Google's Gemini embedding API (``gemini-embedding-001``). The key is read from ``api_key_env``, else
-    ``GEMINI_API_KEY`` or ``GOOGLE_API_KEY``."""
+    ``GEMINI_API_KEY`` or ``GOOGLE_API_KEY``; ``base_url`` is omitted unless it names a proxy."""
 
-    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"provider": _CONTENT}
+    api: Literal["gemini"] = "gemini"  # type: ignore[assignment]
 
-    provider: Literal["gemini"] = "gemini"
+
+EncoderConfig = ServedEmbedding | CohereEmbedding | VoyageEmbedding | GeminiEmbedding
+"""An embedding model: the served :class:`ServedEmbedding` or the hosted :class:`CohereEmbedding`,
+:class:`VoyageEmbedding` and :class:`GeminiEmbedding`, by ``api``. A plain union rather than a discriminated
+one, so an old shape (``provider:``) reaches the members' refusals and gets the migration hint instead of a
+bare "cannot extract tag"."""
+
+
+class ServedPooling(_ApiSelected, PoolingEndpoint):
+    """A served multi-vector (late interaction) model, through vLLM's ``POST <base_url>/pooling`` with
+    ``task: token_embed``.
+
+    ``base_url`` is ``None`` only when the run's job starts the encoder's engine (``serve.encoder``): the
+    engine's URLs then reach the step at runtime, through ``RCP_NDCG_ENGINES``, and setting both is refused
+    rather than silently overridden.
+    """
+
+    api: Literal["vllm_pooling"] = "vllm_pooling"  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
-# Encoders
+# Rerankers, by api
 # ---------------------------------------------------------------------------
 
-_ENCODER_ROLES: dict[str, FieldRole] = {"pooling": _CONTENT, "query_prompt": _CONTENT, "doc_prompt": _CONTENT}
 
-
-class LocalEncoder(Local):
-    """An embedding model run in this process.
-
-    Attributes:
-        engine: ``hf`` (transformers, last-token pooling) or ``vllm`` (an in-process vLLM engine, the ``[vllm]``
-            extra; for corpus-scale late-interaction indexes, whose vectors are too many to send over HTTP).
-        pooling: ``last``, ``mean`` or ``cls`` for one vector per text, ``token`` for one per token (late
-            interaction). ``hf`` pools the last token; ``vllm`` serves ``token`` as its ``token_embed`` task and the
-            others as ``embed`` (the model's own pooler).
-        query_prompt: Text prepended to every query (``vllm``).
-        doc_prompt: Text prepended to every document, as the model's recipe defines it (Octen: ``"- "``).
-    """
-
-    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"engine": _CONTENT, **_ENCODER_ROLES}
-
-    engine: Literal["hf", "vllm"] = "hf"
-    pooling: Literal["mean", "cls", "last", "token"]
-    query_prompt: str | None = None
-    doc_prompt: str | None = None
-
-    @model_validator(mode="after")
-    def _engine_can_do_it(self) -> LocalEncoder:
-        if self.engine == "hf" and self.pooling != "last":
-            raise ValueError("the hf engine pools the last token: set pooling: last, or engine: vllm")
-        if self.engine == "hf" and self.query_prompt is not None:
-            raise ValueError("the hf engine has no query prompt; use doc_prompt, or engine: vllm")
-        return self
-
-
-class OpenAICompatibleEncoder(OpenAICompatible):
-    """A served embedding model.
-
-    One vector per text through ``POST <base_url>/embeddings`` (vLLM's OpenAI-compatible route, or OpenAI's API at
-    ``https://api.openai.com/v1`` with ``api_key_env: OPENAI_API_KEY``); with ``pooling: token``, one vector per
-    token through vLLM's ``/pooling`` route (late interaction).
-
-    Attributes:
-        base_url: The endpoint; ``None`` only when the run's job starts the encoder's engine (``serve.encoder``):
-            the engine's URLs then reach the step at runtime, through ``RCP_NDCG_ENGINES``, and setting both is
-            refused rather than silently overridden.
-        pooling: ``token`` for late interaction; ``None`` (the server's pooler) for one vector per text.
-        query_prompt: Text prepended to every query.
-        doc_prompt: Text prepended to every document.
-    """
-
-    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = dict(_ENCODER_ROLES)
-    _CONCURRENT: ClassVar[bool] = False
-
-    base_url: str | None = None  # type: ignore[assignment]
-    pooling: Literal["token"] | None = None
-    query_prompt: str | None = None
-    doc_prompt: str | None = None
-
-
-EncoderConfig = Annotated[
-    LocalEncoder | OpenAICompatibleEncoder | Cohere | Voyage | Gemini, Field(discriminator="provider")
-]
-"""An embedding model: :class:`LocalEncoder`, :class:`OpenAICompatibleEncoder`, :class:`Cohere`, :class:`Voyage` or
-:class:`Gemini`, by ``provider``."""
-
-
-class OpenAICompatibleReranker(OpenAICompatible):
-    """A served ``/rerank`` endpoint (``vllm serve <model> --runner pooling``); ``base_url`` is the server root.
+class ServedReranker(_ApiSelected, RerankEndpoint):
+    """A served ``/rerank`` endpoint (``vllm serve <model> --runner pooling``), one query's whole candidate set
+    per request; ``base_url`` is the server root.
 
     ``base_url`` is ``None`` only when the run's job starts the reranker's engine (``serve.reranker``): the
     engine's URL then reaches the step at runtime, through ``RCP_NDCG_ENGINES``, and setting both is refused
     rather than silently overridden.
     """
 
-    base_url: str | None = None  # type: ignore[assignment]
+    api: Literal["rerank"] = "rerank"  # type: ignore[assignment]
+
+
+class _HostedReranker(_ApiSelected, RerankEndpoint):
+    """A hosted rerank API's config: the fields its wire has no room for are refused."""
 
     @model_validator(mode="after")
-    def _one_query_per_request(self) -> OpenAICompatibleReranker:
-        if self.batch_size is not None:
-            raise ValueError("a served reranker takes one query's candidates per request: drop batch_size")
+    def _no_engine_fields_on_the_hosted_wire(self) -> _HostedReranker:
+        """The hosted APIs take no engine ``instruction`` field and no activation switch.
+
+        Raises:
+            ValueError: ``instruction: field`` or ``use_activation`` is set (neither exists on the hosted wire).
+        """
+        if self.instruction == "field" or self.use_activation is not None:
+            raise ValueError(
+                "the hosted rerank APIs take no instruction field and no activation switch: "
+                "drop use_activation, and use instruction: fold | none"
+            )
         return self
 
 
-RerankerConfig = Annotated[Local | OpenAICompatibleReranker | Cohere | Voyage, Field(discriminator="provider")]
-"""A reranker: :class:`Local`, :class:`OpenAICompatibleReranker`, :class:`Cohere` or :class:`Voyage`, by
-``provider``."""
+class CohereReranker(_HostedReranker):
+    """Cohere's public API (``rerank-v4.0-pro``, ``rerank-v4.0-fast``). The key is read from ``api_key_env``,
+    else ``CO_API_KEY`` or ``COHERE_API_KEY``; a request carries up to ``batch_size`` documents (default 100,
+    the API's search unit)."""
+
+    api: Literal["cohere"] = "cohere"  # type: ignore[assignment]
+
+
+class VoyageReranker(_HostedReranker):
+    """Voyage AI's public API (``rerank-2.5``, ``rerank-2.5-lite``, ...). The key is read from ``api_key_env``,
+    else ``VOYAGE_API_KEY``; a request carries up to ``batch_size`` documents (default 20), and the requests of
+    one query are spaced half a second apart (the profile's pause; set ``concurrency`` low -- Voyage enforces
+    strict rate limits)."""
+
+    api: Literal["voyage"] = "voyage"  # type: ignore[assignment]
+
+
+RerankerConfig = ServedReranker | CohereReranker | VoyageReranker
+"""A reranker: the served :class:`ServedReranker` or the hosted :class:`CohereReranker` and
+:class:`VoyageReranker`, by ``api``."""
 
 
 # ---------------------------------------------------------------------------
@@ -256,59 +215,90 @@ class BM25Config(BaseModel):
     stemmer: str | None = None
 
 
-class DenseConfig(BaseModel):
+class DenseConfig(_ApiSelected):
     """One vector per text, searched by inner product."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
 
     IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"kind": _CONTENT, "encoder": _CONTENT}
 
     kind: Literal["dense"] = "dense"
     encoder: EncoderConfig
 
-    @model_validator(mode="after")
-    def _single_vector(self) -> DenseConfig:
-        if getattr(self.encoder, "pooling", None) == "token":
-            raise ValueError("pooling: token is late interaction: use kind: late_interaction")
-        return self
 
-
-class LateInteractionConfig(BaseModel):
-    """One vector per token, searched by MaxSim; the encoder is a vLLM model with ``pooling: token``."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
+class LateInteractionConfig(_ApiSelected):
+    """One vector per token, searched by MaxSim; the encoder is a served ``vllm_pooling`` endpoint."""
 
     IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"kind": _CONTENT, "encoder": _CONTENT}
 
     kind: Literal["late_interaction"] = "late_interaction"
-    encoder: LocalEncoder | OpenAICompatibleEncoder = Field(discriminator="provider")
-
-    @model_validator(mode="after")
-    def _multi_vector(self) -> LateInteractionConfig:
-        if self.encoder.pooling != "token":
-            raise ValueError("late interaction needs an encoder with pooling: token")
-        if isinstance(self.encoder, LocalEncoder) and self.encoder.engine != "vllm":
-            raise ValueError("a local late-interaction encoder runs on engine: vllm")
-        return self
+    encoder: ServedPooling
 
 
 RetrieverConfig = Annotated[BM25Config | DenseConfig | LateInteractionConfig, Field(discriminator="kind")]
 """A retriever: :class:`BM25Config`, :class:`DenseConfig` or :class:`LateInteractionConfig`, by ``kind``."""
 
 
+_RETRIEVER = TypeAdapter(RetrieverConfig)
+_RERANKER = TypeAdapter(RerankerConfig)
+"""The unions as validators, so a config can be read from data with the old shapes refused by name."""
+
+
+def validate_retriever(data: Any) -> RetrieverConfig:
+    """A retriever config from parsed YAML data, with an old shape refused by name.
+
+    Args:
+        data: The parsed YAML (a mapping with ``kind``).
+
+    Returns:
+        The :data:`RetrieverConfig`.
+
+    Raises:
+        ConfigError: the data is not a retriever config: an old shape (``provider:``, ``engine:``), an unknown
+            ``api``, or a field its variant does not take. The hint shows the new shape.
+    """
+    from rcp_ndcg.support.config import config_error
+
+    try:
+        return _RETRIEVER.validate_python(data)
+    except Exception as exc:  # noqa: BLE001 -- config_error maps the pydantic ValidationError
+        raise config_error(exc, model=_RETRIEVER, hint=_OLD_SHAPE_HINT) from exc
+
+
+def validate_reranker(data: Any) -> RerankerConfig:
+    """A reranker config from parsed YAML data, with an old shape refused by name.
+
+    Args:
+        data: The parsed YAML (a mapping with ``api``).
+
+    Returns:
+        The :data:`RerankerConfig`.
+
+    Raises:
+        ConfigError: the data is not a reranker config: an old shape (``provider:``, ``engine:``), an unknown
+            ``api``, or a field its variant does not take. The hint shows the new shape.
+    """
+    from rcp_ndcg.support.config import config_error
+
+    try:
+        return _RERANKER.validate_python(data)
+    except Exception as exc:  # noqa: BLE001 -- config_error maps the pydantic ValidationError
+        raise config_error(exc, model=_RERANKER, hint=_OLD_SHAPE_HINT) from exc
+
+
 __all__ = [
     "BM25Config",
-    "Cohere",
+    "CohereEmbedding",
+    "CohereReranker",
     "DenseConfig",
     "EncoderConfig",
-    "Gemini",
+    "GeminiEmbedding",
     "LateInteractionConfig",
-    "Local",
-    "LocalEncoder",
-    "OpenAICompatible",
-    "OpenAICompatibleEncoder",
-    "OpenAICompatibleReranker",
     "RerankerConfig",
     "RetrieverConfig",
-    "Voyage",
+    "ServedEmbedding",
+    "ServedPooling",
+    "ServedReranker",
+    "VoyageEmbedding",
+    "VoyageReranker",
+    "validate_reranker",
+    "validate_retriever",
 ]

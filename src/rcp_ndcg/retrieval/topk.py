@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from rcp_ndcg.retrieval.encoder import Embeddings
+from rcp_ndcg.inference.types import Embeddings
 
 #: Score-tile budget in bytes.  16 MiB is small enough to stay in cache-friendly
 #: territory and large enough that the per-block overhead disappears.

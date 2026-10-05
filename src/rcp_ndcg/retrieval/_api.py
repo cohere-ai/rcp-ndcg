@@ -3,14 +3,23 @@
 :func:`index`, :func:`search`, :func:`retrieve` (= index + search, reusing an index of the same identity),
 :func:`rerank`, :func:`fuse` (reciprocal rank fusion). The configs are in :mod:`rcp_ndcg.retrieval.config`.
 
-Every function takes and returns the data layer's types; the retrievers, encoders and rerankers behind them are
-the modules of this package.
+Every model is reached over the shared inference transport through its role client -- an
+:class:`~rcp_ndcg.inference.clients.EmbeddingClient` (dense), a
+:class:`~rcp_ndcg.inference.clients.PoolingClient` (late interaction) or a
+:class:`~rcp_ndcg.inference.clients.RerankClient` (rerank) -- so a hosted API, a gateway and a run's own engine
+all take the same code path, and every function takes and returns the data layer's types.
+
+Reranking checkpoints per query: every scored query is recorded under ``out`` (``rank000.jsonl``, one JSON
+record, flushed and fsynced) as it finishes, and a rerun with the same reranker over the same candidates skips
+the queries the checkpoint already holds. The record format and the checkpoint key are the served path's
+historical ones, so a rerun resumes checkpoints an earlier release wrote.
 """
 
 from __future__ import annotations
 
+import json
 import os
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any, Literal
 
@@ -19,31 +28,21 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from rcp_ndcg.data.dataset import Dataset
 from rcp_ndcg.data.rankings import Rankings
-from rcp_ndcg.errors import ConfigError, CredentialsError, DataError, IdentityError, MissingInputError
+from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError
+from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient, RerankClient
+from rcp_ndcg.inference.types import Embeddings, EncodeRole
 from rcp_ndcg.retrieval.config import (
     BM25Config,
-    EncoderConfig,
-    Local,
-    LocalEncoder,
-    OpenAICompatibleEncoder,
-    OpenAICompatibleReranker,
+    DenseConfig,
     RerankerConfig,
     RetrieverConfig,
+    ServedEmbedding,
+    ServedPooling,
 )
-from rcp_ndcg.support.identity import combine_digests, hash_payload, hash_strings, identity_payload
+from rcp_ndcg.support.identity import combine_digests, hash_payload, hash_strings, identity_payload, short
+from rcp_ndcg.support.logging import get_logger
 
-_LOCAL_RERANKERS: tuple[tuple[str, str], ...] = (
-    ("qwen/qwen3-reranker", "qwen_og"),
-    ("zeroentropy/zerank", "zerank"),
-    ("contextualai/ctxl-rerank", "contextual"),
-    ("jinaai/jina-reranker", "jina_hf"),
-)
-"""The in-process rerankers: model-id prefix -> the implementation that scores it."""
-
-_BATCHED: frozenset[str] = frozenset({"qwen_og", "contextual", "cohere", "voyage"})
-"""The rerankers that take a batch size: documents per forward pass, or per API request."""
-
-_DEFAULT_BATCH: dict[str, int] = {"qwen_og": 8, "contextual": 8, "cohere": 100, "voyage": 20}
+logger = get_logger(__name__)
 
 
 class Index(BaseModel):
@@ -82,12 +81,11 @@ def index(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path) -> I
         from rcp_ndcg.retrieval import sparse
 
         sparse.build_bm25_index(contents, root, stemmer=retriever.stemmer)
+    elif isinstance(retriever, DenseConfig):
+        embeddings = _encode(retriever.encoder, contents, EncodeRole.DOCUMENT)
+        np.save(root / "vectors.npy", embeddings.as_matrix())
     else:
-        from rcp_ndcg.retrieval.encoder import EncodeRole
-
-        embeddings = _encoder(retriever.encoder).encode(
-            contents, role=EncodeRole.DOCUMENT, batch_size=retriever.encoder.batch_size
-        )
+        embeddings = _encode(retriever.encoder, contents, EncodeRole.DOCUMENT)
         np.save(root / "vectors.npy", embeddings.vectors)
         if embeddings.offsets is not None:
             np.save(root / "offsets.npy", embeddings.offsets)
@@ -133,17 +131,29 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
 
         hits = sparse.search_bm25(root, [queries[q].format_query() for q in query_ids], k=min(depth, len(doc_ids)))
         scores = {q: {doc_ids[row]: score for row, score in hits_q} for q, hits_q in zip(query_ids, hits, strict=True)}
+    elif isinstance(retriever, DenseConfig):
+        from rcp_ndcg.retrieval.topk import score_topk
+
+        vectors = np.load(root / "vectors.npy")
+        documents = Embeddings(vectors=vectors)
+        encoded = _encode(
+            retriever.encoder, [queries[q].format_content() for q in query_ids], EncodeRole.QUERY
+        )
+        top_scores, top_indices = score_topk(documents, encoded, depth)
+        scores = {
+            q: {doc_ids[int(i)]: float(s) for s, i in zip(row_s, row_i, strict=True) if int(i) >= 0}
+            for q, row_s, row_i in zip(query_ids, top_scores, top_indices, strict=True)
+        }
     else:
-        from rcp_ndcg.retrieval.encoder import Embeddings, EncodeRole
         from rcp_ndcg.retrieval.topk import score_topk
 
         vectors = np.load(root / "vectors.npy")
         offsets = np.load(root / "offsets.npy") if (root / "offsets.npy").exists() else None
         documents = Embeddings(vectors=vectors, offsets=offsets)
-        encoded = _encoder(retriever.encoder).encode(
+        encoded = _encode(
+            retriever.encoder,  # type: ignore[arg-type]  # the kind's union: ServedPooling here
             [queries[q].format_content() for q in query_ids],
-            role=EncodeRole.QUERY,
-            batch_size=retriever.encoder.batch_size,
+            EncodeRole.QUERY,
         )
         top_scores, top_indices = score_topk(documents, encoded, depth)
         scores = {
@@ -215,16 +225,13 @@ def rerank(
         reranker: The reranker.
         depth: Candidates per query.
         system: The system of ``rankings`` to rerank (may be omitted when it has one).
-        out: A checkpoint directory: each scored query is recorded as it finishes, and a rerun skips them
-            (served backends).
+        out: A checkpoint directory: each scored query is recorded as it finishes, and a rerun skips them.
 
     Returns:
         :class:`~rcp_ndcg.data.Rankings` with one system named after the reranker's model, its rows naming the
         dataset the candidates' rows name.
     """
     from rcp_ndcg_core._records import RankingExample
-
-    from rcp_ndcg.retrieval.cross_encoder import rerank_examples
 
     candidates = rankings.top(depth).queries(system=system, dataset=dataset.name)
     corpus, queries = dataset.corpus, dataset.queries
@@ -246,7 +253,7 @@ def rerank(
                 contents=[corpus[d].as_content for d in order],
             )
         )
-    scored = rerank_examples(examples, _rerank_settings(reranker), checkpoint_dir=out) or []
+    scored = _rerank_examples(examples, reranker, checkpoint_dir=out)
     return Rankings.from_scores(
         {e.id: dict(zip(e.doc_ids, e.scores or [], strict=True)) for e in scored},
         system=reranker.model,
@@ -298,6 +305,157 @@ def fuse(rankings: Sequence[Rankings], *, rrf_k: int = 60, depth: int = 150, sys
 
 
 # ---------------------------------------------------------------------------
+# The rerank driver: the clients score, this module checkpoints and aligns.
+# ---------------------------------------------------------------------------
+
+_CHECKPOINT_MAX_SEQ_LENGTH = 8192
+"""The pair budget the checkpoint keys record: the served path's historical ``MAX_SEQ_LENGTH``, kept so a
+resumed rerank reads an old checkpoint. A config's ``max_tokens`` (once the text-budget mechanism wires the
+clients) keys instead of this default."""
+
+_CHECKPOINT_MAX_QUERY_LENGTH = 4096
+"""The query budget the checkpoint keys record: the served path's historical ``MAX_QUERY_LENGTH``."""
+
+
+def _checkpoint_key(config: RerankerConfig, example: Any) -> str:
+    """What a checkpointed query's scores are valid for: the reranker, the budgets, the query and its candidates.
+
+    A rerun with another reranker, another depth or other candidates has another key and is scored again. The
+    payload spells the budgets and the served framework exactly as the earlier release that wrote today's
+    checkpoint files did, so a resumed rerank reads them.
+    """
+    payload = {
+        "model": config.model,
+        "framework": "vllm",
+        "revision": config.revision,
+        "max_seq_length": getattr(config, "max_tokens", None) or _CHECKPOINT_MAX_SEQ_LENGTH,
+        "max_query_length": getattr(config, "query_max_tokens", None) or _CHECKPOINT_MAX_QUERY_LENGTH,
+        "query_id": str(example.id),
+        "doc_ids": [str(doc_id) for doc_id in example.doc_ids],
+    }
+    return short(hash_payload(payload), 16)
+
+
+def _iter_checkpoint_records(ckpt_dir: Path) -> Iterable[dict[str, Any]]:
+    """Yield score records from every ``rank*.jsonl`` in *ckpt_dir*.
+
+    Tolerates a truncated trailing line -- the common crash signature is a process
+    that died mid-flush, and one unparseable line should not invalidate the work
+    before it.
+    """
+    if not ckpt_dir.exists():
+        return
+    for shard in sorted(ckpt_dir.glob("rank*.jsonl")):
+        with shard.open() as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    yield json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+
+def _checkpoint_scores(ckpt_dir: Path) -> dict[str, dict[str, float]]:
+    """``{checkpoint key: {doc_id: score}}`` across all rank checkpoints (:func:`_checkpoint_key`).
+
+    Per *query* rather than per pair: a rerank request is atomic at the query level, so a partially-written query
+    has nothing usable to resume from. Records without a key are not reused.
+    """
+    by_key: dict[str, dict[str, float]] = {}
+    for record in _iter_checkpoint_records(ckpt_dir):
+        if isinstance(record, dict) and isinstance(record.get("k"), str) and isinstance(record.get("s"), dict):
+            by_key[record["k"]] = {str(doc_id): float(score) for doc_id, score in record["s"].items()}
+    return by_key
+
+
+def _rerank_examples(
+    examples: list[Any],
+    config: RerankerConfig,
+    *,
+    checkpoint_dir: str | Path | None,
+) -> list[Any]:
+    """Score every example through the rerank client, checkpointing per query.
+
+    Args:
+        examples: :class:`~rcp_ndcg_core._records.RankingExample` records with their documents populated.
+        config: The reranker.
+        checkpoint_dir: When given, each scored query is appended to ``<dir>/rank000.jsonl`` (one record
+            ``{"q", "k", "s"}``, flushed and fsynced) as it finishes, and the queries the directory already holds
+            are skipped.
+
+    Returns:
+        The examples in input order with ``scores`` set, aligned to ``doc_ids``.
+
+    Raises:
+        DataError: A document has no score. The candidate set is part of the run's identity, so a document is
+            neither dropped nor given a made-up score.
+    """
+    client = RerankClient(config)
+    keys = [_checkpoint_key(config, example) for example in examples]
+    meta = {
+        str(example.id): (key, [str(doc_id) for doc_id in example.doc_ids])
+        for example, key in zip(examples, keys, strict=True)
+    }
+    ckpt_dir = Path(checkpoint_dir) if checkpoint_dir is not None else None
+    if ckpt_dir is not None:
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+    by_key = _checkpoint_scores(ckpt_dir) if ckpt_dir is not None else {}
+    pending = [example for example, key in zip(examples, keys, strict=True) if key not in by_key]
+    if by_key and len(pending) < len(examples):
+        logger.info(f"rerank resume: {len(examples) - len(pending)}/{len(examples)} queries already scored")
+
+    ckpt_fh = (ckpt_dir / "rank000.jsonl").open("a") if ckpt_dir is not None else None
+    try:
+
+        def checkpoint(query_id: str, scores: tuple[float, ...]) -> None:
+            """One scored query: record it (old record format), flush, fsync -- a crash costs the in-flight ones."""
+            key, doc_ids = meta[query_id]
+            scored = {doc_id: float(score) for doc_id, score in zip(doc_ids, scores, strict=True)}
+            by_key[key] = scored
+            if ckpt_fh is not None:
+                ckpt_fh.write(json.dumps({"q": query_id, "k": key, "s": scored}) + "\n")
+                # Flush + fsync per query so a crash on the next one keeps this one.
+                ckpt_fh.flush()
+                os.fsync(ckpt_fh.fileno())
+
+        try:
+            client.rerank_many(pending, checkpoint=checkpoint)
+        finally:
+            client.close()
+    finally:
+        if ckpt_fh is not None:
+            ckpt_fh.close()
+    return _apply_scores(examples, keys, by_key)
+
+
+def _apply_scores(
+    examples: Sequence[Any],
+    keys: Sequence[str],
+    by_key: dict[str, dict[str, float]],
+) -> list[Any]:
+    """Attach scores to *examples* in input order (``keys``: each example's :func:`_checkpoint_key`).
+
+    Raises:
+        DataError: A document has no score. The candidate set is part of the run's identity, so a document is
+            neither dropped nor given a made-up score.
+    """
+    out: list[Any] = []
+    for example, key in zip(examples, keys, strict=True):
+        scored = by_key.get(key, {})
+        missing = [str(doc_id) for doc_id in example.doc_ids if str(doc_id) not in scored]
+        if missing:
+            raise DataError(
+                f"query {example.id!r}: the reranker returned no score for {len(missing)} documents, e.g. "
+                f"{missing[:3]}",
+                hint="rerun the rerank; scored queries are kept in the checkpoint directory",
+            )
+        out.append(example.model_copy(update={"scores": [scored[str(doc_id)] for doc_id in example.doc_ids]}))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------
 
@@ -337,112 +495,47 @@ def _system_name(retriever: RetrieverConfig) -> str:
     return retriever.encoder.model
 
 
-def _key(env: str | None) -> str | None:
-    if env is None:
-        return None
-    if env not in os.environ:
-        raise CredentialsError(f"the API key variable {env} is not set", hint=f"export {env}=...")
-    return os.environ[env]
-
-
-def _encoder(config: EncoderConfig) -> Any:
-    """The :class:`~rcp_ndcg.retrieval.encoder.Encoder` that runs ``config``."""
-    if isinstance(config, OpenAICompatibleEncoder) and config.base_url is None:
-        raise ConfigError(
-            "the served encoder has no base_url",
-            hint="give encoder.base_url, or start its engine with serve.encoder in the run config (the job then "
-            "passes the URL at runtime)",
-        )
-    if isinstance(config, LocalEncoder) and config.engine == "hf":
-        from rcp_ndcg.retrieval.encoders import TorchDenseEncoder
-
-        return TorchDenseEncoder(
-            model_name=config.model,
-            revision=config.revision,
-            batch_size=config.batch_size or 32,
-            document_prefix=config.doc_prompt,
-        )
-    if isinstance(config, LocalEncoder) or (isinstance(config, OpenAICompatibleEncoder) and config.pooling == "token"):
-        from rcp_ndcg.retrieval.encoders import VllmEncoder
-
-        served = isinstance(config, OpenAICompatibleEncoder)
-        return VllmEncoder(
-            model_name=config.model,
-            pooling_task="token_embed" if config.pooling == "token" else "embed",
-            mode="http" if served else "offline",
-            revision=None if served else config.revision,
-            api_base=config.base_url if isinstance(config, OpenAICompatibleEncoder) else None,
-            api_key=_key(config.api_key_env) if served else None,
-            timeout_s=config.timeout_s if served else None,
-            connect_timeout_s=config.connect_timeout_s if served else None,
-            max_retries=config.max_retries if served else None,
-            batch_size=config.batch_size or 64,
-            query_prefix=config.query_prompt or "",
-            document_prefix=config.doc_prompt or "",
-        )
-    from rcp_ndcg.retrieval.encoders import HostedApiEncoder
-
-    return HostedApiEncoder(
-        vendor="openai" if isinstance(config, OpenAICompatibleEncoder) else config.provider,
-        model=config.model,
-        base_url=config.base_url,
-        api_key=_key(config.api_key_env),
-        batch_size=config.batch_size,
-        timeout_s=config.timeout_s,
-        connect_timeout_s=config.connect_timeout_s,
-        max_retries=config.max_retries,
-        query_prefix=getattr(config, "query_prompt", None) or "",
-        document_prefix=getattr(config, "doc_prompt", None) or "",
+def _no_base_url() -> ConfigError:
+    """The refusal a served encoder without a URL gets, with where the URL may come from."""
+    return ConfigError(
+        "the served encoder has no base_url",
+        hint="give encoder.base_url, or start its engine with serve.encoder in the run config (the job then "
+        "passes the URL at runtime)",
     )
 
 
-def _local_reranker(model: str) -> str:
-    """The in-process implementation of a reranker model id."""
-    family = next((f for prefix, f in _LOCAL_RERANKERS if model.lower().startswith(prefix)), None)
-    if family is None:
-        known = ", ".join(prefix for prefix, _ in _LOCAL_RERANKERS)
-        raise ConfigError(
-            f"no in-process reranker for {model!r} (known families: {known})",
-            hint="serve the model (vllm serve --runner pooling) and use provider: openai_compatible",
-        )
-    return family
+def _encode(config: Any, contents: Sequence[Any], role: EncodeRole) -> Embeddings:
+    """Encode *contents* through the encoder config's role client, its transport closed after the call.
 
+    A :class:`~rcp_ndcg.retrieval.config.ServedEmbedding` runs the
+    :class:`~rcp_ndcg.inference.clients.EmbeddingClient`, a
+    :class:`~rcp_ndcg.retrieval.config.ServedPooling` the
+    :class:`~rcp_ndcg.inference.clients.PoolingClient` (ragged), and a hosted profile the embedding client at
+    the vendor's public URL.
 
-def _rerank_settings(config: RerankerConfig) -> Any:
-    from rcp_ndcg.retrieval.cross_encoder import RerankSettings
-
-    if isinstance(config, Local):
-        framework = _local_reranker(config.model)
-        if config.batch_size is not None and framework not in _BATCHED:
-            raise ConfigError(f"{config.model} batches on its own and takes no batch_size", hint="drop batch_size")
-        batch = config.batch_size or _DEFAULT_BATCH.get(framework, 8)
-        return RerankSettings(
-            model_name=config.model, framework=framework, revision=config.revision, external_batch_size=batch
-        )
-    if isinstance(config, OpenAICompatibleReranker):
+    Raises:
+        ConfigError: a served encoder's ``base_url`` is unset: give it, or start its engine with
+            ``serve.encoder`` (the job then passes the URL at runtime).
+    """
+    if isinstance(config, ServedPooling):
         if config.base_url is None:
-            raise ConfigError(
-                "the served reranker has no base_url",
-                hint="give rerank.base_url, or start its engine with serve.reranker in the run config (the job "
-                "then passes the URL at runtime)",
-            )
-        return RerankSettings(
-            model_name=config.model,
-            framework="vllm",
-            api_base=config.base_url,
-            api_key=_key(config.api_key_env),
-            concurrency=config.concurrency,
-            timeout_s=config.timeout_s,
-            connect_timeout_s=config.connect_timeout_s,
-            max_retries=config.max_retries,
-        )
-    return RerankSettings(
-        model_name=config.model,
-        framework=config.provider,
-        api_base=config.base_url,
-        api_key=_key(config.api_key_env),
-        request_size=config.batch_size or _DEFAULT_BATCH[config.provider],
-        timeout_s=config.timeout_s,
-        connect_timeout_s=config.connect_timeout_s,
-        max_retries=config.max_retries,
-    )
+            raise _no_base_url()
+        client: Any = PoolingClient(config)
+    else:
+        if isinstance(config, ServedEmbedding) and config.base_url is None:
+            raise _no_base_url()
+        client = EmbeddingClient(config)
+    try:
+        return client.encode(contents, role)
+    finally:
+        _close(client)
+
+
+def _close(client: Any) -> None:
+    """Close the transport a client built (an injected sender closes nothing); safe on any client."""
+    aclose = getattr(getattr(client, "_sender", None), "aclose", None)
+    if callable(aclose):
+        aclose()
+
+
+__all__ = ["Index", "fuse", "index", "load_index", "rerank", "retrieve", "search"]
