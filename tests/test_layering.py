@@ -75,6 +75,8 @@ def _targets_of_import(node: ast.Import | ast.ImportFrom, *, module: str, is_pac
             real = module if module == "rcp_ndcg" else f"rcp_ndcg.{module}"
             anchor = real if is_package else real.rpartition(".")[0]
             parts = anchor.split(".")
+            if node.level - 1 >= len(parts):  # relative beyond the top-level package: an ImportError, not a layer
+                return
             parts = parts[: len(parts) - (node.level - 1)]
             if not parts or not all(parts):  # relative beyond the top-level package: unresolvable statically
                 return
@@ -177,6 +179,7 @@ def test_a_relative_import_across_layers_is_checked(tmp_path: Path, monkeypatch:
     (tmp_path / "data" / "broken.py").write_text("from ..retrieval import anything\n", encoding="utf-8")
     (tmp_path / "data" / "same_layer.py").write_text("from .broken import anything\n", encoding="utf-8")
     (tmp_path / "data" / "up_one.py").write_text("from .. import data\n", encoding="utf-8")
+    (tmp_path / "data" / "beyond.py").write_text("from ....retrieval import anything\n", encoding="utf-8")
     monkeypatch.setattr(sys.modules[__name__], "SRC", tmp_path)
 
     # every finding is prefixed with the checkout's own src/rcp_ndcg, whatever SRC reads now
