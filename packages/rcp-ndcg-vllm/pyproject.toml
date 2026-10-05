@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rcp-ndcg-vllm"
+version = "0.0.1"
+description = "vLLM serving recipes for retrieval models, the equivalence harness, the engine recorder and the GPU wave runner."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.12"
+authors = [
+  { name = "RCP-nDCG contributors" },
+]
+keywords = ["information-retrieval", "vllm", "rerank", "embedding", "serving"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+]
+# Deliberately without vllm: the engine image carries it, and a torch pin here
+# would fight every vLLM release.  This package talks to the engine over HTTP
+# (rcp-ndcg and rcp-ndcg-vllm never import each other; they meet at the URL).
+dependencies = [
+  "pydantic>=2.0",
+  "PyYAML>=6.0",
+  "httpx>=0.27",
+  "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+# The in-process reference implementations stage 2 compares against: the model
+# stacks a GPU host already carries inside the engine image, plus jinja2 for
+# stage 1's prompt rendering (the same template engine the engine uses).
+reference = [
+  "torch>=2.0",
+  "transformers>=4.40",
+  "sentence-transformers>=3.0",
+  "jinja2>=3.1",
+]
+# Stage 3 (nDCG@10 per subset): the pipeline package, called as a subprocess
+# (`rcp-ndcg eval score`); never imported by this package.
+metrics = [
+  "rcp-ndcg",
+]
+# The package's own CPU test suite (pytest plus jinja2 for the stage-1 tests).
+test = [
+  "pytest>=8.0",
+  "jinja2>=3.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/cohere-ai/rcp-ndcg"
+Repository = "https://github.com/cohere-ai/rcp-ndcg"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
