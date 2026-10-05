@@ -2,7 +2,7 @@
 
 A judge endpoint only needs to be OpenAI-compatible: the engine runs stock, without media flags, because the client
 prepares every image before it is sent, deterministically, and records what it sent. :func:`prepare_content` is the
-one place this happens; the payload builder (:mod:`rcp_ndcg.llm._payload`) sends only what it returns.
+one place this happens; the judge's chat wire (:mod:`rcp_ndcg.inference.adapters.chat`) sends only what it returns.
 
 For each image and each sampled video frame, under an image policy with a pixel budget and a known processor family
 (:meth:`~rcp_ndcg.data.resolution.ImagePolicy.resizes`):

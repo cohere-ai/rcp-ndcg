@@ -206,7 +206,13 @@ def explain(
     ideal_gains = {d: g for d, g in gains.items() if d not in excluded}
 
     systems, orders = [], {}
-    for system in rankings.systems:
+    scored = report.systems  # the systems the report scored (systems= may have restricted the rankings' file)
+    if not scored:
+        raise DataError(
+            f"the report scored no systems (its metrics matched no labelled queries of {data.name!r})",
+            hint="score the query with a metric that has labels for it: RCP gains for rcp_ndcg, qrels for qrel_ndcg",
+        )
+    for system in scored:
         scores = _system_queries(rankings, system, part.name).get(query_id, {})
         entering = candidate_docs(
             rules, scores, candidates=(part.candidates or {}).get(query_id), excluded=excluded, query_id=query_id
@@ -233,9 +239,9 @@ def explain(
         ]
         systems.append(SystemExplanation(system=system, values=values, top=top))
 
-    first = rankings.systems[0]
+    first = scored[0]
     deltas = []
-    for other in rankings.systems[1:] if ideal_gains else []:
+    for other in scored[1:] if ideal_gains else []:
         total, selection, ordering = score_delta(orders[first], orders[other], ideal_gains, k=k)
         deltas.append(ScoreDelta(system_a=first, system_b=other, total=total, selection=selection, ordering=ordering))
     return QueryExplanation(

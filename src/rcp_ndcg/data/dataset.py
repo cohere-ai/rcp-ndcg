@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import fnmatch
 import math
+import warnings
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
@@ -31,13 +32,14 @@ from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
 
 from rcp_ndcg.data.io import READERS, JsonlReader, get_reader, grade
 from rcp_ndcg.data.io.base import join_title
-from rcp_ndcg.data.revisions import _COMMIT, hub_cache_dir, hub_offline, resolve_revision
+from rcp_ndcg.data.revisions import hub_cache_dir, hub_offline, is_commit, resolve_revision
 from rcp_ndcg.errors import (
     ConfigError,
     DataError,
     MissingInputError,
     ProviderError,
     RcpNdcgError,
+    RcpNdcgWarning,
     classify,
 )
 from rcp_ndcg.support.logging import get_logger
@@ -637,9 +639,20 @@ def _hub_absent(repo: str, path: str, revision: str | None) -> bool:
 
     An online download writes the ``.no_exist`` marker when the Hub answers 404; offline it is the only way to
     tell "absent upstream" from "not cached" (``huggingface_hub.try_to_load_from_cache``).
-    """
-    from huggingface_hub import _CACHED_NO_EXIST, try_to_load_from_cache
 
+    The marker's sentinel is a private name (``_CACHED_NO_EXIST``); a huggingface_hub without it cannot tell the
+    two apart, so the file is treated as "not cached" — the caller then raises with the offline hint instead of
+    reporting a silent absence (an optional table never reads as ``None``, a required one never as upstream-404).
+    One debug line records the degradation.
+    """
+    try:
+        from huggingface_hub import _CACHED_NO_EXIST, try_to_load_from_cache
+    except ImportError:
+        logger.debug(
+            f"huggingface_hub has no _CACHED_NO_EXIST; treating hf://{repo}/{path} at {revision} as not cached "
+            "rather than absent"
+        )
+        return False
     return try_to_load_from_cache(repo, path, repo_type="dataset", revision=revision) is _CACHED_NO_EXIST
 
 
@@ -656,7 +669,7 @@ def _hub_miss(exc: BaseException, repo: str, path: str, revision: str | None) ->
     typed = classify(exc)
     offline = hub_offline() or _named_offline(exc)
     if isinstance(typed, MissingInputError) and offline:
-        if revision is not None and _COMMIT.match(revision):
+        if revision is not None and is_commit(revision):
             typed.hint = (
                 "the file is not in the local Hub cache and the Hub is unreachable (HF_HUB_OFFLINE); run once "
                 "online to download it"
@@ -752,9 +765,13 @@ def _hub_listing(repo: str, revision: str | None) -> list[str]:
         unreachable = exc
     listing = _snapshot_listing(repo, revision)
     if listing is not None:
-        logger.warning(
-            f"Serving the file listing of hf://{repo} from the local snapshot at {revision} (the Hub is "
-            "unreachable); it holds only the files a download left, and a partial cache reads as missing data."
+        warnings.warn(
+            RcpNdcgWarning(
+                "SNAPSHOT_LISTING",
+                f"Serving the file listing of hf://{repo} from the local snapshot at {revision} (the Hub is "
+                "unreachable); it holds only the files a download left, and a partial cache reads as missing data.",
+            ),
+            stacklevel=2,
         )
         return listing
     if unreachable is not None:
@@ -783,7 +800,7 @@ def _hub_unreachable_errors() -> tuple[type[BaseException], ...]:
 
 def _snapshot_listing(repo: str, revision: str | None) -> list[str] | None:
     """The file paths of the local snapshot for *revision*, or ``None`` when the cache holds no snapshot of it."""
-    if revision is None or not _COMMIT.match(revision):
+    if revision is None or not is_commit(revision):
         return None  # the snapshot tree is per commit; without one there is nothing this cache can list
     snapshot = hub_cache_dir() / f"datasets--{repo.replace('/', '--')}" / "snapshots" / revision
     if not snapshot.is_dir():

@@ -2,7 +2,7 @@
   "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/judge-config.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "One judge: an OpenAI-compatible Endpoint with sampling settings.\n\nThe endpoint fields (``model``, ``revision``, ``api_key_env``, ``headers_env``, ``concurrency``, the\ntimeouts, retries and ``wait_on_outage_s``) are Endpoint's;\n``revision`` is recorded in the judgement family, so two checkpoints served under one name never pool.",
+  "description": "One judge: an OpenAI-compatible Endpoint with sampling settings.\n\nThe endpoint fields (``api``, ``model``, ``revision``, ``api_key_env``, ``headers_env``, ``concurrency``,\nthe timeouts, retries and ``wait_on_outage_s``) are Endpoint's;\n``revision`` is recorded in the judgement family, so two checkpoints served under one name never pool.",
   "properties": {
     "allow_floating_model": {
       "default": false,
@@ -20,7 +20,7 @@
         }
       ],
       "default": null,
-      "description": "The wire adapter that speaks the endpoint's protocol (ADAPTER_ENTRY_POINTS); ``None`` until a role config sets its default. Content: which service computes the numbers.",
+      "description": "The wire adapter that speaks the endpoint's protocol; ``None`` (the default) is the judge's ``openai_chat`` wire. Naming another adapter (a third-party judge wire) enters the identity: it decides what is computed. Content.",
       "title": "Api"
     },
     "api_key_env": {
@@ -92,7 +92,7 @@
     },
     "extra_body": {
       "additionalProperties": true,
-      "description": "Further request fields the endpoint understands (e.g. ``reasoning_effort``, ``chat_template_kwargs``).",
+      "description": "Further request fields the endpoint understands (e.g. ``reasoning_effort``, ``chat_template_kwargs``); merged into the request body's top level.",
       "title": "Extra Body",
       "type": "object"
     },

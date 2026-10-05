@@ -32,7 +32,8 @@ Read `data.summary`: one row per system and metric (`rcp_ndcg`, `qrel_ndcg`) wit
 `data.per_dataset` holds the mean per dataset. The per-query values stay out of stdout: `--per-query` adds them,
 `--fields summary` keeps only the named fields, and `--out report.json` writes the full report (what `eval compare
 --report` and `eval explain --report` read). Suites: `nanobeir`, `bright`, `vidore`, `trecdl`. Python:
-`rcp_ndcg.evaluate(rcp_ndcg.load_rankings(path), suite="nanobeir")`.
+`rcp_ndcg.evaluate(rcp_ndcg.load_rankings(path), suite="nanobeir")`. One system matching nothing of the dataset
+is refused (exit 12); score the others with `--system NAME` (repeatable; `systems=[...]` in Python).
 
 **2. Re-judge a pool with an OpenAI-compatible endpoint (calls the judge).** Ask the user for the model's
 tokenizer (its Hugging Face repo id, or a `tokenizer.json` path): `--set judge.tokenizer=<id>` makes text limits

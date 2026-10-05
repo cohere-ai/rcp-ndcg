@@ -192,10 +192,10 @@ class TestAFailedChange:
         pipeline = Pipeline(tiny_config(data, steps=["tournament"]), runs_dir=str(tmp_path))
         pipeline.run()
 
-        def broken(self, request, *args, **kwargs):
+        def broken(self, request):
             raise RuntimeError("endpoint gone")
 
-        monkeypatch.setattr("rcp_ndcg.llm._fake.FakeJudge._send", broken)
+        monkeypatch.setattr("rcp_ndcg.llm.client.JudgeClient.complete", broken)
         with pytest.raises(RuntimeError, match="endpoint gone"):
             Pipeline.resume(pipeline.layout.root, overrides=["steps=[tournament, rubric]"]).run()
         manifest = RunManifest.load(pipeline.layout.root)
@@ -951,19 +951,19 @@ class TestFailures:
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The requests of a failed judging step were lost from the step and the run's usage."""
+        from rcp_ndcg.llm import JudgeClient
         from rcp_ndcg.llm.client import BackendUnavailableError
-        from rcp_ndcg.testing import FakeJudge
 
-        answer = FakeJudge._send
+        complete = JudgeClient.complete
         answered = []
 
-        async def down_after_three(self, request, replica=None):
+        async def down_after_three(self, request):
             if len(answered) >= 3:
                 raise BackendUnavailableError("the endpoint went away")
             answered.append(request)
-            return await answer(self, request, replica)
+            return await complete(self, request)
 
-        monkeypatch.setattr(FakeJudge, "_send", down_after_three)
+        monkeypatch.setattr(JudgeClient, "complete", down_after_three)
         pipeline = Pipeline(tiny_config(data, steps=["tournament"]), runs_dir=str(tmp_path / "runs"))
         with pytest.raises(BackendUnavailableError):
             pipeline.run()

@@ -1,11 +1,14 @@
 # `rcp_ndcg.eval`
 
 - `evaluate(rankings, *, suite=None, dataset=None, gains=None, protocol=None, k=10, metrics=("rcp_ndcg", "qrel_ndcg"),
-  count_gains=None, bootstrap=1000, seed=0)` returns an `EvalReport`: RCP-nDCG, qrel-nDCG and Count-nDCG of
-  `rcp_ndcg.data.Rankings` under a scoring protocol, per query, per dataset and as a summary with a query-clustered
-  bootstrap interval. The gains come from `gains` (a `{query_id: {doc_id: gain}}` mapping or a `Calibration`), else
-  from the dataset's released `gain` column. Integer qrels are never used as RCP gains: without gains, RCP-nDCG
-  raises `DataError`. The protocol defaults to the suite's or the dataset's, else `plain`.
+  count_gains=None, systems=None, bootstrap=1000, seed=0)` returns an `EvalReport`: RCP-nDCG, qrel-nDCG and
+  Count-nDCG of `rcp_ndcg.data.Rankings` under a scoring protocol, per query, per dataset and as a summary with a
+  query-clustered bootstrap interval. The gains come from `gains` (a `{query_id: {doc_id: gain}}` mapping or a
+  `Calibration`), else from the dataset's released `gain` column. Integer qrels are never used as RCP gains:
+  without gains, RCP-nDCG raises `DataError`. The protocol defaults to the suite's or the dataset's, else `plain`.
+  `systems` scores only the named systems (`--system` on the command line, repeatable): one system of a
+  multi-system file whose rankings match nothing of the dataset is refused (every score would be 0), and this
+  scores the others; an unknown name raises `ConfigError` listing the systems the file names.
 - `compare(report, *, baseline=None, metric="rcp_ndcg", k=None, alpha=0.05, bootstrap=10000, seed=0,
   systems=None)` returns a `Comparison`: per pair of systems the difference (B minus A), the paired t-test, a
   query-clustered bootstrap interval, and the queries where RCP-nDCG and qrel-nDCG disagree in sign. `systems`

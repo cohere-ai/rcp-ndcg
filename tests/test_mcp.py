@@ -162,3 +162,28 @@ def test_the_sdk_server_returns_the_same_results() -> None:
     assert {tool.name for tool in listed.tools} == READ_ONLY | {"run_cancel", "estimate"}
     assert wire["isError"] is True
     assert wire["structuredContent"] == mcp.call_tool("run_show", {"run": "/x"})["structuredContent"]
+
+
+def test_eval_score_takes_the_system_argument(tmp_path: Path) -> None:
+    """`eval_score` exposes `system` and scores only the named systems of a multi-system file."""
+    manifest = mcp.tool_manifest().model_dump(mode="json", by_alias=True)["tools"]
+    (score,) = [tool for tool in manifest if tool["name"] == "eval_score"]
+    assert "system" in score["inputSchema"]["properties"]
+
+    dataset = tmp_path / "rows.jsonl"
+    dataset.write_text(json.dumps({"id": "q1", "query": "q", "doc_ids": ["a", "b"], "qrels": {"a": 1, "b": 0}}) + "\n")
+    rankings = tmp_path / "mixed.jsonl"
+    Rankings.concat(
+        [
+            Rankings.from_orders({"q1": ["a", "b"]}, system="good"),
+            Rankings.from_orders({"q1": ["x1"]}, system="broken", dataset="zzz"),
+        ]
+    ).save(rankings)
+
+    result = mcp.call_tool(
+        "eval_score",
+        {"rankings": str(rankings), "dataset": f"jsonl:{dataset}", "metrics": ["qrel_ndcg"], "system": ["good"]},
+    )
+
+    assert result["isError"] is False, result
+    assert [row["system"] for row in result["structuredContent"]["summary"]] == ["good"]
