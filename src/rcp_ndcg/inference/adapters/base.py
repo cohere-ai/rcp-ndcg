@@ -148,7 +148,8 @@ def get_adapter(name: str) -> type[Adapter[Any, Any]]:
         name: The adapter's name (``"openai_chat"``, ``"rerank"``, or a third party's).
 
     Returns:
-        The registered adapter class (not an instance: adapters are stateless).
+        The registered adapter class (not an instance: the caller -- a role client, or a third party --
+        instantiates it with the role config its request fields depend on).
 
     Raises:
         ConfigError: No adapter of that name is registered; the hint lists the known names.

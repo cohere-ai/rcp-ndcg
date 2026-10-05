@@ -7801,6 +7801,24 @@
         ],
         "kind": "class"
       },
+      "CohereRerankAdapter": {
+        "bases": [
+          "rcp_ndcg.inference.adapters.rerank.RerankWire"
+        ],
+        "defined_in": "rcp_ndcg.inference.adapters.rerank",
+        "init": [
+          {
+            "annotation": "RerankEndpoint",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "config"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
       "Completion": {
         "bases": [
           "pydantic.main.BaseModel"
@@ -8664,6 +8682,178 @@
         ],
         "kind": "class"
       },
+      "RerankAdapter": {
+        "bases": [
+          "rcp_ndcg.inference.adapters.rerank.RerankWire"
+        ],
+        "defined_in": "rcp_ndcg.inference.adapters.rerank",
+        "init": [
+          {
+            "annotation": "RerankEndpoint",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "config"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
+      "RerankClient": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.clients.rerank",
+        "init": [
+          {
+            "annotation": "RerankEndpoint",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "config"
+          },
+          {
+            "annotation": "Sender | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "sender"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "arerank": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str | Content",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "query"
+              },
+              {
+                "annotation": "Sequence[str | Content]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "documents"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "instruction"
+              },
+              {
+                "returns": "RerankResult"
+              }
+            ]
+          },
+          "arerank_many": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Sequence[RankingExample]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "examples"
+              },
+              {
+                "annotation": "Checkpoint | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "checkpoint"
+              },
+              {
+                "returns": "list[RerankResult]"
+              }
+            ]
+          },
+          "close": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "rerank": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str | Content",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "query"
+              },
+              {
+                "annotation": "Sequence[str | Content]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "documents"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "instruction"
+              },
+              {
+                "returns": "RerankResult"
+              }
+            ]
+          },
+          "rerank_many": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Sequence[RankingExample]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "examples"
+              },
+              {
+                "annotation": "Checkpoint | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "checkpoint"
+              },
+              {
+                "returns": "list[RerankResult]"
+              }
+            ]
+          }
+        }
+      },
       "RerankEndpoint": {
         "bases": [
           "rcp_ndcg.inference.endpoint.Endpoint"
@@ -8806,7 +8996,23 @@
           }
         },
         "frozen": true,
-        "kind": "pydantic_model"
+        "kind": "pydantic_model",
+        "members": {
+          "tokenizer_identity": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, str] | None"
+              }
+            ]
+          }
+        }
       },
       "RerankRequest": {
         "bases": [],
@@ -9082,6 +9288,24 @@
             "default": 0,
             "kind": "positional_or_keyword",
             "name": "output_tokens"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
+      "VoyageRerankAdapter": {
+        "bases": [
+          "rcp_ndcg.inference.adapters.rerank.RerankWire"
+        ],
+        "defined_in": "rcp_ndcg.inference.adapters.rerank",
+        "init": [
+          {
+            "annotation": "RerankEndpoint",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "config"
           },
           {
             "returns": "None"

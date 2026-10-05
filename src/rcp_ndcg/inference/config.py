@@ -127,7 +127,7 @@ class RerankEndpoint(Endpoint):
         recipe: As on :class:`EmbeddingEndpoint`: the server-side settings the package cannot read (the
             ``hf_overrides``, the score template), as a free string. Content.
         tokenizer: The model's tokenizer, in whose tokens ``max_tokens`` and ``query_max_tokens`` are counted.
-            Runtime by name.
+            Runtime by name; the file's SHA-256 enters the identity, as the judge's already does.
         max_tokens: What the budget counts is the model's whole input sequence as the engine sees it -- the
             rendered template, its special tokens, the instruction and the query-and-document content
             together, in the declared tokenizer's tokens. The content is cut on the client, in a budget
@@ -136,7 +136,8 @@ class RerankEndpoint(Endpoint):
             the template puts the document first, so does the query), and the template is re-attached after
             the cut. The cut is never left to the engine: an engine-side truncation of the rendered prompt
             drops anchors from one end or the other. The query is cut first, to ``query_max_tokens``; the
-            document gets the rest of the budget. ``None`` sends every pair whole. Content.
+            document gets the rest of the budget. ``None`` sends every pair whole. Content. Refused until
+            the text-budget mechanism wires the client-side cut, rather than silently ignoring a budget.
         query_max_tokens: The query's share of the pair budget (``max_tokens``), in the declared tokenizer's
             tokens; the document gets what remains. ``None`` (the default) declares no split, and the
             adapter's recipe decides. Content.
@@ -183,6 +184,29 @@ class RerankEndpoint(Endpoint):
                 "one prompt, and splitting it would change the scores"
             )
         return self
+
+    def tokenizer_identity(self) -> dict[str, str] | None:
+        """The tokenizer's content identity: ``{"sha256": <digest>}`` of its ``tokenizer.json``, or ``None``
+        without a tokenizer.
+
+        A rerank step's identity carries the tokenizer by its SHA-256, as the judge's already does (RFC-0001
+        section 7.4): the tokenizer decides what a ``max_tokens`` budget counts, so two passes whose
+        tokenizers differ never pool. The *name* (the config's ``tokenizer`` field) is runtime, recorded
+        beside the identity as a source, never in it -- the same rule the judging pass applies
+        (:mod:`rcp_ndcg.data.tokenizer`, the one tokenizer loader).
+
+        Returns:
+            ``{"sha256": ...}`` of the named tokenizer's file, or ``None`` when the config names none.
+
+        Raises:
+            DependencyError: ``tokenizers`` (or, for a Hub id, ``huggingface_hub``) is not installed.
+            MissingInputError: the local file, or the repository's ``tokenizer.json``, does not exist.
+        """
+        if self.tokenizer is None:
+            return None
+        from rcp_ndcg.data.tokenizer import load_tokenizer
+
+        return {"sha256": load_tokenizer(self.tokenizer).sha256}
 
 
 __all__ = ["EmbeddingEndpoint", "PoolingEndpoint", "RerankEndpoint"]
