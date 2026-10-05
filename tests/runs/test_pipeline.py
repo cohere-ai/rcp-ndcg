@@ -583,6 +583,35 @@ class TestTheRetrieveAndRerankIdentities:
         check_declarations(CandidatesConfig)
         identity_payload(CandidatesConfig.model_validate(candidates))
 
+    @pytest.mark.parametrize(
+        "klass",
+        [
+            "Endpoint",
+            "_Hosted",
+            "OpenAICompatible",
+            "Local",
+            "LocalEncoder",
+            "OpenAICompatibleEncoder",
+            "OpenAICompatibleReranker",
+            "Cohere",
+            "Voyage",
+            "Gemini",
+            "BM25Config",
+            "DenseConfig",
+            "LateInteractionConfig",
+        ],
+    )
+    def test_every_retrieval_config_class_declares_its_roles(self, klass: str) -> None:
+        """Every class of the retrieval configs -- the abstract bases included -- declares exactly its own fields.
+
+        A role for a field the class does not define (say ``provider``, declared on a base whose subclasses own
+        the field) is stale on that class: the declaration lives next to the field, and the MRO merge hands it to
+        the leaves.
+        """
+        import rcp_ndcg.retrieval.config as retrieval_config
+
+        check_declarations(getattr(retrieval_config, klass))
+
     def test_a_changed_reranker_url_skips_a_completed_rerank_step(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

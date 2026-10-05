@@ -74,7 +74,7 @@ class _Hosted(Endpoint):
     request or the texts per embedding request (``None`` for the provider's default).
     """
 
-    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"provider": _CONTENT, "batch_size": _RUNTIME}
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"batch_size": _RUNTIME}
 
     timeout_s: float = Field(default=120.0, gt=0)
     max_retries: int = Field(default=8, ge=0)
@@ -97,6 +97,8 @@ class OpenAICompatible(_Hosted):
 
     _CONCURRENT: ClassVar[bool] = True
 
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"provider": _CONTENT}
+
     provider: Literal["openai_compatible"] = "openai_compatible"
     concurrency: int = Field(default=8, ge=1)
     timeout_s: float = Field(default=600.0, gt=0)
@@ -109,6 +111,8 @@ class Cohere(_Hosted):
     ``COHERE_API_KEY``. A rerank request carries up to ``batch_size`` documents (default 100, the API's search
     unit)."""
 
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"provider": _CONTENT}
+
     provider: Literal["cohere"] = "cohere"
 
 
@@ -116,12 +120,16 @@ class Voyage(_Hosted):
     """Voyage AI's public API (``voyage-3-large``, ``rerank-2.5``, ``rerank-2.5-lite``, ...). The key is read from
     ``api_key_env``, else ``VOYAGE_API_KEY``. A rerank request carries up to ``batch_size`` documents (default 20)."""
 
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"provider": _CONTENT}
+
     provider: Literal["voyage"] = "voyage"
 
 
 class Gemini(_Hosted):
     """Google's Gemini embedding API (``gemini-embedding-001``). The key is read from ``api_key_env``, else
     ``GEMINI_API_KEY`` or ``GOOGLE_API_KEY``."""
+
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"provider": _CONTENT}
 
     provider: Literal["gemini"] = "gemini"
 
