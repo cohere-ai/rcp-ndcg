@@ -330,6 +330,138 @@ def test_evaluate_reproduces_the_papers_per_query_values() -> None:
 
 
 # ---------------------------------------------------------------------------
+# rankings that match nothing are refused (issue #5)
+# ---------------------------------------------------------------------------
+
+
+def _vidore_like(**fields) -> Dataset:
+    """One subset named like ViDoRe's, with pools, qrels and released gains on `corpus-test-` ids."""
+    defaults = {
+        "name": "hr__english",
+        "qrels": {
+            "q1": {"corpus-test-1": 1.0, "corpus-test-2": 0.0, "corpus-test-3": 0.0},
+            "q2": {"corpus-test-1": 0.0, "corpus-test-2": 1.0, "corpus-test-3": 0.0},
+        },
+        "gains": {
+            "q1": {"corpus-test-1": 0.9, "corpus-test-2": 0.1, "corpus-test-3": 0.0},
+            "q2": {"corpus-test-2": 0.9, "corpus-test-1": 0.1, "corpus-test-3": 0.0},
+        },
+        "candidates": {
+            "q1": ["corpus-test-1", "corpus-test-2", "corpus-test-3"],
+            "q2": ["corpus-test-2", "corpus-test-1", "corpus-test-3"],
+        },  # fmt: skip
+    }
+    return Dataset(**{**defaults, **fields})
+
+
+def _pool_orders(dataset: Dataset, *, prefixed: bool = True, dataset_name: str | None = None) -> Rankings:
+    """One system ranking every pool in pool order (unprefixed ids when asked)."""
+    orders = {
+        q: [d if prefixed else d.removeprefix("corpus-test-") for d in docs]
+        for q, docs in (dataset.candidates or {}).items()
+    }
+    return Rankings.from_orders(orders, system="mine", dataset=dataset.name if dataset_name is None else dataset_name)
+
+
+def test_the_issue_reproducer_ok_scores_and_the_mistakes_are_data_errors() -> None:
+    """The issue's three files, offline: `ok` scores 1.0, `wrong_dataset` and `no_prefix` are exit-12 errors."""
+    dataset = _vidore_like()
+    ok = _pool_orders(dataset)
+    wrong_dataset = _pool_orders(dataset, dataset_name="hr")
+    no_prefix = _pool_orders(dataset, prefixed=False)
+
+    assert evaluate(ok, dataset=dataset, gains=dataset.gains, protocol="vidore", bootstrap=0).value("mine") == 1.0
+    for broken, match in ((wrong_dataset, "no rankings of dataset 'hr__english'"),
+                          (no_prefix, "no ranked document is in the pools or labels")):  # fmt: skip
+        with pytest.raises(DataError, match=match) as caught:
+            evaluate(broken, dataset=dataset, gains=dataset.gains, protocol="vidore", bootstrap=0)
+        assert int(caught.value.exit_code) == 12
+
+
+def test_rankings_of_another_dataset_name_the_system_and_the_fix() -> None:
+    """The `dataset` column holds `hr` where the scored subset is `hr__english`: a DataError naming the system."""
+    dataset = _vidore_like()
+    wrong = _pool_orders(dataset, dataset_name="hr")
+
+    with pytest.raises(DataError) as caught:
+        evaluate(wrong, dataset=dataset, gains=dataset.gains, metrics=["qrel_ndcg"], bootstrap=0)
+
+    message = caught.value.message
+    assert message.startswith(
+        "system 'mine': no rankings of dataset 'hr__english'; the rankings name the datasets ['hr']"
+    )
+    assert caught.value.hint is not None and "exact subset name" in caught.value.hint
+    assert "hr__english" in caught.value.hint
+
+
+def test_no_subset_of_a_suite_is_named_is_a_data_error() -> None:
+    """A suite scored with a file of another dataset: the message names the suite and its subsets."""
+    suite = Dataset(name="vidore", subsets=(_vidore_like(), _vidore_like(name="energy__french")))
+    wrong = _pool_orders(_vidore_like(), dataset_name="hr")
+
+    with pytest.raises(DataError, match="no rankings of dataset 'vidore'") as caught:
+        evaluate(wrong, dataset=suite, metrics=["qrel_ndcg"], bootstrap=0)
+
+    assert "hr__english" in caught.value.hint and "energy__french" in caught.value.hint
+
+
+@pytest.mark.parametrize("protocol", ["plain", "vidore"])
+def test_rankings_of_another_corpus_are_refused_under_every_protocol(protocol: str) -> None:
+    """Doc ids without the `corpus-test-` prefix match no pool or label: a DataError, under any protocol."""
+    dataset = _vidore_like()
+    no_prefix = _pool_orders(dataset, prefixed=False)
+
+    with pytest.raises(DataError) as caught:
+        evaluate(no_prefix, dataset=dataset, gains=dataset.gains, protocol=protocol, bootstrap=0)
+
+    message = caught.value.message
+    assert "no ranked document is in the pools or labels of 'hr__english'" in message
+    assert "ranked '1' vs pool 'corpus-test-1'" in message, "one ranked id next to one pool id"
+    assert int(caught.value.exit_code) == 12
+
+
+def test_without_pools_the_labels_are_what_ranked_ids_must_match() -> None:
+    dataset = _vidore_like(candidates=None)
+    no_prefix = Rankings.from_orders(
+        {q: [d.removeprefix("corpus-test-") for d in docs] for q, docs in (dataset.gains or {}).items()},
+        system="mine",
+        dataset=dataset.name,
+    )
+
+    with pytest.raises(DataError, match="vs label 'corpus-test-1'"):
+        evaluate(no_prefix, dataset=dataset, gains=dataset.gains, protocol="plain", bootstrap=0)
+
+
+def test_partial_overlap_still_scores_and_warns_as_before() -> None:
+    """A system that ranks some of the dataset keeps its numbers, and nothing new warns."""
+    dataset = _vidore_like()
+    partial = Rankings.from_orders(
+        {"q1": ["corpus-test-1", "corpus-test-2", "corpus-test-3"], "q2": ["other-9"]},
+        system="mine",
+        dataset=dataset.name,
+    )
+
+    report = evaluate(partial, dataset=dataset, gains=dataset.gains, protocol="vidore", k=2, bootstrap=0)
+
+    assert 0.0 < report.value("mine") < 1.0, "q1's ranked pool scores, q2's unjudged id scores 0"
+    assert report.warnings == []
+
+
+def test_unranked_queries_name_the_subsets_they_count() -> None:
+    """One subset ranked, one not: the warning keeps its text and names the subset scored 0."""
+    suite = Dataset(name="vidore", subsets=(_vidore_like(), _vidore_like(name="energy__french")))
+    rankings = _pool_orders(_vidore_like())
+
+    report = evaluate(rankings, dataset=suite, metrics=["qrel_ndcg"], bootstrap=0)
+
+    (warning,) = [w for w in report.warnings if w.code == "UNRANKED_QUERIES"]
+    assert warning.message.startswith("mine: 2 labelled queries have no ranking; scored 0")
+    assert "subsets: energy__french" in warning.message and "hr__english" not in warning.message
+    per_dataset = {row.dataset: row.value for row in report.per_dataset}
+    assert per_dataset["hr__english"] == pytest.approx(1.0), "the ranked subset keeps its score"
+
+
+# ---------------------------------------------------------------------------
 # compare and sensitivity
 # ---------------------------------------------------------------------------
 

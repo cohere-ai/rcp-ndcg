@@ -21,6 +21,17 @@ Every artifact schema carries its own version (`rcp-ndcg.<name>.v1`), bumped onl
 incompatibly, independently of the package version. `rcp-ndcg` pins `rcp-ndcg-core` to its own version; the two are
 released together.
 
+## Unreleased
+
+### Fixed
+
+- `eval score`, `eval explain --report` and `evaluate()` refuse rankings that match nothing of the scored dataset
+  instead of scoring every query 0 with `ok` (issue #5): a `DataError` (exit 12) when no row of a system names
+  any subset of the scored dataset (the `dataset` column must hold the exact subset name), and when not one of
+  its ranked document ids is in the dataset's pools or labels (the message shows one ranked id next to one
+  dataset id). Partial overlap keeps scoring as before, and the `UNRANKED_QUERIES` warning names the subsets it
+  counts when the scored dataset has more than one.
+
 ## 0.1.0
 
 The first public release, accompanying the paper
