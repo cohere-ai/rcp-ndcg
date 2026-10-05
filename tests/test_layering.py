@@ -18,6 +18,8 @@ import ast
 from collections.abc import Iterator
 from pathlib import Path
 
+import pytest
+
 SRC = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg"
 
 #: The layers, from the one every module may import to the one that may import everything; the charter of
@@ -144,3 +146,15 @@ def outward_imports() -> list[str]:
 
 def test_no_eager_import_points_outward() -> None:
     assert outward_imports() == [], "eager imports point outward in the charter order"
+
+
+def test_a_top_level_module_that_is_not_placed_fails_loudly(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A new top-level module the charter has not placed is a named instruction, never a KeyError."""
+    import sys
+
+    module = sys.modules[__name__]
+    shrink = tuple(layer for layer in LAYERS if layer != "data")
+    monkeypatch.setattr(module, "LAYERS", shrink)
+    monkeypatch.setattr(module, "_LAYER", {name: index for index, name in enumerate(shrink)})
+    with pytest.raises(AssertionError, match=r"\bdata\b.*not placed in LAYERS"):
+        outward_imports()

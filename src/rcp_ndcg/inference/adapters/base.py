@@ -156,13 +156,14 @@ def get_adapter(name: str) -> type[Adapter[Any, Any]]:
     adapter = _BUILTINS.get(name) or _load_plugins().get(name)
     if adapter is None:
         known = known_adapters()
-        raise ConfigError(
-            f"unknown adapter {name!r}",
-            hint=f"known wire adapters: {', '.join(known)}" if known else "no wire adapter is registered yet; "
-            "the shipped ones arrive with the transport, and a third party's in the "
-            f"{ADAPTER_ENTRY_POINTS!r} entry-point group",
-            details={"known": list(known)},
-        )
+        if known:
+            hint = f"known wire adapters: {', '.join(known)}"
+        else:
+            hint = (
+                "no wire adapter is registered yet; the shipped ones arrive with the transport, and a "
+                f"third party's in the {ADAPTER_ENTRY_POINTS!r} entry-point group"
+            )
+        raise ConfigError(f"unknown adapter {name!r}", hint=hint, details={"known": list(known)})
     return adapter
 
 

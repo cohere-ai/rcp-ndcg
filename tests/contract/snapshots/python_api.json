@@ -7842,7 +7842,7 @@
             "type": "str"
           }
         },
-        "frozen": true,
+        "frozen": false,
         "kind": "pydantic_model"
       },
       "CompletionInput": {

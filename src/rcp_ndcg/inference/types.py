@@ -158,8 +158,6 @@ class Completion(BaseModel):
     reports, such as ``"abort"``), or ``None`` when it reports none.
     """
 
-    model_config = ConfigDict(frozen=True)
-
     response: str
     reasoning: str | None = None
     finish_reason: str | None = "stop"
