@@ -116,7 +116,8 @@ your own backend) so a preempted job resumes where it stopped; see
 [durability](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/concepts/serving.md#durability-local-runs-and-a-mirror).
 [Serving](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/concepts/serving.md) gives the vLLM and SGLang commands for each shipped judge, and a run config's
 `serve:` section names one engine per role (the judge, the retrieval encoder, the reranker), run in phases by a
-SLURM or Kubernetes job. To rehearse offline, the same pipeline runs with a deterministic fake judge:
+SLURM or Kubernetes job — the runners' phased rendering is pending, and until it lands such runs are refused
+(see Serving). To rehearse offline, the same pipeline runs with a deterministic fake judge:
 
 ```bash
 rcp-ndcg run start tiny

@@ -76,7 +76,7 @@ class Pipeline:
         engines: Mapping[EngineRole, EngineURLs] | None = None,
     ):
         self.config = config
-        self._engines = dict(engines) if engines is not None else _engines_overlay(config)
+        self._engines = dict(engines) if engines is not None else _engines_overlay()
         if self._engines:
             _check_engines(config, self._engines)
         self.only = list(only) if only else None
@@ -708,7 +708,7 @@ def _substance(config: RunConfig) -> dict[str, Any]:
     return data
 
 
-def _engines_overlay(config: RunConfig) -> dict[EngineRole, EngineURLs]:
+def _engines_overlay() -> dict[EngineRole, EngineURLs]:
     """The engines ``RCP_NDCG_ENGINES`` carries for this invocation (unchecked; the caller checks them)."""
     text = os.environ.get(ENGINES_ENV)
     if not text:

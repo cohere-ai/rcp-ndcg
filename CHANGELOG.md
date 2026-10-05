@@ -64,7 +64,7 @@ released together.
   runtime fields.
 - New layering charter (`AGENTS.md`): `data → inference → retrieval`; enforced by the new
   `tests/test_layering.py` (eager imports only; the current tree has no outward import).
-- **`serve:` names one engine per role, and a job runs the run in phases** (RFC 5.2 option B).
+- **`serve:` names one engine per role, and a job runs the run in phases** (each phase starts only the engines its steps use).
   `RunConfig.serve` is a `ServeByRole` (`judge`, `encoder`, `reranker`; the old single-engine mapping is refused
   with a hint showing the new shape), and `plan_phases(steps, serve, uses)` builds the phase plan: consecutive
   steps that call the same served engines share a phase, steps that call no served engine form an engine-free
