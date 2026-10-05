@@ -11,9 +11,8 @@ With a ``log_dir``, every job leaves files there that :meth:`LocalRunner.status`
 and, for a detached job, ``<name>.session`` (the process group running it).
 
 The command runs in the calling environment (an activated venv with
-``rcp-ndcg`` installed). The local runner starts no engine: a job with engine
-replicas (``JobSpec.serve``) is refused; start the engine yourself and point the
-judge at it (``--judge-url``).
+``rcp-ndcg`` installed). The local runner starts no engine: a job whose phases would start one is refused; start
+the engine yourself and point the run at it (``run resume --engine <role>=<url>``).
 """
 
 from __future__ import annotations
@@ -68,6 +67,10 @@ class LocalRunner:
 
     name = "local"
 
+    #: The local runner runs a job's phases (its argv covers every engine-free phase of the plan) but starts no
+    #: engine: a phase with engines is refused, with a hint about running the engines yourself.
+    renders_phases = True
+
     def __init__(self, **options: Any) -> None:
         self.options = LocalOptions.parse(self.name, options)
         self.cwd = self.options.cwd or str(Path.cwd())
@@ -79,14 +82,19 @@ class LocalRunner:
         """The worker script each job runs. Submits nothing.
 
         Raises:
-            ConfigError: a job asks for engine replicas, which the local runner does not start.
+            ConfigError: a job has a phase that starts an engine, which the local runner does not start.
         """
         for job in jobs:
-            if job.serve is not None:
+            serving = sorted(role for phase in job.phases for role in phase.engines)
+            if job.serve is not None:  # the pre-phase shape; the phased rendering removes the field
+                serving = ["(serve:)"]
+            if serving:
                 raise ConfigError(
-                    f"job {job.name!r} has a serve: section, and the local runner starts no engine",
-                    hint="start the engine yourself (docs/concepts/serving.md) and pass its URL: "
-                    "--judge-url http://localhost:8000/v1 --judge-model <served name>; or drop serve:",
+                    f"job {job.name!r} starts engine(s) for role(s) {', '.join(serving)}, and the local runner "
+                    "starts no engine",
+                    hint="start the engine(s) yourself (docs/concepts/serving.md) and pass the URLs: "
+                    "rcp-ndcg run resume --run <run dir> --engine <role>=<url>[,<url>]; or hand the run to a "
+                    "runner that starts them: --runner slurm | kubernetes",
                 )
         return {
             job.name: worker_script(self.options.defaults_for(job), install=False, workdir=self.cwd) for job in jobs
