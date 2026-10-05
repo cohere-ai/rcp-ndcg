@@ -578,6 +578,8 @@ class Transport:
         if loop.is_running():
             asyncio.run_coroutine_threadsafe(pool.aclose(), loop).result()
             return
+        if loop.is_closed():
+            return  # the pool's connections died with its loop; there is nothing left to await
         loop.run_until_complete(pool.aclose())
 
     def close(self) -> None:

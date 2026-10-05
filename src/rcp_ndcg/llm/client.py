@@ -297,10 +297,12 @@ class JudgeClient:
         self._rewire()
 
     def _rewire(self) -> None:
-        """Drop the wire built for the previous config, closing its transport's pool."""
+        """Drop the wire built for the previous config, closing its transport's pool and keeping its failures
+        counted (a config swap must not reset what the endpoint already refused)."""
         transport = self._transport
         self._adapter = self._transport = self._wired_for = None
         if transport is not None:
+            self._refused += transport.usage.failed_calls
             transport.aclose()
 
     @property

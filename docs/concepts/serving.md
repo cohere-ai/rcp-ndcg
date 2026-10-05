@@ -45,7 +45,8 @@ assert replicas.urls == ("http://node1:8000/v1", "http://node2:8000/v1")
 ```
 
 `JudgeConfig.load(name_or_path)` reads a shipped config by name or a YAML config by path, and
-`JudgeConfig.fake(seed=0)` gives the offline fake judge of `rcp_ndcg.testing`, recorded as model `fake` so that its
+`JudgeConfig.fake(seed=0)` gives the offline fake judge (`fake://`, model `fake`, answered by the fake chat route
+below the transport, [the inference layer](inference.md)), recorded as model `fake` so that its
 judgements never pool with a real judge's.
 
 ## Serving a judge

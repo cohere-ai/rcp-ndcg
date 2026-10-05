@@ -259,7 +259,10 @@ released together.
     `JudgeClient` over the real transport; `rcp_ndcg.testing.FakeJudge` stays importable and keeps its ability
     mapping and severity, answering through its own in-process endpoint below the transport with the same
     answer logic (its test doubles override `FakeJudge._answer`, the wire handler, where they used to override
-    the client's `_send`).
+    the client's `_send`). One numeric edge, declared: the fake reads the prompt rebuilt from the lowered
+    request blocks, so a window whose clip is judged as sampled frames draws from a changed key (the prompt
+    carried one marker per part, the wire carries one block per frame); text, page-image and whole-container
+    windows round-trip exactly, and the tiny world's judgements are byte-identical.
 - **`Reply` gains `url`** (default `None`): the replica base URL that answered, set by the transport -- a role
   client needs it to record a per-replica fact such as a completion's `system_fingerprint` (the judge calls
   `transport.note_system_fingerprint(reply.url, ...)` for its first completion per replica, as it did).

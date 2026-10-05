@@ -122,6 +122,20 @@ class TestConfig:
         _ask(client)
         assert endpoint.requests[0]["temperature"] == 0.3
 
+    def test_a_replaced_config_keeps_the_failures_of_the_wire_it_replaces(self) -> None:
+        def refuse(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(401, json={"error": {"message": "no"}})
+
+        client = JudgeClient(
+            JudgeConfig(base_url="http://judge.test/v1", model="m", max_retries=0, api_key_env=None),
+            httpx_transport=httpx.MockTransport(lambda request: httpx.Response(401, json={"error": {"message": "x"}})),
+        )
+        with pytest.raises(CredentialsError):
+            _ask(client)
+        assert client.usage.failed_requests == 1
+        client.config = client.config.model_copy(update={"temperature": 0.3})
+        assert client.usage.failed_requests == 1, "the replaced wire's failures stay counted"
+
     def test_a_replaced_config_closes_the_transport_it_replaces(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import rcp_ndcg.inference.transport as transport_module
 
