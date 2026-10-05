@@ -108,9 +108,6 @@ class RecordingSender:
             replies.append(Reply(status=response.status_code, body=body, headers=dict(response.headers)))
         return replies
 
-    def last_body(self) -> dict[str, Any]:
-        return json.loads(self.requests[-1].content)
-
 
 def server_sender(server: PoolingServer) -> RecordingSender:
     """A sender answering every pooling request from ``server``."""

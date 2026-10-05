@@ -50,10 +50,9 @@ pooling task ran:
 * **the framed `bytes` encoding**: per-item `start`/`end`/`shape` metadata from
   the response header (`bytes_only` sends no framing and is refused).
 
-A reply that reports one vector per item and a `usage` line — the shape a
-pooled (not `token_embed`) server answers — is refused, because one vector per
-item contradicts one vector per prompt token; without a `usage` line it passes
-through as one vector per item.
+A reply that reports one vector per item and a `usage` line whose token counts
+contradict it — the shape a pooled (not `token_embed`) server answers — is
+refused; only a usage-less reply passes through as one vector per item.
 
 ```python
 import numpy as np
@@ -120,10 +119,11 @@ A `PoolingClient` owns the content decisions the config states, and nothing else
 ## MaxSim scoring
 
 `maxsim_topk(documents, queries, k)` blocks both axes by token count: the peak
-working set is one query block, one document block and one score tile, each
-bounded by the 64 MiB tile budget — never a float32 copy of the whole corpus.
-Vectors may be float16 or float32; every dot product and per-query sum is
-computed in float32, upcast block by block (upcasting is exact, so a float32
-corpus is scored exactly as before and the per-token L2 norms the client stores
-survive the round trip). Ties break toward the lower document index, so a run is
-reproducible across machines.
+working set is one query block (budgeted at 4,096 rows by the mean token
+counts), one document block and one score tile, each copy bounded by the 64 MiB
+tile budget — never a float32 copy of the whole corpus. Vectors may be float16
+or float32; every dot product and per-query sum is computed in float32, upcast
+block by block (upcasting is exact, so a float32 corpus is scored exactly as
+before and the per-token L2 norms the client stores survive the round trip).
+Ties break toward the lower document index, so a run is reproducible across
+machines.

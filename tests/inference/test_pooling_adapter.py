@@ -206,6 +206,32 @@ class TestDecoding:
         with pytest.raises(ProviderError, match="framing metadata does not fit"):
             adapter.interpret(request([Content.from_text("a")]), [reply])
 
+    def test_a_bytes_body_shorter_than_its_framing_is_a_typed_error(self) -> None:
+        """A body truncated against its own metadata is a typed refusal, not a reshape ValueError."""
+        adapter = VllmPooling()
+        metadata = {
+            "data": [
+                {"index": 0, "embed_dtype": "float16", "endianness": "little", "start": 0, "end": 8, "shape": [2, 2]}
+            ]
+        }
+        reply = Reply(200, np.ones(2, dtype="<f2").tobytes(), {"metadata": json.dumps(metadata)})
+        with pytest.raises(ProviderError, match="framing metadata does not fit"):
+            adapter.interpret(request([Content.from_text("a")]), [reply])
+
+    def test_one_vector_items_of_unequal_width_are_a_typed_error(self) -> None:
+        """A pooled reply whose vectors disagree in width is a refusal, not an np.stack ValueError."""
+        adapter = VllmPooling()
+        reply = Reply(200, {"data": [{"index": 0, "data": [1.0, 0.0]}, {"index": 1, "data": [1.0]}]}, {})
+        with pytest.raises(ProviderError, match="mixes one-vector and per-token items|different widths"):
+            adapter.interpret(request([Content.from_text("a"), Content.from_text("b")], dim=2), [reply])
+
+    def test_an_inhomogeneous_float_list_is_a_typed_error(self) -> None:
+        """A jagged float list cannot be an array: a typed refusal, never a raw ValueError."""
+        adapter = VllmPooling()
+        reply = Reply(200, {"data": [{"index": 0, "data": [[1.0, 0.0], [1.0]]}]}, {})
+        with pytest.raises(ProviderError, match="does not decode"):
+            adapter.interpret(request([Content.from_text("a")], dim=2), [reply])
+
     def test_a_reply_mixing_one_vector_and_per_token_items_is_refused(self) -> None:
         """The mixing guard holds whichever item came first: 1-D first, 2-D second is a refusal, not an
         np.stack crash."""

@@ -15,7 +15,9 @@ unrelated content, and pooling it into one vector averages the answer away.
 
 Full scores are ``query_tokens x doc_tokens`` per pair, so both axes are
 blocked: peak memory is bounded by the tile budget instead of by the corpus.
-the dot products and the per-query sum accumulate in
+The vectors are accepted as float16 or float32 and stay in their stored dtype
+between blocks; each query block and each document block is upcast to float32
+as it is scored, so the dot products and the per-query sum accumulate in
 float32 without ever materialising a float32 copy of the corpus. The peak
 working set is one query block (budgeted at ``_QUERY_BLOCK_TOKENS`` rows by the
 mean token counts), one document block (its float32 copy at most ``_TILE_BYTES``

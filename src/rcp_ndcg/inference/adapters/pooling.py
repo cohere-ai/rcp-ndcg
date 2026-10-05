@@ -174,8 +174,8 @@ class VllmPooling:
             Ragged embeddings (one slice per item, in request order) in the request's transfer dtype -- or a
             single-vector buffer when the server answered one vector per item and reported no usage (the
             served task was not ``token_embed``; the layout of the answer, not the config, decides). A reply
-            that reports ``usage`` -- every vLLM JSON reply does -- is refused in that case, because one
-            vector per item contradicts one vector per prompt token.
+            that reports ``usage`` -- every vLLM JSON reply does -- is refused when its token counts
+            contradict one vector per item, because a ``token_embed`` answer has one vector per prompt token.
 
         Raises:
             CapabilityError: An input was longer than the engine's context (HTTP 400 naming it).
@@ -210,6 +210,12 @@ class VllmPooling:
             return Embeddings.empty(0, multi_vector=True, dtype=request.embed_dtype)
         kinds = {array.ndim for array in arrays}
         if kinds == {1}:
+            widths = {array.shape[0] for array in arrays}
+            if len(widths) > 1:
+                raise ProviderError(
+                    f"the /pooling answer's one-vector items have different widths ({sorted(widths)}); "
+                    "refusing to guess which pooling task ran"
+                )
             return Embeddings.single(np.stack(arrays))
         if kinds == {2}:
             return Embeddings.ragged(arrays, dtype=request.embed_dtype)
@@ -266,7 +272,10 @@ class VllmPooling:
         hold a whole number of vectors.
         """
         if isinstance(data, list):
-            array = np.asarray(data, dtype=np.float32)
+            try:
+                array = np.asarray(data, dtype=np.float32)
+            except ValueError as exc:
+                raise ProviderError(f"the /pooling float frame does not decode as an array: {exc}") from exc
             if array.ndim == 2 and dim is not None and int(array.shape[-1]) != dim:
                 raise ProviderError(
                     f"the /pooling float frame's width {array.shape[-1]} does not match the declared dim "
@@ -331,13 +340,13 @@ class VllmPooling:
                 start, end, shape = int(item["start"]), int(item["end"]), tuple(item["shape"])
             except (KeyError, TypeError, ValueError) as exc:
                 raise ProviderError(f"the /pooling bytes framing metadata is incomplete: {item!r}") from exc
-            if math.prod(shape) * frame_dtype.itemsize != end - start:
+            needed = math.prod(shape) * frame_dtype.itemsize
+            if needed != end - start or end > len(reply.body) or start < 0:
                 raise ProviderError(
                     f"the /pooling bytes framing metadata does not fit its frame: shape {shape} needs "
-                    f"{math.prod(shape) * frame_dtype.itemsize} byte(s), the framing allots {end - start}"
+                    f"{needed} byte(s) inside a body of {len(reply.body)}, the framing allots {end - start}"
                 )
-            flat = np.frombuffer(reply.body[start:end], dtype=frame_dtype)
-            arrays.append(flat.reshape(shape))
+            arrays.append(np.frombuffer(reply.body[start:end], dtype=frame_dtype).reshape(shape))
         self._check_usage(metadata.get("usage"), arrays)
         return arrays
 
