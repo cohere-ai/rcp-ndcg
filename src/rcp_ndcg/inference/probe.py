@@ -44,8 +44,10 @@ async def read_replica(
         ``server`` and any version header. A replica that answers nothing readable is recorded with its
         ``error`` -- the probe never raises.
     """
+    base, sep, query = url.partition("?")
+    models_url = f"{base}/models?{query}" if sep else f"{base}/models"
     try:
-        response = await client.get(f"{url}/models", headers=headers, timeout=timeout)
+        response = await client.get(models_url, headers=headers, timeout=timeout)
         response.raise_for_status()
         entries = [entry for entry in response.json().get("data") or [] if isinstance(entry, dict)]
     except Exception as exc:  # best effort: what the endpoint says is recorded, never required

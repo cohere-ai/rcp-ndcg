@@ -109,6 +109,19 @@ def test_a_probe_without_its_api_key_is_recorded_not_raised(monkeypatch: pytest.
     assert engine.error and "CredentialsError" in engine.error
 
 
+def test_a_probe_of_a_query_bearing_base_url_hits_the_models_route() -> None:
+    script = ReplicaScript()
+    transport = Transport(
+        Endpoint(base_url="http://judge.test/v1?api-version=7", model="m"),
+        httpx_transport=httpx.MockTransport(script),
+    )
+    (engine,) = asyncio.run(transport.probe())
+    assert engine.error is None
+    (request,) = script.requests
+    assert request.url.path == "/v1/models"  # the query is kept, the path is the probe's
+    assert dict(request.url.params) == {"api-version": "7"}
+
+
 def test_a_probe_in_a_later_event_loop_reads_the_endpoint_again() -> None:
     """Each pass may run in its own event loop; the probe must not reuse connections of a closed one."""
     import threading

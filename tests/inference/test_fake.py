@@ -176,6 +176,11 @@ class TestModelsAndRoutes:
         (engine,) = transport.run(transport.probe())
         assert (engine.model, engine.owned_by, engine.error) == ("enc", "fake", None)
 
+    def test_the_fake_urls_query_does_not_break_the_probe(self) -> None:
+        transport = _transport("fake://embed?dim=8", "enc")
+        (engine,) = transport.run(transport.probe())
+        assert (engine.model, engine.error) == ("enc", None)
+
     def test_a_registered_route_answers(self, _chat_route: object) -> None:
         transport = _transport("fake://seed/0", "fake")
         replies = transport.run(transport.send([Call("POST", "/chat/completions", {"prompt": "hi"})]))

@@ -2,7 +2,8 @@
 
 The routing, parking and outage-clock cases are the judge client's (``tests/llm/test_client.py``), ported to
 the shared transport; the originals stay untouched and keep passing. Everything runs on ``httpx.MockTransport``
-handlers, with the transport's backoffs monkeypatched to milliseconds, so no test sleeps over 0.1 s.
+handlers, with the transport's backoffs monkeypatched to milliseconds; the only longer sleeps are the
+outage-clock tests' 0.15 s mock answers, which queue a request longer than its ``wait_on_outage_s`` on purpose.
 """
 
 from __future__ import annotations
