@@ -225,10 +225,27 @@ class TestRefusals:
         with pytest.raises(RequestRejectedError, match="embedding"):
             self.adapter.interpret(request(), [reply(200, body)])
 
+    @pytest.mark.parametrize("raw", [["a"], {"x": 1.0}, [[1.0, 2.0], [3.0]]])
+    def test_a_non_numeric_embedding_payload_is_rejected_typed(self, raw: Any) -> None:
+        """A payload numpy cannot coerce cleanly is a typed refusal, never a raw ValueError/TypeError."""
+        body = {"data": [{"index": 0, "embedding": raw}]}
+        with pytest.raises(RequestRejectedError, match="embedding"):
+            self.adapter.interpret(request(), [reply(200, body)])
+
     def test_a_short_base64_embedding_is_rejected(self) -> None:
         body = {"data": [{"index": 0, "embedding": base64.b64encode(b"abc").decode("ascii")}]}
         with pytest.raises(RequestRejectedError, match="embedding"):
             self.adapter.interpret(request(), [reply(200, body)])
+
+    def test_non_integer_index_values_are_rejected(self) -> None:
+        body = {"data": [{"index": "1", "embedding": [1.0]}, {"index": "0", "embedding": [0.0]}]}
+        with pytest.raises(RequestRejectedError, match="index"):
+            self.adapter.interpret(request(texts=("a", "b")), [reply(200, body)])
+
+    def test_a_reply_wider_or_narrower_than_the_cut_is_rejected(self) -> None:
+        body = openai_data([[1.0, 0.0]])
+        with pytest.raises(RequestRejectedError, match="dimensions=8"):
+            self.adapter.interpret(request(dimensions=8), [reply(200, body)])
 
     @pytest.mark.parametrize("name", sorted(ADAPTERS))
     def test_an_image_part_is_refused_with_its_media_type(self, name: str) -> None:

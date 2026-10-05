@@ -90,7 +90,12 @@ def _one_vector(raw: Any, *, adapter: str, where: str) -> Any:
     elif raw is None:
         raise RequestRejectedError(f"{adapter} answered an entry without {where}")
     else:
-        vector = np.asarray(raw, dtype=np.float32)
+        try:
+            vector = np.asarray(raw, dtype=np.float32)
+        except (TypeError, ValueError) as exc:
+            raise RequestRejectedError(
+                f"{adapter} answered {where} with a value that is not a list of numbers: {exc}"
+            ) from exc
     if vector.ndim != 1 or vector.size == 0 or not bool(np.isfinite(vector).all()):
         shape = "scalar" if vector.ndim == 0 else f"{vector.ndim}-D of {vector.size}"
         raise RequestRejectedError(
@@ -105,8 +110,9 @@ def _data_vectors(body: dict[str, Any], *, adapter: str) -> list[Any]:
 
     The endpoint may answer the entries out of order; a request's vectors must align to its items, so the
     ``index`` field (present on every entry of the OpenAI, vLLM, SGLang and TEI replies) sorts them back. A
-    reply whose indices are not exactly one ``0..n-1`` each (duplicates, gaps, an entry without one) is
-    refused: a silent misalignment would hand a request's item the wrong vector.
+    reply that names an index on only some entries, or names anything but exactly one int ``0..n-1`` per
+    entry, is refused; a reply with no index at all is read in reply order. A silent misalignment would hand
+    a request's item the wrong vector.
     """
     data = body.get("data")
     if not isinstance(data, list):
@@ -114,16 +120,17 @@ def _data_vectors(body: dict[str, Any], *, adapter: str) -> list[Any]:
             f"{adapter} answered without a 'data' list; the OpenAI embeddings shape is "
             "{'data': [{'index', 'embedding'}, ...]}"
         )
-    indices = [item.get("index") if isinstance(item, dict) else None for item in data]
-    seen = [index for index in indices if isinstance(index, int)]
-    if len(seen) == len(data):
-        if sorted(seen) != list(range(len(data))):
+    present = [isinstance(item, dict) and "index" in item for item in data]
+    if all(present):
+        values = [item["index"] for item in data]
+        whole = all(isinstance(value, int) and not isinstance(value, bool) for value in values)
+        if not whole or sorted(values) != list(range(len(data))):
             raise RequestRejectedError(
-                f"{adapter} answered indices {sorted(seen)}; exactly one 0..{len(data) - 1} index per "
-                "entry, in any order"
+                f"{adapter} answered indices {[str(value) for value in values]}; exactly one int "
+                f"0..{len(data) - 1} index per entry, in any order"
             )
         data = sorted(data, key=lambda item: item["index"])
-    elif seen:
+    elif any(present):
         raise RequestRejectedError(f"{adapter} answered an 'index' on only some of its 'data' entries")
     return [
         _one_vector(item.get("embedding") if isinstance(item, dict) else None, adapter=adapter, where="embedding")
@@ -224,7 +231,13 @@ class _EmbedAdapter:
                 f"{self.name} returned vectors of differing dimension ({sorted(widths)}); "
                 "one request's vectors share a dimension"
             )
-        return Embeddings.single(np.stack(vectors))
+        stacked = np.stack(vectors)
+        if request.dimensions is not None and stacked.shape[1] != request.dimensions:
+            raise RequestRejectedError(
+                f"{self.name} answered {stacked.shape[1]}-wide vectors for a dimensions={request.dimensions} "
+                "cut; the endpoint or a gateway in front of it ignored the cut"
+            )
+        return Embeddings.single(stacked)
 
     def usage(self, reply: Reply) -> TokenCount | None:
         """The tokens the reply reports (``usage.prompt_tokens``, the OpenAI shape), or ``None``.
@@ -294,8 +307,8 @@ class OpenAIEmbeddings(_EmbedAdapter):
 
     The body is ``{"model", "input": [texts], "encoding_format": "float"}`` plus ``dimensions`` only when the
     config sets one; the reply is read from ``data[].embedding`` in ``data[].index`` order, as float lists or
-    base64 float32 strings. No hosted batch cap is enforced client-side: a served engine answers an over-count
-    batch with its own refusal (TEI's HTTP 413), which maps to a
+    base64 float32 strings. The 128-texts-per-request cap of the hosted OpenAI API is enforced client-side; a
+    served engine answers an over-count batch with its own refusal (TEI's HTTP 413), which maps to a
     :class:`~rcp_ndcg.errors.CapabilityError` naming ``batch_size``.
     """
 

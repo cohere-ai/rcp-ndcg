@@ -30,7 +30,7 @@ from typing import Any, Protocol, runtime_checkable
 import numpy as np
 from rcp_ndcg_core.content import Content
 
-from rcp_ndcg.errors import ConfigError, CredentialsError
+from rcp_ndcg.errors import ConfigError, CredentialsError, RequestRejectedError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
 from rcp_ndcg.inference.adapters import get_adapter, known_adapters
 from rcp_ndcg.inference.adapters.base import Adapter
@@ -163,6 +163,12 @@ class EmbeddingClient:
             return self.adapter.interpret(requests[index], replies)
 
         parts = await asyncio.gather(*(one(index) for index in range(len(requests))))
+        widths = sorted({part.dim for part in parts})
+        if len(widths) > 1:
+            raise RequestRejectedError(
+                f"{self.config.api} answered vectors of differing dimension ({widths}) across batches; "
+                "one endpoint's embeddings share a dimension"
+            )
         vectors = np.concatenate([part.as_matrix() for part in parts])
         if self.config.normalize:
             vectors = l2_normalize(vectors)

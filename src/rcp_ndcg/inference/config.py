@@ -19,8 +19,10 @@ from rcp_ndcg.support.identity import FieldRole
 class EmbeddingEndpoint(Endpoint):
     """A dense-embedding endpoint speaking OpenAI ``POST {base_url}/embeddings``.
 
-    The package owns every content decision itself: it applies the prompts in the text, cuts at token
-    boundaries with the declared tokenizer, sends ``dimensions`` only when set, and L2-normalises the result.
+    The package owns every content decision itself: it applies the prompts in the text, sends ``dimensions``
+    only when set, and L2-normalises the result. Cutting text to ``max_tokens`` at token boundaries of the
+    declared ``tokenizer`` is the text-budget mechanism's job; until that mechanism is wired into the client,
+    a config that sets ``max_tokens`` is refused, never silently ignored.
 
     Attributes:
         api: The wire adapter; ``"openai_embeddings"`` by default (a hosted profile overrides it in its own
@@ -32,7 +34,8 @@ class EmbeddingEndpoint(Endpoint):
             id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name;
             the file's SHA-256 enters the identity, as the judge's already does.
         max_tokens: The token cut per item, applied on the client at token boundaries; ``None`` sends every
-            item whole. Content.
+            item whole. Content. Refused until the text-budget mechanism wires the client-side cut
+            (:class:`~rcp_ndcg.inference.clients.EmbeddingClient` raises a ``ConfigError``).
         query_prompt: Text prepended to every query (an asymmetric embedder's instruction prefix). Content.
         doc_prompt: Text prepended to every document. Content.
         normalize: Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising
@@ -76,7 +79,8 @@ class EmbeddingEndpoint(Endpoint):
 
         Raises:
             DependencyError: ``tokenizers`` (or, for a Hub id, ``huggingface_hub``) is not installed.
-            MissingInputError: The named tokenizer file or repository does not exist.
+            MissingInputError: The local file, or the repository's ``tokenizer.json`` at the named revision,
+                does not exist; an unknown repository raises the Hub client's own error.
         """
         if self.tokenizer is None:
             return {}

@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef
 
-from rcp_ndcg.errors import CapabilityError, ConfigError, CredentialsError
+from rcp_ndcg.errors import CapabilityError, ConfigError, CredentialsError, RequestRejectedError
 from rcp_ndcg.inference import EmbeddingClient, EncodeRole
 from rcp_ndcg.inference.types import Call, Embeddings, Reply
 from tests._tokenizers import byte_bpe_tokenizer, save, word_tokenizer
@@ -129,12 +129,12 @@ class TestContentDecisions:
 
     def test_dimensions_is_sent_only_when_the_config_sets_one(self) -> None:
         with_dimensions = FakeSender(handler("openai_embeddings", {}))
-        EmbeddingClient(endpoint(dimensions=512), sender=with_dimensions).encode(texts("x"), EncodeRole.QUERY)
+        EmbeddingClient(endpoint(dimensions=2), sender=with_dimensions).encode(texts("x"), EncodeRole.QUERY)
         without = FakeSender(handler("openai_embeddings", {}))
         EmbeddingClient(endpoint(), sender=without).encode(texts("x"), EncodeRole.QUERY)
 
         assert input_texts("openai_embeddings", with_dimensions.calls[0]) == ["x"]
-        assert with_dimensions.calls[0].json["dimensions"] == 512
+        assert with_dimensions.calls[0].json["dimensions"] == 2
         assert "dimensions" not in without.calls[0].json
 
     def test_empty_input_makes_no_request(self) -> None:
@@ -211,6 +211,22 @@ class TestConcurrency:
 
         assert sender.peak > 1, "the batches did not overlap"
         assert vectors.as_matrix()[:, 0].tolist() == [1.0, 2.0, 3.0, 4.0]
+
+    def test_batches_of_differing_dimension_are_refused(self) -> None:
+        """Two well-formed batches of different width (replicas serving different models) cannot share a
+        matrix: the reassembly refuses instead of crashing with a raw numpy error."""
+        values = {"a": 1.0, "b": 2.0}
+
+        def varying(call: Call) -> Reply:
+            width = 2 if input_texts("openai_embeddings", call) == ["a"] else 3
+            vectors = [[values[text], 1.0] + [0.0] * (width - 2) for text in input_texts("openai_embeddings", call)]
+            return Reply(200, vendor_payload("openai_embeddings", vectors), {})
+
+        sender = FakeSender(varying)
+        client = EmbeddingClient(endpoint(batch_size=1, normalize=False), sender=sender)
+
+        with pytest.raises(RequestRejectedError, match="differing dimension"):
+            client.encode(texts("a", "b"), EncodeRole.DOCUMENT)
 
     def test_one_batch_sends_one_request(self) -> None:
         sender = FakeSender(handler("openai_embeddings", {"only": 1.0}))
@@ -340,6 +356,13 @@ class TestEndpoints:
 
 
 class TestCredentials:
+    def test_an_empty_api_key_env_is_a_config_error(self) -> None:
+        """An empty variable name would silently send no header; the endpoint config refuses it."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="api_key_env"):
+            endpoint(api_key_env="")
+
     def test_a_hosted_profile_without_a_key_names_its_variables(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("CO_API_KEY", raising=False)
         monkeypatch.delenv("COHERE_API_KEY", raising=False)

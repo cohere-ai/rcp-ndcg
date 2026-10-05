@@ -41,7 +41,9 @@ released together.
     `0..n-1` per entry, an empty, scalar, non-finite or non-float32 embedding) raises `RequestRejectedError`; an
     over-length HTTP 400 ("maximum context length") maps to
     `CapabilityError` with a hint naming `max_tokens`/`batch_size`; HTTP 413 maps to `CapabilityError` naming
-    `batch_size`; other 400/422 are `RequestRejectedError`; `usage()` reads the API's token report.
+    `batch_size`; other 400/422 are `RequestRejectedError`; `usage()` reads the OpenAI-shaped token report
+    (`usage.prompt_tokens`; the Cohere profile reads `meta.billed_units.input_tokens`), `None` when an API
+    reports none.
   - `inference.clients` (new public module): `EmbeddingClient` — the role client for `EmbeddingEndpoint`. It
     applies `query_prompt`/`doc_prompt` per side through one `_prepare` seam, sends `dimensions` only when set
     (refused for the hosted profiles, which have no such parameter), L2-normalises when `normalize`, slices
@@ -56,6 +58,9 @@ released together.
     SHA-256 of the named tokenizer's `tokenizer.json` for a step identity, never its name (the name stays
     RUNTIME; the judge's rule for `JudgeConfig.tokenizer`). `check_declarations` is unchanged.
   - `rcp_ndcg.inference.__all__` gains `EmbeddingClient`.
+- **`Endpoint.api_key_env` refuses an empty name** (`min_length: 1`; `schemas/index.v1.json`,
+  `schemas/judge-config.v1.json`, `schemas/run-config.v1.json` regenerated): an empty variable name would
+  silently send no credential header, for every role; ``None`` (unset) still sends no key.
 - `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
   the step identities (its `IDENTITY_ROLES` declarations); no property changed.
 - **New public module `rcp_ndcg.inference`**: the inference layer between `rcp_ndcg.data` and
@@ -116,7 +121,8 @@ released together.
   `schemas/run-config.v1.json`) regenerated for the moved and new fields; `tests/test_errors.py` now requires
   one *root* class per exit code, since the moved outage and refusal types are `ProviderError` subclasses and
   exit codes do not change.
-- `tests/contract` snapshots regenerated for the embedding adapters and the embedding role client (the
+- `tests/contract` snapshots and the exported schemas regenerated for the embedding adapters, the
+  embedding role client and the `api_key_env` refusal (the
   `EmbeddingClient` export, its constructor and `EmbeddingEndpoint.identity_extra()`).
 
 ## 0.1.0

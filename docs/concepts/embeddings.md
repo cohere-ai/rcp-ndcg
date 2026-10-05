@@ -71,7 +71,8 @@ print(call.path, sorted(call.json))
 ## The client
 
 `EmbeddingClient` (`rcp_ndcg.inference.clients`) applies the config's content decisions and sends the batches
-through a transport (its own, built from the config, or one you pass as `sender`). The config declares the
+through a transport -- its own, built from the config, or one you pass as `sender` (until the built-in
+transport is wired, construct the client with an explicit `sender`). The config declares the
 content; the client applies it:
 
 ```python
