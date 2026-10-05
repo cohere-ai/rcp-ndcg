@@ -17,9 +17,11 @@ from typing import Any
 
 from rcp_ndcg.inference.config import SELF_HOSTED_APIS, EmbeddingEndpoint
 from rcp_ndcg.inference.types import Call, Reply, Usage
+from tests.inference import _budget
 
-#: The default explicit budget's tokenizer, filled by the ``conftest`` fixture (a saved ``tokenizer.json``).
-DEFAULT_TOKENIZER = ""
+#: The default explicit budget's tokenizer, filled by the ``conftest`` fixture (a saved ``tokenizer.json``);
+#: the shared module's value, mirrored here so ``endpoint`` reads one home.
+DEFAULT_TOKENIZER = _budget.DEFAULT_TOKENIZER
 
 
 def vendor_payload(api: str, vectors: list[list[float]]) -> dict[str, Any]:
@@ -83,7 +85,7 @@ def endpoint(api: str = "openai_embeddings", **overrides: Any) -> EmbeddingEndpo
 
     A self-hosted profile (``openai_embeddings``) declares the explicit budget by default (the saved test
     tokenizer and a cap of 8192 tokens); a hosted profile declares neither, unless the test overrides."""
-    if api in SELF_HOSTED_APIS and DEFAULT_TOKENIZER:
-        overrides.setdefault("tokenizer", DEFAULT_TOKENIZER)
+    if api in SELF_HOSTED_APIS and _budget.DEFAULT_TOKENIZER:
+        overrides.setdefault("tokenizer", _budget.DEFAULT_TOKENIZER)
         overrides.setdefault("max_tokens", 8192)
     return EmbeddingEndpoint(api=api, model="m", **overrides)

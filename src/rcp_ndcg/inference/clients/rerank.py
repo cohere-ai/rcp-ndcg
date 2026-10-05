@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any
 
 from rcp_ndcg_core._records import Query, RankingExample
 from rcp_ndcg_core.content import Content
@@ -45,8 +45,6 @@ from rcp_ndcg.inference.types import Call, EncodeRole, RerankRequest, RerankResu
 if TYPE_CHECKING:
     from rcp_ndcg.inference.adapters.rerank import RerankWire
 
-T = TypeVar("T")
-"""The result type of a coroutine the sync bridge runs."""
 
 #: The checkpoint callable: called once per scored query with its id and its scores, aligned to the query's
 #: documents in the order they were given. The caller owns the file (today's served path writes one record per

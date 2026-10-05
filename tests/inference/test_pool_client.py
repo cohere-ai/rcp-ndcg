@@ -19,6 +19,7 @@ from rcp_ndcg.errors import RequestRejectedError
 from rcp_ndcg.inference.clients.pool import PoolingClient
 from rcp_ndcg.inference.config import PoolingEndpoint
 from rcp_ndcg.inference.types import EncodeRole
+from tests.inference import _budget
 from tests.inference._pooling import PoolingServer, server_sender
 
 
@@ -45,24 +46,13 @@ class _GatedSender:
         return asyncio.run(coroutine)
 
 
-#: The served pooling configs declare their budget explicitly; ``tokenizer`` is filled per session from
-#: the saved test tokenizer (the ``tokenizer_json`` fixture).
-_TOKENIZER: str = ""
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _default_budget(tokenizer_json: str) -> None:
-    global _TOKENIZER
-    _TOKENIZER = tokenizer_json
-
-
 def _client(sender: Any, **config: Any) -> PoolingClient:
     settings: dict[str, Any] = {
         "model": "colbert",
         "base_url": "http://engine:8000/v1",
         "dim": 2,
         "normalize": False,
-        "tokenizer": _TOKENIZER or "test/tokenizer",
+        "tokenizer": _budget.DEFAULT_TOKENIZER or "test/tokenizer",
         "max_tokens": 8192,
     }
     settings.update(config)
@@ -149,7 +139,7 @@ class TestEncode:
                 base_url="http://engine:8000/v1",
                 dim=4,
                 normalize=False,
-                tokenizer=_TOKENIZER,
+                tokenizer=_budget.DEFAULT_TOKENIZER,
                 max_tokens=8192,
             ),
             sender=sender,
@@ -191,7 +181,7 @@ class TestConcurrency:
                 dim=2,
                 batch_size=1,
                 concurrency=2,
-                tokenizer=_TOKENIZER,
+                tokenizer=_budget.DEFAULT_TOKENIZER,
                 max_tokens=8192,
             ),
             sender=sender,
@@ -213,7 +203,7 @@ class TestConcurrency:
                 dim=2,
                 batch_size=1,
                 concurrency=1,
-                tokenizer=_TOKENIZER,
+                tokenizer=_budget.DEFAULT_TOKENIZER,
                 max_tokens=8192,
             ),
             sender=sender,
@@ -229,7 +219,11 @@ class TestRefusals:
         pins the cuts and the census); a client is built."""
         client = PoolingClient(
             PoolingEndpoint(
-                model="colbert", base_url="http://engine:8000/v1", dim=2, tokenizer=_TOKENIZER, max_tokens=8192
+                model="colbert",
+                base_url="http://engine:8000/v1",
+                dim=2,
+                tokenizer=_budget.DEFAULT_TOKENIZER,
+                max_tokens=8192,
             ),
             sender=_GatedSender(PoolingServer({})),
         )

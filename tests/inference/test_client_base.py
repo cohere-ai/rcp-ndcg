@@ -12,8 +12,9 @@ import asyncio
 from typing import Any, ClassVar
 
 import pytest
+from rcp_ndcg_core.content import Content
 
-from rcp_ndcg.errors import ConfigError, RequestRejectedError
+from rcp_ndcg.errors import ConfigError, CredentialsError, RequestRejectedError
 from rcp_ndcg.inference import EncodeRole
 from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient, RerankClient
 from rcp_ndcg.inference.clients._base import RoleClient
@@ -361,3 +362,56 @@ class TestEngineAdapterRoles:
         with pytest.raises(ConfigError) as caught:
             check_engine_api("vllm_pooling", engine_role="reranker", where="serve.reranker")
         assert "multi_vector" in (caught.value.hint or "")
+
+
+class TestInjectedTransportCredentials:
+    """The config's named variable reaches an injected transport (the verifier's case C): the profile the
+    client points the transport at carries the config's ``api_key_env`` first."""
+
+    def test_a_config_named_variable_is_resolved_through_a_foreign_transport(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from rcp_ndcg.inference.transport import Transport
+
+        monkeypatch.delenv("RCP_NDCG_CLIENT_KEY", raising=False)
+        config = EmbeddingEndpoint(
+            api="openai_embeddings",
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=8192,
+            api_key_env="RCP_NDCG_CLIENT_KEY",
+        )
+        client = EmbeddingClient(config, sender=Transport(config, httpx_transport=_null_transport()))
+        assert client._sender._auth.variables == ("RCP_NDCG_CLIENT_KEY",)
+        assert client._sender._auth.required is True
+
+        with pytest.raises(CredentialsError, match="RCP_NDCG_CLIENT_KEY"):
+            client.encode([Content.from_text("x")], EncodeRole.DOCUMENT)
+
+    def test_an_injected_transport_without_the_variable_named_falls_back_to_the_profile(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A cohere client over a transport built on a bare config: the profile's variables and their
+        required-ness are what the transport resolves (the header follows the adapter)."""
+        from rcp_ndcg.inference.transport import Transport
+
+        config = EmbeddingEndpoint(api="cohere", base_url="http://127.0.0.1:9000/v1", model="m", max_tokens=1024)
+        foreign = EmbeddingEndpoint(
+            base_url="http://127.0.0.1:9000/v1", model="m", tokenizer=tokenizer_json, max_tokens=8192
+        )
+        client = EmbeddingClient(config, sender=Transport(foreign, httpx_transport=_null_transport()))
+        assert client._sender._auth.variables == ("CO_API_KEY", "COHERE_API_KEY")
+        assert client._sender._auth.required is True
+
+        monkeypatch.delenv("CO_API_KEY", raising=False)
+        monkeypatch.delenv("COHERE_API_KEY", raising=False)
+        with pytest.raises(CredentialsError, match="CO_API_KEY"):
+            client.encode([Content.from_text("x")], EncodeRole.DOCUMENT)
+
+
+def _null_transport() -> Any:
+    """A mock endpoint that answers nothing useful; credential errors fail before anything is queued."""
+    import httpx
+
+    return httpx.MockTransport(lambda request: httpx.Response(500, json={}))

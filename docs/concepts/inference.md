@@ -77,7 +77,7 @@ for reply in replies:
     transport.add_usage(adapter.usage(reply))
 vectors = adapter.interpret(None, replies)
 assert len(vectors[0]) == 8 and transport.usage.calls == 1
-transport.aclose()
+transport.close()  # a sync caller; an async one awaits transport.aclose()
 ```
 
 The snippet sends through the [offline fakes](#the-offline-fakes) (`fake://`), so it runs with no server.

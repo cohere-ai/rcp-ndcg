@@ -876,3 +876,24 @@ class TestHostedFlag:
 
         with pytest.raises(ConfigError, match="use_activation"):
             CohereRerankAdapter(RerankEndpoint(model="m", api="cohere", max_tokens=1024, use_activation=False))
+
+
+class TestInertTemplate:
+    """A declared template belongs to a measured budget: a hosted profile without a tokenizer sends content
+    uncut, so the template would be silently inert -- refused, as the other inert fields are."""
+
+    def test_a_hosted_profile_without_a_budget_refuses_a_template(self) -> None:
+        with pytest.raises(ConfigError, match="template"):
+            EmbeddingEndpoint(model="m", api="cohere", template={"query": ({"fixed": "Q: "}, {"content": "query"})})
+        with pytest.raises(ConfigError, match="template"):
+            RerankEndpoint(
+                model="m",
+                api="voyage",
+                template={"pair": ({"fixed": ""}, {"content": "query"}, {"content": "document"})},
+            )
+
+    def test_a_hosted_profile_with_only_the_limit_refuses_a_template(self) -> None:
+        """The vendor path measures nothing, so a template is inert there too (the budget refuses it)."""
+        template = {"query": ({"fixed": "Q: "}, {"content": "query"})}
+        with pytest.raises(ConfigError, match="inert"):
+            EmbeddingEndpoint(model="m", api="cohere", max_tokens=1024, template=template)

@@ -3,8 +3,9 @@
 One inference layer for every model the package calls: where a model is served, the wire types its requests
 and answers travel in, the adapter that speaks its protocol, and one client per role. This page documents the
 rerank role: its wire adapter, its hosted profiles and its client. The transport's behaviour (routing, retries,
-parking) arrives with the transport work; a role client used without a sender builds a transport and fails
-until then, and a test or a third party can inject any `Sender`.
+parking, the credentials) is described on [the inference page](../concepts/inference.md); a role client used
+without a sender builds its own transport, and a test or a third party can inject any `Sender` that provides
+the sync bridge (`run`).
 
 ## The wire adapter: the Cohere-shaped rerank
 
@@ -34,8 +35,8 @@ request as too long raises a `CapabilityError` whose hint names `max_tokens`; an
 `RequestRejectedError`.
 
 The pauses pace *one query's* requests. `rerank_many` still runs `concurrency` queries in flight, so an
-`api: voyage` endpoint sees about `concurrency` requests every half second; until the transport work owns
-pacing across queries, set `concurrency` low (2--4) for Voyage, which enforces strict rate limits.
+`api: voyage` endpoint sees about `concurrency` requests every half second; the transport bounds requests, not
+queries per second, so set `concurrency` low (2--4) for Voyage, which enforces strict rate limits.
 
 ## The client
 
@@ -54,7 +55,8 @@ lifecycle: `close()` synchronous, `await aclose()` asynchronous, both context ma
   in flight, results in input order. The `checkpoint` callable is called once per query as it lands, with the
   query id and its (pooled) scores aligned to the example's `doc_ids`: write the record and flush there, and a
   crash costs at most the queries in flight.
-- `close()` / `await aclose()` -- closes the transport the client built, if any.
+- `close()` / `await aclose()` -- closes the sender, when it closes (the client's own transport, or an
+  injected one that defines `close`); safe to call twice.
 
 The query text follows one rule for every path, decided by the config's `instruction` mode (`fold` by
 default): `fold` sends `Task: <instruction>\nQuery: <text>` (the served path's render, byte for byte),

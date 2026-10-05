@@ -17,6 +17,7 @@ from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference.clients import RerankClient
 from rcp_ndcg.inference.config import RerankEndpoint
 from rcp_ndcg.inference.types import Call, Reply, RerankResult, Usage
+from tests.inference import _budget
 
 # ---------------------------------------------------------------------------------------------------------------
 # The fake server: a Sender answering /rerank over the three body shapes
@@ -94,21 +95,10 @@ def _server(**kwargs: Any) -> _FakeRerankServer:
     return _FakeRerankServer(**kwargs)
 
 
-#: The served configs declare their budget explicitly; ``tokenizer`` is filled per test from the saved
-#: test tokenizer (the ``tokenizer_json`` fixture), through :func:`_config`.
-_TOKENIZER: str = ""
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _default_budget(tokenizer_json: str) -> None:
-    global _TOKENIZER
-    _TOKENIZER = tokenizer_json
-
-
 def _config(**kwargs: Any) -> RerankEndpoint:
     kwargs.setdefault("base_url", "http://engine:8000/v1")
     kwargs.setdefault("model", "qwen3-reranker-8b")
-    kwargs.setdefault("tokenizer", _TOKENIZER or "test/tokenizer")
+    kwargs.setdefault("tokenizer", _budget.DEFAULT_TOKENIZER or "test/tokenizer")
     kwargs.setdefault("max_tokens", 8192)
     kwargs.setdefault("use_activation", False)
     return RerankEndpoint(**kwargs)
@@ -240,7 +230,8 @@ class TestRefusalsAndPassthrough:
     def test_a_served_endpoint_needs_a_base_url(self) -> None:
         with pytest.raises(ConfigError, match="base_url"):
             RerankClient(
-                RerankEndpoint(model="m", tokenizer=_TOKENIZER, max_tokens=8192, use_activation=False), sender=_server()
+                RerankEndpoint(model="m", tokenizer=_budget.DEFAULT_TOKENIZER, max_tokens=8192, use_activation=False),
+                sender=_server(),
             )
 
     def test_a_hosted_profile_defaults_to_its_public_root(self) -> None:
@@ -363,7 +354,7 @@ def test_an_adapter_of_another_role_is_refused_by_the_client() -> None:
                 api="wrong_role_probe",
                 base_url="http://a:8000/v1",
                 model="m",
-                tokenizer=_TOKENIZER,
+                tokenizer=_budget.DEFAULT_TOKENIZER,
                 max_tokens=8192,
                 use_activation=False,
             ),
@@ -400,7 +391,7 @@ def test_a_client_tolerates_an_adapter_without_the_profile_facts() -> None:
             api="third_party_rerank",
             base_url="http://a:8000/v1",
             model="m",
-            tokenizer=_TOKENIZER,
+            tokenizer=_budget.DEFAULT_TOKENIZER,
             max_tokens=8192,
             use_activation=False,
         ),

@@ -131,7 +131,17 @@ class RoleClient[C: Endpoint]:
         return config.model_copy(update={"base_url": default})
 
     def _auth_profile(self) -> AuthProfile:
-        """The credential facts of the client's adapter, for the transport to resolve the key from (R6)."""
+        """The credential facts of this client's config and adapter, for the transport to resolve the key
+        from (R6): the config's ``api_key_env`` names the variable when it is set (an unset named variable is
+        an error, whatever the profile's rule), else the adapter profile's variables with its required-ness;
+        the header is always the adapter's."""
+        named = getattr(self.config, "api_key_env", None)
+        if named is not None:
+            return AuthProfile(
+                variables=(named,),
+                required=True,
+                header=getattr(self._adapter_cls, "AUTH_HEADER", None),
+            )
         return AuthProfile(
             variables=tuple(getattr(self._adapter_cls, "API_KEY_ENV", ())),
             required=bool(getattr(self._adapter_cls, "KEY_REQUIRED", False)),
@@ -140,7 +150,10 @@ class RoleClient[C: Endpoint]:
 
     def _point_sender_at_the_profile(self) -> None:
         """An injected ``Transport`` is pointed at this client's credential facts, so an auth-bearing profile
-        behaves the same whichever way the transport was built."""
+        behaves the same whichever way the transport was built: the profile carries the config's named
+        variable (when the config names one) and the adapter's variables otherwise. The transport's own
+        endpoint keeps precedence for its ``base_url`` and its own ``api_key_env`` (the transport's config);
+        the profile fills the key in the adapter's header."""
         if isinstance(self._sender, Transport):
             self._sender.set_auth(self._auth_profile())
 
@@ -232,7 +245,7 @@ class RoleClient[C: Endpoint]:
         try:
             async with asyncio.TaskGroup() as group:
                 created = [group.create_task(task) for task in tasks]
-        except BaseExceptionGroup as group:  # noqa: F821  (3.11+ builtin; py3.12 floor)
+        except BaseExceptionGroup as group:
             if len(group.exceptions) == 1:
                 raise group.exceptions[0] from group.__cause__
             raise
@@ -245,7 +258,8 @@ class RoleClient[C: Endpoint]:
         return self._sender.run(coroutine)
 
     def close(self) -> None:
-        """Close the sender's pool, when it closes (the transport the client built); safe to call twice."""
+        """Close the sender, when it closes: the transport the client built, or an injected one that defines
+        ``close``; safe to call twice."""
         close = getattr(self._sender, "close", None)
         if callable(close):
             close()

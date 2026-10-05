@@ -363,7 +363,9 @@ class TestEndpoints:
 
         assert client.config.api_key_env == "MY_KEY_ENV"
         assert client.endpoint.api_key_env == "MY_KEY_ENV"
-        assert client._sender._auth.variables == ("OPENAI_API_KEY",)  # the profile's own variables
+        # the profile carries the config's named variable (an unset named one is an error), not the profile's
+        assert client._sender._auth.variables == ("MY_KEY_ENV",)
+        assert client._sender._auth.required is True
 
 
 class TestCredentials:

@@ -90,6 +90,8 @@ def _no_inert_overflow_policies(config: EmbeddingEndpoint | RerankEndpoint) -> N
         inert.append("query_max_tokens")
     if config.chunk is not None:
         inert.append("chunk")
+    if config.template is not None:
+        inert.append("template")
     if inert:
         raise ConfigError(
             f"{type(config).__name__} declares no tokenizer, so its content is sent uncut (a hosted vendor "
@@ -118,9 +120,10 @@ class EmbeddingEndpoint(Endpoint):
     """A dense-embedding endpoint speaking OpenAI ``POST {base_url}/embeddings``.
 
     The package owns every content decision itself: it applies the prompts in the text, sends ``dimensions``
-    only when set, and L2-normalises the result. Cutting text to ``max_tokens`` at token boundaries of the
-    declared ``tokenizer`` is the text-budget mechanism's job; until that mechanism is wired into the client,
-    a config that sets ``max_tokens`` is refused, never silently ignored.
+    only when set, and L2-normalises the result. A config that sets ``max_tokens`` (required, with the
+    ``tokenizer``, on a self-hosted role) is fitted by the client through the one text-budget mechanism: only
+    content spans cut at token boundaries of the declared ``tokenizer``, the template re-attached, every cut
+    recorded.
 
     Attributes:
         api: The wire adapter; ``"openai_embeddings"`` by default (a hosted profile overrides it in its own
@@ -138,9 +141,9 @@ class EmbeddingEndpoint(Endpoint):
             reserving every fixed template token (the anchors a model reads its output from: for a last-token
             pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the
             anchors always survive. The cut is never left to the engine: an engine-side truncation of the
-            rendered prompt drops anchors from one end or the other. ``None`` sends every item whole.
-            Content. Refused by the client until the text-budget mechanism is wired into it
-            (:class:`~rcp_ndcg.inference.clients.EmbeddingClient` raises a ``ConfigError``).
+            rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which
+            a self-hosted role config refuses (declare the budget); a hosted vendor profile with no
+            tokenizer sends content uncut. Content.
         template: The request template as data
             (:class:`~rcp_ndcg.data.templates.TemplateSpec`): per request shape (``query``, ``document``,
             ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens
@@ -222,9 +225,9 @@ class PoolingEndpoint(EmbeddingEndpoint):
     """A multi-vector (late interaction) endpoint speaking vLLM ``POST {base_url}/pooling`` (task ``token_embed``).
 
     The result is ragged: one slice of vectors per item, not one vector. Everything else works as
-    :class:`EmbeddingEndpoint` (the prompts, the batch size) -- except that ``max_tokens`` is refused until the
-    text-budget mechanism is wired (the pooling client raises :class:`~rcp_ndcg.errors.ConfigError`), and
-    ``dimensions`` is never sent: vLLM's ``/pooling`` refuses it ("dimensions is currently not supported").
+    :class:`EmbeddingEndpoint` (the prompts, the declared text budget, the client's fit of every item) --
+    except that ``dimensions`` is never sent: vLLM's ``/pooling`` refuses it ("dimensions is currently not
+    supported"), and the client refuses an unset ``dim`` at construction (the base64 frame carries no shape).
 
     Attributes:
         api: The wire adapter; ``"vllm_pooling"`` by default.

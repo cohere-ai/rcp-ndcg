@@ -16,6 +16,7 @@ from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError, Request
 from rcp_ndcg.inference.adapters.rerank import CohereRerankAdapter, RerankAdapter, VoyageRerankAdapter
 from rcp_ndcg.inference.config import RerankEndpoint
 from rcp_ndcg.inference.types import Reply, RerankRequest, RerankResult, TokenCount
+from tests.inference import _budget
 
 # ---------------------------------------------------------------------------------------------------------------
 # Helpers
@@ -36,24 +37,13 @@ def _request(
     )
 
 
-#: The served configs declare their budget explicitly; ``tokenizer`` is filled per session from the saved
-#: test tokenizer (the ``tokenizer_json`` fixture).
-_TOKENIZER: str = ""
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _default_budget(tokenizer_json: str) -> None:
-    global _TOKENIZER
-    _TOKENIZER = tokenizer_json
-
-
 def _config(**kwargs: Any) -> RerankEndpoint:
     """A served config; hosted profiles pass ``api`` and drop ``base_url``. A served one declares its
     explicit budget (tokenizer + max_tokens) and ``use_activation`` (F10)."""
     kwargs.setdefault("base_url", "http://engine:8000/v1")
     kwargs.setdefault("model", "qwen3-reranker-8b")
     if kwargs.get("api", "rerank") == "rerank":
-        kwargs.setdefault("tokenizer", _TOKENIZER or "test/tokenizer")
+        kwargs.setdefault("tokenizer", _budget.DEFAULT_TOKENIZER or "test/tokenizer")
         kwargs.setdefault("max_tokens", 8192)
         kwargs.setdefault("use_activation", False)
     return RerankEndpoint(**kwargs)
