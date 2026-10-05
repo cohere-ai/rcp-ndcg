@@ -123,6 +123,7 @@ def estimate(
         _media_tokens,
         _modality,
         _queries,
+        media_marker_tokens,
         prompt_overhead_tokens,
         window_tokens,
     )
@@ -136,6 +137,9 @@ def estimate(
     _name, queries, _source = _queries(dataset, candidates, docs, effective, tokenizer=tokenizer)
     counted: dict[str, int] = {}
     images_approximated = False
+    # The template's per-part media marker, measured with the judge's tokenizer; 0 where no tokenizer is at
+    # hand (no text budget is computed then, and the media are approximated instead).
+    marker = media_marker_tokens(tokenizer) if tokenizer is not None else 0
 
     def text_tokens(text: str) -> int:
         """A document's tokens as the prompt carries it (each distinct text counted once)."""
@@ -146,6 +150,7 @@ def estimate(
     modality = _modality(queries)
     policy, video = effective.image, effective.video
     per_stage: dict[str, StageEstimate] = {}
+    images_approximated = False
     for stage in stages:
         schedule = (schedules or {}).get(stage) or schedule_for(stage, modality)
         prompt = load_prompt(schedule.prompt or shipped_prompt_name(stage, modality))
@@ -155,7 +160,7 @@ def estimate(
             n = len(query.units)
             if n == 0:
                 continue
-            # (calls, documents per window): each group of calls is priced at its own window.
+            # (calls, documents per window): each group of calls is counted at its own window's budget.
             if windows is not None:
                 planned = windows[query.query_id]
                 mirrored = isinstance(schedule, TournamentSchedule) and schedule.mirror
@@ -167,7 +172,7 @@ def estimate(
                 documents = len(document_ids_from_chunks(query.units, query.chunk_mapping))
                 groups = [(schedule.calls_per_query(documents, n_units=n), min(schedule.window, n))]
             budgeted = tokenizer is not None and config.context_tokens is not None
-            counted_media = _media_tokens(query.contents.values(), effective, strict=budgeted)
+            counted_media = _media_tokens(query.contents.values(), effective, strict=budgeted, marker_tokens=marker)
             if counted_media is None:
                 images_approximated = True
             media = (
@@ -186,7 +191,10 @@ def estimate(
                     per_call = overhead + math.ceil(w * sum(tokens) / max(len(tokens), 1)) + w * media
                 else:
                     # No tokenizer: documents are sent whole, and their tokens are approximated from characters.
-                    if counted_media is not None:  # known images must fit, as in the pass
+                    counted_media = _media_tokens(  # known media must fit, as in the pass
+                        query.contents.values(), effective, strict=False, marker_tokens=0
+                    )
+                    if counted_media is not None:
                         window_tokens(config, w, overhead_tokens=0, media_tokens_per_doc=counted_media)
                     chars = [len(c.text) for c in query.contents.values()]
                     mean_chars = sum(chars) / len(chars) if chars else 0.0

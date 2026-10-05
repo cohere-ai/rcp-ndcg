@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from rcp_ndcg_core._records import RankingExample
-from rcp_ndcg_core.content import Content, VideoPart
+from rcp_ndcg_core.content import Content, ImagePart, VideoPart
 from rcp_ndcg_core.irt import Priors
 from rcp_ndcg_core.schemas import (
     Family,
@@ -86,9 +86,24 @@ MAX_ATTEMPTS = 3
 #: (:class:`~rcp_ndcg.data.preprocess.TextTruncationCensus` and :class:`~rcp_ndcg.data.prepare.MediaCensus` rows).
 PREPROCESSING_RECORD = "preprocessing.jsonl"
 
-#: Tokens kept, per request, for what the tokenizer file does not describe: the chat template's role markers, its
-#: generation prompt, and a system message some templates insert (gpt-oss's harmony format does). A fixed reserve.
+#: Tokens kept, per request, for what the tokenizer file does not describe and no media occupies: the chat
+#: template's role markers, its generation prompt, and a system message some templates insert (gpt-oss's
+#: harmony format does). A fixed reserve for what is not media: the media themselves are charged exactly (see
+#: :func:`media_marker_tokens` and :func:`~rcp_ndcg.data.resolution.content_media_tokens`).
 CHAT_TEMPLATE_TOKENS = 256
+
+
+def media_marker_tokens(tokenizer: TextTokenizer) -> int:
+    """The tokens of one media marker as the stage's template renders it, counted with the judge's tokenizer.
+
+    The window's template renders each media part as a :data:`~rcp_ndcg.llm._templates.MEDIA_MARKER`
+    placeholder; the window budget charges its tokens per media part, so a wide multi-image window cannot
+    exceed the judge's context. Measured, never guessed: the count is the judge tokenizer's own of the
+    marker as the template renders it.
+    """
+    from rcp_ndcg.llm._templates import MEDIA_MARKER
+
+    return tokenizer.count(MEDIA_MARKER.format(index=0))
 
 
 def prompt_overhead_tokens(prompt: Prompt, stage: Stage, query: str, window: int, tokenizer: TextTokenizer) -> int:
@@ -108,12 +123,14 @@ def window_tokens(
     """The tokens of text each document of a window may carry so the window fits the judge's context.
 
     The context (``context_tokens``) less the prompt's own tokens (``overhead_tokens``,
-    :func:`prompt_overhead_tokens`), less the documents' image tokens, less the completion
-    reserve (``max_output_tokens``, at most half of what is left), shared equally by
+    :func:`prompt_overhead_tokens`), less the documents' media charge (``media_tokens_per_doc``: each image
+    and video its vision block and its template marker,
+    :func:`~rcp_ndcg.data.resolution.content_media_tokens` plus :func:`media_marker_tokens` per media part),
+    less the completion reserve (``max_output_tokens``, at most half of what is left), shared equally by
     ``window`` documents. ``None`` when the judge declares no context: documents are sent whole.
 
     Raises:
-        CapabilityError: the prompt and the images alone do not fit.
+        CapabilityError: the prompt and the media alone do not fit.
     """
     context = config.context_tokens
     if context is None:
@@ -130,23 +147,37 @@ def window_tokens(
     return int(usable // window)
 
 
-def _media_tokens(contents: Iterable[Content], preprocessing: Preprocessing, *, strict: bool = True) -> int | None:
-    """The most image tokens any of ``contents`` carries under the pass's image and frame policies.
+def _media_tokens(
+    contents: Iterable[Content], preprocessing: Preprocessing, *, strict: bool = True, marker_tokens: int = 0
+) -> int | None:
+    """The most media tokens any of ``contents`` charges a window's text budget, under the pass's policies.
+
+    Each document is charged its media as the engine counts it
+    (:func:`~rcp_ndcg.data.resolution.content_media_tokens`: every image and sampled frame its vision block,
+    a container its temporal grid) plus ``marker_tokens`` per media part -- the template's media markers,
+    :func:`media_marker_tokens` measures them with the judge's tokenizer.
 
     Args:
         contents: The documents of a query.
         preprocessing: The effective preprocessing (its ``image`` policy, native when unset, and ``video``).
-        strict: Raise when the images cannot be counted; otherwise return ``None`` for them.
+        strict: Raise when the media cannot be counted; otherwise return ``None`` for them.
+        marker_tokens: The template's per-part media marker, measured with the judge's tokenizer; 0 where no
+            tokenizer is at hand (no text budget is computed then, either).
 
     Raises:
-        ConfigError: ``strict``, and the images cannot be counted (a native policy, or no ``image_processor``).
+        ConfigError: ``strict``, and the media cannot be counted (a native policy, or no ``image_processor``).
     """
     from rcp_ndcg.data.resolution import ImagePolicy, content_media_tokens
 
     image = preprocessing.image or ImagePolicy.native()
     try:
         return max(
-            (content_media_tokens(content, image, preprocessing.video).tokens for content in contents), default=0
+            (
+                content_media_tokens(content, image, preprocessing.video).tokens
+                + marker_tokens * sum(isinstance(part, ImagePart | VideoPart) for part in content.parts)
+                for content in contents
+            ),
+            default=0,
         )
     except ConfigError:
         if strict:
@@ -529,22 +560,24 @@ class _Pass:
         """The per-document text budget of a window of ``window`` documents of this query, in tokens.
 
         ``None`` when the judge declares no context, or names no tokenizer: text is never cut by characters, so
-        documents are sent whole (images whose token cost is known must still fit the context).
+        documents are sent whole (media whose token cost is known must still fit the context).
 
         Raises:
-            ConfigError: the judge declares a context and a tokenizer, but the documents' image tokens cannot be
-                counted (no pixel budget, or no ``image_processor``): a text budget is not computed on a guess.
-            CapabilityError: the prompt and the images alone do not fit the context.
+            ConfigError: the judge declares a context and a tokenizer, but the documents' media tokens cannot
+                be counted (no pixel budget, or no ``image_processor``): a text budget is not computed on a
+                guess.
+            CapabilityError: the prompt and the media alone do not fit the context.
         """
         config = self.client.config
         if config.context_tokens is None:
             return None
+        marker = media_marker_tokens(self.tokenizer) if self.tokenizer is not None else 0
         if self.tokenizer is None:
             media = _media_tokens(query.contents.values(), self.preprocessing, strict=False)
             if media is not None:
                 window_tokens(config, window, overhead_tokens=0, media_tokens_per_doc=media)
             return None
-        media = _media_tokens(query.contents.values(), self.preprocessing) or 0
+        media = _media_tokens(query.contents.values(), self.preprocessing, marker_tokens=marker) or 0
         overhead = prompt_overhead_tokens(self.prompt, self.stage, query.text, window, self.tokenizer)
         return window_tokens(config, window, overhead_tokens=overhead, media_tokens_per_doc=media)
 
@@ -1093,6 +1126,7 @@ __all__ = [
     "WindowAnswer",
     "ajudge",
     "judge",
+    "media_marker_tokens",
     "parse_window",
     "preflight",
     "prompt_overhead_tokens",
