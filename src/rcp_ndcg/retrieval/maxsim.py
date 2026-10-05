@@ -15,6 +15,17 @@ unrelated content, and pooling it into one vector averages the answer away.
 
 Full scores are ``query_tokens x doc_tokens`` per pair, so both axes are
 blocked: peak memory is bounded by the tile budget instead of by the corpus.
+The vectors are accepted as float16 or float32 and stay in their stored dtype
+between blocks; each query block and each document block is upcast to float32
+as it is scored, so the dot products and the per-query sum accumulate in
+float32 without ever materialising a float32 copy of the corpus. The peak
+working set is one query block (at most ``_QUERY_BLOCK_TOKENS`` rows), one
+document block (at most ``_MAX_BLOCK_TOKENS`` rows, and its float32 copy at
+most ``_TILE_BYTES`` -- 64 MiB), and one score tile of at most ``_TILE_BYTES``:
+a float16 token vector costs 2 bytes stored and, transiently, 4 more per block;
+a float32 one, 4. Upcasting blockwise is exact (every float16 value is a
+float32 value), so a float32 corpus is scored bit for bit as before and a
+float16 corpus gains only what its storage precision costs.
 
 The scoring here is exact. An approximate late-interaction index (PLAID-style
 centroid pruning) is a different thing with different recall, and would belong
@@ -53,6 +64,13 @@ def _spans(offsets: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return starts, np.diff(offsets).astype(np.int64, copy=False)
 
 
+def _f32_block(vectors: np.ndarray) -> np.ndarray:
+    """One block's float32 view: a copy for float16 vectors (at most the tile budget of bytes), the same
+    array for float32 ones. The only float32 materialisation the scorer does, so the peak working set stays
+    bounded by the block, never by the corpus."""
+    return np.ascontiguousarray(vectors, dtype=np.float32)
+
+
 def _grouped_max(scores: np.ndarray, starts: np.ndarray, lengths: np.ndarray) -> np.ndarray:
     """Max over each item's columns: ``(rows, num_items)``.
 
@@ -85,13 +103,20 @@ def maxsim_topk(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Top-``k`` documents per query by MaxSim.
 
+    Accepts float16 or float32 vectors (any float dtype really: the scoring
+    upcasts each block to float32, so the accumulation never happens in float16
+    -- a float16 sum of two thousand terms loses most of its three decimal
+    digits). Results for float32 inputs are the blocked scorer's as before; for
+    float16 inputs they sit within float32 accumulation error of a float64
+    reference over the same vectors.
+
     Args:
-        doc_embeddings: Multi-vector document embeddings.
-        query_embeddings: Multi-vector query embeddings.
+        doc_embeddings: Multi-vector document embeddings (float16 or float32).
+        query_embeddings: Multi-vector query embeddings (float16 or float32).
         k: Documents per query, clamped to the corpus size.
 
     Returns:
-        ``(scores, indices)``, both ``(num_queries, min(k, num_docs))``, sorted
+        ``(scores, indices)``, both ``(num_queries, min(k, num_docs))``, scores float32, sorted
         by score descending with ties broken toward the lower document index --
         so a run is reproducible across machines.
     """
@@ -118,8 +143,10 @@ def maxsim_topk(
     assert doc_embeddings.offsets is not None and query_embeddings.offsets is not None
     doc_starts, doc_lengths = _spans(doc_embeddings.offsets)
     query_starts, query_lengths = _spans(query_embeddings.offsets)
-    docs = np.ascontiguousarray(doc_embeddings.vectors, dtype=np.float32)
-    queries = np.ascontiguousarray(query_embeddings.vectors, dtype=np.float32)
+    # Kept in the stored dtype (float16 or float32): the float32 working set is
+    # what each block below materialises, never the whole corpus.
+    docs = doc_embeddings.vectors
+    queries = query_embeddings.vectors
 
     # Block both axes by *token* count, then convert to item counts: items differ
     # wildly in vector count (a 3-token query, a 1030-patch page), so a budget
@@ -128,6 +155,10 @@ def maxsim_topk(
     mean_doc_tokens = max(1, int(np.ceil(docs.shape[0] / num_docs)))
     query_block_items = max(1, min(num_queries, _QUERY_BLOCK_TOKENS // mean_query_tokens or 1))
     budget_tokens = min(_MAX_BLOCK_TOKENS, _TILE_BYTES // max(query_block_items * mean_query_tokens * 4, 1))
+    # The per-block float32 upcast of the document vectors is part of the same
+    # budget, so a float16 corpus never pays more than the tile for it either.
+    upcast_tokens = max(1, _TILE_BYTES // max(int(docs.shape[1]) * 4, 1))
+    budget_tokens = min(budget_tokens, upcast_tokens)
     doc_block_items = max(1, min(num_docs, budget_tokens // mean_doc_tokens or 1))
 
     best_scores = np.zeros((num_queries, kk), dtype=np.float32)
@@ -136,7 +167,9 @@ def maxsim_topk(
     for q_start in range(0, num_queries, query_block_items):
         q_stop = min(q_start + query_block_items, num_queries)
         q_slice = slice(int(query_embeddings.offsets[q_start]), int(query_embeddings.offsets[q_stop]))
-        q_block = queries[q_slice]
+        # The float32 the scoring runs in, one query block at a time (at most
+        # _QUERY_BLOCK_TOKENS rows).
+        q_block = _f32_block(queries[q_slice])
         # Re-base the query offsets to this block's local token indexing.
         local_query_starts = query_starts[q_start:q_stop] - int(query_embeddings.offsets[q_start])
         local_query_lengths = query_lengths[q_start:q_stop]
@@ -151,7 +184,7 @@ def maxsim_topk(
             if q_block.shape[0] == 0 or d_slice.start == d_slice.stop:
                 continue
 
-            token_scores = q_block @ docs[d_slice].T
+            token_scores = q_block @ _f32_block(docs[d_slice]).T
             block_doc_lengths = doc_lengths[d_start:d_stop]
             local_doc_starts = doc_starts[d_start:d_stop] - int(doc_embeddings.offsets[d_start])
             per_token_best = _grouped_max(token_scores, local_doc_starts, block_doc_lengths)
