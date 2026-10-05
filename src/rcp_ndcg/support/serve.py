@@ -1,17 +1,23 @@
-"""The engines a run starts beside its job: :class:`ServeConfig`, and the serve-by-role types that phase
-planning builds on.
+"""The engines a run starts beside its job, by role: :class:`ServeByRole`, the phase plan, and the
+``RCP_NDCG_ENGINES`` runtime overlay that carries the engines' URLs to the steps.
 
 A leaf model, like :class:`~rcp_ndcg.support.resources.Resources`: the run config declares it (``serve:``) and the
 job runners render it, without the run layer importing the runners.
 
 rcp-ndcg's contract with a model is one OpenAI-compatible URL. ``serve:`` does not change that: the package never
 builds, translates or reads an engine's flags. It starts the user's image with the user's command, waits until
-``GET <readiness_path>`` answers, and hands the replicas' URLs to the run's judge as its ``base_url`` list.
+``GET <readiness_path>`` answers, and hands the replicas' URLs to the run's step through the environment
+(:data:`ENGINES_ENV`), which applies them as a runtime overlay on the role's config.
 
-A job that owns its engine never outlives it: an engine that dies, or does not answer within
-``startup_timeout_s``, ends the job with a non-zero exit, and the judge of such a job stops waiting for an engine
-that stopped answering after ``outage_timeout_s``. Resuming is cheap (the stores are asked only for the windows they
-lack): ``rcp-ndcg run resume --run <dir> --runner slurm|kubernetes`` submits the run again, engine included.
+A run that serves engines runs in **phases** (:func:`plan_phases`): the job starts each phase's engines, waits for
+readiness, runs the phase's steps, and stops its engines, so the job's GPUs are the maximum over phases instead of
+the sum over engines.
+
+A job that owns its engines never outlives them: an engine that dies, or does not answer within
+``startup_timeout_s``, ends the job with a non-zero exit, and the step that calls such an engine stops waiting for
+one that stopped answering after the phase's ``wait_on_outage_s`` (the engine config's ``outage_timeout_s``).
+Resuming is cheap (the stores are asked only for the windows they lack): ``rcp-ndcg run resume --run <dir>
+--runner slurm|kubernetes`` submits the run again, engines included.
 """
 
 from __future__ import annotations
@@ -27,15 +33,18 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.support.resources import Environment, Resources
 
-#: The environment variable a rendered job sets to the replica URLs (comma-separated); ``rcp-ndcg run resume``
-#: reads it as its ``--judge-urls``.
+#: The environment variable a single-engine job exports to the judge's replica URLs (comma-separated).
+#:
+#: Deprecated: the phased runners export :data:`ENGINES_ENV` instead, and ``rcp-ndcg run resume`` reads no URL
+#: variable any more (``--engine role=url[,url]`` is its command-line spelling). It remains only for the
+#: single-engine SLURM and Kubernetes rendering, which the phased rendering replaces.
 JUDGE_URLS_ENV = "RCP_NDCG_JUDGE_URLS"
 
 #: The environment variable a phase's runner sets to the engines of the current phase, as JSON
 #: ``{"encoder": {"urls": [...], "wait_on_outage_s": 900}, ...}``; the coordinator
 #: applies it as a runtime overlay. It is never written into ``run.yaml`` and never reaches an identity, since
-#: ``base_url`` and ``wait_on_outage_s`` are runtime fields. It will replace ``JUDGE_URLS_ENV`` when the
-#: serve-phases work lands; until then the runners still export ``RCP_NDCG_JUDGE_URLS``.
+#: ``base_url`` and ``wait_on_outage_s`` are runtime fields. Its command-line spelling is
+#: ``rcp-ndcg run resume --engine role=url[,url]``.
 ENGINES_ENV = "RCP_NDCG_ENGINES"
 
 
@@ -230,12 +239,18 @@ def plan_phases(
 
     Returns:
         One :class:`Phase` per group of consecutive steps sharing their engines, in order, each with the roles
-        of the engines it starts and the steps it runs.
-
-    Raises:
-        NotImplementedError: The behaviour is the serve-phases work's; this is the frozen signature.
+        of the engines it starts and the steps it runs. A run with no steps plans no phase.
     """
-    raise NotImplementedError("lane L4a")
+    planned: list[Phase] = []
+    for step in steps:
+        roles = uses.get(step, frozenset[EngineRole]())
+        kept: list[EngineRole] = [role for role in roles if getattr(serve, role, None) is not None]
+        wanted = frozenset(kept)
+        if planned and planned[-1].engines == wanted:
+            planned[-1] = Phase(engines=wanted, steps=(*planned[-1].steps, step))
+        else:
+            planned.append(Phase(engines=wanted, steps=(step,)))
+    return planned
 
 
 __all__ = [
