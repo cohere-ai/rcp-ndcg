@@ -2,7 +2,7 @@
   "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/judge-config.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "One judge: an OpenAI-compatible Endpoint with sampling settings.\n\nThe endpoint fields (``model``, ``revision``, ``api_key_env``, ``concurrency``, the timeouts and\nretries) are Endpoint's; ``revision`` is recorded in the judgement\nfamily, so two checkpoints served under one name never pool.",
+  "description": "One judge: an OpenAI-compatible Endpoint with sampling settings.\n\nThe endpoint fields (``model``, ``revision``, ``api_key_env``, ``headers_env``, ``concurrency``, the\ntimeouts, retries and ``wait_on_outage_s``) are Endpoint's;\n``revision`` is recorded in the judgement family, so two checkpoints served under one name never pool.",
   "properties": {
     "allow_floating_model": {
       "default": false,
@@ -10,7 +10,7 @@
       "title": "Allow Floating Model",
       "type": "boolean"
     },
-    "api_key_env": {
+    "api": {
       "anyOf": [
         {
           "type": "string"
@@ -20,7 +20,21 @@
         }
       ],
       "default": null,
-      "description": "Environment variable holding the API key; ``None`` sends no key.",
+      "description": "The wire adapter that speaks the endpoint's protocol (ADAPTER_ENTRY_POINTS); ``None`` until a role config sets its default. Content: which service computes the numbers.",
+      "title": "Api"
+    },
+    "api_key_env": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
       "title": "Api Key Env"
     },
     "base_url": {
@@ -80,6 +94,14 @@
       "additionalProperties": true,
       "description": "Further request fields the endpoint understands (e.g. ``reasoning_effort``, ``chat_template_kwargs``).",
       "title": "Extra Body",
+      "type": "object"
+    },
+    "headers_env": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+      "title": "Headers Env",
       "type": "object"
     },
     "image_processor": {
@@ -199,7 +221,7 @@
         }
       ],
       "default": null,
-      "description": "How long a request waits while the endpoint is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+      "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
       "title": "Wait On Outage S"
     }
   },

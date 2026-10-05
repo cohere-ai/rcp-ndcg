@@ -15,7 +15,10 @@ that read them share query ids, since a query id alone does not say which subset
 **Queries.** Each metric is scored on the queries that have its labels: RCP-nDCG on the queries with gains,
 Count-nDCG on those with count gains, qrel-nDCG on those with qrels. A labelled query that a system did not rank
 scores 0 and is reported in :attr:`EvalReport.warnings`. qrel-nDCG is undefined (``None``) for a query without a
-positive grade and drops out of the means.
+positive grade and drops out of the means. A system whose rankings match nothing of the dataset — no row names
+any of its subsets, or not one ranked id is in its pools or labels — is refused with a
+:class:`~rcp_ndcg.errors.DataError`: every score would be 0, which reads as a weak system where the input is
+broken.
 
 **Aggregation** follows the paper: the mean over queries per dataset, then the unweighted mean over datasets. The
 summary interval is a percentile bootstrap that resamples queries within each dataset (query-clustered,
@@ -33,7 +36,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from rcp_ndcg_core.protocol import PROTOCOLS, MetricName, Protocol, aggregate, resolve_protocol, score_query
 
 from rcp_ndcg.data.dataset import Dataset, load_dataset
-from rcp_ndcg.data.rankings import Rankings
+from rcp_ndcg.data.rankings import Rankings, no_rankings_error
 from rcp_ndcg.errors import ConfigError, DataError, WarningCode
 
 if TYPE_CHECKING:
@@ -264,7 +267,9 @@ def evaluate(
     Raises:
         ConfigError: Conflicting or unknown arguments.
         DataError: No gains for RCP-nDCG, gains outside ``[0, 1]``, a protocol that needs pools the dataset
-            lacks, or rankings (or gains) keyed by bare query ids over subsets that share query ids.
+            lacks, rankings (or gains) keyed by bare query ids over subsets that share query ids, or a system's
+            rankings that match nothing of the scored dataset (no row names any of its subsets, or not one
+            ranked document id is in its pools or labels): every score would be 0.
     """
     ks = sorted({k} if isinstance(k, int) else set(k))
     if not ks or ks[0] <= 0:
@@ -294,14 +299,16 @@ def evaluate(
             labels.setdefault("qrel_ndcg", {})[part.name] = part.qrels
 
     computed: list[MetricName] = [m for m in metrics if m in labels]
+    dataset_pools, dataset_labels = _dataset_targets(dataset)
     per_query: list[QueryValue] = []
     unranked: dict[str, set[tuple[str, str]]] = {}
     for system in rankings.systems:
+        scores = {part.name: _system_queries(rankings, system, part.name) for part in dataset.parts}
+        _refuse_unmatched(rankings, dataset, system, scores, dataset_pools, dataset_labels)
         for part in dataset.parts:
-            scores = _system_queries(rankings, system, part.name)
             for metric in computed:
                 for query_id, query_labels in labels[metric][part.name].items():
-                    ranked = scores.get(query_id)
+                    ranked = scores[part.name].get(query_id)
                     if ranked is None:
                         unranked.setdefault(system, set()).add((part.name, query_id))
                     for cutoff in ks:
@@ -325,7 +332,9 @@ def evaluate(
     ]
     warnings += [
         ReportWarning(
-            code="UNRANKED_QUERIES", message=f"{system}: {len(missing)} labelled queries have no ranking; scored 0"
+            code="UNRANKED_QUERIES",
+            message=f"{system}: {len(missing)} labelled queries have no ranking; scored 0"
+            + (f" (subsets: {', '.join(sorted({name for name, _ in missing}))})" if len(dataset.parts) > 1 else ""),
         )
         for system, missing in unranked.items()
     ]
@@ -438,6 +447,89 @@ def _system_queries(rankings: Rankings, system: str, dataset: str) -> dict[str, 
     if rankings.resolve_dataset(dataset) is None:
         return {}
     return rankings.queries(system=system, dataset=dataset)
+
+
+def _refuse_unmatched(
+    rankings: Rankings,
+    dataset: Dataset,
+    system: str,
+    scores: Mapping[str, dict[str, dict[str, float]]],
+    pools: set[str],
+    label_ids: set[str],
+) -> None:
+    """Refuse a system whose rankings match nothing of the scored dataset: every score would be 0.
+
+    Two broken inputs otherwise score every query 0 with ``ok``; both are refused instead:
+
+    * no row of the system names any subset of the scored dataset (the ``dataset`` column holds another name);
+    * the system ranks rows, but not one ranked document id is in the dataset's pools or labels (qrels, gains).
+
+    A system that matches some subsets, or some documents, keeps scoring as before: the missing subsets score 0
+    with ``UNRANKED_QUERIES`` (naming them), and out-of-pool documents score 0 silently.
+
+    Args:
+        rankings: The systems' scores, for the datasets the rows name.
+        dataset: The scored dataset.
+        system: The system being scored; the error names it.
+        scores: The system's per-subset scores, as :func:`_system_queries` returned them (read once, reused for
+            the scoring, so the check adds no pass over the rankings).
+        pools: The dataset's pool ids (``top_ranked``), from :func:`_dataset_targets` (loop-invariant).
+        label_ids: The dataset's label ids (qrels, released gains), from :func:`_dataset_targets`.
+
+    Raises:
+        DataError: Naming the system and the datasets its rows do name, or one ranked id next to one dataset id.
+    """
+    if not any(scores.values()):
+        raise no_rankings_error(dataset.name, rankings.datasets, system=system, hint=_dataset_column_hint(dataset))
+    ranked = {doc_id for part_scores in scores.values() for docs in part_scores.values() for doc_id in docs}
+    targets = pools | label_ids
+    if targets and not ranked & targets:
+        raise _no_overlap_error(system, dataset, ranked, pools, label_ids)
+
+
+def _dataset_targets(dataset: Dataset) -> tuple[set[str], set[str]]:
+    """``(pool ids, label ids)`` of the whole scored dataset: the pools (``top_ranked``) and the doc ids of its
+    qrels and released gains, across every subset. What a ranked id must hit for the system to be scoring this
+    dataset at all."""
+    pools = {doc_id for part in dataset.parts for pool in (part.candidates or {}).values() for doc_id in pool}
+    label_ids = {
+        doc_id
+        for part in dataset.parts
+        for docs in [*part.qrels.values(), *(part.gains or {}).values()]
+        for doc_id in docs
+    }
+    return pools, label_ids
+
+
+def _dataset_column_hint(dataset: Dataset) -> str:
+    """The fix for rows whose ``dataset`` column names no subset of the scored dataset: the exact names."""
+    names = [part.name for part in dataset.parts]
+    if len(names) > 1:
+        return f"the `dataset` column must hold the exact subset name, one of {names}"
+    (name,) = names
+    stem = name.partition("__")[0]
+    if stem and stem != name:
+        return f"the `dataset` column must hold the exact subset name (e.g. {name!r}, not {stem!r})"
+    return f"the `dataset` column must hold the exact dataset name (e.g. {name!r})"
+
+
+def _no_overlap_error(system: str, dataset: Dataset, ranked: set[str], pools: set[str], labels: set[str]) -> DataError:
+    """The error for a system whose every ranked document is outside the dataset's pools and labels."""
+    target, kind = (pools, "pool") if pools else (labels, "label")
+    ranked_id, dataset_id = min(ranked), min(target)
+    return DataError(
+        f"system {system!r}: no ranked document is in the pools or labels of {dataset.name!r} "
+        f"(e.g. ranked {ranked_id!r} vs {kind} {dataset_id!r})",
+        hint=f"rank the dataset's own document ids (e.g. {dataset_id!r}); ids outside its pools and qrels score 0",
+        details={
+            "system": system,
+            "dataset": dataset.name,
+            "ranked_doc_id": ranked_id,
+            "dataset_doc_id": dataset_id,
+            "num_ranked_docs": len(ranked),
+            "num_dataset_docs": len(pools | labels),
+        },
+    )
 
 
 def _shared_query_ids(parts: Iterable[Dataset]) -> dict[str, list[str]]:

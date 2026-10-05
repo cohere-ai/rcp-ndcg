@@ -31,7 +31,7 @@
       "additionalProperties": false,
       "description": "Cohere's public API: Embed v4 (``embed-v4.0``, which also embeds page images) and Rerank 4 Pro and Fast\n(``rerank-v4.0-pro``, ``rerank-v4.0-fast``). The key is read from ``api_key_env``, else ``CO_API_KEY`` or\n``COHERE_API_KEY``. A rerank request carries up to ``batch_size`` documents (default 100, the API's search\nunit).",
       "properties": {
-        "api_key_env": {
+        "api": {
           "anyOf": [
             {
               "type": "string"
@@ -41,7 +41,21 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "description": "The wire adapter that speaks the endpoint's protocol (ADAPTER_ENTRY_POINTS); ``None`` until a role config sets its default. Content: which service computes the numbers.",
+          "title": "Api"
+        },
+        "api_key_env": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -54,7 +68,7 @@
             }
           ],
           "default": null,
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "description": "One URL, or none for the provider's own public API; the hosted APIs take no replica list yet (the retrieval port moves them onto the shared transport).",
           "title": "Base Url"
         },
         "batch_size": {
@@ -83,6 +97,14 @@
           "exclusiveMinimum": 0,
           "title": "Connect Timeout S",
           "type": "number"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
+          "type": "object"
         },
         "max_retries": {
           "default": 8,
@@ -122,6 +144,20 @@
           "exclusiveMinimum": 0,
           "title": "Timeout S",
           "type": "number"
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
         }
       },
       "required": [
@@ -181,7 +217,7 @@
       "additionalProperties": false,
       "description": "Google's Gemini embedding API (``gemini-embedding-001``). The key is read from ``api_key_env``, else\n``GEMINI_API_KEY`` or ``GOOGLE_API_KEY``.",
       "properties": {
-        "api_key_env": {
+        "api": {
           "anyOf": [
             {
               "type": "string"
@@ -191,7 +227,21 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "description": "The wire adapter that speaks the endpoint's protocol (ADAPTER_ENTRY_POINTS); ``None`` until a role config sets its default. Content: which service computes the numbers.",
+          "title": "Api"
+        },
+        "api_key_env": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -204,7 +254,7 @@
             }
           ],
           "default": null,
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "description": "One URL, or none for the provider's own public API; the hosted APIs take no replica list yet (the retrieval port moves them onto the shared transport).",
           "title": "Base Url"
         },
         "batch_size": {
@@ -233,6 +283,14 @@
           "exclusiveMinimum": 0,
           "title": "Connect Timeout S",
           "type": "number"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
+          "type": "object"
         },
         "max_retries": {
           "default": 8,
@@ -272,6 +330,20 @@
           "exclusiveMinimum": 0,
           "title": "Timeout S",
           "type": "number"
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
         }
       },
       "required": [
@@ -417,7 +489,7 @@
       "additionalProperties": false,
       "description": "A served embedding model.\n\nOne vector per text through ``POST <base_url>/embeddings`` (vLLM's OpenAI-compatible route, or OpenAI's API at\n``https://api.openai.com/v1`` with ``api_key_env: OPENAI_API_KEY``); with ``pooling: token``, one vector per\ntoken through vLLM's ``/pooling`` route (late interaction).",
       "properties": {
-        "api_key_env": {
+        "api": {
           "anyOf": [
             {
               "type": "string"
@@ -427,14 +499,35 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "description": "The wire adapter that speaks the endpoint's protocol (ADAPTER_ENTRY_POINTS); ``None`` until a role config sets its default. Content: which service computes the numbers.",
+          "title": "Api"
+        },
+        "api_key_env": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
-          "minLength": 1,
-          "title": "Base Url",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint; ``None`` only when the run's job starts the encoder's engine (``serve.encoder``): the engine's URLs then reach the step at runtime, through ``RCP_NDCG_ENGINES``, and setting both is refused rather than silently overridden.",
+          "title": "Base Url"
         },
         "batch_size": {
           "anyOf": [
@@ -475,6 +568,14 @@
           "default": null,
           "description": "Text prepended to every document.",
           "title": "Doc Prompt"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
+          "type": "object"
         },
         "max_retries": {
           "default": 4,
@@ -541,10 +642,23 @@
           "exclusiveMinimum": 0,
           "title": "Timeout S",
           "type": "number"
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
         }
       },
       "required": [
-        "base_url",
         "model"
       ],
       "title": "OpenAICompatibleEncoder",
@@ -554,7 +668,7 @@
       "additionalProperties": false,
       "description": "Voyage AI's public API (``voyage-3-large``, ``rerank-2.5``, ``rerank-2.5-lite``, ...). The key is read from\n``api_key_env``, else ``VOYAGE_API_KEY``. A rerank request carries up to ``batch_size`` documents (default 20).",
       "properties": {
-        "api_key_env": {
+        "api": {
           "anyOf": [
             {
               "type": "string"
@@ -564,7 +678,21 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "description": "The wire adapter that speaks the endpoint's protocol (ADAPTER_ENTRY_POINTS); ``None`` until a role config sets its default. Content: which service computes the numbers.",
+          "title": "Api"
+        },
+        "api_key_env": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -577,7 +705,7 @@
             }
           ],
           "default": null,
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "description": "One URL, or none for the provider's own public API; the hosted APIs take no replica list yet (the retrieval port moves them onto the shared transport).",
           "title": "Base Url"
         },
         "batch_size": {
@@ -606,6 +734,14 @@
           "exclusiveMinimum": 0,
           "title": "Connect Timeout S",
           "type": "number"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
+          "type": "object"
         },
         "max_retries": {
           "default": 8,
@@ -645,6 +781,20 @@
           "exclusiveMinimum": 0,
           "title": "Timeout S",
           "type": "number"
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
         }
       },
       "required": [

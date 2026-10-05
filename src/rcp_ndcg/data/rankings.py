@@ -294,11 +294,7 @@ class Rankings:
             return named[0] if named else ""
         key = self.resolve_dataset(dataset)
         if key is None:
-            raise DataError(
-                f"no rankings of dataset {dataset!r}; the rankings name the datasets {self.datasets}",
-                hint="rank the dataset's queries, or name one of those datasets",
-                details={"dataset": dataset, "datasets": self.datasets},
-            )
+            raise no_rankings_error(dataset, self.datasets)
         return key
 
     def top(self, depth: int) -> Rankings:
@@ -325,6 +321,34 @@ class Rankings:
         if len(systems) != 1:
             raise DataError(f"the rankings hold {len(systems)} systems; name one of {systems}")
         return systems[0]
+
+
+def no_rankings_error(
+    dataset: str, datasets: Sequence[str], *, system: str | None = None, hint: str | None = None
+) -> DataError:
+    """The error for a reader that finds no rows naming ``dataset``: shared by :meth:`Rankings.queries` and
+    :func:`rcp_ndcg.eval.evaluate`, so both name the datasets the rows do name.
+
+    Args:
+        dataset: The dataset (subset) whose rows were wanted.
+        datasets: The dataset names the rows do name.
+        system: The system whose rows were wanted, when the reader scores one system at a time; the message names
+            it so a file of several systems says which one is missing.
+        hint: The next step, when the reader knows more than :meth:`Rankings.queries` does (e.g. the exact subset
+            name the ``dataset`` column must hold); ``None`` keeps the rankings' own hint.
+
+    Returns:
+        The :class:`~rcp_ndcg.errors.DataError` to raise (exit 12 on the command line).
+    """
+    details: dict[str, Any] = {"dataset": dataset, "datasets": list(datasets)}
+    if system is not None:
+        details = {"system": system, **details}
+    return DataError(
+        f"{'' if system is None else f'system {system!r}: '}no rankings of dataset {dataset!r}; "
+        f"the rankings name the datasets {list(datasets)}",
+        hint=hint or "rank the dataset's queries, or name one of those datasets",
+        details=details,
+    )
 
 
 def _from_frame(frame: pd.DataFrame) -> Rankings:
@@ -512,4 +536,4 @@ def _json_record_rows(record: Mapping[str, Any], where: str) -> list[dict[str, A
     return [{**common, "doc_id": d, "score": s} for d, s in pairs]
 
 
-__all__ = ["DEFAULT_SYSTEM", "RankingRow", "Rankings", "RankingsFormat", "load_rankings"]
+__all__ = ["DEFAULT_SYSTEM", "RankingRow", "Rankings", "RankingsFormat", "load_rankings", "no_rankings_error"]

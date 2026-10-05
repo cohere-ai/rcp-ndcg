@@ -13,7 +13,15 @@ from pydantic import BaseModel, ValidationError
 
 import rcp_ndcg
 from rcp_ndcg import errors
-from rcp_ndcg.errors import DataError, ExitCode, RcpNdcgError, RcpNdcgWarning, classify
+from rcp_ndcg.errors import (
+    DataError,
+    ExitCode,
+    MissingInputError,
+    ProviderError,
+    RcpNdcgError,
+    RcpNdcgWarning,
+    classify,
+)
 
 
 def _validation_error() -> ValidationError:
@@ -95,13 +103,21 @@ def test_the_error_object_has_the_envelope_shape() -> None:
 
 
 def test_every_exit_code_has_exactly_one_error_class() -> None:
+    """One root class per exit code; subclasses (the outage and refusal types of the inference layer) share
+    their parent's code and never own a second one."""
     classes = [obj for obj in vars(errors).values() if isinstance(obj, type) and issubclass(obj, RcpNdcgError)]
-    owners: dict[ExitCode, list[str]] = {}
+    owners: dict[ExitCode, list[type[RcpNdcgError]]] = {}
     for cls in classes:
-        owners.setdefault(cls.exit_code, []).append(cls.__name__)
+        owners.setdefault(cls.exit_code, []).append(cls)
 
     assert set(owners) == set(ExitCode) - {ExitCode.SUCCESS}
-    assert all(len(names) == 1 for names in owners.values()), owners
+    for code, owners_classes in owners.items():
+        roots = [
+            cls
+            for cls in owners_classes
+            if not any(root is not cls and issubclass(cls, root) for root in owners_classes)
+        ]
+        assert len(roots) == 1, {code.name: [cls.__name__ for cls in owners_classes]}
 
 
 def test_a_retired_exit_code_is_never_reused() -> None:
@@ -123,6 +139,107 @@ def test_an_offline_cache_miss_is_not_reported_as_a_missing_file() -> None:
     assert offline.exit_code == missing.exit_code == ExitCode.MISSING_INPUT
     assert "HF_HUB_OFFLINE" in (offline.hint or "")
     assert "HF_HUB_OFFLINE" not in (missing.hint or "")
+
+
+def _chained(exc: BaseException, cause: BaseException) -> BaseException:
+    """`raise exc from cause`, the way huggingface_hub chains the failure its download hit."""
+    try:
+        raise exc from cause
+    except BaseException as raised:
+        return raised
+
+
+def test_an_offline_cache_miss_is_not_retryable_and_names_the_offline_state() -> None:
+    """Offline, a cache miss is a missing input, non-retryable; the hint stays surface-neutral.
+
+    The `--revision` flag wording belongs to the dataset surface, which knows whether the revision is already
+    resolved; other surfaces (a tokenizer, say) have no such flag.
+    """
+    hub_errors = pytest.importorskip("huggingface_hub.errors")
+    raised = _chained(
+        hub_errors.LocalEntryNotFoundError("An error happened while trying to locate the file on the Hub"),
+        hub_errors.OfflineModeIsEnabled("offline mode is enabled"),
+    )
+
+    error = classify(raised)
+
+    assert isinstance(error, MissingInputError)
+    assert error.retryable is False
+    assert "HF_HUB_OFFLINE" in (error.hint or "")
+    assert "--revision" not in (error.hint or "")
+
+
+def test_offline_mode_raised_bare_is_a_missing_input_not_a_provider_error() -> None:
+    """A Hub call refused offline (``OfflineModeIsEnabled`` raised on its own) is not a retryable provider error."""
+    hub_errors = pytest.importorskip("huggingface_hub.errors")
+
+    error = classify(hub_errors.OfflineModeIsEnabled("offline mode is enabled"))
+
+    assert isinstance(error, MissingInputError)
+    assert error.retryable is False
+    assert "HF_HUB_OFFLINE" in (error.hint or "")
+
+
+def test_a_rejected_token_is_a_credential_error_not_a_bug() -> None:
+    """A bare 401 from the Hub (not a gated-repo class) names the credential, not the traceback."""
+    import httpx
+
+    hub_errors = pytest.importorskip("huggingface_hub.errors")
+    response = httpx.Response(401, request=httpx.Request("HEAD", "https://hub.example/"))
+
+    error = classify(hub_errors.HfHubHTTPError("401 Unauthorized", response=response))
+
+    assert isinstance(error, errors.CredentialsError)
+    assert "HF_TOKEN" in (error.hint or "")
+
+
+def test_a_metadataless_answer_names_the_endpoint_not_the_offline_flag() -> None:
+    """Online, an answer without the Hub's headers (a mirror or proxy) is not an offline failure."""
+    hub_errors = pytest.importorskip("huggingface_hub.errors")
+    raised = _chained(
+        hub_errors.LocalEntryNotFoundError("An error happened while trying to locate the file on the Hub"),
+        hub_errors.FileMetadataError("Response is missing the X-Repo-Commit header"),
+    )
+
+    error = classify(raised)
+
+    assert isinstance(error, MissingInputError)
+    assert "HF_ENDPOINT" in (error.hint or "")
+    assert "HF_HUB_OFFLINE" not in (error.hint or "")
+
+
+def _unreachable_hub_causes() -> list[BaseException]:
+    """The connection failures huggingface_hub chains under a cache miss (httpx, requests, sockets, a down Hub)."""
+    import httpx
+
+    causes: list[BaseException] = [httpx.ConnectError("connection refused"), httpx.TimeoutException("timed out")]
+    try:
+        from requests.exceptions import ConnectionError as RequestsConnectionError
+
+        causes.append(RequestsConnectionError("connection refused"))
+    except ImportError:  # pragma: no cover - requests ships with the hf extra's older lines
+        pass
+    hub_errors = pytest.importorskip("huggingface_hub.errors")
+    down = httpx.Response(503, request=httpx.Request("HEAD", "https://hub.example/"))
+    causes.append(hub_errors.HfHubHTTPError("503 Service Unavailable", response=down))
+    return causes
+
+
+@pytest.mark.parametrize("cause", _unreachable_hub_causes(), ids=lambda cause: type(cause).__name__)
+def test_an_unreachable_hub_behind_a_cache_miss_is_a_retryable_provider_error(
+    cause: BaseException,
+) -> None:
+    hub_errors = pytest.importorskip("huggingface_hub.errors")
+    raised = _chained(
+        hub_errors.LocalEntryNotFoundError("An error happened while trying to locate the file on the Hub"),
+        cause,
+    )
+
+    error = classify(raised)
+
+    assert isinstance(error, ProviderError)
+    assert error.retryable is True
+    assert "HF_ENDPOINT" in (error.hint or "")
 
 
 def test_a_provider_failure_names_the_concurrency_setting_that_exists() -> None:

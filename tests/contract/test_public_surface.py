@@ -31,7 +31,14 @@ SCHEMAS = REPO / "schemas"
 UPDATE_HINT = "Run `pytest tests/contract --update-snapshots` and add a CHANGELOG.md entry under 'Public surface'."
 
 #: Names exported with two different defining modules (two homes for one concept). May only shrink.
-KNOWN_SECOND_HOMES: frozenset[str] = frozenset()
+KNOWN_SECOND_HOMES: frozenset[str] = frozenset(
+    {
+        # Temporary: the judge's per-client usage (rcp_ndcg.llm.client.Usage: requests, failed_requests) and the
+        # transport's wire usage (rcp_ndcg.inference.types.Usage: calls, failed_calls, with __add__) coexist
+        # until lane L2 ports the judge onto the transport, which merges them and removes this entry.
+        "Usage",
+    }
+)
 
 
 def _update() -> bool:

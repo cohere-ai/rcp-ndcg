@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from rcp_ndcg.errors import ConfigError, ProviderError
 from rcp_ndcg.support.resources import Environment, EnvName, Resources
-from rcp_ndcg.support.serve import ServeConfig
+from rcp_ndcg.support.serve import EngineConfig, EngineRole, ServeConfig
 
 #: An opaque job reference returned by :meth:`JobRunner.submit` (a SLURM job id,
 #: ``<namespace>/<job>`` on Kubernetes, the job name locally).
@@ -45,6 +45,29 @@ class RunnerError(ProviderError):
     """A scheduler command failed, a job could not be submitted as specified, or a job failed (exit 6)."""
 
 
+class JobPhase(BaseModel):
+    """One phase of a job: the engines it starts, by role, and the command it runs while they serve.
+
+    The runner starts the phase's engines, waits until each answers its readiness path, exports their URLs to the
+    command in ``RCP_NDCG_ENGINES`` (:data:`~rcp_ndcg.support.serve.ENGINES_ENV`), runs ``argv``, stops the engines,
+    and only then starts the next phase. A phase without engines runs ``argv`` directly.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    engines: Mapping[EngineRole, EngineConfig] = Field(default_factory=dict)
+    """The engines this phase starts, by the role whose config each one serves; empty for none."""
+    argv: tuple[str, ...]
+    """The coordinator command of this phase, never pre-quoted (the runner quotes it exactly once)."""
+
+    @field_validator("argv")
+    @classmethod
+    def _non_empty(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if not value:
+            raise ValueError("argv must not be empty")
+        return value
+
+
 class JobSpec(BaseModel):
     """One unit of work for a runner: a named command."""
 
@@ -62,12 +85,21 @@ class JobSpec(BaseModel):
     """Environment for the command; each name a shell identifier."""
     serve: ServeConfig | None = None
     """Engine replicas the runner starts beside the command; their URLs reach it as ``RCP_NDCG_JUDGE_URLS``."""
+    phases: tuple[JobPhase, ...] = ()
+    """The job's phases, run in order in one allocation; when set, they replace ``argv`` and ``serve``."""
 
     @field_validator("argv")
     @classmethod
     def _non_empty(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         if not value:
             raise ValueError("argv must not be empty")
+        return value
+
+    @field_validator("phases")
+    @classmethod
+    def _phases_replace_serve(cls, value: tuple[JobPhase, ...], info: Any) -> tuple[JobPhase, ...]:
+        if value and info.data.get("serve") is not None:
+            raise ValueError("a job with phases names its engines per phase: set phases or serve, not both")
         return value
 
 

@@ -19,7 +19,7 @@ from rcp_ndcg.calibration import (
     select_opponents,
 )
 from rcp_ndcg.calibration.fit import population_prior
-from rcp_ndcg.errors import DataError, IdentityError
+from rcp_ndcg.errors import DataError, IdentityError, RcpNdcgWarning
 from rcp_ndcg.testing import TinyWorld
 
 
@@ -203,7 +203,8 @@ def test_a_pooled_calibration_scores_each_document_once_from_every_judge(world: 
     schedule = TINY_RUBRIC.model_copy(update={"seed": 0})
     judge(world.dataset, None, lenient, stage="rubric", out=lenient_store, schedule=schedule, docs=rejudged)
     both = read_judgements(world.judgements, lenient_store)
-    pooled = calibrate(both, judges="pooled")
+    with pytest.warns(RcpNdcgWarning, match="rubric verdicts but no tournament ability"):
+        pooled = calibrate(both, judges="pooled")  # the re-judged q2 documents have no tournament ability
 
     extension = score_documents(pooled, both)
 

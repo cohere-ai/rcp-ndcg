@@ -62,7 +62,14 @@ of the mean, with a `NO_POSITIVE_QRELS` warning in the report. trec_eval instead
 it in the mean. The paper's queries all have a positive grade, and the two conventions give the same paper numbers.
 
 A labelled query that a system did not rank at all scores 0 for that system, and the report warns with
-`UNRANKED_QUERIES`.
+`UNRANKED_QUERIES` (for a suite, the warning names the subsets it counts). A rankings file that matches the
+scored dataset not at all is refused instead, with a `DataError` (exit 12 on the command line): either no row
+names any of its subsets (the file's `dataset` column must hold the exact subset name, e.g. `hr__english`, not
+`hr`), or not one ranked document id is in the dataset's pools or labels (e.g. ranked `486` vs pool
+`corpus-test-486`). Every score would be 0, which reads as a weak system where the input is broken. A system
+whose rows match some subsets, or some documents, keeps scoring: the missing subsets score 0 with the warning,
+and out-of-pool documents score 0 silently. The checks are per system, so a file of several systems is refused
+when any one of them matches nothing.
 
 ## Aggregation
 

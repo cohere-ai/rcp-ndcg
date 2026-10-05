@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from rcp_ndcg import mcp
 from rcp_ndcg.cli.introspect import command_specs
+from rcp_ndcg.data import SUITES, Rankings
 from rcp_ndcg.runs.config import RunConfig
 from rcp_ndcg.runs.pipeline import Pipeline
 
@@ -94,6 +97,35 @@ def test_a_failure_is_a_tool_error_carrying_the_error_object(name: str, argument
     assert result["isError"] is True
     assert result["structuredContent"]["code"] == code
     assert set(result["structuredContent"]) == {"code", "exit_code", "message", "hint", "retryable", "details"}
+
+
+def test_a_typed_warning_reaches_the_server_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A typed warning a tool call collected is logged, the MCP analogue of the CLI's stderr line."""
+    cache = tmp_path / "hub"
+    cache.mkdir()
+    monkeypatch.setenv("HF_HUB_CACHE", str(cache))
+    from huggingface_hub import constants as hub_constants
+
+    monkeypatch.setattr(hub_constants, "HF_HUB_CACHE", str(cache))
+    repo = SUITES["vidore"].repo
+    snapshot = cache / f"datasets--{repo.replace('/', '--')}" / "snapshots" / ("4" * 40)
+    (snapshot / "hr__english").mkdir(parents=True)
+    pd.DataFrame({"query-id": ["q1"], "corpus-id": ["a"], "score": [1.0], "gain": [1.0], "theta": [1.0]}).to_parquet(
+        snapshot / "hr__english/qrels.parquet"
+    )
+    pd.DataFrame({"query-id": ["q1"], "corpus-ids": [["a"]]}).to_parquet(snapshot / "hr__english/top_ranked.parquet")
+    no_exist = cache / f"datasets--{repo.replace('/', '--')}" / ".no_exist" / ("4" * 40) / "hr__english"
+    no_exist.mkdir(parents=True)
+    (no_exist / "excluded.parquet").touch()
+    rankings = tmp_path / "run.jsonl"
+    Rankings.from_orders({"q1": ["a"]}, system="mine").save(rankings)
+
+    with caplog.at_level(logging.WARNING, logger="rcp_ndcg.mcp"):
+        mcp.call_tool("eval_score", {"rankings": str(rankings), "suite": "vidore", "subset": "hr__english"})
+
+    assert "UNPINNED_REVISION" in caplog.text
 
 
 def test_the_builtin_loop_speaks_json_rpc(run_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:

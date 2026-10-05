@@ -33,7 +33,7 @@ rcp-ndcg run          start       run a config (a YAML file or a packaged config
                       show        one run's manifest and artifacts
 rcp-ndcg schema       list | show NAME | export --out DIR
 rcp-ndcg mcp          serve | tools [--call TOOL --args JSON]
-rcp-ndcg doctor       check the environment: versions, extras, credentials present, endpoint reachable
+rcp-ndcg doctor       [--endpoint URL] check the environment: versions, extras, credentials present, endpoint reachable
 rcp-ndcg --version
 ```
 
@@ -71,6 +71,7 @@ The same flag means the same thing on every command that has it:
 | `--suite NAME` | a public suite: its data and its protocol (`nanobeir`, `bright`, `vidore`, `trecdl`) |
 | `--protocol NAME` | override the protocol (`nanobeir`, `bright`, `vidore`, `trecdl`, `mteb`, `plain`) |
 | `--judge fake\|PATH\|NAME`, `--judge-url URL`, `--judge-model ID` | a judge config, or an ad-hoc OpenAI-compatible endpoint |
+| `--engine ROLE=URL[,URL]` | `run resume`: point one role's model (`judge`, `encoder` or `reranker`) at the engine URLs instead of its config's `base_url`; repeatable, one role each. A runtime overlay: it never changes the run's recorded config ([serving](../concepts/serving.md#starting-the-engines-with-the-run)) |
 | `--docs QUERY_ID:DOC_ID` | judge only these documents (re-annotation, insertion) |
 | `--plan FILE` | `judge tournament`: ask exactly the windows of an insertion plan (`calibration insert --plan --out FILE`), with the `--out` store's schedule |
 | `--k INT` | a cutoff; repeatable |
@@ -112,12 +113,15 @@ With `--json`, stdout carries exactly one JSON document, and logs and progress g
  "data": {"schema": "rcp-ndcg.eval-score.v1", "summary": [], "per_dataset": [],
           "warnings": [{"code": "UNRANKED_QUERIES", "message": "..."}]},
  "warnings": [],
- "meta": {"version": "0.1.0", "elapsed_s": 1.84, "run_dir": null}}
+ "meta": {"version": "0.0.1", "elapsed_s": 1.84, "run_dir": null}}
 ```
 
 The envelope's `warnings` carry the conditions raised while the command ran, with a code from
-`rcp_ndcg.errors.WarningCode` (`APPROXIMATE_IMAGE_TOKENS`, `BT_L2_MISMATCH`, `INVALID_WINDOWS`, `UNCALIBRATED_DOCUMENTS`, `UNREADABLE_RUN`). A result can carry
+`rcp_ndcg.errors.WarningCode` (`APPROXIMATE_IMAGE_TOKENS`, `BT_L2_MISMATCH`, `INVALID_WINDOWS`, `UNCALIBRATED_DOCUMENTS`, `UNPINNED_REVISION`, `UNREADABLE_RUN`); without `--json` the same warnings print on stderr. A result can carry
 warnings of its own: an evaluation report's `data.warnings` also use `UNRANKED_QUERIES` and `NO_POSITIVE_QRELS`.
+`UNPINNED_REVISION` is the one a Hub dataset raises when its branch (or no revision at all) resolved to no commit
+-- offline, or with the Hub unreachable, and no recorded ref in the local cache; it names `--revision <full sha>`
+as the fix.
 
 A failure has `"ok": false` and an `error` object with `code`, `exit_code`, `message`, `hint`, `retryable` and
 `details`. A config that does not validate (exit 3) lists its problems in `details.errors`: per problem the `field`

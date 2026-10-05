@@ -30,6 +30,7 @@ closed list :data:`WarningCode`; the CLI puts them into the ``warnings`` of its 
 
 from __future__ import annotations
 
+import os
 import sys
 from collections.abc import Mapping
 from enum import IntEnum
@@ -144,6 +145,25 @@ class ProviderError(RcpNdcgError):
     retryable = True
 
 
+class BackendUnavailableError(ProviderError):
+    """Every replica of an endpoint stayed unavailable for longer than its ``wait_on_outage_s``.
+
+    The public outage type of the inference layer (the API key, routing, parking and retries are the
+    transport's): a run against dead servers parks instead of turning the outage into
+    missing judgements, and this error says the parking gave up. Retryable: the endpoint may come back.
+    """
+
+
+class RequestRejectedError(ProviderError):
+    """An endpoint refused this one request (e.g. HTTP 400 for a prompt over the context) or answered it empty.
+
+    Specific to the request, unlike :class:`BackendUnavailableError`: the endpoint serves other requests, so a
+    judging pass records the window as invalid and goes on, and a resumed pass asks it again.
+    """
+
+    retryable = False
+
+
 class CapabilityError(RcpNdcgError):
     """The judge or endpoint cannot take what a request carries.
 
@@ -152,6 +172,59 @@ class CapabilityError(RcpNdcgError):
     """
 
     exit_code = ExitCode.CAPABILITY
+
+
+#: The HTTP statuses that say "this endpoint cannot serve right now", not "this request is wrong"
+#: (a read or connect timeout, a rate limit). Connection errors and timeouts carry no status: the transport
+#: decides those from the exception type.
+UNAVAILABLE_STATUSES: frozenset[int] = frozenset({408, 429})
+
+
+def status_is_unavailable(status: int) -> bool:
+    """Whether the HTTP status says the endpoint cannot serve right now (408, 429, any 5xx).
+
+    One half of the shared status map: the transport retries such a reply, then sets the replica aside and
+    parks while every replica is down. 401, 403 and 404 are typed errors (:func:`status_error`); every other
+    4xx is returned to the wire adapter as a reply. Connection errors and timeouts carry no status: the
+    transport maps them to unavailability directly.
+    """
+    return status >= 500 or status in UNAVAILABLE_STATUSES
+
+
+def status_error(status: int, *, url: str, path: str, model: str, body: str) -> RcpNdcgError | None:
+    """The typed error of an HTTP status the transport raises on, or ``None`` for one it returns as a reply.
+
+    The other half of the status map (:func:`status_is_unavailable` holds the outage statuses): 401 and 403
+    are a :class:`CredentialsError`, 404 a non-retryable :class:`ProviderError` naming the URL and the model,
+    and every other 4xx is ``None`` -- the adapter reads the reply and raises its own role-specific error. An
+    outage status (408, 429, 5xx) never reaches this map -- the transport retries and parks instead;
+    defensively, it maps to a retryable :class:`ProviderError` here.
+
+    Args:
+        status: The HTTP status of the reply.
+        url: The replica's base URL (a 404 names it).
+        path: The request path (a 404 names it).
+        model: The endpoint's served model name (a 404 names it).
+        body: The response body as text, for the message; header values never enter it.
+
+    Returns:
+        The typed error to raise, or ``None`` when the status is a reply for the adapter to interpret (2xx,
+        3xx, and every 4xx outside the map).
+    """
+    if status in (401, 403):
+        return CredentialsError(
+            f"the endpoint refused the credentials (HTTP {status}: {body})",
+            details={"status": status, "url": url},
+        )
+    if status == 404:
+        return ProviderError(
+            f"{url}{path} has no such route or model for {model!r} (HTTP 404: {body})",
+            retryable=False,
+            details={"status": 404, "url": url, "path": path, "model": model},
+        )
+    if status_is_unavailable(status):
+        return ProviderError(f"{url}{path} answered HTTP {status}: {body}", details={"status": status, "url": url})
+    return None
 
 
 class Interrupted(RcpNdcgError):
@@ -193,6 +266,7 @@ WarningCode = Literal[
     "BT_L2_MISMATCH",
     "INVALID_WINDOWS",
     "UNCALIBRATED_DOCUMENTS",
+    "UNPINNED_REVISION",
     "UNREADABLE_RUN",
 ]
 """The closed list of warning codes. Adding a code is an additive change; renaming one is breaking."""
@@ -203,8 +277,8 @@ WARNING_CODES: tuple[str, ...] = get_args(WarningCode)
 class RcpNdcgWarning(UserWarning):
     """A condition worth a caller's attention that does not stop the call.
 
-    Raise it with ``warnings.warn(RcpNdcgWarning("UNREADABLE_RUN", "..."))``; the CLI and MCP collect it into
-    the ``warnings`` list of their result.
+    Raise it with ``warnings.warn(RcpNdcgWarning("UNREADABLE_RUN", "..."))``; the CLI collects it into the
+    ``warnings`` of its ``--json`` envelope (and prints it on stderr otherwise), and the MCP server logs it.
 
     Args:
         code: One of :data:`WarningCode`.
@@ -278,10 +352,11 @@ def _subclasses(cls: type[RcpNdcgError]) -> list[type[RcpNdcgError]]:
     return found
 
 
-def _named(exc: BaseException, module: str, *names: str) -> bool:
+def _named(exc: BaseException | None, module: str, *names: str) -> bool:
     """Whether *exc* is an instance of one of ``module.names``, without importing *module*.
 
-    A foreign exception can only come from a module that is already loaded, so an absent module means "no".
+    A foreign exception can only come from a module that is already loaded, so an absent module means "no";
+    so does a ``None`` cause (an exception raised with nothing chained under it).
     """
     loaded = sys.modules.get(module)
     if loaded is None:
@@ -302,6 +377,11 @@ def classify(exc: BaseException) -> RcpNdcgError:
     * connection failures, timeouts and rate limits (``httpx``, ``openai``, built-in) are :class:`ProviderError`;
       rejected credentials (``openai``, gated Hub repositories) are :class:`CredentialsError`; a Hub repository,
       file or revision that does not exist is :class:`MissingInputError`;
+    * a Hub download that found neither the file nor a usable cache entry (``LocalEntryNotFoundError``) is read
+      from its cause (``__cause__`` / ``__context__``): offline is a non-retryable :class:`MissingInputError`
+      (the dataset surface adds the ``--revision`` wording where it knows the revision is not resolved); a Hub
+      that cannot be reached — connection failure, timeout, or answering 5xx or 429 — is a retryable
+      :class:`ProviderError`;
     * ``KeyboardInterrupt`` is :class:`Interrupted`.
 
     Everything else, including a bare ``ValueError`` or ``TypeError``, is an unexpected failure (exit 1): code
@@ -324,13 +404,81 @@ def classify(exc: BaseException) -> RcpNdcgError:
     if isinstance(exc, ImportError) and _INSTALL_MARKER in str(exc):
         text = str(exc)
         return DependencyError(text, hint=text[text.find("pip install") :] if "pip install" in text else None)
-    # before FileNotFoundError, which it subclasses: an offline cache miss is not a missing file
+
+    # before FileNotFoundError, which it subclasses: an offline cache miss is not a missing file.
+    # The library raises LocalEntryNotFoundError for every Hub failure it cannot answer from the local cache,
+    # chaining the real cause; the cause says what a caller should do, the message alone does not.
+    # A Hub that is down (5xx) or rate-limiting (429) is unreachable for now: the same retryable provider failure
+    # huggingface_hub itself buckets with the transport errors.
+    def offline_miss() -> MissingInputError:
+        """The offline Hub failure: retrying cannot help; the fix is online once, or pinning what the cache has."""
+        return MissingInputError(
+            name,
+            hint="the Hub is unreachable offline (HF_HUB_OFFLINE); run once online to download the file — or, if "
+            "the revision is not already pinned, pin the revision the cache was filled at",
+        )
+
+    def hub_down(cause: BaseException | None) -> bool:
+        """Whether *cause* is the Hub answering with a failure a later retry can survive."""
+        if not _named(cause, "huggingface_hub.errors", "HfHubHTTPError"):
+            return False
+        status = getattr(getattr(cause, "response", None), "status_code", 0)
+        return status >= 500 or status == 429
+
+    if _named(exc, "huggingface_hub.errors", "OfflineModeIsEnabled"):
+        return offline_miss()
     if _named(exc, "huggingface_hub.errors", "LocalEntryNotFoundError"):
+        cause = exc.__cause__ or exc.__context__
+        # Offline with nothing to resolve: OfflineModeIsEnabled (a ConnectionError subclass, so told apart
+        # before any transport check) with no resolvable commit, or the offline flag with no cause at all.
+        offline = _named(cause, "huggingface_hub.errors", "OfflineModeIsEnabled") or (
+            cause is None
+            # the values revisions.hub_offline() accepts; importing it would point errors below data
+            and os.environ.get("HF_HUB_OFFLINE", "").strip().lower() in {"1", "true", "yes", "on"}
+        )
+        if not offline and (
+            _named(cause, "httpx", "TransportError")
+            or _named(cause, "requests", "ConnectionError", "Timeout", "ConnectTimeout", "ReadTimeout")
+            or isinstance(cause, ConnectionError | TimeoutError)
+            or hub_down(cause)
+        ):
+            return ProviderError(
+                name,
+                hint="the Hugging Face Hub could not be reached; check connectivity and HF_ENDPOINT, then retry",
+            )
+        if offline:
+            return offline_miss()
+        if _named(cause, "huggingface_hub.errors", "FileMetadataError"):
+            # the Hub answered, but without its headers: a mirror or proxy that is not a Hub endpoint
+            return MissingInputError(
+                name,
+                hint="the endpoint answered without the Hub's metadata: check HF_ENDPOINT points to a Hub-compatible "
+                "endpoint, and the proxy settings",
+            )
         return MissingInputError(
             name,
             hint="the file is not in the local Hub cache and Hub access is off (HF_HUB_OFFLINE); "
             "unset HF_HUB_OFFLINE or download the file first",
         )
+    if _named(exc, "huggingface_hub.errors", "HfHubHTTPError") and not _named(
+        exc,
+        "huggingface_hub.errors",
+        "GatedRepoError",
+        "RepositoryNotFoundError",
+        "RevisionNotFoundError",
+        "EntryNotFoundError",
+    ):
+        status = getattr(getattr(exc, "response", None), "status_code", 0)
+        if status == 401:
+            return CredentialsError(
+                name, hint="check the token the request carries (HF_TOKEN) and the repository's access terms"
+            )
+        if status >= 500 or status == 429:
+            # the Hub answered but is down or rate-limiting: the same retryable provider failure as a connection one
+            return ProviderError(
+                name,
+                hint="the Hugging Face Hub could not be reached; check connectivity and HF_ENDPOINT, then retry",
+            )
     if isinstance(exc, FileNotFoundError):
         details = {"path": str(exc.filename)} if exc.filename is not None else None
         return MissingInputError(str(exc), hint="check the path, or run the step that produces it", details=details)
@@ -350,6 +498,7 @@ def classify(exc: BaseException) -> RcpNdcgError:
         return MissingInputError(name, hint="check the dataset id, subset and revision")
     if (
         _named(exc, "httpx", "TransportError")
+        or _named(exc, "requests", "ConnectionError", "Timeout", "ConnectTimeout", "ReadTimeout")
         or _named(exc, "openai", "APIConnectionError", "RateLimitError", "InternalServerError")
         or isinstance(exc, ConnectionError | TimeoutError)
     ):
@@ -361,7 +510,9 @@ def classify(exc: BaseException) -> RcpNdcgError:
 
 __all__ = [
     "EXTRA_FOR_MODULE",
+    "UNAVAILABLE_STATUSES",
     "WARNING_CODES",
+    "BackendUnavailableError",
     "CapabilityError",
     "ConfigError",
     "CredentialsError",
@@ -372,6 +523,7 @@ __all__ = [
     "Interrupted",
     "MissingInputError",
     "ProviderError",
+    "RequestRejectedError",
     "RcpNdcgError",
     "RcpNdcgWarning",
     "UsageError",
@@ -379,4 +531,6 @@ __all__ = [
     "classify",
     "dependency_error",
     "error_class",
+    "status_error",
+    "status_is_unavailable",
 ]

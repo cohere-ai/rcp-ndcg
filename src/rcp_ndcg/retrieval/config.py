@@ -14,9 +14,9 @@ both are unions discriminated on ``provider``, each variant carrying only the fi
 ``gemini``              Google's Gemini embedding API                                yes        no
 ======================  ==========================================================  =========  ========
 
-The served and hosted variants are :class:`~rcp_ndcg.support.endpoint.Endpoint` s, so they share its fields
-(``base_url``, ``model``, ``revision``, ``api_key_env``, the timeouts and retries). A field a provider cannot use is
-refused, never ignored.
+The served and hosted variants are :class:`~rcp_ndcg.inference.endpoint.Endpoint` s, so they share its fields
+(``base_url``, ``model``, ``revision``, ``api_key_env``, the timeouts and retries). A field a provider cannot use
+is refused, never ignored.
 
 Every config declares ``IDENTITY_ROLES``: what the model computes (the model, its revision, its pooling and prompts)
 enters an index's identity; where and how fast it is asked does not.
@@ -28,7 +28,7 @@ from typing import Annotated, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from rcp_ndcg.support.endpoint import Endpoint
+from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.support.identity import FieldRole
 
 _CONTENT, _RUNTIME = FieldRole.CONTENT, FieldRole.RUNTIME
@@ -72,17 +72,25 @@ class _Hosted(Endpoint):
 
     Requests go one at a time with the endpoint's timeout and retries; ``batch_size`` is the documents per rerank
     request or the texts per embedding request (``None`` for the provider's default).
+
+    Attributes:
+        base_url: One URL, or none for the provider's own public API; the hosted APIs take no replica list yet
+            (the retrieval port moves them onto the shared transport).
     """
 
-    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"provider": _CONTENT, "batch_size": _RUNTIME}
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"batch_size": _RUNTIME}
 
     timeout_s: float = Field(default=120.0, gt=0)
     max_retries: int = Field(default=8, ge=0)
     batch_size: int | None = Field(default=None, gt=0)
+    base_url: str | None = None  # type: ignore[assignment]  # one URL: the hosted APIs take no replica list yet
 
     @model_validator(mode="after")
     def _one_request_at_a_time(self) -> _Hosted:
-        if "concurrency" in self.model_fields_set and not getattr(self, "_CONCURRENT", False):
+        # Compared against the field's own default, not ``model_fields_set``: a recorded config (run.yaml) is a
+        # full dump, and re-validating it must not refuse the defaults it carries.
+        default = type(self).model_fields["concurrency"].default
+        if self.concurrency != default and not getattr(self, "_CONCURRENT", False):
             raise ValueError(f"{self.provider} requests are sent one at a time: drop concurrency")  # type: ignore[attr-defined]
         return self
 
@@ -93,9 +101,14 @@ class OpenAICompatible(_Hosted):
     As a reranker, ``POST <base_url>/rerank`` (``vllm serve --runner pooling``), one query's candidates per request,
     ``concurrency`` requests in flight; a late-interaction checkpoint scores MaxSim on the server. ``base_url`` is
     required.
+
+    Attributes:
+        base_url: The served endpoint (required), e.g. ``http://localhost:8000/v1``; one URL, not a replica list.
     """
 
     _CONCURRENT: ClassVar[bool] = True
+
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"provider": _CONTENT}
 
     provider: Literal["openai_compatible"] = "openai_compatible"
     concurrency: int = Field(default=8, ge=1)
@@ -109,6 +122,8 @@ class Cohere(_Hosted):
     ``COHERE_API_KEY``. A rerank request carries up to ``batch_size`` documents (default 100, the API's search
     unit)."""
 
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"provider": _CONTENT}
+
     provider: Literal["cohere"] = "cohere"
 
 
@@ -116,12 +131,16 @@ class Voyage(_Hosted):
     """Voyage AI's public API (``voyage-3-large``, ``rerank-2.5``, ``rerank-2.5-lite``, ...). The key is read from
     ``api_key_env``, else ``VOYAGE_API_KEY``. A rerank request carries up to ``batch_size`` documents (default 20)."""
 
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"provider": _CONTENT}
+
     provider: Literal["voyage"] = "voyage"
 
 
 class Gemini(_Hosted):
     """Google's Gemini embedding API (``gemini-embedding-001``). The key is read from ``api_key_env``, else
     ``GEMINI_API_KEY`` or ``GOOGLE_API_KEY``."""
+
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"provider": _CONTENT}
 
     provider: Literal["gemini"] = "gemini"
 
@@ -170,6 +189,9 @@ class OpenAICompatibleEncoder(OpenAICompatible):
     token through vLLM's ``/pooling`` route (late interaction).
 
     Attributes:
+        base_url: The endpoint; ``None`` only when the run's job starts the encoder's engine (``serve.encoder``):
+            the engine's URLs then reach the step at runtime, through ``RCP_NDCG_ENGINES``, and setting both is
+            refused rather than silently overridden.
         pooling: ``token`` for late interaction; ``None`` (the server's pooler) for one vector per text.
         query_prompt: Text prepended to every query.
         doc_prompt: Text prepended to every document.
@@ -178,7 +200,7 @@ class OpenAICompatibleEncoder(OpenAICompatible):
     IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = dict(_ENCODER_ROLES)
     _CONCURRENT: ClassVar[bool] = False
 
-    base_url: str = Field(min_length=1)  # type: ignore[assignment]
+    base_url: str | None = None  # type: ignore[assignment]
     pooling: Literal["token"] | None = None
     query_prompt: str | None = None
     doc_prompt: str | None = None
@@ -192,9 +214,14 @@ EncoderConfig = Annotated[
 
 
 class OpenAICompatibleReranker(OpenAICompatible):
-    """A served ``/rerank`` endpoint (``vllm serve <model> --runner pooling``); ``base_url`` is the server root."""
+    """A served ``/rerank`` endpoint (``vllm serve <model> --runner pooling``); ``base_url`` is the server root.
 
-    base_url: str = Field(min_length=1)  # type: ignore[assignment]
+    ``base_url`` is ``None`` only when the run's job starts the reranker's engine (``serve.reranker``): the
+    engine's URL then reaches the step at runtime, through ``RCP_NDCG_ENGINES``, and setting both is refused
+    rather than silently overridden.
+    """
+
+    base_url: str | None = None  # type: ignore[assignment]
 
     @model_validator(mode="after")
     def _one_query_per_request(self) -> OpenAICompatibleReranker:

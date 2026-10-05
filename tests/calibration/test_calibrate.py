@@ -95,7 +95,9 @@ class TestJudges:
         assert len(caught.value.details["families"]) == 2
 
     def test_pooled_fit_recovers_the_lenient_judge(self, world: TinyWorld) -> None:
-        fit = calibrate(read_judgements(world.judgements, world.lenient), judges="pooled")
+        # The world's store also holds two rubric-only documents, which the pooled fit warns about.
+        with pytest.warns(RcpNdcgWarning, match="rubric verdicts but no tournament ability"):
+            fit = calibrate(read_judgements(world.judgements, world.lenient), judges="pooled")
         assert fit.judge_severity["fake"] > fit.judge_severity["fake-lenient"]
         assert fit.judge_severity["fake"] + fit.judge_severity["fake-lenient"] == pytest.approx(0.0, abs=1e-6)
         assert len(fit.family_of("rubric")) == 2
@@ -207,8 +209,9 @@ class TestTheBradleyTerryPenalty:
         from rcp_ndcg.llm import JudgementStore
 
         live = JudgementStore(world.judgements).identities()["tournament"]["identity"]["bt_l2"]
-        stiff = calibrate(read_judgements(world.judgements), priors=Priors(bt_l2=0.05))
-        default = calibrate(read_judgements(world.judgements))
+        with pytest.warns(RcpNdcgWarning, match="rubric verdicts but no tournament ability"):
+            stiff = calibrate(read_judgements(world.judgements), priors=Priors(bt_l2=0.05))
+            default = calibrate(read_judgements(world.judgements))
 
         assert live == Priors().bt_l2 == default.identity.priors.bt_l2
         assert stiff.identity.priors.bt_l2 == 0.05
@@ -224,11 +227,14 @@ class TestTheBradleyTerryPenalty:
         from rcp_ndcg.cli.calibration import calibration_group
 
         live = judged_bt_l2(world.judgements)
-        with pytest.warns(RcpNdcgWarning, match="0.05"):
+        # The block holds two RcpNdcgWarnings: the mismatched penalty (its message quotes 0.05) and the fit's
+        # UNCALIBRATED_DOCUMENTS for the store's two rubric-only documents; both are expected, neither leaks.
+        with pytest.warns(RcpNdcgWarning, match=r"0\.05|rubric verdicts but no tournament ability"):
             stiff = calibrate(read_judgements(world.judgements), priors=Priors(bt_l2=0.05), judged_bt_l2=live)
         # The world's store also holds two rubric-only documents, which the tournament fit reports.
         assert [w["code"] for w in stiff.warnings] == ["BT_L2_MISMATCH", "UNCALIBRATED_DOCUMENTS"]
-        matched = calibrate(read_judgements(world.judgements), judged_bt_l2=live)
+        with pytest.warns(RcpNdcgWarning, match="rubric verdicts but no tournament ability"):
+            matched = calibrate(read_judgements(world.judgements), judged_bt_l2=live)
         assert [w["code"] for w in matched.warnings] == ["UNCALIBRATED_DOCUMENTS"]
 
         stiff.save(tmp_path / "cal")

@@ -19,6 +19,7 @@ lookup the built-ins use too (see :mod:`rcp_ndcg.runners.registry`).
 from rcp_ndcg.runners.base import (
     JobHandle,
     JobOptions,
+    JobPhase,
     JobRunner,
     JobSpec,
     JobStatus,
@@ -37,6 +38,7 @@ __all__ = [
     "ENTRY_POINT_GROUP",
     "JobHandle",
     "JobOptions",
+    "JobPhase",
     "JobRunner",
     "JobSpec",
     "JobStatus",

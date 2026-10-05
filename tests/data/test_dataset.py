@@ -14,6 +14,7 @@ from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
 
 REPO = SUITES["nanobeir"].repo
 SUBSET = "NanoArguAnaRetrieval"
+SHA = "b" * 40  # the fake hub's commit for a branch: a full sha pins the identity without any lookup
 
 
 @pytest.fixture
@@ -42,6 +43,21 @@ def hub(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, pd.DataFra
         f"---\nconfigs:\n- config_name: {SUBSET}-corpus\n"
         "  data_files:\n  - split: train\n    path: corpus/*.parquet\n---\n"
     )
+
+    # The fake hub has resolved its repos' branches to a commit, as an online run leaves a cache: the datasets
+    # load pinned, and no test trips the UNPINNED_REVISION warning that an unpinned resolution raises.
+    cache = tmp_path / "hub-cache"
+    monkeypatch.setenv("HF_HUB_CACHE", str(cache))
+    from huggingface_hub import constants as hub_constants
+
+    monkeypatch.setattr(hub_constants, "HF_HUB_CACHE", str(cache))
+    for repo in (REPO, SUITES["vidore"].repo):
+        ref = cache / f"datasets--{repo.replace('/', '--')}" / "refs" / "main"
+        ref.parent.mkdir(parents=True, exist_ok=True)
+        ref.write_text(SHA)
+    from rcp_ndcg.data.revisions import resolve_revision
+
+    resolve_revision.cache_clear()
 
     def read_table(repo: str, path: str, revision: str | None, *, optional: bool = False) -> pd.DataFrame | None:
         if f"{repo}/{path}" in files:
@@ -130,7 +146,7 @@ def test_a_vidore_domain_selects_its_native_language_subset(hub: dict) -> None:
         ("suite:msmarco", {}, ConfigError, "unknown suite"),
         (f"hf://{REPO}/{SUBSET}", {"subset": "other"}, ConfigError, "two subsets"),
         (f"hf://{REPO}/{SUBSET}@v1", {"revision": "v2"}, ConfigError, "two revisions"),
-        ("hf://someone/else", {}, ConfigError, "name the subset"),
+        ("hf://someone/else", {"revision": SHA}, ConfigError, "name the subset"),
         (f"hf://{REPO}/NanoNQRetrieval", {}, MissingInputError, "does not exist"),
         ("beir:/x", {"revision": "v1"}, ConfigError, "subset and revision"),
     ],

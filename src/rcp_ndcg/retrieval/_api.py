@@ -347,6 +347,12 @@ def _key(env: str | None) -> str | None:
 
 def _encoder(config: EncoderConfig) -> Any:
     """The :class:`~rcp_ndcg.retrieval.encoder.Encoder` that runs ``config``."""
+    if isinstance(config, OpenAICompatibleEncoder) and config.base_url is None:
+        raise ConfigError(
+            "the served encoder has no base_url",
+            hint="give encoder.base_url, or start its engine with serve.encoder in the run config (the job then "
+            "passes the URL at runtime)",
+        )
     if isinstance(config, LocalEncoder) and config.engine == "hf":
         from rcp_ndcg.retrieval.encoders import TorchDenseEncoder
 
@@ -365,7 +371,7 @@ def _encoder(config: EncoderConfig) -> Any:
             pooling_task="token_embed" if config.pooling == "token" else "embed",
             mode="http" if served else "offline",
             revision=None if served else config.revision,
-            api_base=config.base_url if served else None,
+            api_base=config.base_url if isinstance(config, OpenAICompatibleEncoder) else None,
             api_key=_key(config.api_key_env) if served else None,
             timeout_s=config.timeout_s if served else None,
             connect_timeout_s=config.connect_timeout_s if served else None,
@@ -414,6 +420,12 @@ def _rerank_settings(config: RerankerConfig) -> Any:
             model_name=config.model, framework=framework, revision=config.revision, external_batch_size=batch
         )
     if isinstance(config, OpenAICompatibleReranker):
+        if config.base_url is None:
+            raise ConfigError(
+                "the served reranker has no base_url",
+                hint="give rerank.base_url, or start its engine with serve.reranker in the run config (the job "
+                "then passes the URL at runtime)",
+            )
         return RerankSettings(
             model_name=config.model,
             framework="vllm",
