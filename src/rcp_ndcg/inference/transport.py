@@ -131,9 +131,9 @@ def _body_text(response: httpx.Response) -> str:
     return response.text[:500]
 
 
-def _reply(response: httpx.Response) -> Reply:
+def _reply(response: httpx.Response, *, url: str | None = None) -> Reply:
     """The :class:`~rcp_ndcg.inference.types.Reply` of one response: JSON decoded, ``application/octet-stream``
-    (and anything that does not parse) kept as bytes."""
+    (and anything that does not parse) kept as bytes; ``url`` names the replica that answered."""
     content_type = response.headers.get("content-type", "")
     if "octet-stream" in content_type:
         body: Any = response.content
@@ -142,7 +142,7 @@ def _reply(response: httpx.Response) -> Reply:
             body = response.json()
         except ValueError:
             body = response.content
-    return Reply(status=response.status_code, body=body, headers=dict(response.headers))
+    return Reply(status=response.status_code, body=body, headers=dict(response.headers), url=url)
 
 
 class Transport:
@@ -319,7 +319,7 @@ class Transport:
         error = status_error(status, url=replica.url, path=path, model=self.endpoint.model, body=_body_text(response))
         if error is not None:
             raise error
-        return _reply(response)
+        return _reply(response, url=replica.url)
 
     def _url(self, replica: _Replica, path: str) -> str:
         """The request URL: the replica's base URL then the call's path; their queries, if any, joined."""

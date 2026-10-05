@@ -13,8 +13,9 @@ paths send their requests through one set of names:
   (:mod:`rcp_ndcg.inference.types`);
 * :class:`Adapter` and its registry -- the one seam a third party implements (C2), selected from a config with
   ``api: <name>`` (:mod:`rcp_ndcg.inference.adapters.base`); the shipped adapters register when
-  :mod:`rcp_ndcg.inference.adapters` imports: the embedding wire and its hosted profiles, the served
-  Cohere-shaped rerank wire and its hosted profiles, and the multi-vector pooling wire;
+  :mod:`rcp_ndcg.inference.adapters` imports: the judge's chat-completions wire, the embedding wire and its
+  hosted profiles, the served Cohere-shaped rerank wire and its hosted profiles, and the multi-vector pooling
+  wire;
 * :class:`Sender` and :class:`Transport` -- the transport every role sends through: replicas, retries, parking,
   the sync bridge, usage (:mod:`rcp_ndcg.inference.transport`);
 * the role clients -- the content decisions above the wire: :class:`EmbeddingClient`, :class:`RerankClient`
@@ -33,6 +34,7 @@ from rcp_ndcg.inference.adapters.base import (
     known_adapters,
     register_adapter,
 )
+from rcp_ndcg.inference.adapters.chat import OpenAIChat
 from rcp_ndcg.inference.adapters.pooling import VllmPooling
 from rcp_ndcg.inference.adapters.rerank import CohereRerankAdapter, RerankAdapter, VoyageRerankAdapter
 from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient, RerankClient
@@ -74,6 +76,7 @@ __all__ = [
     "Endpoint",
     "FAKE_SCHEME",
     "FakeEndpoint",
+    "OpenAIChat",
     "PoolRequest",
     "PoolingClient",
     "PoolingEndpoint",

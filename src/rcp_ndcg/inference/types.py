@@ -51,11 +51,15 @@ class Reply:
         status: The HTTP status code.
         body: The decoded JSON body, or the raw bytes for a binary encoding (a base64 or bytes vector frame).
         headers: The response headers (the transport reads ``Retry-After``; an adapter may read others).
+        url: The replica base URL that answered, set by the transport (a role client needs it to record a
+            per-replica fact such as a completion's ``system_fingerprint``); ``None`` when the reply was not
+            sent by a transport (a test builds it by hand).
     """
 
     status: int
     body: Any
     headers: Mapping[str, str]
+    url: str | None = None
 
 
 @dataclass(frozen=True)
