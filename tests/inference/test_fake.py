@@ -122,20 +122,20 @@ class TestPooling:
             transport.send([Call("POST", "/pooling", {"input": ["one two", "a b c d"], "task": "token_embed"})])
         )
         data = replies[0].body["data"]
-        assert [len(entry["embedding"]) for entry in data] == [2, 4]  # ragged: 2 tokens, then 4
-        assert all(len(row) == 4 for entry in data for row in entry["embedding"])
+        assert [len(entry["data"]) for entry in data] == [2, 4]  # ragged: 2 tokens, then 4
+        assert all(len(row) == 4 for entry in data for row in entry["data"])
         assert [len(entry["prompt_token_ids"]) for entry in data] == [2, 4]
 
     def test_base64_honours_embed_dtype(self) -> None:
         transport = _transport("fake://seed/2?dim=4", "mv")
         request = {"input": ["one two"], "encoding_format": "base64", "embed_dtype": "float16"}
         replies = transport.run(transport.send([Call("POST", "/pooling", request)]))
-        raw = base64.b64decode(replies[0].body["data"][0]["embedding"])
+        raw = base64.b64decode(replies[0].body["data"][0]["data"])
         matrix = np.frombuffer(raw, dtype=np.float16).reshape(2, 4)
         assert abs(float(np.linalg.norm(matrix[0])) - 1.0) < 0.01  # float16 rounding keeps the unit norm
         request = {"input": ["one two"], "encoding_format": "base64", "embed_dtype": "float32"}
         replies = transport.run(transport.send([Call("POST", "/pooling", request)]))
-        raw = base64.b64decode(replies[0].body["data"][0]["embedding"])
+        raw = base64.b64decode(replies[0].body["data"][0]["data"])
         assert np.frombuffer(raw, dtype=np.float32).reshape(2, 4).shape == (2, 4)
 
     def test_float_vectors_match_the_base64_ones(self) -> None:
@@ -144,9 +144,9 @@ class TestPooling:
         float_replies = transport.run(transport.send([Call("POST", "/pooling", request)]))
         request = {"input": ["one two"], "encoding_format": "base64", "embed_dtype": "float32"}
         b64_replies = transport.run(transport.send([Call("POST", "/pooling", request)]))
-        raw = base64.b64decode(b64_replies[0].body["data"][0]["embedding"])
+        raw = base64.b64decode(b64_replies[0].body["data"][0]["data"])
         matrix = np.frombuffer(raw, dtype=np.float32).reshape(2, 4)
-        assert np.allclose(np.asarray(float_replies[0].body["data"][0]["embedding"]), matrix)
+        assert np.allclose(np.asarray(float_replies[0].body["data"][0]["data"]), matrix)
 
 
 class TestRerank:

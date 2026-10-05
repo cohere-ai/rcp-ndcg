@@ -400,11 +400,13 @@ class Pipeline:
             candidates = identity_payload(config.candidates)
             candidates.pop("rerank", None)
             retrieval = candidates.get("retrieval")
-            if isinstance(retrieval, dict) and "encoder" in retrieval:
-                assert config.candidates.retrieval is not None
+            retriever = config.candidates.retrieval
+            if isinstance(retrieval, dict) and "encoder" in retrieval and retriever is not None:
+                encoder = getattr(retriever, "encoder", None)
+                assert encoder is not None
                 retrieval["encoder"] = {
                     **retrieval["encoder"],
-                    **config.candidates.retrieval.encoder.identity_extra(),
+                    **encoder.identity_extra(),
                 }
             return {**dataset, "candidates": candidates, "output": self.layout.relative(self._first_stage)}
         if step == "rerank":

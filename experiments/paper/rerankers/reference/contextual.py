@@ -3,7 +3,7 @@ exact in-process implementation.
 
 Moved unchanged in behaviour from ``src/rcp_ndcg/retrieval/external_rerankers.py`` (the ``contextual``
 framework of the deleted in-process path) when the package stopped carrying in-process models
-(RFC-0001, option 1). The old ``load_external_model`` factory built it with
+(the unified-inference change). The old ``load_external_model`` factory built it with
 ``max_seq_len=8192`` (the paper's ``MAX_SEQ_LENGTH``), the config's ``batch_size``, bfloat16 and
 the config's revision. The multi-GPU ``AccelState`` sharding is not carried: the paper's runs were
 single-GPU per model, and a rerun that needs several GPUs shards the queries itself.

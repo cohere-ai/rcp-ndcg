@@ -4,7 +4,7 @@ document prefix, and 8192-token right truncation: the paper's exact implementati
 Assembled unchanged in behaviour from the deleted ``src/rcp_ndcg/retrieval/hf_dense.py`` (loading,
 tokenizing, batched encoding) and ``src/rcp_ndcg/retrieval/encoders/torch_dense.py`` (the encoder
 with the role-dependent document prefix) when the package stopped carrying in-process models
-(RFC-0001, option 1). The scoring is what the paper ran: bfloat16 weights, left padding so the
+(the unified-inference change). The scoring is what the paper ran: bfloat16 weights, left padding so the
 last position of every row is a real token, an 8192-token right truncation, and documents encoded
 as ``"- " + text`` while queries are encoded as they are.
 

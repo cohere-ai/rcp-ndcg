@@ -1,7 +1,6 @@
 """The embedding wire adapters: what each profile sends, what it reads back, and what it refuses.
 
-The request and response shapes port ``tests/retrieval/test_api_dense.py`` (still green: the hosted path it
-tests is deleted only when the retrieval wiring moves). Every test is offline: adapters build and read
+Every test is offline: adapters build and read
 :class:`~rcp_ndcg.inference.types.Call` / :class:`~rcp_ndcg.inference.types.Reply` objects directly.
 """
 

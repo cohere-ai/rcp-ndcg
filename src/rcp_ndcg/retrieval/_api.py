@@ -136,9 +136,7 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
 
         vectors = np.load(root / "vectors.npy")
         documents = Embeddings(vectors=vectors)
-        encoded = _encode(
-            retriever.encoder, [queries[q].format_content() for q in query_ids], EncodeRole.QUERY
-        )
+        encoded = _encode(retriever.encoder, [queries[q].format_content() for q in query_ids], EncodeRole.QUERY)
         top_scores, top_indices = score_topk(documents, encoded, depth)
         scores = {
             q: {doc_ids[int(i)]: float(s) for s, i in zip(row_s, row_i, strict=True) if int(i) >= 0}

@@ -20,7 +20,7 @@ protocols need numpy and pydantic only; the IRT estimators need its `irt` extra 
 | `hf` | downloading the released datasets from the Hugging Face Hub |
 | `calibrate` | torch for the calibration fit (the CPU build is enough: `--extra-index-url https://download.pytorch.org/whl/cpu` with pip) |
 | `mteb` | the MTEB tasks ([MTEB integration](tutorials/mteb-integration.md)) |
-| `local` | in-process encoders and rerankers (torch, transformers) for local retrieval on a GPU host; BM25 needs no extra |
+| `local` | a legacy extra (torch, transformers, flash-attn), leaving the package: every retrieval model is served now, and the paper's reference implementations live in `experiments/paper/rerankers/reference/` with their own pinned requirements. BM25 and the hosted APIs need no extra |
 | `dev` | the test and lint tools |
 
 From a checkout of the repository, `uv sync --extra hf --extra calibrate` sets up the same environment with

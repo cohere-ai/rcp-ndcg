@@ -16,7 +16,7 @@ from rcp_ndcg.inference.types import Call, Reply, Usage
 
 
 def vendor_payload(api: str, vectors: list[list[float]]) -> dict[str, Any]:
-    """The reply body ``api`` answers a batch of ``vectors`` with (the shapes of today's ``api_dense``)."""
+    """The reply body ``api`` answers a batch of ``vectors`` with (the hosted profiles' shapes)."""
     if api in ("openai_embeddings", "voyage"):
         return {"data": [{"index": index, "embedding": vector} for index, vector in enumerate(vectors)]}
     if api == "cohere":

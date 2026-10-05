@@ -1,9 +1,9 @@
 # Paper-exact reference implementations (not part of the package)
 
 This directory holds the in-process rerankers and the HF dense encoder that the package shipped
-until RFC-0001 removed every in-process model from it. They are kept **unchanged in behaviour** so
+until the unified-inference change removed every in-process model from it. They are kept **unchanged in behaviour** so
 the recipe lanes can derive each model's `reference.py` from them and the equivalence check
-(RFC-0001 section 6.3) has the paper's exact code to compare a served recipe against.
+(the unified-inference design's equivalence check) has the paper's exact code to compare a served recipe against.
 
 **Not part of the package. Nothing in `src/rcp_ndcg/` imports this directory, and nothing here
 imports `rcp_ndcg`** (at most `rcp_ndcg_core` content types, and today not even those). The modules
