@@ -441,6 +441,12 @@ class TestAdapterRegistry:
         with pytest.raises(ConfigError, match="role"):
             get_adapter("probe_adapter", role="embezzle")  # type: ignore[arg-type]
 
+    def test_known_adapters_validates_the_role(self) -> None:
+        """A typo'd role is refused, never silently reported as an empty namespace."""
+        register_adapter(_ProbeAdapter)
+        with pytest.raises(ConfigError, match="role"):
+            known_adapters("embezzle")  # type: ignore[arg-type]
+
     def test_the_entry_point_group_name_is_the_charter_s(self) -> None:
         assert ADAPTER_ENTRY_POINTS == "rcp_ndcg.adapters"
 
@@ -478,6 +484,14 @@ class TestAdapterEntryPoints:
     def test_an_entry_point_without_a_role_prefix_is_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._install(monkeypatch, self._entry("probe_adapter", "tests.inference.test_types:_EmbedProbe"))
         with pytest.raises(ConfigError, match="<role>.<name>"):
+            known_adapters()
+
+    def test_an_entry_point_shadowing_a_builtin_is_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A plugin that would take a shipped adapter's (role, name) is an error, never a silent skip: the
+        built-in would otherwise win the lookup and the plugin would never run."""
+        register_adapter(_EmbedProbe)
+        self._install(monkeypatch, self._entry("embed.probe_adapter", "tests.inference.test_types:_EmbedProbe"))
+        with pytest.raises(ConfigError, match="already registered"):
             known_adapters()
 
     def test_a_broken_entry_point_import_is_an_error(self, monkeypatch: pytest.MonkeyPatch) -> None:

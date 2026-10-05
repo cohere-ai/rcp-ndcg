@@ -19,7 +19,7 @@ from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference.types import Call, Reply, TokenCount
 
 #: The entry-point group a third-party adapter registers in
-#: (``[project.entry-points."rcp_ndcg.adapters"]``, e.g. ``embed_bedrock = "pkg.module:BedrockEmbed"``).
+#: (``[project.entry-points."rcp_ndcg.adapters"]``, e.g. ``embed.bedrock = "pkg.module:BedrockEmbed"``).
 ADAPTER_ENTRY_POINTS = "rcp_ndcg.adapters"
 
 #: The role an adapter speaks; the role fixes the request and result types around an adapter.
@@ -104,6 +104,20 @@ _PLUGINS: dict[tuple[str, str], type[Adapter[Any, Any]]] | None = None
 loaded yet)."""
 
 
+def _check_role(role: Any) -> None:
+    """Refuse a value that is not an adapter role, so a typo can neither empty a lookup nor widen it.
+
+    Raises:
+        ConfigError: ``role`` is not one of :data:`ROLES`.
+    """
+    if role not in ROLES:
+        raise ConfigError(
+            f"{role!r} is not an adapter role",
+            hint=f"an adapter's role is one of {', '.join(ROLES)}",
+            details={"role": role, "known": list(ROLES)},
+        )
+
+
 def register_adapter(cls: type[Adapter[Any, Any]]) -> type[Adapter[Any, Any]]:
     """Register an adapter class under its ``(role, name)`` (a class decorator; a duplicate is refused).
 
@@ -140,7 +154,8 @@ def _load_plugins() -> dict[tuple[str, str], type[Adapter[Any, Any]]]:
 
     Each entry is named ``<role>.<name>`` (``embed.bedrock``); an adapter whose class role disagrees with its
     entry name's prefix is refused, so a typo cannot route one role's requests to another role's adapter.
-    A plugin is registered under its class's ``(role, name)``.
+    A plugin is registered under its class's ``(role, name)``; one that would take a shipped adapter's key is
+    refused, so a built-in is never silently shadowed.
     """
     global _PLUGINS
     if _PLUGINS is None:
@@ -171,6 +186,11 @@ def _load_plugins() -> dict[tuple[str, str], type[Adapter[Any, Any]]]:
                     f"the adapter entry point {entry.name!r} ({entry.value}) loads "
                     f"{getattr(adapter, '__name__', adapter)!r}, which has no adapter name to register under"
                 )
+            if key in _BUILTINS:
+                raise ConfigError(
+                    f"the adapter entry point {entry.name!r} ({entry.value}) registers {key[1]!r} for the "
+                    f"{prefix} role, where the shipped adapter {_BUILTINS[key].__name__} is already registered"
+                )
             if key in loaded:
                 raise ConfigError(
                     f"the adapter entry point {entry.name!r} registers {key[1]!r} for the {prefix} role a "
@@ -187,7 +207,12 @@ def known_adapters(role: AdapterRole | None = None) -> tuple[str, ...]:
     Args:
         role: Restrict to one role's names (``"embed"``), as a config's ``api`` field is; ``None`` (the
             default) lists every registered name once, whatever its role.
+
+    Raises:
+        ConfigError: ``role`` is not an adapter role (``None`` is the "every role" default).
     """
+    if role is not None:
+        _check_role(role)
     plugins = _load_plugins()
     if role is None:
         return tuple(sorted({name for _, name in (*_BUILTINS, *plugins)}))
@@ -211,12 +236,7 @@ def get_adapter(name: str, *, role: AdapterRole) -> type[Adapter[Any, Any]]:
         ConfigError: ``role`` is not an adapter role, or no adapter of that name is registered for it; the
             hint lists the names of that role (and, when the name is registered in another role, says so).
     """
-    if role not in ROLES:
-        raise ConfigError(
-            f"{role!r} is not an adapter role",
-            hint=f"an adapter's role is one of {', '.join(ROLES)}",
-            details={"role": role, "known": list(ROLES)},
-        )
+    _check_role(role)
     key = (role, name)
     adapter = _BUILTINS.get(key) or _load_plugins().get(key)
     if adapter is None:
