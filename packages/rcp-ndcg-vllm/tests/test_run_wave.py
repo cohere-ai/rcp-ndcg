@@ -6,6 +6,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+from rcp_ndcg_vllm.equivalence import run as run_equivalence
 from rcp_ndcg_vllm.jobs.run_wave import run_wave
 
 from tests.conftest import RECIPES, STUB, sample_pairs
@@ -161,4 +163,55 @@ def test_a_failed_smoke_step_fails_the_recipe(tmp_path: Path, monkeypatch: pytes
     assert row["steps"]["smoke"]["state"] == "failed"
 
 
-import pytest  # noqa: E402  (kept at the end: only the last two tests need it)
+def test_run_wave_cli_reports_a_recipe_error_without_a_traceback(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A broken recipe root reaches the operator as one error line and exit 2."""
+    from rcp_ndcg_vllm.jobs.run_wave import main
+
+    broken_root = tmp_path / "recipes"
+    broken_root.mkdir()
+    (broken_root / "broken").mkdir()
+    (broken_root / "broken" / "recipe.yaml").write_text("id: [1\n", encoding="utf-8")
+    assert main(["--recipes", "", "--recipes-root", str(broken_root), "--gpus", "1", "--out", str(tmp_path / "o")]) == 2
+    assert "error:" in capsys.readouterr().err
+
+
+def test_an_engine_that_cannot_start_fails_only_its_recipe(tmp_path: Path) -> None:
+    """A missing engine binary fails that recipe; the wave completes and the other recipes still run."""
+    document = run_wave(
+        ["fixture-embed"],
+        RECIPES,
+        gpus=1,
+        out_dir=tmp_path / "wave",
+        vllm_cmd="/nonexistent/vllm-binary",
+        port_base=8100,
+    )
+    row = document["recipes"][0]
+    assert row["state"] == "failed"
+    assert "cannot start the engine" in (row.get("error") or "")
+
+
+def test_stage3_only_run_needs_no_tokenizer(tmp_path: Path) -> None:
+    """--stages 3 works without the reference extra: the tokenizer is a stage-1-only need."""
+    pytest.importorskip("rcp_ndcg")
+    from rcp_ndcg_vllm import load_recipe
+
+    from rcp_ndcg.data import Rankings
+
+    recipe = load_recipe(RECIPES / "fixture-rerank-pointwise")
+    rankings_dir = tmp_path / "rankings"
+    rankings_dir.mkdir()
+    for system in ("served", "reference"):
+        Rankings.from_orders({"q1": ["a", "b", "c"]}, system=system).save(rankings_dir / f"toy.{system}.jsonl")
+    (rankings_dir / "toy.dataset.jsonl").write_text(
+        json.dumps(
+            {"query_id": "q1", "query": "q", "doc_ids": ["a", "b", "c"], "docs": ["A", "B", "C"], "qrels": {"a": 1.0}}
+        )
+        + "\n",  # fmt: skip
+        encoding="utf-8",
+    )
+    document = run_equivalence(
+        recipe, base_url=None, pairs=[], out_dir=tmp_path, stages=[3], reference=None, rankings_dir=rankings_dir
+    )  # fmt: skip
+    assert document["passed"] is True

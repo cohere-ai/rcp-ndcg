@@ -212,13 +212,16 @@ def _rerank_summary(
         "referent": "median per-query Kendall tau between served and reference scores",
     }
     if scale == "probability":
+        within_p99_fraction = sum(1 for entry in per_document if entry["abs_delta"] <= gates.prob_p99_abs) / max(
+            len(per_document), 1
+        )
         gate_rows = [
             {
-                "gate": "p99_abs_delta",
-                "passed": bool(p99 <= gates.prob_p99_abs),
-                "value": p99,
-                "bound": gates.prob_p99_abs,
-                "referent": "|served - reference|, 99th percentile over all documents",
+                "gate": "p99_documents_within",
+                "passed": bool(within_p99_fraction >= 0.99),
+                "value": within_p99_fraction,
+                "bound": 0.99,
+                "referent": f"fraction of documents with |served - reference| <= {gates.prob_p99_abs}",
             },
             {
                 "gate": "max_abs_delta",
@@ -390,5 +393,5 @@ def _vector_summary(
         "per_vector": per_vector,
         "cosine_min": worst,
         "gates": gate_rows,
-        "passed": bool(all(row["passed"] for row in gate_rows)),
+        "passed": bool(all(row["passed"] for row in gate_rows) and all(entry["within"] for entry in per_vector)),
     }

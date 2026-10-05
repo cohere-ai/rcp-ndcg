@@ -8,7 +8,13 @@ from typing import Any
 
 import pytest
 from rcp_ndcg_vllm import Recipe, load_recipe
-from rcp_ndcg_vllm.equivalence import load_pairs, load_reference, run, stage1_prompts, stage2_scores
+from rcp_ndcg_vllm.equivalence import (
+    load_pairs,
+    load_reference,
+    run,
+    stage1_prompts,
+    stage2_scores,
+)
 from rcp_ndcg_vllm.errors import HarnessError
 
 from tests.conftest import RECIPES, sample_pairs, start_stub, write_pairs
@@ -47,17 +53,26 @@ def test_stage1_passes_for_prompted_embedding_roles() -> None:
 
 
 def test_stage1_reports_the_first_mismatch_with_token_strings(tmp_path: Path) -> None:
-    """A template drift is reported with both sides' token strings, not just a boolean."""
-    recipe = load("fixture-rerank-pointwise")
-    reference = load_reference(str(RECIPE_DIRS / recipe.id), recipe.reference.entry)
-    tokenizer = reference._module.tokenizer()
-    template = RECIPE_DIRS / "fixture-rerank-pointwise" / "template.jinja"
-    original = template.read_text(encoding="utf-8")
-    template.write_text(original.replace("Query: ", "Question: "), encoding="utf-8")
-    try:
-        report = stage1_prompts(recipe, sample_pairs()[:1], reference, tokenizer)
-    finally:
-        template.write_text(original, encoding="utf-8")
+    """A template drift is reported with both sides' token strings, not just a boolean.
+
+    The drifted recipe lives in tmp_path: the tracked fixture is never written.
+    """
+    import shutil
+
+    copied = tmp_path / "recipes" / "fixture-rerank-pointwise"
+    copied.mkdir(parents=True)
+    for name in ("recipe.yaml", "template.jinja", "reference.py"):
+        shutil.copy(RECIPE_DIRS / "fixture-rerank-pointwise" / name, copied / name)
+    (copied.parent.parent / "deterministic.py").write_bytes(
+        (RECIPE_DIRS.parent / "deterministic.py").read_bytes()
+    )  # the fixture reference imports its number module from parents[2] of its own file
+    (copied / "template.jinja").write_text(
+        (copied / "template.jinja").read_text(encoding="utf-8").replace("Query: ", "Question: "),
+        encoding="utf-8",
+    )
+    recipe = load_recipe(copied)
+    reference = load_reference(str(copied), recipe.reference.entry)
+    report = stage1_prompts(recipe, sample_pairs()[:1], reference, reference._module.tokenizer())
     assert report["passed"] is False
     mismatch = report["mismatch"]
     assert mismatch["served_tokens"] != mismatch["reference_tokens"]
@@ -418,3 +433,56 @@ def test_rerank_summary_gate_rows_follow_the_scale() -> None:
     ]
     document = _rerank_summary(small, per_query, gates, "probability")
     assert document["passed"] is True  # p99 0.01 <= 0.02, max 0.01 <= 0.05
+
+
+def test_vector_summary_fails_on_token_count_mismatches() -> None:
+    """A late-interaction engine that returns the wrong token count fails stage 2, not just a report row."""
+
+    from rcp_ndcg_vllm.equivalence.gates import ResolvedGates
+    from rcp_ndcg_vllm.equivalence.stages import _vector_summary
+
+    gates = ResolvedGates(
+        prob_p99_abs=0.02, prob_max_abs=0.05, logit_rel_abs=0.05, cos_max_abs=0.01,
+        vec_min_cosine=0.999, tau_min=0.98, metrics_max_abs=2e-3, embed_dtype="float16",
+    )  # fmt: skip
+    per_vector = [
+        {"referent": "query 0 document 0 token 0", "cosine": 1.0, "within": True},
+        {
+            "referent": "query 0 document 0 token count",
+            "cosine": None,
+            "within": False,
+            "note": "engine returned 9 tokens, reference 10",
+        },  # fmt: skip
+    ]
+    document = _vector_summary(load("fixture-multi-vector"), per_vector, gates, multi=True)
+    assert document["passed"] is False  # a perfect cosine is not a pass when the token count differs
+
+
+def test_p99_gate_is_the_fraction_of_documents_within_the_bound() -> None:
+    """The probability gate means |delta| <= 0.02 for 99% of documents, as the design states."""
+    from rcp_ndcg_vllm.equivalence.gates import ResolvedGates
+    from rcp_ndcg_vllm.equivalence.stages import _rerank_summary
+
+    gates = ResolvedGates(
+        prob_p99_abs=0.02, prob_max_abs=0.05, logit_rel_abs=0.05, cos_max_abs=0.01,
+        vec_min_cosine=0.999, tau_min=0.98, metrics_max_abs=2e-3, embed_dtype="float16",
+    )  # fmt: skip
+    per_query = [{"query_index": 0, "query": "q", "documents": 200, "kendall_tau": 1.0, "within": True}]
+    # 198 of 200 documents (99%) within 0.02, the rest at 0.021: the stated rule passes, the p99 rule refused it.
+    per_document = [
+        {
+            "query_index": 0,
+            "document_index": i,
+            "served": 0.5,
+            "reference": 0.5 - 0.021,
+            "abs_delta": 0.02 if i < 198 else 0.021,
+            "bound": 0.05,
+            "within": True,
+        }  # fmt: skip
+        for i in range(200)
+    ]
+    document = _rerank_summary(per_document, per_query, gates, "probability")
+    assert document["within_p99_fraction"] == 0.99
+    p99_row = next(row for row in document["gates"] if row["gate"] == "p99_documents_within")
+    assert p99_row["value"] == 0.99
+    assert document["passed"] is True

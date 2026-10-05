@@ -10,8 +10,6 @@ cast), and the median per-query Kendall tau between served and reference scores 
 
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
 from pydantic import BaseModel, ConfigDict
 
@@ -98,8 +96,3 @@ def kendall_tau_b(served: list[float], reference: list[float]) -> float | None:
     if denominator == 0.0:
         return None
     return (concordant - discordant) / denominator
-
-
-def gate_entry(name: str, passed: bool, **numbers: Any) -> dict[str, Any]:
-    """One gate row of the report: its name, whether it passed, and the numbers it was decided from."""
-    return {"gate": name, "passed": passed, **numbers}

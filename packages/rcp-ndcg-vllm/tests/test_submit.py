@@ -37,6 +37,9 @@ def _scratch_auth(tmp_path: Path) -> Path:
 
 def test_submit_prints_the_expected_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """KJOBS=echo prints the staged upload and the job submission without running either."""
+    if subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=JOBS.parent.parent.parent,
+                      capture_output=True).returncode != 0:  # fmt: skip
+        pytest.skip("submit.sh stages `git archive HEAD`, which needs a checkout (a fresh archive has none)")
     recipes = tmp_path / "recipes.txt"
     recipes.write_text("fixture-embed\n", encoding="utf-8")
     monkeypatch.chdir(JOBS.parent.parent.parent)  # the repository root: git archive needs the checkout

@@ -36,8 +36,8 @@ from typing import Any
 from ..equivalence import load_pairs
 from ..equivalence import run as run_equivalence
 from ..equivalence.client import EngineClient
-from ..errors import HarnessError
-from ..recipe import Recipe, RecipeError, default_recipes_root, iter_recipes, load_recipe, serve_argv
+from ..errors import HarnessError, RecipeError
+from ..recipe import Recipe, default_recipes_root, iter_recipes, load_recipe, serve_argv
 from ..record import record as record_exchanges
 
 __all__ = ["main", "run_wave"]
@@ -74,6 +74,7 @@ def run_wave(
     running: list[_EngineRun] = []
     slot = 0
     while pending or running:
+        progressed = False
         for recipe in list(pending):
             need = recipe.resources.gpus
             if need > gpus:
@@ -88,10 +89,25 @@ def run_wave(
             if len(used_gpus) + need <= gpus:
                 assigned = _lowest_free(used_gpus, need)
                 used_gpus.update(assigned)
-                running.append(_start(recipe, assigned, slot, out, vllm_cmd, port_base))
+                try:
+                    run = _start(recipe, assigned, slot, out, vllm_cmd, port_base)
+                except HarnessError as start_error:
+                    # An engine that cannot even start (no vllm binary) fails that recipe only.
+                    results[recipe.id] = _status(
+                        recipe, "failed", error=str(start_error), steps={"serve": {"state": "failed"}}
+                    )
+                    directory = out / recipe.id
+                    directory.mkdir(parents=True, exist_ok=True)
+                    (directory / "status.json").write_text(
+                        json.dumps(results[recipe.id], indent=2) + "\n", encoding="utf-8"
+                    )
+                    used_gpus.difference_update(assigned)
+                    pending.remove(recipe)
+                    progressed = True
+                    continue
+                running.append(run)
                 slot += 1
                 pending.remove(recipe)
-        progressed = False
         for run in list(running):
             error: str | None = None
             if run.exited():
@@ -235,11 +251,17 @@ def _start(recipe: Recipe, gpus: list[int], slot: int, out: Path, vllm_cmd: str 
     directory.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
     env["CUDA_VISIBLE_DEVICES"] = ",".join(str(g) for g in gpus)
+    try:
+        popen = subprocess.Popen(
+            argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, start_new_session=True
+        )
+    except OSError as error:
+        raise HarnessError(f"cannot start the engine for {recipe.id} ({' '.join(argv[:2])} ...): {error}") from error
     run = _EngineRun(
         recipe,
         gpus,
         port,
-        subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, start_new_session=True),
+        popen,
         directory / "serve.log",
         directory,
     )
@@ -468,7 +490,7 @@ def main(argv: list[str] | None = None) -> int:
             vllm_cmd=args.vllm_cmd,
             port_base=args.port_base,
         )
-    except HarnessError as error:
+    except (HarnessError, RecipeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     for row in document["recipes"]:

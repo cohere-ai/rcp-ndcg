@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import socket
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -80,10 +79,3 @@ def sample_pairs(documents: int = 4) -> list[dict]:
             "documents": [f"another document {index} with tokens a b c {index}" for index in range(documents)],
         },
     ]
-
-
-def free_port() -> int:
-    """One ephemeral port for a server the test binds itself (bound and released immediately)."""
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])

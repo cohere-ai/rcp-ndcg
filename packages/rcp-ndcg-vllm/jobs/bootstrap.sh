@@ -64,8 +64,13 @@ if [[ -f "$WORK/code/plugins.txt" ]]; then
   done <"$WORK/code/plugins.txt"
 fi
 
-GPUS="$(nvidia-smi --list-gpus | wc -l 2>/dev/null || echo 8)"
-WAVE_ARGS=(--gpus "$GPUS" --out "$WORK/out" --upload "$OUT_URI" --record)
+GPUS="$(nvidia-smi --list-gpus 2>/dev/null | wc -l)"
+GPUS="${GPUS//[[:space:]]/}"
+if ! [[ "$GPUS" =~ ^[1-9][0-9]*$ ]]; then
+  GPUS=8
+fi
+WAVE_ARGS=(--gpus "$GPUS" --out "$WORK/out" --upload "$OUT_URI" --record \
+  --recipes-root "$WORK/code/packages/rcp-ndcg-vllm/recipes")
 if [[ -f "$WORK/code/recipes.txt" ]]; then
   WAVE_ARGS+=(--recipes "@$WORK/code/recipes.txt")
 fi

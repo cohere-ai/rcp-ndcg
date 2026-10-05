@@ -77,9 +77,8 @@ def run(
         "stages": stages,
     }
     if 1 in stages:
-        document["stage1"] = stage1_prompts(
-            recipe, pairs, reference, tokenizer if tokenizer is not None else load_tokenizer(recipe)
-        )
+        stage1_tokenizer = tokenizer if tokenizer is not None else _tokenizer_for(recipe, reference)
+        document["stage1"] = stage1_prompts(recipe, pairs, reference, stage1_tokenizer)
     if 2 in stages:
         if base_url is None:
             raise HarnessError("stage 2 needs the engine's --base-url")
