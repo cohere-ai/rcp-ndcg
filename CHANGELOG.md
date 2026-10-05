@@ -245,18 +245,51 @@ released together.
   replica list is refused there.
 - **`rcp_ndcg.support.serve` gains the serve-by-role types**: `EngineRole`, `EngineConfig` (an alias of the
   unchanged `ServeConfig`), `ServeByRole`, `Phase`, `ENGINES_ENV = "RCP_NDCG_ENGINES"`, `EngineURLs`,
-  `parse_engines_env`, and the frozen `plan_phases(steps, serve, uses)` signature (behaviour arrives with the serve-phases work).
+  `parse_engines_env`, and `plan_phases(steps, serve, uses)`, the pure phase plan.
 - **`rcp_ndcg.llm.client` gains `api` and `headers_env`** through `Endpoint`; `wait_on_outage_s` moves up to
   `Endpoint` and the judge keeps declaring it only through that inheritance. A judge's identity payload is
   unchanged: `api` defaults to `None` (omitted from identities until a role config sets it), the other two are
   runtime fields.
 - New layering charter (`AGENTS.md`): `data → inference → retrieval`; enforced by the new
   `tests/test_layering.py` (eager imports only; the current tree has no outward import).
+- **`serve:` names one engine per role, and a job runs the run in phases** (each phase starts only the engines its steps use).
+  `RunConfig.serve` is a `ServeByRole` (`judge`, `encoder`, `reranker`; the old single-engine mapping is refused
+  with a hint showing the new shape), and `plan_phases(steps, serve, uses)` builds the phase plan: consecutive
+  steps that call the same served engines share a phase, steps that call no served engine form an engine-free
+  phase, and the paper run becomes four phases. `RunConfig.engine_uses()` derives the per-step engine roles from
+  the config. `runs.execution` builds the job's `JobSpec(phases=...)`: per phase the engines by role and the
+  coordinator argv `rcp-ndcg run resume --run <dir> --only <steps>`; `run_argv` lost its outage argument —
+  `wait_on_outage_s` travels in `RCP_NDCG_ENGINES` per role now. A runner that neither renders nor runs phases
+  refuses a job that would start engines; the local runner runs the engine-free phases and refuses the ones with
+  engines. `rcp_ndcg.runners` exports `JobPhase`, the per-phase engine set and coordinator command.
+- **`RCP_NDCG_ENGINES` is the runtime overlay that carries the engines' URLs to the steps.** The coordinator
+  applies each role's `urls` and `wait_on_outage_s` to the role config in memory — never written into `run.yaml`,
+  never in a step identity, so a run is byte-identical with and without the variable; the
+  `--set judge.wait_on_outage_s=<outage_timeout_s>` job argument is gone. A failed resume keeps treating the
+  injected URLs as no config change: `_substance` subtracts every declared RUNTIME field of the candidates'
+  nested configs too.
+- **Served-role refusals.** A role config whose engine is served must not set `base_url` (the job's URLs for it
+  reach the step at runtime; setting both is refused, never silently overridden): enforced for `encoder` and
+  `reranker`, whose `base_url` is now optional, omitted exactly when served; a retrieval client built without a
+  URL is refused rather than silently addressing a vendor's public API. A hosted or in-process model, a BM25
+  retriever, a role no step of the run calls, and more than one replica for a retrieval role are refused with a
+  hint. A served encoder needs no judge (the old any-`serve:` check is gone); `serve.judge` needs a real judge
+  (not `fake`) and a judging step. The judge's own `base_url` stays required (the judge client requires it) and
+  is the placeholder the job's runtime URLs replace. `EngineURLs` refuses a replica listed twice.
+- **`rcp-ndcg doctor --endpoint <url>`** replaces `--judge-url` and probes any role's endpoint URL
+  (`GET <url>/models`).
+- The `ServeConfig` fields' schema descriptions are role-neutral (the same engine shape serves the judge, the
+  retrieval encoder and the reranker); no property changed.
 
 ### Fixed
 
 - The MCP server logs the typed warnings a tool call collects (its results have no `warnings` field, so the
   server's log is where e.g. `UNPINNED_REVISION` surfaces there).
+- A recorded config (run.yaml, the manifest) re-validates without refusing its own defaults: a hosted or served
+  encoder's or reranker's `concurrency` equal to its default no longer fails `run start`, a resume or `run status`
+  with `drop concurrency`. The one-at-a-time check compares the value against the field's default (a full dump
+  cannot preserve which fields the user set); an explicitly non-default `concurrency` on a provider that sends one
+  request at a time is still refused.
 - Changing a served encoder's or reranker's URL no longer re-runs retrieval or reranking: the `retrieve` and
   `rerank` step identities hold the candidates config's content payload (`identity_payload`, as the judge steps
   already do), so its runtime fields (`base_url`, `api_key_env`, `concurrency`, the timeouts and retries,
@@ -299,6 +332,14 @@ released together.
   widened, and the retrieval configs' `base_url` described per its type: one URL, required for the served
   ones, optional for the hosted ones); `tests/test_errors.py` now requires one *root* class per exit code,
   since the moved outage and refusal types are `ProviderError` subclasses and exit codes do not change.
+
+### Removed
+
+- **`run resume --judge-urls` and its environment variable** (`RCP_NDCG_JUDGE_URLS` as the
+  coordinator's input): pass `run resume --engine judge=url[,url]` instead (repeatable; the runtime overlay of
+  the engines you started yourself). The single-engine `serve:` mapping (`serve: {image: ...}`) on a run
+  config: `serve:` now maps roles to engines (`serve: {judge: {...}}`). The doctor's `--judge-url` flag is
+  `--endpoint <url>`, which probes any role's endpoint.
 
 ## 0.1.0
 

@@ -47,6 +47,7 @@ from rcp_ndcg.llm import JudgeConfig
 from rcp_ndcg.support.identity import FieldRole, check_declarations, identity_payload
 from rcp_ndcg.support.serve import (
     ENGINES_ENV,
+    EngineConfig,
     EngineURLs,
     Phase,
     ServeByRole,
@@ -602,12 +603,21 @@ class TestEnginesEnv:
         with pytest.raises(ValidationError):
             EngineURLs(urls=["http://a:8000/v1", ""])
 
+    def test_urls_must_not_list_a_replica_twice(self) -> None:
+        with pytest.raises(ValidationError, match="twice"):
+            EngineURLs(urls=["http://a:8000/v1", "http://a:8000/v1/"])
+        with pytest.raises(ConfigError, match="twice"):
+            parse_engines_env('{"judge": {"urls": ["http://a:8000/v1", "http://a:8000/v1"]}}')
+
     def test_the_variable_name_is_the_charter_s(self) -> None:
         assert ENGINES_ENV == "RCP_NDCG_ENGINES"
 
     def test_plan_phases_is_lane_l4a_s(self) -> None:
-        with pytest.raises(NotImplementedError, match="lane L4a"):
-            plan_phases(["retrieve"], ServeByRole(), {"retrieve": frozenset({"encoder"})})
+        """The serve-phases lane filled the frozen signature in; the full table is tests/support/test_serve.py."""
+        engine = EngineConfig(command=("vllm", "serve", "m"))
+        assert plan_phases(["retrieve"], ServeByRole(encoder=engine), {"retrieve": frozenset({"encoder"})}) == [
+            Phase(engines=frozenset({"encoder"}), steps=("retrieve",))
+        ]
 
 
 # ---------------------------------------------------------------------------------------------------------------

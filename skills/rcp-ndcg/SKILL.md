@@ -154,12 +154,17 @@ rcp-ndcg run status --run runs/<run_id> --json
 rcp-ndcg run resume --run runs/<run_id> --mirror s3://bucket/runs/nano --json
 ```
 
-Serve the judge on the cluster with the run (the user's image and command, verbatim; SLURM or Kubernetes, never the
-local runner): add a `serve:` section (`image`, `command`, `resources`, `replicas`) to the run config, check what
-would be submitted, then submit. On SLURM the image needs `container_runtime: apptainer` or `pyxis`; with the default
-`none` the command runs on the node and `image` is refused. The job hands the engine replicas' URLs to the judge;
-`run logs` shows both. A job that failed (`run status`: `failed`, with a `note` when the job ended without recording
-it) is submitted again, engine included, with `run resume --runner`; it asks only for the windows its stores lack.
+Serve the models on the cluster with the run (the user's image and command, verbatim; SLURM or Kubernetes, never the
+local runner): add a `serve:` section to the run config, one engine per role — `serve: {judge: {image, command,
+resources, replicas}}`, `encoder` for the retrieval encoder, `reranker` for its reranker (a served
+`openai_compatible` model without `base_url`: the job's URLs for it reach the step at runtime) — check what would
+be submitted, then submit. On SLURM the image needs `container_runtime: apptainer` or `pyxis`; with the default
+`none` the command runs on the node and `image` is refused. The job runs the steps in phases, each starting only
+the engines its steps use and handing their URLs to the coordinator in `RCP_NDCG_ENGINES`; `run logs` shows both.
+Until the runners render phased jobs, handing a serving run to them is refused: start the engines yourself and
+`run resume --engine <role>=<url>`. A job that failed (`run status`: `failed`, with a `note` when the job ended
+without recording it) is submitted again, engines included, with `run resume --runner`; it asks only for the
+windows its stores lack.
 
 ```bash
 rcp-ndcg run start <config> --runner slurm --dry-run --json

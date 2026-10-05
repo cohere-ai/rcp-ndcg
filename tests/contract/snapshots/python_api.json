@@ -1939,7 +1939,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.support.serve.ServeConfig | None"
+            "type": "rcp_ndcg.support.serve.ServeByRole | None"
           },
           "steps": {
             "alias": null,
@@ -1959,6 +1959,20 @@
         "frozen": false,
         "kind": "pydantic_model",
         "members": {
+          "engine_uses": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, frozenset[EngineRole]]"
+              }
+            ]
+          },
           "from_data": {
             "kind": "classmethod",
             "signature": [
@@ -11754,10 +11768,10 @@
           },
           "base_url": {
             "alias": null,
-            "default": "<required>",
+            "default": null,
             "frozen": false,
-            "required": true,
-            "type": "str"
+            "required": false,
+            "type": "str | None"
           },
           "batch_size": {
             "alias": null,
@@ -11877,10 +11891,10 @@
           },
           "base_url": {
             "alias": null,
-            "default": "<required>",
+            "default": null,
             "frozen": false,
-            "required": true,
-            "type": "str"
+            "required": false,
+            "type": "str | None"
           },
           "batch_size": {
             "alias": null,
@@ -12373,6 +12387,31 @@
             ]
           }
         }
+      },
+      "JobPhase": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.runners.base",
+        "extra": "forbid",
+        "fields": {
+          "argv": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "tuple[str, Ellipsis]"
+          },
+          "engines": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "collections.abc.Mapping[Literal['judge', 'encoder', 'reranker'], rcp_ndcg.support.serve.ServeConfig]"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
       },
       "JobRunner": {
         "bases": [
@@ -13698,6 +13737,12 @@
             "name": "only"
           },
           {
+            "annotation": "Mapping[EngineRole, EngineURLs] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "engines"
+          },
+          {
             "returns": null
           }
         ],
@@ -13804,6 +13849,12 @@
                 "default": null,
                 "kind": "keyword_only",
                 "name": "only"
+              },
+              {
+                "annotation": "Mapping[EngineRole, EngineURLs] | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "engines"
               },
               {
                 "returns": "Pipeline"
@@ -13956,7 +14007,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.support.serve.ServeConfig | None"
+            "type": "rcp_ndcg.support.serve.ServeByRole | None"
           },
           "steps": {
             "alias": null,
@@ -13976,6 +14027,20 @@
         "frozen": false,
         "kind": "pydantic_model",
         "members": {
+          "engine_uses": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, frozenset[EngineRole]]"
+              }
+            ]
+          },
           "from_data": {
             "kind": "classmethod",
             "signature": [

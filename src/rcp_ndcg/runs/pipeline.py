@@ -21,7 +21,8 @@ configured on.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+import os
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -37,6 +38,7 @@ from rcp_ndcg.storage.artifacts import ArtifactRef, artifact_ref
 from rcp_ndcg.support.identity import hash_payload, identity_payload
 from rcp_ndcg.support.logging import get_logger
 from rcp_ndcg.support.paths import runs_dir as default_runs_dir
+from rcp_ndcg.support.serve import ENGINES_ENV, EngineRole, EngineURLs, parse_engines_env
 
 if TYPE_CHECKING:
     from rcp_ndcg.llm.schedule import Modality as ScheduleModality
@@ -55,9 +57,12 @@ class Pipeline:
         manifest: The existing run's manifest.
         only: Run only these of the config's steps in this invocation (``run resume --only``); the config's
             ``steps`` stay as recorded.
+        engines: The engines overlay the job already carries for this invocation (a phase's
+            ``RCP_NDCG_ENGINES``, or ``run resume --engine``); ``None`` reads the environment variable.
 
     Raises:
-        ConfigError: ``only`` names a step the config does not have.
+        ConfigError: ``only`` names a step the config does not have, or the engines overlay names a role this
+            run cannot point at its engine.
     """
 
     def __init__(
@@ -68,8 +73,12 @@ class Pipeline:
         layout: RunLayout | None = None,
         manifest: RunManifest | None = None,
         only: Sequence[str] | None = None,
+        engines: Mapping[EngineRole, EngineURLs] | None = None,
     ):
         self.config = config
+        self._engines = dict(engines) if engines is not None else _engines_overlay()
+        if self._engines:
+            _check_engines(config, self._engines)
         self.only = list(only) if only else None
         if self.only is not None:
             missing = [step for step in self.only if step not in config.steps]
@@ -102,16 +111,23 @@ class Pipeline:
 
     @classmethod
     def resume(
-        cls, run_dir: str | Path, *, overrides: list[str] | None = None, only: Sequence[str] | None = None
+        cls,
+        run_dir: str | Path,
+        *,
+        overrides: list[str] | None = None,
+        only: Sequence[str] | None = None,
+        engines: Mapping[EngineRole, EngineURLs] | None = None,
     ) -> Pipeline:
         """Reopen a run directory with its recorded config (``key=value`` overrides applied).
 
         ``only`` runs just those steps in this invocation; the recorded ``steps`` stay (see :class:`Pipeline`).
+        ``engines`` overlays the role configs at runtime (the engines a job started); ``None`` reads
+        ``RCP_NDCG_ENGINES``.
         """
         layout = RunLayout.at(run_dir)
         manifest = RunManifest.load(layout)
         config = RunConfig.from_data(manifest.config, overrides=overrides or [])
-        return cls(config, layout=layout, manifest=manifest, only=only)
+        return cls(config, layout=layout, manifest=manifest, only=only, engines=engines)
 
     @property
     def steps(self) -> list[str]:
@@ -437,7 +453,10 @@ class Pipeline:
 
             assert candidates.retrieval is not None
             retrieved = retrieve(
-                self.dataset, candidates.retrieval, depth=candidates.depth, out=str(Path(self.layout.work) / "index")
+                self.dataset,
+                self._overlaid_retrieval(),
+                depth=candidates.depth,
+                out=str(Path(self.layout.work) / "index"),
             )
             first = Rankings.from_scores(retrieved.queries(), system=CANDIDATES)
         _write_rankings(output, first)
@@ -464,7 +483,7 @@ class Pipeline:
         rescored = rerank(
             self.dataset,
             Rankings.from_scores({query: first.for_query(query) for query in pools}, system=CANDIDATES),
-            reranker,
+            self._overlaid_reranker(),
             depth=depth,
             out=str(Path(self.layout.work) / "rerank"),
         )
@@ -478,12 +497,49 @@ class Pipeline:
     def _step_rubric(self) -> tuple[list[ArtifactRef], Usage | None]:
         return self._judge("rubric")
 
+    def _overlaid(self, endpoint: Any, role: EngineRole) -> Any:
+        """``endpoint`` with the role's engine URLs (and outage wait) applied, when the overlay names the role.
+
+        The overlay is runtime only: it is never written into ``run.yaml`` and never reaches an identity, since
+        ``base_url`` and ``wait_on_outage_s`` are RUNTIME fields.
+        """
+        engines = self._engines.get(role)
+        if engines is None:
+            return endpoint
+        update: dict[str, Any] = {"base_url": engines.urls[0] if len(engines.urls) == 1 else list(engines.urls)}
+        if engines.wait_on_outage_s is not None:
+            update["wait_on_outage_s"] = engines.wait_on_outage_s
+        return endpoint.model_copy(update=update)
+
+    def _judge_client_config(self) -> Any:
+        """The judge config the client is built from: the engines overlay applied (runtime only)."""
+        return self._overlaid(self.config.judge_config(), "judge")
+
+    def _overlaid_retrieval(self) -> Any:
+        """The retriever the retrieve step calls: its served encoder with the engine's URL, when overlaid."""
+        from rcp_ndcg.retrieval.config import DenseConfig, LateInteractionConfig
+
+        retrieval = self.config.candidates.retrieval
+        assert retrieval is not None
+        engines = self._engines.get("encoder")
+        if engines is None or not isinstance(retrieval, (DenseConfig, LateInteractionConfig)):
+            return retrieval
+        return retrieval.model_copy(update={"encoder": self._overlaid(retrieval.encoder, "encoder")})
+
+    def _overlaid_reranker(self) -> Any:
+        """The reranker the rerank step calls, with the engine's URL, when overlaid."""
+        reranker = self.config.candidates.rerank
+        assert reranker is not None
+        if "reranker" not in self._engines:
+            return reranker
+        return self._overlaid(reranker, "reranker")
+
     def _judge(self, stage: str) -> tuple[list[ArtifactRef], Usage | None]:
         from rcp_ndcg.llm.client import JudgeClient
         from rcp_ndcg.llm.judging import judge
         from rcp_ndcg.llm.store import JudgementStore
 
-        client = JudgeClient.from_config(self.config.judge_config())
+        client = JudgeClient.from_config(self._judge_client_config())
         try:
             judge(
                 self.dataset,
@@ -634,12 +690,14 @@ class Pipeline:
 
 def _substance(config: RunConfig) -> dict[str, Any]:
     """The config without its runtime-only fields, which never make a resume a config change: the mirror, and the
-    judge's runtime fields (its URLs, its outage wait: what a job that starts its engine sets)."""
+    runtime fields the job's engines carry (the judge's URLs and outage wait, the served encoder's and reranker's
+    URLs, keys, concurrency, timeouts and batch sizes)."""
     from rcp_ndcg.support.identity import FieldRole, declared_roles
 
     data = config.resolved()
     data.pop("mirror", None)
     data.pop("mirror_interval_s", None)
+    data["candidates"] = identity_payload(config.candidates)
     if config.judge is not None:
         try:
             judge = config.judge_config()
@@ -648,6 +706,67 @@ def _substance(config: RunConfig) -> dict[str, Any]:
         runtime = {name for name, role in declared_roles(type(judge)).items() if role is FieldRole.RUNTIME}
         data["judge"] = judge.model_dump(mode="json", exclude=runtime)
     return data
+
+
+def _engines_overlay() -> dict[EngineRole, EngineURLs]:
+    """The engines ``RCP_NDCG_ENGINES`` carries for this invocation (unchecked; the caller checks them)."""
+    text = os.environ.get(ENGINES_ENV)
+    if not text:
+        return {}
+    return parse_engines_env(text)
+
+
+def _check_engines(config: RunConfig, engines: Mapping[EngineRole, EngineURLs]) -> None:
+    """Every role an engines overlay names must have a config the run can point at its engine.
+
+    The overlay is applied to the role configs at runtime only (:meth:`Pipeline._overlaid`); it names a phase's
+    engines, which the runner started for this run's ``serve:`` (validated there), or the roles ``run resume
+    --engine`` spells.
+
+    Raises:
+        ConfigError: the overlay names a role this run has no served config for (the offline fake judge, a BM25
+            or hosted encoder, no reranker), or gives a retrieval role more than one replica URL (this release's
+            retrieval clients address one URL).
+    """
+    from rcp_ndcg.retrieval.config import (
+        OpenAICompatibleEncoder,
+        OpenAICompatibleReranker,
+    )
+
+    for role, engine in engines.items():
+        if role == "judge":
+            if config.judge is None:
+                raise ConfigError(
+                    "the engines overlay names the judge, and this run has none",
+                    hint="drop the judge role, or set judge in the run config",
+                )
+            if config.judge == "fake" or config.judge_config().is_fake:
+                raise ConfigError(
+                    "the engines overlay names the judge, and this run's judge is the offline fake",
+                    hint="the fake judge is answered in process: drop the judge role, or set judge to a real "
+                    "endpoint's config",
+                )
+        elif role == "encoder":
+            encoder = getattr(config.candidates.retrieval, "encoder", None)
+            if not isinstance(encoder, OpenAICompatibleEncoder):
+                raise ConfigError(
+                    "the engines overlay names the encoder, and this run has no served encoder to point at it",
+                    hint="the encoder role serves a run's openai_compatible encoder; drop the role, or start "
+                    "its engine with serve.encoder",
+                )
+        else:
+            if not isinstance(config.candidates.rerank, OpenAICompatibleReranker):
+                raise ConfigError(
+                    "the engines overlay names the reranker, and this run has no served reranker to point at it",
+                    hint="the reranker role serves a run's openai_compatible reranker; drop the role, or set "
+                    "candidates.rerank to one",
+                )
+        if role != "judge" and len(engine.urls) != 1:
+            raise ConfigError(
+                f"the engines overlay gives the {role} {len(engine.urls)} replica URLs, and the retrieval client "
+                "addresses one URL",
+                hint="run one replica (replicas: 1) for a served encoder or reranker",
+            )
 
 
 def _describe(exc: BaseException) -> str:

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import click
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from rcp_ndcg.cli.command import command
 from rcp_ndcg.errors import RcpNdcgWarning, UsageError
@@ -23,7 +23,7 @@ from rcp_ndcg.llm.cost import CostEstimate
 from rcp_ndcg.llm.judges import judge_names
 from rcp_ndcg.runs.run import RunState
 from rcp_ndcg.support.paths import RUNS_DIR_ENV, runs_dir
-from rcp_ndcg.support.serve import JUDGE_URLS_ENV
+from rcp_ndcg.support.serve import EngineRole, EngineURLs
 
 
 class RunListRequest(BaseModel):
@@ -323,12 +323,53 @@ def run_start(request: RunStartRequest) -> RunStartResult:
     return _finish(pipeline, request, resume=True, runner=runner)
 
 
+_ENGINE_ROLES = ("judge", "encoder", "reranker")
+
+
+def _engine_overlays(specs: list[str]) -> dict[EngineRole, EngineURLs]:
+    """``--engine role=url[,url]`` entries as the engines overlay the run applies at runtime.
+
+    Raises:
+        UsageError: an entry without ``=`` or with an unknown role, a role given twice, or a role with no URL.
+    """
+    engines: dict[EngineRole, EngineURLs] = {}
+    for spec in specs:
+        role, sep, urls = spec.partition("=")
+        role = role.strip()
+        if not sep or role not in _ENGINE_ROLES:
+            raise UsageError(
+                f"--engine {spec!r} is not <role>=<url>[,<url>] with role one of {', '.join(_ENGINE_ROLES)}",
+                hint="e.g. --engine judge=http://127.0.0.1:8000/v1,http://127.0.0.1:8001/v1",
+                cli_hint="e.g. --engine judge=http://127.0.0.1:8000/v1,http://127.0.0.1:8001/v1",
+            )
+        if role in engines:
+            raise UsageError(
+                f"--engine names the {role} role twice",
+                hint=f"give one --engine per role, with all of its URLs: --engine {role}=url1,url2",
+            )
+        replicas = tuple(url.strip() for url in urls.split(",") if url.strip())
+        if not replicas:
+            raise UsageError(
+                f"--engine {role}= has no URL",
+                hint=f"give at least one replica base URL (.../v1): --engine {role}=http://127.0.0.1:8000/v1",
+            )
+        try:
+            engines[role] = EngineURLs(urls=replicas)  # type: ignore[index]
+        except ValidationError as exc:
+            raise UsageError(
+                f"--engine {spec!r}: {exc.errors(include_url=False)[0]['msg']}",
+                hint=f"give each replica once: --engine {role}=http://127.0.0.1:8000/v1,http://127.0.0.1:8001/v1",
+            ) from exc
+    return engines
+
+
 class RunResumeRequest(RunJudgeFields):
     run: str = Field(description="The run directory.")
-    judge_urls: str | None = Field(
-        default=None,
-        description="Replace the judge's base_url by these replica URLs, comma-separated (a runner that starts the "
-        "engine sets it for its job).",
+    engine: list[str] = Field(
+        default_factory=list,
+        description="Point one role's model at engine URLs instead of its config's base_url: role=url[,url] "
+        "(repeatable; role is judge, encoder or reranker). A runtime overlay: applied to the run's configs while "
+        "this invocation runs, never written into its config.",
     )
     mirror: str | None = Field(
         default=None,
@@ -361,28 +402,23 @@ class RunResumeRequest(RunJudgeFields):
     )
 
 
-@command(
-    "run resume",
-    request=RunResumeRequest,
-    envvars={"judge_urls": JUDGE_URLS_ENV},
-    read_only=False,
-    **_START,
-)
+@command("run resume", request=RunResumeRequest, read_only=False, **_START)
 def run_resume(request: RunResumeRequest) -> RunStartResult:
     """Continue a run directory in this process: the steps whose identity and inputs are unchanged are skipped.
 
     A changed step runs again, except a judging step whose stored judgements have another identity: it is refused
     (exit 11) and the run is left as it was. A resume whose --set change fails leaves the run's
-    config as it was too; --only never changes the run's steps. With --runner, the run is submitted again as one
-    job of that runner instead (its --set changes are recorded before the job starts).
+    config as it was too; --only never changes the run's steps. --engine overlays the role configs at runtime
+    (the URLs of engines the job or you started), never the run's recorded config. With --runner, the run is
+    submitted again as one job of that runner instead (its --set changes are recorded before the job starts).
     """
     from rcp_ndcg.runs.execution import recorded_options, restore_for_resubmission
     from rcp_ndcg.runs.mirror import restore
     from rcp_ndcg.runs.run import reopen
 
-    if request.runner is not None and (request.only or not request.resume or request.judge_urls):
+    if request.runner is not None and (request.only or not request.resume or request.engine):
         raise UsageError(
-            "--runner submits the whole run again, as recorded; --only, --no-resume and --judge-urls apply to a "
+            "--runner submits the whole run again, as recorded; --only, --no-resume and --engine apply to a "
             "resume in this process",
             hint="drop them, or resume in this process without --runner",
         )
@@ -393,14 +429,12 @@ def run_resume(request: RunResumeRequest) -> RunStartResult:
         restore(request.run, request.mirror)
     if request.mirror:
         mirror = [f"mirror={request.mirror}"]
-    replicas = []
-    if request.judge_urls:
-        urls = [url.strip() for url in request.judge_urls.split(",") if url.strip()]
-        replicas = [f"judge.base_url={json.dumps(urls)}"]
+    engines = _engine_overlays(request.engine)
     pipeline = reopen(
         request.run,
-        overrides=[*request.judge_overrides(), *replicas, *request.set, *mirror],
+        overrides=[*request.judge_overrides(), *request.set, *mirror],
         steps=request.only or None,
+        engines=engines or None,
     )
     if request.runner is None:
         return _finish(pipeline, request, resume=request.resume)

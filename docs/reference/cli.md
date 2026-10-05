@@ -33,7 +33,7 @@ rcp-ndcg run          start       run a config (a YAML file or a packaged config
                       show        one run's manifest and artifacts
 rcp-ndcg schema       list | show NAME | export --out DIR
 rcp-ndcg mcp          serve | tools [--call TOOL --args JSON]
-rcp-ndcg doctor       check the environment: versions, extras, credentials present, endpoint reachable
+rcp-ndcg doctor       [--endpoint URL] check the environment: versions, extras, credentials present, endpoint reachable
 rcp-ndcg --version
 ```
 
@@ -71,6 +71,7 @@ The same flag means the same thing on every command that has it:
 | `--suite NAME` | a public suite: its data and its protocol (`nanobeir`, `bright`, `vidore`, `trecdl`) |
 | `--protocol NAME` | override the protocol (`nanobeir`, `bright`, `vidore`, `trecdl`, `mteb`, `plain`) |
 | `--judge fake\|PATH\|NAME`, `--judge-url URL`, `--judge-model ID` | a judge config, or an ad-hoc OpenAI-compatible endpoint |
+| `--engine ROLE=URL[,URL]` | `run resume`: point one role's model (`judge`, `encoder` or `reranker`) at the engine URLs instead of its config's `base_url`; repeatable, one role each. A runtime overlay: it never changes the run's recorded config ([serving](../concepts/serving.md#starting-the-engines-with-the-run)) |
 | `--docs QUERY_ID:DOC_ID` | judge only these documents (re-annotation, insertion) |
 | `--plan FILE` | `judge tournament`: ask exactly the windows of an insertion plan (`calibration insert --plan --out FILE`), with the `--out` store's schedule |
 | `--k INT` | a cutoff; repeatable |
