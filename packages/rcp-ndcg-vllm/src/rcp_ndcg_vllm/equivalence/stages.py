@@ -132,6 +132,7 @@ def stage2_scores(
     served_model_name: str | None = None,
     timeout_s: float | None = None,
     device: str = "cpu",
+    tokenizer: TokenizerAdapter | None = None,
 ) -> dict[str, Any]:
     """Stage 2: served scores or vectors against the in-process reference, under the recipe's gates.
 
@@ -140,17 +141,24 @@ def stage2_scores(
     ``multi_vector`` recipe compares per-token vectors from ``/pooling`` after the same float16 cast.  The report
     carries every number with its referent and one row per gate; ``passed`` is true only when every gate holds.
     The reference's model is loaded first (``device``, ``cpu`` by default: the wave's engines hold the GPUs).
+    A recipe with declared shapes needs the ``tokenizer`` (the same adapter stage 1 used) to assemble the
+    served prompts.
     """
     if recipe.reference.kind == "stored_scores":
         raise HarnessError(
             "stage 2 needs a runnable reference; reference.kind=stored_scores supports stage 1 and stage 3 only"
         )
     reference.load(device)
+    if recipe.client.template is not None and tokenizer is None:
+        raise HarnessError(
+            f"recipe {recipe.id}: stage 2 renders the declared shapes, which needs the recipe's tokenizer "
+            "(pass the stage-1 adapter, or install rcp-ndcg-vllm[reference])"
+        )
     gates = resolve_gates(recipe)
     with EngineClient(recipe, base_url, served_model_name=served_model_name, timeout_s=timeout_s or 300.0) as client:
         if recipe.role == "rerank":
             return _rerank_stage2(recipe, pairs, reference, client, gates)
-        return _vector_stage2(recipe, pairs, reference, client, gates)
+        return _vector_stage2(recipe, pairs, reference, client, gates, tokenizer)
 
 
 def _instruction_field(recipe: Recipe) -> str | None:
@@ -352,6 +360,7 @@ def _vector_stage2(
     reference: Reference,
     client: EngineClient,
     gates: ResolvedGates,
+    tokenizer: TokenizerAdapter | None = None,
 ) -> dict[str, Any]:
     """Vectors from the served endpoint against the reference: cosine floor per vector (per token)."""
     multi = recipe.role == "multi_vector"
@@ -359,8 +368,14 @@ def _vector_stage2(
     for row_index, row in enumerate(pairs):
         query = row["query"]
         documents: list[str] = row["documents"]
-        served_texts = [recipe.client.doc_prompt + document for document in documents]
-        served_texts.append(recipe.client.query_prompt + query)
+        if recipe.client.template is not None:
+            served_texts = [
+                served_prompt_text(recipe, "", document, tokenizer, shape="document") for document in documents
+            ]
+            served_texts.append(served_prompt_text(recipe, query, "", tokenizer, shape="query"))  # fmt: skip
+        else:
+            served_texts = [recipe.client.doc_prompt + document for document in documents]
+            served_texts.append(recipe.client.query_prompt + query)
         served_items: list[tuple[np.ndarray, str, list[int] | None]] = (
             client.pooling(served_texts)
             if multi

@@ -66,6 +66,13 @@ class FixtureTokenizer:
         """The token string of one id (the fixture prints the id itself; strings are for the report only)."""
         return f"tok:{token_id_value}"
 
+    def truncate(self, text: str, max_tokens: int) -> str:
+        """The words of the first ``max_tokens`` tokens of ``text``, joined (a right token-boundary cut)."""
+        words = tokens(text)
+        if len(words) <= max_tokens:
+            return text
+        return " ".join(words[:max_tokens])
+
     def decode(self, token_ids: list[int]) -> str:
         """A stand-in text for a kept prefix of ids: the ids rendered like the report's token strings.
 

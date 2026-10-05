@@ -14,6 +14,8 @@ from deterministic import DIM, FixtureTokenizer, vector  # noqa: E402
 
 QUERY_PROMPT = "query: "
 DOC_PROMPT = "doc: "
+END_SUFFIX = " [END]"
+"""The template's fixed tail: the last-token anchor, reserved and re-attached by the cut."""
 
 _loaded: Any = None
 
@@ -30,17 +32,17 @@ def render(query: str, document: str, instruction: str | None) -> list[int]:
     del query, instruction
     from deterministic import token_id, tokens
 
-    return [token_id(word) for word in tokens(DOC_PROMPT + document)]
+    return [token_id(word) for word in tokens(DOC_PROMPT + document + END_SUFFIX)]
 
 
 def embed(texts: list[str], role: str) -> list[np.ndarray]:
     """Stage 2: one unit vector per text; the reference composes the same prompts the client sends."""
     assert _loaded
     prefix = QUERY_PROMPT if role == "query" else DOC_PROMPT
-    return [vector(prefix + text, "embed") for text in texts]
+    return [vector(prefix + text + END_SUFFIX, "embed") for text in texts]
 
 
-__all__ = ["DIM", "DOC_PROMPT", "QUERY_PROMPT", "embed", "load", "render"]
+__all__ = ["DIM", "DOC_PROMPT", "END_SUFFIX", "QUERY_PROMPT", "embed", "load", "render"]
 
 
 def tokenizer() -> FixtureTokenizer:

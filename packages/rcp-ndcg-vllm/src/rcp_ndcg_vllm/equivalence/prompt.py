@@ -142,7 +142,7 @@ def render_template_for(recipe: Recipe, query: str, document: str) -> str:
     )
 
 
-def served_prompt_text(recipe: Recipe, query: str, document: str, tokenizer: Any) -> str:
+def served_prompt_text(recipe: Recipe, query: str, document: str, tokenizer: Any, *, shape: str | None = None) -> str:
     """The text the engine tokenises for one (query, document) pair.
 
     With ``client.template`` the declared shape assembles the prompt (query, document or pair, by role) with
@@ -152,8 +152,7 @@ def served_prompt_text(recipe: Recipe, query: str, document: str, tokenizer: Any
     into the query; ``field``/``system``/``none`` leave it to the request); the prompted path has none.
     """
     if recipe.client.template is not None:
-        assert recipe.client.instruction is not None  # a templated recipe always declares the mode
-        shape = "pair" if recipe.role == "rerank" else "document"
+        shape = shape or ("pair" if recipe.role == "rerank" else "document")
         folded_query = (
             fold_instruction(recipe.client.default_instruction, query) if recipe.client.instruction == "fold" else query
         )

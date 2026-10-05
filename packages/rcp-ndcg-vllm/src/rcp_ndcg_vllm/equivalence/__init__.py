@@ -80,9 +80,11 @@ def run(
     if 2 in stages:
         if base_url is None:
             raise HarnessError("stage 2 needs the engine's --base-url")
+        stage2_tokenizer = tokenizer if tokenizer is not None else _tokenizer_for(recipe, reference)
         document["stage2"] = stage2_scores(
-            recipe, base_url, pairs, reference, served_model_name=served_model_name or recipe.id, device=device
-        )
+            recipe, base_url, pairs, reference, served_model_name=served_model_name or recipe.id, device=device,
+            tokenizer=stage2_tokenizer,
+        )  # fmt: skip
     if 3 in stages:
         if rankings_dir is None:
             raise HarnessError("stage 3 needs --rankings-dir with <subset>.{served,reference}.jsonl rankings")

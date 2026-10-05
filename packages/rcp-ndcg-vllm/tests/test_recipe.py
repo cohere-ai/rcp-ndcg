@@ -239,10 +239,11 @@ def test_client_config_embed_carries_prompts_and_normalize() -> None:
     assert config["kind"] == "dense"
     encoder = config["encoder"]
     assert encoder["api"] == "openai_embeddings"
-    assert encoder["doc_prompt"] == "doc: "
-    assert encoder["query_prompt"] == "query: "
+    assert "doc_prompt" not in encoder  # the template block replaced the prompt prefixes
     assert encoder["normalize"] is True
     assert encoder["batch_size"] == 4
+    assert encoder["template"]["anchor"] == "last"
+    assert encoder["template"]["document"][-1] == {"text": " [END]"}
 
 
 def test_client_config_multi_vector_carries_embed_dtype() -> None:

@@ -19,12 +19,26 @@ serve:
   extra_args: []
 client:
   api: openai_embeddings
-  query_prompt: "query: "
-  doc_prompt: "doc: "
+  request_shape: text
+  add_special_tokens: null
+  template:
+    query:
+      - {text: "query: "}
+      - {content: query}
+      - {text: " [END]"}
+    document:
+      - {text: "doc: "}
+      - {content: document}
+      - {text: " [END]"}
+    anchor: last
+  query_prompt: ""
+  doc_prompt: ""
   instruction: null
   default_instruction: null
   tokenizer: "fixtures/DenseEmbedder@0123456789abcdef0123456789abcdef01234567"
   max_tokens: 512
+  on_overflow: cut
+  empty_doc: omit_zero
   normalize: true
   dimensions: null
   embed_dtype: null

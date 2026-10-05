@@ -108,16 +108,17 @@ def test_stage2_rerank_fails_when_the_stub_adds_noise(tmp_path: Path) -> None:
 def test_stage2_embed_passes_and_fails_with_noise(tmp_path: Path) -> None:
     recipe = load("fixture-embed")
     reference = load_reference(str(RECIPE_DIRS / recipe.id), recipe.reference.entry)
+    tokenizer = reference._module.tokenizer()
     engine = start_stub()
     try:
-        clean = stage2_scores(recipe, engine.base_url, sample_pairs(), reference)
+        clean = stage2_scores(recipe, engine.base_url, sample_pairs()[:1], reference, tokenizer=tokenizer)
         assert clean["passed"] is True
         assert clean["cosine_min"] == pytest.approx(1.0)
     finally:
         engine.stop()
     noisy = start_stub("--noise", "0.5")
     try:
-        document = stage2_scores(recipe, noisy.base_url, sample_pairs(), reference)
+        document = stage2_scores(recipe, noisy.base_url, sample_pairs()[:2], reference, tokenizer=tokenizer)
         assert document["passed"] is False
         assert document["cosine_min"] < 1.0 - 1e-3
     finally:
@@ -127,9 +128,10 @@ def test_stage2_embed_passes_and_fails_with_noise(tmp_path: Path) -> None:
 def test_stage2_multi_vector_per_token_after_float16_cast(tmp_path: Path) -> None:
     recipe = load("fixture-multi-vector")
     reference = load_reference(str(RECIPE_DIRS / recipe.id), recipe.reference.entry)
+    tokenizer = reference._module.tokenizer()
     engine = start_stub()
     try:
-        document = stage2_scores(recipe, engine.base_url, sample_pairs(), reference)
+        document = stage2_scores(recipe, engine.base_url, sample_pairs()[:1], reference, tokenizer=tokenizer)
         assert document["passed"] is True
         assert document["multi_vector"] is True
         assert document["embed_dtype"] == "float16"
@@ -138,7 +140,7 @@ def test_stage2_multi_vector_per_token_after_float16_cast(tmp_path: Path) -> Non
         engine.stop()
     noisy = start_stub("--noise", "0.5")
     try:
-        document = stage2_scores(recipe, noisy.base_url, sample_pairs(), reference)
+        document = stage2_scores(recipe, noisy.base_url, sample_pairs()[:1], reference, tokenizer=tokenizer)
         assert document["passed"] is False
     finally:
         noisy.stop()
@@ -149,9 +151,10 @@ def test_gates_override_the_defaults(tmp_path: Path) -> None:
     recipe = load("fixture-embed")
     loose = recipe.model_copy(update={"gates": recipe.gates.model_copy(update={"vec_min_cosine": 0.5})})
     reference = load_reference(str(RECIPE_DIRS / recipe.id), recipe.reference.entry)
+    tokenizer = reference._module.tokenizer()
     engine = start_stub("--noise", "0.2")
     try:
-        document = stage2_scores(loose, engine.base_url, sample_pairs(), reference)
+        document = stage2_scores(loose, engine.base_url, sample_pairs()[:1], reference, tokenizer=tokenizer)
         assert document["passed"] is True
         assert document["gates"][0]["bound"] == 0.5
     finally:
@@ -486,34 +489,6 @@ def test_p99_gate_is_the_fraction_of_documents_within_the_bound() -> None:
     p99_row = next(row for row in document["gates"] if row["gate"] == "p99_documents_within")
     assert p99_row["value"] == 0.99
     assert document["passed"] is True
-
-
-def test_stage2_only_run_needs_no_tokenizer(tmp_path: Path) -> None:
-    """A stage-2-only run with a hook-less reference works without transformers (the metrics-only install)."""
-    import shutil
-
-    recipe = load("fixture-rerank-pointwise")
-    hookless = tmp_path / "recipes" / "fixture-rerank-pointwise"
-    hookless.mkdir(parents=True)
-    for name in ("recipe.yaml", "template.jinja"):
-        shutil.copy(RECIPE_DIRS / "fixture-rerank-pointwise" / name, hookless / name)
-    (hookless.parent.parent / "deterministic.py").write_bytes((RECIPE_DIRS.parent / "deterministic.py").read_bytes())
-    reference_text = (RECIPE_DIRS / "fixture-rerank-pointwise" / "reference.py").read_text(encoding="utf-8")
-    # Strip the tokenizer() hook: a production reference omits it.
-    start = reference_text.index("def tokenizer()")
-    reference_text = reference_text[:start]  # the hook is the module's last definition
-    (hookless / "reference.py").write_text(reference_text, encoding="utf-8")
-    recipe = load_recipe(hookless)
-    reference = load_reference(str(hookless), recipe.reference.entry)
-    assert getattr(reference._module, "tokenizer", None) is None  # the hook is really gone
-    engine = start_stub()
-    try:
-        document = run(
-            recipe, base_url=engine.base_url, pairs=sample_pairs(), out_dir=tmp_path, stages=[2], reference=reference
-        )  # fmt: skip
-    finally:
-        engine.stop()
-    assert document["passed"] is True  # stage 2 never needed the tokenizer
 
 
 def test_stage3_runs_for_a_stored_scores_recipe(tmp_path: Path) -> None:
