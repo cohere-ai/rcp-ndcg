@@ -445,9 +445,11 @@ class TextTruncationCensus:
       budget (mechanism of :func:`fit`): content cut, chunked or refused under
       a declared :class:`TextBudget`.  Referent: requests (a chunked input is
       one row per chunk, and every row names the aggregation its scores pool
-      by).  A hosted vendor profile without a tokenizer records one row per
-      corpus (``doc_id`` ``<budget>``) naming its documented limit as the
-      effective budget, and cuts nothing.
+      by; each row's ``original_tokens`` is the whole input's, so a chunked
+      document's rows repeat it -- summing the column overcounts the input).
+      A hosted vendor profile without a tokenizer records one row per
+      (corpus, budget) per census (``doc_id`` ``<budget>``) naming its
+      documented limit as the effective budget, and cuts nothing.
 
     When *sink* is set, every record is also appended to it as one JSON line.
     """
@@ -459,6 +461,7 @@ class TextTruncationCensus:
 
     def __init__(self, *, sink: str | Path | None = None) -> None:
         self._cuts: list[TextCutRecord] = []
+        self._budget_rows: set[tuple[str, int]] = set()
         self.sink = sink
 
     def _append(self, row: dict[str, Any]) -> None:
@@ -714,12 +717,12 @@ class FitResult:
     Attributes:
         shape: The request shape the inputs were fitted as.
         texts: The rendered request strings, one per output, in ``ids`` order: the full template with the
-            cut content spans re-attached. Empty for a hosted vendor profile (no tokenizer -- nothing is
-            rendered), where the caller sends :attr:`contents` as stored. This is what a text or
-            ``token_ids`` wire route sends; the strings are returned as text, not token ids, because every
-            wire route accepts text, the engine's own tokenisation (with its ``add_special_tokens`` flag)
-            stays authoritative, and the client-side tokenisation this mechanism needs to measure and cut
-            is the same one either way.
+            cut content spans re-attached. Empty when nothing is rendered for the wire -- a hosted vendor
+            profile (no tokenizer), or a ``pair`` whose budget declares no template (the engine renders it;
+            the caller sends :attr:`contents`). This is what a text or ``token_ids`` wire route sends; the
+            strings are returned as text, not token ids, because every wire route accepts text, the engine's
+            own tokenisation (with its ``add_special_tokens`` flag) stays authoritative, and the client-side
+            tokenisation this mechanism needs to measure and cut is the same one either way.
         contents: The cut content per output: the span text (a str), or the ``(query, document)`` parts of
             a pair -- what a wire route the engine renders the template for receives.
         ids: The output id per rendered text: the input's id, or ``<id>#<k>`` for its chunks (as
@@ -771,11 +774,12 @@ class TextBudget(BaseModel):
             SHA-256 is content (:meth:`identity`).
         max_tokens: The budget: the largest total input sequence, in the declared tokenizer's tokens
             (``_tokens``). Required: a budget without a number is not a budget.
-        query_max_tokens: The query's share of a ``pair`` budget: the query is cut to it first and the
-            document gets what remains. ``None`` (the default) declares no split: the query is cut only
-            when it alone fills the budget, and the request is then refused if the document is left nothing
-            (declare the split instead). Must be smaller than ``max_tokens`` -- the check the contracts
-            follow-up left open, refused here where the budget is resolved.
+        query_max_tokens: The query's share of a ``pair`` budget: when the pair overflows, the query is cut
+            to it first and the document gets what remains (an input under budget is sent byte-identical to
+            the uncut render, so the share binds on overflow only). ``None`` (the default) declares no split:
+            a query that does not fit the budget is then refused rather than cut undeclared (declare the
+            split instead). Must be smaller than ``max_tokens`` -- the check the contracts follow-up left
+            open, refused here where the budget is resolved.
         template: The request template (:class:`~rcp_ndcg.data.templates.TemplateSpec`), whose fixed
             segments are measured once per (template, shape) and whose specials are resolved from the
             tokenizer. ``None`` fits raw text: the overhead is then the tokenizer post-processor's tokens
@@ -836,6 +840,19 @@ class TextBudget(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _a_budget_without_a_tokenizer_cuts_nothing(self) -> TextBudget:
+        """A hosted vendor profile without a tokenizer sends content uncut: chunk/fail and a query split
+        would be silently inert, so they are refused instead of ignored."""
+        if self.tokenizer is None and (self.on_overflow != "cut" or self.query_max_tokens is not None):
+            raise ConfigError(
+                "this budget declares no tokenizer, so its content is sent uncut (a hosted vendor profile): "
+                "on_overflow 'chunk'/'fail' and query_max_tokens would be inert",
+                hint="declare tokenizer (the profile then cuts like a self-hosted one), or drop the "
+                "inert fields (on_overflow, query_max_tokens, chunk)",
+            )
+        return self
+
     def identity(self, tokenizer: TextTokenizer | None = None) -> dict[str, Any]:
         """The content identity payload of the budget, with the tokenizer file's SHA-256 when a tokenizer is
         loaded (the name is runtime, as the judge's is; the file's hash is what two tokenizers are told apart
@@ -859,8 +876,8 @@ def _fit_vendor(
     census: TextTruncationCensus | None,
 ) -> FitResult:
     """The hosted-vendor path: no tokenizer, so nothing is measured, framed or cut; the declared
-    ``max_tokens`` (the vendor's documented limit) is recorded as the effective budget, once per corpus,
-    with one warning."""
+    ``max_tokens`` (the vendor's documented limit) is recorded as the effective budget -- one row per
+    (corpus, limit) per census, and one warning per (corpus) per process."""
     key = (TextTruncationCensus.TEXT_BUDGET, corpus)
     if key not in _VENDOR_WARNED:
         _VENDOR_WARNED.add(key)
@@ -872,18 +889,19 @@ def _fit_vendor(
             corpus or "<unnamed>",
             budget.max_tokens,
         )
-        if census is not None:
-            census.record(
-                corpus=corpus,
-                doc_id=BUDGET_DOC_ID,
-                original_tokens=budget.max_tokens,
-                kept_tokens=budget.max_tokens,
-                original_chars=0,
-                kept_chars=0,
-                mechanism=TextTruncationCensus.TEXT_BUDGET,
-                budget_source="vendor",
-                shape=shape,
-            )
+    if census is not None and (corpus, budget.max_tokens) not in census._budget_rows:
+        census._budget_rows.add((corpus, budget.max_tokens))
+        census.record(
+            corpus=corpus,
+            doc_id=BUDGET_DOC_ID,
+            original_tokens=budget.max_tokens,
+            kept_tokens=budget.max_tokens,
+            original_chars=0,
+            kept_chars=0,
+            mechanism=TextTruncationCensus.TEXT_BUDGET,
+            budget_source="vendor",
+            shape=shape,
+        )
     contents: list[ContentParts] = [item if shape != "pair" else (item[0], item[1]) for item in items]
     texts: tuple[str, ...] = () if shape == "pair" else tuple(part for part in contents if isinstance(part, str))
     return FitResult(
@@ -984,6 +1002,12 @@ def fit(
         raise ValueError("media_tokens must be non-negative token counts")
     if tokenizer is None:
         return _fit_vendor(items, shape, budget, names, corpus=corpus, census=census)
+    if budget.tokenizer is not None and tokenizer.name != budget.tokenizer:
+        raise ConfigError(
+            f"fit was given the tokenizer {tokenizer.name!r} but the budget declares {budget.tokenizer!r}: the "
+            "budget's numbers are counted in the declared tokenizer's tokens",
+            hint="load the budget's tokenizer (rcp_ndcg.data.load_tokenizer(budget.tokenizer)) and pass that",
+        )
 
     template = budget.template
     instr = instruction or ""
@@ -1073,7 +1097,9 @@ def fit(
             )
         pieces = split_into_chunks(content, budget.chunk, tokenizer)
         for index, piece in enumerate(pieces):
-            # A slice can re-tokenize longer on its own than it did in place; trim it until the render fits.
+            # A slice can re-tokenize longer on its own than it did in place (a byte-level join can inflate
+            # where the frame meets it); trim it until the render fits. The trimmed tail is counted: the
+            # chunk's own census row records the trimmed kept size against the whole input.
             if tokenizer.count(assemble(query, piece), add_special_tokens=flag) > cap:
                 pieces[index] = _cut_span(piece, query=query, cap=cap)
         return pieces
@@ -1175,11 +1201,19 @@ def fit(
             entries.append((input_id, input_id))
             _record(doc_id=input_id, original=item, kept=kept, aggregation=None)
 
+    out = [entry[0] for entry in entries]
+    if len(set(out)) != len(out):
+        duplicates = sorted({name for name in out if out.count(name) > 1})
+        raise DataError(
+            f"two outputs share an id ({duplicates}): a chunk of one input collides with another input's id, "
+            "and one score would be pooled over the other",
+            hint="pass ids that do not collide with any input id plus its '<id>#<k>' chunks",
+        )
     return FitResult(
         shape=shape,
         texts=tuple(texts),
         contents=tuple(contents),
-        ids=tuple(entry[0] for entry in entries),
+        ids=tuple(out),
         chunk_mapping=dict(entries) if chunked_any else None,
         overhead=overhead,
         budget_source="tokenizer",

@@ -78,6 +78,26 @@ def _empty_doc_pairing(config: EmbeddingEndpoint | RerankEndpoint) -> None:
         raise ValueError(f"empty_doc_text applies to empty_doc 'send_text' only, not {config.empty_doc!r}")
 
 
+def _no_inert_overflow_policies(config: EmbeddingEndpoint | RerankEndpoint) -> None:
+    """Without a tokenizer the content is sent uncut (a hosted vendor profile): an overflow policy that needs
+    one would be silently inert, so it is refused instead of ignored."""
+    if config.tokenizer is not None:
+        return
+    inert: list[str] = []
+    if config.on_overflow != "cut":
+        inert.append("on_overflow")
+    if getattr(config, "query_max_tokens", None) is not None:
+        inert.append("query_max_tokens")
+    if config.chunk is not None:
+        inert.append("chunk")
+    if inert:
+        raise ConfigError(
+            f"{type(config).__name__} declares no tokenizer, so its content is sent uncut (a hosted vendor "
+            f"profile) and {inert} would be inert",
+            hint="declare tokenizer (the profile then cuts like a self-hosted one), or drop the inert fields",
+        )
+
+
 class EmbeddingEndpoint(Endpoint):
     """A dense-embedding endpoint speaking OpenAI ``POST {base_url}/embeddings``.
 
@@ -172,6 +192,7 @@ class EmbeddingEndpoint(Endpoint):
         """A self-hosted role declares its budget (tokenizer and max_tokens); ``send_text`` names its text; a
         chunk geometry belongs to ``on_overflow: chunk`` only."""
         _require_explicit_budget(self)
+        _no_inert_overflow_policies(self)
         _chunk_geometry_matches_overflow(self)
         _empty_doc_pairing(self)
         return self
@@ -292,6 +313,7 @@ class RerankEndpoint(Endpoint):
         """A self-hosted role declares its budget; a query share at or over the budget would leave the
         document nothing to read; ``send_text`` names its text; the chunk geometry matches the overflow."""
         _require_explicit_budget(self)
+        _no_inert_overflow_policies(self)
         _chunk_geometry_matches_overflow(self)
         if (
             self.query_max_tokens is not None

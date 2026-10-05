@@ -14,9 +14,9 @@ prefixes, role markers, the end-of-turn marker the score is pooled from. That fr
 
 The template also declares the model's **anchor** (:attr:`TemplateSpec.anchor`): the fixed position the
 model reads its output from (``last``, ``first``, ``mean`` or a ``marker`` id). The anchor is why the
-budget reserves every fixed token: p-text's binding finding (mmmv commit 302b1c9d) is that a cut of the
-rendered prompt drops exactly these tokens, and a model pooled from the last token then reads an
-arbitrary interior one. ``fit`` renders, measures, cuts spans only, and re-attaches the frame.
+budget reserves every fixed token: a cut of the rendered prompt drops exactly these tokens, and a model
+pooled from the last token then reads an arbitrary interior one -- the defect class the anchors exist to
+prevent. ``fit`` renders, measures, cuts spans only, and re-attaches the frame.
 
 One more declaration rides with the template: ``add_special_tokens`` per shape -- what the engine does
 to the rendered string for that route (vLLM's pooling and scoring routes add the tokenizer's

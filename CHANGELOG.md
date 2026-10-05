@@ -39,16 +39,20 @@ released together.
   the new `text_budget` mechanism with `budget_source` and -- on chunked inputs -- the `max` aggregation. The
   tokenizer's SHA-256 is content (`TextBudget.identity(tokenizer)`), its name runtime; the template's canonical
   JSON is content. A hosted vendor profile without a tokenizer sends content uncut: its documented limit is
-  recorded as the effective budget (`budget_source: vendor`, one warning per run).
+  recorded as the effective budget (`budget_source: vendor`; one row per (corpus, budget) per census, one
+  warning per corpus per process).
 - The role endpoint configs gain the text-budget fields (all CONTENT): `template`, `on_overflow`
   (`cut | chunk | fail`), `chunk`, `aggregation` (`max`), `empty_doc` (`send | omit_zero | send_text`, with
   `empty_doc_text`), and `request_shape` (`text | messages | token_ids`); `RerankEndpoint.instruction` gains
   `system`. A self-hosted role config (`api` in the new `rcp_ndcg.inference.SELF_HOSTED_APIS`:
   `openai_embeddings`, `vllm_pooling`, `rerank`) must declare `tokenizer` and `max_tokens` -- without them it is
   refused with a `ConfigError` whose hint shows the two fields; a hosted vendor profile may declare only
-  `max_tokens` (its documented limit), and a tokenizer without a number is refused for every role.
+  `max_tokens` (its documented limit), a tokenizer without a number is refused for every role, and a profile
+  without a tokenizer refuses the overflow policies that would be inert without one (`on_overflow` other than
+  `cut`, `query_max_tokens`, `chunk`).
   `RerankEndpoint` refuses `query_max_tokens >= max_tokens` (the document's share would be non-positive), and
-  `TextBudget` refuses it wherever the budget is resolved.
+  `TextBudget` refuses it wherever the budget is resolved. `fit` refuses a tokenizer other than the one the
+  budget declares and output ids that collide (one score would be pooled over the other).
 - `rcp_ndcg.data` exports `TextBudget`, `TemplateSpec`, `Segment`, `FitResult` and `fit`;
   `rcp_ndcg.data.preprocess` additionally exports `BUDGET_DOC_ID`, `ContentParts` and
   `TextBudgetExceededError` (a `DataError`); `rcp_ndcg.inference` exports `SELF_HOSTED_APIS`.

@@ -4,7 +4,7 @@ The mechanism (:func:`rcp_ndcg.data.preprocess.fit`) renders a declared template
 template's fixed overhead once per (template, shape), cuts only the content spans within the
 remaining budget, re-attaches the template, and records every cut. These tests pin what the review
 lanes found: every anchor a model reads its output from survives a cut at its declared position
-(the zembed defect class: a right cut of the whole rendered prompt loses them), inputs under
+(the wrapped-prompt defect class: a right cut of the whole rendered prompt loses them), inputs under
 budget are byte-identical to the uncut render, the pair split honours ``query_max_tokens``,
 chunks carry the full template and their census rows name the ``max`` aggregation, self-hosted
 budgets are explicit, and a hosted vendor profile without a tokenizer records ``budget_source:
@@ -26,7 +26,7 @@ from rcp_ndcg.data.preprocess import (
     max_pool_scores_by_document,
 )
 from rcp_ndcg.data.templates import Segment, TemplateSpec
-from rcp_ndcg.errors import ConfigError
+from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.support.identity import check_declarations, identity_payload
 from tests._tokenizers import framed_bpe_tokenizer, word_tokenizer
 
@@ -46,7 +46,7 @@ LONG = (
 
 
 def query_template() -> TemplateSpec:
-    """Query shape with a trailing suffix anchor (the zembed shape: pooled from the last token)."""
+    """Query shape with a trailing suffix anchor (a last-token pooler reads its output there)."""
     return TemplateSpec(query=(Segment(fixed="Query: "), Segment(content="query"), Segment(fixed="{special:end_turn}")))
 
 
@@ -453,6 +453,50 @@ class TestVendorBudget:
         assert result.texts == ()
         assert result.contents == (("the query", "the document"),)
 
+    def test_the_vendor_budget_row_is_recorded_when_a_census_arrives_later(self) -> None:
+        """The budget row is a fact of the run, not of the first batch: a census attached after an earlier
+        call still gets its row (the warning stays once per corpus, the record per census)."""
+        vendor = TextBudget(tokenizer=None, max_tokens=4096)
+        fit([LONG], shape="document", budget=vendor, corpus="c")  # no census here
+        census = TextTruncationCensus()
+        fit([LONG], shape="document", budget=vendor, corpus="c", census=census)
+        rows = census.cuts()
+        assert len(rows) == 1 and rows[0].as_row()["budget_source"] == "vendor"
+        fit([LONG], shape="document", budget=vendor, corpus="c", census=census)  # batching: still one row
+        assert len(census.cuts()) == 1
+
+    def test_a_budget_without_a_tokenizer_refuses_inert_policies(self) -> None:
+        """Nothing is defaulted silently: chunk/fail and a query split are inert without a tokenizer."""
+        with pytest.raises(ConfigError, match="uncut"):
+            TextBudget(
+                tokenizer=None, max_tokens=4096, on_overflow="chunk", chunk=ChunkPolicy(max_tokens=8, overlap_tokens=0)
+            )
+        with pytest.raises(ConfigError, match="uncut"):
+            TextBudget(tokenizer=None, max_tokens=4096, on_overflow="fail")
+        with pytest.raises(ConfigError, match="uncut"):
+            TextBudget(tokenizer=None, max_tokens=4096, query_max_tokens=64)
+
+    def test_the_budget_refuses_a_different_tokenizer_than_it_declares(self) -> None:
+        vendor_named = TextBudget(tokenizer="test/framed-bpe", max_tokens=24)
+        with pytest.raises(ConfigError, match="tokenizer"):
+            fit([LONG], shape="document", budget=vendor_named, tokenizer=WORDS)
+        same = fit([LONG], shape="document", budget=vendor_named, tokenizer=FRAMED)
+        assert same.budget_source == "tokenizer"
+
+    def test_duplicate_output_ids_are_refused(self) -> None:
+        """Two outputs with one id would pool one score over the other (chunk_ranking_example refuses the
+        same collision)."""
+        chunked = TextBudget(
+            tokenizer="test/framed-bpe",
+            max_tokens=64,
+            template=document_template(),
+            on_overflow="chunk",
+            chunk=ChunkPolicy(max_tokens=10, overlap_tokens=2),
+        )
+        with pytest.raises(DataError, match="a#0"):
+            # The first input chunks into 'a#0', colliding with the second input's own id.
+            fit([LONG, "the query"], shape="document", budget=chunked, tokenizer=FRAMED, ids=["a", "a#0"])
+
 
 class TestMediaHook:
     def test_media_tokens_are_reserved_and_never_cut(self) -> None:
@@ -509,13 +553,13 @@ class TestIdentityAndFamilies:
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# The zembed defect class: cutting the whole render from the right
+# The wrapped-prompt defect class: cutting the whole render from the right
 # ---------------------------------------------------------------------------------------------------------------
 
 
 class TestTheZembedDefectClass:
     def test_cutting_the_whole_render_from_the_right_loses_the_anchor_and_fit_does_not(self) -> None:
-        """The mutation: render, then keep the first ``max_tokens`` ids -- the zembed defect.
+        """The mutation: render, then keep the first ``max_tokens`` ids -- the wrapped-prompt defect.
 
         The anchor test below is red for the defective ids and green for the mechanism's, which is
         what pins this lane's rule: the cut applies to the content spans only, and the template is
@@ -524,7 +568,7 @@ class TestTheZembedDefectClass:
         spec = pair_template()
         pair = ("the query", LONG)
         # The defective algorithm: render the whole prompt, then keep its first 64 ids (a right cut of the
-        # rendered prompt at the cap -- the zembed defect, and today's engine-side truncation).
+        # rendered prompt at the cap -- the wrapped-prompt defect, and today's engine-side truncation).
         rendered = spec.render("pair", FRAMED, query=pair[0], document=pair[1])
         defective = FRAMED.ids(rendered, add_special_tokens=spec.adds_special_tokens("pair"))[:64]
         anchor = FRAMED.special_id(END_TURN_NAME)

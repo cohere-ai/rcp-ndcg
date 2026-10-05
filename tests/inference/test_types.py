@@ -400,6 +400,31 @@ class TestTextBudgetFields:
         )
         assert identity_payload(config)["empty_doc_text"] == "NULL"
 
+    def test_a_hosted_profile_without_a_tokenizer_refuses_inert_overflow_policies(self) -> None:
+        """Without a tokenizer the content is sent uncut: chunk/fail and a query split would be inert."""
+        with pytest.raises(ConfigError, match="uncut"):
+            EmbeddingEndpoint(model="m", api="cohere", max_tokens=1024, on_overflow="chunk")
+        with pytest.raises(ConfigError, match="uncut"):
+            RerankEndpoint(
+                model="m",
+                api="cohere",
+                max_tokens=1024,
+                on_overflow="chunk",
+                chunk={"max_tokens": 8, "overlap_tokens": 0},
+            )
+        with pytest.raises(ConfigError, match="uncut"):
+            RerankEndpoint(model="m", api="cohere", max_tokens=1024, query_max_tokens=64)
+        # With a tokenizer the same policies are declared and live.
+        hosted_with_tokenizer = EmbeddingEndpoint(
+            model="m",
+            api="cohere",
+            tokenizer="test/tokenizer",
+            max_tokens=1024,
+            on_overflow="chunk",
+            chunk={"max_tokens": 256, "overlap_tokens": 0},
+        )
+        assert hosted_with_tokenizer.chunk is not None
+
     def test_an_instruction_can_be_a_system_message(self) -> None:
         config = RerankEndpoint(model="m", tokenizer="t", max_tokens=8192, instruction="system")
         assert config.instruction == "system"

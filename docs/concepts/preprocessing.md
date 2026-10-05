@@ -178,12 +178,14 @@ prefixes, role markers, and the end-of-turn token its score is pooled from. That
 package implements everywhere text is cut: a model reads its output from fixed positions of its template, so a cut
 must apply to the content spans only, inside a budget computed after reserving every fixed template token, and the
 template must be re-attached after the cut. A right cut of a whole rendered prompt drops tail anchors, a left cut
-drops head anchors -- which is why the package never asks an engine to truncate (`truncate_prompt_tokens`,
+drops head anchors -- which is why no role config declares an engine-truncation field (`truncate_prompt_tokens`
 `--allow-auto-truncate` and their relatives are absent from the role configs by design), and why the fixed overhead
 is measured rather than guessed.
 
 One mechanism does this for every role: the declared :class:`~rcp_ndcg.data.TextBudget` and
-:func:`~rcp_ndcg.data.preprocess.fit`.
+:func:`~rcp_ndcg.data.preprocess.fit`. The role configs carry no engine-truncation field
+(`truncate_prompt_tokens` and `truncation_side` are absent from them by design): the package cuts the content
+itself, and an engine-side truncation of a rendered prompt is exactly the cut this rule forbids.
 
 ### The template as data
 
@@ -218,8 +220,9 @@ form does not). The budget reserves those tokens too: they are part of the measu
 ### The budget and the fit
 
 The budget names the tokenizer, the `max_tokens` (the model's whole input sequence, in that tokenizer's tokens),
-optionally `query_max_tokens` (the query's share of a pair budget: the query is cut to it first, the document
-gets the rest), `on_overflow` (`cut` by default, `chunk` or `fail` opt-in), the chunk geometry, and
+optionally `query_max_tokens` (the query's share of a pair budget: when a pair overflows, the query is cut to it
+first and the document gets the rest -- an input under budget goes out unchanged, so the share binds on
+overflow), `on_overflow` (`cut` by default, `chunk` or `fail` opt-in), the chunk geometry, and
 `aggregation: max`. `fit` then, per input:
 
 1. measures the fixed overhead once per (template, shape): the template rendered with every content span empty,
