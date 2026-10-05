@@ -35,6 +35,19 @@ def _scratch_auth(tmp_path: Path) -> Path:
     return path
 
 
+def _env(tmp_path: Path) -> dict[str, str]:
+    """The submit environment: config and auth paths from scratch, no machine paths."""
+    config = tmp_path / "config.yaml"
+    config.write_text("worker: {cpu: 1}\n", encoding="utf-8")
+    return {
+        "PATH": "/usr/bin:/bin",
+        "KJOBS": "echo",
+        "RCP_KJOBS_CONFIG": str(config),
+        "RCP_GCS_AUTH_FILE": str(_scratch_auth(tmp_path)),
+        "EXTRA_DIRS": "",
+    }
+
+
 def test_submit_prints_the_expected_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """KJOBS=echo prints the staged upload and the job submission without running either."""
     if subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=JOBS.parent.parent.parent,
@@ -54,12 +67,7 @@ def test_submit_prints_the_expected_argv(tmp_path: Path, monkeypatch: pytest.Mon
         ],  # fmt: skip
         capture_output=True,
         text=True,
-        env={
-            "PATH": "/usr/bin:/bin",
-            "KJOBS": "echo",
-            "GCS_AUTH_FILE": str(_scratch_auth(tmp_path)),
-            "EXTRA_DIRS": "",
-        },
+        env=_env(tmp_path),
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     lines = [line for line in completed.stdout.splitlines() if line.strip()]
@@ -77,3 +85,46 @@ def test_submit_prints_the_expected_argv(tmp_path: Path, monkeypatch: pytest.Mon
     assert f"files.bootstrap.from_file={JOBS / 'bootstrap.sh'}" in submission_words
     assert f"files.gcsauth.from_file={tmp_path / 'gcs_auth.sh'}" in submission_words
     assert "files.gcsauth.mount_path=/etc/rcp/gcs_auth.sh" in submission_words
+    config_flag = submission_words[submission_words.index("-f") + 1]
+    assert config_flag == str(tmp_path / "config.yaml")  # RCP_KJOBS_CONFIG, not a default path
+
+
+def test_submit_fails_with_a_usage_message_without_the_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No defaults: the script refuses to run without RCP_KJOBS_CONFIG / RCP_GCS_AUTH_FILE."""
+    recipes = tmp_path / "recipes.txt"
+    recipes.write_text("fixture-embed\n", encoding="utf-8")
+    monkeypatch.chdir(JOBS.parent.parent.parent)
+    env = _env(tmp_path)
+    for missing in ("RCP_KJOBS_CONFIG", "RCP_GCS_AUTH_FILE"):
+        broken = {key: value for key, value in env.items() if key != missing}
+        completed = subprocess.run(
+            ["bash", str(SUBMIT), "w", str(recipes), "gs://b/stage", "gs://b/waves"],
+            capture_output=True,
+            text=True,
+            env=broken,
+        )
+        assert completed.returncode != 0, (missing, completed.stdout)
+        assert missing in completed.stderr
+
+
+def test_bootstrap_derives_its_light_dependencies_from_the_manifests(tmp_path: Path) -> None:
+    """bootstrap.sh reads the packages' pyproject.toml files (tomllib) instead of a hand-mirrored list."""
+
+    script = (JOBS / "bootstrap.sh").read_text(encoding="utf-8")
+    start = script.index('python3 - "$1" <<')
+    body = script[script.index("\n", start) + 1 :]
+    body = body[: body.index("\nPY\n")]
+    script_path = tmp_path / "light_deps.py"
+    script_path.write_text(body, encoding="utf-8")
+    completed = subprocess.run(
+        ["python", str(script_path), str(JOBS.parent.parent.parent)],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin"},
+    )
+    assert completed.returncode == 0, completed.stderr
+    derived = completed.stdout.split()
+    assert "bm25s==0.2.13" in derived  # pinned, exactly as the root manifest pins it
+    assert any(dependency.startswith("sentence-transformers") for dependency in derived)
+    assert all("torch" not in dependency for dependency in derived)  # the image provides it
+    assert "pandas" in " ".join(derived) and "scipy" in " ".join(derived)

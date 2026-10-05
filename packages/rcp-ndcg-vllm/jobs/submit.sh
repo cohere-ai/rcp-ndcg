@@ -8,11 +8,11 @@
 #     STAGE_PREFIX   gs://YOUR-BUCKET/stage - the tarball goes to <STAGE_PREFIX>/<WAVE_NAME>/code.tar.gz
 #     OUT_PREFIX     gs://YOUR-BUCKET/waves, the outputs' parent; the wave uploads to <OUT_PREFIX>/<WAVE_NAME>
 #
-# Environment:
-#   EXTRA_DIRS      space-separated extra directories to add to the tarball (pairs files, plugins), copied as-is
-#   GCS_AUTH_FILE   the auth script mounted at /etc/rcp/gcs_auth.sh (default: the jobs directory's)
-#   KJOBS           the job CLI, "kjobs-go" by default; KJOBS=echo prints every command instead of running it
-#   CONFIG          the job config file (default: /root/repos/rcp-ndcg/jobs/config.yaml)
+# Environment (required, no defaults: this script must not name any machine's paths):
+#   EXTRA_DIRS        space-separated extra directories to add to the tarball (pairs files, plugins), copied as-is
+#   RCP_KJOBS_CONFIG  the job-CLI config file (the job CLI's -f argument)
+#   RCP_GCS_AUTH_FILE the auth script mounted at /etc/rcp/gcs_auth.sh on the node; named, never read or printed
+#   KJOBS             the job CLI, "kjobs-go" by default; KJOBS=echo prints every command instead of running it
 #
 # This script never reads, prints or renders the auth file: it only names its path for the mount.
 
@@ -23,10 +23,19 @@ RECIPES_FILE="${2:?usage: submit.sh <WAVE_NAME> <RECIPES_FILE> <STAGE_PREFIX> <O
 STAGE_PREFIX="${3:?usage: submit.sh <WAVE_NAME> <RECIPES_FILE> <STAGE_PREFIX> <OUT_PREFIX>}"
 OUT_PREFIX="${4:?usage: submit.sh <WAVE_NAME> <RECIPES_FILE> <STAGE_PREFIX> <OUT_PREFIX>}"
 
+: "${RCP_KJOBS_CONFIG:?set RCP_KJOBS_CONFIG to the job-CLI config file (the -f argument)}"
+: "${RCP_GCS_AUTH_FILE:?set RCP_GCS_AUTH_FILE to the auth script to mount at /etc/rcp/gcs_auth.sh}"
+[[ -f "$RCP_KJOBS_CONFIG" ]] || {
+  echo "submit.sh: no config file at $RCP_KJOBS_CONFIG (RCP_KJOBS_CONFIG)" >&2
+  exit 2
+}
+[[ -f "$RCP_GCS_AUTH_FILE" ]] || {
+  echo "submit.sh: no auth file at $RCP_GCS_AUTH_FILE (RCP_GCS_AUTH_FILE; it is only named, never read)" >&2
+  exit 2
+}
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KJOBS="${KJOBS:-kjobs-go}"
-CONFIG="${CONFIG:-/root/repos/rcp-ndcg/jobs/config.yaml}"
-GCS_AUTH_FILE="${GCS_AUTH_FILE:-/root/repos/rcp-ndcg/jobs/gcs_auth.sh}"
 
 STAGE_URI="${STAGE_PREFIX%/}/$WAVE_NAME/code.tar.gz"
 OUT_URI="${OUT_PREFIX%/}/$WAVE_NAME"
@@ -62,9 +71,9 @@ tar -czf "$STAGE/code.tar.gz" -C "$STAGE/code" .
 
 run gcloud storage cp "$STAGE/code.tar.gz" "$STAGE_URI"
 
-run "$KJOBS" submit -f "$CONFIG" \
+run "$KJOBS" submit -f "$RCP_KJOBS_CONFIG" \
   "app=$JOB_NAME" \
   "worker.command=/bin/bash /etc/rcp/files/bootstrap/bootstrap.sh $STAGE_URI $OUT_URI" \
   "files.bootstrap.from_file=$HERE/bootstrap.sh" \
-  "files.gcsauth.from_file=$GCS_AUTH_FILE" \
+  "files.gcsauth.from_file=$RCP_GCS_AUTH_FILE" \
   "files.gcsauth.mount_path=/etc/rcp/gcs_auth.sh"

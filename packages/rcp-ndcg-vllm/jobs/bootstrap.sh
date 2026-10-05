@@ -36,6 +36,52 @@ fetch() { # one download, gcloud first and gsutil as the fallback
   gcloud storage cp "$1" "$2" || gsutil cp "$1" "$2"
 }
 
+derive_light_deps() { # the non-image dependencies of the three packages, read from their pyproject.toml files
+  python3 - "$1" <<'PY'
+"""Derive the light dependencies from the manifests (tomllib), not from a hand-mirrored list."""
+
+import re
+import sys
+import tomllib
+from pathlib import Path
+
+root = Path(sys.argv[1])
+IMAGE_PROVIDED = {
+    # the stock engine image carries the whole heavy stack; pip never touches these
+    "vllm", "torch", "torchvision", "transformers", "safetensors", "tokenizers",
+    "numpy", "pydantic", "pydantic-core", "pyyaml", "httpx", "jinja2",
+    "aiohttp", "pillow", "tqdm", "fsspec",
+}
+requirements: list[str] = []
+for manifest in (
+    root / "pyproject.toml",
+    root / "packages" / "rcp-ndcg-core" / "pyproject.toml",
+    root / "packages" / "rcp-ndcg-vllm" / "pyproject.toml",
+):
+    if not manifest.is_file():
+        continue
+    data = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    requirements.extend(data["project"]["dependencies"])
+    if manifest.name == "pyproject.toml" and manifest.parent.name != "rcp-ndcg-core":
+        pass
+# The reference extra of this package, whose torch/transformers the image provides but
+# sentence-transformers it does not.
+vllm_manifest = tomllib.loads((root / "packages" / "rcp-ndcg-vllm" / "pyproject.toml").read_text())
+requirements += vllm_manifest["project"].get("optional-dependencies", {}).get("reference", [])
+requirements += vllm_manifest["project"].get("optional-dependencies", {}).get("metrics", [])
+
+out: list[str] = []
+for requirement in requirements:
+    name = re.split(r"[\s;\[<>=!~]", requirement, maxsplit=1)[0].strip().lower()
+    if name in IMAGE_PROVIDED or name in {"rcp-ndcg", "rcp-ndcg-core"}:
+        continue  # the image provides it, or the tarball install above already put it in
+    requirement = re.sub(r"\s*;.*$", "", requirement).strip()  # drop environment markers
+    if requirement and requirement not in out:
+        out.append(requirement)
+print(" ".join(out))
+PY
+}
+
 mkdir -p "$WORK/code"
 fetch "$STAGE_URI" "$WORK/code.tar.gz"
 tar -xzf "$WORK/code.tar.gz" -C "$WORK/code"
@@ -52,10 +98,12 @@ pip install --no-deps \
 # carry, from the public index - constrained to the image's own torch and transformers so pip cannot replace them.
 pip freeze | grep -iE '^(torch|torchvision|transformers)==' >"$WORK/constraints.txt" || true
 pip install --no-deps "$WORK/code"
-# rcp-ndcg's remaining runtime dependencies, which the image does not carry. The list mirrors the root
-# pyproject.toml's dependencies; bm25s is pinned there and repeated here. Edit both together.
-pip install --constraint "$WORK/constraints.txt" pandas scipy pyarrow "bm25s==0.2.13" PyStemmer click tqdm \
-  python-dotenv openai fsspec gcsfs Pillow sentence-transformers jinja2
+# The light dependencies, derived from the packages' own pyproject.toml files at run time (never hand-mirrored):
+# root (rcp-ndcg) + core + this package's base deps and reference extra, minus everything the image provides.
+read -r -a LIGHT_DEPS <<<"$(derive_light_deps "$WORK/code")"
+if (( ${#LIGHT_DEPS[@]} )); then
+  pip install --constraint "$WORK/constraints.txt" "${LIGHT_DEPS[@]}"
+fi
 
 # A wave may ship vllm.general_plugins plugin packages; plugins.txt lists their directories, one per line.
 if [[ -f "$WORK/code/plugins.txt" ]]; then
