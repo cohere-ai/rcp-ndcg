@@ -30,6 +30,7 @@ closed list :data:`WarningCode`; the CLI puts them into the ``warnings`` of its 
 
 from __future__ import annotations
 
+import os
 import sys
 from collections.abc import Mapping
 from enum import IntEnum
@@ -278,10 +279,11 @@ def _subclasses(cls: type[RcpNdcgError]) -> list[type[RcpNdcgError]]:
     return found
 
 
-def _named(exc: BaseException, module: str, *names: str) -> bool:
+def _named(exc: BaseException | None, module: str, *names: str) -> bool:
     """Whether *exc* is an instance of one of ``module.names``, without importing *module*.
 
-    A foreign exception can only come from a module that is already loaded, so an absent module means "no".
+    A foreign exception can only come from a module that is already loaded, so an absent module means "no";
+    so does a ``None`` cause (an exception raised with nothing chained under it).
     """
     loaded = sys.modules.get(module)
     if loaded is None:
@@ -302,6 +304,10 @@ def classify(exc: BaseException) -> RcpNdcgError:
     * connection failures, timeouts and rate limits (``httpx``, ``openai``, built-in) are :class:`ProviderError`;
       rejected credentials (``openai``, gated Hub repositories) are :class:`CredentialsError`; a Hub repository,
       file or revision that does not exist is :class:`MissingInputError`;
+    * a Hub download that found neither the file nor a usable cache entry (``LocalEntryNotFoundError``) is read
+      from its cause (``__cause__`` / ``__context__``): offline with nothing to resolve is a non-retryable
+      :class:`MissingInputError` whose hint pins ``--revision <full sha>``; a Hub that cannot be reached is a
+      retryable :class:`ProviderError`;
     * ``KeyboardInterrupt`` is :class:`Interrupted`.
 
     Everything else, including a bare ``ValueError`` or ``TypeError``, is an unexpected failure (exit 1): code
@@ -324,8 +330,32 @@ def classify(exc: BaseException) -> RcpNdcgError:
     if isinstance(exc, ImportError) and _INSTALL_MARKER in str(exc):
         text = str(exc)
         return DependencyError(text, hint=text[text.find("pip install") :] if "pip install" in text else None)
-    # before FileNotFoundError, which it subclasses: an offline cache miss is not a missing file
+    # before FileNotFoundError, which it subclasses: an offline cache miss is not a missing file.
+    # The library raises LocalEntryNotFoundError for every Hub failure it cannot answer from the local cache,
+    # chaining the real cause; the cause says what a caller should do, the message alone does not.
     if _named(exc, "huggingface_hub.errors", "LocalEntryNotFoundError"):
+        cause = exc.__cause__ or exc.__context__
+        # Offline with nothing to resolve: OfflineModeIsEnabled (a ConnectionError subclass, so told apart
+        # before any transport check) with no resolvable commit, or the offline flag with no cause at all.
+        offline_with_nothing_to_resolve = _named(cause, "huggingface_hub.errors", "OfflineModeIsEnabled") or (
+            cause is None and os.environ.get("HF_HUB_OFFLINE", "").strip().lower() in {"1", "true", "yes", "on"}
+        )
+        if not offline_with_nothing_to_resolve and (
+            _named(cause, "httpx", "TransportError")
+            or _named(cause, "requests", "ConnectionError", "Timeout", "ConnectTimeout", "ReadTimeout")
+            or isinstance(cause, ConnectionError | TimeoutError)
+        ):
+            return ProviderError(
+                name,
+                hint="the Hugging Face Hub could not be reached; check connectivity and HF_ENDPOINT, then retry",
+            )
+        if offline_with_nothing_to_resolve:
+            return MissingInputError(
+                name,
+                hint="the Hub is unreachable offline (HF_HUB_OFFLINE) and the cache cannot resolve the revision: "
+                "pass --revision <full sha> (the cache was filled by a commit-pinned download), or run once "
+                "online to fill it",
+            )
         return MissingInputError(
             name,
             hint="the file is not in the local Hub cache and Hub access is off (HF_HUB_OFFLINE); "

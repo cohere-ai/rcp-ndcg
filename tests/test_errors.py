@@ -13,7 +13,15 @@ from pydantic import BaseModel, ValidationError
 
 import rcp_ndcg
 from rcp_ndcg import errors
-from rcp_ndcg.errors import DataError, ExitCode, RcpNdcgError, RcpNdcgWarning, classify
+from rcp_ndcg.errors import (
+    DataError,
+    ExitCode,
+    MissingInputError,
+    ProviderError,
+    RcpNdcgError,
+    RcpNdcgWarning,
+    classify,
+)
 
 
 def _validation_error() -> ValidationError:
@@ -123,6 +131,61 @@ def test_an_offline_cache_miss_is_not_reported_as_a_missing_file() -> None:
     assert offline.exit_code == missing.exit_code == ExitCode.MISSING_INPUT
     assert "HF_HUB_OFFLINE" in (offline.hint or "")
     assert "HF_HUB_OFFLINE" not in (missing.hint or "")
+
+
+def _chained(exc: BaseException, cause: BaseException) -> BaseException:
+    """`raise exc from cause`, the way huggingface_hub chains the failure its download hit."""
+    try:
+        raise exc from cause
+    except BaseException as raised:
+        return raised
+
+
+def test_an_offline_cache_miss_with_nothing_to_resolve_names_the_revision_fix() -> None:
+    """Offline, a cache miss with no resolvable commit is not retryable and pins the commit as the fix."""
+    hub_errors = pytest.importorskip("huggingface_hub.errors")
+    raised = _chained(
+        hub_errors.LocalEntryNotFoundError("An error happened while trying to locate the file on the Hub"),
+        hub_errors.OfflineModeIsEnabled("offline mode is enabled"),
+    )
+
+    error = classify(raised)
+
+    assert isinstance(error, MissingInputError)
+    assert error.retryable is False
+    assert "--revision" in (error.hint or "")
+    assert "full sha" in (error.hint or "")
+
+
+def _unreachable_hub_causes() -> list[BaseException]:
+    """The connection failures huggingface_hub chains under a cache miss (httpx, requests, sockets)."""
+    import httpx
+
+    causes: list[BaseException] = [httpx.ConnectError("connection refused"), httpx.TimeoutException("timed out")]
+    try:
+        from requests.exceptions import ConnectionError as RequestsConnectionError
+
+        causes.append(RequestsConnectionError("connection refused"))
+    except ImportError:  # pragma: no cover - requests ships with the hf extra's older lines
+        pass
+    return causes
+
+
+@pytest.mark.parametrize("cause", _unreachable_hub_causes(), ids=lambda cause: type(cause).__name__)
+def test_an_unreachable_hub_behind_a_cache_miss_is_a_retryable_provider_error(
+    cause: BaseException,
+) -> None:
+    hub_errors = pytest.importorskip("huggingface_hub.errors")
+    raised = _chained(
+        hub_errors.LocalEntryNotFoundError("An error happened while trying to locate the file on the Hub"),
+        cause,
+    )
+
+    error = classify(raised)
+
+    assert isinstance(error, ProviderError)
+    assert error.retryable is True
+    assert "HF_ENDPOINT" in (error.hint or "")
 
 
 def test_a_provider_failure_names_the_concurrency_setting_that_exists() -> None:
