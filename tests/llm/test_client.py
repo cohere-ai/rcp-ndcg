@@ -123,9 +123,6 @@ class TestConfig:
         assert endpoint.requests[0]["temperature"] == 0.3
 
     def test_a_replaced_config_keeps_the_failures_of_the_wire_it_replaces(self) -> None:
-        def refuse(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(401, json={"error": {"message": "no"}})
-
         client = JudgeClient(
             JudgeConfig(base_url="http://judge.test/v1", model="m", max_retries=0, api_key_env=None),
             httpx_transport=httpx.MockTransport(lambda request: httpx.Response(401, json={"error": {"message": "x"}})),

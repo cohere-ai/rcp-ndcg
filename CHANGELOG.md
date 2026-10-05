@@ -332,7 +332,8 @@ released together.
   `openai_chat` wire adapter, so the package ships one HTTP stack, one retry policy and one error mapping.
   What the judge sent and read is unchanged (the request body, the reasoning channel, the refusals and the
   usage), the judgement family keys do not move, and the only visible difference is the retry delays, which
-  now follow the transport's policy. `requirements-constraints.txt` no longer carries `openai`, `httpx2` or
+  now follow the transport's policy. One reading edge, declared: the adapter reads an answer's **first**
+  choice, where the SDK era read the last; the judge never sends a `n` above 1, so no shipped answer moves. `requirements-constraints.txt` no longer carries `openai`, `httpx2` or
   `jiter`; in `uv.lock` the two remain only as the `[vllm]` extra's engine package's own dependency.
 
 ## 0.1.0

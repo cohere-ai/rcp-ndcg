@@ -560,7 +560,8 @@ class Transport:
 
         Synchronous, so a caller of :meth:`run` can clean up without an event loop of its own: the async close
         runs on the pool's own loop. Called from the loop the pool serves (an async caller), the close is
-        scheduled instead of blocking that loop on itself. A later :meth:`run` builds a fresh pool.
+        scheduled instead of blocking that loop on itself. A pool whose loop has since closed is dropped, not
+        closed: its connections died with the loop. A later :meth:`run` builds a fresh pool.
         """
         pool, loop = self._pool, self._loop
         self._pool = None
