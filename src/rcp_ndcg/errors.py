@@ -174,6 +174,59 @@ class CapabilityError(RcpNdcgError):
     exit_code = ExitCode.CAPABILITY
 
 
+#: The HTTP statuses that say "this endpoint cannot serve right now", not "this request is wrong"
+#: (a read or connect timeout, a rate limit). Connection errors and timeouts carry no status: the transport
+#: decides those from the exception type.
+UNAVAILABLE_STATUSES: frozenset[int] = frozenset({408, 429})
+
+
+def status_is_unavailable(status: int) -> bool:
+    """Whether the HTTP status says the endpoint cannot serve right now (408, 429, any 5xx).
+
+    One half of the shared status map: the transport retries such a reply, then sets the replica aside and
+    parks while every replica is down. 401, 403 and 404 are typed errors (:func:`status_error`); every other
+    4xx is returned to the wire adapter as a reply. Connection errors and timeouts carry no status: the
+    transport maps them to unavailability directly.
+    """
+    return status >= 500 or status in UNAVAILABLE_STATUSES
+
+
+def status_error(status: int, *, url: str, path: str, model: str, body: str) -> RcpNdcgError | None:
+    """The typed error of an HTTP status the transport raises on, or ``None`` for one it returns as a reply.
+
+    The other half of the status map (:func:`status_is_unavailable` holds the outage statuses): 401 and 403
+    are a :class:`CredentialsError`, 404 a non-retryable :class:`ProviderError` naming the URL and the model,
+    and every other 4xx is ``None`` -- the adapter reads the reply and raises its own role-specific error. An
+    outage status (408, 429, 5xx) never reaches this map -- the transport retries and parks instead;
+    defensively, it maps to a retryable :class:`ProviderError` here.
+
+    Args:
+        status: The HTTP status of the reply.
+        url: The replica's base URL (a 404 names it).
+        path: The request path (a 404 names it).
+        model: The endpoint's served model name (a 404 names it).
+        body: The response body as text, for the message; header values never enter it.
+
+    Returns:
+        The typed error to raise, or ``None`` when the status is a reply for the adapter to interpret (2xx,
+        3xx, and every 4xx outside the map).
+    """
+    if status in (401, 403):
+        return CredentialsError(
+            f"the endpoint refused the credentials (HTTP {status}: {body})",
+            details={"status": status, "url": url},
+        )
+    if status == 404:
+        return ProviderError(
+            f"{url}{path} has no such route or model for {model!r} (HTTP 404: {body})",
+            retryable=False,
+            details={"status": 404, "url": url, "path": path, "model": model},
+        )
+    if status_is_unavailable(status):
+        return ProviderError(f"{url}{path} answered HTTP {status}: {body}", details={"status": status, "url": url})
+    return None
+
+
 class Interrupted(RcpNdcgError):
     """The process was interrupted (SIGINT or SIGTERM). The state on disk is consistent; resume it."""
 
@@ -457,6 +510,7 @@ def classify(exc: BaseException) -> RcpNdcgError:
 
 __all__ = [
     "EXTRA_FOR_MODULE",
+    "UNAVAILABLE_STATUSES",
     "WARNING_CODES",
     "BackendUnavailableError",
     "CapabilityError",
@@ -477,4 +531,6 @@ __all__ = [
     "classify",
     "dependency_error",
     "error_class",
+    "status_error",
+    "status_is_unavailable",
 ]

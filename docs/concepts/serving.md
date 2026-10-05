@@ -18,8 +18,9 @@ command, verbatim, beside the run's job (on SLURM without a container runtime, y
 | `max_output_tokens`, `extra_body` | the completion cap (reasoning included) and further request fields, e.g. `reasoning_effort` |
 | `context_tokens` | the model's context window; sets the per-window text budget, counted with the judge's `tokenizer` ([preprocessing](preprocessing.md)) |
 | `tokenizer` | the model's Hugging Face repo id (optionally `@revision`) or a `tokenizer.json` path; text limits, the window budget and estimates count its tokens ([preprocessing](preprocessing.md)); without one nothing is cut and estimates approximate |
-| `concurrency`, `timeout_s`, `connect_timeout_s`, `max_retries` | the transport; `concurrency` is shared by all replicas |
+| `concurrency`, `timeout_s`, `connect_timeout_s`, `max_retries` | the transport ([the inference layer](inference.md)); `concurrency` is shared by all replicas |
 | `api_key_env` | the environment variable that holds the API key; the key itself is never written anywhere |
+| `headers_env` | extra headers (e.g. a gateway key), each value read from its environment variable at send time, never from a config, and never logged ([the inference layer](inference.md)) |
 | `decoding` | `json_schema`: each request carries the stage's answer schema as `response_format`, and the family records `decoding: json_schema`; an endpoint that refuses the schema fails the pass with exit code 8. `free` (the default): the judge answers in free text |
 | `max_images`, `max_videos` | what the served model accepts per request; 0 (the default) means it reads none |
 | `image_processor` | the model's image processor family (`qwen2_vl`, `qwen2_5_vl`, `qwen3_vl`); the client sizes every image as it does ([preprocessing](preprocessing.md)) |
@@ -113,6 +114,8 @@ repository.
 `base_url` takes a list of replica URLs of the same served model. Each request goes to the live replica with the
 fewest requests in flight from this client; the client is normally the only sender, so its counts are exact. A
 gateway or a Kubernetes Service is simply a list of one.
+The same routing, retries and parking are the shared transport's, described in [the inference layer](inference.md);
+the judge is one of its roles.
 
 - **A replica that fails** (a connection error, a timeout, HTTP 408, 429 or 5xx after retries) is set aside for a
   backoff that doubles while it keeps failing, from 5 to 60 seconds, and its request moves at once to another live

@@ -5,15 +5,15 @@ Public as ``rcp_ndcg.testing.FakeJudge``.
 
 from __future__ import annotations
 
-import hashlib
 import json
-import math
 import re
 from collections.abc import Callable, Mapping
 from typing import Any
 
 from rcp_ndcg_core.gain import sigmoid
 
+from rcp_ndcg.inference.fake import fake_uniform as _uniform
+from rcp_ndcg.inference.fake import hidden_ability as _hidden_ability
 from rcp_ndcg.llm.client import FAKE_URL_SCHEME, Completion, CompletionInput, JudgeClient, JudgeConfig
 from rcp_ndcg.llm.tokens import approx_tokens
 
@@ -29,22 +29,6 @@ TOURNAMENT_NOISE = 0.5
 _DOC_BLOCK = re.compile(r'<doc id="doc_(\d+)">\n(.*?)\n</doc>', re.S)
 _DOCUMENTS = re.compile(r"<documents>.*?</documents>", re.S)
 _CRITERION = re.compile(r"\bC([1-9][0-9]?)\b")
-
-
-def _uniform(*parts: object) -> float:
-    """A deterministic draw in [0, 1) from *parts* (the same on every machine and in every call order)."""
-    digest = hashlib.sha256("|".join(str(part) for part in parts).encode("utf-8")).digest()
-    return int.from_bytes(digest[:8], "big") / 2**64
-
-
-def _hidden_ability(seed: int) -> Callable[[str], float]:
-    """A standard-normal ability per document text, fixed by ``seed``."""
-
-    def ability(text: str) -> float:
-        u1, u2 = max(_uniform(seed, "ability", text, 1), 1e-12), _uniform(seed, "ability", text, 2)
-        return math.sqrt(-2.0 * math.log(u1)) * math.cos(2.0 * math.pi * u2)
-
-    return ability
 
 
 class FakeJudge(JudgeClient):

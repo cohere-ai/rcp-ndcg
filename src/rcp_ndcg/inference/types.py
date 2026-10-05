@@ -77,7 +77,8 @@ class Usage:
 
     Attributes:
         calls: Requests sent.
-        failed_calls: Requests that failed after their retries.
+        failed_calls: Requests the transport raised on, sent or not; a parked-out request and one the rejection
+            rule refuses are the outage's, not a call's.
         input_tokens: Prompt tokens summed over the calls that reported them.
         output_tokens: Completion tokens summed over the calls that reported them.
     """

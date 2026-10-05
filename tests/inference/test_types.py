@@ -323,6 +323,18 @@ def _clean_registry() -> Iterator[None]:
 
 
 class TestAdapterRegistry:
+    def test_an_unknown_adapter_with_an_empty_registry_promises_nothing_shipped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import rcp_ndcg.inference.adapters.base as adapter_base
+
+        monkeypatch.setattr(adapter_base, "_BUILTINS", {})
+        monkeypatch.setattr(adapter_base, "_PLUGINS", {})
+        with pytest.raises(ConfigError) as caught:
+            get_adapter("nope")
+        assert "no wire adapter is registered yet" in (caught.value.hint or "")
+        assert "arrive with the transport" not in (caught.value.hint or "")  # nothing is shipped yet
+
     def test_an_adapter_is_registered_under_its_name_and_returned_by_it(self) -> None:
         register_adapter(_ProbeAdapter)
         assert get_adapter("probe_adapter") is _ProbeAdapter
@@ -366,14 +378,16 @@ class TestAdapterRegistry:
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# The transport's interface (behaviour is lane L1's)
+# The transport (built by lane L1: behaviour in tests/inference/test_transport.py)
 # ---------------------------------------------------------------------------------------------------------------
 
 
 class TestTransport:
-    def test_the_transport_is_not_built_yet(self) -> None:
-        with pytest.raises(NotImplementedError, match="lane L1"):
-            Transport(Endpoint(base_url="http://a:8000/v1", model="m"))
+    def test_the_transport_is_built_and_satisfies_the_sender(self) -> None:
+        from rcp_ndcg.inference.transport import Sender
+
+        transport = Transport(Endpoint(base_url="http://a:8000/v1", model="m"))
+        assert isinstance(transport, Sender)
 
 
 # ---------------------------------------------------------------------------------------------------------------

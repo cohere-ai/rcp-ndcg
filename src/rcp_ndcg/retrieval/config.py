@@ -72,6 +72,10 @@ class _Hosted(Endpoint):
 
     Requests go one at a time with the endpoint's timeout and retries; ``batch_size`` is the documents per rerank
     request or the texts per embedding request (``None`` for the provider's default).
+
+    Attributes:
+        base_url: One URL, or none for the provider's own public API; the hosted APIs take no replica list yet
+            (the retrieval port moves them onto the shared transport).
     """
 
     IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"batch_size": _RUNTIME}
@@ -79,6 +83,7 @@ class _Hosted(Endpoint):
     timeout_s: float = Field(default=120.0, gt=0)
     max_retries: int = Field(default=8, ge=0)
     batch_size: int | None = Field(default=None, gt=0)
+    base_url: str | None = None  # type: ignore[assignment]  # one URL: the hosted APIs take no replica list yet
 
     @model_validator(mode="after")
     def _one_request_at_a_time(self) -> _Hosted:
@@ -93,6 +98,9 @@ class OpenAICompatible(_Hosted):
     As a reranker, ``POST <base_url>/rerank`` (``vllm serve --runner pooling``), one query's candidates per request,
     ``concurrency`` requests in flight; a late-interaction checkpoint scores MaxSim on the server. ``base_url`` is
     required.
+
+    Attributes:
+        base_url: The served endpoint (required), e.g. ``http://localhost:8000/v1``; one URL, not a replica list.
     """
 
     _CONCURRENT: ClassVar[bool] = True

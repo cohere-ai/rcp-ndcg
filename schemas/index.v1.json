@@ -68,7 +68,7 @@
             }
           ],
           "default": null,
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
+          "description": "One URL, or none for the provider's own public API; the hosted APIs take no replica list yet (the retrieval port moves them onto the shared transport).",
           "title": "Base Url"
         },
         "batch_size": {
@@ -254,7 +254,7 @@
             }
           ],
           "default": null,
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
+          "description": "One URL, or none for the provider's own public API; the hosted APIs take no replica list yet (the retrieval port moves them onto the shared transport).",
           "title": "Base Url"
         },
         "batch_size": {
@@ -517,7 +517,7 @@
           "title": "Api Key Env"
         },
         "base_url": {
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
+          "description": "The served endpoint (required), e.g. ``http://localhost:8000/v1``; one URL, not a replica list.",
           "minLength": 1,
           "title": "Base Url",
           "type": "string"
@@ -699,7 +699,7 @@
             }
           ],
           "default": null,
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
+          "description": "One URL, or none for the provider's own public API; the hosted APIs take no replica list yet (the retrieval port moves them onto the shared transport).",
           "title": "Base Url"
         },
         "batch_size": {

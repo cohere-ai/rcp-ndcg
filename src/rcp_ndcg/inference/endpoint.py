@@ -13,6 +13,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from rcp_ndcg.inference.fake import FAKE_SCHEME
 from rcp_ndcg.support.identity import FieldRole
 
 #: An environment variable name: a letter or underscore, then letters, digits or underscores.
@@ -27,8 +28,9 @@ class Endpoint(BaseModel):
             (:data:`~rcp_ndcg.inference.adapters.base.ADAPTER_ENTRY_POINTS`); ``None`` until a role config sets
             its default. Content: which service computes the numbers.
         base_url: The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.
-            A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a
-            replica list).
+            One URL, or a list of replica URLs of the same served model (each request goes to the live replica
+            with the fewest in flight; the offline fakes are one URL, never a list). A role that reaches
+            replicas over several URLs lists them in its own config (the judge: one URL or a replica list).
         model: The served model name, sent as the request's ``model``.
         revision: The checkpoint commit the served weights resolved to; recorded in identities, so two
             checkpoints served under one name are never mistaken for each other.
@@ -64,7 +66,7 @@ class Endpoint(BaseModel):
     }
 
     api: str | None = None
-    base_url: str | None = None
+    base_url: str | list[str] | None = None
     model: str = Field(min_length=1)
     revision: str | None = None
     api_key_env: str | None = Field(default=None, min_length=1)
@@ -77,8 +79,31 @@ class Endpoint(BaseModel):
 
     @field_validator("base_url")
     @classmethod
-    def _strip_trailing_slash(cls, value: str | None) -> str | None:
-        return value.rstrip("/") if value is not None else None
+    def _strip_trailing_slash(cls, value: str | list[str] | None) -> str | list[str] | None:
+        """Strip trailing slashes; a replica list is non-empty, lists no replica twice, and never mixes the
+        offline fakes with real replicas (a fake is one in-process endpoint, a list is a deployed gateway)."""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            if not value:
+                raise ValueError("base_url: give one URL or a non-empty list of replica URLs")
+            return value.rstrip("/")
+        if not value:
+            raise ValueError("base_url: give one URL or a non-empty list of replica URLs")
+        urls = [url.rstrip("/") for url in value]
+        if len(set(urls)) < len(urls):
+            raise ValueError(f"base_url lists a replica twice: {urls}")
+        if len(urls) > 1 and any(url.startswith(FAKE_SCHEME) for url in urls):
+            raise ValueError(f"the offline fakes ({FAKE_SCHEME}) are one URL, not a replica list")
+        return urls
+
+    @property
+    def urls(self) -> tuple[str, ...]:
+        """The replica URLs: ``base_url`` as a tuple (one element for a single URL or a gateway); empty when the
+        endpoint names none (a hosted profile's own URL, resolved by its wire adapter)."""
+        if self.base_url is None:
+            return ()
+        return (self.base_url,) if isinstance(self.base_url, str) else tuple(self.base_url)
 
     @field_validator("headers_env")
     @classmethod

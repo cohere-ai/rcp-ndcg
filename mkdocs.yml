@@ -25,6 +25,7 @@ nav:
       - "The calibration": concepts/calibration.md
       - "Primitives": concepts/primitives.md
       - "Preprocessing and chunking": concepts/preprocessing.md
+      - "The inference layer: one transport for every role": concepts/inference.md
       - "Embedding endpoints": concepts/embeddings.md
       - "Late interaction: pooling and MaxSim": concepts/late-interaction.md
       - "Judges, serving and runners": concepts/serving.md
