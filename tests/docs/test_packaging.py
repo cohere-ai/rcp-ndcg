@@ -74,15 +74,30 @@ CONSTRAINTS = ROOT / "requirements-constraints.txt"
 
 
 def _pins(text: str) -> dict[str, str]:
-    """``{name: "version ; marker"}`` of a requirements file, comments dropped."""
+    """``{name: version}`` of a requirements file's exact pins, comments, markers and layout dropped.
+
+    The comparison is the semantic one the release check makes (which package is pinned to which version), so a
+    newer uv's re-serialisation of the same export -- marker spacing, quoting, conjunction order, the ``# via``
+    comments -- does not fail it; a moved version does.
+    """
     pins = {}
     for line in text.splitlines():
         line = line.split("#", 1)[0].strip()
         if line:
             requirement = Requirement(line)
             (spec,) = requirement.specifier
-            pins[requirement.name.lower()] = f"{spec.version} ; {requirement.marker}"
+            pins[requirement.name.lower()] = spec.version
     return pins
+
+
+def test_the_pins_comparison_is_semantic_not_textual() -> None:
+    """A newer uv's re-serialisation of the same export compares equal; only a version drift is a difference."""
+    committed = "torch==2.8.0 ; platform_system == 'Linux' and platform_machine == 'x86_64'\nnumpy==2.3.0\n"
+    reserialised = (
+        'torch==2.8.0;platform_machine == "x86_64" and platform_system == "Linux"  # via rcp-ndcg\n'
+        "numpy==2.3.0; python_version >= '3.11'\n"
+    )
+    assert _pins(reserialised) == _pins(committed) == {"torch": "2.8.0", "numpy": "2.3.0"}
 
 
 def test_the_constraints_file_is_the_locks_export_for_the_coordinators_extras() -> None:
@@ -100,7 +115,7 @@ def test_the_constraints_file_is_the_locks_export_for_the_coordinators_extras() 
         locked.setdefault(package["name"].lower(), set()).add(package["version"])
     pins = _pins(text)
     assert "torch" in pins and "rcp-ndcg" not in pins and "rcp-ndcg-core" not in pins
-    stale = {name: pin for name, pin in pins.items() if pin.split(" ;")[0] not in locked.get(name, set())}
+    stale = {name: pin for name, pin in pins.items() if pin not in locked.get(name, set())}
     assert not stale, f"regenerate requirements-constraints.txt with the command in its header: {stale}"
     uv = shutil.which("uv")
     if uv is not None:  # the exact export, when uv is at hand
