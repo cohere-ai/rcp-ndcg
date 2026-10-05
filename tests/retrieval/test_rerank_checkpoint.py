@@ -131,6 +131,49 @@ def test_an_unscored_document_is_refused_rather_than_given_a_score() -> None:
         retrieval_api._apply_scores(_examples(), ["k1", "k2"], {"k1": {"d1": 0.5, "d2": 0.25, "d3": 0.125}})
 
 
+def test_the_rerank_step_folds_the_instruction_exactly_once(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The example's raw query and instruction reach the client, which folds them once: never a double fold."""
+    import httpx
+
+    from rcp_ndcg.data import Rankings, load_dataset
+
+    sent: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        documents = sent[-1]["documents"]
+        return httpx.Response(
+            200, json={"results": [{"index": i, "relevance_score": float(i)} for i in range(len(documents))]}
+        )
+
+    from rcp_ndcg.inference import transport as transport_module
+
+    real = transport_module.Transport
+
+    def patched(endpoint: Any, **kwargs: Any) -> Any:
+        return real(endpoint, httpx_transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr("rcp_ndcg.inference.clients.rerank.Transport", patched)
+
+    root = tmp_path / "beir"
+    (root / "qrels").mkdir(parents=True)
+    (root / "corpus.jsonl").write_text(
+        "".join(json.dumps({"_id": d, "text": t}) + "\n" for d, t in (("d1", "paris"), ("d2", "lyon")))
+    )
+    (root / "queries.jsonl").write_text(
+        json.dumps({"_id": "q1", "text": "capital of france", "instruction": "Find the relevant passage"}) + "\n"
+    )
+    (root / "qrels" / "test.tsv").write_text("query-id\tcorpus-id\tscore\nq1\td1\t1\n")
+    dataset = load_dataset(f"beir:{root}")
+    rankings = Rankings.from_scores({"q1": {"d1": 3.0, "d2": 2.0}}, system="bm25")
+
+    rerank(dataset, rankings, _config(), depth=2, out=tmp_path / "rerank")
+
+    assert [call["query"] for call in sent] == ["Task: Find the relevant passage\nQuery: capital of france"], (
+        "the fold happens exactly once"
+    )
+
+
 def test_the_rerank_step_checkpoints_and_resumes(tmp_path: Any) -> None:
     """``rerank()`` writes the same records the served path did, and its resume appends nothing."""
     from rcp_ndcg.data import Rankings, load_dataset
