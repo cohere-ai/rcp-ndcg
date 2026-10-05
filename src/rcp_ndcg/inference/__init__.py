@@ -13,11 +13,12 @@ paths send their requests through one set of names:
   (:mod:`rcp_ndcg.inference.types`);
 * :class:`Adapter` and its registry -- the one seam a third party implements (C2), selected from a config with
   ``api: <name>`` (:mod:`rcp_ndcg.inference.adapters.base`);
-* :class:`Sender` and :class:`Transport` -- the transport's frozen interface; behaviour arrives with the transport work
-  (:mod:`rcp_ndcg.inference.transport`);
+* :class:`Sender` and :class:`Transport` -- the transport every role sends through: replicas, retries, parking,
+  the sync bridge, usage (:mod:`rcp_ndcg.inference.transport`);
 * the role endpoint configs -- :class:`EmbeddingEndpoint`, :class:`PoolingEndpoint`, :class:`RerankEndpoint`
   (:mod:`rcp_ndcg.inference.config`);
-* :data:`FAKE_SCHEME` -- the offline fakes' URL scheme (:mod:`rcp_ndcg.inference.fake`).
+* :data:`FAKE_SCHEME` -- the offline fakes' URL scheme, and :func:`register_fake_route` for their extra routes
+  (:mod:`rcp_ndcg.inference.fake`).
 """
 
 from rcp_ndcg.inference.adapters.base import (
@@ -30,7 +31,7 @@ from rcp_ndcg.inference.adapters.base import (
 )
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp_ndcg.inference.endpoint import Endpoint
-from rcp_ndcg.inference.fake import FAKE_SCHEME
+from rcp_ndcg.inference.fake import FAKE_SCHEME, FakeEndpoint, register_fake_route
 from rcp_ndcg.inference.transport import Sender, Transport
 from rcp_ndcg.inference.types import (
     Call,
@@ -63,6 +64,7 @@ __all__ = [
     "EngineInfo",
     "Endpoint",
     "FAKE_SCHEME",
+    "FakeEndpoint",
     "PoolRequest",
     "PoolingEndpoint",
     "RerankEndpoint",
@@ -77,4 +79,5 @@ __all__ = [
     "known_adapters",
     "l2_normalize",
     "register_adapter",
+    "register_fake_route",
 ]

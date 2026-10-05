@@ -355,14 +355,16 @@ class TestAdapterRegistry:
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# The transport's interface (behaviour is lane L1's)
+# The transport (built by lane L1: behaviour in tests/inference/test_transport.py)
 # ---------------------------------------------------------------------------------------------------------------
 
 
 class TestTransport:
-    def test_the_transport_is_not_built_yet(self) -> None:
-        with pytest.raises(NotImplementedError, match="lane L1"):
-            Transport(Endpoint(base_url="http://a:8000/v1", model="m"))
+    def test_the_transport_is_built_and_satisfies_the_sender(self) -> None:
+        from rcp_ndcg.inference.transport import Sender
+
+        transport = Transport(Endpoint(base_url="http://a:8000/v1", model="m"))
+        assert isinstance(transport, Sender)
 
 
 # ---------------------------------------------------------------------------------------------------------------

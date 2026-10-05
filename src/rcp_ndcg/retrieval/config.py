@@ -79,6 +79,7 @@ class _Hosted(Endpoint):
     timeout_s: float = Field(default=120.0, gt=0)
     max_retries: int = Field(default=8, ge=0)
     batch_size: int | None = Field(default=None, gt=0)
+    base_url: str | None = None  # type: ignore[assignment]  # one URL: the hosted APIs take no replica list yet
 
     @model_validator(mode="after")
     def _one_request_at_a_time(self) -> _Hosted:

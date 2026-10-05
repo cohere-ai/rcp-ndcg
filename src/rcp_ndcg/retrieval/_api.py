@@ -365,7 +365,7 @@ def _encoder(config: EncoderConfig) -> Any:
             pooling_task="token_embed" if config.pooling == "token" else "embed",
             mode="http" if served else "offline",
             revision=None if served else config.revision,
-            api_base=config.base_url if served else None,
+            api_base=config.base_url if isinstance(config, OpenAICompatibleEncoder) else None,
             api_key=_key(config.api_key_env) if served else None,
             timeout_s=config.timeout_s if served else None,
             connect_timeout_s=config.connect_timeout_s if served else None,
