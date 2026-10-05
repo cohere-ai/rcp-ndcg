@@ -33,3 +33,4 @@ Start with the [quickstart](quickstart.md).
 - [Command line](reference/cli.md).
 - [`rcp_ndcg_core`: metric, gains and protocols](api/metric.md).
 - [`rcp_ndcg.eval`: evaluation](api/evaluate.md).
+- [`rcp_ndcg.inference`: the rerank wire and client](api/inference.md).

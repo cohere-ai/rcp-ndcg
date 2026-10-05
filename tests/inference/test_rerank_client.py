@@ -304,6 +304,18 @@ def test_the_adapter_seam_re_exports_the_family_and_its_base() -> None:
     assert issubclass(RerankAdapter, RerankWire)
 
 
+def test_an_incomplete_rerank_wire_subclass_is_refused_at_construction() -> None:
+    """A subclass that omits the wire facts fails with a typed error naming them, not an AttributeError at
+    first use."""
+    from rcp_ndcg.inference.adapters.rerank import RerankWire
+
+    class _HalfWire(RerankWire):
+        name = "half_wire"
+
+    with pytest.raises(ConfigError, match="without its wire facts.*REQUEST_CAP"):
+        _HalfWire(_config())
+
+
 def test_a_client_tolerates_an_adapter_without_the_profile_facts() -> None:
     """A third-party rerank adapter that shape-matches only the Adapter protocol still constructs: no default
     base URL (the config must set one) and no pause."""

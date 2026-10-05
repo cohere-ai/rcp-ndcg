@@ -95,9 +95,11 @@ class RerankEndpoint(Endpoint):
         api: The wire adapter; ``"rerank"`` by default.
         recipe: As on :class:`EmbeddingEndpoint`: the server-side settings the package cannot read (the
             ``hf_overrides``, the score template), as a free string. Content.
-        tokenizer: The model's tokenizer, in whose tokens ``max_tokens`` is counted. Runtime by name.
-        max_tokens: The pair budget (query plus document), cut on the client; the adapter derives a served
-            reranker's per-document cut from it. Content.
+        tokenizer: The model's tokenizer, in whose tokens ``max_tokens`` is counted. Runtime by name; the
+            file's SHA-256 enters the identity, as the judge's already does.
+        max_tokens: The pair budget (query plus document), cut on the client. Content. The text-budget
+            mechanism that applies it is not wired yet: the client refuses a config that sets it, rather
+            than silently ignoring a budget.
         instruction: How the reranker's instruction reaches the model: ``"fold"`` folds it into the query text
             (``Task: ...\\nQuery: ...``, today's served behaviour), ``"field"`` sends the engine's own
             ``instruction`` request field (vLLM), ``"none"`` sends none. Content.

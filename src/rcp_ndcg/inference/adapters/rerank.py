@@ -48,6 +48,11 @@ from rcp_ndcg.inference.types import Call, Reply, RerankRequest, RerankResult, T
 _TOO_LONG = re.compile(r"maximum context length|context length|too long|token limit|max_tokens|truncat", re.IGNORECASE)
 
 
+#: The class attributes that make a subclass a complete wire (validated at construction, so an incomplete
+#: third-party profile fails with a typed error instead of an AttributeError at first use).
+_WIRE_FACTS = ("SERVER", "REQUEST_CAP", "PAUSE_S", "SENDS_TOP_N", "HAS_INSTRUCTION_FIELD", "DEFAULT_BASE_URL")
+
+
 def _score_input(content: Content) -> str | dict[str, Any]:
     """One side of a scoring request, in the shape the served rerank engines take.
 
@@ -122,6 +127,13 @@ class RerankWire:
                 their own and cannot be switched off).
         """
         self.config = config
+        missing = [fact for fact in _WIRE_FACTS if not hasattr(type(self), fact)]
+        if missing:
+            raise ConfigError(
+                f"{type(self).__name__} subclasses RerankWire without its wire facts: {', '.join(missing)}",
+                hint="every RerankWire subclass declares SERVER, REQUEST_CAP, PAUSE_S, SENDS_TOP_N, "
+                "HAS_INSTRUCTION_FIELD and DEFAULT_BASE_URL as class attributes",
+            )
         if config.instruction == "field" and not self.HAS_INSTRUCTION_FIELD:
             raise ConfigError(
                 f"the {self.name!r} rerank API has no instruction field on its wire",
