@@ -92,30 +92,35 @@
       "type": "object"
     },
     "Usage": {
-      "description": "Calls and tokens accumulated by a client.",
+      "description": "Requests and tokens accumulated by a transport or a role client; merge instances with\nmerged_with.\n\nOne type for every role: a role client's ``usage`` property is this shape, the run manifest serialises it\nper step and per run, and the transport accumulates it. Tokens and requests only -- the wire reports\nnothing else (an endpoint's cached-input detail is not tracked and stays 0).",
       "properties": {
         "cached_input_tokens": {
           "default": 0,
+          "description": "The endpoint's cached-input detail, when it reports one; the shared transport's accounting does not track it and it stays 0.",
           "title": "Cached Input Tokens",
           "type": "integer"
         },
         "failed_requests": {
           "default": 0,
+          "description": "Requests the transport raised on, sent or not; a parked-out request and one the rejection rule refuses are the outage's, not a request's. A role client folds its own refusals (a reply its adapter raised on) in on top.",
           "title": "Failed Requests",
           "type": "integer"
         },
         "input_tokens": {
           "default": 0,
+          "description": "Prompt tokens summed over the requests that reported them.",
           "title": "Input Tokens",
           "type": "integer"
         },
         "output_tokens": {
           "default": 0,
+          "description": "Completion tokens summed over the requests that reported them.",
           "title": "Output Tokens",
           "type": "integer"
         },
         "requests": {
           "default": 0,
+          "description": "Requests sent, as the transport counts them: one logical request however many retries it took; a reply the status map returns (even one the adapter refuses) counts as one.",
           "title": "Requests",
           "type": "integer"
         }

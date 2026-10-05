@@ -20,7 +20,8 @@ from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference import Call, Endpoint, Transport, register_fake_route
 from rcp_ndcg.inference.fake import FakeEndpoint, _fake_endpoint, fake_uniform, hidden_ability
 
-CHAT = ("POST", "/chat/completions")
+CHAT = ("POST", "/custom/route")
+"""A third-party route for the registry tests; `/chat/completions` is the judge's shipped fake."""
 
 
 @pytest.fixture(autouse=True)
@@ -32,8 +33,8 @@ def _fast_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture()
-def _chat_route():
-    """A chat-completions fake (the judge's role route arrives with the judge port), registered and removed."""
+def _custom_route():
+    """A third-party fake route, registered and removed (the shipped routes are never torn down)."""
 
     def chat(request: httpx.Request, endpoint: FakeEndpoint) -> httpx.Response:
         body = json.loads(request.content)
@@ -47,7 +48,7 @@ def _chat_route():
             },
         )
 
-    register_fake_route("POST", "/chat/completions", chat)
+    register_fake_route(*CHAT, chat)
     yield chat
     with fake_module._ROUTES_LOCK:
         fake_module._ROUTES.pop(CHAT, None)
@@ -194,15 +195,15 @@ class TestModelsAndRoutes:
         (engine,) = transport.run(transport.probe())
         assert (engine.model, engine.error) == ("enc", None)
 
-    def test_a_registered_route_answers(self, _chat_route: object) -> None:
+    def test_a_registered_route_answers(self, _custom_route: object) -> None:
         transport = _transport("fake://seed/0", "fake")
-        replies = transport.run(transport.send([Call("POST", "/chat/completions", {"prompt": "hi"})]))
+        replies = transport.run(transport.send([Call("POST", "/custom/route", {"prompt": "hi"})]))
         assert replies[0].body["choices"][0]["message"]["content"] == "echo:hi"
 
-    def test_a_registered_route_refuses_a_conflicting_second(self, _chat_route: object) -> None:
+    def test_a_registered_route_refuses_a_conflicting_second(self, _custom_route: object) -> None:
         with pytest.raises(ConfigError, match="already registered"):
-            register_fake_route("POST", "/chat/completions", lambda request, endpoint: httpx.Response(200))
-        register_fake_route(*CHAT, _chat_route)  # type: ignore[arg-type]  # the same handler again: fine
+            register_fake_route(*CHAT, lambda request, endpoint: httpx.Response(200))
+        register_fake_route(*CHAT, _custom_route)  # type: ignore[arg-type]  # the same handler again: fine
 
     def test_an_unknown_route_is_a_404(self) -> None:
         from rcp_ndcg.errors import ProviderError
