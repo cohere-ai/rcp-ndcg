@@ -254,6 +254,7 @@ class Embeddings:
     # -- construction ------------------------------------------------------
     @classmethod
     def single(cls, vectors: np.ndarray) -> Embeddings:
+        """One vector per item, as a contiguous float32 ``(N, D)`` matrix."""
         return cls(vectors=np.ascontiguousarray(vectors, dtype=np.float32))
 
     @classmethod

@@ -81,19 +81,37 @@ def _targets_of_import(node: ast.Import | ast.ImportFrom) -> Iterator[str]:
 
 
 def _eager_imports(tree: ast.Module) -> Iterator[tuple[ast.Import | ast.ImportFrom, int]]:
-    """Every eager import of a module's syntax tree, with its line: module scope, outside ``TYPE_CHECKING``."""
-    for statement in tree.body:
-        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            continue
-        if (
-            isinstance(statement, ast.If)
-            and isinstance(statement.test, ast.Name)
-            and statement.test.id == "TYPE_CHECKING"
-        ):
-            continue
-        for node in ast.walk(statement):
-            if isinstance(node, ast.Import | ast.ImportFrom):
-                yield node, node.lineno
+    """Every eager import of a module's syntax tree, with its line.
+
+    Module scope only: bodies of functions and methods run later, and a ``TYPE_CHECKING`` guard (a bare name or
+    an attribute of ``typing``) never executes. Imports directly in a class body do execute at import time, so
+    they count.
+    """
+
+    def scan(stmts: list[ast.stmt]) -> None:
+        for statement in stmts:
+            if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            if isinstance(statement, ast.ClassDef):
+                yield from scan(statement.body)  # a class body executes at import time; its methods do not
+                continue
+            if _is_type_checking(statement):
+                continue
+            for node in ast.walk(statement):
+                if isinstance(node, ast.Import | ast.ImportFrom):
+                    yield node, node.lineno
+
+    yield from scan(tree.body)
+
+
+def _is_type_checking(statement: ast.stmt) -> bool:
+    """Whether ``statement`` is ``if TYPE_CHECKING:`` (a bare name or an attribute of ``typing``)."""
+    if not isinstance(statement, ast.If):
+        return False
+    test = statement.test
+    return (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING") or (
+        isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
+    )
 
 
 def outward_imports() -> list[str]:
