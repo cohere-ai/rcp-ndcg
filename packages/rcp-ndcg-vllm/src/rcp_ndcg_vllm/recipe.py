@@ -42,6 +42,7 @@ __all__ = [
     "StatusSpec",
     "client_config",
     "default_recipes_root",
+    "effective_embed_dtype",
     "iter_recipes",
     "load_recipe",
     "recipe_json_schema",
@@ -169,7 +170,8 @@ class ClientConfig(BaseModel):
         max_tokens: The pair (or text) budget in tokens; the client cuts at token boundaries with the tokenizer.
         normalize: L2-normalise returned vectors (``embed`` and ``multi_vector`` only).
         dimensions: Matryoshka cut requested through the endpoint's ``dimensions`` field.
-        embed_dtype: The transfer precision of ``/pooling`` vectors (``multi_vector`` only; ``float16`` default).
+        embed_dtype: The transfer precision of ``/pooling`` vectors; ``multi_vector`` only, ``float16`` by default
+            (set ``float32`` to opt out; the field must stay unset for other roles).
         use_activation: Rerank request field for raw-logit rerankers (``false``) or activated scores (``true``);
             ``None`` sends nothing and the server's default applies.
         batch_size: Texts per request, where a batch is meaningful; a listwise reranker must leave it unset.
@@ -188,7 +190,7 @@ class ClientConfig(BaseModel):
     max_tokens: int = Field(gt=0)
     normalize: bool | None = None
     dimensions: int | None = Field(default=None, gt=0)
-    embed_dtype: EmbedDType = "float16"
+    embed_dtype: EmbedDType | None = None
     use_activation: bool | None = None
     batch_size: int | None = Field(default=None, gt=0)
 
@@ -334,7 +336,7 @@ class Recipe(BaseModel):
             raise ValueError(f"an embedding recipe must set client.normalize, not role={self.role}")
         if rerank and self.client.normalize is not None:
             raise ValueError("client.normalize is only valid for embed and multi_vector, not role=rerank")
-        if self.role != "multi_vector" and self.client.embed_dtype != "float16":
+        if self.role != "multi_vector" and self.client.embed_dtype is not None:
             raise ValueError(f"client.embed_dtype is only valid for role=multi_vector, not role={self.role}")
         if self.role == "multi_vector" and self.serve.pooler_config.get("task") not in (None, "token_embed"):
             raise ValueError("a multi_vector recipe serves --pooler-config.task token_embed")
@@ -502,8 +504,13 @@ def client_config(recipe: Recipe, *, base_url: str) -> dict[str, Any]:
     if recipe.client.batch_size is not None:
         encoder["batch_size"] = recipe.client.batch_size
     if recipe.role == "multi_vector":
-        encoder["embed_dtype"] = recipe.client.embed_dtype
+        encoder["embed_dtype"] = effective_embed_dtype(recipe)
     return {"kind": "dense", "encoder": encoder}
+
+
+def effective_embed_dtype(recipe: Recipe) -> EmbedDType:
+    """The transfer precision of ``/pooling`` vectors: the recipe's ``embed_dtype``, else the ``float16`` default."""
+    return recipe.client.embed_dtype or "float16"
 
 
 def recipe_json_schema() -> dict[str, Any]:

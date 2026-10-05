@@ -1,0 +1,40 @@
+id: fixture-multi-vector
+model: fixtures/LateInteractionEmbedder
+revision: "0123456789abcdef0123456789abcdef01234567"
+role: multi_vector
+input: [text]
+licence: apache-2.0
+engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0", startup_timeout_s: 60}
+resources: {gpus: 1}
+serve:
+  runner: pooling
+  convert: null
+  hf_overrides: {}
+  chat_template: null
+  pooler_config: {task: token_embed}
+  trust_remote_code: false
+  max_model_len: 512
+  dtype: float16
+  plugin: null
+  extra_args: []
+client:
+  api: vllm_pooling
+  query_prompt: "query: "
+  doc_prompt: "doc: "
+  instruction: null
+  default_instruction: null
+  tokenizer: "fixtures/LateInteractionEmbedder@0123456789abcdef0123456789abcdef01234567"
+  max_tokens: 512
+  normalize: false
+  dimensions: null
+  embed_dtype: float16
+  use_activation: null
+  batch_size: null
+reference:
+  kind: transformers
+  score_scale: cosine
+  entry: reference.py
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources: []
+notes: "A fixture for the late-interaction rules: per-token vectors over /pooling, transfer in float16."

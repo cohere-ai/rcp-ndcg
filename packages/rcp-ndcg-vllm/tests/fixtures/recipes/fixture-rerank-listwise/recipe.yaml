@@ -1,0 +1,40 @@
+id: fixture-rerank-listwise
+model: fixtures/ListwiseReranker
+revision: "0123456789abcdef0123456789abcdef01234567"
+role: rerank
+input: [text]
+scoring: listwise
+licence: see-model-card
+engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0", startup_timeout_s: 60}
+resources: {gpus: 1}
+serve:
+  runner: pooling
+  convert: classify
+  hf_overrides: {}
+  chat_template: template.jinja
+  pooler_config: {}
+  trust_remote_code: true
+  max_model_len: 512
+  dtype: float16
+  plugin: null
+  extra_args: ["--enable-prefix-caching"]
+client:
+  api: rerank
+  query_prompt: ""
+  doc_prompt: ""
+  instruction: field
+  default_instruction: Rank by recency.
+  tokenizer: "fixtures/ListwiseReranker@0123456789abcdef0123456789abcdef01234567"
+  max_tokens: 512
+  normalize: null
+  dimensions: null
+  use_activation: false
+  batch_size: null
+reference:
+  kind: transformers
+  score_scale: probability
+  entry: reference.py
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources: []
+notes: "A fixture for the listwise rules: no batch size, the instruction travels as a request field."
