@@ -146,6 +146,40 @@ def test_offline_unpinned_without_a_recorded_ref_names_the_revision_fix(cache: P
     assert error.details["path"] == f"{SUBSET}/qrels.parquet"
 
 
+def test_a_hub_without_the_private_absence_sentinel_never_reports_silent_absence(
+    cache: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A hub that lost its private ``_CACHED_NO_EXIST`` sentinel: an unmarked file is "not cached", never absent.
+
+    Without the sentinel the cache cannot tell "absent upstream" from "not cached", so the file is treated as
+    not cached: the load refuses with the offline hint (one debug line says why), and an optional table is never
+    silently ``None``. The stub stands in for a future huggingface_hub that dropped the private name.
+    """
+    import logging
+
+    import huggingface_hub
+
+    real_getattr = huggingface_hub.__getattr__  # the lazy loader (PEP 562): every public name resolves through it
+
+    def lazy_without_sentinel(name: str) -> object:
+        if name == "_CACHED_NO_EXIST":
+            raise AttributeError(name)  # a future huggingface_hub that dropped the private sentinel
+        return real_getattr(name)
+
+    monkeypatch.setattr(huggingface_hub, "__getattr__", lazy_without_sentinel)
+
+    stage(cache, files={f"{SUBSET}/qrels.parquet": _TABLES[f"{SUBSET}/qrels.parquet"]})  # top_ranked: unmarked
+
+    with caplog.at_level(logging.DEBUG, logger="rcp_ndcg.data.dataset"):
+        with pytest.raises(MissingInputError) as caught:
+            load_dataset(f"hf://{REPO}/{SUBSET}", revision=SHA)
+
+    assert caught.value.details["path"] == f"{SUBSET}/top_ranked.parquet"
+    assert "HF_HUB_OFFLINE" in (caught.value.hint or ""), "the offline hint, not a silent absence"
+    assert f"{SUBSET}/top_ranked.parquet does not exist" not in caught.value.message
+    assert "_CACHED_NO_EXIST" in caplog.text, "one debug line records the missing sentinel"
+
+
 def test_offline_pinned_run_serves_an_absent_optional_table(cache: Path) -> None:
     """The pinned offline run: ``.no_exist`` marks a table the repository has never had; the run loads."""
     stage(cache, files=_TABLES, absent=(f"{SUBSET}/excluded.parquet",))
@@ -186,11 +220,9 @@ def test_offline_pinned_required_table_the_cache_marks_absent_says_does_not_exis
     assert caught.value.hint
 
 
-def test_offline_corpus_materializes_from_the_snapshot(
-    cache: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_offline_corpus_materializes_from_the_snapshot(cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Offline, the repository listing comes from the local snapshot, so a run reads its corpus from the cache."""
-    import logging
+    from rcp_ndcg.errors import RcpNdcgWarning
 
     card = (
         "---\nconfigs:\n- config_name: hr__english-corpus\n  data_files:\n  - path: hr__english/corpus/*.parquet\n---\n"
@@ -201,11 +233,11 @@ def test_offline_corpus_materializes_from_the_snapshot(
     (snapshot / "README.md").write_text(card)
     _offline(monkeypatch)
 
-    with caplog.at_level(logging.WARNING, logger="rcp_ndcg.data.dataset"):
-        dataset = load_dataset(f"hf://{REPO}/{SUBSET}", revision=SHA)
+    with pytest.warns(RcpNdcgWarning, match="partial cache") as seen:
+        dataset = load_dataset(f"hf://{REPO}/{SUBSET}", revision=SHA)  # the corpus loads on first access
+        assert {d: doc.text for d, doc in dataset.corpus.items()} == {"a": "A\n\nalpha", "b": "beta"}
 
-    assert {d: doc.text for d, doc in dataset.corpus.items()} == {"a": "A\n\nalpha", "b": "beta"}
-    assert "snapshot" in caplog.text, "a listing served from a partial snapshot says so"
+    assert seen[0].message.code == "SNAPSHOT_LISTING"
 
 
 def test_offline_listing_without_a_snapshot_names_the_revision_fix(cache: Path) -> None:
@@ -220,16 +252,15 @@ def test_offline_listing_without_a_snapshot_names_the_revision_fix(cache: Path) 
 
 
 def test_a_hub_down_on_the_listing_serves_the_snapshot_or_is_a_retryable_provider_error(
-    cache: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    cache: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A Hub answering 5xx on the listing is not a bug: the snapshot stands in, or the failure is retryable."""
-    import logging
-
     import httpx
     import huggingface_hub
     from huggingface_hub.errors import HfHubHTTPError
 
     from rcp_ndcg.data.dataset import _hub_listing
+    from rcp_ndcg.errors import RcpNdcgWarning
 
     def down(*args: object, **kwargs: object):
         response = httpx.Response(503, request=httpx.Request("GET", "https://hub.example/tree"))
@@ -246,11 +277,11 @@ def test_a_hub_down_on_the_listing_serves_the_snapshot_or_is_a_retryable_provide
     _online(monkeypatch, {(REPO, "main"): SHA})
     monkeypatch.setattr(huggingface_hub.HfApi(), "list_repo_files", down, raising=False)  # HfApi() is _online's fake
 
-    with caplog.at_level(logging.WARNING, logger="rcp_ndcg.data.dataset"):
+    with pytest.warns(RcpNdcgWarning, match="partial cache") as seen:
         listing = _hub_listing(REPO, SHA)
 
+    assert seen[0].message.code == "SNAPSHOT_LISTING"
     assert f"{SUBSET}/corpus/part-0.parquet" in listing
-    assert "snapshot" in caplog.text, "a listing served from a partial snapshot says so"
 
     shutil.rmtree(snapshot)  # no snapshot left to stand in
     with pytest.raises(ProviderError) as caught:
@@ -319,6 +350,23 @@ def test_a_requests_unreachable_or_non_json_listing_is_a_provider_error(
         _hub_listing(REPO, SHA)
 
     assert "HF_ENDPOINT" in (caught.value.hint or "")
+
+
+def test_a_snapshot_listing_warns_with_the_snapshot_listing_code(cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A partial snapshot standing in for the listing warns ``SNAPSHOT_LISTING`` (so ``--json`` carries it)."""
+    from rcp_ndcg.data.dataset import _hub_listing
+    from rcp_ndcg.errors import RcpNdcgWarning
+
+    stage(cache, files=_TABLES)
+    _offline(monkeypatch)
+
+    with pytest.warns(RcpNdcgWarning) as seen:
+        listing = _hub_listing(REPO, SHA)
+
+    assert f"{SUBSET}/qrels.parquet" in listing
+    (warning,) = seen
+    assert warning.message.code == "SNAPSHOT_LISTING"
+    assert SHA in warning.message.message and "partial cache" in warning.message.message
 
 
 def test_a_snapshot_listing_needs_a_commit(cache: Path) -> None:

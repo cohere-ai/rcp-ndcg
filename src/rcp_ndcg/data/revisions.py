@@ -61,6 +61,21 @@ class ResolvedRevision:
         return {"commit": self.commit, "verified": self.verified}
 
 
+def is_commit(revision: str | None) -> bool:
+    """Whether *revision* is already a full 40-character lowercase hex commit (the shape the Hub caches by).
+
+    The public form of the pattern ``revisions.py`` resolves with: a caller that must tell a commit from a branch
+    or tag (a snapshot listing is per commit, an offline hint is per resolved revision) reads it from here.
+
+    Args:
+        revision: The revision as given (a branch, tag, commit, or ``None``).
+
+    Returns:
+        ``True`` when *revision* is exactly 40 hex characters; ``False`` otherwise, and for ``None``.
+    """
+    return revision is not None and bool(_COMMIT.fullmatch(revision))
+
+
 def hub_offline() -> bool:
     """``HF_HUB_OFFLINE``, read now (``huggingface_hub`` freezes it at import)."""
     return os.environ.get("HF_HUB_OFFLINE", "").strip().lower() in _TRUE
@@ -93,7 +108,7 @@ def resolve_revision(repo_id: str, revision: str | None = None) -> ResolvedRevis
         answer.
     """
     ref = revision or "main"
-    if _COMMIT.match(ref):
+    if is_commit(ref):
         return ResolvedRevision(repo_id, ref)
     _remove_corrupt_ref(repo_id, ref)
     commit = None if hub_offline() else _hub_commit(repo_id, ref)
@@ -144,12 +159,12 @@ def _hub_commit(repo_id: str, ref: str) -> str | None:
             sha = getattr(resolve(repo_id, repo_type="dataset", revision=ref), "resolved", None)
         else:
             sha = getattr(api.dataset_info(repo_id, revision=ref), "sha", None)
-            if isinstance(sha, str) and _COMMIT.match(sha):
+            if isinstance(sha, str) and is_commit(sha):
                 _record_ref(repo_id, ref, sha)
     except Exception as exc:  # noqa: BLE001 - any Hub failure falls back to the cache, and is logged
         logger.info(f"Hub lookup of dataset {repo_id}@{ref} failed ({type(exc).__name__}: {exc}); trying the cache")
         return None
-    return sha if isinstance(sha, str) and _COMMIT.match(sha) else None
+    return sha if isinstance(sha, str) and is_commit(sha) else None
 
 
 def _record_ref(repo_id: str, ref: str, commit: str) -> None:
@@ -183,7 +198,7 @@ def _cached_commit(repo_id: str, ref: str) -> str | None:
         sha = path.read_text(encoding="utf-8").strip()
     except (OSError, UnicodeDecodeError):  # absent, unreadable or corrupt: nothing usable is recorded there
         return None
-    return sha if _COMMIT.match(sha) else None
+    return sha if isinstance(sha, str) and is_commit(sha) else None
 
 
 def dataset_uri_revision(uri: str | None, revision: str | None = None) -> dict[str, Any] | None:
@@ -223,5 +238,6 @@ __all__ = [
     "dataset_uri_revision",
     "hub_cache_dir",
     "hub_offline",
+    "is_commit",
     "resolve_revision",
 ]

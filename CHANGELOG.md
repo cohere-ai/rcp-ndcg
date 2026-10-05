@@ -25,6 +25,26 @@ released together.
 
 ### Public surface
 
+- `rcp_ndcg.data.revisions.is_commit(revision)` is the public form of the commit-shape check (exactly 40
+  lowercase hex characters, ``False`` for ``None`` or any other revision); no other module reads the private
+  pattern, and the resolve paths use the same strict check: a 40-hex revision with trailing whitespace is no
+  longer echoed back as a verified commit but resolved like any ref (offline, it warns `UNPINNED_REVISION`).
+- `rcp_ndcg.errors.WarningCode` gains `SNAPSHOT_LISTING` (an additive change to the closed list): an offline
+  corpus read whose file listing came from the local Hub snapshot instead of the Hub warns with it (the snapshot
+  holds only the files a download left, and a partial cache reads as missing data). With `--json` it shows in the
+  envelope's `warnings`; otherwise it prints on stderr. `schemas/cli.v1.json` and `schemas/eval-report.v1.json`
+  follow.
+- `rcp-ndcg eval score` gains a repeatable `--system NAME` (and `eval explain --report` one; the library call
+  `rcp_ndcg.eval.evaluate` gains `systems: Sequence[str] | None = None`; the MCP tool `eval_score` takes
+  `system` too): score only the named systems of the rankings file. One system whose rankings match nothing of
+  the scored dataset is still refused (exit 12; every score would be 0), but it no longer stops the healthy
+  systems of a multi-system file: score them with `--system NAME`. The refusal's hint names the way out (drop
+  the system's rows, or score the others) with `systems=` for Python callers and `--system` on the command
+  line, whenever the file holds several systems. An unknown name is a `ConfigError` (exit 3) listing the
+  systems the file names; `eval explain --report` re-scores the saved rankings for the systems the report
+  scored (its own, by default; `--system` narrows them further), so one broken system of the file does not
+  kill the explanation, and `--system` with `--run` there is a `UsageError` (it has no effect on a run).
+
 - `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
   larger than `adaptive_window` runs one batch, not one per batch: every adaptive window of such a pool holds
   the whole pool, so a further batch asks the same documents again (in the refit order) and covers only what
@@ -184,7 +204,8 @@ released together.
     `rcp_ndcg.retrieval.encoder` (re-exported there and from `rcp_ndcg.retrieval`); and the new role request and
     result types `EmbedRequest`, `PoolRequest`, `RerankRequest` and `RerankResult` (whose
     `RerankResult.aligned(request, scores)` refuses a score count that does not match the request's documents).
-  - `inference.adapters`: the `Adapter` protocol (generic in request and result) and its registry
+  - `inference.adapters`: the `Adapter` protocol (generic in request and result), the `AdapterRole` literal
+    (`"judge"`, `"embed"`, `"rerank"`, `"multi_vector"`) and its registry
     (`register_adapter`, `get_adapter`, `known_adapters`, constant `ADAPTER_ENTRY_POINTS =
     "rcp_ndcg.adapters"`). The `vllm_pooling` adapter ships below.
   - `inference.transport`: the `Sender` protocol and the `Transport` class -- the transport's frozen interface
@@ -282,6 +303,11 @@ released together.
   retrieval encoder and the reranker); no property changed.
 
 ### Fixed
+
+- `_hub_absent` no longer crashes when huggingface_hub drops its private `_CACHED_NO_EXIST` sentinel: without
+  the sentinel the cache cannot tell "absent upstream" from "not cached", so the file is treated as not cached
+  (the load refuses with the offline hint and one debug line records it; an optional table is never silently
+  `None`, a required one never reported as upstream-404).
 
 - The MCP server logs the typed warnings a tool call collects (its results have no `warnings` field, so the
   server's log is where e.g. `UNPINNED_REVISION` surfaces there).
