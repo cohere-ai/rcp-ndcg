@@ -483,6 +483,41 @@ class TestVendorBudget:
         same = fit([LONG], shape="document", budget=vendor_named, tokenizer=FRAMED)
         assert same.budget_source == "tokenizer"
 
+    def test_the_budget_refuses_to_run_without_the_tokenizer_it_declares(self) -> None:
+        """A budget that declares a tokenizer is measured and cut; handing it no tokenizer is a caller
+        error, not a hosted profile -- the vendor path is for budgets that declare none."""
+        declared = TextBudget(tokenizer="test/framed-bpe", max_tokens=24)
+        with pytest.raises(ConfigError, match="tokenizer"):
+            fit([LONG], shape="document", budget=declared, tokenizer=None)
+
+    def test_media_tokens_are_refused_without_a_tokenizer(self) -> None:
+        """A hosted profile cannot reserve media it cannot count: the declaration is refused, never ignored."""
+        vendor = TextBudget(tokenizer=None, max_tokens=4096)
+        with pytest.raises(ConfigError, match="media"):
+            fit([LONG], shape="document", budget=vendor, media_tokens=[50])
+
+    def test_the_pair_query_cut_is_verified_against_the_assembled_render(self) -> None:
+        """The query span's cut must be measured with the query in its own span: an asymmetric frame whose
+        two joins tokenize differently would otherwise ship a render over the budget -- an over-limit
+        request reaches the engine, which cuts it itself (the wrapped-prompt defect class again)."""
+        spec = TemplateSpec(
+            pair=(
+                Segment(fixed="q "),
+                Segment(content="query"),
+                Segment(fixed=" mid"),
+                Segment(content="document"),
+                Segment(fixed=" end"),
+            ),
+            add_special_tokens={"pair": False},
+        )
+        split = TextBudget(
+            tokenizer="test/word-level", max_tokens=8, query_max_tokens=6, template=spec, on_overflow="cut"
+        )
+        result = fit(
+            [("relevant relevant relevant relevant relevant five", "")], shape="pair", budget=split, tokenizer=WORDS
+        )
+        assert len(WORDS.ids(result.texts[0])) <= 8, result.texts[0]
+
     def test_duplicate_output_ids_are_refused(self) -> None:
         """Two outputs with one id would pool one score over the other (chunk_ranking_example refuses the
         same collision)."""
@@ -557,7 +592,7 @@ class TestIdentityAndFamilies:
 # ---------------------------------------------------------------------------------------------------------------
 
 
-class TestTheZembedDefectClass:
+class TestTheWrappedPromptDefectClass:
     def test_cutting_the_whole_render_from_the_right_loses_the_anchor_and_fit_does_not(self) -> None:
         """The mutation: render, then keep the first ``max_tokens`` ids -- the wrapped-prompt defect.
 

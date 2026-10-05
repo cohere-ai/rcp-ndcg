@@ -241,7 +241,8 @@ class RerankEndpoint(Endpoint):
             drops anchors from one end or the other. The query is cut first, to ``query_max_tokens``; the
             document gets the rest of the budget. ``None`` sends every pair whole. Content.
         query_max_tokens: The query's share of the pair budget (``max_tokens``), in the declared tokenizer's
-            tokens; the document gets what remains. ``None`` (the default) declares no split, and the
+            tokens; the document gets what remains. It binds when a pair overflows -- an input under budget is
+            sent byte-identical to the uncut render. ``None`` (the default) declares no split, and the
             adapter's recipe decides. Content.
         template: The pair template as data (:class:`~rcp_ndcg.data.templates.TemplateSpec`), which orders
             query and document per model (document first for some rerankers, and then the query block is an

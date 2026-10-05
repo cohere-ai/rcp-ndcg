@@ -534,7 +534,9 @@ def split_into_chunks(text: str, policy: ChunkPolicy, tokenizer: TextTokenizer) 
     and the last ends at its end, so the chunks cover the text. A slice that re-tokenizes to more than ``max_tokens``
     on its own (a word cut at its edge) ends a token earlier until it fits. A chunk is at least one document token,
     so with a cap of a few tokens one token whose text re-tokenizes longer (a multi-byte character split across
-    byte-level tokens) makes a chunk over the cap.
+    byte-level tokens) makes a chunk over the cap. One boundary caveat, declared here: a multi-byte character that
+    a token boundary splits in two repeats -- its leading bytes end one chunk and the whole character opens the
+    next -- so an ASCII-free corpus can see a character twice at a chunk edge (duplication only, never loss).
 
     Returns:
         The chunk texts in document order; ``[text]`` when *text* fits in one chunk.
@@ -1000,14 +1002,22 @@ def fit(
         raise ValueError(f"media_tokens ({len(media)}) must be declared for every input ({len(items)})")
     if any(not isinstance(count, int) or count < 0 for count in media):
         raise ValueError("media_tokens must be non-negative token counts")
-    if tokenizer is None:
-        return _fit_vendor(items, shape, budget, names, corpus=corpus, census=census)
-    if budget.tokenizer is not None and tokenizer.name != budget.tokenizer:
+    if budget.tokenizer is not None and (tokenizer is None or tokenizer.name != budget.tokenizer):
         raise ConfigError(
-            f"fit was given the tokenizer {tokenizer.name!r} but the budget declares {budget.tokenizer!r}: the "
-            "budget's numbers are counted in the declared tokenizer's tokens",
-            hint="load the budget's tokenizer (rcp_ndcg.data.load_tokenizer(budget.tokenizer)) and pass that",
+            f"fit was given {'no tokenizer' if tokenizer is None else f'the tokenizer {tokenizer.name!r}'} but "
+            f"the budget declares {budget.tokenizer!r}: the budget's numbers are counted in the declared "
+            "tokenizer's tokens",
+            hint="load the budget's tokenizer (rcp_ndcg.data.load_tokenizer(budget.tokenizer)) and pass that; "
+            "the hosted-vendor path (tokenizer=None) is for budgets that declare none",
         )
+    if tokenizer is None:
+        if media_tokens is not None and any(media):
+            raise ConfigError(
+                "media_tokens need a tokenizer to reserve against, and this budget declares none (a hosted "
+                "vendor profile sends content uncut): the media reservation cannot be honoured",
+                hint="declare tokenizer on the budget, or drop media_tokens for this profile",
+            )
+        return _fit_vendor(items, shape, budget, names, corpus=corpus, census=census)
 
     template = budget.template
     instr = instruction or ""
@@ -1030,16 +1040,17 @@ def fit(
             return query + document if shape == "pair" else (query if shape == "query" else document)
         return template.render(shape, tokenizer, query=query, document=document, instruction=instr)
 
-    def _cut_span(text: str, *, query: str = "", cap: int) -> str:
+    def _cut_span(text: str, *, span: Literal["query", "document"], other: str = "", cap: int) -> str:
         """The longest prefix of a content span whose assembled render fits ``cap`` (the budget minus the
-        media, which ride beside the rendered string and are never cut)."""
-        return token_prefix(
-            text,
-            cap,
-            tokenizer,
-            rendered=lambda piece: assemble(piece, query) if shape == "query" else assemble(query, piece),
-            add_special_tokens=flag,
-        )
+        media, which ride beside the rendered string and are never cut). The piece is rendered into its OWN
+        span, with the other span held at ``other``, so the verified count is the render the engine reads --
+        the two joins of an asymmetric frame tokenize differently, and measuring a piece in the wrong span
+        would ship an over-budget render."""
+        if span == "query":
+            rendered = lambda piece: assemble(piece, other)  # noqa: E731  (shape 'query' ignores ``other``; pair holds the document there)
+        else:
+            rendered = lambda piece: assemble(other, piece)  # noqa: E731  (shape 'document' ignores ``other``; pair holds the query there)
+        return token_prefix(text, cap, tokenizer, rendered=rendered, add_special_tokens=flag)
 
     texts: list[str] = []
     contents: list[ContentParts] = []
@@ -1101,7 +1112,7 @@ def fit(
             # where the frame meets it); trim it until the render fits. The trimmed tail is counted: the
             # chunk's own census row records the trimmed kept size against the whole input.
             if tokenizer.count(assemble(query, piece), add_special_tokens=flag) > cap:
-                pieces[index] = _cut_span(piece, query=query, cap=cap)
+                pieces[index] = _cut_span(piece, span="document", other=query, cap=cap)
         return pieces
 
     for index, item in enumerate(items):
@@ -1152,7 +1163,7 @@ def fit(
                 share = budget.query_max_tokens
                 q_final = query if tokenizer.count(query) <= share else token_prefix(query, share, tokenizer)
             # The query must leave room for the frame (and the post-processor's anchor) even with an empty document.
-            q_final = _cut_span(q_final, query="", cap=cap)
+            q_final = _cut_span(q_final, span="query", other="", cap=cap)
             q_min = tokenizer.count(assemble(q_final, ""), add_special_tokens=flag)
             if q_min >= cap and tokenizer.count(document) > 0:
                 raise TextBudgetExceededError(
@@ -1162,7 +1173,15 @@ def fit(
                 )
             room = cap - q_min
             if budget.on_overflow == "cut":
-                d_final = _cut_span(document, query=q_final, cap=cap)
+                d_final = _cut_span(document, span="document", other=q_final, cap=cap)
+                if (
+                    tokenizer.count(assemble(q_final, d_final), add_special_tokens=flag) > cap
+                ):  # pragma: no cover - guarded by construction
+                    raise DataError(
+                        f"the assembled render of input {input_id!r} exceeds the budget of {budget.max_tokens} "
+                        "tokens after both spans were verified: an internal invariant broke; report this",
+                        hint="this is a bug in the text-budget mechanism: report it with the inputs",
+                    )
                 if not (template is None and shape == "pair"):
                     texts.append(assemble(q_final, d_final))
                 contents.append((q_final, d_final))
@@ -1194,9 +1213,18 @@ def fit(
             chunked_any = True
         else:  # cut
             assert isinstance(item, str)  # the pair's cut is handled above
-            kept = _cut_span(item, cap=cap)
+            kept = _cut_span(item, span="query" if shape == "query" else "document", cap=cap)
             if not (template is None and shape == "pair"):
-                texts.append(assemble(kept, "") if shape == "query" else assemble("", kept))
+                rendered = assemble(kept, "") if shape == "query" else assemble("", kept)
+                if (
+                    tokenizer.count(rendered, add_special_tokens=flag) > cap
+                ):  # pragma: no cover - guarded by construction
+                    raise DataError(
+                        f"the assembled render of input {input_id!r} exceeds the budget of {budget.max_tokens} "
+                        "tokens after the span was verified: an internal invariant broke; report this",
+                        hint="this is a bug in the text-budget mechanism: report it with the inputs",
+                    )
+                texts.append(rendered)
             contents.append(kept)
             entries.append((input_id, input_id))
             _record(doc_id=input_id, original=item, kept=kept, aggregation=None)

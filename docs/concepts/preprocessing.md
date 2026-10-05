@@ -281,7 +281,8 @@ A self-hosted role config (`api: openai_embeddings`, `vllm_pooling` or `rerank`)
 `max_tokens` -- the package cuts the content itself, so it must know both; without them the config is refused
 with a hint naming the two fields. A hosted vendor profile (cohere, voyage, gemini) without a tokenizer sends
 its content uncut: the vendor's documented limit is declared as `max_tokens`, recorded as the effective budget
-(`budget_source: vendor` in the census, one warning per run), and nothing is measured or cut client-side. With a
+(`budget_source: vendor` in the census -- one row per corpus and budget per census -- and one warning per
+corpus per process), and nothing is measured or cut client-side. With a
 tokenizer, a vendor profile follows the same rule as self-hosted.
 
 The role configs also declare `template` (the `TemplateSpec` above), `empty_doc` (`send`, `omit_zero` -- filter
