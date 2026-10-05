@@ -213,6 +213,7 @@ WarningCode = Literal[
     "BT_L2_MISMATCH",
     "INVALID_WINDOWS",
     "UNCALIBRATED_DOCUMENTS",
+    "UNPINNED_REVISION",
     "UNREADABLE_RUN",
 ]
 """The closed list of warning codes. Adding a code is an additive change; renaming one is breaking."""

@@ -6,16 +6,40 @@ import json
 import math
 from pathlib import Path
 
+import pandas as pd
 import pytest
 from click.testing import CliRunner
 
 from rcp_ndcg.cli.eval import eval_group
-from rcp_ndcg.data import Rankings
+from rcp_ndcg.data import SUITES, Rankings
+
+VIDORE_REPO = SUITES["vidore"].repo
+SHA = "4" * 40
 
 
 def _invoke(*args: str) -> dict:
     result = CliRunner().invoke(eval_group, [*args, "--json"])
     return {"exit_code": result.exit_code, **json.loads(result.stdout)}
+
+
+def _staged_vidore_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A hub cache an online run filled for one ViDoRe subset: snapshots only, no recorded ref."""
+    cache = tmp_path / "hub"
+    cache.mkdir()
+    monkeypatch.setenv("HF_HUB_CACHE", str(cache))
+    from huggingface_hub import constants as hub_constants
+
+    monkeypatch.setattr(hub_constants, "HF_HUB_CACHE", str(cache))
+    snapshot = cache / f"datasets--{VIDORE_REPO.replace('/', '--')}" / "snapshots" / SHA
+    (snapshot / "hr__english").mkdir(parents=True)
+    pd.DataFrame({"query-id": ["q1"], "corpus-id": ["a"], "score": [1.0], "gain": [1.0], "theta": [1.0]}).to_parquet(
+        snapshot / "hr__english/qrels.parquet"
+    )
+    pd.DataFrame({"query-id": ["q1"], "corpus-ids": [["a"]]}).to_parquet(snapshot / "hr__english/top_ranked.parquet")
+    no_exist = cache / f"datasets--{VIDORE_REPO.replace('/', '--')}" / ".no_exist" / SHA / "hr__english"
+    no_exist.mkdir(parents=True)
+    (no_exist / "excluded.parquet").touch()
+    return cache
 
 
 @pytest.fixture
@@ -31,6 +55,49 @@ def dataset(tmp_path: Path) -> str:
 def _summary(document: dict, metric: str, k: int, system: str) -> float:
     (row,) = [r for r in document["data"]["summary"] if (r["metric"], r["k"], r["system"]) == (metric, k, system)]
     return row["value"]
+
+
+def test_an_unpinned_offline_run_carries_the_warning_in_the_envelope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Offline with no revision to resolve, the warning is in the JSON envelope's warnings, not only stderr."""
+    _staged_vidore_cache(tmp_path, monkeypatch)
+    rankings = tmp_path / "run.jsonl"
+    Rankings.from_orders({"q1": ["a"]}, system="mine").save(rankings)
+
+    document = _invoke("score", "--rankings", str(rankings), "--suite", "vidore", "--subset", "hr__english")
+
+    assert document["ok"] is False
+    assert [w["code"] for w in document["warnings"]] == ["UNPINNED_REVISION"]
+    assert "--revision" in document["warnings"][0]["message"]
+
+
+def test_the_unpinned_warning_prints_on_stderr_without_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without --json the same warning prints on stderr, as every typed warning does."""
+    _staged_vidore_cache(tmp_path, monkeypatch)
+    rankings = tmp_path / "run.jsonl"
+    Rankings.from_orders({"q1": ["a"]}, system="mine").save(rankings)
+
+    result = CliRunner().invoke(
+        eval_group, ["score", "--rankings", str(rankings), "--suite", "vidore", "--subset", "hr__english"]
+    )
+
+    assert result.exit_code == 4
+    assert "warning [UNPINNED_REVISION]" in result.stderr
+
+
+def test_a_pinned_offline_run_resolves_without_a_warning(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The pinned offline run works and carries no warning: the revision is already exact."""
+    _staged_vidore_cache(tmp_path, monkeypatch)
+    rankings = tmp_path / "run.jsonl"
+    Rankings.from_orders({"q1": ["a"]}, system="mine").save(rankings)
+
+    document = _invoke(
+        "score", "--rankings", str(rankings), "--suite", "vidore", "--subset", "hr__english", "--revision", SHA
+    )
+
+    assert document["ok"] is True, document
+    assert document["warnings"] == []
 
 
 def test_float_grades_are_scored_as_floats(dataset: str, tmp_path: Path) -> None:

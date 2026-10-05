@@ -9,8 +9,9 @@ was judged record the commit it resolved to instead (a judge's ``revision`` is r
 * An online resolution records the ref in the cache (``refs/<ref>``), so the offline run without ``--revision``
   resolves the same commit from it; a download pinned to a commit cannot write that ref itself, which is why a
   cache an online run filled otherwise serves nothing offline.
-* When neither answers, the commit is ``None`` and the result is not verified. Nothing is invented, and a warning
-  names the repository once per process.
+* When neither answers, the commit is ``None`` and the result is not verified. Nothing is invented, and a typed
+  warning (``UNPINNED_REVISION``, one per repository and revision per process) names the repository and the fix;
+  the CLI collects it into its ``--json`` envelope's ``warnings`` and prints it on stderr otherwise.
 
 The result is cached per ``(repo_id, revision)`` for the life of the process, so an identity that is computed many
 times (a pipeline's resume checks) costs one metadata call per repository, not one per check.
@@ -21,11 +22,13 @@ from __future__ import annotations
 import functools
 import os
 import re
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from rcp_ndcg.errors import RcpNdcgWarning
 from rcp_ndcg.support.logging import get_logger
 
 logger = get_logger(__name__)
@@ -96,10 +99,14 @@ def resolve_revision(repo_id: str, revision: str | None = None) -> ResolvedRevis
     if commit is None:
         commit = _cached_commit(repo_id, ref)
     if commit is None:
-        logger.warning(
-            f"Could not resolve dataset {repo_id}@{ref} to a commit (Hub unreachable or offline, and not in the "
-            f"local cache at {hub_cache_dir()}). The identity records it as unverified; pin a full commit as its "
-            "revision to make it exact."
+        warnings.warn(
+            RcpNdcgWarning(
+                "UNPINNED_REVISION",
+                f"Dataset {repo_id}@{ref} resolved to no commit (the Hub is unreachable or offline, and the local "
+                f"cache at {hub_cache_dir()} has no ref for it), so the identity records it as unverified: pin the "
+                "exact revision with --revision <full sha> to make the run reproducible.",
+            ),
+            stacklevel=2,
         )
     return ResolvedRevision(repo_id, commit)
 

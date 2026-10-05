@@ -27,6 +27,11 @@ released together.
 
 - `JobSpec` gains `phases` (a tuple of `JobPhase`: the engines one phase starts, by role, and the command it runs
   while they serve); a job sets `phases` or `serve`, not both.
+- `rcp_ndcg.errors.WarningCode` gains `UNPINNED_REVISION` (an additive change to the closed list): a Hub dataset
+  whose branch (or no revision at all) resolves to no commit — offline, or with the Hub unreachable, and no
+  recorded ref in the local cache — warns with it, naming `--revision <full sha>` as the fix. With `--json` it
+  shows in the envelope's `warnings`; otherwise it prints on stderr. `schemas/cli.v1.json`,
+  `schemas/eval-report.v1.json` and the public-surface snapshot follow.
 - `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
   the step identities (its `IDENTITY_ROLES` declarations); no property changed.
 - **New public module `rcp_ndcg.inference`**: the inference layer between `rcp_ndcg.data` and

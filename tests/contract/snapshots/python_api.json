@@ -6239,6 +6239,7 @@
           "BT_L2_MISMATCH",
           "INVALID_WINDOWS",
           "UNCALIBRATED_DOCUMENTS",
+          "UNPINNED_REVISION",
           "UNREADABLE_RUN"
         ]
       },
@@ -6249,6 +6250,7 @@
           "BT_L2_MISMATCH",
           "INVALID_WINDOWS",
           "UNCALIBRATED_DOCUMENTS",
+          "UNPINNED_REVISION",
           "UNREADABLE_RUN"
         ]
       },
@@ -7093,7 +7095,7 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "Literal['UNRANKED_QUERIES', 'NO_POSITIVE_QRELS'] | Literal['APPROXIMATE_IMAGE_TOKENS', 'BT_L2_MISMATCH', 'INVALID_WINDOWS', 'UNCALIBRATED_DOCUMENTS', 'UNREADABLE_RUN']"
+            "type": "Literal['UNRANKED_QUERIES', 'NO_POSITIVE_QRELS'] | Literal['APPROXIMATE_IMAGE_TOKENS', 'BT_L2_MISMATCH', 'INVALID_WINDOWS', 'UNCALIBRATED_DOCUMENTS', 'UNPINNED_REVISION', 'UNREADABLE_RUN']"
           },
           "message": {
             "alias": null,

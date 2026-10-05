@@ -227,7 +227,8 @@ runner:
   `HF_HUB_OFFLINE=1`. The shared cache is filled by the online runs themselves: a dataset run resolves its
   revision online once and records the commit behind the branch (`refs/<ref>` in the cache), so an offline run
   without `--revision` reads from the same cache. A cache with no recorded ref (staged by a download pinned to a
-  commit) needs `--revision <full sha>`; a file the online run never fetched is an error naming the fix, not an
+  commit) needs `--revision <full sha>`; until then the run warns (`UNPINNED_REVISION`, on stderr and in the
+  `--json` envelope's `warnings`). A file the online run never fetched is an error naming the fix, not an
   empty table.
 - **Kubernetes.** Each run is a `batch/v1` Job, applied with the `kubectl` on your `PATH` (and `context`, if set).
   Resources become the coordinator's requests and limits (`nvidia.com/gpu`, `cpu`, `memory`) and the Job's

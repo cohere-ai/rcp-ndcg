@@ -9,7 +9,6 @@ keeps ``HF_HUB_OFFLINE=1`` and an empty cache unless a test sets up otherwise.
 from __future__ import annotations
 
 import json
-import logging
 import sys
 import types
 from pathlib import Path
@@ -17,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from rcp_ndcg.data.revisions import resolve_revision
+from rcp_ndcg.errors import RcpNdcgWarning
 from rcp_ndcg.runs import Pipeline, RunConfig
 from rcp_ndcg.support.identity import hash_payload
 
@@ -100,11 +100,15 @@ class TestResolveRevision:
         assert resolved.commit == SHA_A
         assert hub.calls == [("dataset", "org/data", "main")]
 
-    def test_unresolvable_is_unverified_and_says_so(self, caplog: pytest.LogCaptureFixture) -> None:
-        with caplog.at_level(logging.WARNING):
+    def test_unresolvable_is_unverified_and_warns_with_the_code(self) -> None:
+        """Offline with nothing to resolve, the run warns UNPINNED_REVISION naming the revision fix."""
+        with pytest.warns(RcpNdcgWarning) as seen:
             resolved = resolve_revision("org/data", "main")
         assert (resolved.commit, resolved.verified) == (None, False)
-        assert "org/data@main" in caplog.text
+        (record,) = seen
+        warning = record.message
+        assert isinstance(warning, RcpNdcgWarning) and warning.code == "UNPINNED_REVISION"
+        assert "--revision" in str(warning) and "full sha" in str(warning)
 
     def test_a_corrupt_cache_ref_is_sanitized_not_fatal(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """A ref file that is not valid UTF-8 is removed before resolution, never crashes it."""
