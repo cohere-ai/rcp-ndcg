@@ -264,6 +264,7 @@
                 "BT_L2_MISMATCH",
                 "INVALID_WINDOWS",
                 "UNCALIBRATED_DOCUMENTS",
+                "UNPINNED_REVISION",
                 "UNREADABLE_RUN"
               ],
               "type": "string"

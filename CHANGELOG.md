@@ -63,6 +63,11 @@ released together.
 - **`Endpoint.api_key_env` refuses an empty name** (`min_length: 1`; `schemas/index.v1.json`,
   `schemas/judge-config.v1.json`, `schemas/run-config.v1.json` regenerated): an empty variable name would
   silently send no credential header, for every role; ``None`` (unset) still sends no key.
+- `rcp_ndcg.errors.WarningCode` gains `UNPINNED_REVISION` (an additive change to the closed list): a Hub dataset
+  whose branch (or no revision at all) resolves to no commit — offline, or with the Hub unreachable, and no
+  recorded ref in the local cache — warns with it, naming `--revision <full sha>` as the fix. With `--json` it
+  shows in the envelope's `warnings`; otherwise it prints on stderr. `schemas/cli.v1.json`,
+  `schemas/eval-report.v1.json` and the public-surface snapshot follow.
 - `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
   the step identities (its `IDENTITY_ROLES` declarations); no property changed.
 - **New public module `rcp_ndcg.inference`**: the inference layer between `rcp_ndcg.data` and
@@ -111,6 +116,8 @@ released together.
 
 ### Fixed
 
+- The MCP server logs the typed warnings a tool call collects (its results have no `warnings` field, so the
+  server's log is where e.g. `UNPINNED_REVISION` surfaces there).
 - Changing a served encoder's or reranker's URL no longer re-runs retrieval or reranking: the `retrieve` and
   `rerank` step identities hold the candidates config's content payload (`identity_payload`, as the judge steps
   already do), so its runtime fields (`base_url`, `api_key_env`, `concurrency`, the timeouts and retries,

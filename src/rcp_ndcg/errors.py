@@ -213,6 +213,7 @@ WarningCode = Literal[
     "BT_L2_MISMATCH",
     "INVALID_WINDOWS",
     "UNCALIBRATED_DOCUMENTS",
+    "UNPINNED_REVISION",
     "UNREADABLE_RUN",
 ]
 """The closed list of warning codes. Adding a code is an additive change; renaming one is breaking."""
@@ -223,8 +224,8 @@ WARNING_CODES: tuple[str, ...] = get_args(WarningCode)
 class RcpNdcgWarning(UserWarning):
     """A condition worth a caller's attention that does not stop the call.
 
-    Raise it with ``warnings.warn(RcpNdcgWarning("UNREADABLE_RUN", "..."))``; the CLI and MCP collect it into
-    the ``warnings`` list of their result.
+    Raise it with ``warnings.warn(RcpNdcgWarning("UNREADABLE_RUN", "..."))``; the CLI collects it into the
+    ``warnings`` of its ``--json`` envelope (and prints it on stderr otherwise), and the MCP server logs it.
 
     Args:
         code: One of :data:`WarningCode`.
