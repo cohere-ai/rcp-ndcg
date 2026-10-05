@@ -192,6 +192,11 @@ class TestTheRefusals:
         with pytest.raises(RequestRejectedError, match="no choices"):
             adapter.interpret(CompletionInput(user_prompt="j"), [_reply({"id": "x"})])
 
+    def test_a_body_that_is_not_a_chat_completion_is_a_refused_request(self) -> None:
+        adapter = OpenAIChat(CONFIG)
+        with pytest.raises(RequestRejectedError, match="not a chat completion"):
+            adapter.interpret(CompletionInput(user_prompt="j"), [_reply(b"plain bytes")])
+
     def test_the_error_text_is_found_wherever_the_endpoint_nested_it(self) -> None:
         body = {"detail": [{"msg": "Too many videos in the request"}]}
         with pytest.raises(CapabilityError, match="refused the number of videos"):

@@ -233,7 +233,10 @@ released together.
     without reasoning), and maps the refusals: a media-count text (HTTP 400/422) and a refusal of the answer
     schema are `CapabilityError`, every other returned 4xx and an answer with no choices are
     `RequestRejectedError`; `usage(reply)` reads the token report; `fingerprint(reply)` reads
-    `system_fingerprint`. The judge's message/media lowering (`build_messages`, `media_counts`,
+    `system_fingerprint`. One wire nuance moves with the SDK: a judge without `api_key_env` no longer sends
+    `Authorization: Bearer EMPTY` on its requests (the SDK always did); the transport sends credentials only
+    from the environment variables the config names.
+    The judge's message/media lowering (`build_messages`, `media_counts`,
     `MAX_VIDEO_BYTES`, `VIDEO_CACHE_SIZE`) moved here unchanged from the internal `rcp_ndcg.llm._payload`
     (deleted; the layering forbids `inference` importing `llm`), importable at the new home.
   - `JudgeClient` keeps its public API (`from_config`, `complete`, `probe`, `engines`, `model`, `usage`) and is
@@ -243,8 +246,12 @@ released together.
     the endpoint's timeouts and pool) instead of `http_client` (which used to replace both); `config` and
     `usage` are properties now (assigning a `model_copy` of the config rebuilds the wire at the next call);
     the client-level `usage` keeps its shape (requests, failed_requests, tokens; `cached_input_tokens` stays
-    at 0 -- the wire reports tokens and calls only, the layer's usage decision). `is_unavailable` and the judge's
-    private status table are gone: the shared status map in `rcp_ndcg.errors` is the one home.
+    at 0 -- the wire reports tokens and calls only; the old client counted the endpoint's
+    `prompt_tokens_details.cached_tokens`), and a request refused while its body is built (an unprepared
+    image, an oversized video container) counts as neither a request nor a failed request, where the old
+    client counted it as failed -- it is refused before the transport is engaged, like the media gate.
+    `is_unavailable` and the judge's private status table are gone: the shared status map in
+    `rcp_ndcg.errors` is the one home.
   - `JudgeConfig.api` stays unset by default (the judge's `openai_chat` wire is resolved from it), so judge
     identity payloads are byte-identical: no shipped preset, and not `JudgeConfig.fake`, changes key.
   - The offline fake judge answers behind the transport: `fake://` endpoints answer `POST /chat/completions`

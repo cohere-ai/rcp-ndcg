@@ -122,6 +122,18 @@ class TestConfig:
         _ask(client)
         assert endpoint.requests[0]["temperature"] == 0.3
 
+    def test_a_replaced_config_closes_the_transport_it_replaces(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import rcp_ndcg.inference.transport as transport_module
+
+        closed: list[str] = []
+        monkeypatch.setattr(transport_module.Transport, "aclose", lambda self: closed.append(self.endpoint.model))
+        client = _client(Endpoint())
+        _ask(client)  # builds the wire
+        client.config = client.config.model_copy(update={"temperature": 0.3})
+        _ask(client)  # builds the replacement
+        client.config = client.config.model_copy(update={"temperature": 0.5})
+        assert closed == ["m", "m"], "each replaced config closes the wire it replaces"
+
 
 class TestRequests:
     def test_the_request_carries_the_sampling_settings(self) -> None:

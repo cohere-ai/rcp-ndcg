@@ -294,7 +294,14 @@ class JudgeClient:
     @config.setter
     def config(self, config: JudgeConfig) -> None:
         self._config = config
+        self._rewire()
+
+    def _rewire(self) -> None:
+        """Drop the wire built for the previous config, closing its transport's pool."""
+        transport = self._transport
         self._adapter = self._transport = self._wired_for = None
+        if transport is not None:
+            transport.aclose()
 
     @property
     def model(self) -> str:
@@ -333,6 +340,7 @@ class JudgeClient:
     def _wire(self) -> tuple[OpenAIChat, Transport]:
         """The adapter and transport of the current config, built once and rebuilt when the config is replaced."""
         if self._adapter is None or self._transport is None or self._wired_for is not self._config:
+            self._rewire()
             adapter_cls = get_adapter(self._config.api or "openai_chat")
             role = getattr(adapter_cls, "role", None)
             if role != "judge":

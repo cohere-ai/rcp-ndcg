@@ -194,9 +194,9 @@ class Transport:
                 ``httpx_transport`` is supplied, which answers instead of them.
             httpx_transport: A caller-supplied ``httpx.AsyncBaseTransport`` (a mock in tests), wrapped in the
                 transport's own ``httpx.AsyncClient`` with the endpoint's timeouts and pool limits -- never
-                replacing them, unlike the judge client of today, where a supplied client replaced both. The
-                pool limits size the transport's own pool (the default httpx transport); a supplied transport
-                pools as it pleases.
+                replacing them, unlike the judge client this transport replaced, where a supplied client
+                replaced both. The pool limits size the transport's own pool (the default httpx transport); a
+                supplied transport pools as it pleases.
         """
         if not endpoint.urls:
             raise ConfigError(

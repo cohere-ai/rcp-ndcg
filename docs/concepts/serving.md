@@ -138,6 +138,9 @@ the judge is one of its roles.
   transport's, described in [the inference layer](inference.md).
 - **Answers.** The client records the endpoint's `finish_reason` as it comes, any string or none; only the answer's
   text is parsed.
+- **Usage.** The client counts its requests, their failures and the tokens each answer reports, for the run
+  manifest and the CLI's judge command. The wire reports tokens and calls only: the endpoint's cached-input
+  token detail (`prompt_tokens_details.cached_tokens`) is not tracked.
 - **Window budget.** Each document's text is cut to the tokens its window leaves it, and every cut is recorded
   ([preprocessing](preprocessing.md)).
 - **Media.** A prompt with images or video is refused (`CapabilityError`) unless the judge config declares that the
