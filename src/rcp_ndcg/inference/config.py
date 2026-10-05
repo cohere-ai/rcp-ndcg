@@ -68,21 +68,32 @@ class PoolingEndpoint(EmbeddingEndpoint):
     """A multi-vector (late interaction) endpoint speaking vLLM ``POST {base_url}/pooling`` (task ``token_embed``).
 
     The result is ragged: one slice of vectors per item, not one vector. Everything else works as
-    :class:`EmbeddingEndpoint` (the prompts, the tokenizer's cut, the batch size).
+    :class:`EmbeddingEndpoint` (the prompts, the batch size) -- except that ``max_tokens`` is refused until the
+    text-budget mechanism is wired (the pooling client raises :class:`~rcp_ndcg.errors.ConfigError`), and
+    ``dimensions`` is never sent: vLLM's ``/pooling`` refuses it ("dimensions is currently not supported").
 
     Attributes:
         api: The wire adapter; ``"vllm_pooling"`` by default.
         embed_dtype: The precision the vectors cross the wire in; ``"float16"`` (the owner's Q11 decision)
             halves the bytes of a ragged buffer, ``"float32"`` is the lossless opt-in. Content: it changes the
-            vectors.
+            vectors. MaxSim computes in float32 either way.
+        dim: The width of one token vector -- the checkpoint's late-interaction dimension (ColBERT-style
+            checkpoints project to a fixed width, e.g. 128). Content: it is the served checkpoint's own
+            output width. Needed to decode the base64 frame of ``/pooling``, which is flat and carries no
+            shape (``vllm/utils/serial_utils.py::tensor2binary`` flattens); the response's token counts are
+            checked against it, so a mistyped width fails loudly instead of silently mis-shaping every
+            vector. The self-describing float and bytes frames decode without it, and the ``bytes`` encoding
+            makes it unnecessary (its metadata carries each item's ``shape``).
     """
 
     IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {
         "embed_dtype": FieldRole.CONTENT,
+        "dim": FieldRole.CONTENT,
     }
 
     api: str = "vllm_pooling"  # type: ignore[assignment]  # this role's wire adapter, defaulted
     embed_dtype: Literal["float16", "float32"] = "float16"
+    dim: int | None = Field(default=None, ge=1)
 
 
 class RerankEndpoint(Endpoint):
