@@ -32,7 +32,8 @@ class Endpoint(BaseModel):
         model: The served model name, sent as the request's ``model``.
         revision: The checkpoint commit the served weights resolved to; recorded in identities, so two
             checkpoints served under one name are never mistaken for each other.
-        api_key_env: Environment variable holding the API key; ``None`` sends no key.
+        api_key_env: Environment variable holding the API key; ``None`` sends no key. An empty name is
+            refused (it would silently send no header).
         headers_env: Header name -> environment variable name (e.g. ``{"X-Gateway-Key": "GATEWAY_KEY"}``); the
             values are read from the environment only, never from a config, and the variable names are validated.
         concurrency: Requests in flight at once.
@@ -66,7 +67,7 @@ class Endpoint(BaseModel):
     base_url: str | None = None
     model: str = Field(min_length=1)
     revision: str | None = None
-    api_key_env: str | None = None
+    api_key_env: str | None = Field(default=None, min_length=1)
     headers_env: dict[str, str] = Field(default_factory=dict)
     concurrency: int = Field(default=64, ge=1)
     timeout_s: float = Field(default=600.0, gt=0)

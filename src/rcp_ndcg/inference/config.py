@@ -19,8 +19,10 @@ from rcp_ndcg.support.identity import FieldRole
 class EmbeddingEndpoint(Endpoint):
     """A dense-embedding endpoint speaking OpenAI ``POST {base_url}/embeddings``.
 
-    The package owns every content decision itself: it applies the prompts in the text, cuts at token
-    boundaries with the declared tokenizer, sends ``dimensions`` only when set, and L2-normalises the result.
+    The package owns every content decision itself: it applies the prompts in the text, sends ``dimensions``
+    only when set, and L2-normalises the result. Cutting text to ``max_tokens`` at token boundaries of the
+    declared ``tokenizer`` is the text-budget mechanism's job; until that mechanism is wired into the client,
+    a config that sets ``max_tokens`` is refused, never silently ignored.
 
     Attributes:
         api: The wire adapter; ``"openai_embeddings"`` by default (a hosted profile overrides it in its own
@@ -38,7 +40,8 @@ class EmbeddingEndpoint(Endpoint):
             pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the
             anchors always survive. The cut is never left to the engine: an engine-side truncation of the
             rendered prompt drops anchors from one end or the other. ``None`` sends every item whole.
-            Content.
+            Content. Refused until the text-budget mechanism wires the client-side cut
+            (:class:`~rcp_ndcg.inference.clients.EmbeddingClient` raises a ``ConfigError``).
         query_prompt: Text prepended to every query (an asymmetric embedder's instruction prefix). Content.
         doc_prompt: Text prepended to every document. Content.
         normalize: Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising
@@ -68,6 +71,28 @@ class EmbeddingEndpoint(Endpoint):
     normalize: bool = True
     dimensions: int | None = Field(default=None, ge=1)
     batch_size: int = Field(default=32, ge=1)
+
+    def identity_extra(self) -> dict[str, str]:
+        """The identity fields beyond :func:`rcp_ndcg.support.identity.identity_payload`: the tokenizer's SHA-256.
+
+        The judge's rule for ``JudgeConfig.tokenizer``: what cuts (or, later, budgets) the text
+        enters every identity by the SHA-256 of its ``tokenizer.json``, never by how it is named -- the name is
+        RUNTIME. The step identity of a retrieval step (``runs/pipeline.py``) will merge this into the config's
+        ``identity_payload`` when the retrieval wiring moves onto this layer.
+
+        Returns:
+            ``{"tokenizer_sha256": <sha>}`` when the config names a tokenizer, else ``{}``.
+
+        Raises:
+            DependencyError: ``tokenizers`` (or, for a Hub id, ``huggingface_hub``) is not installed.
+            MissingInputError: The local file, or the repository's ``tokenizer.json`` at the named revision,
+                does not exist; an unknown repository raises the Hub client's own error.
+        """
+        if self.tokenizer is None:
+            return {}
+        from rcp_ndcg.data.tokenizer import load_tokenizer
+
+        return {"tokenizer_sha256": load_tokenizer(self.tokenizer).sha256}
 
 
 class PoolingEndpoint(EmbeddingEndpoint):

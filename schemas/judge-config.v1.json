@@ -26,6 +26,7 @@
     "api_key_env": {
       "anyOf": [
         {
+          "minLength": 1,
           "type": "string"
         },
         {
@@ -33,7 +34,7 @@
         }
       ],
       "default": null,
-      "description": "Environment variable holding the API key; ``None`` sends no key.",
+      "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
       "title": "Api Key Env"
     },
     "base_url": {

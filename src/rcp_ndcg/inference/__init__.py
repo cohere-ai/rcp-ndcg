@@ -15,6 +15,8 @@ paths send their requests through one set of names:
   ``api: <name>`` (:mod:`rcp_ndcg.inference.adapters.base`);
 * :class:`Sender` and :class:`Transport` -- the transport's frozen interface; behaviour arrives with the transport work
   (:mod:`rcp_ndcg.inference.transport`);
+* the role clients -- the content decisions above the wire: :class:`EmbeddingClient` (dense embeddings;
+  :mod:`rcp_ndcg.inference.clients`);
 * the role endpoint configs -- :class:`EmbeddingEndpoint`, :class:`PoolingEndpoint`, :class:`RerankEndpoint`
   (:mod:`rcp_ndcg.inference.config`);
 * :data:`FAKE_SCHEME` -- the offline fakes' URL scheme (:mod:`rcp_ndcg.inference.fake`).
@@ -28,6 +30,7 @@ from rcp_ndcg.inference.adapters.base import (
     known_adapters,
     register_adapter,
 )
+from rcp_ndcg.inference.clients import EmbeddingClient
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.fake import FAKE_SCHEME
@@ -58,6 +61,7 @@ __all__ = [
     "CompletionInput",
     "EmbedRequest",
     "Embeddings",
+    "EmbeddingClient",
     "EmbeddingEndpoint",
     "EncodeRole",
     "EngineInfo",

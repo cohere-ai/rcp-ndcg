@@ -25,6 +25,7 @@ nav:
       - "The calibration": concepts/calibration.md
       - "Primitives": concepts/primitives.md
       - "Preprocessing and chunking": concepts/preprocessing.md
+      - "Embedding endpoints": concepts/embeddings.md
       - "Judges, serving and runners": concepts/serving.md
   - Tutorials:
       - "Calibrate your benchmark": tutorials/calibrate-your-benchmark.md

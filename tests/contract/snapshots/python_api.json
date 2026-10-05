@@ -7908,6 +7908,94 @@
         ],
         "kind": "class"
       },
+      "EmbeddingClient": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.clients.embed",
+        "init": [
+          {
+            "annotation": "EmbeddingEndpoint",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "config"
+          },
+          {
+            "annotation": "Sender | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "sender"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "aencode": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Sequence[Content]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "contents"
+              },
+              {
+                "annotation": "EncodeRole",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "role"
+              },
+              {
+                "annotation": "int | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "batch_size"
+              },
+              {
+                "returns": "Embeddings"
+              }
+            ]
+          },
+          "encode": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Sequence[Content]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "contents"
+              },
+              {
+                "annotation": "EncodeRole",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "role"
+              },
+              {
+                "annotation": "int | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "batch_size"
+              },
+              {
+                "returns": "Embeddings"
+              }
+            ]
+          }
+        }
+      },
       "EmbeddingEndpoint": {
         "bases": [
           "rcp_ndcg.inference.endpoint.Endpoint"
@@ -8050,7 +8138,23 @@
           }
         },
         "frozen": true,
-        "kind": "pydantic_model"
+        "kind": "pydantic_model",
+        "members": {
+          "identity_extra": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, str]"
+              }
+            ]
+          }
+        }
       },
       "Embeddings": {
         "bases": [],
