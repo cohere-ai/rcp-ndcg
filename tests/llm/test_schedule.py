@@ -4,14 +4,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import random
 from collections import Counter
 
 import pytest
 from pydantic import ValidationError
+from pytest import MonkeyPatch
 
 from rcp_ndcg.llm import schedule as sched
 from rcp_ndcg.llm.schedule import RubricSchedule, TournamentSchedule
+
+#: The fingerprint :func:`_numerics_digest` pins; the second assertion of the reference test re-derives it with
+#: every boundary value one ulp off, so the pin's tolerance is demonstrated inside the suite.
+_REFERENCE_FINGERPRINT = "974e8e6d7d428309f9fd7e2f9c2ceded76c16ec8b60d411717bcca1fb2d965d6"
 
 
 def test_the_default_tournament_is_the_papers_216_calls_with_56_adaptive_at_a_pool_of_150() -> None:
@@ -133,8 +139,23 @@ def test_each_query_draws_from_its_own_stream() -> None:
     assert first != [sched.query_rng(42, "ds", "q2").random() for _ in range(2)]
 
 
-def _numerics_digest() -> str:
-    """Every window the scheduler draws on a grid of pools and seeds, as one digest."""
+def _sig(value: float) -> str:
+    """The value to 9 significant digits: a platform-stable representation of a boundary value.
+
+    The boundary values run through ``math.exp`` and ``math.log2``, whose last bit may differ between libms
+    (macOS against Linux); 9 significant digits is far coarser than that (an ulp is ~1e-16 relative) and far
+    tighter than any change to a formula that could move a window.
+    """
+    return f"{float(value):.9g}"
+
+
+def _numerics_digest(*, nudge_values: bool = False) -> str:
+    """Every window the scheduler draws on a grid of pools and seeds, and its boundary values, as one digest.
+
+    The windows (ids, in order) are digested exactly: they are what the paper's runs asked. The boundary values
+    are digested through :func:`_sig`. With ``nudge_values`` every value is pushed one ulp towards +inf first,
+    which is what another libm may do; the digest must not move.
+    """
     out = []
     for seed in range(6):
         for n in (7, 23, 150):
@@ -149,15 +170,36 @@ def _numerics_digest() -> str:
                     for b in group[i + 1 :]:
                         observed[sched._canonical_pair(ids[a], ids[b])] += 1
             boundaries = sched._compute_boundary_values(theta, observed, top_k=150)
+            if nudge_values:
+                boundaries = [(math.nextafter(value, math.inf), a, b) for value, a, b in boundaries]
             adaptive = sched._greedy_select_windows(theta, boundaries, min(10, n), num_windows=8, overlap_discount=0.3)
-            out.append((groups, stratified, boundaries, adaptive))
-    return hashlib.sha256(json.dumps(out, sort_keys=True, default=str).encode()).hexdigest()
+            out.append(
+                {
+                    "groups": groups,
+                    "stratified": stratified,
+                    "boundaries": [[_sig(value), a, b] for value, a, b in boundaries],
+                    "adaptive": adaptive,
+                }
+            )
+    return hashlib.sha256(json.dumps(out, sort_keys=True).encode()).hexdigest()
 
 
 def test_the_window_numerics_are_the_reference_implementations() -> None:
     """Pinned against the scheduler the paper's runs used: any change to a draw changes the digest.
 
     The draws at pools larger than a window (23, 150) are the paper's; a pool smaller than a window (7) draws each
-    window of the whole pool in its own order.
+    window of the whole pool in its own order. The windows are compared exactly; the boundary values to 9
+    significant digits (:func:`_sig`), so a libm that differs in the last bit does not fail the test while a
+    change to a formula still does.
     """
-    assert _numerics_digest() == "11707e05029e6730160d7022573929be5e9c188c7f9d1b2b829acc6c00161389"
+    assert _numerics_digest() == "974e8e6d7d428309f9fd7e2f9c2ceded76c16ec8b60d411717bcca1fb2d965d6"
+    # A libm that returns each boundary value one ulp off draws the same windows and the same values to 9 digits.
+    assert _numerics_digest(nudge_values=True) == "974e8e6d7d428309f9fd7e2f9c2ceded76c16ec8b60d411717bcca1fb2d965d6"
+
+
+def test_the_window_numerics_digest_moves_on_a_real_numeric_change() -> None:
+    """The tolerance is not a weakening: an actual change to a formula moves the fingerprint."""
+    with MonkeyPatch.context() as mp:
+        mp.setattr(sched, "discount", lambda rank: 1.0 / (rank + 1))  # not the nDCG discount
+        assert _numerics_digest() != _REFERENCE_FINGERPRINT
+        assert _numerics_digest(nudge_values=True) != _REFERENCE_FINGERPRINT
