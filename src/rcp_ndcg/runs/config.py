@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Any, ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, model_validator
 from rcp_ndcg_core.irt import Priors
@@ -44,6 +44,7 @@ from rcp_ndcg.runners.kubernetes import KubernetesOptions
 from rcp_ndcg.runners.local import LocalOptions
 from rcp_ndcg.runners.slurm import SlurmOptions
 from rcp_ndcg.runs.mirror import DEFAULT_INTERVAL_S
+from rcp_ndcg.support.identity import FieldRole
 from rcp_ndcg.support.serve import ServeConfig
 
 #: The steps of a run, in the order they run.
@@ -54,6 +55,7 @@ STEPS: tuple[StepName, ...] = ("retrieve", "rerank", "tournament", "rubric", "ca
 JUDGE_STEPS: frozenset[str] = frozenset({"tournament", "rubric"})
 
 _FORBID = ConfigDict(extra="forbid", populate_by_name=True)
+_CONTENT, _RUNTIME = FieldRole.CONTENT, FieldRole.RUNTIME
 
 
 class DatasetSource(BaseModel):
@@ -103,6 +105,10 @@ class DatasetSource(BaseModel):
 class CandidatesConfig(BaseModel):
     """Where each query's candidate pool comes from.
 
+    Every field changes the numbers (the retriever and the reranker declare their own roles, runtime fields and
+    all, in :mod:`rcp_ndcg.retrieval.config`), so the whole section is content: a run's step identities hold it by
+    :func:`rcp_ndcg.support.identity.identity_payload`.
+
     Attributes:
         source: ``"dataset"`` (the dataset's own pools, else its judged documents), ``"rankings"`` (a rankings
             file of :func:`~rcp_ndcg.data.load_rankings`) or ``"retrieval"`` (first-stage retrieval). Written
@@ -115,6 +121,15 @@ class CandidatesConfig(BaseModel):
     """
 
     model_config = _FORBID
+
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {
+        "source": _CONTENT,
+        "rankings": _CONTENT,
+        "system": _CONTENT,
+        "retrieval": _CONTENT,
+        "rerank": _CONTENT,
+        "depth": _CONTENT,
+    }
 
     source: Literal["dataset", "rankings", "retrieval"] = Field(default="dataset", alias="from")
     rankings: str | None = None

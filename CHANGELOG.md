@@ -21,6 +21,21 @@ Every artifact schema carries its own version (`rcp-ndcg.<name>.v1`), bumped onl
 incompatibly, independently of the package version. `rcp-ndcg` pins `rcp-ndcg-core` to its own version; the two are
 released together.
 
+## Unreleased
+
+### Public surface
+
+- `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
+  the step identities (its `IDENTITY_ROLES` declarations); no property changed.
+
+### Fixed
+
+- Changing a served encoder's or reranker's URL no longer re-runs retrieval or reranking: the `retrieve` and
+  `rerank` step identities hold the candidates config's content payload (`identity_payload`, as the judge steps
+  already do), so its runtime fields (`base_url`, `api_key_env`, `concurrency`, the timeouts and retries,
+  `batch_size`) never reach a key. The payload keys candidates by field name (`source`), not by its YAML alias
+  (`from:`), and unset optional fields are omitted; step identities change once accordingly.
+
 ## 0.1.0
 
 The first public release, accompanying the paper
