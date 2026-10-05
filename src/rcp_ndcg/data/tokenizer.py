@@ -33,6 +33,10 @@ def _backend_class() -> Any:
     return Tokenizer
 
 
+#: The added vocabulary per tokenizer file (keyed by its SHA-256), resolved once per file per process.
+_ADDED_TOKENS_CACHE: dict[str, dict[str, str]] = {}
+
+
 def _added_tokens(backend: Any) -> dict[str, str]:
     """The backend's added vocabulary, resolved once at load: name -> literal text (see ``added_tokens``)."""
     tokens: dict[str, str] = {}
@@ -58,12 +62,6 @@ class TextTokenizer:
     name: str
     sha256: str
     backend: Any = field(repr=False, compare=False)
-    #: The added vocabulary, resolved once at load (see :meth:`added_tokens`); not part of the identity.
-    _specials: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
-
-    def __post_init__(self) -> None:
-        if not self._specials:
-            object.__setattr__(self, "_specials", _added_tokens(self.backend))
 
     @classmethod
     def from_json(cls, data: bytes, *, name: str) -> TextTokenizer:
@@ -97,9 +95,16 @@ class TextTokenizer:
         """The added vocabulary: a special token's name (its literal text without the ``<|...|>`` wrapper)
         to that literal text, e.g. the end-of-turn marker's name to its literal form. Both the bare name and
         the literal text are accepted as lookup keys by :meth:`special_text`; the literal text is what a
-        template's fixed segment is rendered with.
+        template's fixed segment is rendered with. The mapping is read-only and shared per tokenizer file
+        (keyed by its SHA-256, so a re-load of the same file reuses it); treat it as immutable.
         """
-        return dict(self._specials)
+        cached = _ADDED_TOKENS_CACHE.get(self.sha256)
+        if cached is None:
+            cached = _added_tokens(self.backend)
+            if len(_ADDED_TOKENS_CACHE) >= 32:
+                _ADDED_TOKENS_CACHE.clear()
+            _ADDED_TOKENS_CACHE[self.sha256] = cached
+        return cached
 
     def special_text(self, name: str) -> str:
         """The literal text of the tokenizer's added token named ``name`` (the bare name or the wrapped

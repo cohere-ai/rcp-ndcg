@@ -48,11 +48,13 @@ released together.
   `openai_embeddings`, `vllm_pooling`, `rerank`) must declare `tokenizer` and `max_tokens` -- without them it is
   refused with a `ConfigError` whose hint shows the two fields; a hosted vendor profile may declare only
   `max_tokens` (its documented limit), a tokenizer without a number is refused for every role, and a profile
-  without a tokenizer refuses the overflow policies that would be inert without one (`on_overflow` other than
-  `cut`, `query_max_tokens`, `chunk`).
+  without a tokenizer refuses everything that would be inert without one (`on_overflow` other than `cut`,
+  `query_max_tokens`, `chunk`, `template`).
   `RerankEndpoint` refuses `query_max_tokens >= max_tokens` (the document's share would be non-positive), and
   `TextBudget` refuses it wherever the budget is resolved. `fit` refuses a tokenizer other than the one the
-  budget declares and output ids that collide (one score would be pooled over the other).
+  budget declares (or none when the budget declares one), `query_max_tokens` on a non-`pair` shape,
+  `media_tokens` without a tokenizer, and output ids that collide (one score would be pooled over the other);
+  an input whose document splits into one piece keeps its own id.
 - `rcp_ndcg.data` exports `TextBudget`, `TemplateSpec`, `Segment`, `FitResult` and `fit`;
   `rcp_ndcg.data.preprocess` additionally exports `BUDGET_DOC_ID`, `ContentParts` and
   `TextBudgetExceededError` (a `DataError`); `rcp_ndcg.inference` exports `SELF_HOSTED_APIS`.

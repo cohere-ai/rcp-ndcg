@@ -203,9 +203,20 @@ class TemplateSpec(BaseModel):
         return declared
 
     def adds_special_tokens(self, shape: RequestShape) -> bool:
-        """Whether the engine adds the tokenizer's post-processor tokens to this shape's rendered string."""
+        """Whether the engine adds the tokenizer's post-processor tokens to this shape's rendered string.
+
+        Raises:
+            ConfigError: the template does not declare that shape (the same typed error :meth:`segments`
+                raises, so a caller that reads the flag before the segments sees it too).
+        """
         if isinstance(self.add_special_tokens, dict):
-            return self.add_special_tokens[shape]
+            try:
+                return self.add_special_tokens[shape]
+            except KeyError:
+                raise ConfigError(
+                    f"the template declares no {shape!r} shape (it declares {list(self.shapes())})",
+                    hint="declare the shape's segments in the template, or fit a shape the template declares",
+                ) from None
         return self.add_special_tokens
 
     # -- rendering --------------------------------------------------------------------------------------------

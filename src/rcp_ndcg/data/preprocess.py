@@ -719,12 +719,13 @@ class FitResult:
     Attributes:
         shape: The request shape the inputs were fitted as.
         texts: The rendered request strings, one per output, in ``ids`` order: the full template with the
-            cut content spans re-attached. Empty when nothing is rendered for the wire -- a hosted vendor
-            profile (no tokenizer), or a ``pair`` whose budget declares no template (the engine renders it;
-            the caller sends :attr:`contents`). This is what a text or ``token_ids`` wire route sends; the
-            strings are returned as text, not token ids, because every wire route accepts text, the engine's
-            own tokenisation (with its ``add_special_tokens`` flag) stays authoritative, and the client-side
-            tokenisation this mechanism needs to measure and cut is the same one either way.
+            cut content spans re-attached. Empty only for an unrendered ``pair`` -- a hosted vendor profile
+            (no tokenizer), or a pair whose budget declares no template (the engine renders it; the caller
+            sends :attr:`contents`) -- a hosted profile's ``query`` and ``document`` shapes return their raw
+            content strings, which is what those wires take. This is what a text or ``token_ids`` wire route
+            sends; the strings are returned as text, not token ids, because every wire route accepts text,
+            the engine's own tokenisation (with its ``add_special_tokens`` flag) stays authoritative, and the
+            client-side tokenisation this mechanism needs to measure and cut is the same one either way.
         contents: The cut content per output: the span text (a str), or the ``(query, document)`` parts of
             a pair -- what a wire route the engine renders the template for receives.
         ids: The output id per rendered text: the input's id, or ``<id>#<k>`` for its chunks (as
@@ -844,15 +845,26 @@ class TextBudget(BaseModel):
 
     @model_validator(mode="after")
     def _a_budget_without_a_tokenizer_cuts_nothing(self) -> TextBudget:
-        """A hosted vendor profile without a tokenizer sends content uncut: chunk/fail and a query split
-        would be silently inert, so they are refused instead of ignored."""
-        if self.tokenizer is None and (self.on_overflow != "cut" or self.query_max_tokens is not None):
-            raise ConfigError(
-                "this budget declares no tokenizer, so its content is sent uncut (a hosted vendor profile): "
-                "on_overflow 'chunk'/'fail' and query_max_tokens would be inert",
-                hint="declare tokenizer (the profile then cuts like a self-hosted one), or drop the "
-                "inert fields (on_overflow, query_max_tokens, chunk)",
-            )
+        """A hosted vendor profile without a tokenizer sends content uncut: a template, chunk/fail and a
+        query split would be silently inert, so they are refused instead of ignored."""
+        if self.tokenizer is None:
+            inert = [
+                name
+                for name, value in (
+                    ("on_overflow", self.on_overflow),
+                    ("query_max_tokens", self.query_max_tokens),
+                    ("chunk", self.chunk),
+                    ("template", self.template),
+                )
+                if value is not None and value != "cut"
+            ]
+            if inert:
+                raise ConfigError(
+                    f"this budget declares no tokenizer, so its content is sent uncut (a hosted vendor "
+                    f"profile) and {inert} would be inert",
+                    hint="declare tokenizer (the profile then cuts like a self-hosted one), or drop the "
+                    "inert fields (on_overflow, query_max_tokens, chunk, template)",
+                )
         return self
 
     def identity(self, tokenizer: TextTokenizer | None = None) -> dict[str, Any]:
@@ -1012,6 +1024,12 @@ def fit(
             "budgets that declare none",
             cli_hint="set the same tokenizer the budget declares (judge-style: --set <role>.tokenizer=...), or "
             "drop the tokenizer field for a hosted profile",
+        )
+    if budget.query_max_tokens is not None and shape != "pair":
+        # The share splits a pair budget; on a query or document shape it would be silently inert.
+        raise ConfigError(
+            f"query_max_tokens splits a 'pair' budget, and fit was called with the {shape!r} shape",
+            hint="drop query_max_tokens, or fit the 'pair' shape",
         )
     if tokenizer is None:
         if media_tokens is not None and any(media):
@@ -1191,7 +1209,17 @@ def fit(
                 entries.append((input_id, input_id))
                 _record(doc_id=input_id, original=original, kept=(q_final, d_final), aggregation=None)
             else:
-                for k, piece in enumerate(_chunks(document, room, q_final, cap)):
+                pieces = _chunks(document, room, q_final, cap)
+                if len(pieces) == 1:
+                    # One piece is the whole document: one request, its own id, no chunking (as
+                    # chunk_ranking_example keeps an unsplit document).
+                    if not (template is None and shape == "pair"):
+                        texts.append(assemble(q_final, pieces[0]))
+                    contents.append((q_final, pieces[0]))
+                    entries.append((input_id, input_id))
+                    _record(doc_id=input_id, original=original, kept=(q_final, pieces[0]), aggregation=None)
+                    continue
+                for k, piece in enumerate(pieces):
                     chunk_id = f"{input_id}{CHUNK_ID_SEPARATOR}{k}"
                     if not (template is None and shape == "pair"):
                         texts.append(assemble(q_final, piece))
@@ -1207,7 +1235,22 @@ def fit(
                     hint="raise max_tokens, or shorten the query",
                 )
             assert isinstance(item, str)  # a pair chunked above; this branch is single-text only
-            for k, piece in enumerate(_chunks(item, cap - overhead, "", cap)):
+            pieces = _chunks(item, cap - overhead, "", cap)
+            if len(pieces) == 1:
+                if (
+                    tokenizer.count(assemble("", pieces[0]), add_special_tokens=flag) > cap
+                ):  # pragma: no cover - guarded by construction
+                    raise DataError(
+                        f"the assembled render of input {input_id!r} exceeds the budget of {budget.max_tokens} "
+                        "tokens after the span was verified: an internal invariant broke; report this",
+                        hint="this is a bug in the text-budget mechanism: report it with the inputs",
+                    )
+                texts.append(assemble("", pieces[0]))
+                contents.append(pieces[0])
+                entries.append((input_id, input_id))
+                _record(doc_id=input_id, original=item, kept=pieces[0], aggregation=None)
+                continue
+            for k, piece in enumerate(pieces):
                 chunk_id = f"{input_id}{CHUNK_ID_SEPARATOR}{k}"
                 texts.append(assemble("", piece))
                 contents.append(piece)

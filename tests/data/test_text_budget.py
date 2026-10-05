@@ -476,6 +476,41 @@ class TestVendorBudget:
         with pytest.raises(ConfigError, match="uncut"):
             TextBudget(tokenizer=None, max_tokens=4096, query_max_tokens=64)
 
+    def test_a_budget_without_a_tokenizer_refuses_a_template_it_cannot_render(self) -> None:
+        """A hosted profile sends content as stored: a declared template would be silently ignored."""
+        with pytest.raises(ConfigError, match="template"):
+            TextBudget(tokenizer=None, max_tokens=4096, template=document_template())
+
+    def test_query_max_tokens_is_refused_for_a_non_pair_shape(self) -> None:
+        """The share splits a pair budget; on a query or document shape it would be silently inert."""
+        split = TextBudget(tokenizer="test/framed-bpe", max_tokens=64, query_max_tokens=6, template=query_template())
+        with pytest.raises(ConfigError, match="pair"):
+            fit([LONG], shape="query", budget=split, tokenizer=FRAMED)
+
+    def test_an_undeclared_shape_is_a_typed_error_even_with_a_per_shape_flag(self) -> None:
+        spec = TemplateSpec(
+            query=(Segment(content="query"), Segment(fixed=".")),
+            document=(Segment(content="document"),),
+            add_special_tokens={"query": False, "document": True},
+        )
+        with pytest.raises(ConfigError, match="pair"):
+            spec.adds_special_tokens("pair")
+
+    def test_a_single_piece_under_chunk_keeps_its_input_id(self) -> None:
+        """A pair whose document splits into one piece (an empty document) is one request, not a chunk:
+        it keeps the input's id, like chunk_ranking_example keeps an unsplit document."""
+        chunked = TextBudget(
+            tokenizer="test/framed-bpe",
+            max_tokens=64,
+            template=pair_template(),
+            on_overflow="chunk",
+            chunk=ChunkPolicy(max_tokens=6, overlap_tokens=0),
+        )
+        result = fit([("the query", "")], shape="pair", budget=chunked, tokenizer=FRAMED, ids=["d"])
+        assert result.ids == ("d",)
+        assert result.chunk_mapping is None
+        assert result.aggregation is None
+
     def test_the_budget_refuses_a_different_tokenizer_than_it_declares(self) -> None:
         vendor_named = TextBudget(tokenizer="test/framed-bpe", max_tokens=24)
         with pytest.raises(ConfigError, match="tokenizer"):

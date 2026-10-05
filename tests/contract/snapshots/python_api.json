@@ -5037,12 +5037,6 @@
             "name": "backend"
           },
           {
-            "annotation": "dict[str, str]",
-            "default": "<factory>",
-            "kind": "positional_or_keyword",
-            "name": "_specials"
-          },
-          {
             "returns": "None"
           }
         ],
