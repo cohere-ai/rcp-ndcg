@@ -5,6 +5,7 @@ from __future__ import annotations
 import shlex
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -117,7 +118,7 @@ def test_bootstrap_derives_its_light_dependencies_from_the_manifests(tmp_path: P
     script_path = tmp_path / "light_deps.py"
     script_path.write_text(body, encoding="utf-8")
     completed = subprocess.run(
-        ["python", str(script_path), str(JOBS.parent.parent.parent)],
+        [sys.executable, str(script_path), str(JOBS.parent.parent.parent)],
         capture_output=True,
         text=True,
         env={"PATH": "/usr/bin:/bin"},
