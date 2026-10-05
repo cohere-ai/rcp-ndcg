@@ -20,8 +20,9 @@ from rcp_ndcg.runners import (
     get_runner,
     install_argv,
 )
+from rcp_ndcg.runners.base import JobPhase
 from rcp_ndcg.runners.kubernetes import JOB_UID, k8s_name
-from rcp_ndcg.runners.script import supervise, worker_script
+from rcp_ndcg.runners.script import EngineStep, engines_env_value, supervise, worker_script
 from tests.runners.k8s_schema import check_objects
 from tests.runners.shell import assert_shellcheck_clean
 
@@ -175,16 +176,38 @@ SERVE = ServeConfig(
     env={"HF_HOME": "/models"},
     resources=Resources(gpus=8),
 )
-SERVED = JobSpec(name="run", argv=("rcp-ndcg", "run", "resume", "--run", "/scratch/runs/x"), serve=SERVE)
+ENCODER = ServeConfig(
+    image="org/encoder:v2",
+    command=["python3", "-m", "encoder", "--host", "0.0.0.0", "--port", "8001"],
+    port=8001,
+)
+RERANKER = ServeConfig(
+    image="org/reranker:v1",
+    command=["python3", "-m", "reranker", "--host", "0.0.0.0", "--port", "8002"],
+    port=8002,
+    replicas=2,
+)
 
 
-class TestServe:
-    def test_one_replica_is_one_container_in_the_engines_image_running_the_supervision_script(self) -> None:
+def _phase(step: int, engines: dict[str, ServeConfig]) -> JobPhase:
+    """One phase of the paper run's shape: its engines and the steps it runs."""
+    steps = ("retrieve", "rerank", "tournament", "rubric", "calibrate", "evaluate")
+    return JobPhase(
+        engines=engines,
+        argv=("rcp-ndcg", "run", "resume", "--run", "/scratch/runs/x", "--only", steps[step - 1]),
+    )
+
+
+class TestPhases:
+    def test_one_phase_is_one_container_in_the_engines_image_running_the_supervision_script(self) -> None:
         """Any launcher that takes an image and a command runs it: no init container, no sidecar, no probes."""
-        (job,) = yaml.safe_load_all(KubernetesRunner(namespace="eval", secrets=["hf-token"]).render([SERVED])["run"])
-        pod = job["spec"]["template"]["spec"]
+        phase = JobPhase(engines={"judge": SERVE}, argv=("rcp-ndcg", "run", "resume", "--run", "/scratch/runs/x"))
+        job = JobSpec(name="run", argv=("rcp-ndcg", "run", "resume"), phases=(phase,))
+        (job_obj,) = yaml.safe_load_all(KubernetesRunner(namespace="eval", secrets=["hf-token"]).render([job])["run"])
+        pod = job_obj["spec"]["template"]["spec"]
         assert "initContainers" not in pod and pod["restartPolicy"] == "Never"
         (container,) = pod["containers"]
+        assert container["name"] == "phase-1"
         assert container["image"] == SERVE.image
         assert container["resources"] == {"limits": {"nvidia.com/gpu": 8}}  # the GPUs are on the one container
         assert container["envFrom"] == [{"secretRef": {"name": "hf-token"}}]
@@ -199,90 +222,169 @@ class TestServe:
         assert not {"startupProbe", "readinessProbe", "livenessProbe"} & set(container)
         bash, flag, script = container["command"]
         worker = worker_script(
-            SERVED,
+            job.model_copy(update={"argv": phase.argv}),
             install=True,
             workdir=None,
-            env={
-                "UV_CACHE_DIR": "/scratch/uv-cache",
-                "UV_LINK_MODE": "copy",
-                "RCP_NDCG_JUDGE_URLS": "http://127.0.0.1:8000/v1",
-            },
+            env={"UV_CACHE_DIR": "/scratch/uv-cache", "UV_LINK_MODE": "copy"},
         )
         supervision = supervise(
-            SERVE, engine='bash -c "$ENGINE"', coordinator='bash -c "$WORKER"', hosts="127.0.0.1", uv=True
+            [EngineStep(serve=SERVE, start='bash -c "$ENGINE_JUDGE"', hosts="127.0.0.1")],
+            coordinator='bash -c "$WORKER_1"',
+            engines_env=('\'{"judge": {"urls": ["http://127.0.0.1:8000/v1"], "wait_on_outage_s": 900}}\''),
+            uv=True,
         )
         assert (bash, flag) == ("bash", "-c")
         assert script == (
             "#!/usr/bin/env bash\n"
             "set -euo pipefail\n"
-            "read -r -d '' WORKER <<'RCP_NDCG_WORKER' || true\n"
+            "read -r -d '' WORKER_1 <<'RCP_NDCG_WORKER_1' || true\n"
             f"{worker}"
-            "RCP_NDCG_WORKER\n"
-            "read -r -d '' ENGINE <<'RCP_NDCG_ENGINE' || true\n"
+            "RCP_NDCG_WORKER_1\n"
+            "read -r -d '' ENGINE_JUDGE <<'RCP_NDCG_ENGINE_JUDGE' || true\n"
             "export HF_HOME=/models\n"
             "exec vllm serve org/model --served-model-name m --host 0.0.0.0 --port 8000\n"
-            "RCP_NDCG_ENGINE\n" + "\n".join(supervision) + "\n"
+            "RCP_NDCG_ENGINE_JUDGE\n" + "\n".join(supervision) + "\n"
         )
         assert "command -v uvx >/dev/null" in worker  # the engine's image gets uv from pip when it has none
-        check_objects([job])
+        check_objects([job_obj])
 
-    def test_one_container_asks_for_what_the_engine_and_the_coordinator_need_together(self) -> None:
-        engine = SERVE.model_copy(update={"resources": Resources(gpus=8, cpus=32, memory_gb=400)})
-        served = SERVED.model_copy(update={"serve": engine, "resources": Resources(cpus=4, memory_gb=16)})
-        container = KubernetesRunner().manifest(served)["spec"]["template"]["spec"]["containers"][0]
-        limits = {"nvidia.com/gpu": 8, "cpu": 36, "memory": "416Gi"}
-        assert container["resources"] == {"requests": {"cpu": 36, "memory": "416Gi"}, "limits": limits}
-        # An engine of unstated CPUs or memory is not capped by the coordinator's share.
-        served = SERVED.model_copy(update={"resources": Resources(cpus=4, memory_gb=16)})
-        container = KubernetesRunner().manifest(served)["spec"]["template"]["spec"]["containers"][0]
-        assert container["resources"] == {"limits": {"nvidia.com/gpu": 8}}
+    def test_each_engine_phase_is_an_init_container_and_the_last_phase_the_main_container(self) -> None:
+        """The paper run's three phases: encoder, judge, and an engine-free phase, the run directory on emptyDir."""
+        phases = (
+            JobPhase(engines={"encoder": ENCODER}, argv=("retrieve",)),
+            JobPhase(engines={"judge": SERVE}, argv=("tournament",)),
+            JobPhase(argv=("calibrate", "evaluate")),
+        )
+        job = JobSpec(name="paper", argv=("rcp-ndcg", "run", "resume"), phases=phases)
+        (job_obj,) = yaml.safe_load_all(KubernetesRunner(namespace="eval").render([job])["paper"])
+        pod = job_obj["spec"]["template"]["spec"]
+        assert [c["name"] for c in pod["initContainers"]] == ["phase-1", "phase-2"]
+        assert [c["name"] for c in pod["containers"]] == ["phase-3"]
+        assert [c["image"] for c in pod["initContainers"] + pod["containers"]] == [
+            ENCODER.image,
+            SERVE.image,
+            COORDINATOR_IMAGE,
+        ]
+        assert {c["name"]: c["volumeMounts"] for c in pod["initContainers"] + pod["containers"]} == {
+            "phase-1": [{"name": "scratch", "mountPath": "/scratch"}, {"name": "dshm", "mountPath": "/dev/shm"}],
+            "phase-2": [{"name": "scratch", "mountPath": "/scratch"}, {"name": "dshm", "mountPath": "/dev/shm"}],
+            "phase-3": [{"name": "scratch", "mountPath": "/scratch"}],
+        }
+        # The engine-free phase runs its command directly, with an empty RCP_NDCG_ENGINES.
+        main = pod["containers"][0]["command"][2]
+        assert "export RCP_NDCG_ENGINES='{}'" in main
+        assert "RCP_NDCG_ENGINE_PID" not in main and "exec c" in main
+        # Each engine phase waits for its own engine and exports its URLs before its coordinator starts.
+        assert "RCP_NDCG_ENGINE_PID=$!" in pod["initContainers"][0]["command"][2]
+        assert (
+            "RCP_NDCG_ENGINES='{" in pod["initContainers"][0]["command"][2]
+            and '"encoder"' in pod["initContainers"][0]["command"][2]
+        )
+        check_objects([job_obj])
 
-    def test_several_replicas_are_a_statefulset_behind_a_headless_service_owned_by_the_job(self) -> None:
-        served = SERVED.model_copy(update={"serve": SERVE.model_copy(update={"replicas": 3})})
-        job, stateful_set, service = yaml.safe_load_all(KubernetesRunner(namespace="eval").render([served])["run"])
-        assert "initContainers" not in job["spec"]["template"]["spec"]
-        assert stateful_set["kind"] == "StatefulSet" and service["kind"] == "Service"
-        assert stateful_set["spec"]["replicas"] == 3 and stateful_set["spec"]["podManagementPolicy"] == "Parallel"
-        assert stateful_set["spec"]["serviceName"] == service["metadata"]["name"] == "run-engine"
+    def test_several_replicas_are_a_statefulset_owned_by_the_job_and_run_scoped(self) -> None:
+        """A several-replica engine lives for the whole run: one StatefulSet, created at submit, for every phase."""
+        phases = (
+            JobPhase(engines={"reranker": RERANKER}, argv=("a",)),
+            JobPhase(engines={"reranker": RERANKER}, argv=("b",)),
+            JobPhase(argv=("c",)),
+        )
+        job = JobSpec(name="run", argv=("rcp-ndcg", "run", "resume"), phases=phases)
+        job_obj, stateful_set, service = yaml.safe_load_all(KubernetesRunner(namespace="eval").render([job])["run"])
+        assert stateful_set["spec"]["replicas"] == 2 and stateful_set["spec"]["podManagementPolicy"] == "Parallel"
+        assert stateful_set["spec"]["serviceName"] == service["metadata"]["name"] == "run-engine-reranker"
         assert service["spec"]["clusterIP"] == "None"
         for owned in (stateful_set, service):
             (owner,) = owned["metadata"]["ownerReferences"]
             assert (owner["kind"], owner["name"], owner["uid"]) == ("Job", "run", JOB_UID)
-        script = job["spec"]["template"]["spec"]["containers"][0]["command"][2]
-        urls = ",".join(f"http://run-engine-{i}.run-engine.eval.svc:8000/v1" for i in range(3))
-        assert f"export RCP_NDCG_JUDGE_URLS={urls}" in script
-        # The coordinator waits for a replica at most startup_timeout_s; so does each engine's startup probe.
-        assert "rcp_ndcg_wait_ready run-engine-0.run-engine.eval.svc" in script
-        assert "local deadline=$((SECONDS + 1800)) status" in script
+        script = job_obj["spec"]["template"]["spec"]["initContainers"][0]["command"][2]
+        hosts = [f"run-engine-reranker-{i}.run-engine-reranker.eval.svc" for i in range(2)]
+        engines = engines_env_value({"reranker": RERANKER}, {"reranker": [f"http://{host}:8002/v1" for host in hosts]})
+        assert f"RCP_NDCG_ENGINES='{engines}'" in script
+        # The phase's coordinator waits for a replica at most startup_timeout_s; so does the startup probe.
+        assert (
+            "rcp_ndcg_wait_ready RCP_NDCG_ENGINE_PID_REMOTE 1800 8002 /v1/models "
+            "run-engine-reranker-0.run-engine-reranker.eval.svc" in script
+        )
         (engine,) = stateful_set["spec"]["template"]["spec"]["containers"]
         assert engine["startupProbe"]["failureThreshold"] * engine["startupProbe"]["periodSeconds"] == 1800
-        check_objects([job, stateful_set, service])
+        check_objects([job_obj, stateful_set, service])
+
+    def test_the_phases_container_asks_for_what_the_engines_and_the_coordinator_need_together(self) -> None:
+        engine = SERVE.model_copy(update={"resources": Resources(gpus=8, cpus=32, memory_gb=400)})
+        phases = (JobPhase(engines={"judge": engine}, argv=("a",)),)
+        job = JobSpec(name="run", argv=("x",), resources=Resources(cpus=4, memory_gb=16), phases=phases)
+        container = KubernetesRunner().manifest(job)["spec"]["template"]["spec"]["containers"][0]
+        limits = {"nvidia.com/gpu": 8, "cpu": 36, "memory": "416Gi"}
+        assert container["resources"] == {"requests": {"cpu": 36, "memory": "416Gi"}, "limits": limits}
+        # An engine of unstated CPUs or memory is not capped by the coordinator's share.
+        phases = (JobPhase(engines={"judge": SERVE}, argv=("a",)),)
+        job = JobSpec(name="run", argv=("x",), resources=Resources(cpus=4, memory_gb=16), phases=phases)
+        container = KubernetesRunner().manifest(job)["spec"]["template"]["spec"]["containers"][0]
+        assert container["resources"] == {"limits": {"nvidia.com/gpu": 8}}
+
+    def test_a_phase_with_engines_of_several_images_is_refused(self) -> None:
+        """One init container runs the phase's engines together: they cannot have two images."""
+        phases = (JobPhase(engines={"judge": SERVE, "encoder": ENCODER}, argv=("a",)),)
+        with pytest.raises(ConfigError, match="images differ"):
+            KubernetesRunner().manifest(JobSpec(name="run", argv=("x",), phases=phases))
+
+    def test_a_phase_with_several_engines_on_one_port_is_refused(self) -> None:
+        """Two engines in one container can only listen on different ports."""
+        phases = (JobPhase(engines={"judge": SERVE, "encoder": SERVE}, argv=("a",)),)
+        with pytest.raises(ConfigError, match="one port"):
+            KubernetesRunner().manifest(JobSpec(name="run", argv=("x",), phases=phases))
+
+    def test_a_role_with_differing_engines_across_phases_is_refused(self) -> None:
+        """One StatefulSet serves every phase that uses the role, so it cannot differ between them."""
+        phases = (
+            JobPhase(engines={"reranker": RERANKER}, argv=("a",)),
+            JobPhase(engines={"reranker": RERANKER.model_copy(update={"port": 8009})}, argv=("b",)),
+        )
+        with pytest.raises(ConfigError, match="different configurations"):
+            KubernetesRunner().manifest(JobSpec(name="run", argv=("x",), phases=phases))
 
     def test_submit_owns_the_engines_by_the_applied_jobs_uid(self, monkeypatch) -> None:
         fake = _FakeKubectl()
         monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
-        served = SERVED.model_copy(update={"serve": SERVE.model_copy(update={"replicas": 2})})
-        assert KubernetesRunner(namespace="eval").submit([served]) == ["eval/run"]
+        phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
+        job = JobSpec(name="run", argv=("x",), phases=phases)
+        assert KubernetesRunner(namespace="eval").submit([job]) == ["eval/run"]
         (_, job_yaml), (_, engines_yaml) = [(argv, text) for argv, text in fake.calls if "apply" in argv]
         assert yaml.safe_load(job_yaml)["kind"] == "Job"
         owners = [obj["metadata"]["ownerReferences"][0]["uid"] for obj in yaml.safe_load_all(engines_yaml)]
         assert owners == ["uid-run", "uid-run"]
 
-    @pytest.mark.parametrize("replicas", [1, 2])
-    def test_an_engine_without_an_image_is_refused(self, replicas: int) -> None:
-        serve = SERVE.model_copy(update={"image": None, "replicas": replicas})
-        with pytest.raises(ConfigError, match="names no image"):
-            KubernetesRunner().render([SERVED.model_copy(update={"serve": serve})])
-
-    @pytest.mark.parametrize("replicas", [1, 2])
-    def test_the_rendered_script_is_valid_bash(self, replicas: int) -> None:
+    @pytest.mark.parametrize(
+        "phases",
+        [
+            (JobPhase(engines={"judge": SERVE}, argv=("a",)),),
+            (
+                JobPhase(engines={"encoder": ENCODER}, argv=("a",)),
+                JobPhase(engines={"judge": SERVE}, argv=("b",)),
+                JobPhase(argv=("c",)),
+            ),
+            (
+                JobPhase(engines={"encoder": ENCODER}, argv=("a",)),
+                JobPhase(engines={"reranker": RERANKER}, argv=("b",)),
+                JobPhase(engines={"judge": SERVE}, argv=("c",)),
+                JobPhase(argv=("d",)),
+            ),
+        ],
+        ids=["one", "three", "four"],
+    )
+    def test_the_rendered_script_is_valid_bash(self, phases: tuple[JobPhase, ...]) -> None:
         import subprocess
 
-        served = SERVED.model_copy(update={"serve": SERVE.model_copy(update={"replicas": replicas})})
-        (job, *_) = yaml.safe_load_all(KubernetesRunner().render([served])["run"])
-        script = job["spec"]["template"]["spec"]["containers"][0]["command"][2]
-        assert subprocess.run(["bash", "-n", "-c", script], capture_output=True).returncode == 0
-        assert_shellcheck_clean(script)
+        (job_obj, *_) = yaml.safe_load_all(
+            KubernetesRunner().render([JobSpec(name="j", argv=("x",), phases=phases)])["j"]
+        )
+        pod = job_obj["spec"]["template"]["spec"]
+        for container in pod.get("initContainers", []) + pod["containers"]:
+            script = container["command"][2]
+            assert subprocess.run(["bash", "-n", "-c", script], capture_output=True).returncode == 0
+            assert_shellcheck_clean(script)
+        check_objects([job_obj, *KubernetesRunner().engine_objects(JobSpec(name="j", argv=("x",), phases=phases))])
 
 
 def test_the_runners_resources_and_env_are_every_jobs_defaults() -> None:
@@ -297,14 +399,13 @@ def test_the_engine_statefulset_of_a_long_run_label_leaves_room_for_its_pod_name
     from rcp_ndcg.runs.layout import new_run_id, slugify
 
     run_id = new_run_id("nano-nfcorpus-gpt-oss-120b-with-a-very-long-label")
-    job = SERVED.model_copy(
-        update={"name": slugify(f"rcp-{run_id}", max_length=60), "serve": SERVE.model_copy(update={"replicas": 3})}
-    )
+    phases = (JobPhase(engines={"judge": SERVE.model_copy(update={"replicas": 3})}, argv=("tournament",)),)
+    job = JobSpec(name=slugify(f"rcp-{run_id}", max_length=60), argv=("rcp-ndcg", "run", "resume"), phases=phases)
     runner = KubernetesRunner(namespace="eval")
     stateful_set, service = runner.engine_objects(job)
     name = stateful_set["metadata"]["name"]
     assert name == service["metadata"]["name"] == stateful_set["spec"]["serviceName"]
     assert len(name) <= 52 and len(f"{name}-2") <= 63 and len(f"{name}-0123456789") <= 63
     assert name == runner.engine_objects(job)[0]["metadata"]["name"]  # deterministic
-    hosts = runner.manifest(job)["spec"]["template"]["spec"]["containers"][0]["command"][2]
-    assert f"{name}-0.{name}.eval.svc" in hosts
+    containers = runner.manifest(job)["spec"]["template"]["spec"]["containers"]
+    assert f"{name}-0.{name}.eval.svc" in containers[0]["command"][2]

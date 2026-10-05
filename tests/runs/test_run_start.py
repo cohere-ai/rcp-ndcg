@@ -233,32 +233,28 @@ class TestRunnersAndServe:
 
     def test_a_dry_run_on_a_runner_prints_what_it_would_submit(self, data: Path, tmp_path: Path) -> None:
         config = tmp_path / "run.yaml"
-        served = tiny_config(data, judge=SERVED_JUDGE, serve=SERVE, runner=SLURM_PYXIS).resolved()
-        config.write_text(yaml.safe_dump(served), encoding="utf-8")
+        config.write_text(yaml.safe_dump(tiny_config(data, runner=SLURM_PYXIS).resolved()), encoding="utf-8")
         plan = _start(str(config), "--runs-dir", str(tmp_path / "runs"), "--dry-run")
         (script,) = plan["rendered"].values()
         assert script.startswith("#!/usr/bin/env bash\n#SBATCH --job-name=rcp-")
-        assert "vllm serve org/model" in script and "export RCP_NDCG_JUDGE_URLS" in script
         assert not (tmp_path / "runs").exists()
         text = CliRunner().invoke(cli, ["run", "start", str(config), "--runs-dir", str(tmp_path), "--dry-run"])
-        assert "what the runner would submit" in text.stdout and "#SBATCH --nodes=1" in text.stdout
+        assert "what the runner would submit" in text.stdout and "#SBATCH --ntasks=1" in text.stdout
 
-    def test_only_a_job_that_owns_its_engine_stops_waiting_for_it(self, data: Path, tmp_path: Path) -> None:
-        """A judge waited forever for a dead engine its own job had started: that job now bounds the wait."""
+    def test_a_run_config_with_the_removed_single_engine_serve_is_refused(self, data: Path, tmp_path: Path) -> None:
+        """The runners start a job's engines per phase now; the single serve: engine is no longer a job."""
+        config = tmp_path / "run.yaml"
+        served = tiny_config(data, judge=SERVED_JUDGE, serve=SERVE, runner=SLURM_PYXIS).resolved()
+        config.write_text(yaml.safe_dump(served), encoding="utf-8")
+        error = _failed("start", str(config), "--runs-dir", str(tmp_path / "runs"), "--dry-run")
+        assert error["exit_code"] == 3
+        assert "no longer start a job's single serve: engine" in error["message"]
+        assert not (tmp_path / "runs").exists()
+
+    def test_wait_on_outage_s_is_a_runtime_field_that_moves_no_identity(self, data: Path, tmp_path: Path) -> None:
+        """A job that owns its engine bounds its judge's outage wait with serve.outage_timeout_s; it is runtime."""
         from rcp_ndcg.runs import RunConfig
 
-        scripts = {}
-        for name, fields in (
-            ("served", {"judge": SERVED_JUDGE, "serve": {**SERVE, "outage_timeout_s": 120}}),
-            ("own-endpoint", {"judge": SERVED_JUDGE}),
-        ):
-            config = tmp_path / f"{name}.yaml"
-            config.write_text(yaml.safe_dump(tiny_config(data, runner=SLURM_PYXIS, **fields).resolved()))
-            plan = _start(str(config), "--runs-dir", str(tmp_path / "runs"), "--dry-run")
-            (scripts[name],) = plan["rendered"].values()
-        assert "--set judge.wait_on_outage_s=120" in scripts["served"]
-        assert "wait_on_outage_s" not in scripts["own-endpoint"]
-        # The override reaches a shipped judge config too, and moves no identity (a runtime field).
         shipped = tmp_path / "shipped.yaml"
         shipped.write_text(yaml.safe_dump({**tiny_config(data).resolved(), "judge": "gpt_oss_120b", "serve": SERVE}))
         bounded = RunConfig.load(shipped, overrides=["judge.wait_on_outage_s=120"]).judge_config()
@@ -270,9 +266,12 @@ class TestRunnersAndServe:
         config = tmp_path / "run.yaml"
         config.write_text(yaml.safe_dump(tiny_config(data, judge=SERVED_JUDGE, serve=SERVE).resolved()))
         runs = str(tmp_path / "runs")
-        for extra in ((), ("--runner", "local"), ("--detach",)):
+        error = _failed("start", str(config), "--runs-dir", runs)
+        assert error["exit_code"] == 3 and "starts no engine" in error["message"]
+        # A runner submission reaches the same refusal through the job: the runners start engines per phase now.
+        for extra in (("--runner", "local"), ("--detach",), ("--runner", "slurm", "--dry-run")):
             error = _failed("start", str(config), "--runs-dir", runs, *extra)
-            assert error["exit_code"] == 3 and "starts no engine" in error["message"], extra
+            assert error["exit_code"] == 3 and "no longer start a job's single serve: engine" in error["message"], extra
         assert not (tmp_path / "runs").exists()
 
     def test_a_replica_over_several_nodes_is_a_config_error(self, data: Path, tmp_path: Path) -> None:

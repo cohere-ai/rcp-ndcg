@@ -11576,6 +11576,31 @@
           }
         }
       },
+      "JobPhase": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.runners.base",
+        "extra": "forbid",
+        "fields": {
+          "argv": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "tuple[str, Ellipsis]"
+          },
+          "engines": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "collections.abc.Mapping[Literal['judge', 'encoder', 'reranker'], rcp_ndcg.support.serve.ServeConfig]"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
       "JobRunner": {
         "bases": [
           "typing.Protocol"
@@ -11723,19 +11748,19 @@
             "required": true,
             "type": "str"
           },
+          "phases": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[rcp_ndcg.runners.base.JobPhase, Ellipsis]"
+          },
           "resources": {
             "alias": null,
             "default": "Resources(gpus=0, cpus=None, memory_gb=None, time_limit_s=None)",
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.support.resources.Resources"
-          },
-          "serve": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "rcp_ndcg.support.serve.ServeConfig | None"
           }
         },
         "frozen": true,

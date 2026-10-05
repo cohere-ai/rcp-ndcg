@@ -25,6 +25,31 @@ released together.
 
 ### Public surface
 
+- **`JobSpec.serve` is removed; `JobSpec.phases` is the way a job owns engines.** A job with phases runs them in
+  order in one allocation: each phase (`JobPhase`, newly exported from `rcp_ndcg.runners`) names the engines it
+  starts by role (`judge`, `encoder`, `reranker`) and the command to run while they serve. The runner starts the
+  phase's engines, waits until each role has a replica answering its readiness path, exports their URLs to the
+  phase's command in `RCP_NDCG_ENGINES` (JSON of `role -> {urls, wait_on_outage_s}`; a runtime overlay, never in a
+  config, never in an identity), runs it, stops the engines, and only then starts the next phase; a phase without
+  engines runs its command directly, with an empty `RCP_NDCG_ENGINES`. Any failure ends the job with the previous
+  single-engine semantics (`ENGINE_FAILED`, fail-fast supervision, `SIGTERM`/`SIGKILL` cleanup).
+  - `rcp_ndcg.runners.script`: `supervise(engines, *, coordinator, engines_env, uv)` renders one phase's
+    supervision (its signature changes from the single-engine form); the engines are `EngineStep(serve, start,
+    hosts)` entries, and a `start` of `None` waits for replicas that are already running elsewhere (a Kubernetes
+    StatefulSet). New `engines_env_value` (the phase's JSON) and, for hosts the script only learns when the job
+    starts, `engines_env_spec`/`engines_env_command`; the readiness probe (`wait_for_replicas`, whose signature
+    gains `pid_var`) is parameterised by the engine's pid variable.
+  - `SlurmRunner`: one `sbatch` asks for the maximum nodes and GPUs over the phases; each role's engines run as
+    one `srun --overlap` step, pinned to their slice of the allocation's nodes on a multi-node allocation; a
+    one-node allocation answers on `localhost`.
+  - `KubernetesRunner`: each engine phase is an init container in the engine's image (a phase's engines share one
+    image and, if several, need distinct ports), the last phase the main container; several-replica engines are
+    StatefulSets owned by the Job as before, run-scoped (they live for the whole run) and named `<job>-engine-<role>`.
+  - `JobSpec.serve` and the runners' `JUDGE_URLS_ENV`/`RCP_NDCG_JUDGE_URLS` exports are gone;
+    `support.serve.JUDGE_URLS_ENV` remains only for `run resume --judge-urls`, marked for deletion. A run config's
+    `serve:` section is refused at submission (the runners no longer render a single serve: engine); the local
+    runner refuses a job whose phases start engines, with a `--judge-url` hint.
+- `rcp_ndcg.runners` exports `JobPhase` (the type of `JobSpec.phases`).
 - `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
   the step identities (its `IDENTITY_ROLES` declarations); no property changed.
 - **New public module `rcp_ndcg.inference`**: the inference layer between `rcp_ndcg.data` and

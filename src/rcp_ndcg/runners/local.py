@@ -11,9 +11,9 @@ With a ``log_dir``, every job leaves files there that :meth:`LocalRunner.status`
 and, for a detached job, ``<name>.session`` (the process group running it).
 
 The command runs in the calling environment (an activated venv with
-``rcp-ndcg`` installed). The local runner starts no engine: a job with engine
-replicas (``JobSpec.serve``) is refused; start the engine yourself and point the
-judge at it (``--judge-url``).
+``rcp-ndcg`` installed). The local runner starts no engine: a job whose phases
+start engines is refused; start the engine yourself and point the judge at it
+(``--judge-url``).
 """
 
 from __future__ import annotations
@@ -79,14 +79,17 @@ class LocalRunner:
         """The worker script each job runs. Submits nothing.
 
         Raises:
-            ConfigError: a job asks for engine replicas, which the local runner does not start.
+            ConfigError: a job's phases start engines, which the local runner does not.
         """
         for job in jobs:
-            if job.serve is not None:
+            engine_phases = [index for index, phase in enumerate(job.phases, 1) if phase.engines]
+            if engine_phases:
                 raise ConfigError(
-                    f"job {job.name!r} has a serve: section, and the local runner starts no engine",
+                    f"job {job.name!r} starts engines in phase(s) {', '.join(map(str, engine_phases))}, and the "
+                    "local runner starts no engine",
                     hint="start the engine yourself (docs/concepts/serving.md) and pass its URL: "
-                    "--judge-url http://localhost:8000/v1 --judge-model <served name>; or drop serve:",
+                    "--judge-url http://localhost:8000/v1 --judge-model <served name>; or hand the run to a "
+                    "runner that starts its engines: --runner slurm | kubernetes",
                 )
         return {
             job.name: worker_script(self.options.defaults_for(job), install=False, workdir=self.cwd) for job in jobs

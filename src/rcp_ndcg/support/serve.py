@@ -27,15 +27,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.support.resources import Environment, Resources
 
-#: The environment variable a rendered job sets to the replica URLs (comma-separated); ``rcp-ndcg run resume``
-#: reads it as its ``--judge-urls``.
+#: The environment variable a rendered job used to set to the replica URLs (comma-separated), read by
+#: ``rcp-ndcg run resume --judge-urls``. DEPRECATED, to be deleted: the runners export ``ENGINES_ENV`` now, and
+#: ``rcp-ndcg run resume`` gains ``--engine role=url``; only the CLI's old flag still reads it.
 JUDGE_URLS_ENV = "RCP_NDCG_JUDGE_URLS"
 
 #: The environment variable a phase's runner sets to the engines of the current phase, as JSON
 #: ``{"encoder": {"urls": [...], "wait_on_outage_s": 900}, ...}``; the coordinator
 #: applies it as a runtime overlay. It is never written into ``run.yaml`` and never reaches an identity, since
-#: ``base_url`` and ``wait_on_outage_s`` are runtime fields. It will replace ``JUDGE_URLS_ENV`` when the
-#: serve-phases work lands; until then the runners still export ``RCP_NDCG_JUDGE_URLS``.
+#: ``base_url`` and ``wait_on_outage_s`` are runtime fields. It has replaced ``JUDGE_URLS_ENV`` in the runners;
+#: the old variable remains only for ``rcp-ndcg run resume --judge-urls`` until that flag goes.
 ENGINES_ENV = "RCP_NDCG_ENGINES"
 
 
@@ -243,7 +244,6 @@ __all__ = [
     "EngineConfig",
     "EngineRole",
     "EngineURLs",
-    "JUDGE_URLS_ENV",
     "Phase",
     "ServeByRole",
     "ServeConfig",

@@ -106,11 +106,18 @@ def job_for(
     if config.mirror is not None:
         check_target(config.mirror)
     run_dir = root if run_root is None else f"{run_root}/{layout.run_id}"
+    if config.serve is not None:
+        # The runners start engines per phase now; the single serve: engine of a run config is no longer
+        # rendered into any job (it is refused rather than silently dropped).
+        raise ConfigError(
+            "this run has a serve: section, and the job runners no longer start a job's single serve: engine",
+            hint="start the engine yourself (docs/concepts/serving.md) and pass its URL with --judge-url and "
+            "--judge-model; the run's engines are declared per phase instead",
+        )
     try:
         job = JobSpec(
             name=slugify(f"rcp-{layout.run_id}", max_length=60),
             argv=run_argv(run_dir, config.mirror, config.serve.outage_timeout_s if config.serve else None),
-            serve=config.serve,
             **fields,
         )
     except ValidationError as exc:

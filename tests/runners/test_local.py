@@ -10,6 +10,7 @@ import pytest
 
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.runners import JobSpec, JobStatus, LocalRunner, RunnerError, ServeConfig, get_runner
+from rcp_ndcg.runners.base import JobPhase
 
 
 def _py(code: str) -> tuple[str, ...]:
@@ -119,10 +120,17 @@ def test_render_is_the_script_that_runs(tmp_path: Path) -> None:
 
 
 def test_the_local_runner_starts_no_engine() -> None:
+    """A phase that starts engines cannot run here; engine-free phases can."""
     serve = ServeConfig(image="vllm/vllm-openai:v0.30.0", command=["vllm", "serve", "m"])
+    phases = (
+        JobPhase(engines={"judge": serve}, argv=("rcp-ndcg", "run", "resume", "--only", "tournament")),
+        JobPhase(argv=("rcp-ndcg", "run", "resume", "--only", "evaluate")),
+    )
     with pytest.raises(ConfigError, match="starts no engine") as caught:
-        LocalRunner().render([JobSpec(name="j", argv=("true",), serve=serve)])
+        LocalRunner().render([JobSpec(name="j", argv=("true",), phases=phases)])
     assert "--judge-url" in (caught.value.hint or "")
+    script = LocalRunner().render([JobSpec(name="j", argv=("true",), phases=(phases[1],))])["j"]
+    assert "exec true" in script
 
 
 def test_options_are_config_errors() -> None:

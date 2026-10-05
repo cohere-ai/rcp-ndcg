@@ -1,9 +1,9 @@
 """Job runners: where jobs run.
 
 A :class:`JobSpec` names a command (argv) with its image, resources and
-environment, and optionally the engine replicas to start beside it; a
-:class:`JobRunner` submits, watches, reads and cancels it. Three runners ship,
-each with one options model:
+environment, or the phases to run in order (each starting its engines by role
+and running its command while they serve); a :class:`JobRunner` submits, watches,
+reads and cancels it. Three runners ship, each with one options model:
 
 * ``local`` (:class:`LocalRunner`, :class:`LocalOptions`) -- run each job on the calling host;
 * ``slurm`` (:class:`SlurmRunner`, :class:`SlurmOptions`) -- one ``sbatch`` script per job,
@@ -19,6 +19,7 @@ lookup the built-ins use too (see :mod:`rcp_ndcg.runners.registry`).
 from rcp_ndcg.runners.base import (
     JobHandle,
     JobOptions,
+    JobPhase,
     JobRunner,
     JobSpec,
     JobStatus,
@@ -37,6 +38,7 @@ __all__ = [
     "ENTRY_POINT_GROUP",
     "JobHandle",
     "JobOptions",
+    "JobPhase",
     "JobRunner",
     "JobSpec",
     "JobStatus",
