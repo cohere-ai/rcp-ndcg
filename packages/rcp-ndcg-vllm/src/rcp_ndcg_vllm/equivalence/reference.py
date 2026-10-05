@@ -1,0 +1,76 @@
+"""Loading a recipe's ``reference.py`` (the in-process reference implementation).
+
+The reference module is loaded with :func:`importlib` straight from the recipe directory; it is never imported
+through the package, so it can carry any imports the model needs (torch, transformers, the checkpoint's remote
+code).  The interface, which every recipe lane implements:
+
+- ``load(device: str) -> object`` — load the model once onto ``device`` (``"cpu"`` or ``"cuda:0"``); the module
+  keeps it and later calls use it.
+- ``score(query: str, documents: list[str], instruction: str | None) -> list[float]`` — rerank: one score per
+  document, on the recipe's ``reference.score_scale``.  The instruction is the recipe's
+  ``client.default_instruction``; the reference folds it the way its paper code does.
+- ``embed(texts: list[str], role: str) -> list[numpy.ndarray]`` — embedding roles: one float32/float16 array per
+  text, shape ``(dim,)`` for a dense model and ``(n_tokens, dim)`` for a late-interaction model.  ``role`` is
+  ``"query"`` or ``"document"``; the reference composes its own prompts.
+- ``render(query: str, document: str, instruction: str | None) -> list[int]`` — stage 1: the token ids of the exact
+  prompt the engine must see for that pair.  For an embedding recipe, the ids of ``doc_prompt + document``.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+from pathlib import Path
+from typing import Any
+
+from ..errors import HarnessError
+
+__all__ = ["Reference", "load_reference"]
+
+
+class Reference:
+    """One loaded reference module plus the names the harness calls."""
+
+    def __init__(self, module: Any, path: str) -> None:
+        self._module = module
+        self.path = path
+
+    def load(self, device: str) -> Any:
+        """``load(device)`` of the reference module, exactly once per process (later calls are no-ops)."""
+        return self._module.load(device)
+
+    def score(self, query: str, documents: list[str], instruction: str | None) -> list[float]:
+        """``score(query, documents, instruction)`` of the reference module (rerank recipes)."""
+        function = getattr(self._module, "score_query", None) or getattr(self._module, "score", None)
+        if function is None:
+            raise HarnessError(f"{self.path} defines neither score_query nor score(query, documents, instruction)")
+        return [float(value) for value in function(query, documents, instruction)]
+
+    def embed(self, texts: list[str], role: str) -> list[Any]:
+        """``embed(texts, role)`` of the reference module (embedding recipes)."""
+        function = getattr(self._module, "embed", None)
+        if function is None:
+            raise HarnessError(f"{self.path} does not define embed(texts, role); an embedding recipe needs it")
+        return function(texts, role)
+
+    def render(self, query: str, document: str, instruction: str | None) -> list[int]:
+        """``render(query, document, instruction)`` of the reference module (stage 1)."""
+        function = getattr(self._module, "render", None)
+        if function is None:
+            raise HarnessError(f"{self.path} does not define render(query, document, instruction)")
+        return [int(value) for value in function(query, document, instruction)]
+
+
+def load_reference(recipe_dir: str | Path, entry: str = "reference.py") -> Reference:
+    """Load ``<recipe_dir>/<entry>`` as a module and wrap it; raises :class:`HarnessError` when it cannot."""
+    path = Path(recipe_dir) / entry
+    if not path.is_file():
+        raise HarnessError(f"no reference module at {path}")
+    spec = importlib.util.spec_from_file_location("rcp_ndcg_vllm_fixture_reference", path)
+    if spec is None or spec.loader is None:  # pragma: no cover - importlib failure mode
+        raise HarnessError(f"cannot load reference module {path}")
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as error:
+        raise HarnessError(f"{path} failed to import: {error}") from error
+    return Reference(module, str(path))

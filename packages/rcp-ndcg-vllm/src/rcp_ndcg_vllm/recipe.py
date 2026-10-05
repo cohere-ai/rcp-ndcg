@@ -131,9 +131,7 @@ class ServeConfig(BaseModel):
     )
     trust_remote_code: bool = Field(default=False, description="vLLM --trust-remote-code flag")
     max_model_len: int = Field(gt=0, description="vLLM --max-model-len")
-    dtype: Literal["auto", "float16", "bfloat16", "float32", "float8", "half"] = Field(
-        description="vLLM --dtype"
-    )
+    dtype: Literal["auto", "float16", "bfloat16", "float32", "float8", "half"] = Field(description="vLLM --dtype")
     plugin: str | None = Field(
         default=None, description="pip spec of a vllm.general_plugins package, installed before the engine starts"
     )
