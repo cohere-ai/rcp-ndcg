@@ -9698,38 +9698,72 @@
         }
       },
       "Usage": {
-        "bases": [],
-        "defined_in": "rcp_ndcg.inference.types",
-        "init": [
-          {
-            "annotation": "int",
-            "default": 0,
-            "kind": "positional_or_keyword",
-            "name": "calls"
-          },
-          {
-            "annotation": "int",
-            "default": 0,
-            "kind": "positional_or_keyword",
-            "name": "failed_calls"
-          },
-          {
-            "annotation": "int",
-            "default": 0,
-            "kind": "positional_or_keyword",
-            "name": "input_tokens"
-          },
-          {
-            "annotation": "int",
-            "default": 0,
-            "kind": "positional_or_keyword",
-            "name": "output_tokens"
-          },
-          {
-            "returns": "None"
-          }
+        "bases": [
+          "pydantic.main.BaseModel"
         ],
-        "kind": "class"
+        "defined_in": "rcp_ndcg.inference.types",
+        "extra": null,
+        "fields": {
+          "cached_input_tokens": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "failed_requests": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "input_tokens": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "output_tokens": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "requests": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model",
+        "members": {
+          "merged_with": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Usage",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "other"
+              },
+              {
+                "returns": "Usage"
+              }
+            ]
+          }
+        }
       },
       "VllmPooling": {
         "bases": [],
@@ -10922,7 +10956,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.llm.client",
+        "defined_in": "rcp_ndcg.inference.types",
         "extra": null,
         "fields": {
           "cached_input_tokens": {
@@ -10961,7 +10995,7 @@
             "type": "int"
           }
         },
-        "frozen": false,
+        "frozen": true,
         "kind": "pydantic_model",
         "members": {
           "merged_with": {
@@ -14478,7 +14512,7 @@
             "default": "<factory Usage>",
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.llm.client.Usage"
+            "type": "rcp_ndcg.inference.types.Usage"
           }
         },
         "frozen": false,
@@ -14775,7 +14809,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg.llm.client.Usage | None"
+            "type": "rcp_ndcg.inference.types.Usage | None"
           }
         },
         "frozen": false,

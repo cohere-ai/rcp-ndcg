@@ -36,23 +36,22 @@ from pathlib import Path
 from typing import Any, ClassVar, Self
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from rcp_ndcg_core.schemas import Decoding
 
 from rcp_ndcg.data.resolution import ImageProcessor
 from rcp_ndcg.errors import (
     BackendUnavailableError,
-    ConfigError,
     CredentialsError,
     RequestRejectedError,
 )
-from rcp_ndcg.inference.adapters import get_adapter, known_adapters
+from rcp_ndcg.inference.adapters import get_adapter
 from rcp_ndcg.inference.adapters.base import Adapter
 from rcp_ndcg.inference.adapters.chat import REASONING_KEYS, REASONING_WATCH, OpenAIChat
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.fake import FAKE_SCHEME
 from rcp_ndcg.inference.transport import Transport
-from rcp_ndcg.inference.types import Completion, CompletionInput, EngineInfo
+from rcp_ndcg.inference.types import Completion, CompletionInput, EngineInfo, Usage
 from rcp_ndcg.support.identity import FieldRole, identity_payload
 from rcp_ndcg.support.logging import get_logger
 
@@ -232,26 +231,6 @@ class JudgeConfig(Endpoint):
         return value
 
 
-class Usage(BaseModel):
-    """Calls and tokens accumulated by a client."""
-
-    requests: int = 0
-    failed_requests: int = 0
-    input_tokens: int = 0
-    output_tokens: int = 0
-    cached_input_tokens: int = 0
-
-    def merged_with(self, other: Usage) -> Usage:
-        """The element-wise sum."""
-        return Usage(
-            requests=self.requests + other.requests,
-            failed_requests=self.failed_requests + other.failed_requests,
-            input_tokens=self.input_tokens + other.input_tokens,
-            output_tokens=self.output_tokens + other.output_tokens,
-            cached_input_tokens=self.cached_input_tokens + other.cached_input_tokens,
-        )
-
-
 class JudgeClient:
     """The judge client: sends one prompt, returns one :class:`Completion`.
 
@@ -302,7 +281,7 @@ class JudgeClient:
         transport = self._transport
         self._adapter = self._transport = self._wired_for = None
         if transport is not None:
-            self._refused += transport.usage.failed_calls
+            self._refused += transport.usage.failed_requests
             transport.aclose()
 
     @property
@@ -326,13 +305,13 @@ class JudgeClient:
         rejection rule refuses, are the outage's: neither count.
         """
         transport = self._transport
-        failed = 0 if transport is None else transport.usage.failed_calls
+        failed = 0 if transport is None else transport.usage.failed_requests
         return Usage(
             requests=self._answered,
             failed_requests=failed + self._refused,
             input_tokens=self._input_tokens,
             output_tokens=self._output_tokens,
-            cached_input_tokens=0,  # the wire reports tokens and calls only (RFC-0001, decision 23)
+            # the wire reports tokens and calls only; the endpoint's cached-input detail is not tracked
         )
 
     # ------------------------------------------------------------------
@@ -343,14 +322,9 @@ class JudgeClient:
         """The adapter and transport of the current config, built once and rebuilt when the config is replaced."""
         if self._adapter is None or self._transport is None or self._wired_for is not self._config:
             self._rewire()
-            adapter_cls = get_adapter(self._config.api or "openai_chat")
-            role = getattr(adapter_cls, "role", None)
-            if role != "judge":
-                raise ConfigError(
-                    f"api {self._config.api!r} is not a judge adapter",
-                    hint=f"api: {self._config.api!r} is a {role} adapter; a JudgeConfig needs a judge one",
-                    details={"known": list(known_adapters())},
-                )
+            # The registry is role-scoped: the judge's ``api`` name resolves within the judge role, and a name
+            # of another role is refused there (with that role's known names in the hint).
+            adapter_cls = get_adapter(self._config.api or "openai_chat", role="judge")
             # The Adapter protocol fixes no constructor: the caller instantiates it with the role config its
             # request fields depend on, and the shipped judge adapter takes the JudgeConfig.
             self._adapter = adapter_cls(self._config)  # pyright: ignore[reportCallIssue]

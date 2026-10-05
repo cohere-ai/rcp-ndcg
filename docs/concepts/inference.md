@@ -65,7 +65,7 @@ replies = transport.run(transport.send(adapter.calls(None, model=endpoint.model)
 for reply in replies:
     transport.add_usage(adapter.usage(reply))
 vectors = adapter.interpret(None, replies)
-assert len(vectors[0]) == 8 and transport.usage.calls == 1
+assert len(vectors[0]) == 8 and transport.usage.requests == 1
 transport.aclose()
 ```
 
@@ -105,8 +105,9 @@ its `close()` twin, and the `with` block) closes the pool; a later `run` builds 
 
 ## Usage
 
-`transport.usage` counts the calls, the failed calls and the input and output tokens. The transport counts the
-calls and the failed calls itself; the tokens cross the adapter, which is where the API's field names are
+`transport.usage` counts the requests, the failed requests and the input and output tokens, in the run
+manifest's `Usage` shape (one type for every role). The transport counts the requests and the failed requests
+itself; the tokens cross the adapter, which is where the API's field names are
 known: the role client calls `transport.add_usage(adapter.usage(reply))` once per reply.
 
 ## The provenance probe

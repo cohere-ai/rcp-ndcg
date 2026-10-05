@@ -14,8 +14,8 @@ A role client holds one transport per endpoint, next to its wire adapter
         transport.add_usage(adapter.usage(reply))
     result = adapter.interpret(request, replies)
 
-The transport counts the calls and the failed calls itself; the tokens cross the adapter, which is where the
-API's field names are known, and come back through :meth:`Transport.add_usage`.
+The transport counts the requests and the failed requests itself; the tokens cross the adapter, which is where
+the API's field names are known, and come back through :meth:`Transport.add_usage`.
 """
 
 from __future__ import annotations
@@ -77,7 +77,7 @@ class Sender(Protocol):
 
     @property
     def usage(self) -> Usage:
-        """Calls and tokens accumulated so far (calls, failed calls, input and output tokens)."""
+        """Requests and tokens accumulated so far (requests, failed requests, input and output tokens)."""
         ...
 
 
@@ -243,7 +243,9 @@ class Transport:
         try:
             headers = self._base_headers()
         except CredentialsError:
-            self._usage = self._usage + Usage(failed_calls=len(calls))  # the request failed before it was queued
+            self._usage = self._usage.merged_with(  # the request failed before it was queued
+                Usage(failed_requests=len(calls))
+            )
             raise
         #: Per replica: its successes when this request first failed there.
         failed_at: dict[int, int] = {}
@@ -273,13 +275,13 @@ class Transport:
                     self._set_aside(replica, exc)
                     continue
                 except Exception:
-                    self._usage = self._usage + Usage(failed_calls=len(calls))
+                    self._usage = self._usage.merged_with(Usage(failed_requests=len(calls)))
                     raise
                 finally:
                     replica.in_flight -= 1
                 replica.successes += 1
                 replica.down_until, replica.backoff = 0.0, None
-                self._usage = self._usage + Usage(calls=len(calls))
+                self._usage = self._usage.merged_with(Usage(requests=len(calls)))
                 return replies
 
     async def _send_on(self, replica: _Replica, calls: Sequence[Call], headers: Mapping[str, str]) -> list[Reply]:
@@ -492,13 +494,13 @@ class Transport:
 
     @property
     def usage(self) -> Usage:
-        """Calls and tokens accumulated so far (calls, failed calls, input and output tokens).
+        """Requests and tokens accumulated so far (the run manifest's :class:`Usage` shape).
 
-        :meth:`send` counts the calls and the failed calls itself: a request the transport raises on is a failed
-        call, whether before it was queued (a missing credentials variable) or after it was sent (the status
-        map's typed errors); a request the rejection rule refuses, one parked out by ``wait_on_outage_s``, and a
-        reply the status map returns (even one the adapter refuses) are not. The tokens arrive through
-        :meth:`add_usage`.
+        :meth:`send` counts the requests and the failed requests itself: a request the transport raises on is a
+        failed request, whether before it was queued (a missing credentials variable) or after it was sent (the
+        status map's typed errors); a request the rejection rule refuses, one parked out by
+        ``wait_on_outage_s``, and a reply the status map returns (even one the adapter refuses) are not. The
+        tokens arrive through :meth:`add_usage`.
         """
         return self._usage
 
@@ -508,8 +510,8 @@ class Transport:
         if tokens is None:
             return
         self._usage = Usage(
-            calls=self._usage.calls,
-            failed_calls=self._usage.failed_calls,
+            requests=self._usage.requests,
+            failed_requests=self._usage.failed_requests,
             input_tokens=self._usage.input_tokens + (tokens.input_tokens or 0),
             output_tokens=self._usage.output_tokens + (tokens.output_tokens or 0),
         )

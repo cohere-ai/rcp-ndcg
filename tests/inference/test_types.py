@@ -86,19 +86,24 @@ class TestCallAndReply:
 
 
 class TestUsage:
-    def test_usage_adds_element_wise(self) -> None:
-        total = Usage(calls=1, failed_calls=0, input_tokens=10, output_tokens=2) + Usage(
-            calls=2, failed_calls=1, input_tokens=5, output_tokens=3
-        )
-        assert total == Usage(calls=3, failed_calls=1, input_tokens=15, output_tokens=5)
+    def test_the_judge_and_the_transport_share_one_usage(self) -> None:
+        from rcp_ndcg.llm.client import Usage as JudgeUsage
 
-    def test_usage_refuses_another_type(self) -> None:
-        with pytest.raises(TypeError):
-            Usage() + 1  # type: ignore[operator]
+        assert JudgeUsage is Usage, "one Usage for one concept: the manifest's requests-and-tokens shape"
+
+    def test_usage_merges_element_wise(self) -> None:
+        total = Usage(requests=1, failed_requests=0, input_tokens=10, output_tokens=2).merged_with(
+            Usage(requests=2, failed_requests=1, input_tokens=5, output_tokens=3)
+        )
+        assert total == Usage(requests=3, failed_requests=1, input_tokens=15, output_tokens=5)
+
+    def test_usage_merges_the_cached_tokens_too(self) -> None:
+        total = Usage(cached_input_tokens=7).merged_with(Usage(cached_input_tokens=2))
+        assert total.cached_input_tokens == 9
 
     def test_usage_is_frozen(self) -> None:
-        with pytest.raises(AttributeError):
-            Usage().calls = 3  # type: ignore[misc]
+        with pytest.raises(ValidationError):
+            Usage().requests = 3  # type: ignore[misc]
 
 
 class TestTokenCount:

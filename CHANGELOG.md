@@ -270,8 +270,10 @@ released together.
     `MAX_VIDEO_BYTES`, `VIDEO_CACHE_SIZE`) moved here unchanged from the internal `rcp_ndcg.llm._payload`
     (deleted; the layering forbids `inference` importing `llm`), importable at the new home.
   - `JudgeClient` keeps its public API (`from_config`, `complete`, `probe`, `engines`, `model`, `usage`) and is
-    thin: it builds the adapter from `api` (unset resolves to `openai_chat` and stays out of the identity
-    payload, so every identity is unchanged) and sends through the shared `Transport` (routing, retries,
+    thin: it builds the adapter from `api` within the judge role's registry (the role-scoped registry refuses a
+    name of another role with that role's known names in the hint; unset resolves to `openai_chat` and stays
+    out of the identity payload, so every identity is unchanged) and sends through the shared `Transport`
+    (routing, retries, parking, credentials, token usage).
     parking, credentials, token usage). Its constructor takes `httpx_transport` (the transport wraps it with
     the endpoint's timeouts and pool) instead of `http_client` (which used to replace both); `config` and
     `usage` are properties now (assigning a `model_copy` of the config rebuilds the wire at the next call);
@@ -293,6 +295,13 @@ released together.
     request blocks, so a window whose clip is judged as sampled frames draws from a changed key (the prompt
     carried one marker per part, the wire carries one block per frame); text, page-image and whole-container
     windows round-trip exactly, and the tiny world's judgements are byte-identical.
+- **One `Usage` for every role**: the run manifest's requests-and-tokens shape
+  (`requests`, `failed_requests`, `input_tokens`, `output_tokens`, `cached_input_tokens`; frozen; merged with
+  `merged_with`) is the one type, defined in `rcp_ndcg.inference.types` and re-exported from
+  `rcp_ndcg.llm.client`; the transport's accumulator produces it (its former `calls`/`failed_calls`
+  vocabulary is gone, renamed to `requests`/`failed_requests` with the same accounting semantics), and the
+  judge client maps its own answers and refusals onto it. The run manifest's serialised usage fields are
+  unchanged; no property changed.
 - **`Reply` gains `url`** (default `None`): the replica base URL that answered, set by the transport -- a role
   client needs it to record a per-replica fact such as a completion's `system_fingerprint` (the judge calls
   `transport.note_system_fingerprint(reply.url, ...)` for its first completion per replica, as it did).

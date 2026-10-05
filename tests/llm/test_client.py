@@ -16,7 +16,7 @@ import pytest
 from pydantic import ValidationError
 from rcp_ndcg_core.content import Content, MediaRef, VideoPart
 
-from rcp_ndcg.errors import CapabilityError, CredentialsError, ProviderError
+from rcp_ndcg.errors import CapabilityError, ConfigError, CredentialsError, ProviderError
 from rcp_ndcg.llm import JudgeClient, JudgeConfig, Usage
 from rcp_ndcg.llm.client import REASONING_WATCH, CompletionInput, RequestRejectedError
 
@@ -113,6 +113,17 @@ class TestConfig:
         assert JudgeConfig(base_url="https://api.openai.com/v1", model="gpt-5-2025-08-07")
         assert JudgeConfig(base_url="https://api.openai.com/v1", model="gpt-5", allow_floating_model=True)
         assert JudgeConfig(base_url="http://localhost:8000/v1", model="gpt-oss-120b")
+
+    def test_an_api_of_another_role_is_refused_by_the_registry(self) -> None:
+        from rcp_ndcg.inference.adapters import known_adapters
+
+        client = _client(Endpoint(), api="openai_embeddings")
+        with pytest.raises(ConfigError) as caught:
+            _ask(client)
+        message = str(caught.value)
+        assert "openai_embeddings" in message and "judge" in message
+        assert "openai_chat" in (caught.value.hint or ""), "the hint lists the judge role's own adapters"
+        assert set(known_adapters("judge")) >= {"openai_chat"}
 
     def test_a_replaced_config_is_built_from_at_the_next_call(self) -> None:
         """The offline fakes' tests replace the config after construction (a model_copy); the wire follows."""

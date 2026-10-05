@@ -14,7 +14,7 @@ run that use it (on SLURM without a container runtime, your command on the node)
 | Field | Meaning |
 |---|---|
 | `base_url`, `model` | the OpenAI-compatible endpoint (`.../v1`), or a list of replica URLs of the same model, and the served model name |
-| `api` | the wire adapter that speaks the endpoint's protocol; unset (the default) is the judge's `openai_chat` wire (`POST {base_url}/chat/completions` over the shared transport; [the inference layer](inference.md)). A third-party adapter from the `rcp_ndcg.adapters` entry-point group enters the identity: it decides what is computed |
+| `api` | the wire adapter that speaks the endpoint's protocol, resolved within the judge role's registry; unset (the default) is the judge's `openai_chat` wire (`POST {base_url}/chat/completions` over the shared transport; [the inference layer](inference.md)). A third-party adapter from the `rcp_ndcg.adapters` entry-point group (entries named `judge.<name>`) enters the identity: it decides what is computed |
 | `revision` | the checkpoint commit; recorded in every judgement |
 | `temperature` | the sampling temperature; `None` (the default) sends none, so the server's default applies |
 | `max_output_tokens`, `extra_body` | the completion cap (reasoning included) and further request fields, e.g. `reasoning_effort` |
