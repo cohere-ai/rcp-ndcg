@@ -21,8 +21,8 @@ from typing import Any
 
 import httpx
 
-from ..errors import HarnessError
-from ..recipe import Recipe, effective_embed_dtype
+from .errors import HarnessError
+from .recipe import Recipe, effective_embed_dtype
 
 __all__ = ["record"]
 
