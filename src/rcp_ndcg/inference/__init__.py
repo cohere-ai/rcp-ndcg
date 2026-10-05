@@ -38,7 +38,7 @@ from rcp_ndcg.inference.adapters.base import (
 from rcp_ndcg.inference.adapters.pooling import VllmPooling
 from rcp_ndcg.inference.adapters.rerank import CohereRerankAdapter, RerankAdapter, VoyageRerankAdapter
 from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient, RerankClient
-from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp_ndcg.inference.config import SELF_HOSTED_APIS, EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.fake import FAKE_SCHEME, FakeEndpoint, register_fake_route
 from rcp_ndcg.inference.transport import Sender, Transport
@@ -63,6 +63,7 @@ __all__ = [
     "ADAPTER_ENTRY_POINTS",
     "Adapter",
     "AdapterRole",
+    "SELF_HOSTED_APIS",
     "Call",
     "CohereRerankAdapter",
     "Completion",

@@ -46,6 +46,29 @@ def byte_bpe_tokenizer(name: str = "test/byte-bpe") -> TextTokenizer:
     return TextTokenizer.from_backend(backend, name=name)
 
 
+@functools.cache
+def framed_bpe_tokenizer(name: str = "test/framed-bpe") -> TextTokenizer:
+    """A byte-level BPE with two named special tokens and a post-processor anchor, for template tests.
+
+    The two added tokens are the way a chat tokenizer ships them: an end-of-turn marker (a template's
+    suffix anchor, written in a template as ``{special:end_turn}``) and an end-of-text marker appended
+    by a post-processor when ``add_special_tokens=True`` (the way a pooling route's engine appends the
+    checkpoint's end-of-text marker after the client's text). The post-processor makes
+    ``count(text, add_special_tokens=True)`` exactly one token longer than ``count(text)``.
+    """
+    from tokenizers import Tokenizer, processors
+
+    backend = Tokenizer.from_str(byte_bpe_tokenizer().backend.to_str())
+    backend.add_special_tokens(["<|end_turn|>", "<|end_of_text|>"])
+    eos_id = backend.token_to_id("<|end_of_text|>")
+    backend.post_processor = processors.TemplateProcessing(
+        single="$A <|end_of_text|>",
+        pair="$A $B <|end_of_text|>",
+        special_tokens=[("<|end_of_text|>", eos_id)],
+    )
+    return TextTokenizer.from_backend(backend, name=name)
+
+
 def save(tokenizer: TextTokenizer, directory: Path) -> Path:
     """Write ``tokenizer`` as ``directory/tokenizer.json`` and return the file."""
     path = directory / "tokenizer.json"

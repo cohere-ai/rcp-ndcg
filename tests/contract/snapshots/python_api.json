@@ -3839,6 +3839,70 @@
           "as_content": "property"
         }
       },
+      "FitResult": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "init": [
+          {
+            "annotation": "RequestShape",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "shape"
+          },
+          {
+            "annotation": "tuple[str, ...]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "texts"
+          },
+          {
+            "annotation": "tuple[ContentParts, ...]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "contents"
+          },
+          {
+            "annotation": "tuple[str, ...]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "ids"
+          },
+          {
+            "annotation": "dict[str, str] | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "chunk_mapping"
+          },
+          {
+            "annotation": "int | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "overhead"
+          },
+          {
+            "annotation": "Literal['tokenizer', 'vendor']",
+            "default": "tokenizer",
+            "kind": "positional_or_keyword",
+            "name": "budget_source"
+          },
+          {
+            "annotation": "Literal['max'] | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "aggregation"
+          },
+          {
+            "annotation": "tuple[TextCutRecord, ...]",
+            "default": [],
+            "kind": "positional_or_keyword",
+            "name": "cuts"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
       "ImagePolicy": {
         "bases": [
           "pydantic.main.BaseModel"
@@ -4613,6 +4677,71 @@
         "kind": "constant",
         "type": "dict"
       },
+      "Segment": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.data.templates",
+        "extra": "forbid",
+        "fields": {
+          "content": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['query', 'document', 'instruction'] | None"
+          },
+          "fixed": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model",
+        "members": {
+          "render": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "TextTokenizer",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "tokenizer"
+              },
+              {
+                "annotation": "str",
+                "default": "",
+                "kind": "keyword_only",
+                "name": "query"
+              },
+              {
+                "annotation": "str",
+                "default": "",
+                "kind": "keyword_only",
+                "name": "document"
+              },
+              {
+                "annotation": "str",
+                "default": "",
+                "kind": "keyword_only",
+                "name": "instruction"
+              },
+              {
+                "returns": "str"
+              }
+            ]
+          }
+        }
+      },
       "Suite": {
         "bases": [
           "builtins.tuple"
@@ -4636,6 +4765,273 @@
           }
         ],
         "kind": "class"
+      },
+      "TemplateSpec": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.data.templates",
+        "extra": "forbid",
+        "fields": {
+          "add_special_tokens": {
+            "alias": null,
+            "default": true,
+            "frozen": false,
+            "required": false,
+            "type": "bool | dict[str, bool]"
+          },
+          "anchor": {
+            "alias": null,
+            "default": "last",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['last', 'first', 'mean', 'marker']"
+          },
+          "anchor_markers": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[str, Ellipsis]"
+          },
+          "document": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[rcp_ndcg.data.templates.Segment, Ellipsis] | None"
+          },
+          "pair": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[rcp_ndcg.data.templates.Segment, Ellipsis] | None"
+          },
+          "query": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[rcp_ndcg.data.templates.Segment, Ellipsis] | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model",
+        "members": {
+          "adds_special_tokens": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "RequestShape",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "shape"
+              },
+              {
+                "returns": "bool"
+              }
+            ]
+          },
+          "overhead": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "RequestShape",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "shape"
+              },
+              {
+                "annotation": "TextTokenizer",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "tokenizer"
+              },
+              {
+                "annotation": "str",
+                "default": "",
+                "kind": "keyword_only",
+                "name": "instruction"
+              },
+              {
+                "returns": "int"
+              }
+            ]
+          },
+          "render": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "RequestShape",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "shape"
+              },
+              {
+                "annotation": "TextTokenizer",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "tokenizer"
+              },
+              {
+                "annotation": "str",
+                "default": "",
+                "kind": "keyword_only",
+                "name": "query"
+              },
+              {
+                "annotation": "str",
+                "default": "",
+                "kind": "keyword_only",
+                "name": "document"
+              },
+              {
+                "annotation": "str",
+                "default": "",
+                "kind": "keyword_only",
+                "name": "instruction"
+              },
+              {
+                "returns": "str"
+              }
+            ]
+          },
+          "segments": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "RequestShape",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "shape"
+              },
+              {
+                "returns": "tuple[Segment, ...]"
+              }
+            ]
+          },
+          "shapes": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "tuple[RequestShape, ...]"
+              }
+            ]
+          }
+        }
+      },
+      "TextBudget": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "extra": "forbid",
+        "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
+          "max_tokens": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "int"
+          },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
+          },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model",
+        "members": {
+          "identity": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "TextTokenizer | None",
+                "default": null,
+                "kind": "positional_or_keyword",
+                "name": "tokenizer"
+              },
+              {
+                "returns": "dict[str, Any]"
+              }
+            ]
+          }
+        }
       },
       "TextPolicy": {
         "bases": [
@@ -4697,6 +5093,20 @@
         ],
         "kind": "class",
         "members": {
+          "added_tokens": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, str]"
+              }
+            ]
+          },
           "count": {
             "kind": "method",
             "signature": [
@@ -4711,6 +5121,12 @@
                 "default": "<required>",
                 "kind": "positional_or_keyword",
                 "name": "text"
+              },
+              {
+                "annotation": "bool",
+                "default": false,
+                "kind": "keyword_only",
+                "name": "add_special_tokens"
               },
               {
                 "returns": "int"
@@ -4783,6 +5199,32 @@
               }
             ]
           },
+          "ids": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "text"
+              },
+              {
+                "annotation": "bool",
+                "default": false,
+                "kind": "keyword_only",
+                "name": "add_special_tokens"
+              },
+              {
+                "returns": "list[int]"
+              }
+            ]
+          },
           "offsets": {
             "kind": "method",
             "signature": [
@@ -4800,6 +5242,46 @@
               },
               {
                 "returns": "list[tuple[int, int]]"
+              }
+            ]
+          },
+          "special_id": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "name"
+              },
+              {
+                "returns": "int"
+              }
+            ]
+          },
+          "special_text": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "name"
+              },
+              {
+                "returns": "str"
               }
             ]
           }
@@ -4958,6 +5440,69 @@
           }
         ]
       },
+      "fit": {
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Sequence[str] | Sequence[tuple[str, str]]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "inputs"
+          },
+          {
+            "annotation": "RequestShape",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "shape"
+          },
+          {
+            "annotation": "TextBudget",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "budget"
+          },
+          {
+            "annotation": "TextTokenizer | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "tokenizer"
+          },
+          {
+            "annotation": "Sequence[str] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "ids"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "instruction"
+          },
+          {
+            "annotation": "Sequence[int] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "media_tokens"
+          },
+          {
+            "annotation": "str",
+            "default": "",
+            "kind": "keyword_only",
+            "name": "corpus"
+          },
+          {
+            "annotation": "TextTruncationCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "census"
+          },
+          {
+            "returns": "FitResult"
+          }
+        ]
+      },
       "load_dataset": {
         "defined_in": "rcp_ndcg.data.dataset",
         "kind": "function",
@@ -5058,6 +5603,11 @@
   },
   "rcp_ndcg.data.preprocess": {
     "all": {
+      "BUDGET_DOC_ID": {
+        "kind": "constant",
+        "type": "str",
+        "value": "<budget>"
+      },
       "CHUNK_ID_SEPARATOR": {
         "kind": "constant",
         "type": "str",
@@ -5097,6 +5647,10 @@
         "members": {
           "descriptor": "property"
         }
+      },
+      "ContentParts": {
+        "kind": "type_alias",
+        "type": "str | tuple[str, str]"
       },
       "DEFAULT_MAX_TOKENS": {
         "kind": "constant",
@@ -5149,6 +5703,70 @@
         ],
         "kind": "exception"
       },
+      "FitResult": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "init": [
+          {
+            "annotation": "RequestShape",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "shape"
+          },
+          {
+            "annotation": "tuple[str, ...]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "texts"
+          },
+          {
+            "annotation": "tuple[ContentParts, ...]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "contents"
+          },
+          {
+            "annotation": "tuple[str, ...]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "ids"
+          },
+          {
+            "annotation": "dict[str, str] | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "chunk_mapping"
+          },
+          {
+            "annotation": "int | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "overhead"
+          },
+          {
+            "annotation": "Literal['tokenizer', 'vendor']",
+            "default": "tokenizer",
+            "kind": "positional_or_keyword",
+            "name": "budget_source"
+          },
+          {
+            "annotation": "Literal['max'] | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "aggregation"
+          },
+          {
+            "annotation": "tuple[TextCutRecord, ...]",
+            "default": [],
+            "kind": "positional_or_keyword",
+            "name": "cuts"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
       "OnOverflow": {
         "kind": "literal_alias",
         "values": [
@@ -5199,6 +5817,130 @@
         "members": {
           "key": "property"
         }
+      },
+      "TextBudget": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "extra": "forbid",
+        "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
+          "max_tokens": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "int"
+          },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
+          },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model",
+        "members": {
+          "identity": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "TextTokenizer | None",
+                "default": null,
+                "kind": "positional_or_keyword",
+                "name": "tokenizer"
+              },
+              {
+                "returns": "dict[str, Any]"
+              }
+            ]
+          }
+        }
+      },
+      "TextBudgetExceededError": {
+        "bases": [
+          "rcp_ndcg.errors.DataError"
+        ],
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "init": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "message"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "hint"
+          },
+          {
+            "annotation": "Mapping[str, Any] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "details"
+          },
+          {
+            "annotation": "bool | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "retryable"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "cli_hint"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "exception"
       },
       "TextCutRecord": {
         "bases": [],
@@ -5251,6 +5993,24 @@
             "default": null,
             "kind": "keyword_only",
             "name": "query_id"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "budget_source"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "aggregation"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "shape"
           },
           {
             "returns": "None"
@@ -5400,6 +6160,24 @@
                 "name": "query_id"
               },
               {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "budget_source"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "aggregation"
+              },
+              {
+                "annotation": "str | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "shape"
+              },
+              {
                 "returns": "TextCutRecord"
               }
             ]
@@ -5520,6 +6298,69 @@
           }
         ]
       },
+      "fit": {
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Sequence[str] | Sequence[tuple[str, str]]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "inputs"
+          },
+          {
+            "annotation": "RequestShape",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "shape"
+          },
+          {
+            "annotation": "TextBudget",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "budget"
+          },
+          {
+            "annotation": "TextTokenizer | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "tokenizer"
+          },
+          {
+            "annotation": "Sequence[str] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "ids"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "instruction"
+          },
+          {
+            "annotation": "Sequence[int] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "media_tokens"
+          },
+          {
+            "annotation": "str",
+            "default": "",
+            "kind": "keyword_only",
+            "name": "corpus"
+          },
+          {
+            "annotation": "TextTruncationCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "census"
+          },
+          {
+            "returns": "FitResult"
+          }
+        ]
+      },
       "max_pool_rubric_window_by_document": {
         "defined_in": "rcp_ndcg.data.preprocess",
         "kind": "function",
@@ -5616,6 +6457,12 @@
             "default": null,
             "kind": "keyword_only",
             "name": "rendered"
+          },
+          {
+            "annotation": "bool",
+            "default": false,
+            "kind": "keyword_only",
+            "name": "add_special_tokens"
           },
           {
             "returns": "str"
@@ -8132,6 +8979,13 @@
         "defined_in": "rcp_ndcg.inference.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "openai_embeddings",
@@ -8160,6 +9014,13 @@
             "required": false,
             "type": "int"
           },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
           "concurrency": {
             "alias": null,
             "default": 64,
@@ -8187,6 +9048,20 @@
             "frozen": false,
             "required": false,
             "type": "str"
+          },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "headers_env": {
             "alias": null,
@@ -8223,6 +9098,13 @@
             "required": false,
             "type": "bool"
           },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
+          },
           "query_prompt": {
             "alias": null,
             "default": "",
@@ -8237,12 +9119,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -8767,6 +9663,13 @@
         "defined_in": "rcp_ndcg.inference.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "vllm_pooling",
@@ -8794,6 +9697,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -8837,6 +9747,20 @@
             "required": false,
             "type": "Literal['float16', 'float32']"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -8872,6 +9796,13 @@
             "required": false,
             "type": "bool"
           },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
+          },
           "query_prompt": {
             "alias": null,
             "default": "",
@@ -8886,12 +9817,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -9135,6 +10080,13 @@
         "defined_in": "rcp_ndcg.inference.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "rerank",
@@ -9163,6 +10115,13 @@
             "required": false,
             "type": "int | None"
           },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
           "concurrency": {
             "alias": null,
             "default": 64,
@@ -9177,6 +10136,20 @@
             "required": false,
             "type": "float"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -9189,7 +10162,7 @@
             "default": "fold",
             "frozen": false,
             "required": false,
-            "type": "Literal['none', 'field', 'fold']"
+            "type": "Literal['none', 'field', 'fold', 'system']"
           },
           "listwise": {
             "alias": null,
@@ -9219,6 +10192,13 @@
             "required": true,
             "type": "str"
           },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
+          },
           "query_max_tokens": {
             "alias": null,
             "default": null,
@@ -9233,12 +10213,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -9343,6 +10337,10 @@
             ]
           }
         }
+      },
+      "SELF_HOSTED_APIS": {
+        "kind": "constant",
+        "type": "frozenset"
       },
       "Sender": {
         "bases": [
