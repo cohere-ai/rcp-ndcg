@@ -25,6 +25,45 @@ released together.
 
 ### Public surface
 
+- **`rcp_ndcg.inference` ships the first wire adapter, `vllm_pooling`, and its role client `PoolingClient`**:
+  late-interaction (multi-vector) encoding over vLLM `POST {base_url}/pooling` with `task: token_embed`, the
+  exact request and response field names verified against the vLLM entrypoints (the adapter's docstring cites
+  them). The adapter sends `encoding_format: "base64"` with `embed_dtype` from the endpoint config and
+  `endianness: "little"` (explicit, so a frame decodes the same on any server platform), one `input` batch per
+  text-only request and one `messages` request per media item (the only shape in which the server applies the
+  model's chat template to image placeholders). `interpret` accepts nested float lists (shape as sent), flat
+  base64 frames (reshaped to `(tokens, dim)` from the declared `dim`) and the framed `bytes` encoding (per-item
+  `start`/`end`/`shape` metadata from the response header; `bytes_only` has no framing and is refused, naming
+  the lane that will pin it). Over-length HTTP 400 refusals raise `CapabilityError`; any other client error
+  raises `RequestRejectedError`; a reply whose decoded token counts disagree with its own `usage.prompt_tokens`
+  (a `token_embed` answer has one vector per prompt token) raises `ProviderError` — a mistyped `dim` is a loud
+  error, never a silently mis-shaped corpus.
+- **`PoolingClient`** (`rcp_ndcg.inference.clients.pool`, exported from `rcp_ndcg.inference`): a
+  `PoolingEndpoint` plus a `Sender` becomes ragged `Embeddings`. It prepends the role's prompt (`_prepare`, the
+  one seam the text budget will join), splits into `batch_size`-sized requests, keeps at most `concurrency` in
+  flight and reassembles in input order, L2-normalises per token when `normalize` is set (in float32, stored
+  back in the transfer dtype), and refuses a config that sets `max_tokens` (`ConfigError`: the text-budget
+  mechanism is not wired yet, and a budget silently ignored would change the vectors). The sync `encode` runs
+  on the sender's own bridge when it has one (`Transport.run`), else on a fresh event loop.
+- **`PoolingEndpoint` gains `dim`** (CONTENT): the checkpoint's token-vector width, needed to reshape the flat
+  base64 frame of `/pooling` (which carries no shape); the float and bytes encodings are self-describing, and
+  the `bytes` encoding makes it unnecessary. `dimensions` is never sent — vLLM's `/pooling` refuses it.
+- **`PoolRequest` gains `embed_dtype`** (default `"float16"`, the owner's Q11 decision; `"float32"` opt-in)
+  **and `dim`**, both copied from the endpoint config by the client and consumed by the adapter.
+- **`Embeddings` keeps the transfer dtype for ragged buffers**: `ragged(per_item, *, dtype=np.float32)` and
+  `empty(dim, *, multi_vector=False, dtype=np.float32)` accept the storage precision, so a multi-vector buffer
+  stays float16 end to end (2 bytes per token vector, against 4 for float32); single-vector buffers are
+  float32 as before. `l2_normalize` computes in float32 and returns the input's dtype (float32 in, float32
+  out; float16 stays float16).
+- **`maxsim_topk` accepts float16 or float32 vectors** and computes every dot product and per-query sum in
+  float32, upcasting one query block and one document block at a time — never a float32 copy of the whole
+  corpus (each block copy is bounded by the 64 MiB tile budget, alongside the score tile). Results for float32
+  inputs are unchanged; float16 inputs match a float64 reference within 1e-3 relative on 2,000-token documents.
+- `rcp_ndcg.inference.adapters` exports `VllmPooling`, and the shipped adapters register when that package is
+  imported (`known_adapters()` now reports `vllm_pooling`).
+- `tests/contract/snapshots/python_api.json` regenerated; it also records the already-committed additive
+  `JobSpec.phases` field, which its own commit left out of the snapshot.
+
 - `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
   the step identities (its `IDENTITY_ROLES` declarations); no property changed.
 - **New public module `rcp_ndcg.inference`**: the inference layer between `rcp_ndcg.data` and
@@ -44,7 +83,7 @@ released together.
     `RerankResult.aligned(request, scores)` refuses a score count that does not match the request's documents).
   - `inference.adapters`: the `Adapter` protocol (generic in request and result) and its registry
     (`register_adapter`, `get_adapter`, `known_adapters`, constant `ADAPTER_ENTRY_POINTS =
-    "rcp_ndcg.adapters"`). No adapter is registered yet.
+    "rcp_ndcg.adapters"`). The `vllm_pooling` adapter ships below.
   - `inference.transport`: the `Sender` protocol and the `Transport` class -- the transport's frozen interface
     only (`send`, `probe`, `run`, `aclose`); its routing, retries, parking and status-map behaviour is the transport lane's.
   - `inference.fake`: `FAKE_SCHEME = "fake://"` and the offline fakes' contract; no implementation yet.
