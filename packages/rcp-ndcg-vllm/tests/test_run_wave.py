@@ -35,6 +35,10 @@ def test_wave_runs_two_recipes_on_two_slots(tmp_path: Path) -> None:
     assert (out / "wave.json").is_file()
     assert "fixture-rerank-pointwise" in (out / "WAVE.md").read_text(encoding="utf-8")
     assert by_id["fixture-rerank-pointwise"]["steps"]["record"]["state"] == "passed"
+    # Test mode gives EVERY engine --port 0: slot 1 must not get the privileged port 1 (CI binds no port < 1024).
+    for row in document["recipes"]:
+        argv = row["serve_argv"]
+        assert argv[argv.index("--port") + 1] == "0", (row["recipe"], row["port"])
 
 
 def test_wave_equivalence_passes_and_one_failure_never_stops_the_wave(tmp_path: Path) -> None:
