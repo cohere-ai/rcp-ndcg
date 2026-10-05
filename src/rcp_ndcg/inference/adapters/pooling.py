@@ -106,6 +106,13 @@ def _decoded_tokens(arrays: Sequence[np.ndarray]) -> int:
     return sum(1 if array.ndim == 1 else len(array) for array in arrays)
 
 
+def _as_token_count(prompt_tokens: Any) -> TokenCount | None:
+    """``TokenCount`` for an integer token count, ``None`` when the server reported nothing readable."""
+    if isinstance(prompt_tokens, bool) or not isinstance(prompt_tokens, int):
+        return None
+    return TokenCount(input_tokens=prompt_tokens)
+
+
 @register_adapter
 class VllmPooling:
     """Late-interaction encoding over vLLM ``POST {base_url}/pooling`` (``task: token_embed``).
@@ -224,9 +231,11 @@ class VllmPooling:
         )
 
     def usage(self, reply: Reply) -> TokenCount | None:
-        """The prompt tokens one reply reports (``usage.prompt_tokens``), or ``None`` when absent.
+        """The prompt tokens one reply reports (``usage.prompt_tokens``), or ``None`` when absent or unreadable.
 
-        A JSON reply reports them in its body; a bytes reply reports them in the framing metadata header.
+        A JSON reply reports them in its body; a bytes reply reports them in the framing metadata header. The
+        accounting is advisory; the load-bearing cross-check of the usage against the decoded vectors lives in
+        :meth:`interpret` and refuses a malformed usage instead of skipping it.
         """
         body = reply.body
         if isinstance(body, bytes):
@@ -235,13 +244,12 @@ class VllmPooling:
                 return None
             try:
                 prompt_tokens = (json.loads(metadata).get("usage") or {}).get("prompt_tokens")
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, AttributeError):
                 return None
-            return TokenCount(input_tokens=int(prompt_tokens)) if prompt_tokens is not None else None
+            return _as_token_count(prompt_tokens)
         if not isinstance(body, dict):
             return None
-        prompt_tokens = (body.get("usage") or {}).get("prompt_tokens")
-        return TokenCount(input_tokens=int(prompt_tokens)) if prompt_tokens is not None else None
+        return _as_token_count((body.get("usage") or {}).get("prompt_tokens"))
 
     # -- decoding ----------------------------------------------------------
     def _decode_reply(
@@ -253,6 +261,10 @@ class VllmPooling:
             return self._decode_bytes_reply(reply, expected_items=expected_items)
         if not isinstance(body, dict) or not isinstance(body.get("data"), list):
             raise ProviderError(f"/pooling response has no 'data': {str(body)[:_MAX_MESSAGE_CHARS]}")
+        if any(not isinstance(item, dict) for item in body["data"]):
+            raise ProviderError(
+                f"the /pooling reply's data holds entries that are not items: {str(body)[:_MAX_MESSAGE_CHARS]}"
+            )
         items = sorted(body["data"], key=_response_index)
         if len(items) != expected_items:
             raise RequestRejectedError(
@@ -327,7 +339,10 @@ class VllmPooling:
             metadata = json.loads(metadata_header)
         except json.JSONDecodeError as exc:
             raise ProviderError(f"the /pooling bytes framing metadata is not valid JSON: {exc}") from exc
-        items = sorted(metadata.get("data") or [], key=_response_index)
+        items = metadata.get("data") or []
+        if any(not isinstance(item, dict) for item in items):
+            raise ProviderError(f"the /pooling bytes framing metadata is incomplete: {metadata!r}")
+        items = sorted(items, key=_response_index)
         if len(items) != expected_items:
             raise RequestRejectedError(
                 f"the pooling endpoint framed {len(items)} item(s) for {expected_items} input(s); "
@@ -337,11 +352,16 @@ class VllmPooling:
         for item in items:
             try:
                 frame_dtype = _frame_dtype(item.get("embed_dtype"), item.get("endianness"))
-                start, end, shape = int(item["start"]), int(item["end"]), tuple(item["shape"])
+                start, end, shape = (
+                    int(item["start"]),
+                    int(item["end"]),
+                    tuple(int(edge) for edge in item["shape"]),
+                )
             except (KeyError, TypeError, ValueError) as exc:
                 raise ProviderError(f"the /pooling bytes framing metadata is incomplete: {item!r}") from exc
             needed = math.prod(shape) * frame_dtype.itemsize
-            if needed != end - start or end > len(reply.body) or start < 0:
+            fits = 0 <= start <= end <= len(reply.body) and all(edge > 0 for edge in shape) and needed == end - start
+            if not fits:
                 raise ProviderError(
                     f"the /pooling bytes framing metadata does not fit its frame: shape {shape} needs "
                     f"{needed} byte(s) inside a body of {len(reply.body)}, the framing allots {end - start}"
@@ -354,11 +374,17 @@ class VllmPooling:
         """The decoded token counts must sum to the reply's own ``usage.prompt_tokens``.
 
         A ``token_embed`` answer has one vector per prompt token, so this catches a mistyped ``dim`` (every
-        vector would be silently mis-shaped) and a server that answered a pooled task after all.
+        vector would be silently mis-shaped) and a server that answered a pooled task after all. A usage the
+        reply cannot honestly report (a string, a dict, a null) is a malformed reply, never a reason to skip
+        the check.
         """
-        if not isinstance(usage, dict) or usage.get("prompt_tokens") is None:
+        if not isinstance(usage, dict) or "prompt_tokens" not in usage:
             return
-        reported = int(usage["prompt_tokens"])
+        reported = usage["prompt_tokens"]
+        if isinstance(reported, bool) or not isinstance(reported, int):
+            raise ProviderError(
+                f"the /pooling reply reports a malformed usage ({reported!r}); the token counts cannot be cross-checked"
+            )
         decoded = _decoded_tokens(arrays)
         if decoded != reported:
             raise ProviderError(

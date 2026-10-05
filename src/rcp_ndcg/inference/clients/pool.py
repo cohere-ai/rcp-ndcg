@@ -124,6 +124,8 @@ class PoolingClient:
         prepared = self._prepare(contents, role)
         if not prepared:
             return Embeddings.empty(0, multi_vector=True, dtype=self._config.embed_dtype)
+        if batch_size is not None and batch_size < 1:
+            raise ValueError(f"batch_size must be positive, got {batch_size}")
         size = batch_size or self._config.batch_size
         batches = [prepared[start : start + size] for start in range(0, len(prepared), size)]
         gate = asyncio.Semaphore(self._config.concurrency)

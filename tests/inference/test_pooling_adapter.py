@@ -232,6 +232,49 @@ class TestDecoding:
         with pytest.raises(ProviderError, match="does not decode"):
             adapter.interpret(request([Content.from_text("a")], dim=2), [reply])
 
+    def test_data_items_that_are_not_dicts_are_a_typed_error(self) -> None:
+        """A reply whose data entries are floats or strings, not items, is a typed refusal."""
+        adapter = VllmPooling()
+        with pytest.raises(ProviderError, match="entries that are not items"):
+            adapter.interpret(request([Content.from_text("a")], dim=2), [Reply(200, {"data": [1.0, 2.0]}, {})])
+        metadata = json.dumps({"data": [1.0]})
+        with pytest.raises(ProviderError, match="framing metadata is incomplete"):
+            adapter.interpret(
+                request([Content.from_text("a")], dim=2),
+                [Reply(200, b"\x00" * 8, {"metadata": metadata})],
+            )
+
+    @pytest.mark.parametrize("bad", ["7", {"a": 1}, None])
+    def test_a_malformed_usage_is_refused_not_coerced(self, bad: object) -> None:
+        """The usage cross-check is load-bearing for the declared dim: a usage the reply cannot honestly
+        report is a malformed reply, never a default that skips the check."""
+        adapter = VllmPooling()
+        frame = b64(np.ones((2, 2), dtype=np.float16))
+        reply = Reply(200, {"data": [{"index": 0, "data": frame}], "usage": {"prompt_tokens": bad}}, {})
+        with pytest.raises(ProviderError, match="usage"):
+            adapter.interpret(request([Content.from_text("a")], dim=2), [reply])
+
+    @pytest.mark.parametrize(("start", "end", "shape"), [(8, 0, [-2, 2]), (0, 8, [-1]), (2, 2, [2, 2])])
+    def test_framing_that_slices_nothing_is_a_typed_error(self, start: int, end: int, shape: list[int]) -> None:
+        """A negative shape or an inverted/empty byte range would decode to an empty result silently; it is
+        refused instead."""
+        adapter = VllmPooling()
+        metadata = {
+            "data": [
+                {
+                    "index": 0,
+                    "embed_dtype": "float16",
+                    "endianness": "little",
+                    "start": start,
+                    "end": end,
+                    "shape": shape,
+                }
+            ]
+        }
+        reply = Reply(200, np.ones(4, dtype="<f2").tobytes(), {"metadata": json.dumps(metadata)})
+        with pytest.raises(ProviderError, match="framing metadata"):
+            adapter.interpret(request([Content.from_text("a")]), [reply])
+
     def test_a_reply_mixing_one_vector_and_per_token_items_is_refused(self) -> None:
         """The mixing guard holds whichever item came first: 1-D first, 2-D second is a refusal, not an
         np.stack crash."""

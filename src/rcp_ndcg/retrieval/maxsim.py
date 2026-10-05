@@ -21,7 +21,8 @@ as it is scored, so the dot products and the per-query sum accumulate in
 float32 without ever materialising a float32 copy of the corpus. The peak
 working set is one query block (budgeted at ``_QUERY_BLOCK_TOKENS`` rows by the
 mean token counts), one document block (its float32 copy at most ``_TILE_BYTES``
--- 64 MiB), and one score tile of at most ``_TILE_BYTES``: a float16 token
+-- 64 MiB), and one score tile bounded by ``_TILE_BYTES`` for near-uniform token
+counts, larger in proportion to the skew within a block: a float16 token
 vector costs 2 bytes stored and, transiently, 4 more per block; a float32 one,
 4. Upcasting blockwise is exact (every float16 value is a
 float32 value), so a float32 corpus is scored bit for bit as before and a
