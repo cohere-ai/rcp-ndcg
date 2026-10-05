@@ -486,3 +486,55 @@ def test_p99_gate_is_the_fraction_of_documents_within_the_bound() -> None:
     p99_row = next(row for row in document["gates"] if row["gate"] == "p99_documents_within")
     assert p99_row["value"] == 0.99
     assert document["passed"] is True
+
+
+def test_stage2_only_run_needs_no_tokenizer(tmp_path: Path) -> None:
+    """A stage-2-only run with a hook-less reference works without transformers (the metrics-only install)."""
+    import shutil
+
+    recipe = load("fixture-rerank-pointwise")
+    hookless = tmp_path / "recipes" / "fixture-rerank-pointwise"
+    hookless.mkdir(parents=True)
+    for name in ("recipe.yaml", "template.jinja"):
+        shutil.copy(RECIPE_DIRS / "fixture-rerank-pointwise" / name, hookless / name)
+    (hookless.parent.parent / "deterministic.py").write_bytes((RECIPE_DIRS.parent / "deterministic.py").read_bytes())
+    reference_text = (RECIPE_DIRS / "fixture-rerank-pointwise" / "reference.py").read_text(encoding="utf-8")
+    # Strip the tokenizer() hook: a production reference omits it.
+    start = reference_text.index("def tokenizer()")
+    reference_text = reference_text[:start]  # the hook is the module's last definition
+    (hookless / "reference.py").write_text(reference_text, encoding="utf-8")
+    recipe = load_recipe(hookless)
+    reference = load_reference(str(hookless), recipe.reference.entry)
+    assert getattr(reference._module, "tokenizer", None) is None  # the hook is really gone
+    engine = start_stub()
+    try:
+        document = run(
+            recipe, base_url=engine.base_url, pairs=sample_pairs(), out_dir=tmp_path, stages=[2], reference=reference
+        )  # fmt: skip
+    finally:
+        engine.stop()
+    assert document["passed"] is True  # stage 2 never needed the tokenizer
+
+
+def test_stage3_runs_for_a_stored_scores_recipe(tmp_path: Path) -> None:
+    """--stages 3 on a stored_scores recipe runs (the refusal must not fire from a tokenizer lookup)."""
+    pytest.importorskip("rcp_ndcg")
+    from rcp_ndcg.data import Rankings
+
+    recipe = load("fixture-rerank-pointwise")
+    stored = recipe.model_copy(update={"reference": recipe.reference.model_copy(update={"kind": "stored_scores"})})
+    rankings_dir = tmp_path / "rankings"
+    rankings_dir.mkdir()
+    for system in ("served", "reference"):
+        Rankings.from_orders({"q1": ["a", "b", "c"]}, system=system).save(rankings_dir / f"toy.{system}.jsonl")
+    (rankings_dir / "toy.dataset.jsonl").write_text(
+        json.dumps(
+            {"query_id": "q1", "query": "q", "doc_ids": ["a", "b", "c"], "docs": ["A", "B", "C"], "qrels": {"a": 1.0}}
+        )
+        + "\n",  # fmt: skip
+        encoding="utf-8",
+    )
+    document = run(
+        stored, base_url=None, pairs=[], out_dir=tmp_path, stages=[3], reference=None, rankings_dir=rankings_dir
+    )  # fmt: skip
+    assert document["passed"] is True

@@ -18,9 +18,10 @@ recipes/<id>/
 
 The `id` equals the directory name, matches `^[a-z0-9][a-z0-9.-]*$`, and is also the `--served-model-name` the
 engine serves. The schema is closed (`extra="forbid"`) and role-aware: a field that only makes sense for one role
-is refused for the others, so a typo cannot silently change what is served. Validate a recipe without an engine:
+is refused for the others, so a typo cannot silently change what is served. Validate a recipe without an engine (run from the package directory, so `recipes/<id>` resolves):
 
 ```bash
+cd packages/rcp-ndcg-vllm
 python -m rcp_ndcg_vllm.equivalence --recipe recipes/<id> --pairs pairs.jsonl --out /tmp/equiv --stages 1
 ```
 

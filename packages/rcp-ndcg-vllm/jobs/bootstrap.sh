@@ -52,8 +52,9 @@ pip install --no-deps \
 # carry, from the public index - constrained to the image's own torch and transformers so pip cannot replace them.
 pip freeze | grep -iE '^(torch|torchvision|transformers)==' >"$WORK/constraints.txt" || true
 pip install --no-deps "$WORK/code"
-pip install --no-deps -r "$WORK/code/requirements-node.txt" 2>/dev/null || true
-pip install --constraint "$WORK/constraints.txt" pandas scipy pyarrow bm25s PyStemmer click tqdm \
+# rcp-ndcg's remaining runtime dependencies, which the image does not carry. The list mirrors the root
+# pyproject.toml's dependencies; bm25s is pinned there and repeated here. Edit both together.
+pip install --constraint "$WORK/constraints.txt" pandas scipy pyarrow "bm25s==0.2.13" PyStemmer click tqdm \
   python-dotenv openai fsspec gcsfs Pillow sentence-transformers jinja2
 
 # A wave may ship vllm.general_plugins plugin packages; plugins.txt lists their directories, one per line.

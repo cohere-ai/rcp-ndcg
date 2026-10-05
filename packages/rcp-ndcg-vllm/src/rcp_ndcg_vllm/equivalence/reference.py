@@ -8,7 +8,8 @@ code).  The interface, which every recipe lane implements:
   keeps it and later calls use it.
 - ``score(query: str, documents: list[str], instruction: str | None) -> list[float]`` — rerank: one score per
   document, on the recipe's ``reference.score_scale``.  The instruction is the recipe's
-  ``client.default_instruction``; the reference folds it the way its paper code does.
+  ``client.default_instruction``; the reference folds it the way its paper code does.  ``score_query`` is accepted
+  as an alias of ``score`` (the name the first recipes used).
 - ``embed(texts: list[str], role: str) -> list[numpy.ndarray]`` — embedding roles: one float32/float16 array per
   text, shape ``(dim,)`` for a dense model and ``(n_tokens, dim)`` for a late-interaction model.  ``role`` is
   ``"query"`` or ``"document"``; the reference composes its own prompts.

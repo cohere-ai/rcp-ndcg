@@ -270,9 +270,12 @@ def _start(recipe: Recipe, gpus: list[int], slot: int, out: Path, vllm_cmd: str 
     return run
 
 
-def _mark_serve_step(run: _EngineRun, state: str, **fields: Any) -> None:
-    """Record the serve step's final state in the recipe's status."""
-    run.status["steps"]["serve"] = {"state": state, "port": run.port, "gpus": run.gpus}
+def _mark_serve_step(run: _EngineRun, state: str) -> None:
+    """Record the serve step's final state, keeping any error the failure path recorded."""
+    step = run.status["steps"].get("serve") or {}
+    run.status["steps"]["serve"] = {"state": state, "port": run.port, "gpus": run.gpus, **(
+        {"error": step["error"]} if step.get("error") else {}
+    )}
 
 
 def _finalise(
@@ -477,8 +480,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--vllm-cmd", default=None, help="replace the 'vllm serve' launcher (tests: a stub engine)")
     parser.add_argument("--port-base", type=int, default=8100, help="first engine port (0: engines announce theirs)")
     args = parser.parse_args(argv)
-    ids = _recipe_ids(args.recipes)
     try:
+        ids = _recipe_ids(args.recipes)
         document = run_wave(
             ids,
             args.recipes_root,

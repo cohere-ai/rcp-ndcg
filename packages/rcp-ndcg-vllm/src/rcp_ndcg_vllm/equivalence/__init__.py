@@ -65,8 +65,6 @@ def run(
             reference = _stored_scores_stub(recipe)
         else:
             reference = load_reference(_recipe_dir(recipe), recipe.reference.entry)
-    if tokenizer is None:
-        tokenizer = _tokenizer_for(recipe, reference)
     if limit is not None:
         pairs = pairs[:limit]
     document: dict[str, Any] = {
@@ -156,9 +154,12 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--stages must be a comma-separated list drawn from 1, 2, 3")
     try:
         recipe = load_recipe(args.recipe)
-        if args.pairs is None:
-            parser.error("--pairs is required (stage 1 and stage 2 read the same sampled pairs)")
-        pairs = load_pairs(args.pairs)
+        if args.pairs is not None:
+            pairs: list[dict[str, Any]] = load_pairs(args.pairs)
+        elif 1 in stages or 2 in stages:
+            parser.error("--pairs is required for stages 1 and 2 (the same sampled pairs feed both)")
+        else:
+            pairs = []
         document = run(
             recipe,
             base_url=args.base_url,

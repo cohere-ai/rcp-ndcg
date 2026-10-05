@@ -202,6 +202,9 @@ def _rerank_summary(
     deltas = [entry["abs_delta"] for entry in per_document]
     p99 = float(np.percentile(deltas, 99)) if deltas else 0.0
     worst = max(deltas) if deltas else 0.0
+    within_p99_fraction = sum(1 for entry in per_document if entry["abs_delta"] <= gates.prob_p99_abs) / max(
+        len(per_document), 1
+    )
     taus = [entry["kendall_tau"] for entry in per_query if entry["kendall_tau"] is not None]
     median_tau = float(np.median(taus)) if taus else None
     tau_row = {
@@ -212,9 +215,6 @@ def _rerank_summary(
         "referent": "median per-query Kendall tau between served and reference scores",
     }
     if scale == "probability":
-        within_p99_fraction = sum(1 for entry in per_document if entry["abs_delta"] <= gates.prob_p99_abs) / max(
-            len(per_document), 1
-        )
         gate_rows = [
             {
                 "gate": "p99_documents_within",
@@ -259,9 +259,6 @@ def _rerank_summary(
             },
             tau_row,
         ]
-    within_p99 = sum(1 for entry in per_document if entry["abs_delta"] <= gates.prob_p99_abs) / max(
-        len(per_document), 1
-    )
     return {
         "score_scale": scale,
         "n_queries": len(per_query),
@@ -270,7 +267,7 @@ def _rerank_summary(
         "per_query": per_query,
         "abs_delta_p99": p99,
         "abs_delta_max": worst,
-        "within_p99_fraction": within_p99,
+        "within_p99_fraction": within_p99_fraction,
         "kendall_tau_median": median_tau,
         "kendall_tau_defined_queries": len(taus),
         "gates": gate_rows,

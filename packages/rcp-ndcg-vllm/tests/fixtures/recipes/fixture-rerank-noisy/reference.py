@@ -11,11 +11,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from deterministic import DIM, FixtureTokenizer, token_id, token_vectors, tokens, vector  # noqa: E402
+from deterministic import DIM, FixtureTokenizer, token_id, tokens, vector  # noqa: E402
 from deterministic import score as _pair_score  # noqa: E402
 
 FOLD = "Follow the task."
@@ -55,20 +53,7 @@ def score(query: str, documents: list[str], instruction: str | None) -> list[flo
     return [_pair_score(folded, doc) for doc in documents]
 
 
-def embed(texts: list[str], role: str) -> list[np.ndarray]:
-    """Stage 2 for embedding roles (unused by this fixture; the shape matches the stub's contract)."""
-    assert _loaded
-    return [vector(text, f"embed-{role}").astype(np.float16) for text in texts]
-
-
-def token_embed(contents: list[str], role: str) -> list[np.ndarray]:
-    """Stage 2 for multi_vector: one float16 vector per whitespace token."""
-    del role
-    assert _loaded
-    return [token_vectors(f"doc: {content}", "tok") for content in contents]
-
-
-__all__ = ["DIM", "embed", "fold", "load", "prompt", "render", "score", "token_embed", "tokens", "vector"]
+__all__ = ["DIM", "fold", "load", "prompt", "render", "score", "tokens", "vector"]
 
 
 def tokenizer() -> FixtureTokenizer:
