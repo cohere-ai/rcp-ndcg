@@ -28,7 +28,7 @@ from rcp_ndcg.inference.adapters.base import (
     known_adapters,
     register_adapter,
 )
-from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp_ndcg.inference.config import SELF_HOSTED_APIS, EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.fake import FAKE_SCHEME
 from rcp_ndcg.inference.transport import Sender, Transport
@@ -53,6 +53,7 @@ __all__ = [
     "ADAPTER_ENTRY_POINTS",
     "Adapter",
     "AdapterRole",
+    "SELF_HOSTED_APIS",
     "Call",
     "Completion",
     "CompletionInput",
