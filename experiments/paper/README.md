@@ -31,9 +31,10 @@ run config's `serve:` section ([serving](../../docs/concepts/serving.md)):
 ```yaml
 judge: qwen35_397b_nvfp4
 serve:
-  image: lmsysorg/sglang:v0.5.17-cu129
-  command: [python3, -m, sglang.launch_server, --model-path, nvidia/Qwen3.5-397B-A17B-NVFP4, ...]
-  resources: {gpus: 8}
+  judge:
+    image: lmsysorg/sglang:v0.5.17-cu129
+    command: [python3, -m, sglang.launch_server, --model-path, nvidia/Qwen3.5-397B-A17B-NVFP4, ...]
+    resources: {gpus: 8}
 ```
 
 The paper's third judge, Qwen3.6-27B in its FP8 release (TREC-DL), has no recorded engine settings beyond its

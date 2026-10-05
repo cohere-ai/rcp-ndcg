@@ -1135,7 +1135,7 @@
           "name": "boolean"
         }
       },
-      "judge_url": {
+      "endpoint": {
         "default": null,
         "envvar": null,
         "help": null,
@@ -1144,7 +1144,7 @@
         "multiple": false,
         "nargs": 1,
         "opts": [
-          "--judge-url"
+          "--endpoint"
         ],
         "param_type_name": "option",
         "required": false,
@@ -3474,6 +3474,24 @@
           "name": "boolean"
         }
       },
+      "engine": {
+        "default": [],
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": true,
+        "nargs": 1,
+        "opts": [
+          "--engine"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "text"
+        }
+      },
       "estimate": {
         "default": false,
         "envvar": null,
@@ -3538,24 +3556,6 @@
         "nargs": 1,
         "opts": [
           "--judge-url"
-        ],
-        "param_type_name": "option",
-        "required": false,
-        "secondary_opts": [],
-        "type": {
-          "name": "text"
-        }
-      },
-      "judge_urls": {
-        "default": null,
-        "envvar": "RCP_NDCG_JUDGE_URLS",
-        "help": null,
-        "hidden": false,
-        "is_flag": false,
-        "multiple": false,
-        "nargs": 1,
-        "opts": [
-          "--judge-urls"
         ],
         "param_type_name": "option",
         "required": false,
