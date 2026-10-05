@@ -277,7 +277,7 @@ class TestStatusMap:
         replies = _send(_transport(script, max_retries=1))
         assert replies[0].status == 200 and sleeps[-1] == 60.0  # capped at RETRY_MAX_BACKOFF_S
 
-    def test_usage_counts_calls_failed_calls_and_tokens(self) -> None:
+    def test_usage_counts_requests_failed_requests_and_tokens(self) -> None:
         transport = _transport(ReplicaScript(503, 200, 401), max_retries=1)
         assert _send(transport)[0].status == 200
         with pytest.raises(CredentialsError):

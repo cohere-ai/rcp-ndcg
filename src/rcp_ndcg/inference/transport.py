@@ -509,11 +509,11 @@ class Transport:
         ``usage(reply)`` (``None`` when the API reports no tokens, which adds nothing)."""
         if tokens is None:
             return
-        self._usage = Usage(
-            requests=self._usage.requests,
-            failed_requests=self._usage.failed_requests,
-            input_tokens=self._usage.input_tokens + (tokens.input_tokens or 0),
-            output_tokens=self._usage.output_tokens + (tokens.output_tokens or 0),
+        self._usage = self._usage.model_copy(
+            update={
+                "input_tokens": self._usage.input_tokens + (tokens.input_tokens or 0),
+                "output_tokens": self._usage.output_tokens + (tokens.output_tokens or 0),
+            }
         )
 
     # ------------------------------------------------------------------

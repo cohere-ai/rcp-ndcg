@@ -32,7 +32,10 @@ runtime fields that never enter an identity.
 An adapter turns one request into `Call` objects (method, path, JSON body, headers) and reads the `Reply`
 objects (status, decoded body, headers) back into the role's result, raising the role's typed errors. The
 transport routes the calls to one replica, retries what the status map calls unavailable, parks while every
-replica is down, and counts the calls. A role client sends one request like this:
+replica is down, and counts the calls. The shipped adapters register per role at import of
+`rcp_ndcg.inference.adapters`: the judge's `openai_chat` (the `JudgeConfig.api` default), the embed role's
+`openai_embeddings`, `cohere`, `voyage` and `gemini`, the rerank role's `rerank`, `cohere` and `voyage`, and the
+multi-vector role's `vllm_pooling`. A role client sends one request like this:
 
 ```python
 from rcp_ndcg.inference import Call, TokenCount, Transport, register_adapter
