@@ -448,7 +448,8 @@ def test_the_refusal_of_a_multi_system_file_names_the_way_out_for_the_others() -
                  protocol="vidore", bootstrap=0)  # fmt: skip
 
     assert caught.value.hint is not None and "exact subset name" in caught.value.hint
-    assert "--system" in caught.value.hint and "drop" in caught.value.hint
+    assert "systems=[...]" in caught.value.hint and "drop" in caught.value.hint, "the Python way out"
+    assert caught.value.cli_hint is not None and "--system" in caught.value.cli_hint, "the command-line way out"
     no_prefix = Rankings.concat(
         [
             _pool_orders(dataset),
@@ -462,7 +463,7 @@ def test_the_refusal_of_a_multi_system_file_names_the_way_out_for_the_others() -
     with pytest.raises(DataError) as no_overlap:
         evaluate(no_prefix, dataset=dataset, gains=dataset.gains, protocol="vidore", bootstrap=0, systems=["broken"])
     assert "no ranked document is in the pools or labels" in no_overlap.value.message
-    assert "--system" in (no_overlap.value.hint or ""), "the file still holds the other systems"
+    assert "systems=[...]" in (no_overlap.value.hint or ""), "the file still holds the other systems"
 
 
 def test_a_single_system_file_is_refused_without_the_multi_system_hint() -> None:

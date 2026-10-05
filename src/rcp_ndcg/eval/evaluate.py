@@ -508,31 +508,31 @@ def _refuse_unmatched(
         DataError: Naming the system and the datasets its rows do name, or one ranked id next to one dataset id.
     """
     if not any(scores.values()):
-        raise no_rankings_error(
-            dataset.name,
-            rankings.datasets,
-            system=system,
-            hint=_way_out_for_the_others(_dataset_column_hint(dataset), rankings),
-        )
+        error = no_rankings_error(dataset.name, rankings.datasets, system=system, hint=_dataset_column_hint(dataset))
+        raise _way_out_for_the_others(error, rankings)
     ranked = {doc_id for part_scores in scores.values() for docs in part_scores.values() for doc_id in docs}
     targets = pools | label_ids
     if targets and not ranked & targets:
-        error = _no_overlap_error(system, dataset, ranked, pools, label_ids)
-        error.hint = _way_out_for_the_others(error.hint, rankings)
-        raise error
+        raise _way_out_for_the_others(_no_overlap_error(system, dataset, ranked, pools, label_ids), rankings)
 
 
-def _way_out_for_the_others(hint: str | None, rankings: Rankings) -> str | None:
-    """A refusal's hint, with the way out for the other systems of a multi-system file appended.
+def _way_out_for_the_others(error: DataError, rankings: Rankings) -> DataError:
+    """A system's refusal, with the way out for the other systems of a multi-system file appended.
 
     One broken system would fail the scoring of every system in the file; the hint names the way out: drop the
-    broken system's rows, or score the others with ``--system`` (``systems=`` in Python). A single-system file
-    keeps its own hint: neither way out has anything left to score.
+    broken system's rows, or score the others (``systems=`` in Python, ``--system`` on the command line). A
+    single-system file keeps its own hint: neither way out has anything left to score.
     """
     if len(rankings.systems) <= 1:
-        return hint
-    way_out = "drop this system's rows, or score the others with --system (repeatable)"
-    return f"{hint}; {way_out}" if hint else way_out
+        return error
+    base, python, cli = (
+        error.hint,
+        "drop this system's rows, or score the others with systems=[...]",
+        ("drop this system's rows, or score the others with --system (repeatable)"),
+    )
+    error.hint = f"{base}; {python}" if base else python
+    error.cli_hint = f"{base}; {cli}" if base else cli
+    return error
 
 
 def _dataset_targets(dataset: Dataset) -> tuple[set[str], set[str]]:

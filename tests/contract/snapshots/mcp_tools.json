@@ -498,6 +498,14 @@
           "default": null,
           "description": "A public suite (nanobeir, bright, vidore, trecdl).",
           "title": "Suite"
+        },
+        "system": {
+          "description": "Score only these systems (repeatable; default every system the rankings hold). Use it to score the healthy systems of a file one of whose systems matches nothing of the dataset.",
+          "items": {
+            "type": "string"
+          },
+          "title": "System",
+          "type": "array"
         }
       },
       "required": [

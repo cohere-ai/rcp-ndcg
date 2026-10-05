@@ -320,3 +320,44 @@ def test_explain_reads_a_saved_report_and_leaves_texts_out_unless_asked(scored: 
     missing = _invoke("explain", "--report", report, "--query-id", "q9")
     assert missing["exit_code"] == 12
     assert "known: q1, q2" in missing["error"]["message"]
+
+
+def test_explain_run_refuses_the_system_option(scored: dict) -> None:
+    """`--system` re-scores a saved report; with `--run` it is refused, never silently ignored."""
+    document = _invoke(
+        "explain", "--run", str(scored["report"].parent / "no-run"), "--query-id", "q1", "--system", "forward"
+    )
+
+    assert document["exit_code"] == 2, document
+    assert document["error"]["code"] == "USAGE"
+    assert "--system" in document["error"]["message"] and "--report" in document["error"]["hint"]
+
+
+def test_a_partial_snapshot_listing_carries_its_warning_in_the_envelope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An offline corpus read whose listing came from the local snapshot warns SNAPSHOT_LISTING in --json."""
+    cache = _staged_vidore_cache(tmp_path, monkeypatch)
+    snapshot = next((cache / f"datasets--{VIDORE_REPO.replace('/', '--')}").glob("snapshots/*"))
+    (snapshot / "README.md").write_text(
+        "---\nconfigs:\n- config_name: hr__english-corpus\n  data_files:\n  - path: hr__english/corpus/*.parquet\n---\n"
+    )
+    (snapshot / "hr__english" / "corpus").mkdir()
+    pd.DataFrame({"id": ["a"], "text": ["alpha"]}).to_parquet(snapshot / "hr__english/corpus/part-0.parquet")
+    pd.DataFrame({"id": ["q1"], "text": ["q"]}).to_parquet(snapshot / "hr__english/queries.parquet")
+    rankings = tmp_path / "run.jsonl"
+    Rankings.from_orders({"q1": ["a"]}, system="mine").save(rankings)
+
+    scored = _invoke(
+        "score", "--rankings", str(rankings), "--suite", "vidore", "--subset", "hr__english",
+        "--revision", SHA, "--out", str(tmp_path / "report.json"),
+    )  # fmt: skip
+    assert scored["ok"] is True, scored
+    assert scored["warnings"] == [], "scoring the qrels reads no corpus, so no snapshot listing"
+
+    explained = _invoke("explain", "--report", str(tmp_path / "report.json"), "--query-id", "q1", "--include-text")
+
+    assert explained["ok"] is True, explained
+    assert [warning["code"] for warning in explained["warnings"]] == ["SNAPSHOT_LISTING"]
+    assert "partial cache" in explained["warnings"][0]["message"]
+    assert explained["data"]["texts"] == {"a": "alpha"}, "the corpus came from the snapshot"

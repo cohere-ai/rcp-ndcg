@@ -398,6 +398,11 @@ def eval_explain(request: EvalExplainRequest) -> ExplainedQuery:
     if (request.report is None) == (request.run is None):
         raise UsageError("pass exactly one of --run and --report")
     if request.run is not None:
+        if request.system:
+            raise UsageError(
+                "--system re-scores the rankings of a saved report and has no effect with --run",
+                hint="drop --system, or explain a report written by `eval score --out` (--report)",
+            )
         from rcp_ndcg.runs.inspect import explain_query
 
         explained, dataset = explain_query(request.run, request.query_id, k=request.k)
