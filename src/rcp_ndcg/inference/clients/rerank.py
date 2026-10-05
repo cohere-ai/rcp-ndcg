@@ -8,33 +8,39 @@ decisions every rerank path must make the same way:
   one rule covers the served and the hosted path alike: ``fold`` sends ``Task: <instruction>\\nQuery: <text>``
   exactly as today's served path (:meth:`rcp_ndcg_core._records.Query.format_content`), ``field`` sends the
   bare query plus the engine's ``instruction`` request field (served vLLM only), ``none`` sends the bare
-  query. This removes the divergence RFC-0001 section 2.1 records, where the served path read a folded query
-  and the in-process path the bare one.
-* **preparation** -- every input goes through :meth:`RerankClient._prepare`, the one seam where the
-  instruction mode and, once wired, the text-budget mechanism apply. Until that mechanism lands the client
-  cuts nothing: contents are sent as given, and a config that sets ``max_tokens`` is refused rather than
-  silently ignored.
+  query.
+* **the pair budget** -- every request is fitted through :func:`rcp_ndcg.data.preprocess.fit` as the
+  ``pair`` shape: the (query, document) pairs are cut span by span within the declared budget (the query to
+  ``query_max_tokens`` when it is set), the template's fixed segments re-attached around the cuts (the
+  anchors a pointwise reranker reads its score from always survive), every cut recorded in the census under
+  ``text_budget``, and a chunked document sent as one request per chunk with the chunks' scores pooled back
+  onto the document by ``max`` (:func:`rcp_ndcg.data.preprocess.max_pool_scores_by_document`). The wire
+  carries the cut spans -- the engine renders the template itself -- and no ``truncate_prompt_tokens``,
+  ``max_tokens_per_query`` or ``max_tokens_per_doc`` is ever sent: the client cut already, so there is
+  nothing left for the engine to truncate. A hosted profile that declares only ``max_tokens`` (no
+  tokenizer) sends content uncut and records the vendor's documented limit.
 
-The hosted profiles' request caps, splits and pauses come from the adapter
-(:mod:`rcp_ndcg.inference.adapters.rerank`); the client runs ``concurrency`` queries in flight and calls the
-``checkpoint`` callable once per query, so a crash costs at most the queries in flight -- the per-query
-checkpoint of today's served path.
+The hosted profiles' request caps, splits, pauses and credential facts come from the adapter
+(:mod:`rcp_ndcg.inference.adapters.rerank`); the client runs ``concurrency`` queries in flight under one
+:class:`asyncio.TaskGroup` (a failing query cancels its siblings, R7) and calls the ``checkpoint`` callable
+once per query, so a crash costs at most the queries in flight -- the per-query checkpoint of today's
+served path.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Coroutine, Sequence
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from rcp_ndcg_core._records import Query, RankingExample
 from rcp_ndcg_core.content import Content
 
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.inference.adapters.base import get_adapter
+from rcp_ndcg.data.preprocess import FitResult, TextTruncationCensus, max_pool_scores_by_document
+from rcp_ndcg.inference.clients._base import RoleClient
 from rcp_ndcg.inference.config import RerankEndpoint
-from rcp_ndcg.inference.transport import Sender, Transport
-from rcp_ndcg.inference.types import Call, EncodeRole, Reply, RerankRequest, RerankResult
+from rcp_ndcg.inference.transport import Sender
+from rcp_ndcg.inference.types import Call, EncodeRole, RerankRequest, RerankResult
 
 if TYPE_CHECKING:
     from rcp_ndcg.inference.adapters.rerank import RerankWire
@@ -48,18 +54,21 @@ T = TypeVar("T")
 Checkpoint = Callable[[str, tuple[float, ...]], None]
 
 
-class RerankClient:
+class RerankClient(RoleClient):
     """One :class:`~rcp_ndcg.inference.config.RerankEndpoint`'s reranking, over one sender.
 
-    The client is the synchronous API the retrieval steps call (each call runs its requests on one event loop
-    through :meth:`Transport.run`, as judging does) with an async core (:meth:`arerank`) beside it.
+    The client is the synchronous API the retrieval steps call (each call runs its requests on one event
+    loop through the sender's sync bridge, as judging does) with an async core (:meth:`arerank`) beside it.
 
     Attributes:
-        config: The role config, with the hosted profiles' public API root filled in when the config set no
-            ``base_url``.
+        config: The role config, as it was given (a hosted profile's public root fills :attr:`endpoint`).
     """
 
-    def __init__(self, config: RerankEndpoint, *, sender: Sender | None = None) -> None:
+    ROLE = "rerank"
+
+    def __init__(
+        self, config: RerankEndpoint, *, sender: Sender | None = None, census: TextTruncationCensus | None = None
+    ) -> None:
         """A client for ``config``, sending over ``sender`` (a :class:`~rcp_ndcg.inference.transport.Transport`
         when none is given).
 
@@ -67,36 +76,17 @@ class RerankClient:
             config: The rerank endpoint; a hosted profile (``api: cohere`` or ``api: voyage``) without a
                 ``base_url`` uses its public API root, a served one requires the config's.
             sender: What sends the calls; ``None`` builds the endpoint's own transport. A test fake or a
-                third-party sender is any :class:`~rcp_ndcg.inference.transport.Sender`.
+                third-party sender is any :class:`~rcp_ndcg.inference.transport.Sender` with a sync bridge.
+            census: Where the text-budget cuts are recorded; ``None`` gives the client a fresh in-memory
+                census (:attr:`census`).
 
         Raises:
-            ConfigError: The config sets ``max_tokens`` (the text-budget mechanism that applies client-side
-                budgets is not wired yet, and a budget is never silently ignored), ``api`` names no registered
-                adapter of the rerank role (the hint lists that role's names), a hosted profile with
-                ``instruction: field`` or ``use_activation`` (neither exists on their wire), or a served
-                endpoint without a ``base_url``.
+            ConfigError: ``api`` names no registered adapter of the rerank role (the hint lists that role's
+                names), a hosted profile with ``instruction: field`` or ``use_activation`` (neither exists on
+                their wire), or a served endpoint without a ``base_url``.
         """
-        if config.max_tokens is not None:
-            raise ConfigError(
-                "max_tokens needs the text-budget mechanism, which is not wired yet",
-                hint="leave max_tokens unset; until the mechanism lands the client cuts nothing, and a "
-                "budget would otherwise be silently ignored",
-            )
-        adapter_cls = cast("type[RerankWire]", get_adapter(config.api, role="rerank"))
-        if config.base_url is None:
-            # The shipped adapters (and a third party's matching the RerankWire shape) declare the hosted
-            # profiles' public root; anything else answers through the config's own base_url.
-            default = getattr(adapter_cls, "DEFAULT_BASE_URL", None)
-            if default is None:
-                raise ConfigError(
-                    f"the {config.api!r} rerank endpoint needs base_url",
-                    hint="a served engine has no public root: set base_url to the engine's URL (e.g. http://127.0.0.1:8000/v1)",
-                )
-            config = config.model_copy(update={"base_url": default})
-        self.config = config
-        self._adapter = adapter_cls(config)
-        self._sender = sender
-        self._transport = Transport(config) if sender is None else None
+        super().__init__(config, sender=sender, census=census)
+        self._adapter: RerankWire = self._adapter_cls(self.endpoint)
 
     # -- the synchronous API -------------------------------------------------
     def rerank(
@@ -115,6 +105,8 @@ class RerankClient:
 
         Raises:
             ConfigError: The config cannot serve this request (see :meth:`__init__`).
+            TextBudgetExceededError: ``on_overflow: fail`` and a pair over budget, or a query that fills the
+                budget with no split declared.
             CapabilityError: The endpoint refused the request as too long.
             RequestRejectedError: The endpoint refused this one request.
             ProviderError: The endpoint failed after its retries, or its answer was unusable.
@@ -126,51 +118,50 @@ class RerankClient:
     ) -> list[RerankResult]:
         """Score every example, ``concurrency`` queries in flight, and return the results in input order.
 
-        Each query is one request (or one per cap-sized chunk of its candidate set, merged), as in today's
-        served path: the engine reuses the query's prefix across the documents, and a listwise model needs the
-        whole set together. An example with no documents is checkpointed with no scores and makes no request,
-        exactly as the served path does. The query is sent through the config's instruction mode, so the
-        example's raw query and instruction go in -- never the already-folded
+        Each query is one request (or one per chunk of a budget-split document, scores pooled by ``max``),
+        as in today's served path: the engine reuses the query's prefix across the documents, and a listwise
+        model needs the whole set together. An example with no documents is checkpointed with no scores and
+        makes no request, exactly as the served path does. The query is sent through the config's
+        instruction mode, so the example's raw query and instruction go in -- never the already-folded
         :meth:`~rcp_ndcg_core._records.Query.format_content` text, which would fold twice.
 
         Args:
             examples: The ranking examples to score; documents must be populated (``docs`` or ``contents``).
-            checkpoint: Called once per scored query with its id and its scores (aligned to the example's
-                ``doc_ids``), as each query finishes -- the per-query checkpoint of today's served path: write
-                the record and flush here, and a crash costs at most the queries in flight.
+            checkpoint: Called once per scored query with its id and its (pooled) scores (aligned to the
+                example's ``doc_ids``), as each query finishes -- the per-query checkpoint of today's served
+                path: write the record and flush here, and a crash costs at most the queries in flight. A
+                failing query cancels its siblings, and no checkpoint lands after the failure (R7).
 
         Returns:
             One :class:`~rcp_ndcg.inference.types.RerankResult` per example, in the input order.
         """
         return self._run(self.arerank_many(examples, checkpoint=checkpoint))
 
-    def close(self) -> None:
-        """Close the transport's client and pool, when the client built the transport; safe to call twice."""
-        if self._transport is not None:
-            self._transport.aclose()
-
     # -- the async core ------------------------------------------------------
     async def arerank(
         self, query: str | Content, documents: Sequence[str | Content], *, instruction: str | None = None
     ) -> RerankResult:
-        """The async half of :meth:`rerank`: prepare, send, and read the scores back aligned."""
+        """The async half of :meth:`rerank`: prepare, fit to the budget, send, and read the scores back
+        aligned to the documents."""
         prepared_query = self._prepare([query], EncodeRole.QUERY, instruction=instruction)[0]
         prepared_documents = self._prepare(documents, EncodeRole.DOCUMENT)
         if not prepared_documents:
             return RerankResult(scores=())  # an empty candidate set is not a request (as on the served path)
+        wire_query, wire_documents, fitted = self._fit_pair(prepared_query, prepared_documents)
         request = RerankRequest(
-            query=prepared_query,
-            documents=prepared_documents,
+            query=wire_query,
+            documents=tuple(wire_documents),
             instruction=instruction if self.config.instruction == "field" else None,
         )
         replies = await self._send(self._adapter.calls(request, model=self.config.model))
-        return self._adapter.interpret(request, replies)
+        return self._pooled(fitted, self._adapter.interpret(request, replies), len(prepared_documents))
 
     async def arerank_many(
         self, examples: Sequence[RankingExample], *, checkpoint: Checkpoint | None = None
     ) -> list[RerankResult]:
-        """The async half of :meth:`rerank_many`: one task per query under a concurrency semaphore, the
-        checkpoint called from the event loop as each query lands."""
+        """The async half of :meth:`rerank_many`: one task per query under a concurrency semaphore, in one
+        :class:`asyncio.TaskGroup` (a failing query cancels its siblings and no checkpoint lands after the
+        failure, R7); the checkpoint called from the event loop as each query lands."""
         limit = asyncio.Semaphore(self.config.concurrency)
         results: list[RerankResult | None] = [None] * len(examples)
 
@@ -181,10 +172,10 @@ class RerankClient:
             if checkpoint is not None:
                 checkpoint(str(example.id), result.scores)
 
-        await asyncio.gather(*(score(index, example) for index, example in enumerate(examples)))
+        await RoleClient.gather([score(index, example) for index, example in enumerate(examples)])
         return [result for result in results if result is not None]
 
-    # -- preparation and sending ---------------------------------------------
+    # -- preparation and fitting ----------------------------------------------
     def _prepare(
         self,
         contents: Sequence[str | Content],
@@ -192,14 +183,10 @@ class RerankClient:
         *,
         instruction: str | None = None,
     ) -> tuple[Content, ...]:
-        """Every input passes through here, and nothing else changes it: the one seam for prompts, the
-        instruction mode and, once wired, the text-budget mechanism.
-
-        Today: text is materialised to content parts, and the query's instruction is folded into its text for
-        ``instruction: fold`` -- exactly the served path's
+        """The one seam every input passes through: text materialised to content parts, and the query's
+        instruction folded into its text for ``instruction: fold`` -- exactly the served path's
         :meth:`~rcp_ndcg_core._records.Query.format_content` render, so the served and the hosted path send
-        the same query text. Nothing is cut; a config with ``max_tokens`` is refused in :meth:`__init__`
-        rather than silently ignored.
+        the same query text. The budget fit happens on the pairs, in :meth:`_fit_pair`.
 
         Args:
             contents: The texts or content parts as the caller gave them.
@@ -218,33 +205,75 @@ class RerankClient:
             for content in prepared
         )
 
-    async def _send(self, calls: Sequence[Call]) -> list[Reply]:
+    def _fit_pair(self, query: Content, documents: Sequence[Content]) -> tuple[Content, list[Content], FitResult]:
+        """The query and its candidates as the wire carries them, fitted into the pair budget.
+
+        With a budget declared, :meth:`RoleClient._fit` runs the shared mechanism over the ``(query,
+        document)`` pairs (shape ``pair``): the query span is settled first (to ``query_max_tokens``), each
+        document gets what remains, a chunked document comes back as one output per chunk (``<id>#<k>``)
+        with the full template around it. The wire takes the cut spans (the engine renders the template
+        itself); the chunks' ``max`` pooling is the caller's, through the fit result.
+
+        Returns:
+            ``(wire_query, wire_documents, fitted)``: the query content (cut) and the document contents
+            (one per fit output, in fit's order), and the fit result -- its ``ids`` align to the wire
+            documents, its ``chunk_mapping`` carries each chunk back to its input.
+
+        Raises:
+            TextBudgetExceededError: the declared overflow policy refuses to shorten a pair.
+        """
+        if self._budget is None:
+            return (
+                query,
+                list(documents),
+                FitResult(
+                    shape="pair", texts=(), contents=(), ids=tuple(str(index) for index in range(len(documents)))
+                ),
+            )  # noqa: E501
+        pairs = [(query.text, document.text) for document in documents]
+        result = self._fit(pairs, "pair", media_tokens=self._media_tokens(documents))
+        contents = [pair if isinstance(pair, tuple) else (pair, "") for pair in result.contents]
+        # One query's pairs share one query text, so every output's query span is the same cut. A chunked
+        # document is one wire document per chunk, each carrying its input's media parts beside the piece.
+        mapping = result.chunk_mapping or {}
+        origin = [int(mapping.get(out_id, out_id)) for out_id in result.ids]
+        wire_query = self._with_text(query, contents[0][0])
+        wire_documents = [
+            self._with_text(documents[source], document_text)
+            for source, (_, document_text) in zip(origin, contents, strict=True)
+        ]
+        return wire_query, wire_documents, result
+
+    def _pooled(self, fitted: FitResult, result: RerankResult, documents: int) -> RerankResult:
+        """The scores of one query, pooled back onto its documents when the budget chunked them.
+
+        Without a chunk mapping the scores pass through. With one, the outputs' scores (one per chunk, in
+        fit's order, aligned to :attr:`FitResult.ids`) pool onto their documents by
+        :func:`rcp_ndcg.data.preprocess.max_pool_scores_by_document` (``aggregation: max``), and the result
+        is realigned to the original document order.
+        """
+        if fitted.chunk_mapping is None:
+            return result
+        per_chunk = dict(zip(fitted.ids, result.scores, strict=True))
+        pooled = max_pool_scores_by_document(per_chunk, fitted.chunk_mapping)
+        return RerankResult(scores=tuple(pooled[str(index)] for index in range(documents)))
+
+    async def _send(self, calls: Sequence[Call]) -> list[Any]:
         """Send one request's calls and return their replies, one per call, in order.
 
         A profile with a pause (Voyage) sends its calls one at a time, sleeping before each as today's
         ``VoyageRerank`` does; otherwise the calls go in one ``send``, which the transport routes to one
         replica without interleaving.
         """
-        sender = self._transport if self._transport is not None else self._sender
-        if sender is None:  # pragma: no cover - __init__ always leaves one of the two set
-            raise RuntimeError("rerank client has neither a transport nor a sender")
+        sender = self._sender
         pause = getattr(self._adapter, "PAUSE_S", 0.0)
         if not pause:
             return await sender.send(calls)
-        replies: list[Reply] = []
+        replies: list[Any] = []
         for call in calls:
             await asyncio.sleep(pause)
             replies.extend(await sender.send([call]))
         return replies
-
-    def _run(self, coroutine: Coroutine[Any, Any, T]) -> T:
-        """Run one synchronous call's coroutine on one event loop: the transport's own when the client built
-        it (the pool is bound to it), a fresh one for an injected sender."""
-        if self._transport is not None:
-            return self._transport.run(coroutine)
-        if isinstance(self._sender, Transport):
-            return self._sender.run(coroutine)
-        return asyncio.run(coroutine)
 
 
 __all__ = ["Checkpoint", "RerankClient"]
