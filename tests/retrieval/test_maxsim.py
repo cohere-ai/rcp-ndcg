@@ -130,6 +130,98 @@ class TestMaxSimTopk:
             )
 
 
+class TestTransferPrecision:
+    """Float16 vectors in, float32 scoring out: the transfer dtype never reaches the accumulation."""
+
+    @staticmethod
+    def _float16_embeddings(
+        rng: np.random.Generator, docs: int, doc_tokens: int, queries: int, dim: int
+    ) -> tuple[Embeddings, Embeddings, list[np.ndarray], list[np.ndarray]]:
+        """Random float16 documents and queries, with the float64 originals alongside."""
+        doc_vectors = [rng.standard_normal((doc_tokens, dim)) for _ in range(docs)]
+        query_vectors = [rng.standard_normal((12, dim)) for _ in range(queries)]
+        # ragged(dtype=float16): the buffer keeps the transfer precision, as the pooling client's does
+        doc_embeddings = Embeddings.ragged([v.astype(np.float16) for v in doc_vectors], dtype=np.float16)
+        query_embeddings = Embeddings.ragged([v.astype(np.float16) for v in query_vectors], dtype=np.float16)
+        return doc_embeddings, query_embeddings, doc_vectors, query_vectors
+
+    @staticmethod
+    def _reference_at(doc_embeddings: Embeddings, query_embeddings: Embeddings, indices: np.ndarray) -> np.ndarray:
+        """The two-line float64 reference, at the indices the scorer returned."""
+
+        def item(embeddings: Embeddings, index: int) -> np.ndarray:
+            assert embeddings.offsets is not None
+            span = embeddings.vectors[int(embeddings.offsets[index]) : int(embeddings.offsets[index + 1])]
+            return span.astype(np.float64)
+
+        return np.array(
+            [
+                [np.max(item(query_embeddings, qi) @ item(doc_embeddings, di).T, axis=1).sum() for di in row]
+                for qi, row in enumerate(indices)
+            ]
+        )
+
+    def test_float16_inputs_match_a_float64_reference(self) -> None:
+        """Long documents (2,000 tokens, dim 128) scored in float32 sit within 1e-3 relative of the float64
+        reference over the same float16 vectors -- and within 1e-3 of the float64 originals, so float16
+        storage costs its quantisation and nothing more."""
+        rng = np.random.default_rng(7)
+        doc_embeddings, query_embeddings, doc_vectors, query_vectors = self._float16_embeddings(
+            rng, docs=6, doc_tokens=2_000, queries=4, dim=128
+        )
+
+        scores, indices = maxsim_topk(doc_embeddings, query_embeddings, 4)
+
+        assert scores.dtype == np.float32
+        original = np.array(
+            [
+                [np.max(q @ doc_vectors[di].T, axis=1).sum() for di in row]
+                for q, row in zip(query_vectors, indices, strict=True)
+            ]
+        )
+        np.testing.assert_allclose(scores, original, rtol=1e-3, atol=0)
+
+    def test_the_accumulation_is_float32_not_float16(self) -> None:
+        """The pin that keeps the upcast honest: scoring the same float16 vectors in float32 sits ~1e-7 from
+        the float64 reference; accumulating in float16 drifts ~1e-4, which this bound refuses."""
+        rng = np.random.default_rng(7)
+        doc_embeddings, query_embeddings, _, _ = self._float16_embeddings(
+            rng, docs=6, doc_tokens=2_000, queries=4, dim=128
+        )
+
+        scores, indices = maxsim_topk(doc_embeddings, query_embeddings, 4)
+
+        reference = self._reference_at(doc_embeddings, query_embeddings, indices)
+        np.testing.assert_allclose(scores, reference, rtol=1e-5, atol=0)
+
+    def test_the_upcast_is_blockwise_and_bounded(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The scorer never materialises a float32 copy of the corpus: with a small tile budget, each block
+        copy is at most the budget and many blocks run -- a whole-corpus upcast would be one giant copy."""
+        rng = np.random.default_rng(8)
+        doc_embeddings = Embeddings.ragged(
+            [rng.standard_normal((50, 128)).astype(np.float16) for _ in range(40)], dtype=np.float16
+        )
+        query_embeddings = Embeddings.ragged(
+            [rng.standard_normal((5, 128)).astype(np.float16) for _ in range(8)], dtype=np.float16
+        )
+
+        copied: list[int] = []
+        real = maxsim._f32_block
+
+        def recording(vectors: np.ndarray) -> np.ndarray:
+            block = real(vectors)
+            copied.append(block.nbytes)
+            return block
+
+        monkeypatch.setattr(maxsim, "_TILE_BYTES", 64 << 10)  # 64 KiB: two documents per block
+        monkeypatch.setattr(maxsim, "_f32_block", recording)
+        maxsim_topk(doc_embeddings, query_embeddings, 4)
+
+        assert len(copied) > 1  # the corpus was never upcast whole
+        assert max(copied) <= 64 << 10
+        assert max(copied) < doc_embeddings.vectors.nbytes
+
+
 class TestScoreTopkDispatch:
     def test_flat_embeddings_use_the_inner_product_path(self) -> None:
         from rcp_ndcg.retrieval.topk import numpy_topk, score_topk

@@ -1,0 +1,207 @@
+"""The pooling role client: prompts per role, batching, concurrency, normalisation and the transfer dtype.
+
+The client is tested through its wire adapter against the in-test pooling server
+(:mod:`tests.inference._pooling`), so what is asserted is what a run would see: the requests that go out and
+the ragged vectors that come back, in the transfer dtype end to end.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from typing import Any
+
+import httpx
+import numpy as np
+import pytest
+from rcp_ndcg_core.content import Content
+
+from rcp_ndcg.errors import ConfigError, RequestRejectedError
+from rcp_ndcg.inference.clients.pool import PoolingClient
+from rcp_ndcg.inference.config import PoolingEndpoint
+from rcp_ndcg.inference.types import EncodeRole
+from tests.inference._pooling import PoolingServer, server_sender
+
+
+class _GatedSender:
+    """A sender that overlaps its sends, counts the peak in flight and sleeps a tick per request."""
+
+    def __init__(self, server: PoolingServer) -> None:
+        self._inner = server_sender(server)
+        self.in_flight = 0
+        self.peak = 0
+        self.sent: list[list[dict[str, Any]]] = []
+
+    async def send(self, calls: Any) -> list[Any]:
+        self.in_flight += 1
+        self.peak = max(self.peak, self.in_flight)
+        self.sent.append([call.json for call in calls])
+        await asyncio.sleep(0)
+        try:
+            return await self._inner.send(calls)
+        finally:
+            self.in_flight -= 1
+
+
+def _client(sender: Any, **config: Any) -> PoolingClient:
+    settings: dict[str, Any] = {"model": "colbert", "dim": 2, "normalize": False}
+    settings.update(config)
+    return PoolingClient(PoolingEndpoint(**settings), sender=sender)
+
+
+class TestEncode:
+    def test_batches_are_reassembled_in_input_order(self) -> None:
+        vectors = {f"doc{i}": np.full((i + 1, 2), i, dtype=np.float16) for i in range(5)}
+        sender = _GatedSender(PoolingServer(vectors))
+        client = _client(sender, batch_size=2)
+
+        embeddings = asyncio.run(client.aencode([Content.from_text(f"doc{i}") for i in range(5)], EncodeRole.DOCUMENT))
+
+        assert embeddings.num_items == 5
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 1, 3, 6, 10, 15]
+        np.testing.assert_array_equal(embeddings.vectors[0], [0, 0])
+        np.testing.assert_array_equal(embeddings.vectors[14], [4, 4])
+        assert len(sender.sent) == 3
+
+    def test_batch_size_argument_overrides_the_config(self) -> None:
+        vectors = {f"d{i}": np.ones((1, 2), dtype=np.float16) for i in range(3)}
+        sender = _GatedSender(PoolingServer(vectors))
+        client = _client(sender, batch_size=3)
+
+        asyncio.run(client.aencode([Content.from_text(f"d{i}") for i in range(3)], EncodeRole.DOCUMENT))
+        assert len(sender.sent) == 1
+        asyncio.run(client.aencode([Content.from_text(f"d{i}") for i in range(3)], EncodeRole.DOCUMENT, batch_size=1))
+        assert len(sender.sent) == 4
+
+    def test_prompts_apply_per_role(self) -> None:
+        sender = _GatedSender(PoolingServer({}, default=np.ones((1, 2), dtype=np.float16)))
+        client = _client(sender, query_prompt="Query: ", doc_prompt="Document: ")
+
+        asyncio.run(client.aencode([Content.from_text("q")], EncodeRole.QUERY))
+        asyncio.run(client.aencode([Content.from_text("d")], EncodeRole.DOCUMENT))
+
+        first, second = sender.sent[0][0], sender.sent[1][0]
+        assert first["input"] == ["Query: q"]
+        assert second["input"] == ["Document: d"]
+
+    def test_media_items_travel_as_messages_through_the_client(self, tmp_path: Any) -> None:
+        """The adapter decides the shapes; the client only splits and reassembles."""
+        image = tmp_path / "page.png"
+        image.write_bytes(_png_bytes())
+        sender = _GatedSender(
+            PoolingServer({"plain": np.ones((1, 2), dtype=np.float16)}, media_vector=np.ones((1, 2), dtype=np.float16))
+        )
+        client = _client(sender)
+
+        embeddings = asyncio.run(
+            client.aencode([Content.from_image(image.as_uri()), Content.from_text("plain")], EncodeRole.DOCUMENT)
+        )
+
+        assert len(sender.sent[0]) == 2  # a media batch goes one request per item, in one send
+        assert "messages" in sender.sent[0][0]
+        assert embeddings.num_items == 2
+
+    def test_normalize_unit_norms_every_token_and_keeps_the_transfer_dtype(self) -> None:
+        sender = _GatedSender(PoolingServer({}, default=np.array([[3.0, 4.0], [1.0, 0.0]], dtype=np.float16)))
+        client = _client(sender, normalize=True)
+
+        embeddings = asyncio.run(client.aencode([Content.from_text("a")], EncodeRole.DOCUMENT))
+
+        assert embeddings.vectors.dtype == np.float16
+        norms = np.linalg.norm(embeddings.vectors.astype(np.float32), axis=1)
+        np.testing.assert_allclose(norms, [1.0, 1.0], atol=1e-3)
+
+    def test_normalize_false_keeps_the_vectors_as_decoded(self) -> None:
+        sender = _GatedSender(PoolingServer({}, default=np.array([[3.0, 4.0]], dtype=np.float16)))
+        client = _client(sender, normalize=False)
+
+        embeddings = asyncio.run(client.aencode([Content.from_text("a")], EncodeRole.DOCUMENT))
+        np.testing.assert_allclose(np.asarray(embeddings.vectors), [[3.0, 4.0]], rtol=1e-3)
+
+    def test_the_declared_dim_shapes_the_decode(self) -> None:
+        """The config's dim rebuilds (tokens, dim) from the flat frame: 8 values at dim 4 are two vectors."""
+        vectors = {"a": np.arange(8, dtype=np.float16).reshape(2, 4)}
+        server = PoolingServer(vectors, usage=False)
+        sender = _GatedSender(server)
+        client = PoolingClient(PoolingEndpoint(model="m", dim=4, normalize=False), sender=sender)
+
+        embeddings = asyncio.run(client.aencode([Content.from_text("a")], EncodeRole.DOCUMENT))
+        assert embeddings.vectors.shape == (2, 4)
+        np.testing.assert_array_equal(embeddings.vectors, np.arange(8, dtype=np.float16).reshape(2, 4))
+
+    def test_an_empty_batch_sends_nothing(self) -> None:
+        sender = _GatedSender(PoolingServer({}))
+        client = _client(sender)
+
+        embeddings = asyncio.run(client.aencode([], EncodeRole.QUERY))
+
+        assert sender.sent == []
+        assert embeddings.num_items == 0 and embeddings.is_multi_vector
+
+    def test_the_sync_encode_matches_the_async_one(self) -> None:
+        vectors = {"a": np.ones((2, 2), dtype=np.float16), "b": np.zeros((1, 2), dtype=np.float16)}
+        sender = _GatedSender(PoolingServer(vectors))
+        client = _client(sender, batch_size=1)
+        contents = [Content.from_text("a"), Content.from_text("b")]
+
+        sync_embeddings = client.encode(contents, EncodeRole.DOCUMENT)
+        async_embeddings = asyncio.run(client.aencode(contents, EncodeRole.DOCUMENT))
+        np.testing.assert_array_equal(sync_embeddings.vectors, async_embeddings.vectors)
+        np.testing.assert_array_equal(sync_embeddings.offsets, async_embeddings.offsets)
+
+
+class TestConcurrency:
+    def test_batch_requests_overlap_up_to_the_configured_concurrency(self) -> None:
+        vectors = {f"d{i}": np.ones((1, 2), dtype=np.float16) for i in range(6)}
+        sender = _GatedSender(PoolingServer(vectors))
+        client = PoolingClient(PoolingEndpoint(model="m", dim=2, batch_size=1, concurrency=2), sender=sender)
+
+        embeddings = asyncio.run(client.aencode([Content.from_text(f"d{i}") for i in range(6)], EncodeRole.DOCUMENT))
+
+        assert 1 < sender.peak <= 2  # overlapping, and gated by the config's concurrency
+        assert embeddings.num_items == 6
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 1, 2, 3, 4, 5, 6]
+
+    def test_concurrency_one_serialises(self) -> None:
+        vectors = {f"d{i}": np.ones((1, 2), dtype=np.float16) for i in range(3)}
+        sender = _GatedSender(PoolingServer(vectors))
+        client = PoolingClient(PoolingEndpoint(model="m", dim=2, batch_size=1, concurrency=1), sender=sender)
+
+        asyncio.run(client.aencode([Content.from_text(f"d{i}") for i in range(3)], EncodeRole.DOCUMENT))
+        assert sender.peak == 1
+
+
+class TestRefusals:
+    def test_max_tokens_is_refused_not_ignored(self) -> None:
+        """A budget silently ignored would change the vectors; until the budget lane wires the mechanism,
+        a config that sets one cannot build a client at all."""
+        with pytest.raises(ConfigError, match=r"^max_tokens needs the text-budget mechanism, which is not wired yet$"):
+            PoolingClient(PoolingEndpoint(model="m", max_tokens=8192), sender=_GatedSender(PoolingServer({})))
+
+    def test_an_unaligned_answer_is_refused(self) -> None:
+        """One item for two inputs is a refusal from the adapter, never a short result."""
+        from tests.inference._pooling import RecordingSender, b64
+
+        sender = RecordingSender(
+            lambda _request: httpx.Response(
+                200,
+                json={
+                    "data": [{"index": 0, "data": b64(np.ones((1, 2), dtype=np.float16))}],
+                    "usage": {"prompt_tokens": 1, "total_tokens": 1},
+                },
+            )
+        )
+        client = _client(sender)
+
+        with pytest.raises(RequestRejectedError, match="returned 1 item\\(s\\) for 2 input"):
+            asyncio.run(client.aencode([Content.from_text("a"), Content.from_text("ghost")], EncodeRole.DOCUMENT))
+
+
+def _png_bytes() -> bytes:
+    """A 1x1 PNG, so a media content resolves."""
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (1, 1), (255, 0, 0)).save(buffer, format="PNG")
+    return buffer.getvalue()
