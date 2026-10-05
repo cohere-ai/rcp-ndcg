@@ -171,8 +171,11 @@ class MediaFit(NamedTuple):
 def fit_media_to_budget(
     media: Sequence[PreparedMedia], *, image: ImagePolicy, video: VideoPolicy | None, text_budget_tokens: int
 ) -> MediaFit:
-    """What to send of a request's media when media alone exceed its text budget (p-media Q8, the fork's
-    rule R3: a vision block is atomic).
+    """What to send of a request's media when media alone exceed its text budget.
+
+    A vision block is atomic -- the engine either sees a whole media item or none of it, never a cut
+    through one: the vision start and end markers wrap the patch run, and a prompt cut between them
+    would corrupt or orphan the block.
 
     The declared rule, in order, and never anything else:
 

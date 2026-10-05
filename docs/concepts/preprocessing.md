@@ -243,19 +243,28 @@ aspect ratio above 200.
   of frames (32 on vLLM), which would make the counted tokens and the recorded instrument describe frames
   nobody chose, so the policy refuses `video_url` unless `engine_video_pinning: true` declares the engine
   pinned to the same frame count -- `--media-io-kwargs '{"video": {"num_frames": N}}'` on vLLM,
-  `--mm-process-config` on SGLang (see [serving](serving.md)). The engine's `engine_check` compares one
-  prepared probe's prompt-token count against the counted one at serving time (below).
+  `--mm-process-config` on SGLang (see [serving](serving.md)) -- and a single-frame container is refused
+  (no engine's video processor accepts one). Run `engine_media_check` once against a prepared probe when a
+  serving setup changes (below); a mismatch says the engine's media handling is not the one the counted
+  tokens describe.
 
 ### What a container costs
 
-A video container is patchified in time: 8 frames merge into `ceil(8 / 2) = 4` per-frame token runs under one
-vision block, not 8 (`num_frames x per-frame` was the old count, up to 2x over for the frame counts the
-engines actually show). The per-frame size is the family's: `qwen3_vl` sizes a container's frames by its own
-per-clip video budget (4,096 to 25,165,824 px for the whole clip), which shrinks the per-frame resolution as
-the frame count grows -- 8 frames of 720x1280 cost 3,522 tokens, 128 frames 11,522. The Qwen2-VL families'
-video geometry is engine-contingent (each engine's video processor applies its own per-frame cap), so a
-container is counted at the image policy's per-frame budget, and the pinning declaration and `engine_check`
-are what tie the engine to it. An odd frame count is padded by repeating its last frame, as the processors do.
+A container is counted as a stock engine's video accounting counts it, never at the client's declared image
+budget -- the container is sent unchanged, so the client's pixel budget never reaches the engine. It is
+patchified in time: 8 frames merge into `ceil(8 / 2) = 4` per-frame token runs, not 8. The frames' geometry is
+the family's own video budget (`PROCESSORS`):
+
+- The Qwen2-VL families size each frame independently by the checkpoint's per-frame budget -- stock vLLM's
+  accounting, which passes the checkpoint's image-processor size for videos -- under one vision block for the
+  whole clip: 8 frames of 720x1280 cost 4,786 tokens. SGLang's video path caps per-frame pixels lower
+  (602,112 px, clip-dependently), so there the count differs; the pinning declaration ties the frame count,
+  and `engine_media_check` compares the engine's actual count at run time.
+- `qwen3_vl` budgets the whole clip together (4,096 to 25,165,824 px), which shrinks the per-frame resolution
+  as the frame count grows -- 8 frames of 720x1280 cost 3,520 patch tokens, 128 frames 11,520 -- and renders
+  one timestamp line (`<0.0 seconds>`, a declared bound of 10 tokens) and one vision block per temporal group.
+
+An odd frame count is padded by repeating its last frame, as the processors do.
 
 A clip with fewer frames than `num_frames` is refused, and so is a clip longer than an optional `max_duration_s`.
 
@@ -267,12 +276,14 @@ processors therefore never pool. Every prepared image, frame and container is al
 store to `preprocessing.jsonl`, beside the text cuts, as a `media` row. The row holds the stored size and hash, the
 sent size, hash and MIME type, the processor, whether the image was resized, and who sampled the frames.
 
-The judge's window text budget subtracts the documents' media charge, as the engine counts it: each image and
-each sampled video frame its vision block, `(height / factor) x (width / factor)` patch tokens plus the
-processor's vision start and end markers, a video container its temporal grid, and the template's media marker
-per media part, counted with the judge's tokenizer. They cannot be counted when there is no pixel budget or no
-`image_processor`. A judge with a text budget (`context_tokens` and a `tokenizer`) is then refused
-(`ConfigError`) instead of budgeted on a guess. A judge without one, such as a hosted API with no public
+The judge's window text budget subtracts the documents' media charge: each image and each sampled video frame
+its vision block, `(height / factor) x (width / factor)` patch tokens plus the processor's vision start and end
+markers, a video container its temporal grid, and -- a declared reserve, not an engine count -- the template's
+media marker per media part, counted with the judge's tokenizer. The payload builder replaces each marker with
+the media part, so the charge errs a few tokens high per media part, never low. They cannot be counted when
+there is no pixel budget or no `image_processor`. A judge with a text budget (`context_tokens` and a
+`tokenizer`) is then refused (`ConfigError`) instead of budgeted on a guess. A judge without one, such as a
+hosted API with no public
 tokenizer, is sent the images as stored. For such a judge, `estimate` assumes 1,000 tokens per image or video
 frame shown, roughly one document page at a hosted API's high detail, and says so in its `assumptions`. The
 value is an assumption, not a bound, and no text is ever cut on it.
@@ -320,10 +331,12 @@ print(fit.tokens, len(fit.dropped))  # 66 0: shrunk to the 65,536px floor, nothi
 MediaCensus(sink="preprocessing.jsonl").record(corpus="c", doc_id="d1", media=fit.dropped, dropped=True)
 ```
 
-At serving time, `rcp_ndcg.data.resolution.engine_media_check` compares the engine's `usage.prompt_tokens` for
-one prepared probe image against the counted one; the typed mismatch (`EngineMediaMismatch`) says the served
-engine's media handling is not what the counted tokens describe -- a reconfigured engine or a mis-declared
-`image_processor` -- before it is judged around.
+Run `rcp_ndcg.data.resolution.engine_media_check` against a prepared probe whenever a serving setup changes:
+send one prepared image, count its prompt exactly (`content_media_tokens` plus the template tokens the probe
+request carries), and compare the engine's `usage.prompt_tokens` against it. A returned mismatch
+(`EngineMediaMismatch`) says the served engine's media handling is not what the counted tokens describe -- a
+reconfigured engine or a mis-declared `image_processor` -- and every later count is suspect: record or raise
+it instead of judging around it. The runtime call site (a serving recipe's startup check) is a later lane's.
 
 ## Identity
 

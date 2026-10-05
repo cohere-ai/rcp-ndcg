@@ -97,9 +97,10 @@ def media_marker_tokens(tokenizer: TextTokenizer) -> int:
     """The tokens of one media marker as the stage's template renders it, counted with the judge's tokenizer.
 
     The window's template renders each media part as a :data:`~rcp_ndcg.llm._templates.MEDIA_MARKER`
-    placeholder; the window budget charges its tokens per media part, so a wide multi-image window cannot
-    exceed the judge's context. Measured, never guessed: the count is the judge tokenizer's own of the
-    marker as the template renders it.
+    placeholder; the window budget charges its tokens per media part -- a declared reserve, measured from
+    the template and never guessed. The engine's payload replaces the marker with the media part (so the
+    charge is a few tokens above what ``usage.prompt_tokens`` reports); the reserve keeps the budget honest
+    for the text the template renders around the media, and errs in the safe direction.
     """
     from rcp_ndcg.llm._templates import MEDIA_MARKER
 
@@ -124,10 +125,15 @@ def window_tokens(
 
     The context (``context_tokens``) less the prompt's own tokens (``overhead_tokens``,
     :func:`prompt_overhead_tokens`), less the documents' media charge (``media_tokens_per_doc``: each image
-    and video its vision block and its template marker,
-    :func:`~rcp_ndcg.data.resolution.content_media_tokens` plus :func:`media_marker_tokens` per media part),
-    less the completion reserve (``max_output_tokens``, at most half of what is left), shared equally by
-    ``window`` documents. ``None`` when the judge declares no context: documents are sent whole.
+    and video its vision block -- the processor's vision start and end plus its patch tokens, a container its
+    temporal grid -- plus the template's media marker per media part), less the completion reserve
+    (``max_output_tokens``, at most half of what is left), shared equally by ``window`` documents.
+
+    The marker is a declared reserve, not an engine count: the payload builder replaces each marker with the
+    media part, so the engine's prompt carries the vision block the charge already covers and never the
+    marker itself -- the charge keeps the budget honest for the text the template renders around the media,
+    and errs a few tokens high per media part, never low. ``None`` when the judge declares no context:
+    documents are sent whole.
 
     Raises:
         CapabilityError: the prompt and the media alone do not fit.

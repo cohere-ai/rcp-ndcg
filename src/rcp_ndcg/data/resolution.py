@@ -48,18 +48,22 @@ class ProcessorGeometry(NamedTuple):
     Attributes:
         factor: Pixels per token edge: the vision patch times the spatial merge. Both edges of a resized image
             are multiples of it, and each ``factor x factor`` block costs one token.
-        min_pixels: The engines' default floor, in pixels.
+        min_pixels: The engines' default floor, in pixels, for images the client sends prepared.
         max_pixels: The engines' default ceiling, in pixels. Where vLLM and SGLang differ, the lower one.
         temporal_patch: Frames the vision tower merges in time, so a container of ``num_frames`` frames costs
             ``ceil(num_frames / temporal_patch)`` per-frame token runs (transformers' video processors patchify
             with ``temporal_patch_size = 2`` for every family here, padding an odd clip by repeating its last
             frame).
-        video_min_pixels: The video processor's per-clip floor, in pixels, when the family ships a video
-            processor with its own budget; ``None`` when the family's video geometry is engine-contingent
-            (then a container is counted at the image policy's per-frame budget, under :attr:`VideoPolicy.
-            engine_video_pinning`).
-        video_max_pixels: The video processor's per-clip ceiling, in pixels -- the bound on the whole clip's
-            tokens, which shrinks the per-frame resolution as the frame count grows.
+        video_min_pixels: The per-frame floor the engine's video accounting applies to a container's frames,
+            in pixels.
+        video_max_pixels: The per-frame ceiling, in pixels -- or, when :attr:`video_pixels_per_clip` is set,
+            the whole clip's ceiling, which shrinks the per-frame resolution as the frame count grows.
+        video_pixels_per_clip: Whether the video pixel budget constrains the whole clip together (the
+            Qwen3-VL video processor's clip-level resize) rather than each frame independently (the
+            Qwen2-VL families' video processors, and stock vLLM's video accounting, which sizes each frame
+            by the checkpoint's image-processor size).
+        video_timestamp_tokens: The tokens of the timestamp line the family's processor renders before each
+            temporal group's vision block in the prompt (a declared bound; 0 when a family renders none).
     """
 
     factor: int
@@ -68,21 +72,45 @@ class ProcessorGeometry(NamedTuple):
     temporal_patch: int = 2
     video_min_pixels: int | None = None
     video_max_pixels: int | None = None
+    video_pixels_per_clip: bool = False
+    video_timestamp_tokens: int = 0
 
 
 PROCESSORS: dict[str, ProcessorGeometry] = {
     # Qwen2-VL checkpoints: patch 14 x merge 2 and {min,max}_pixels 3136..12845056 in preprocessor_config.json,
-    # which vLLM applies; SGLang overrides the ceiling to 1003520 for model_type qwen2_vl
-    # (sglang python/sglang/srt/utils/hf_transformers/processor.py:279-281 @ 45c8ddd).
-    "qwen2_vl": ProcessorGeometry(factor=28, min_pixels=56 * 56, max_pixels=28 * 28 * 1280),
+    # which vLLM applies; SGLang overrides the image ceiling to 1003520 for model_type qwen2_vl
+    # (sglang python/sglang/srt/utils/hf_transformers/processor.py:279-281 @ 45c8ddd). A container's frames
+    # are sized by that same checkpoint budget per frame (vLLM's video accounting passes the image
+    # processor's size, qwen2_vl.py:1014 @ d0d6e5f3a); SGLang's video path caps per-frame pixels lower
+    # (602112px, clip-dependent).
+    "qwen2_vl": ProcessorGeometry(
+        factor=28,
+        min_pixels=56 * 56,
+        max_pixels=28 * 28 * 1280,
+        video_min_pixels=56 * 56,
+        video_max_pixels=12845056,
+    ),
     # Qwen2.5-VL checkpoints: the same processor and budget, which both engines apply as shipped.
-    "qwen2_5_vl": ProcessorGeometry(factor=28, min_pixels=56 * 56, max_pixels=28 * 28 * 16384),
+    "qwen2_5_vl": ProcessorGeometry(
+        factor=28,
+        min_pixels=56 * 56,
+        max_pixels=28 * 28 * 16384,
+        video_min_pixels=56 * 56,
+        video_max_pixels=28 * 28 * 16384,
+    ),
     # Qwen3-VL, Qwen3.5-397B and Qwen3.6-27B checkpoints: patch 16 x merge 2 and size {shortest_edge: 65536,
     # longest_edge: 16777216} in preprocessor_config.json, which both engines apply as shipped. The video
     # processor ships its own per-clip budget, 4096..25165824 px (video_preprocessor_config.json), on the
-    # same 2-frame temporal patch.
+    # same 2-frame temporal patch, and renders one timestamp line (a bound of 10 tokens) per temporal
+    # group in the prompt.
     "qwen3_vl": ProcessorGeometry(
-        factor=32, min_pixels=65536, max_pixels=16777216, video_min_pixels=4096, video_max_pixels=25165824
+        factor=32,
+        min_pixels=65536,
+        max_pixels=16777216,
+        video_min_pixels=4096,
+        video_max_pixels=25165824,
+        video_pixels_per_clip=True,
+        video_timestamp_tokens=10,
     ),
 }
 """Every :data:`ImageProcessor` family's geometry. The resize itself is transformers' ``Qwen2VLImageProcessor``
@@ -153,6 +181,12 @@ class VideoPolicy(BaseModel):
     def _pinning_matches_the_wire(self) -> Self:
         """A container's frame count is the engine's to sample, so the declaration is required for
         ``video_url`` and meaningless under ``frames``; neither may pass silently."""
+        if self.wire == "video_url" and self.num_frames < 2:
+            raise ValueError(
+                f"`wire: video_url` shows {self.num_frames} frame, but the engines' video processors merge "
+                "frames in time and demand at least a temporal pair; a single frame is an image. Declare "
+                "`wire: frames` with num_frames >= 2, or judge the clip as an image."
+            )
         if self.wire == "video_url" and not self.engine_video_pinning:
             raise ValueError(
                 "`wire: video_url` sends the container for the engine to sample, so the frame count is the "
@@ -488,7 +522,7 @@ class EngineMediaMismatch(NamedTuple):
 
 
 def engine_media_check(reported: int, counted: int) -> EngineMediaMismatch | None:
-    """Compare an engine's prompt-token count for one prepared probe image with the counted one (p-media Q7).
+    """Compare an engine's prompt-token count for one prepared probe image with the counted one.
 
     The probe is one prepared image whose prompt-token count the client has counted exactly -- as
     :func:`content_media_tokens` does -- plus whatever template tokens the probe request carries; both numbers
@@ -660,14 +694,20 @@ def _ref_tokens(ref: MediaRef, image: ImagePolicy) -> tuple[int, int]:
 
 
 def _container_tokens(ref: MediaRef, image: ImagePolicy, video: VideoPolicy | None) -> tuple[int, int]:
-    """One container's prompt tokens: the temporal grid of per-frame runs under one vision block.
+    """One container's prompt tokens, as a stock engine's video accounting counts them.
 
     The engine samples :attr:`VideoPolicy.num_frames` frames (pinned, :attr:`VideoPolicy.engine_video_pinning`)
     and patchifies them in time, so ``ceil(num_frames / temporal_patch)`` per-frame token runs are shown, not
-    ``num_frames``. The per-frame size is the family's: a family with a per-clip video budget (``qwen3_vl``)
-    sizes the frames by its own clip-level budget, which shrinks the per-frame resolution as the frame count
-    grows; the Qwen2-VL families size each frame by the image policy's budget, as the pinned engines' video
-    processors do for these checkpoints.
+    ``num_frames``. The frames' geometry is the family's own video budget (:data:`PROCESSORS`), never the
+    image policy's -- the container is sent unchanged, so the client's pixel budget never reaches the engine:
+
+    * the Qwen2-VL families size each frame independently by the checkpoint's per-frame budget -- stock
+      vLLM's accounting, which passes the image processor's size for videos (qwen2_vl.py:1014 @
+      d0d6e5f3a) -- under one vision block for the whole clip. SGLang's video path caps per-frame pixels
+      lower and clip-dependently, so there the count differs: the pinning declaration ties the frame count,
+      and :func:`engine_media_check` compares the engine's actual count at run time.
+    * ``qwen3_vl`` constrains the whole clip (a clip-level budget that shrinks per-frame resolution as the
+      frame count grows) and renders one timestamp line and one vision block per temporal group.
     """
     if video is None:
         raise ConfigError(
@@ -683,16 +723,53 @@ def _container_tokens(ref: MediaRef, image: ImagePolicy, video: VideoPolicy | No
         )
     geometry = PROCESSORS[image.processor]
     steps = math.ceil(video.num_frames / geometry.temporal_patch)
-    if geometry.video_max_pixels is not None:
-        # the family sizes a container's frames by its own per-clip budget; the image policy's budget does
-        # not apply to a container the engine decodes itself
+    assert geometry.video_min_pixels is not None and geometry.video_max_pixels is not None
+    if geometry.video_pixels_per_clip:
+        # the clip-level budget constrains all frames together and shrinks per-frame resolution as the
+        # frame count grows; the prompt renders one timestamp line and one vision block per group
         if ref.width and ref.height:
             height, width = _clip_frame_size(geometry, video.num_frames, ref.height, ref.width)
-            return steps * (height // geometry.factor) * (width // geometry.factor) + VISION_WRAPPER_TOKENS, 0
-        # no recorded size: the per-clip ceiling bounds the whole clip's patch tokens
-        return geometry.video_max_pixels // geometry.factor**2 + VISION_WRAPPER_TOKENS, 1
-    per_frame, bound = _ref_tokens(ref, image)
+            per_frame = (height // geometry.factor) * (width // geometry.factor)
+            return steps * (per_frame + VISION_WRAPPER_TOKENS + geometry.video_timestamp_tokens), 0
+        # no recorded size: the per-clip ceiling bounds the whole clip's patch tokens (each merged token
+        # covers temporal_patch x factor^2 pixels), plus each group's wrapper and timestamp
+        clip_bound = geometry.video_max_pixels // (geometry.temporal_patch * geometry.factor**2)
+        return clip_bound + steps * (VISION_WRAPPER_TOKENS + geometry.video_timestamp_tokens), 1
+    per_frame, bound = _video_frame_tokens(ref, geometry)
     return steps * per_frame + VISION_WRAPPER_TOKENS, bound
+
+
+def _video_frame_tokens(ref: MediaRef, geometry: ProcessorGeometry) -> tuple[int, int]:
+    """One container frame's patch tokens under the family's per-frame video budget, as the engine's
+    accounting sizes it (a faithful port of the pinned vLLM ``Qwen2VLProcessingInfo._get_vision_info``,
+    qwen2_vl.py:989-1053 @ d0d6e5f3a, whose default size is the checkpoint's image-processor size).
+
+    Returns:
+        ``(tokens, bound)``: the frame's merged patch tokens, and whether it was a bound (the reference's
+        size was never recorded, so the budget's ceiling bounds it).
+
+    Raises:
+        DataError: an aspect ratio above 200, which the video processors refuse.
+    """
+    assert geometry.video_min_pixels is not None and geometry.video_max_pixels is not None
+    if ref.width and ref.height:
+        try:
+            height, width = smart_resize(
+                ref.height,
+                ref.width,
+                factor=geometry.factor,
+                min_pixels=geometry.video_min_pixels,
+                max_pixels=geometry.video_max_pixels,
+            )
+        except ValueError as exc:  # the frame's aspect ratio is one the video processors refuse
+            raise DataError(
+                f"a {ref.width}x{ref.height} video frame has an aspect ratio the video processors refuse "
+                "(above 200); crop or split the clip at ingest",
+                hint="crop or split the clip at ingest so its aspect ratio is below 200",
+            ) from exc
+        return (height // geometry.factor) * (width // geometry.factor), 0
+    assert geometry.video_max_pixels is not None
+    return geometry.video_max_pixels // geometry.factor**2, 1
 
 
 def _clip_frame_size(geometry: ProcessorGeometry, num_frames: int, height: int, width: int) -> tuple[int, int]:

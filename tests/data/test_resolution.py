@@ -176,12 +176,46 @@ class TestContentMediaTokens:
 
     def test_a_probed_container_counts_the_temporal_grid_not_one_token_run_per_frame(self):
         """A container is patchified in time: 8 frames merge into ceil(8/2) = 4 grid steps, not 8
-        token runs (p-media D2, measured against the real Qwen2.5-VL video processor: 4,784)."""
+        token runs (measured against the real Qwen2.5-VL video processor: 4,784 patches). The per-frame
+        geometry is the family's checkpoint budget, which for 720x1280 keeps 728x1288."""
         clip = MediaRef(uri="gs://v/a.mp4", width=1280, height=720, num_frames=300)
 
-        assert content_media_tokens(
-            Content.from_parts([VideoPart(ref=clip)]), QWEN, _video(8, "video_url", engine_video_pinning=True)
-        ) == (4 * QWEN.image_tokens(720, 1280) + VISION_WRAPPER_TOKENS, 0)
+        assert (
+            content_media_tokens(
+                Content.from_parts([VideoPart(ref=clip)]), QWEN, _video(8, "video_url", engine_video_pinning=True)
+            ).tokens
+            == 4 * 1196 + VISION_WRAPPER_TOKENS
+        )
+
+    def test_a_container_count_does_not_follow_the_declared_image_budget(self):
+        """The container is sent unchanged: the client's pixel budget never reaches the engine, which
+        sizes video frames by the checkpoint's own per-frame budget (stock vLLM's accounting). A tight
+        declared budget must not shrink the count of a container the client does not resize."""
+        clip = MediaRef(uri="gs://v/a.mp4", width=1280, height=720, num_frames=300)
+        tight = ImagePolicy(min_px=4 * 28 * 28, max_px=256 * 28 * 28, processor="qwen2_5_vl")
+        wide = ImagePolicy(min_px=4 * 28 * 28, max_px=1280 * 28 * 28, processor="qwen2_5_vl")
+
+        for policy in (tight, wide):
+            assert (
+                content_media_tokens(
+                    Content.from_parts([VideoPart(ref=clip)]),
+                    policy,
+                    _video(8, "video_url", engine_video_pinning=True),
+                ).tokens
+                == 4 * 1196 + VISION_WRAPPER_TOKENS
+            )
+
+    def test_a_large_container_frame_is_counted_at_the_engine_budget(self):
+        """A 2000x2000 frame under a declared budget of 1,003,520px would shrink to 980x980 -- but the
+        engine keeps it whole (its video budget is the checkpoint's 12,845,056px), and the count says so."""
+        clip = MediaRef(uri="gs://v/a.mp4", width=2000, height=2000, num_frames=300)
+
+        assert (
+            content_media_tokens(
+                Content.from_parts([VideoPart(ref=clip)]), QWEN, _video(8, "video_url", engine_video_pinning=True)
+            ).tokens
+            == 4 * 5041 + VISION_WRAPPER_TOKENS
+        )
 
     def test_a_long_container_counts_the_same_temporal_grid(self):
         """128 frames of 720x1280 under qwen2_vl: 64 merged steps of one frame's token run."""
@@ -191,7 +225,7 @@ class TestContentMediaTokens:
             content_media_tokens(
                 Content.from_parts([VideoPart(ref=clip)]), QWEN, _video(128, "video_url", engine_video_pinning=True)
             ).tokens
-            == 64 * QWEN.image_tokens(720, 1280) + VISION_WRAPPER_TOKENS
+            == 64 * 1196 + VISION_WRAPPER_TOKENS
         )
 
     def test_an_odd_frame_count_is_padded_to_the_temporal_patch(self):
@@ -202,48 +236,51 @@ class TestContentMediaTokens:
             content_media_tokens(
                 Content.from_parts([VideoPart(ref=clip)]), QWEN, _video(9, "video_url", engine_video_pinning=True)
             ).tokens
-            == 5 * QWEN.image_tokens(720, 1280) + VISION_WRAPPER_TOKENS
+            == 5 * 1196 + VISION_WRAPPER_TOKENS
         )
+
+    def test_a_single_frame_container_is_refused(self):
+        """A container of one frame has no temporal pair to merge, and no engine's video processor accepts
+        one (the temporal resize demands at least two frames); a single frame is an image."""
+        with pytest.raises(ValueError, match="temporal"):
+            _video(1, "video_url", engine_video_pinning=True)
 
     def test_a_qwen3_vl_container_counts_the_family_per_clip_budget(self):
         """qwen3_vl sizes a container's frames by its own per-clip video budget (a clip-level budget that
-        shrinks per-frame resolution as the frame count grows), not by the image policy's. p-media V6,
-        measured against the real video processor: 8 frames of 720x1280 -> 3,520 tokens; 128 -> 11,520."""
+        shrinks per-frame resolution as the frame count grows), not by the image policy's, and renders one
+        vision block and one timestamp line per temporal group. Measured against the real video processor:
+        8 frames of 720x1280 -> 3,520 patch tokens; 128 -> 11,520; the rendered prompt adds the per-group
+        wrapper pair and the timestamp line (a declared bound of 10 tokens each)."""
         clip = MediaRef(uri="gs://v/a.mp4", width=1280, height=720, num_frames=600)
         tight = ImagePolicy(min_px=65536, max_px=1280 * 32 * 32, processor="qwen3_vl")
         wide = ImagePolicy(min_px=65536, max_px=4096 * 32 * 32, processor="qwen3_vl")
 
         for policy in (tight, wide):  # the image policy's budget does not size a container
-            assert (
-                content_media_tokens(
-                    Content.from_parts([VideoPart(ref=clip)]),
-                    policy,
-                    _video(8, "video_url", engine_video_pinning=True),
-                ).tokens
-                == 3520 + VISION_WRAPPER_TOKENS
-            )
-            assert (
-                content_media_tokens(
-                    Content.from_parts([VideoPart(ref=clip)]),
-                    policy,
-                    _video(128, "video_url", engine_video_pinning=True),
-                ).tokens
-                == 11520 + VISION_WRAPPER_TOKENS
-            )
+            assert content_media_tokens(
+                Content.from_parts([VideoPart(ref=clip)]),
+                policy,
+                _video(8, "video_url", engine_video_pinning=True),
+            ).tokens == 4 * (880 + 2 + 10)
+            assert content_media_tokens(
+                Content.from_parts([VideoPart(ref=clip)]),
+                policy,
+                _video(128, "video_url", engine_video_pinning=True),
+            ).tokens == 64 * (180 + 2 + 10)
 
     def test_an_unsized_container_is_bounded_by_the_frame_budget_not_one_image(self):
-        """Counted as one image-sized ref, a clip understates its cost num_frames-fold."""
+        """Counted at the declared image budget, a clip understates its cost: the engine's own video
+        budget bounds each frame (the checkpoint's 12,845,056px is 16,384 merged tokens)."""
         clip = MediaRef(uri="gs://v/a.mp4", num_frames=300)
 
         count = content_media_tokens(
             Content.from_parts([VideoPart(ref=clip)]), QWEN, _video(8, "video_url", engine_video_pinning=True)
         )
 
-        assert count == (4 * QWEN.max_image_tokens + VISION_WRAPPER_TOKENS, 1)
+        assert count == (4 * 16384 + VISION_WRAPPER_TOKENS, 1)
 
     def test_an_unsized_qwen3_vl_container_is_bounded_by_the_clip_budget(self):
-        """The per-clip budget bounds the whole clip's tokens, whatever the frame count: 25,165,824 px
-        over a 32-pixel factor is 24,576 tokens, tighter than num_frames x the image bound."""
+        """The per-clip budget bounds the whole clip's patch tokens -- 25,165,824px over a temporal patch
+        times the 32-pixel factor is 12,288 merged tokens -- plus each group's wrapper and timestamp."""
         clip = MediaRef(uri="gs://v/a.mp4", num_frames=600)
         policy = ImagePolicy(min_px=65536, max_px=16777216, processor="qwen3_vl")
 
@@ -251,7 +288,7 @@ class TestContentMediaTokens:
             Content.from_parts([VideoPart(ref=clip)]), policy, _video(128, "video_url", engine_video_pinning=True)
         )
 
-        assert count == (25165824 // (32 * 32) + VISION_WRAPPER_TOKENS, 1)
+        assert count == (25165824 // (2 * 32 * 32) + 64 * (2 + 10), 1)
 
     def test_a_container_without_a_frame_policy_is_refused(self):
         """The engine's default sampling would decide the cost; nothing here knows it."""
@@ -389,7 +426,7 @@ class TestVideoPolicy:
 
 
 class TestEnginePinning:
-    """A container's frame count is the engine's to sample, so the policy must declare it pinned (p-media D2/D4)."""
+    """A container's frame count is the engine's to sample, so the policy must declare it pinned."""
 
     def test_a_video_url_wire_refuses_an_unpinned_engine(self):
         with pytest.raises(ValueError, match="media-io-kwargs") as refused:
@@ -415,7 +452,7 @@ class TestEnginePinning:
 
 
 class TestTargetSizeErrors:
-    """A refusal of an image the engines cannot keep is a DataError with a hint (p-media D7)."""
+    """A refusal of an image the engines cannot keep is a DataError with a hint, not a bare ValueError."""
 
     def test_an_input_aspect_over_the_limit_is_a_data_error(self):
         policy = ImagePolicy(min_px=4 * 28 * 28, max_px=1280 * 28 * 28, processor="qwen2_vl")
@@ -431,8 +468,8 @@ class TestTargetSizeErrors:
 
 
 class TestEngineMediaCheck:
-    """The startup probe: an engine's prompt-token count for one prepared image must equal the counted one
-    (p-media Q7), so a reconfigured engine or a mis-declared processor family is caught, not judged around."""
+    """The startup probe: an engine's prompt-token count for one prepared image must equal the counted
+    one, so a reconfigured engine or a mis-declared processor family is caught, not judged around."""
 
     def test_a_matching_count_checks(self):
         assert engine_media_check(reported=1242, counted=1242) is None

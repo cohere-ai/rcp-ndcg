@@ -284,8 +284,9 @@ class TestPrepareRequest:
         assert prepared.tokens == (2 * (self.POLICY.image_tokens(2200, 1700) + 2), 0)
 
     def test_the_counts_equal_the_judge_path_for_the_same_image(self, tmp_path: Path):
-        """p-media measured 0/27 mismatches between the client's count and the real processors on the judge
-        path; the retrieval path returns the same count for the same image, or it is a different instrument."""
+        """The reference measurement ran 27 image sizes through the real processors against the judge
+        path's count with 0 mismatches; the retrieval path must return that same count for the same
+        image, or it is a different instrument."""
         page = _png(tmp_path / "p.png", (1700, 2200))
         judged = prepare_content(Content.from_parts([ImagePart(ref=page)]), self.POLICY, None)
 
@@ -320,7 +321,7 @@ class TestPrepareRequest:
 
 
 class TestFitMediaToBudget:
-    """A vision block is atomic (p-media Q8, the fork's rule R3): when media alone exceed a request's text
+    """A vision block is atomic: when media alone exceed a request's text
     budget, images shrink to the policy's minimum, then whole items are dropped with a census record. Tokens
     are never cut inside a block."""
 

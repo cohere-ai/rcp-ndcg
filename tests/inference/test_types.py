@@ -292,7 +292,7 @@ class TestRoleConfigs:
 
 
 class TestRoleMediaPolicy:
-    """Every retrieval role declares the media it sends, with the judge's own policy types (p-media D1):
+    """Every retrieval role declares the media it sends, with the judge's own policy types:
     one preparation path, the same pixel budget semantics, so a page costs an encoder what it costs the
     judge. The policies and the processor family change the input the model sees: content."""
 

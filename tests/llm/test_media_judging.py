@@ -194,8 +194,8 @@ class TestJudgingPages:
         self, tmp_path: Path, pages, word_tokenizer_file: Path
     ) -> None:
         """The old accounting charged patches only, so a window of image-heavy documents was sized a text
-        budget that, with each image's vision start/end and its media marker, overflowed the context mid-pass
-        (p-media D6). The pass now refuses before anything is spent."""
+        budget that, with each image's vision start/end and its media marker, overflowed the context
+        mid-pass. The pass now refuses before anything is spent."""
         policy = ImagePolicy(min_px=65536, max_px=65536, processor="qwen3_vl")
         contents = [Content.from_parts([ImagePart(ref=ref)]) for ref in pages]
         rows = [RankingExample(query_id="q1", query="q", doc_ids=[f"p{i}" for i in range(4)], contents=contents)]

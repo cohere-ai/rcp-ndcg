@@ -136,7 +136,6 @@ def estimate(
         docs = {query: list(dict.fromkeys(doc for window in rows for doc in window)) for query, rows in windows.items()}
     _name, queries, _source = _queries(dataset, candidates, docs, effective, tokenizer=tokenizer)
     counted: dict[str, int] = {}
-    images_approximated = False
     # The template's per-part media marker, measured with the judge's tokenizer; 0 where no tokenizer is at
     # hand (no text budget is computed then, and the media are approximated instead).
     marker = media_marker_tokens(tokenizer) if tokenizer is not None else 0
@@ -191,9 +190,7 @@ def estimate(
                     per_call = overhead + math.ceil(w * sum(tokens) / max(len(tokens), 1)) + w * media
                 else:
                     # No tokenizer: documents are sent whole, and their tokens are approximated from characters.
-                    counted_media = _media_tokens(  # known media must fit, as in the pass
-                        query.contents.values(), effective, strict=False, marker_tokens=0
-                    )
+                    # counted_media is already the strict=False, marker-free count (no tokenizer: marker 0).
                     if counted_media is not None:
                         window_tokens(config, w, overhead_tokens=0, media_tokens_per_doc=counted_media)
                     chars = [len(c.text) for c in query.contents.values()]
