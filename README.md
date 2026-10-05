@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cohere-logo-dark.svg">
-    <img src="docs/assets/cohere-logo.svg" alt="Cohere" height="36">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cohere-ai/rcp-ndcg/main/docs/assets/cohere-logo-dark.svg">
+    <img src="https://raw.githubusercontent.com/cohere-ai/rcp-ndcg/main/docs/assets/cohere-logo.svg" alt="Cohere" height="36">
   </picture>
 </p>
 
@@ -15,7 +15,7 @@ are in the paper
 [Rubric-Calibrated Preferences: Cross-Query Calibration of LLM Judgments via Item Response Theory](https://arxiv.org/abs/2609.35739).
 
 <p align="center">
-  <img src="docs/assets/rcp-pipeline.png" alt="The RCP-nDCG pipeline: an LLM judge runs a listwise tournament (Stage A) and answers five binary criteria (Stage B); an item-response model calibrates every query's tournament scores onto one shared scale; each document's gain is its discrimination-weighted probability of passing the criteria." width="100%">
+  <img src="https://raw.githubusercontent.com/cohere-ai/rcp-ndcg/main/docs/assets/rcp-pipeline.png" alt="The RCP-nDCG pipeline: an LLM judge runs a listwise tournament (Stage A) and answers five binary criteria (Stage B); an item-response model calibrates every query's tournament scores onto one shared scale; each document's gain is its discrimination-weighted probability of passing the criteria." width="100%">
 </p>
 <p align="center"><em>The RCP-nDCG pipeline (Figure 2 of the paper).</em></p>
 
@@ -34,9 +34,19 @@ rcp-ndcg --version
 or, without installing anything, `uvx rcp-ndcg --version`. `rcp-ndcg-core`, which comes with it, is the metric, the
 gains, the scoring protocols and the IRT estimators, with numpy and pydantic only (`pip install rcp-ndcg-core`).
 The extras add the Hugging Face Hub (`hf`), torch for the calibration fit (`calibrate`; the CPU build from the
-PyTorch index above is enough), MTEB (`mteb`) and local GPU retrieval and reranking (`local`). From a checkout of
-the repository, `uv sync --extra hf --extra calibrate` sets up the same environment. A command that needs a missing
-extra exits with code 10 and prints the install line.
+PyTorch index above is enough), MTEB (`mteb`) and local GPU retrieval and reranking (`local`). Until the release is
+up, or to work from the repository, install from source instead: from a checkout, `uv sync --extra hf --extra
+calibrate` (or `pip install ./packages/rcp-ndcg-core ".[hf,calibrate]"`) sets up the same environment, and straight
+from git, the release tag installs both packages (pip needs the core named first, because `rcp-ndcg` pins it; with
+uv the `rcp-ndcg` line alone suffices):
+
+```bash
+pip install "rcp-ndcg-core @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=packages/rcp-ndcg-core" \
+            "rcp-ndcg[hf,calibrate] @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1" \
+            --extra-index-url https://download.pytorch.org/whl/cpu
+```
+
+A command that needs a missing extra exits with code 10 and prints the install line.
 
 ## Datasets
 
@@ -51,7 +61,7 @@ All data behind the paper is public on the Hugging Face Hub:
 | [rcp-ndcg-external-validation](https://huggingface.co/datasets/fabianschmidt-cohere/rcp-ndcg-external-validation) | The human contest study (46 annotators, 311 contests, 7,080 grades) and the external LLM judges (GLM-5.3-flash, DeepSeek-4.1-flash, Kimi-K3) |
 
 `experiments/fetch_data.py` downloads all five at the pinned revisions used for the paper's tables.
-[docs/data.md](docs/data.md) describes their layout and how to load them. Each dataset card states its license.
+[docs/data.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/data.md) describes their layout and how to load them. Each dataset card states its license.
 
 ## Three ways in
 
@@ -60,13 +70,13 @@ All data behind the paper is public on the Hugging Face Hub:
 The released datasets carry a calibrated gain for every judged pool document, so scoring a ranking needs no judge.
 Put your system's scores in a file with query ids, document ids and scores (Parquet, CSV, a TREC run or JSONL) and
 score it against a suite with the paper's scoring protocol. The subsets of a suite share query ids, so a file that
-ranks several subsets names each row's subset in a `dataset` column ([data](docs/data.md)):
+ranks several subsets names each row's subset in a `dataset` column ([data](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/data.md)):
 
 ```bash
 rcp-ndcg eval score --rankings my_system.parquet --suite nanobeir
 ```
 
-[`examples/01_score_released_suite.py`](examples/01_score_released_suite.py) scores the paper's 14 rerankers on a
+[`examples/01_score_released_suite.py`](https://github.com/cohere-ai/rcp-ndcg/blob/main/examples/01_score_released_suite.py) scores the paper's 14 rerankers on a
 NanoBEIR task from their released runs:
 
 <!-- snippet: example examples/01_score_released_suite.py -->
@@ -87,7 +97,7 @@ for system in sorted(rerankers, key=lambda s: -report.value(s, "rcp_ndcg")):
     print(f"{system:42s} {report.value(system, 'rcp_ndcg'):12.4f} {report.value(system, 'qrel_ndcg'):13.4f}")
 ```
 
-[`examples/02_score_tiny_offline.py`](examples/02_score_tiny_offline.py) does the same offline, on a three-query
+[`examples/02_score_tiny_offline.py`](https://github.com/cohere-ai/rcp-ndcg/blob/main/examples/02_score_tiny_offline.py) does the same offline, on a three-query
 dataset that ships with the package (`rcp-ndcg data fetch --dataset tiny --out tiny` copies it).
 
 ### 2. Re-judge a pool with your own endpoint
@@ -103,8 +113,8 @@ rcp-ndcg run start rejudge_nfcorpus --judge-url http://localhost:8000/v1 --judge
 The run judges the released NanoNFCorpus pools on both stages, fits the calibration and scores the pools, and
 writes every artifact to `runs/<run_id>/`. For long passes, add `--mirror <any fsspec URI>` (S3, GCS, Azure, or
 your own backend) so a preempted job resumes where it stopped; see
-[durability](docs/concepts/serving.md#durability-local-runs-and-a-mirror).
-[Serving](docs/concepts/serving.md) gives the vLLM and SGLang commands for each shipped judge, and a run config's
+[durability](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/concepts/serving.md#durability-local-runs-and-a-mirror).
+[Serving](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/concepts/serving.md) gives the vLLM and SGLang commands for each shipped judge, and a run config's
 `serve:` section starts the engine inside a SLURM or Kubernetes job. To rehearse offline, the same pipeline runs
 with a deterministic fake judge:
 
@@ -112,8 +122,8 @@ with a deterministic fake judge:
 rcp-ndcg run start tiny
 ```
 
-[Calibrate your benchmark](docs/tutorials/calibrate-your-benchmark.md) walks through a run on your own data, and
-[primitives](docs/concepts/primitives.md) shows how to re-judge some documents, insert new ones, or pool a second
+[Calibrate your benchmark](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/tutorials/calibrate-your-benchmark.md) walks through a run on your own data, and
+[primitives](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/concepts/primitives.md) shows how to re-judge some documents, insert new ones, or pool a second
 judge without refitting a published calibration (examples 04 to 06).
 
 ### 3. Reproduce a table of the paper
@@ -126,7 +136,7 @@ python experiments/run_all.py                    # every check; exits 1 if a val
 
 The scripts recompute the NanoBEIR, BRIGHT, ViDoRe v3 and TREC-DL leaderboards, the human contest study and the
 external-judge comparisons from the released data, and print each paper value next to the reproduced one.
-[REPRODUCIBILITY.md](REPRODUCIBILITY.md) and [experiments/README.md](experiments/README.md) say what is covered.
+[REPRODUCIBILITY.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/REPRODUCIBILITY.md) and [experiments/README.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/experiments/README.md) say what is covered.
 
 ## MTEB
 
@@ -134,23 +144,23 @@ The released datasets run with stock [mteb](https://github.com/embeddings-benchm
 `rcp_ndcg_tasks.py` each dataset ships, and through `rcp_ndcg.eval.mteb.get_tasks` (the `mteb` extra). Each task
 reports `ndcg_float_at_k`, nDCG over the continuous RCP gains with group-mean ties. An integration into mteb itself
 is proposed in [embeddings-benchmark/mteb#5516](https://github.com/embeddings-benchmark/mteb/pull/5516). See
-[`examples/07_mteb.py`](examples/07_mteb.py) and [the MTEB page](docs/tutorials/mteb-integration.md).
+[`examples/07_mteb.py`](https://github.com/cohere-ai/rcp-ndcg/blob/main/examples/07_mteb.py) and [the MTEB page](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/tutorials/mteb-integration.md).
 
 ## Documentation
 
-- [docs/](docs/index.md): the metric, the scoring protocols, the tournament, the rubric, the calibration, the
+- [docs/](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/index.md): the metric, the scoring protocols, the tournament, the rubric, the calibration, the
   primitives, preprocessing, and serving and runners, one page each; the data; tutorials; the command line.
-- [examples/](examples/): seven short scripts, five of which run offline.
-- [skills/rcp-ndcg/SKILL.md](skills/rcp-ndcg/SKILL.md): instructions for a coding agent that uses RCP-nDCG from
+- [examples/](https://github.com/cohere-ai/rcp-ndcg/blob/main/examples/): seven short scripts, five of which run offline.
+- [skills/rcp-ndcg/SKILL.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/skills/rcp-ndcg/SKILL.md): instructions for a coding agent that uses RCP-nDCG from
   another project. Every command except `mcp serve` takes `--json`; `rcp-ndcg schema show commands` describes the
   command line, and `rcp-ndcg mcp serve` exposes it as MCP tools.
-- [AGENTS.md](AGENTS.md): for contributors to this repository. [CHANGELOG.md](CHANGELOG.md): the public surface.
+- [AGENTS.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/AGENTS.md): for contributors to this repository. [CHANGELOG.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/CHANGELOG.md): the public surface.
 
 ## Citation
 
-If you use RCP-nDCG, please cite the paper. [CITATION.cff](CITATION.cff) holds the reference, and GitHub's "Cite
+If you use RCP-nDCG, please cite the paper. [CITATION.cff](https://github.com/cohere-ai/rcp-ndcg/blob/main/CITATION.cff) holds the reference, and GitHub's "Cite
 this repository" turns it into BibTeX.
 
 ## License
 
-Apache-2.0, see [LICENSE](LICENSE). Copyright 2026 Cohere Inc. The datasets carry their own licenses on the Hub.
+Apache-2.0, see [LICENSE](https://github.com/cohere-ai/rcp-ndcg/blob/main/LICENSE). Copyright 2026 Cohere Inc. The datasets carry their own licenses on the Hub.
