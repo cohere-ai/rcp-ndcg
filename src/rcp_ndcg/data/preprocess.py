@@ -858,7 +858,8 @@ class TextBudget(BaseModel):
     def identity(self, tokenizer: TextTokenizer | None = None) -> dict[str, Any]:
         """The content identity payload of the budget, with the tokenizer file's SHA-256 when a tokenizer is
         loaded (the name is runtime, as the judge's is; the file's hash is what two tokenizers are told apart
-        by). A hosted vendor profile (``tokenizer=None``) carries no hash: nothing is measured against it."""
+        by). A hosted vendor profile (a budget that declares no tokenizer) carries no hash: nothing is
+        measured against it."""
         payload = identity_payload(self)
         if tokenizer is not None:
             payload["tokenizer_sha256"] = tokenizer.sha256
@@ -1007,8 +1008,10 @@ def fit(
             f"fit was given {'no tokenizer' if tokenizer is None else f'the tokenizer {tokenizer.name!r}'} but "
             f"the budget declares {budget.tokenizer!r}: the budget's numbers are counted in the declared "
             "tokenizer's tokens",
-            hint="load the budget's tokenizer (rcp_ndcg.data.load_tokenizer(budget.tokenizer)) and pass that; "
-            "the hosted-vendor path (tokenizer=None) is for budgets that declare none",
+            hint="load the budget's tokenizer and pass it; the hosted-vendor path (a tokenizer of none) is for "
+            "budgets that declare none",
+            cli_hint="set the same tokenizer the budget declares (judge-style: --set <role>.tokenizer=...), or "
+            "drop the tokenizer field for a hosted profile",
         )
     if tokenizer is None:
         if media_tokens is not None and any(media):
