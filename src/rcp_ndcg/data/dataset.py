@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import fnmatch
 import math
+import warnings
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
@@ -38,6 +39,7 @@ from rcp_ndcg.errors import (
     MissingInputError,
     ProviderError,
     RcpNdcgError,
+    RcpNdcgWarning,
     classify,
 )
 from rcp_ndcg.support.logging import get_logger
@@ -763,9 +765,13 @@ def _hub_listing(repo: str, revision: str | None) -> list[str]:
         unreachable = exc
     listing = _snapshot_listing(repo, revision)
     if listing is not None:
-        logger.warning(
-            f"Serving the file listing of hf://{repo} from the local snapshot at {revision} (the Hub is "
-            "unreachable); it holds only the files a download left, and a partial cache reads as missing data."
+        warnings.warn(
+            RcpNdcgWarning(
+                "SNAPSHOT_LISTING",
+                f"Serving the file listing of hf://{repo} from the local snapshot at {revision} (the Hub is "
+                "unreachable); it holds only the files a download left, and a partial cache reads as missing data.",
+            ),
+            stacklevel=2,
         )
         return listing
     if unreachable is not None:

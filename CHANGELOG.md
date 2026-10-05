@@ -25,6 +25,11 @@ released together.
 
 ### Public surface
 
+- `rcp_ndcg.errors.WarningCode` gains `SNAPSHOT_LISTING` (an additive change to the closed list): an offline
+  corpus read whose file listing came from the local Hub snapshot instead of the Hub warns with it (the snapshot
+  holds only the files a download left, and a partial cache reads as missing data). With `--json` it shows in the
+  envelope's `warnings`; otherwise it prints on stderr. `schemas/cli.v1.json` and `schemas/eval-report.v1.json`
+  follow.
 - `rcp-ndcg eval score` gains a repeatable `--system NAME` (and `eval explain --report` one; the library call
   `rcp_ndcg.eval.evaluate` gains `systems: Sequence[str] | None = None`): score only the named systems of the
   rankings file. One system whose rankings match nothing of the scored dataset is still refused (exit 12; every
