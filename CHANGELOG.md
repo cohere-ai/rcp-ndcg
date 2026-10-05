@@ -110,11 +110,12 @@ released together.
   temporal group (a declared bound of 10 tokens per group for the timestamp, measured 6 at `<0.0 seconds>`
   with the family tokenizer). Correspondingly, `wire: video_url` is refused (pydantic, at config load)
   unless the new `VideoPolicy.engine_video_pinning` declares the engine pinned to the same frame count
-  (vLLM `--media-io-kwargs`, SGLang `--mm-process-config`), a single-frame container is refused (no engine's
-  video processor accepts one), and the declaration is refused under `wire: frames`, which samples on the
+  (vLLM `--media-io-kwargs`, SGLang `--mm-process-config`), a single-frame container is refused (the declared
+  instrument merges frames in time, which needs at least a temporal pair; a single frame is an image), and
+  the declaration is refused under `wire: frames`, which samples on the
   client. `wire: frames` stays the default and exact. SGLang's video path caps per-frame pixels lower than
   the declared budgets (602,112 px, clip-dependent), so the declared count is stock vLLM's there; the
-  pinning ties the frame count and `engine_media_check` (below) compares the engine's actual count at run
+  pinning ties the frame count and `engine_media_check` (above) compares the engine's actual count at run
   time. Stored judgements and the paper's tables do not move: only the window budgets and estimates of new
   judge passes over video containers change.
 - **The window budget charges each media item's vision block and a declared marker reserve**: the old
