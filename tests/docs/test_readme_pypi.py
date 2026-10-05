@@ -1,7 +1,8 @@
 """The README is PyPI's long description, and PyPI does not resolve relative paths.
 
 Images (``<img src=`` and the ``<picture>`` ``srcset=``, quoted or unquoted, ``<a href=`` too) and Markdown link
-targets — regular links and ``![alt](...)`` images alike — must therefore be absolute:
+targets — regular links, ``![alt](...)`` images and ``[text]: target`` reference definitions alike — must be
+absolute:
 ``https://raw.githubusercontent.com/...`` for images and ``https://github.com/cohere-ai/rcp-ndcg/blob/main/...``
 for links to repository files. Paths that resolve in a checkout (``docs/data.md``) render as broken links on PyPI.
 All scans run outside code (fenced blocks and inline code), which PyPI does not render as HTML or links.
@@ -15,15 +16,19 @@ from tests.docs._markdown import ROOT, links, prose
 
 ABSOLUTE = ("http://", "https://", "mailto:")
 
-#: ``<img src=...>``, ``<source ... srcset=...>`` and ``<a href=...>`` of the README, in both quote styles and
-#: unquoted, with optional spaces around ``=``; the lookbehind keeps ``data-src=`` and friends out.
+#: ``<img src=...>``, ``<source ... srcset=...>`` and ``<a href=...>`` (``xlink:href=`` included) of the README, in
+#: both quote styles and unquoted, with optional spaces around ``=``; the negative lookbehind keeps ``data-src=``
+#: and friends out while still matching at the very start of the text.
 _ATTRIBUTES = re.compile(
-    r"(?<=[\s<\"'])(?:src|srcset|href)\s*=\s*"
+    r"(?<![\w-])(?:src|srcset|href)\s*=\s*"
     r"(?:\"(?P<double>[^\"]*)\"|'(?P<single>[^']*)'|(?P<bare>[^\s>]+))"
 )
 
 #: Markdown images (``![alt](target)``): :func:`tests.docs._markdown.links` deliberately skips them.
 _IMAGES = re.compile(r"!\[[^\]]*\]\((?P<url>[^)\s]+)(?:\s+\"[^\"]*\")?\)")
+
+#: Markdown link-reference definitions (``[text]: target``): neither ``links`` nor ``_IMAGES`` scans them.
+_REFS = re.compile(r"(?m)^\s{0,3}\[[^\]]+\]:\s+(?:<)?(?P<url>[^\s>]+)")
 
 
 def _attribute_urls(text: str) -> list[str]:
@@ -39,8 +44,8 @@ def _attribute_urls(text: str) -> list[str]:
 
 
 def _image_urls(text: str) -> list[str]:
-    """Every target a Markdown image names, outside code (``links`` skips images, so they are scanned here)."""
-    return _IMAGES.findall(prose(text))
+    """Every target a Markdown image or link-reference definition names, outside code."""
+    return _IMAGES.findall(prose(text)) + _REFS.findall(prose(text))
 
 
 def test_readme_html_sources_are_absolute() -> None:

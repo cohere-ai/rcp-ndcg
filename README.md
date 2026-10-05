@@ -37,8 +37,8 @@ The extras add the Hugging Face Hub (`hf`), torch for the calibration fit (`cali
 PyTorch index above is enough), MTEB (`mteb`) and local GPU retrieval and reranking (`local`). Until the release is
 up, or to work from the repository, install from source instead: from a checkout, `uv sync --extra hf --extra
 calibrate` (or `pip install ./packages/rcp-ndcg-core ".[hf,calibrate]"`) sets up the same environment, and straight
-from git, the release tag installs both packages (pip needs the core named first, because `rcp-ndcg` pins it; with
-uv the `rcp-ndcg` line alone suffices):
+from git, the release tag installs both packages (pip needs the core in the same command, because `rcp-ndcg` pins
+it; with uv the `rcp-ndcg` line alone suffices):
 
 ```bash
 pip install "rcp-ndcg-core @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=packages/rcp-ndcg-core" \
