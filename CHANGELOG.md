@@ -121,7 +121,8 @@ released together.
   identical values, and both names stay importable from `rcp_ndcg.llm._fake`.
 - `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/run-config.v1.json`)
   regenerated for the transport, the fakes and the status map (new names and members, `Endpoint.base_url`
-  widened); `tests/test_errors.py` now requires one *root* class per exit code, since the moved outage and
+  widened, and the hosted retrieval configs' `base_url` described as its single URL, which its type already
+  says); `tests/test_errors.py` now requires one *root* class per exit code, since the moved outage and
   refusal types are `ProviderError` subclasses and exit codes do not change.
 
 ## 0.1.0

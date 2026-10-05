@@ -312,6 +312,18 @@ def _clean_registry() -> Iterator[None]:
 
 
 class TestAdapterRegistry:
+    def test_an_unknown_adapter_with_an_empty_registry_promises_nothing_shipped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import rcp_ndcg.inference.adapters.base as adapter_base
+
+        monkeypatch.setattr(adapter_base, "_BUILTINS", {})
+        monkeypatch.setattr(adapter_base, "_PLUGINS", {})
+        with pytest.raises(ConfigError) as caught:
+            get_adapter("nope")
+        assert "no wire adapter is registered yet" in (caught.value.hint or "")
+        assert "arrive with the transport" not in (caught.value.hint or "")  # nothing is shipped yet
+
     def test_an_adapter_is_registered_under_its_name_and_returned_by_it(self) -> None:
         register_adapter(_ProbeAdapter)
         assert get_adapter("probe_adapter") is _ProbeAdapter

@@ -160,8 +160,8 @@ def get_adapter(name: str) -> type[Adapter[Any, Any]]:
             hint = f"known wire adapters: {', '.join(known)}"
         else:
             hint = (
-                "no wire adapter is registered yet; the shipped ones arrive with the transport, and a "
-                f"third party's in the {ADAPTER_ENTRY_POINTS!r} entry-point group"
+                "no wire adapter is registered yet; a third party registers one in the "
+                f"{ADAPTER_ENTRY_POINTS!r} entry-point group"
             )
         raise ConfigError(f"unknown adapter {name!r}", hint=hint, details={"known": list(known)})
     return adapter

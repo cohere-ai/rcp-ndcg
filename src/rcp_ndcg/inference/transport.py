@@ -225,8 +225,8 @@ class Transport:
 
         A request's calls all go to the one replica the request was routed to; a retried request is sent whole
         again, so no partial result comes back. A reply the status map returns (any 4xx outside the map) is the
-        adapter's to interpret; the credentials and ``headers_env`` are read once here, so a missing variable
-        fails before the request is queued.
+        adapter's to interpret. The credentials and ``headers_env`` are read once here, so a missing variable
+        fails before the request is queued (and counts as a failed call, as the judge's does).
 
         Raises:
             BackendUnavailableError: Every replica stayed down for longer than ``wait_on_outage_s``.
@@ -239,7 +239,11 @@ class Transport:
         if not calls:
             raise ValueError("send() needs at least one call")
         calls = list(calls)
-        headers = self._base_headers()
+        try:
+            headers = self._base_headers()
+        except CredentialsError:
+            self._usage = self._usage + Usage(failed_calls=len(calls))  # the request failed before it was queued
+            raise
         #: Per replica: its successes when this request first failed there.
         failed_at: dict[int, int] = {}
         #: When this request first found the endpoint unavailable; its outage clock (never the queueing time).
@@ -317,11 +321,13 @@ class Transport:
         return _reply(response)
 
     def _url(self, replica: _Replica, path: str) -> str:
-        """The request URL: the replica's base URL (its query, if any, kept) then the call's path."""
+        """The request URL: the replica's base URL then the call's path; their queries, if any, joined."""
         if not path.startswith("/"):
             path = f"/{path}"
-        base, sep, query = replica.url.partition("?")
-        return f"{base}{path}?{query}" if sep else f"{base}{path}"
+        base, _, base_query = replica.url.partition("?")
+        path_only, _, path_query = path.partition("?")
+        query = "&".join(part for part in (base_query, path_query) if part)
+        return f"{base}{path_only}?{query}" if query else f"{base}{path_only}"
 
     def _base_headers(self) -> dict[str, str]:
         """The endpoint's credentials and gateway headers of one send; every value is read from the environment
@@ -487,8 +493,10 @@ class Transport:
     def usage(self) -> Usage:
         """Calls and tokens accumulated so far (calls, failed calls, input and output tokens).
 
-        :meth:`send` counts the calls and the failed calls (a request the transport raised on is failed; one
-        the status map returns as a reply is not, even when the adapter refuses it). The tokens arrive through
+        :meth:`send` counts the calls and the failed calls itself: a request the transport raises on is a failed
+        call, whether before it was queued (a missing credentials variable) or after it was sent (the status
+        map's typed errors); a request the rejection rule refuses, one parked out by ``wait_on_outage_s``, and a
+        reply the status map returns (even one the adapter refuses) are not. The tokens arrive through
         :meth:`add_usage`.
         """
         return self._usage

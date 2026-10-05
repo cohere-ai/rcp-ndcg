@@ -328,6 +328,7 @@ class TestHeaders:
         with pytest.raises(CredentialsError, match="RCP_NDCG_TEST_GATEWAY"):
             _send(transport)
         assert script.requests == []  # refused before anything was queued
+        assert (transport.usage.calls, transport.usage.failed_calls) == (0, 1)  # the request failed
 
     def test_a_missing_api_key_names_the_variable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("RCP_NDCG_TEST_KEY", raising=False)
@@ -335,6 +336,7 @@ class TestHeaders:
         with pytest.raises(CredentialsError, match="RCP_NDCG_TEST_KEY") as caught:
             _send(transport)
         assert caught.value.details == {"variable": "RCP_NDCG_TEST_KEY"}
+        assert transport.usage.failed_calls == 1  # the request failed, nothing was queued
 
     def test_the_calls_own_headers_are_sent(self) -> None:
         script = ReplicaScript()
@@ -349,6 +351,17 @@ class TestPool:
         transport = Transport(Endpoint(base_url="http://judge.test/v1", model="m", concurrency=concurrency))
         pool = transport._client()._transport._pool
         assert pool._max_connections >= concurrency and pool._max_keepalive_connections >= concurrency
+
+    def test_a_call_path_with_its_own_query_joins_the_endpoints_query(self) -> None:
+        script = ReplicaScript()
+        transport = Transport(
+            Endpoint(base_url="http://judge.test/v1?api-version=7", model="m"),
+            httpx_transport=httpx.MockTransport(script),
+        )
+        _send(transport, path="/x?a=1")
+        (request,) = script.requests
+        assert request.url.path == "/v1/x"  # neither query swallows the other
+        assert dict(request.url.params) == {"api-version": "7", "a": "1"}
 
     def test_a_wrapped_transport_keeps_the_timeouts_and_its_own_pool(self) -> None:
         supplied = httpx.AsyncHTTPTransport(limits=httpx.Limits(max_connections=123, max_keepalive_connections=123))

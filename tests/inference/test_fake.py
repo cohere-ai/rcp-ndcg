@@ -62,6 +62,7 @@ def test_the_seed_is_the_urls_numeric_tail_and_dim_its_query() -> None:
     assert _fake_endpoint("fake://seed/3", model="m").seed == 3
     assert _fake_endpoint("fake://embed", model="m").seed == 0
     assert _fake_endpoint("fake://seed/-2", model="m").seed == -2
+    assert _fake_endpoint("fake://seed/--5", model="m").seed == 0  # not a number: the documented default
     assert _fake_endpoint("fake://seed/7?dim=16", model="m").dim == 16
     assert _fake_endpoint("fake://embed", model="m").dim == 64  # DEFAULT_DIM
 

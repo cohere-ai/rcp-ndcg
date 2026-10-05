@@ -132,7 +132,10 @@ def _fake_endpoint(url: str, *, model: str) -> FakeEndpoint:
     """The :class:`FakeEndpoint` of a ``fake://`` URL: the seed is its numeric path tail, ``dim`` its query."""
     base, _, query = url.partition("?")
     tail = base.removeprefix(FAKE_SCHEME).rstrip("/").rsplit("/", 1)[-1]
-    seed = int(tail) if tail.lstrip("-").isdigit() else 0
+    try:
+        seed = int(tail) if tail.lstrip("-").isdigit() else 0
+    except ValueError:  # e.g. "--5": not a number after all; the default seed applies
+        seed = 0
     dim = DEFAULT_DIM
     for pair in query.split("&") if query else ():
         name, _, value = pair.partition("=")

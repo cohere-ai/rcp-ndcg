@@ -72,6 +72,10 @@ class _Hosted(Endpoint):
 
     Requests go one at a time with the endpoint's timeout and retries; ``batch_size`` is the documents per rerank
     request or the texts per embedding request (``None`` for the provider's default).
+
+    Attributes:
+        base_url: One URL, or none for the provider's own public API; the hosted APIs take no replica list yet
+            (the retrieval port moves them onto the shared transport).
     """
 
     IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"batch_size": _RUNTIME}
