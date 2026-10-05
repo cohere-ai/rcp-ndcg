@@ -55,7 +55,7 @@ STEPS: tuple[StepName, ...] = ("retrieve", "rerank", "tournament", "rubric", "ca
 JUDGE_STEPS: frozenset[str] = frozenset({"tournament", "rubric"})
 
 _FORBID = ConfigDict(extra="forbid", populate_by_name=True)
-_CONTENT, _RUNTIME = FieldRole.CONTENT, FieldRole.RUNTIME
+_CONTENT = FieldRole.CONTENT
 
 
 class DatasetSource(BaseModel):
