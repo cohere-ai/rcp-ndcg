@@ -27,7 +27,8 @@ released together.
 
 - `rcp_ndcg.data.revisions.is_commit(revision)` is the public form of the commit-shape check (exactly 40
   lowercase hex characters, ``False`` for ``None`` or any other revision); no other module reads the private
-  pattern.
+  pattern, and the resolve paths use the same strict check: a 40-hex revision with trailing whitespace is no
+  longer echoed back as a verified commit but resolved like any ref (offline, it warns `UNPINNED_REVISION`).
 - `rcp_ndcg.errors.WarningCode` gains `SNAPSHOT_LISTING` (an additive change to the closed list): an offline
   corpus read whose file listing came from the local Hub snapshot instead of the Hub warns with it (the snapshot
   holds only the files a download left, and a partial cache reads as missing data). With `--json` it shows in the
@@ -40,8 +41,9 @@ released together.
   systems of a multi-system file: score them with `--system NAME`. The refusal's hint names the way out (drop
   the system's rows, or score the others) with `systems=` for Python callers and `--system` on the command
   line, whenever the file holds several systems. An unknown name is a `ConfigError` (exit 3) listing the
-  systems the file names; `eval explain --report` explains the systems the report scored, and `--system` with
-  `--run` there is a `UsageError` (it has no effect on a run).
+  systems the file names; `eval explain --report` re-scores the saved rankings for the systems the report
+  scored (its own, by default; `--system` narrows them further), so one broken system of the file does not
+  kill the explanation, and `--system` with `--run` there is a `UsageError` (it has no effect on a run).
 
 - `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
   larger than `adaptive_window` runs one batch, not one per batch: every adaptive window of such a pool holds

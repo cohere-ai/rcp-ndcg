@@ -233,9 +233,11 @@ def test_offline_corpus_materializes_from_the_snapshot(cache: Path, monkeypatch:
     (snapshot / "README.md").write_text(card)
     _offline(monkeypatch)
 
-    with pytest.warns(RcpNdcgWarning, match="partial cache"):
+    with pytest.warns(RcpNdcgWarning, match="partial cache") as seen:
         dataset = load_dataset(f"hf://{REPO}/{SUBSET}", revision=SHA)  # the corpus loads on first access
         assert {d: doc.text for d, doc in dataset.corpus.items()} == {"a": "A\n\nalpha", "b": "beta"}
+
+    assert seen[0].message.code == "SNAPSHOT_LISTING"
 
 
 def test_offline_listing_without_a_snapshot_names_the_revision_fix(cache: Path) -> None:
@@ -275,9 +277,10 @@ def test_a_hub_down_on_the_listing_serves_the_snapshot_or_is_a_retryable_provide
     _online(monkeypatch, {(REPO, "main"): SHA})
     monkeypatch.setattr(huggingface_hub.HfApi(), "list_repo_files", down, raising=False)  # HfApi() is _online's fake
 
-    with pytest.warns(RcpNdcgWarning, match="partial cache"):
+    with pytest.warns(RcpNdcgWarning, match="partial cache") as seen:
         listing = _hub_listing(REPO, SHA)
 
+    assert seen[0].message.code == "SNAPSHOT_LISTING"
     assert f"{SUBSET}/corpus/part-0.parquet" in listing
 
     shutil.rmtree(snapshot)  # no snapshot left to stand in

@@ -11,8 +11,9 @@
   (``--report``) or of a run (``--run``; without its reference systems ``candidates`` and ``judge`` unless
   ``--include-reference``).
 * ``explain`` -- one query side by side: each system's top k with theta, gain and per-criterion probabilities, from
-  a run (``--run``) or a report (``--report``; ``--system NAME`` re-scores only the named systems of the saved
-  rankings); ``--include-text`` adds the query and document texts.
+  a run (``--run``) or a report (``--report``; re-scored by default for the systems the report scored, and
+  ``--system NAME`` re-scores only the named ones of the saved rankings); ``--include-text`` adds the query and
+  document texts.
 """
 
 from __future__ import annotations
@@ -313,7 +314,8 @@ class EvalExplainRequest(BaseModel):
     subset: str | None = Field(default=None, description="The query's dataset, when a suite's report has it twice.")
     system: list[str] = Field(
         default_factory=list,
-        description="With --report, re-score only these systems of the saved rankings (repeatable; default all).",
+        description="With --report, re-score only these systems of the saved rankings (repeatable; default the "
+        "systems the report scored).",
     )
     k: int = Field(default=10, ge=1, description="Documents shown per system (and the cutoff of the deltas).")
     include_text: bool = Field(default=False, description="Add the query and document texts.")
@@ -367,7 +369,7 @@ def _explain_report(request: EvalExplainRequest) -> tuple[QueryExplanation, Any]
         protocol=saved.protocol,
         k=saved.k,
         metrics=saved.metrics,
-        systems=request.system or None,
+        systems=request.system or saved.systems,  # the systems the report scored, unless the caller narrows them
         bootstrap=0,
     )
     calibration = _calibration(inputs.calibration)

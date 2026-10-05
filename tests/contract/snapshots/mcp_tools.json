@@ -333,7 +333,7 @@
           "title": "Subset"
         },
         "system": {
-          "description": "With --report, re-score only these systems of the saved rankings (repeatable; default all).",
+          "description": "With --report, re-score only these systems of the saved rankings (repeatable; default the systems the report scored).",
           "items": {
             "type": "string"
           },

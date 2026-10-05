@@ -207,13 +207,18 @@ def test_rankings_of_another_corpus_exit_12_not_a_table_of_zeros(dataset: str, t
 
 def test_explain_refuses_a_report_whose_rankings_stopped_matching(scored: dict) -> None:
     """The checks live in evaluate(), so `eval explain --report` gets them: a rankings file rewritten after
-    scoring is a data error, not a table of zeros."""
+    scoring is refused, not a table of zeros."""
     Rankings.from_orders({"q1": ["other-1"], "q2": ["other-2"]}, system="forward").save(scored["args"][1])
 
     document = _invoke("explain", "--report", str(scored["report"]), "--query-id", "q1")
 
-    assert document["exit_code"] == 12 and document["ok"] is False
-    assert "no ranked document is in the pools or labels" in document["error"]["message"]
+    assert document["exit_code"] == 3, document
+    assert "reverse" in document["error"]["message"], "the report scored reverse, the file no longer holds it"
+
+    narrowed = _invoke("explain", "--report", str(scored["report"]), "--query-id", "q1", "--system", "forward")
+
+    assert narrowed["exit_code"] == 12, narrowed
+    assert "no ranked document is in the pools or labels" in narrowed["error"]["message"]
 
 
 def test_count_ndcg_is_not_offered_by_eval_score(dataset: str, tmp_path: Path) -> None:
@@ -265,8 +270,9 @@ def test_an_unknown_system_is_a_config_error_listing_the_systems(dataset: str, t
     assert "nobody" in document["error"]["message"] and "mine" in document["error"]["message"]
 
 
-def test_explain_report_re_scores_only_the_named_system(scored: dict) -> None:
-    """`eval explain --report --system`: a system added to the rankings file after scoring is no longer fatal."""
+def test_explain_report_re_scores_the_systems_the_report_scored(scored: dict) -> None:
+    """`eval explain --report` defaults to the systems the report scored: a system added to the rankings file
+    after scoring does not kill the explanation, and `--system` narrows the re-score."""
     from rcp_ndcg.data import load_rankings
 
     rankings = Rankings.concat(
@@ -277,12 +283,15 @@ def test_explain_report_re_scores_only_the_named_system(scored: dict) -> None:
     )
     rankings.save(scored["args"][1])
 
-    document = _invoke("explain", "--report", str(scored["report"]), "--query-id", "q1", "--system", "forward")
+    document = _invoke("explain", "--report", str(scored["report"]), "--query-id", "q1")
 
     assert document["exit_code"] == 0, document
-    assert [system["system"] for system in document["data"]["systems"]] == ["forward"]
-    without = _invoke("explain", "--report", str(scored["report"]), "--query-id", "q1")
-    assert without["exit_code"] == 12 and "broken" in without["error"]["message"]
+    assert [system["system"] for system in document["data"]["systems"]] == ["forward", "reverse"], "broken never scores"
+
+    narrowed = _invoke("explain", "--report", str(scored["report"]), "--query-id", "q1", "--system", "forward")
+
+    assert narrowed["exit_code"] == 0, narrowed
+    assert [system["system"] for system in narrowed["data"]["systems"]] == ["forward"]
 
 
 def test_score_json_is_lean_and_the_full_report_goes_to_out(scored: dict) -> None:
