@@ -32,7 +32,7 @@ from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.errors import ConfigError, CredentialsError, RequestRejectedError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
-from rcp_ndcg.inference.adapters import get_adapter, known_adapters
+from rcp_ndcg.inference.adapters import get_adapter
 from rcp_ndcg.inference.adapters.base import Adapter
 from rcp_ndcg.inference.config import EmbeddingEndpoint
 from rcp_ndcg.inference.transport import Sender, Transport
@@ -78,19 +78,13 @@ class EmbeddingClient:
             key itself, in the profile's header, so the transport adds no second one.
 
     Raises:
-        ConfigError: ``api`` names no registered adapter, or one of another role; ``max_tokens`` is set
-            (cutting waits for the text-budget mechanism); ``batch_size`` exceeds the profile's cap.
+        ConfigError: ``api`` names no registered adapter of the embed role (the hint lists that role's
+            names), ``max_tokens`` is set (cutting waits for the text-budget mechanism), or ``batch_size``
+            exceeds the profile's cap.
     """
 
     def __init__(self, config: EmbeddingEndpoint, *, sender: Sender | None = None) -> None:
-        adapter_cls = get_adapter(config.api)
-        role = getattr(adapter_cls, "role", None)
-        if role != "embed":
-            raise ConfigError(
-                f"api {config.api!r} is not an embedding adapter",
-                hint=f"api: {config.api!r} is a {role} adapter; an EmbeddingEndpoint needs an embed one",
-                details={"known": list(known_adapters())},
-            )
+        adapter_cls = get_adapter(config.api, role="embed")
         if config.max_tokens is not None:
             raise ConfigError(
                 "max_tokens needs the text-budget mechanism, which is not wired yet",

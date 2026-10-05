@@ -22,7 +22,7 @@ from tests._tokenizers import byte_bpe_tokenizer, save, word_tokenizer
 from tests.inference._embed import FakeSender, openai_data, vendor_payload
 
 #: Every profile under its registered api name.
-APIS = ("openai_embeddings", "cohere_embed", "voyage_embed", "gemini_embed")
+APIS = ("openai_embeddings", "cohere", "voyage", "gemini")
 
 KEY_ENV_NAMES = (
     "OPENAI_API_KEY",
@@ -44,9 +44,9 @@ def _vendor_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 def input_texts(api: str, call: Call) -> list[str]:
     """The texts one call carries, per profile."""
     body = call.json
-    if api in ("openai_embeddings", "voyage_embed"):
+    if api in ("openai_embeddings", "voyage"):
         return list(body["input"])
-    if api == "cohere_embed":
+    if api == "cohere":
         return list(body["texts"])
     return [entry["content"]["parts"][0]["text"] for entry in body["requests"]]
 
@@ -61,7 +61,7 @@ def handler(api: str, values: dict[str, float], *, shuffle: bool = False) -> Cal
     def one(call: Call) -> Reply:
         batch = input_texts(api, call)
         vectors = [[values.get(text, 1.0), 1.0] for text in batch]
-        if shuffle and api in ("openai_embeddings", "voyage_embed"):
+        if shuffle and api in ("openai_embeddings", "voyage"):
             body = openai_data(vectors, indices=list(reversed(range(len(vectors)))))
         else:
             body = vendor_payload(api, vectors)
@@ -95,7 +95,7 @@ class TestProfiles:
         assert vectors.as_matrix()[0].tolist() == pytest.approx(expected.tolist())
         assert vectors.vectors.dtype == np.float32
 
-    @pytest.mark.parametrize("api", ("openai_embeddings", "voyage_embed"))
+    @pytest.mark.parametrize("api", ("openai_embeddings", "voyage"))
     def test_a_shuffled_reply_is_reassembled_by_index(self, api: str) -> None:
         """The mutation probe: drop the adapters' reorder by ``index`` and this goes red."""
         sender = FakeSender(handler(api, {"one": 1.0, "two": 2.0}, shuffle=True))
@@ -148,7 +148,7 @@ class TestContentDecisions:
         """An empty call makes no request, so a missing key must not fail it (api_dense's behaviour)."""
         monkeypatch.delenv("CO_API_KEY", raising=False)
         monkeypatch.delenv("COHERE_API_KEY", raising=False)
-        client = EmbeddingClient(endpoint("cohere_embed"), sender=FakeSender(handler("cohere_embed", {})))
+        client = EmbeddingClient(endpoint("cohere"), sender=FakeSender(handler("cohere", {})))
 
         assert client.encode([], EncodeRole.DOCUMENT).num_items == 0
 
@@ -173,7 +173,7 @@ class TestBatching:
 
     def test_a_batch_size_above_the_profile_cap_is_refused(self) -> None:
         with pytest.raises(ConfigError, match="at most 96 texts per request"):
-            EmbeddingClient(endpoint("cohere_embed", batch_size=1000), sender=FakeSender(handler("cohere_embed", {})))
+            EmbeddingClient(endpoint("cohere", batch_size=1000), sender=FakeSender(handler("cohere", {})))
 
     def test_a_per_call_batch_size_overrides_the_config_up_to_the_cap(self) -> None:
         sender = FakeSender(handler("openai_embeddings", {name: 1.0 for name in "abcd"}))
@@ -271,7 +271,7 @@ class TestConstruction:
         with pytest.raises(ConfigError, match=r"max_tokens needs the text-budget mechanism, which is not wired yet"):
             EmbeddingClient(endpoint(max_tokens=8192), sender=FakeSender(handler("openai_embeddings", {})))
 
-    @pytest.mark.parametrize("api", ("cohere_embed", "voyage_embed", "gemini_embed"))
+    @pytest.mark.parametrize("api", ("cohere", "voyage", "gemini"))
     def test_a_hosted_config_refuses_a_dimensions_cut(self, api: str) -> None:
         """The hosted profiles have no dimensions parameter; a cut that silently never reaches the wire would
         change the vectors without an error."""
@@ -293,8 +293,11 @@ class TestConstruction:
             EmbeddingClient(endpoint(api="not_an_adapter"), sender=FakeSender(handler("openai_embeddings", {})))
 
         assert "openai_embeddings" in (caught.value.hint or "")
+        assert "embed" in (caught.value.hint or "")  # the hint stays inside the role's namespace
 
     def test_an_adapter_of_another_role_is_refused(self) -> None:
+        """A registered adapter of the wrong role (a judge's, say, selected by typo) is unknown in the embed
+        registry, and the error names where the name does live."""
         from rcp_ndcg.inference import adapters as registry
         from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
 
@@ -316,7 +319,7 @@ class TestConstruction:
         saved = dict(registry.base._BUILTINS)
         register_adapter(_JudgeAdapter)  # type: ignore[arg-type]
         try:
-            with pytest.raises(ConfigError, match="not an embedding adapter"):
+            with pytest.raises(ConfigError, match="unknown embed adapter 'probe_judge'"):
                 EmbeddingClient(endpoint(api="probe_judge"), sender=FakeSender(handler("openai_embeddings", {})))
         finally:
             registry.base._BUILTINS.clear()
@@ -328,9 +331,9 @@ class TestEndpoints:
         ("api", "url"),
         [
             ("openai_embeddings", "https://api.openai.com/v1"),
-            ("cohere_embed", "https://api.cohere.com/v2"),
-            ("voyage_embed", "https://api.voyageai.com/v1"),
-            ("gemini_embed", "https://generativelanguage.googleapis.com/v1beta"),
+            ("cohere", "https://api.cohere.com/v2"),
+            ("voyage", "https://api.voyageai.com/v1"),
+            ("gemini", "https://generativelanguage.googleapis.com/v1beta"),
         ],
     )
     def test_a_hosted_config_defaults_to_the_profile_url(self, api: str, url: str) -> None:
@@ -366,7 +369,7 @@ class TestCredentials:
     def test_a_hosted_profile_without_a_key_names_its_variables(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("CO_API_KEY", raising=False)
         monkeypatch.delenv("COHERE_API_KEY", raising=False)
-        client = EmbeddingClient(endpoint("cohere_embed"), sender=FakeSender(handler("cohere_embed", {})))
+        client = EmbeddingClient(endpoint("cohere"), sender=FakeSender(handler("cohere", {})))
 
         with pytest.raises(CredentialsError) as caught:
             client.encode(texts("x"), EncodeRole.DOCUMENT)
@@ -387,8 +390,8 @@ class TestCredentials:
         ("api", "header", "value"),
         [
             ("openai_embeddings", "Authorization", "Bearer test-openai_api_key"),
-            ("voyage_embed", "Authorization", "Bearer test-voyage_api_key"),
-            ("gemini_embed", "x-goog-api-key", "test-gemini_api_key"),
+            ("voyage", "Authorization", "Bearer test-voyage_api_key"),
+            ("gemini", "x-goog-api-key", "test-gemini_api_key"),
         ],
     )
     def test_the_key_goes_in_the_profile_header(self, api: str, header: str, value: str) -> None:
@@ -400,8 +403,8 @@ class TestCredentials:
 
     def test_the_config_api_key_env_overrides_the_profile(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("MY_KEY_ENV", "key-from-config")
-        sender = FakeSender(handler("cohere_embed", {}))
-        client = EmbeddingClient(endpoint("cohere_embed", api_key_env="MY_KEY_ENV"), sender=sender)
+        sender = FakeSender(handler("cohere", {}))
+        client = EmbeddingClient(endpoint("cohere", api_key_env="MY_KEY_ENV"), sender=sender)
 
         client.encode(texts("x"), EncodeRole.DOCUMENT)
 

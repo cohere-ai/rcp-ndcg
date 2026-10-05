@@ -71,7 +71,8 @@ class RerankClient:
 
         Raises:
             ConfigError: The config sets ``max_tokens`` (the text-budget mechanism that applies client-side
-                budgets is not wired yet, and a budget is never silently ignored), a hosted profile with
+                budgets is not wired yet, and a budget is never silently ignored), ``api`` names no registered
+                adapter of the rerank role (the hint lists that role's names), a hosted profile with
                 ``instruction: field`` or ``use_activation`` (neither exists on their wire), or a served
                 endpoint without a ``base_url``.
         """
@@ -81,14 +82,7 @@ class RerankClient:
                 hint="leave max_tokens unset; until the mechanism lands the client cuts nothing, and a "
                 "budget would otherwise be silently ignored",
             )
-        adapter_cls = cast("type[RerankWire]", get_adapter(config.api))
-        role = getattr(adapter_cls, "role", None)
-        if role != "rerank":
-            raise ConfigError(
-                f"the adapter {config.api!r} is not a rerank wire adapter (its role is {role!r})",
-                hint="api on a rerank endpoint names a rerank-role wire adapter: rerank (served), cohere or "
-                "voyage (hosted), or a third party's registered in the 'rcp_ndcg.adapters' group",
-            )
+        adapter_cls = cast("type[RerankWire]", get_adapter(config.api, role="rerank"))
         if config.base_url is None:
             # The shipped adapters (and a third party's matching the RerankWire shape) declare the hosted
             # profiles' public root; anything else answers through the config's own base_url.
