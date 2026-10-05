@@ -25,6 +25,32 @@ cd packages/rcp-ndcg-vllm
 python -m rcp_ndcg_vllm.equivalence --recipe recipes/<id> --pairs pairs.jsonl --out /tmp/equiv --stages 1
 ```
 
+## The template block, the anchors and the explicit budget
+
+Three research findings shape the `serve` and `client` blocks, and the schema enforces them:
+
+- **Anchors.** A model reads its output from fixed positions of its template — the *anchors* (a last-token
+  pooler's end token, a CLS head's leading special, a marker id, a reranker's assistant suffix). Every cut
+  applies to the content spans only, inside a budget computed after reserving every fixed template token, and
+  the template is re-attached after the cut. Engine-side truncation of a rendered prompt cannot honour this in
+  either direction, so the schema has no engine-truncation field at all: a recipe whose reference deliberately
+  drops anchors declares `reference.known_deviations: [anchor_drop_over_cap]` and the harness reports those
+  pairs separately, outside the gates. The declared shape's `anchor` is `last`, `first`, `mean` or `marker`
+  (with `anchor_markers`), and stage 1 samples over-length inputs (at least 20 per shape) and asserts every
+  anchor survived — reported as `anchor_check`, separately from token-id mismatches.
+- **Special tokens by name.** Template segments never contain special-token literals: `{"special": "im_end"}`
+  is resolved through the recipe tokenizer's added tokens at run time, `{"text": ...}` is ordinary template
+  text, `{"ids": [...]}` is a measured sequence, and `{"content": query | document}` marks the cuttable span.
+  Every declared shape needs at least one content span; an `anchor: last` shape must end with a fixed segment
+  (or pin `add_special_tokens: true`, declaring the tokenizer's end token as the anchor). When
+  `serve.chat_template` is set, stage 1 also proves the declared shapes render to the same token ids as the
+  template file.
+- **Explicit budgets.** Every recipe declares `client.tokenizer` and `client.max_tokens` — there is no implicit
+  default. `on_overflow` is `cut` by default (content spans only, at token boundaries, anchors reserved;
+  `chunk` and `fail` are the alternatives) and `aggregation: max` is the only chunk aggregation. The engine's
+  `max_model_len` must fit the client's budget. `serve.pooler_config` keys are validated against the pinned
+  engine's `PoolerConfig` fields, because the engine rejects unknown keys.
+
 Recipe YAML at a glance (abridged; the schema's docstrings define every field):
 
 ```yaml
@@ -41,22 +67,39 @@ serve:                           # everything rendered into `vllm serve` argv; n
   runner: pooling
   hf_overrides: {"architectures": [...], "classifier_from_token": ["no", "yes"]}   # always quote strings!
   chat_template: template.jinja  # a file in this directory, or null
-  pooler_config: {}
+  pooler_config: {use_activation: true}   # keys must be PoolerConfig fields at the pinned engine
   max_model_len: 8192
   dtype: bfloat16
   extra_args: []                 # further flags, verbatim (one argv element per item)
 client:                          # the rcp-ndcg endpoint fields this recipe implies
   api: rerank                    # openai_embeddings | vllm_pooling | rerank
-  instruction: fold              # rerank only: none | field | fold
+  request_shape: text            # text | messages | token_ids
+  add_special_tokens: null       # bool|null; true declares the post-processor end token as the anchor
+  template:                      # the request shapes as data; specials by name, never typed
+    pair:
+      - {special: im_start}      # resolved from the tokenizer's added tokens
+      - {text: "system\nJudge whether the document answers the query."}
+      - {special: im_end}
+      - {content: query}         # the cuttable span; fold mode puts the instruction text here
+      - {content: document}
+      - {text: "assistant-suffix-readonly"}   # sketch: a fixed tail the model reads - a real recipe
+                                              # writes the measured text or ids here
+    anchor: last
+    query_max_tokens: 1024       # the query's share of the pair budget; the document span gets the rest
+  instruction: fold              # rerank only: none | field | fold | system
   default_instruction: "Judge whether the document answers the query."
   tokenizer: "<repo>@<40-hex commit>"
-  max_tokens: 8192
+  max_tokens: 8192               # explicit; there is no implicit budget
+  on_overflow: cut               # cut (default) | chunk | fail; cuts apply to content spans only
+  aggregation: null              # only with on_overflow: chunk; max is the only supported aggregation
+  empty_doc: omit_zero           # omit_zero | send | send_text
   normalize: null                # embed and multi_vector only
-  embed_dtype: null              # multi_vector only; float16 (default) or float32
+  embed_dtype: null              # multi_vector only; float16 by default, sent explicitly (engine default float32)
 reference:
   kind: transformers             # transformers | sentence_transformers | remote_code | stored_scores
   score_scale: probability       # probability | logit | cosine; vectors compare per vector
   entry: reference.py
+  known_deviations: []           # e.g. [anchor_drop_over_cap]: stage 2 gates under-cap pairs only
 gates: {}                        # overrides of the stage-2 defaults for this score_scale
 status: {state: unverified, image: null, date: null, report: null}
 sources: []                      # URLs and path:line references the recipe rests on
@@ -98,18 +141,51 @@ decision tree lives in this section once the survey of model families lands; for
 renders verbatim into `vllm serve` argv, and `serve.plugin` is reserved for a `vllm.general_plugins` package when
 no flag can express the model's scoring.
 
+## Worked example: a last-token-pooling embedder (CPU)
+
+A last-token-pooling embedder's anchor is its trailing end token: the wrapper renders `prefix + text + suffix`
+and the naive fix — truncating the whole string on the right — drops the token the model was trained to read
+out of. The correct cut reserves the suffix, cuts only the text, and re-attaches the template. The mechanism in
+ten dependency-free lines (the real implementation is the harness's `assemble_shape_text`, checked against your
+reference in stage 1):
+
+```python
+# The template block of a last-token-pooling embedder, as segments:
+#   [{text: "doc: "}, {content: document}, {text: "<end>"}], anchor: last.
+prefix_ids = [1, 2]          # token ids of the "doc: " fixed head, measured with the recipe tokenizer
+suffix_ids = [9]             # the end token: the anchor the model pools from
+content_ids = [3, 4, 5, 6, 7, 8]  # the document, already tokenised
+
+max_tokens = 5
+budget = max_tokens - len(prefix_ids) - len(suffix_ids)
+cut = content_ids[:budget]   # cut the content span only ...
+prompt_ids = prefix_ids + cut + suffix_ids   # ... and re-attach the template
+assert prompt_ids == [1, 2, 3, 4, 9]
+assert prompt_ids[-len(suffix_ids):] == suffix_ids  # the anchor survived the cut
+assert len(prompt_ids) == max_tokens
+```
+
+The same assertion in code lives in the tests (`test_zembed`-shaped): for an over-length input, every declared
+anchor id sits at its declared position in the assembled ids.
+
 ## The three equivalence stages
 
-Stage 1 (CPU, zero tolerance) renders the recipe's `template.jinja` the way the engine renders chat templates — a
-sandboxed jinja2 environment with `trim_blocks` and `lstrip_blocks` on, a stripped template trailing newline, and
-undefined variables refused — with the context `{query, document, instruction}` (the instruction variable carries
-the recipe's `default_instruction` in `field` mode, and is empty in `fold` mode, where the query text already
-carries it), tokenises with the recipe's tokenizer, and requires exact equality with `reference.render`.
+Stage 1 (CPU, zero tolerance) renders every sampled prompt the way the client renders it — a declared shape
+assembled from segments, or the `template.jinja` file under a jinja2 environment with `trim_blocks` and
+`lstrip_blocks` on, a stripped trailing newline and undefined variables refused (with the instruction variable
+carrying the recipe's `default_instruction` in `field` mode, and empty in `fold` mode, where the query text
+already carries it) — tokenises with the recipe's tokenizer and requires exact equality with
+`reference.render`. It also samples over-length inputs on purpose (at least 20 per declared shape) and asserts
+every anchor survived the cut on both the served render and `reference.render(...)` — reported as
+`anchor_check`, separately from the token-id mismatches — and, when `serve.chat_template` is set, proves the
+declared shapes render to the same token ids as the template file.
 
 Stage 2 scores or embeds the same pairs against the served engine (plain `httpx` to `/rerank`, `/v1/embeddings`,
 `/pooling`) and applies the gates: probability |Δ| ≤ 0.02 for 99% of documents and ≤ 0.05 for all; logit |Δ| ≤
-0.05·(1 + |s|); cosine scores |Δ| ≤ 0.01; vectors cosine ≥ 1 − 1e-3 per vector (per token, after the same float16
-cast); median per-query Kendall τ ≥ 0.98. A recipe's `gates` section overrides any of these.
+0.05·(1 + |s|); cosine scores |Δ| ≤ 0.01; vectors cosine ≥ 1 − 1e-3 per vector (per token, after the same
+float16 cast); median per-query Kendall τ ≥ 0.98. A recipe's `gates` section overrides any of these. With
+`reference.known_deviations: [anchor_drop_over_cap]`, pairs whose uncut prompt exceeds `client.max_tokens` are
+reported in a separate, non-gating table and the gates run on the under-cap pairs only.
 
 Stage 3 (optional, needs the `metrics` extra) scores rankings per subset with `rcp-ndcg eval score` as a
 subprocess and requires the mean |Δ nDCG@10| over subsets ≤ 2e-3.
