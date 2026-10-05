@@ -218,6 +218,19 @@
       "additionalProperties": false,
       "description": "Cohere's public API: Embed v4 (``embed-v4.0``, which also embeds page images) and Rerank 4 Pro and Fast\n(``rerank-v4.0-pro``, ``rerank-v4.0-fast``). The key is read from ``api_key_env``, else ``CO_API_KEY`` or\n``COHERE_API_KEY``. A rerank request carries up to ``batch_size`` documents (default 100, the API's search\nunit).",
       "properties": {
+        "api": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The wire adapter that speaks the endpoint's protocol (ADAPTER_ENTRY_POINTS); ``None`` until a role config sets its default. Content: which service computes the numbers.",
+          "title": "Api"
+        },
         "api_key_env": {
           "anyOf": [
             {
@@ -241,7 +254,7 @@
             }
           ],
           "default": null,
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
           "title": "Base Url"
         },
         "batch_size": {
@@ -270,6 +283,14 @@
           "exclusiveMinimum": 0,
           "title": "Connect Timeout S",
           "type": "number"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
+          "type": "object"
         },
         "max_retries": {
           "default": 8,
@@ -309,6 +330,20 @@
           "exclusiveMinimum": 0,
           "title": "Timeout S",
           "type": "number"
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
         }
       },
       "required": [
@@ -443,6 +478,19 @@
       "additionalProperties": false,
       "description": "Google's Gemini embedding API (``gemini-embedding-001``). The key is read from ``api_key_env``, else\n``GEMINI_API_KEY`` or ``GOOGLE_API_KEY``.",
       "properties": {
+        "api": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The wire adapter that speaks the endpoint's protocol (ADAPTER_ENTRY_POINTS); ``None`` until a role config sets its default. Content: which service computes the numbers.",
+          "title": "Api"
+        },
         "api_key_env": {
           "anyOf": [
             {
@@ -466,7 +514,7 @@
             }
           ],
           "default": null,
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
           "title": "Base Url"
         },
         "batch_size": {
@@ -495,6 +543,14 @@
           "exclusiveMinimum": 0,
           "title": "Connect Timeout S",
           "type": "number"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
+          "type": "object"
         },
         "max_retries": {
           "default": 8,
@@ -534,6 +590,20 @@
           "exclusiveMinimum": 0,
           "title": "Timeout S",
           "type": "number"
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
         }
       },
       "required": [
@@ -598,13 +668,26 @@
     },
     "JudgeConfig": {
       "additionalProperties": false,
-      "description": "One judge: an OpenAI-compatible Endpoint with sampling settings.\n\nThe endpoint fields (``model``, ``revision``, ``api_key_env``, ``concurrency``, the timeouts and\nretries) are Endpoint's; ``revision`` is recorded in the judgement\nfamily, so two checkpoints served under one name never pool.",
+      "description": "One judge: an OpenAI-compatible Endpoint with sampling settings.\n\nThe endpoint fields (``model``, ``revision``, ``api_key_env``, ``headers_env``, ``concurrency``, the\ntimeouts, retries and ``wait_on_outage_s``) are Endpoint's;\n``revision`` is recorded in the judgement family, so two checkpoints served under one name never pool.",
       "properties": {
         "allow_floating_model": {
           "default": false,
           "description": "Accept an undated model alias on the OpenAI API. An alias (``gpt-5``) moves between snapshots, so judgements recorded against it are not reproducible; by default only a dated snapshot (``gpt-5-2025-08-07``) is accepted.",
           "title": "Allow Floating Model",
           "type": "boolean"
+        },
+        "api": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The wire adapter that speaks the endpoint's protocol (ADAPTER_ENTRY_POINTS); ``None`` until a role config sets its default. Content: which service computes the numbers.",
+          "title": "Api"
         },
         "api_key_env": {
           "anyOf": [
@@ -676,6 +759,14 @@
           "additionalProperties": true,
           "description": "Further request fields the endpoint understands (e.g. ``reasoning_effort``, ``chat_template_kwargs``).",
           "title": "Extra Body",
+          "type": "object"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
           "type": "object"
         },
         "image_processor": {
@@ -795,7 +886,7 @@
             }
           ],
           "default": null,
-          "description": "How long a request waits while the endpoint is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
           "title": "Wait On Outage S"
         }
       },
@@ -1229,6 +1320,19 @@
       "additionalProperties": false,
       "description": "A served embedding model.\n\nOne vector per text through ``POST <base_url>/embeddings`` (vLLM's OpenAI-compatible route, or OpenAI's API at\n``https://api.openai.com/v1`` with ``api_key_env: OPENAI_API_KEY``); with ``pooling: token``, one vector per\ntoken through vLLM's ``/pooling`` route (late interaction).",
       "properties": {
+        "api": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The wire adapter that speaks the endpoint's protocol (ADAPTER_ENTRY_POINTS); ``None`` until a role config sets its default. Content: which service computes the numbers.",
+          "title": "Api"
+        },
         "api_key_env": {
           "anyOf": [
             {
@@ -1243,7 +1347,7 @@
           "title": "Api Key Env"
         },
         "base_url": {
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
           "minLength": 1,
           "title": "Base Url",
           "type": "string"
@@ -1287,6 +1391,14 @@
           "default": null,
           "description": "Text prepended to every document.",
           "title": "Doc Prompt"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
+          "type": "object"
         },
         "max_retries": {
           "default": 4,
@@ -1353,6 +1465,20 @@
           "exclusiveMinimum": 0,
           "title": "Timeout S",
           "type": "number"
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
         }
       },
       "required": [
@@ -1366,6 +1492,19 @@
       "additionalProperties": false,
       "description": "A served ``/rerank`` endpoint (``vllm serve <model> --runner pooling``); ``base_url`` is the server root.",
       "properties": {
+        "api": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The wire adapter that speaks the endpoint's protocol (ADAPTER_ENTRY_POINTS); ``None`` until a role config sets its default. Content: which service computes the numbers.",
+          "title": "Api"
+        },
         "api_key_env": {
           "anyOf": [
             {
@@ -1380,7 +1519,7 @@
           "title": "Api Key Env"
         },
         "base_url": {
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
           "minLength": 1,
           "title": "Base Url",
           "type": "string"
@@ -1411,6 +1550,14 @@
           "exclusiveMinimum": 0,
           "title": "Connect Timeout S",
           "type": "number"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
+          "type": "object"
         },
         "max_retries": {
           "default": 4,
@@ -1450,6 +1597,20 @@
           "exclusiveMinimum": 0,
           "title": "Timeout S",
           "type": "number"
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
         }
       },
       "required": [
@@ -2131,6 +2292,19 @@
       "additionalProperties": false,
       "description": "Voyage AI's public API (``voyage-3-large``, ``rerank-2.5``, ``rerank-2.5-lite``, ...). The key is read from\n``api_key_env``, else ``VOYAGE_API_KEY``. A rerank request carries up to ``batch_size`` documents (default 20).",
       "properties": {
+        "api": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The wire adapter that speaks the endpoint's protocol (ADAPTER_ENTRY_POINTS); ``None`` until a role config sets its default. Content: which service computes the numbers.",
+          "title": "Api"
+        },
         "api_key_env": {
           "anyOf": [
             {
@@ -2154,7 +2328,7 @@
             }
           ],
           "default": null,
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.",
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
           "title": "Base Url"
         },
         "batch_size": {
@@ -2183,6 +2357,14 @@
           "exclusiveMinimum": 0,
           "title": "Connect Timeout S",
           "type": "number"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
+          "type": "object"
         },
         "max_retries": {
           "default": 8,
@@ -2222,6 +2404,20 @@
           "exclusiveMinimum": 0,
           "title": "Timeout S",
           "type": "number"
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
         }
       },
       "required": [

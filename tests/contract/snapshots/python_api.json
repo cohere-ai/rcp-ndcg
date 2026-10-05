@@ -558,9 +558,16 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg.support.endpoint",
+        "defined_in": "rcp_ndcg.inference.endpoint",
         "extra": "forbid",
         "fields": {
+          "api": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "api_key_env": {
             "alias": null,
             "default": null,
@@ -589,6 +596,13 @@
             "required": false,
             "type": "float"
           },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -616,6 +630,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
           }
         },
         "frozen": true,
@@ -875,7 +896,7 @@
       },
       "JudgeConfig": {
         "bases": [
-          "rcp_ndcg.support.endpoint.Endpoint"
+          "rcp_ndcg.inference.endpoint.Endpoint"
         ],
         "defined_in": "rcp_ndcg.llm.client",
         "extra": "forbid",
@@ -886,6 +907,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "api": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "api_key_env": {
             "alias": null,
@@ -935,6 +963,13 @@
             "frozen": false,
             "required": false,
             "type": "dict[str, Any]"
+          },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
           },
           "image_processor": {
             "alias": null,
@@ -5540,6 +5575,48 @@
   },
   "rcp_ndcg.errors": {
     "all": {
+      "BackendUnavailableError": {
+        "bases": [
+          "rcp_ndcg.errors.ProviderError"
+        ],
+        "defined_in": "rcp_ndcg.errors",
+        "init": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "message"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "hint"
+          },
+          {
+            "annotation": "Mapping[str, Any] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "details"
+          },
+          {
+            "annotation": "bool | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "retryable"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "cli_hint"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "exception"
+      },
       "CapabilityError": {
         "bases": [
           "rcp_ndcg.errors.RcpNdcgError"
@@ -6069,6 +6146,48 @@
             ]
           }
         }
+      },
+      "RequestRejectedError": {
+        "bases": [
+          "rcp_ndcg.errors.ProviderError"
+        ],
+        "defined_in": "rcp_ndcg.errors",
+        "init": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "message"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "hint"
+          },
+          {
+            "annotation": "Mapping[str, Any] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "details"
+          },
+          {
+            "annotation": "bool | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "retryable"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "cli_hint"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "exception"
       },
       "UsageError": {
         "bases": [
@@ -7532,6 +7651,1387 @@
       }
     }
   },
+  "rcp_ndcg.inference": {
+    "all": {
+      "ADAPTER_ENTRY_POINTS": {
+        "kind": "constant",
+        "type": "str",
+        "value": "rcp_ndcg.adapters"
+      },
+      "Adapter": {
+        "bases": [
+          "typing.Protocol"
+        ],
+        "defined_in": "rcp_ndcg.inference.adapters.base",
+        "init": [
+          {
+            "annotation": null,
+            "default": "<required>",
+            "kind": "var_positional",
+            "name": "args"
+          },
+          {
+            "annotation": null,
+            "default": "<required>",
+            "kind": "var_keyword",
+            "name": "kwargs"
+          },
+          {
+            "returns": null
+          }
+        ],
+        "kind": "protocol",
+        "members": {
+          "calls": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Req",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "request"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "keyword_only",
+                "name": "model"
+              },
+              {
+                "returns": "Sequence[Call]"
+              }
+            ]
+          },
+          "interpret": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Req",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "request"
+              },
+              {
+                "annotation": "Sequence[Reply]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "replies"
+              },
+              {
+                "returns": "Res"
+              }
+            ]
+          },
+          "usage": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Reply",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "reply"
+              },
+              {
+                "returns": "TokenCount | None"
+              }
+            ]
+          }
+        }
+      },
+      "AdapterRole": {
+        "kind": "literal_alias",
+        "values": [
+          "judge",
+          "embed",
+          "rerank",
+          "multi_vector"
+        ]
+      },
+      "Call": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.types",
+        "init": [
+          {
+            "annotation": "Literal['GET', 'POST']",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "method"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "annotation": "Any",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "json"
+          },
+          {
+            "annotation": "Mapping[str, str]",
+            "default": "mappingproxy({})",
+            "kind": "positional_or_keyword",
+            "name": "headers"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
+      "Completion": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.inference.types",
+        "extra": null,
+        "fields": {
+          "finish_reason": {
+            "alias": null,
+            "default": "stop",
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "input_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "output_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "reasoning": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "response": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "frozen": false,
+        "kind": "pydantic_model"
+      },
+      "CompletionInput": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.inference.types",
+        "extra": null,
+        "fields": {
+          "response_format": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, Any] | None"
+          },
+          "user_content": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_core.content.Content | None"
+          },
+          "user_prompt": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model",
+        "members": {
+          "has_media": "property"
+        }
+      },
+      "EmbedRequest": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.types",
+        "init": [
+          {
+            "annotation": "tuple[Content, ...]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "contents"
+          },
+          {
+            "annotation": "EncodeRole",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "role"
+          },
+          {
+            "annotation": "int | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "dimensions"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
+      "EmbeddingEndpoint": {
+        "bases": [
+          "rcp_ndcg.inference.endpoint.Endpoint"
+        ],
+        "defined_in": "rcp_ndcg.inference.config",
+        "extra": "forbid",
+        "fields": {
+          "api": {
+            "alias": null,
+            "default": "openai_embeddings",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "api_key_env": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "base_url": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "batch_size": {
+            "alias": null,
+            "default": 32,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "concurrency": {
+            "alias": null,
+            "default": 64,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "connect_timeout_s": {
+            "alias": null,
+            "default": 5.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "dimensions": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "doc_prompt": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
+          "max_retries": {
+            "alias": null,
+            "default": 2,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "model": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "normalize": {
+            "alias": null,
+            "default": true,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
+          "query_prompt": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "revision": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "timeout_s": {
+            "alias": null,
+            "default": 600.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "Embeddings": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.types",
+        "init": [
+          {
+            "annotation": "np.ndarray",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "vectors"
+          },
+          {
+            "annotation": "np.ndarray | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "offsets"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "as_matrix": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "np.ndarray"
+              }
+            ]
+          },
+          "concat": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Embeddings",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "other"
+              },
+              {
+                "returns": "Embeddings"
+              }
+            ]
+          },
+          "dim": "property",
+          "empty": {
+            "kind": "classmethod",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "cls"
+              },
+              {
+                "annotation": "int",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "dim"
+              },
+              {
+                "annotation": "bool",
+                "default": false,
+                "kind": "keyword_only",
+                "name": "multi_vector"
+              },
+              {
+                "returns": "Embeddings"
+              }
+            ]
+          },
+          "is_multi_vector": "property",
+          "l2_normalized": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "Embeddings"
+              }
+            ]
+          },
+          "num_items": "property",
+          "ragged": {
+            "kind": "classmethod",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "cls"
+              },
+              {
+                "annotation": "Sequence[np.ndarray]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "per_item"
+              },
+              {
+                "returns": "Embeddings"
+              }
+            ]
+          },
+          "single": {
+            "kind": "classmethod",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "cls"
+              },
+              {
+                "annotation": "np.ndarray",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "vectors"
+              },
+              {
+                "returns": "Embeddings"
+              }
+            ]
+          }
+        }
+      },
+      "EncodeRole": {
+        "bases": [
+          "enum.StrEnum"
+        ],
+        "defined_in": "rcp_ndcg.inference.types",
+        "kind": "enum",
+        "values": [
+          "query",
+          "document"
+        ]
+      },
+      "Endpoint": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.inference.endpoint",
+        "extra": "forbid",
+        "fields": {
+          "api": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "api_key_env": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "base_url": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "concurrency": {
+            "alias": null,
+            "default": 64,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "connect_timeout_s": {
+            "alias": null,
+            "default": 5.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
+          "max_retries": {
+            "alias": null,
+            "default": 2,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "model": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "revision": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "timeout_s": {
+            "alias": null,
+            "default": 600.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "EngineInfo": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg.inference.types",
+        "extra": "forbid",
+        "fields": {
+          "error": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "headers": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
+          "max_model_len": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "model": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "owned_by": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "system_fingerprint": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "url": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          }
+        },
+        "frozen": false,
+        "kind": "pydantic_model"
+      },
+      "FAKE_SCHEME": {
+        "kind": "constant",
+        "type": "str",
+        "value": "fake://"
+      },
+      "PoolRequest": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.types",
+        "init": [
+          {
+            "annotation": "tuple[Content, ...]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "contents"
+          },
+          {
+            "annotation": "EncodeRole",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "role"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
+      "PoolingEndpoint": {
+        "bases": [
+          "rcp_ndcg.inference.config.EmbeddingEndpoint"
+        ],
+        "defined_in": "rcp_ndcg.inference.config",
+        "extra": "forbid",
+        "fields": {
+          "api": {
+            "alias": null,
+            "default": "vllm_pooling",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "api_key_env": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "base_url": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "batch_size": {
+            "alias": null,
+            "default": 32,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "concurrency": {
+            "alias": null,
+            "default": 64,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "connect_timeout_s": {
+            "alias": null,
+            "default": 5.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "dimensions": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "doc_prompt": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "embed_dtype": {
+            "alias": null,
+            "default": "float16",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['float16', 'float32']"
+          },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
+          "max_retries": {
+            "alias": null,
+            "default": 2,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "model": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "normalize": {
+            "alias": null,
+            "default": true,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
+          "query_prompt": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "revision": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "timeout_s": {
+            "alias": null,
+            "default": 600.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "Reply": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.types",
+        "init": [
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "status"
+          },
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "body"
+          },
+          {
+            "annotation": "Mapping[str, str]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "headers"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
+      "RerankEndpoint": {
+        "bases": [
+          "rcp_ndcg.inference.endpoint.Endpoint"
+        ],
+        "defined_in": "rcp_ndcg.inference.config",
+        "extra": "forbid",
+        "fields": {
+          "api": {
+            "alias": null,
+            "default": "rerank",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "api_key_env": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "base_url": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "batch_size": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "concurrency": {
+            "alias": null,
+            "default": 64,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "connect_timeout_s": {
+            "alias": null,
+            "default": 5.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
+          "instruction": {
+            "alias": null,
+            "default": "fold",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['none', 'field', 'fold']"
+          },
+          "listwise": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
+          "max_retries": {
+            "alias": null,
+            "default": 2,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "model": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "revision": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "timeout_s": {
+            "alias": null,
+            "default": 600.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "use_activation": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "bool | None"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "RerankRequest": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.types",
+        "init": [
+          {
+            "annotation": "Content",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "query"
+          },
+          {
+            "annotation": "tuple[Content, ...]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "documents"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "instruction"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
+      "RerankResult": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.types",
+        "init": [
+          {
+            "annotation": "tuple[float, ...]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "scores"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "aligned": {
+            "kind": "classmethod",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "cls"
+              },
+              {
+                "annotation": "RerankRequest",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "request"
+              },
+              {
+                "annotation": "Sequence[float]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "scores"
+              },
+              {
+                "returns": "RerankResult"
+              }
+            ]
+          }
+        }
+      },
+      "Sender": {
+        "bases": [
+          "typing.Protocol"
+        ],
+        "defined_in": "rcp_ndcg.inference.transport",
+        "init": [
+          {
+            "annotation": null,
+            "default": "<required>",
+            "kind": "var_positional",
+            "name": "args"
+          },
+          {
+            "annotation": null,
+            "default": "<required>",
+            "kind": "var_keyword",
+            "name": "kwargs"
+          },
+          {
+            "returns": null
+          }
+        ],
+        "kind": "protocol",
+        "members": {
+          "probe": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "list[EngineInfo]"
+              }
+            ]
+          },
+          "send": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Sequence[Call]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "calls"
+              },
+              {
+                "returns": "list[Reply]"
+              }
+            ]
+          },
+          "usage": "property"
+        }
+      },
+      "TokenCount": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.types",
+        "init": [
+          {
+            "annotation": "int | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "input_tokens"
+          },
+          {
+            "annotation": "int | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "output_tokens"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
+      "Transport": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.transport",
+        "init": [
+          {
+            "annotation": "Endpoint",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "endpoint"
+          },
+          {
+            "annotation": "httpx.AsyncBaseTransport | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "httpx_transport"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "aclose": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "probe": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "list[EngineInfo]"
+              }
+            ]
+          },
+          "run": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Coroutine[Any, Any, T]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "coroutine"
+              },
+              {
+                "returns": "T"
+              }
+            ]
+          },
+          "send": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Sequence[Call]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "calls"
+              },
+              {
+                "returns": "list[Reply]"
+              }
+            ]
+          }
+        }
+      },
+      "Usage": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.types",
+        "init": [
+          {
+            "annotation": "int",
+            "default": 0,
+            "kind": "positional_or_keyword",
+            "name": "calls"
+          },
+          {
+            "annotation": "int",
+            "default": 0,
+            "kind": "positional_or_keyword",
+            "name": "failed_calls"
+          },
+          {
+            "annotation": "int",
+            "default": 0,
+            "kind": "positional_or_keyword",
+            "name": "input_tokens"
+          },
+          {
+            "annotation": "int",
+            "default": 0,
+            "kind": "positional_or_keyword",
+            "name": "output_tokens"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
+      "get_adapter": {
+        "defined_in": "rcp_ndcg.inference.adapters.base",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "name"
+          },
+          {
+            "returns": "type[Adapter[Any, Any]]"
+          }
+        ]
+      },
+      "known_adapters": {
+        "defined_in": "rcp_ndcg.inference.adapters.base",
+        "kind": "function",
+        "signature": [
+          {
+            "returns": "tuple[str, ...]"
+          }
+        ]
+      },
+      "l2_normalize": {
+        "defined_in": "rcp_ndcg.inference.types",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "np.ndarray",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "vectors"
+          },
+          {
+            "returns": "np.ndarray"
+          }
+        ]
+      },
+      "register_adapter": {
+        "defined_in": "rcp_ndcg.inference.adapters.base",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "type[Adapter[Any, Any]]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "cls"
+          },
+          {
+            "returns": "type[Adapter[Any, Any]]"
+          }
+        ]
+      }
+    }
+  },
   "rcp_ndcg.llm": {
     "all": {
       "CostEstimate": {
@@ -7683,7 +9183,7 @@
       },
       "JudgeConfig": {
         "bases": [
-          "rcp_ndcg.support.endpoint.Endpoint"
+          "rcp_ndcg.inference.endpoint.Endpoint"
         ],
         "defined_in": "rcp_ndcg.llm.client",
         "extra": "forbid",
@@ -7694,6 +9194,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "api": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "api_key_env": {
             "alias": null,
@@ -7743,6 +9250,13 @@
             "frozen": false,
             "required": false,
             "type": "dict[str, Any]"
+          },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
           },
           "image_processor": {
             "alias": null,
@@ -8755,6 +10269,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "api": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "api_key_env": {
             "alias": null,
             "default": null,
@@ -8789,6 +10310,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
           },
           "max_retries": {
             "alias": null,
@@ -8824,6 +10352,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
           }
         },
         "frozen": true,
@@ -8854,6 +10389,158 @@
         "frozen": true,
         "kind": "pydantic_model"
       },
+      "Embeddings": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.types",
+        "init": [
+          {
+            "annotation": "np.ndarray",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "vectors"
+          },
+          {
+            "annotation": "np.ndarray | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "offsets"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "as_matrix": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "np.ndarray"
+              }
+            ]
+          },
+          "concat": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Embeddings",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "other"
+              },
+              {
+                "returns": "Embeddings"
+              }
+            ]
+          },
+          "dim": "property",
+          "empty": {
+            "kind": "classmethod",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "cls"
+              },
+              {
+                "annotation": "int",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "dim"
+              },
+              {
+                "annotation": "bool",
+                "default": false,
+                "kind": "keyword_only",
+                "name": "multi_vector"
+              },
+              {
+                "returns": "Embeddings"
+              }
+            ]
+          },
+          "is_multi_vector": "property",
+          "l2_normalized": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "Embeddings"
+              }
+            ]
+          },
+          "num_items": "property",
+          "ragged": {
+            "kind": "classmethod",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "cls"
+              },
+              {
+                "annotation": "Sequence[np.ndarray]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "per_item"
+              },
+              {
+                "returns": "Embeddings"
+              }
+            ]
+          },
+          "single": {
+            "kind": "classmethod",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "cls"
+              },
+              {
+                "annotation": "np.ndarray",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "vectors"
+              },
+              {
+                "returns": "Embeddings"
+              }
+            ]
+          }
+        }
+      },
+      "EncodeRole": {
+        "bases": [
+          "enum.StrEnum"
+        ],
+        "defined_in": "rcp_ndcg.inference.types",
+        "kind": "enum",
+        "values": [
+          "query",
+          "document"
+        ]
+      },
       "EncoderConfig": {
         "kind": "type_alias",
         "type": "rcp_ndcg.retrieval.config.LocalEncoder | rcp_ndcg.retrieval.config.OpenAICompatibleEncoder | rcp_ndcg.retrieval.config.Cohere | rcp_ndcg.retrieval.config.Voyage | rcp_ndcg.retrieval.config.Gemini"
@@ -8865,6 +10552,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "api": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "api_key_env": {
             "alias": null,
             "default": null,
@@ -8900,6 +10594,13 @@
             "required": false,
             "type": "float"
           },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
           "max_retries": {
             "alias": null,
             "default": 8,
@@ -8934,6 +10635,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
           }
         },
         "frozen": true,
@@ -9130,6 +10838,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "api": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "api_key_env": {
             "alias": null,
             "default": null,
@@ -9165,6 +10880,13 @@
             "required": false,
             "type": "float"
           },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
           "max_retries": {
             "alias": null,
             "default": 4,
@@ -9199,6 +10921,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
           }
         },
         "frozen": true,
@@ -9211,6 +10940,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "api": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "api_key_env": {
             "alias": null,
             "default": null,
@@ -9252,6 +10988,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
           },
           "max_retries": {
             "alias": null,
@@ -9301,6 +11044,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
           }
         },
         "frozen": true,
@@ -9313,6 +11063,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "api": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "api_key_env": {
             "alias": null,
             "default": null,
@@ -9347,6 +11104,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
           },
           "max_retries": {
             "alias": null,
@@ -9382,6 +11146,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
           }
         },
         "frozen": true,
@@ -9402,6 +11173,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "api": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "api_key_env": {
             "alias": null,
             "default": null,
@@ -9437,6 +11215,13 @@
             "required": false,
             "type": "float"
           },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
           "max_retries": {
             "alias": null,
             "default": 8,
@@ -9471,6 +11256,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
           }
         },
         "frozen": true,
@@ -9533,6 +11325,21 @@
           },
           {
             "returns": "Index"
+          }
+        ]
+      },
+      "l2_normalize": {
+        "defined_in": "rcp_ndcg.inference.types",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "np.ndarray",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "vectors"
+          },
+          {
+            "returns": "np.ndarray"
           }
         ]
       },
@@ -11917,7 +13724,7 @@
             "default": "<factory list>",
             "frozen": false,
             "required": false,
-            "type": "list[rcp_ndcg.llm.client.EngineInfo]"
+            "type": "list[rcp_ndcg.inference.types.EngineInfo]"
           },
           "error": {
             "alias": null,

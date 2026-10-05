@@ -1,4 +1,5 @@
-"""The judge's engine, started beside a run's job: the one home of :class:`ServeConfig`.
+"""The engines a run starts beside its job: :class:`ServeConfig`, and the serve-by-role types that phase
+planning builds on.
 
 A leaf model, like :class:`~rcp_ndcg.support.resources.Resources`: the run config declares it (``serve:``) and the
 job runners render it, without the run layer importing the runners.
@@ -15,16 +16,27 @@ lack): ``rcp-ndcg run resume --run <dir> --runner slurm|kubernetes`` submits the
 
 from __future__ import annotations
 
+import json
 import shlex
-from typing import Any
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.support.resources import Environment, Resources
 
 #: The environment variable a rendered job sets to the replica URLs (comma-separated); ``rcp-ndcg run resume``
 #: reads it as its ``--judge-urls``.
 JUDGE_URLS_ENV = "RCP_NDCG_JUDGE_URLS"
+
+#: The environment variable a phase's runner sets to the engines of the current phase, as JSON
+#: ``{"encoder": {"urls": [...], "wait_on_outage_s": 900}, ...}``; the coordinator
+#: applies it as a runtime overlay. It is never written into ``run.yaml`` and never reaches an identity, since
+#: ``base_url`` and ``wait_on_outage_s`` are runtime fields. It will replace ``JUDGE_URLS_ENV`` when the
+#: serve-phases work lands; until then the runners still export ``RCP_NDCG_JUDGE_URLS``.
+ENGINES_ENV = "RCP_NDCG_ENGINES"
 
 
 class ServeConfig(BaseModel):
@@ -83,4 +95,158 @@ class ServeConfig(BaseModel):
         return f"http://{host}:{self.port}/v1"
 
 
-__all__ = ["JUDGE_URLS_ENV", "ServeConfig"]
+#: A role an engine can serve. The role fixes which config the engine serves: ``judge`` serves the run's judge,
+#: ``encoder`` serves the retrieval config's encoder, ``reranker`` its reranker.
+EngineRole = Literal["judge", "encoder", "reranker"]
+
+#: The engine a role runs: today's single-engine ``ServeConfig`` (an alias, so every existing use keeps
+#: working while ``serve:`` grows a role per engine).
+EngineConfig = ServeConfig
+
+
+class ServeByRole(BaseModel):
+    """The engines of a run, by role: at most one engine per role, each an :class:`EngineConfig`.
+
+    Attributes:
+        judge: The engine serving the judge, when the job starts one (``None``: the judge is reached at the
+            URLs its config already holds).
+        encoder: The engine serving the retrieval config's encoder.
+        reranker: The engine serving the retrieval config's reranker.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    judge: EngineConfig | None = None
+    encoder: EngineConfig | None = None
+    reranker: EngineConfig | None = None
+
+
+@dataclass(frozen=True)
+class Phase:
+    """One phase of a phased run: the engines it starts, and the steps it runs.
+
+    Attributes:
+        engines: The roles whose engines the phase starts and stops around its steps.
+        steps: The run's steps of this phase, in the order they run.
+    """
+
+    engines: frozenset[EngineRole]
+    steps: tuple[str, ...]
+
+
+class EngineURLs(BaseModel):
+    """The URLs of one role's engines in the current phase, as ``ENGINES_ENV`` carries them.
+
+    Attributes:
+        urls: The replica base URLs of the role's engine, one per replica; at least one.
+        wait_on_outage_s: How long a request waits while every replica of the role is down before
+            :class:`~rcp_ndcg.errors.BackendUnavailableError`; ``None`` waits indefinitely. Runtime: applied as
+            an overlay, never written into a config and never reaching an identity.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    urls: tuple[str, ...] = Field(min_length=1)
+    wait_on_outage_s: float | None = Field(default=None, ge=0)
+
+    @field_validator("urls")
+    @classmethod
+    def _real_urls(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        urls = tuple(url.rstrip("/") for url in value)
+        if any(not url for url in urls):
+            raise ValueError("urls: every entry must be a non-empty base URL")
+        return urls
+
+
+def parse_engines_env(text: str) -> dict[EngineRole, EngineURLs]:
+    """Parse an ``ENGINES_ENV`` value into one :class:`EngineURLs` per role it names.
+
+    Args:
+        text: The variable's value: JSON of the shape ``{"encoder": {"urls": [...], "wait_on_outage_s":
+            900}, ...}``; an empty object is a phase without engines.
+
+    Returns:
+        One :class:`EngineURLs` per role named in ``text``.
+
+    Raises:
+        ConfigError: ``text`` is not JSON, not an object, or names a role that is not one of ``judge``,
+            ``encoder`` or ``reranker``; a value that does not validate as :class:`EngineURLs` is named the
+            same way.
+    """
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ConfigError(
+            f"{ENGINES_ENV} is not valid JSON: {exc.msg} (line {exc.lineno}, column {exc.colno})",
+            hint=f"{ENGINES_ENV} holds the engines of the current phase as JSON, e.g. "
+            '"{"encoder": {"urls": ["http://127.0.0.1:8000/v1"], "wait_on_outage_s": 900}}"',
+            details={"variable": ENGINES_ENV},
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise ConfigError(
+            f"{ENGINES_ENV} must be a JSON object of role -> urls, got {type(parsed).__name__}",
+            hint='expect roles "judge", "encoder" or "reranker", each with its "urls"',
+            details={"variable": ENGINES_ENV},
+        )
+    known = ("judge", "encoder", "reranker")
+    unknown = sorted(str(role) for role in parsed if role not in known)
+    if unknown:
+        raise ConfigError(
+            f"{ENGINES_ENV} names unknown engine role(s) {unknown}",
+            hint=f"known roles: {', '.join(known)}",
+            details={"variable": ENGINES_ENV, "unknown": unknown, "known": list(known)},
+        )
+    from pydantic import ValidationError
+
+    from rcp_ndcg.support.config import config_error
+
+    try:
+        return {role: EngineURLs.model_validate(entry) for role, entry in parsed.items()}
+    except ValidationError as exc:
+        raise config_error(exc) from exc
+
+
+def plan_phases(
+    steps: Sequence[str],
+    serve: ServeByRole,
+    uses: Mapping[str, frozenset[EngineRole]],
+) -> list[Phase]:
+    """The phase plan of a run: a pure function of the steps, the engines and their use.
+
+    A phased run starts each phase's engines, waits for readiness, runs the phase's steps, and stops its
+    engines, so the job's GPUs are the maximum over phases instead of the sum over engines. Consecutive steps
+    that use the same engines share a phase; steps that call no model of a served engine (``calibrate``,
+    ``evaluate``, BM25 retrieval, hosted APIs) form phases without engines. The paper's run becomes four
+    phases: ``retrieve`` (encoder), ``rerank`` (reranker), ``tournament`` with ``rubric`` (judge), then
+    ``calibrate`` with ``evaluate`` (none).
+
+    Args:
+        steps: The run's steps, in the order they run (``retrieve``, ``rerank``, ``tournament``, ``rubric``,
+            ``calibrate``, ``evaluate``).
+        serve: The engines the run starts, by role. A role with no engine is never in a phase, whatever
+            ``uses`` says: the step reaches it over the URLs its config already holds.
+        uses: Per step, the engine roles the step calls; a step absent from the mapping uses no engine. A role
+            a step uses but ``serve`` does not start is ignored for that step.
+
+    Returns:
+        One :class:`Phase` per group of consecutive steps sharing their engines, in order, each with the roles
+        of the engines it starts and the steps it runs.
+
+    Raises:
+        NotImplementedError: The behaviour is the serve-phases work's; this is the frozen signature.
+    """
+    raise NotImplementedError("lane L4a")
+
+
+__all__ = [
+    "ENGINES_ENV",
+    "EngineConfig",
+    "EngineRole",
+    "EngineURLs",
+    "JUDGE_URLS_ENV",
+    "Phase",
+    "ServeByRole",
+    "ServeConfig",
+    "parse_engines_env",
+    "plan_phases",
+]

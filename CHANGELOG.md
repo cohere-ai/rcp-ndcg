@@ -7,9 +7,9 @@ bumps the patch version; from `1.0` on, semantic versioning applies. The public 
 `tests/contract/snapshots/` and `schemas/` pin:
 - the Python names in the `__all__` of the public modules, which `PUBLIC_MODULES` in `tests/contract/surface.py`
   lists: the facade `rcp_ndcg`; `rcp_ndcg_core` with `rcp_ndcg_core.irt`, `.metric`, `.gain` and `.protocol`; and
-  `rcp_ndcg.data`, `rcp_ndcg.data.preprocess`, `rcp_ndcg.retrieval`, `rcp_ndcg.llm`, `rcp_ndcg.calibration`,
-  `rcp_ndcg.eval`, `rcp_ndcg.eval.mteb`, `rcp_ndcg.runs`, `rcp_ndcg.runners`, `rcp_ndcg.errors`, `rcp_ndcg.testing`
-  and `rcp_ndcg.examples`;
+  `rcp_ndcg.data`, `rcp_ndcg.data.preprocess`, `rcp_ndcg.inference`, `rcp_ndcg.retrieval`, `rcp_ndcg.llm`,
+  `rcp_ndcg.calibration`, `rcp_ndcg.eval`, `rcp_ndcg.eval.mteb`, `rcp_ndcg.runs`, `rcp_ndcg.runners`,
+  `rcp_ndcg.errors`, `rcp_ndcg.testing` and `rcp_ndcg.examples`;
 - the command tree with its flags and output schemas, the exit codes, the MCP tools, the packaging (distributions,
   extras, entry points) and the JSON Schemas in `schemas/`.
 
@@ -27,6 +27,43 @@ released together.
 
 - `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
   the step identities (its `IDENTITY_ROLES` declarations); no property changed.
+- **New public module `rcp_ndcg.inference`**: the inference layer between `rcp_ndcg.data` and
+  `rcp_ndcg.retrieval`, with the frozen interfaces the transport, the adapters and the role clients build on. No
+  transport behaviour yet: every behavioural method raises `NotImplementedError`, naming the lane that owns it.
+  - `inference.endpoint`: `Endpoint` moved here from `rcp_ndcg.support.endpoint` (that module is deleted), with
+    new fields `api` (CONTENT; the wire adapter, each role config sets its default), `headers_env` (RUNTIME;
+    header name -> environment variable name, values read from the environment only) and `wait_on_outage_s`
+    (RUNTIME; moved up from `JudgeConfig`, which keeps it through inheritance). Every earlier field and validator
+    is unchanged.
+  - `inference.types`: the wire types `Call`, `Reply`, `TokenCount` and `Usage` (with `__add__`); `EngineInfo`,
+    `CompletionInput` and `Completion` moved here from `rcp_ndcg.llm.client` unchanged (they stay importable
+    from `rcp_ndcg.llm.client`, where the first two and the two error types remain in its `__all__`);
+    `EncodeRole`, `Embeddings` and `l2_normalize` moved here from
+    `rcp_ndcg.retrieval.encoder` (re-exported there and from `rcp_ndcg.retrieval`); and the new role request and
+    result types `EmbedRequest`, `PoolRequest`, `RerankRequest` and `RerankResult` (whose
+    `RerankResult.aligned(request, scores)` refuses a score count that does not match the request's documents).
+  - `inference.adapters`: the `Adapter` protocol (generic in request and result) and its registry
+    (`register_adapter`, `get_adapter`, `known_adapters`, constant `ADAPTER_ENTRY_POINTS =
+    "rcp_ndcg.adapters"`). No adapter is registered yet.
+  - `inference.transport`: the `Sender` protocol and the `Transport` class -- the transport's frozen interface
+    only (`send`, `probe`, `run`, `aclose`); its routing, retries, parking and status-map behaviour is the transport lane's.
+  - `inference.fake`: `FAKE_SCHEME = "fake://"` and the offline fakes' contract; no implementation yet.
+  - `inference.config`: the role endpoint configs `EmbeddingEndpoint` (`api` default `openai_embeddings`),
+    `PoolingEndpoint` (default `vllm_pooling`, with `embed_dtype: float16` by default, `float32` opt-in) and
+    `RerankEndpoint` (default `rerank`, `instruction: fold` default, a `batch_size` refused for a `listwise`
+    model). Not wired into `rcp_ndcg.retrieval.config` yet
+- **`rcp_ndcg.errors` gains `BackendUnavailableError` and `RequestRejectedError`**, moved unchanged from
+  `rcp_ndcg.llm.client` (still importable and exported there). Exit codes do not change: both remain
+  `ProviderError` subclasses at `PROVIDER`, `RequestRejectedError` non-retryable.
+- **`rcp_ndcg.support.serve` gains the serve-by-role types**: `EngineRole`, `EngineConfig` (an alias of the
+  unchanged `ServeConfig`), `ServeByRole`, `Phase`, `ENGINES_ENV = "RCP_NDCG_ENGINES"`, `EngineURLs`,
+  `parse_engines_env`, and the frozen `plan_phases(steps, serve, uses)` signature (behaviour arrives with the serve-phases work).
+- **`rcp_ndcg.llm.client` gains `api` and `headers_env`** through `Endpoint`; `wait_on_outage_s` moves up to
+  `Endpoint` and the judge keeps declaring it only through that inheritance. A judge's identity payload is
+  unchanged: `api` defaults to `None` (omitted from identities until a role config sets it), the other two are
+  runtime fields.
+- New layering charter (`AGENTS.md`): `data → inference → retrieval`; enforced by the new
+  `tests/test_layering.py` (eager imports only; the current tree has no outward import).
 
 ### Fixed
 
@@ -41,6 +78,13 @@ released together.
   its ranked document ids is in the dataset's pools or labels (the message shows one ranked id next to one
   dataset id). Partial overlap keeps scoring as before, and the `UNRANKED_QUERIES` warning names the subsets it
   counts when the scored dataset has more than one.
+
+### Changed
+
+- `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/judge-config.v1.json`,
+  `schemas/run-config.v1.json`) regenerated for the moved and new fields; `tests/test_errors.py` now requires
+  one *root* class per exit code, since the moved outage and refusal types are `ProviderError` subclasses and
+  exit codes do not change.
 
 ## 0.1.0
 

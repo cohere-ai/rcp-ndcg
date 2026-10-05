@@ -10,6 +10,7 @@
 In-process models (``provider: local``) need the ``[local]`` extra and are imported only when used.
 """
 
+from rcp_ndcg.inference.types import Embeddings, EncodeRole, l2_normalize  # noqa: F401  # re-exported
 from rcp_ndcg.retrieval._api import Index, fuse, index, load_index, rerank, retrieve, search
 from rcp_ndcg.retrieval.config import (
     BM25Config,
@@ -32,6 +33,8 @@ __all__ = [
     "BM25Config",
     "Cohere",
     "DenseConfig",
+    "Embeddings",
+    "EncodeRole",
     "EncoderConfig",
     "Gemini",
     "Index",
@@ -46,6 +49,7 @@ __all__ = [
     "Voyage",
     "fuse",
     "index",
+    "l2_normalize",
     "load_index",
     "rerank",
     "retrieve",

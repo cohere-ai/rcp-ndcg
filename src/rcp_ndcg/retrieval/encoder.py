@@ -1,7 +1,7 @@
 """One encoder contract: content in, vectors out, whatever runs it.
 
 An :class:`Encoder` takes :class:`~rcp_ndcg_core.content.Content` and returns
-:class:`Embeddings`. Three things follow from that shape:
+:class:`~rcp_ndcg.inference.types.Embeddings`. Three things follow from that shape:
 
 * **A text corpus and a page corpus go down one path.** ``Content`` is the same
   type either way, so nothing between the reader and the index branches on
@@ -19,150 +19,21 @@ Role belongs to the *call*, not the encoder. Asymmetric embedders need to know
 whether they are seeing a query or a document, but that is a property of the
 batch; one encoder object for both sides keeps the query and document paths from
 drifting apart.
+
+The role types (:class:`~rcp_ndcg.inference.types.EncodeRole`,
+:class:`~rcp_ndcg.inference.types.Embeddings`, :func:`~rcp_ndcg.inference.types.l2_normalize`) live in
+:mod:`rcp_ndcg.inference.types` now and are re-exported here, so every import from this module keeps working.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass
-from enum import StrEnum
 
-import numpy as np
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.errors import CapabilityError
-
-
-def l2_normalize(vectors: np.ndarray) -> np.ndarray:
-    """Every row of ``vectors`` scaled to unit L2 norm (a zero row stays zero), as float32."""
-    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-    return (vectors / np.maximum(norms, 1e-12)).astype(np.float32, copy=False)
-
-
-class EncodeRole(StrEnum):
-    """Which side of the retrieval pair a batch is.
-
-    Asymmetric embedders prepend different instructions per side, and getting it
-    wrong costs recall without raising -- so it is a required argument rather
-    than a default.
-    """
-
-    QUERY = "query"
-    DOCUMENT = "document"
-
-
-@dataclass(frozen=True)
-class Embeddings:
-    """Vectors for a batch of items, single- or multi-vector.
-
-    One type for both because the difference is a layout detail, not a different
-    kind of answer.  Multi-vector output is stored ragged -- all vectors
-    concatenated, plus an offsets array -- rather than padded to a rectangle: a
-    page can be 40 patches or 4000, and padding to the maximum wastes most of
-    the buffer while making a padded row indistinguishable from a real one.
-
-    Attributes:
-        vectors: ``(N, D)`` when single-vector; ``(total_vectors, D)`` when
-            ragged, in item order.
-        offsets: ``None`` when single-vector; otherwise ``(N + 1,)``, so item
-            ``i`` owns ``vectors[offsets[i]:offsets[i + 1]]``.
-    """
-
-    vectors: np.ndarray
-    offsets: np.ndarray | None = None
-
-    def __post_init__(self) -> None:
-        if self.vectors.ndim != 2:
-            raise ValueError(
-                f"Embeddings.vectors must be 2-D (got shape {self.vectors.shape}). "
-                "Multi-vector output is stored flat with `offsets`, not as a 3-D array."
-            )
-        if self.offsets is None:
-            return
-        if self.offsets.ndim != 1 or len(self.offsets) < 1:
-            raise ValueError(f"offsets must be a 1-D array of length num_items + 1, got shape {self.offsets.shape}")
-        if int(self.offsets[0]) != 0:
-            raise ValueError(f"offsets must start at 0, got {int(self.offsets[0])}")
-        if int(self.offsets[-1]) != len(self.vectors):
-            raise ValueError(
-                f"offsets end at {int(self.offsets[-1])} but there are {len(self.vectors)} vectors; "
-                "every vector must belong to exactly one item"
-            )
-        if np.any(np.diff(self.offsets) < 0):
-            raise ValueError("offsets must be non-decreasing")
-
-    # -- shape -------------------------------------------------------------
-    @property
-    def is_multi_vector(self) -> bool:
-        return self.offsets is not None
-
-    @property
-    def num_items(self) -> int:
-        return len(self.vectors) if self.offsets is None else len(self.offsets) - 1
-
-    @property
-    def dim(self) -> int:
-        return int(self.vectors.shape[1])
-
-    def as_matrix(self) -> np.ndarray:
-        """The ``(N, D)`` matrix, for the single-vector consumers (the top-k search).
-
-        Raises on multi-vector rather than pooling silently: collapsing a
-        late-interaction model to one vector per document is a different
-        retrieval method with different numbers, and it should be asked for.
-        """
-        if self.offsets is not None:
-            raise ValueError(
-                f"as_matrix() on multi-vector embeddings ({self.num_items} items, "
-                f"{len(self.vectors)} vectors). Use MaxSim scoring, or pool explicitly first."
-            )
-        return self.vectors
-
-    # -- construction ------------------------------------------------------
-    @classmethod
-    def single(cls, vectors: np.ndarray) -> Embeddings:
-        return cls(vectors=np.ascontiguousarray(vectors, dtype=np.float32))
-
-    @classmethod
-    def ragged(cls, per_item: Sequence[np.ndarray]) -> Embeddings:
-        """Build from one ``(T_i, D)`` array per item (width 0 when every item is empty)."""
-        lengths = [len(item) for item in per_item]
-        width = next((int(item.shape[1]) for item in per_item if len(item)), 0)
-        stacked = (
-            np.concatenate([np.asarray(item, dtype=np.float32) for item in per_item if len(item)], axis=0)
-            if any(lengths)
-            else np.zeros((0, width), dtype=np.float32)
-        )
-        offsets = np.zeros(len(per_item) + 1, dtype=np.int64)
-        np.cumsum(lengths, out=offsets[1:])
-        return cls(vectors=np.ascontiguousarray(stacked, dtype=np.float32), offsets=offsets)
-
-    @classmethod
-    def empty(cls, dim: int, *, multi_vector: bool = False) -> Embeddings:
-        """The zero-item value, so an empty shard needs no special-casing."""
-        vectors = np.zeros((0, dim), dtype=np.float32)
-        return cls(vectors=vectors, offsets=np.zeros(1, dtype=np.int64) if multi_vector else None)
-
-    # -- transforms --------------------------------------------------------
-    def l2_normalized(self) -> Embeddings:
-        """Unit-norm every vector, so an inner product is a cosine.
-
-        Applies per *vector*, not per item, which is what MaxSim needs too.
-        """
-        return Embeddings(vectors=l2_normalize(self.vectors), offsets=self.offsets)
-
-    def concat(self, other: Embeddings) -> Embeddings:
-        """Append *other*'s items after this one's."""
-        if self.is_multi_vector != other.is_multi_vector:
-            raise ValueError("cannot concatenate single-vector and multi-vector embeddings")
-        if self.num_items and other.num_items and self.dim != other.dim:
-            raise ValueError(f"dimension mismatch: {self.dim} vs {other.dim}")
-        vectors = np.concatenate([self.vectors, other.vectors], axis=0) if other.num_items else self.vectors
-        if self.offsets is None or other.offsets is None:
-            return Embeddings(vectors=vectors)
-        shifted = other.offsets[1:] + int(self.offsets[-1])
-        return Embeddings(vectors=vectors, offsets=np.concatenate([self.offsets, shifted]))
+from rcp_ndcg.inference.types import Embeddings, EncodeRole, l2_normalize  # noqa: F401  # re-exported
 
 
 class Encoder(ABC):
@@ -239,4 +110,4 @@ class Encoder(ABC):
         )
 
 
-__all__ = ["EncodeRole", "Embeddings", "Encoder"]
+__all__ = ["Embeddings", "EncodeRole", "Encoder", "l2_normalize"]

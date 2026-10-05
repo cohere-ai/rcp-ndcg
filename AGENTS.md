@@ -23,9 +23,10 @@ secrets. Run the narrowest test first, then the whole suite before you finish.
 - `packages/rcp-ndcg-core` (`rcp_ndcg_core`): the metric, the gains, the scoring protocols, the public records and
   the IRT estimators. numpy and pydantic only; torch is imported lazily inside `irt/` and nowhere else.
 - `src/rcp_ndcg`: the pipeline and the CLI. Imports point inward only, in this order:
-  `rcp_ndcg_core → support → storage → data → retrieval → llm → calibration → eval → runners → runs → schemas | mcp → cli`.
+  `rcp_ndcg_core → support → storage → data → inference → retrieval → llm → calibration → eval → runners → runs → schemas | mcp → cli`.
   Eager imports have no cycles; `schemas` and `mcp` import the CLI's command table lazily, to describe and serve it.
-  Job runners are loaded through the `rcp_ndcg.runners` entry-point group, the one plugin seam.
+  Job runners are loaded through the `rcp_ndcg.runners` entry-point group, the one plugin seam for job execution
+  (adapters have their own: `rcp_ndcg.adapters`).
 - `experiments/`: paper reproduction from public data. It imports the package; the package never imports it.
 - `examples/`: runnable examples (`tests/docs` runs them). `skills/rcp-ndcg/`: the skill for agents that use the
   package. `schemas/`: exported JSON Schemas, generated and committed.
@@ -42,6 +43,7 @@ Before adding a helper, `git grep` for an existing one. A second implementation 
 | Judging: the client, the schedules, the judgement store, cost estimates | `rcp_ndcg.llm` |
 | Prompts (tournament, rubric, vision and video variants) | `src/rcp_ndcg/llm/prompts/`, loaded by name |
 | Text, image and video preprocessing, caps and chunking | `rcp_ndcg.data.preprocess` (text), `rcp_ndcg.data.resolution` (image and video policies), `rcp_ndcg.data.prepare` (media sent to a judge) |
+| Wire adapters, the transport, replicas, parking, provenance probe | `rcp_ndcg.inference` |
 | Evaluation: scoring rankings, comparisons, explanations, MTEB tasks | `rcp_ndcg.eval` |
 | Job execution (local, SLURM, Kubernetes, plugins) | `rcp_ndcg.runners` |
 | Paths, cache and storage URIs | `rcp_ndcg.support`, `rcp_ndcg.storage` |

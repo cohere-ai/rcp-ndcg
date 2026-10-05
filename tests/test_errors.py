@@ -95,13 +95,21 @@ def test_the_error_object_has_the_envelope_shape() -> None:
 
 
 def test_every_exit_code_has_exactly_one_error_class() -> None:
+    """One root class per exit code; subclasses (the outage and refusal types of the inference layer) share
+    their parent's code and never own a second one."""
     classes = [obj for obj in vars(errors).values() if isinstance(obj, type) and issubclass(obj, RcpNdcgError)]
-    owners: dict[ExitCode, list[str]] = {}
+    owners: dict[ExitCode, list[type[RcpNdcgError]]] = {}
     for cls in classes:
-        owners.setdefault(cls.exit_code, []).append(cls.__name__)
+        owners.setdefault(cls.exit_code, []).append(cls)
 
     assert set(owners) == set(ExitCode) - {ExitCode.SUCCESS}
-    assert all(len(names) == 1 for names in owners.values()), owners
+    for code, owners_classes in owners.items():
+        roots = [
+            cls
+            for cls in owners_classes
+            if not any(root is not cls and issubclass(cls, root) for root in owners_classes)
+        ]
+        assert len(roots) == 1, {code.name: [cls.__name__ for cls in owners_classes]}
 
 
 def test_a_retired_exit_code_is_never_reused() -> None:

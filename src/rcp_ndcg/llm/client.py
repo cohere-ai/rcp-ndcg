@@ -42,20 +42,28 @@ from pathlib import Path
 from typing import Any, ClassVar, Self
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from rcp_ndcg_core.content import Content
+from pydantic import BaseModel, Field, field_validator, model_validator
 from rcp_ndcg_core.schemas import Decoding
 
 from rcp_ndcg.data.resolution import ImageProcessor
-from rcp_ndcg.errors import CapabilityError, CredentialsError, ProviderError
-from rcp_ndcg.support.endpoint import Endpoint
+from rcp_ndcg.errors import (
+    BackendUnavailableError,
+    CapabilityError,
+    CredentialsError,
+    ProviderError,
+    RequestRejectedError,
+)
+from rcp_ndcg.inference.endpoint import Endpoint
+from rcp_ndcg.inference.fake import FAKE_SCHEME
+from rcp_ndcg.inference.types import Completion, CompletionInput, EngineInfo
 from rcp_ndcg.support.identity import FieldRole, identity_payload
 from rcp_ndcg.support.logging import get_logger
 
 logger = get_logger(__name__)
 
-#: ``base_url`` of the offline fake judge (``JudgeConfig.fake``).
-FAKE_URL_SCHEME = "fake://"
+#: ``base_url`` of the offline fake judge (``JudgeConfig.fake``); the scheme is the inference layer's, at
+#: :data:`rcp_ndcg.inference.fake.FAKE_SCHEME`.
+FAKE_URL_SCHEME = FAKE_SCHEME
 
 #: HTTP statuses that say "this endpoint cannot serve right now", not "this request is wrong".
 _UNAVAILABLE_STATUSES = frozenset({408, 429})
@@ -63,19 +71,9 @@ _UNAVAILABLE_STATUSES = frozenset({408, 429})
 #: Keys the endpoint may use for the reasoning channel.
 REASONING_KEYS = ("reasoning_content", "reasoning")
 
-
-class BackendUnavailableError(ProviderError):
-    """Every replica of the endpoint stayed unavailable for longer than ``wait_on_outage_s``."""
-
-
-class RequestRejectedError(ProviderError):
-    """The endpoint refused this one request (e.g. HTTP 400 for a prompt over the context) or answered it empty.
-
-    Specific to the request: the endpoint serves other requests, so a judging pass
-    records the window as invalid and goes on, and a resumed pass asks it again.
-    """
-
-    retryable = False
+# The outage and rejection types are the inference layer's: their home is
+# ``rcp_ndcg.errors`` and they are imported at the top, so every path that imports them from
+# ``rcp_ndcg.llm.client`` keeps working. They stay in this module's ``__all__``.
 
 
 def _status(exc: BaseException) -> tuple[int, str] | None:
@@ -111,11 +109,11 @@ _DATED_SNAPSHOT = re.compile(r"-\d{4}-\d{2}-\d{2}$")
 
 
 class JudgeConfig(Endpoint):
-    """One judge: an OpenAI-compatible :class:`~rcp_ndcg.support.endpoint.Endpoint` with sampling settings.
+    """One judge: an OpenAI-compatible :class:`~rcp_ndcg.inference.endpoint.Endpoint` with sampling settings.
 
-    The endpoint fields (``model``, ``revision``, ``api_key_env``, ``concurrency``, the timeouts and
-    retries) are :class:`~rcp_ndcg.support.endpoint.Endpoint`'s; ``revision`` is recorded in the judgement
-    family, so two checkpoints served under one name never pool.
+    The endpoint fields (``model``, ``revision``, ``api_key_env``, ``headers_env``, ``concurrency``, the
+    timeouts, retries and ``wait_on_outage_s``) are :class:`~rcp_ndcg.inference.endpoint.Endpoint`'s;
+    ``revision`` is recorded in the judgement family, so two checkpoints served under one name never pool.
 
     Attributes:
         base_url: The endpoint, e.g. ``http://localhost:8000/v1``, or a list of replica URLs of the same served model
@@ -147,9 +145,6 @@ class JudgeConfig(Endpoint):
             local path to a ``tokenizer.json`` (:func:`~rcp_ndcg.data.tokenizer.load_tokenizer`; ``[hf]`` extra).
             ``None`` (the default): no text is cut, so only ``on_overflow: keep`` runs, and estimates
             approximate tokens from characters. The file's SHA-256 enters the judgement family.
-        wait_on_outage_s: How long a request waits while the endpoint is down before
-            :class:`BackendUnavailableError`, counted from the request's first unavailable failure (time spent
-            queued behind the concurrency limit never counts); ``None`` waits indefinitely.
         allow_floating_model: Accept an undated model alias on the OpenAI API. An alias
             (``gpt-5``) moves between snapshots, so judgements recorded against it are not
             reproducible; by default only a dated snapshot (``gpt-5-2025-08-07``) is accepted.
@@ -169,7 +164,6 @@ class JudgeConfig(Endpoint):
         "tokenizer": FieldRole.RUNTIME,
         "max_images": FieldRole.RUNTIME,
         "max_videos": FieldRole.RUNTIME,
-        "wait_on_outage_s": FieldRole.RUNTIME,
         "allow_floating_model": FieldRole.RUNTIME,
     }
 
@@ -183,7 +177,6 @@ class JudgeConfig(Endpoint):
     max_videos: int = Field(default=0, ge=0)
     image_processor: ImageProcessor | None = None
     tokenizer: str | None = Field(default=None, min_length=1)
-    wait_on_outage_s: float | None = Field(default=None, ge=0)
     allow_floating_model: bool = False
 
     @field_validator("base_url")
@@ -265,38 +258,9 @@ class JudgeConfig(Endpoint):
         return value
 
 
-class CompletionInput(BaseModel):
-    """One prompt: the rendered user text, optional media parts and an optional answer format.
-
-    ``user_prompt`` is the text rendering (what parsers and token estimates read);
-    ``user_content`` carries the interleaved parts when the prompt holds media;
-    ``response_format`` is sent as the request's OpenAI-standard ``response_format``
-    (a ``json_schema`` one when the answer is constrained), and left out when ``None``.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    user_prompt: str
-    user_content: Content | None = None
-    response_format: dict[str, Any] | None = None
-
-    @property
-    def has_media(self) -> bool:
-        return self.user_content is not None and self.user_content.has_media
-
-
-class Completion(BaseModel):
-    """One answer, with the tokens it used when the endpoint reported them (internal: judging stores a Judgement).
-
-    ``finish_reason`` is the endpoint's own word (``"stop"``, ``"length"``, and whatever else a server
-    reports, such as ``"abort"``), or ``None`` when it reports none.
-    """
-
-    response: str
-    reasoning: str | None = None
-    finish_reason: str | None = "stop"
-    input_tokens: int | None = None
-    output_tokens: int | None = None
+# The judge's prompt and answer types, and the per-replica probe record, are the inference layer's
+# their home is ``rcp_ndcg.inference.types`` and they are imported at the top, so every
+# path that imports them from ``rcp_ndcg.llm.client`` keeps working. They stay in this module's ``__all__``.
 
 
 class Usage(BaseModel):
@@ -317,34 +281,6 @@ class Usage(BaseModel):
             output_tokens=self.output_tokens + other.output_tokens,
             cached_input_tokens=self.cached_input_tokens + other.cached_input_tokens,
         )
-
-
-class EngineInfo(BaseModel):
-    """What one replica says about itself, read best effort: runtime information, never part of an identity.
-
-    Read from the standard ``GET <base_url>/models`` (the entry of the served model) and the response headers,
-    and from the ``system_fingerprint`` of the replica's first completion; nothing engine-specific is asked.
-
-    Attributes:
-        url: The replica's base URL.
-        model: The served model id the endpoint lists (the judge's ``model`` when listed, else the first).
-        owned_by: The entry's ``owned_by``; open-source engines put their own name there.
-        max_model_len: The served context in tokens, when the endpoint reports it.
-        headers: The response's ``server`` header and any header naming a version.
-        system_fingerprint: The ``system_fingerprint`` of the first completion, when the endpoint sends one (some
-            engines put their version in it).
-        error: Why the endpoint could not be read; the other fields are then empty.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    url: str
-    model: str | None = None
-    owned_by: str | None = None
-    max_model_len: int | None = None
-    headers: dict[str, str] = Field(default_factory=dict)
-    system_fingerprint: str | None = None
-    error: str | None = None
 
 
 @dataclass
