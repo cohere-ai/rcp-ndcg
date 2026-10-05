@@ -10,7 +10,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from deterministic import DIM, token_id, token_vectors, tokens, vector  # noqa: E402
+from deterministic import DIM, FixtureTokenizer, token_id, token_vectors, tokens, vector  # noqa: E402
 
 QUERY_PROMPT = "query: "
 DOC_PROMPT = "doc: "
@@ -45,3 +45,8 @@ def embed_dense(texts: list[str], role: str) -> list[np.ndarray]:
 
 
 __all__ = ["DIM", "DOC_PROMPT", "QUERY_PROMPT", "embed", "embed_dense", "load", "render", "tokens"]
+
+
+def tokenizer() -> FixtureTokenizer:
+    """The fixture tokenizer for stage 1 (a production reference omits this; the harness loads client.tokenizer)."""
+    return FixtureTokenizer()

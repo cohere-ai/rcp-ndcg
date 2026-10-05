@@ -1,0 +1,6 @@
+SYSTEM: Judge whether the Document answers the Query. Answer yes or no.
+USER:
+Query: {{ query }}
+{% if instruction %}Instruction: {{ instruction }}
+{% endif %}Document: {{ document }}
+ASSISTANT:

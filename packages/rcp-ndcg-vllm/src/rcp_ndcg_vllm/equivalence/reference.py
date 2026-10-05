@@ -14,6 +14,10 @@ code).  The interface, which every recipe lane implements:
   ``"query"`` or ``"document"``; the reference composes its own prompts.
 - ``render(query: str, document: str, instruction: str | None) -> list[int]`` — stage 1: the token ids of the exact
   prompt the engine must see for that pair.  For an embedding recipe, the ids of ``doc_prompt + document``.
+
+An optional fifth member serves CPU-only checking (tests and CI): ``tokenizer() -> object`` returning an object
+with ``encode(text) -> list[int]`` and ``id_to_token(id) -> str``; when present the harness uses it for stage 1
+instead of loading ``client.tokenizer`` from the Hub with transformers.  Production references omit it.
 """
 
 from __future__ import annotations

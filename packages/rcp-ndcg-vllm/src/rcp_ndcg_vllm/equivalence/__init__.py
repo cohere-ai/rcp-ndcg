@@ -64,6 +64,8 @@ def run(
             reference = _stored_scores_stub(recipe)
         else:
             reference = load_reference(_recipe_dir(recipe), recipe.reference.entry)
+    if tokenizer is None:
+        tokenizer = _tokenizer_for(recipe, reference)
     if limit is not None:
         pairs = pairs[:limit]
     document: dict[str, Any] = {
@@ -92,6 +94,14 @@ def run(
     )
     write_report(out_dir, document)
     return document
+
+
+def _tokenizer_for(recipe: Recipe, reference: Reference) -> TokenizerAdapter:
+    """The stage-1 tokenizer: a reference-provided ``tokenizer()`` hook, else the recipe's ``client.tokenizer``."""
+    provided = getattr(reference._module, "tokenizer", None)
+    if callable(provided):
+        return provided()
+    return load_tokenizer(recipe)
 
 
 def _recipe_dir(recipe: Recipe) -> str:

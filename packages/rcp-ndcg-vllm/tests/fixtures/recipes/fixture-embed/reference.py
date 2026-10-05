@@ -10,7 +10,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from deterministic import DIM, vector  # noqa: E402
+from deterministic import DIM, FixtureTokenizer, vector  # noqa: E402
 
 QUERY_PROMPT = "query: "
 DOC_PROMPT = "doc: "
@@ -37,7 +37,12 @@ def embed(texts: list[str], role: str) -> list[np.ndarray]:
     """Stage 2: one unit vector per text; the reference composes the same prompts the client sends."""
     assert _loaded
     prefix = QUERY_PROMPT if role == "query" else DOC_PROMPT
-    return [vector(prefix + text, f"embed-{role}").astype(np.float16) for text in texts]
+    return [vector(prefix + text, "embed") for text in texts]
 
 
 __all__ = ["DIM", "DOC_PROMPT", "QUERY_PROMPT", "embed", "load", "render"]
+
+
+def tokenizer() -> FixtureTokenizer:
+    """The fixture tokenizer for stage 1 (a production reference omits this; the harness loads client.tokenizer)."""
+    return FixtureTokenizer()

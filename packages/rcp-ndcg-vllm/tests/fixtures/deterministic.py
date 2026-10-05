@@ -48,6 +48,22 @@ def tokens(text: str) -> list[str]:
     return [word for word in text.lower().replace(".", " ").split() if word]
 
 
+class FixtureTokenizer:
+    """The fixture tokenizer: whitespace words with deterministic ids (the harness's TokenizerAdapter protocol).
+
+    Recipe references may provide ``tokenizer()`` to check stage 1 without a Hub download; a production reference
+    omits it and the harness loads ``client.tokenizer`` with transformers.
+    """
+
+    def encode(self, text: str) -> list[int]:
+        """Token ids of ``text`` without special tokens."""
+        return [token_id(word) for word in tokens(text)]
+
+    def id_to_token(self, token_id_value: int) -> str:
+        """The token string of one id (the fixture prints the id itself; strings are for the report only)."""
+        return f"tok:{token_id_value}"
+
+
 def token_vectors(text: str, tag: str, *, noise: float = 0.0) -> np.ndarray:
     """One unit vector per whitespace token of ``text``, shape ``(n_tokens, DIM)`` in float16."""
     words = tokens(text) or ["<empty>"]

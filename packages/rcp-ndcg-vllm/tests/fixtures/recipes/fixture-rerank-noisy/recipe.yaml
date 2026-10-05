@@ -1,0 +1,44 @@
+id: fixture-rerank-noisy
+model: fixtures/NoisyReranker
+revision: "0123456789abcdef0123456789abcdef01234567"
+role: rerank
+input: [text]
+scoring: pointwise
+licence: apache-2.0
+engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0", startup_timeout_s: 60}
+resources: {gpus: 1}
+serve:
+  runner: pooling
+  convert: null
+  hf_overrides:
+    architectures: [FixtureForSequenceClassification]
+    classifier_from_token: [no, "yes"]
+    is_original_fixture_reranker: true
+  chat_template: template.jinja
+  pooler_config: {activation: sigmoid}
+  trust_remote_code: false
+  max_model_len: 512
+  dtype: bfloat16
+  plugin: null
+  extra_args: ["--noise", "0.2"]
+client:
+  api: rerank
+  query_prompt: ""
+  doc_prompt: ""
+  instruction: fold
+  default_instruction: Follow the task.
+  tokenizer: "fixtures/NoisyReranker@0123456789abcdef0123456789abcdef01234567"
+  max_tokens: 512
+  normalize: null
+  dimensions: null
+  use_activation: null
+  batch_size: null
+reference:
+  kind: transformers
+  score_scale: probability
+  entry: reference.py
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources:
+  - https://example.invalid/model-card
+notes: "The pointwise fixture with a stub-only noise flag in extra_args: the served scores fail the gates."

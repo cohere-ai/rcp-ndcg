@@ -10,7 +10,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from deterministic import score, token_id, tokens, vector  # noqa: E402
+from deterministic import FixtureTokenizer, score, token_id, tokens, vector  # noqa: E402
 
 INSTRUCTION = "Rank by recency."
 _TEMPLATE_HEAD = (
@@ -54,3 +54,8 @@ def embed(texts: list[str], role: str) -> list[np.ndarray]:
 
 
 __all__ = ["embed", "load", "prompt", "render", "score_query", "tokens", "vector"]
+
+
+def tokenizer() -> FixtureTokenizer:
+    """The fixture tokenizer for stage 1 (a production reference omits this; the harness loads client.tokenizer)."""
+    return FixtureTokenizer()
