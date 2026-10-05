@@ -134,6 +134,9 @@ def _record_ref(repo_id: str, ref: str, commit: str) -> None:
     try:
         if path.is_file() and path.read_text(encoding="utf-8").strip() == commit:
             return
+    except (OSError, UnicodeDecodeError):
+        pass  # unreadable or corrupt ref: write over it
+    try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f"{path.name}.{os.getpid():x}{uuid4().hex[:8]}.tmp")
         tmp.write_text(commit, encoding="utf-8")
@@ -149,7 +152,7 @@ def _cached_commit(repo_id: str, ref: str) -> str | None:
     path = hub_cache_dir() / f"datasets--{repo_id.replace('/', '--')}" / "refs" / ref
     try:
         sha = path.read_text(encoding="utf-8").strip()
-    except OSError:
+    except (OSError, UnicodeDecodeError):  # absent, unreadable or corrupt: nothing usable is recorded there
         return None
     return sha if _COMMIT.match(sha) else None
 

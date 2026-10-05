@@ -141,8 +141,12 @@ def _chained(exc: BaseException, cause: BaseException) -> BaseException:
         return raised
 
 
-def test_an_offline_cache_miss_with_nothing_to_resolve_names_the_revision_fix() -> None:
-    """Offline, a cache miss with no resolvable commit is not retryable and pins the commit as the fix."""
+def test_an_offline_cache_miss_is_not_retryable_and_names_the_offline_state() -> None:
+    """Offline, a cache miss is a missing input, non-retryable; the hint stays surface-neutral.
+
+    The `--revision` flag wording belongs to the dataset surface, which knows whether the revision is already
+    resolved; other surfaces (a tokenizer, say) have no such flag.
+    """
     hub_errors = pytest.importorskip("huggingface_hub.errors")
     raised = _chained(
         hub_errors.LocalEntryNotFoundError("An error happened while trying to locate the file on the Hub"),
@@ -153,12 +157,23 @@ def test_an_offline_cache_miss_with_nothing_to_resolve_names_the_revision_fix() 
 
     assert isinstance(error, MissingInputError)
     assert error.retryable is False
-    assert "--revision" in (error.hint or "")
-    assert "full sha" in (error.hint or "")
+    assert "HF_HUB_OFFLINE" in (error.hint or "")
+    assert "--revision" not in (error.hint or "")
+
+
+def test_offline_mode_raised_bare_is_a_missing_input_not_a_provider_error() -> None:
+    """A Hub call refused offline (``OfflineModeIsEnabled`` raised on its own) is not a retryable provider error."""
+    hub_errors = pytest.importorskip("huggingface_hub.errors")
+
+    error = classify(hub_errors.OfflineModeIsEnabled("offline mode is enabled"))
+
+    assert isinstance(error, MissingInputError)
+    assert error.retryable is False
+    assert "HF_HUB_OFFLINE" in (error.hint or "")
 
 
 def _unreachable_hub_causes() -> list[BaseException]:
-    """The connection failures huggingface_hub chains under a cache miss (httpx, requests, sockets)."""
+    """The connection failures huggingface_hub chains under a cache miss (httpx, requests, sockets, a down Hub)."""
     import httpx
 
     causes: list[BaseException] = [httpx.ConnectError("connection refused"), httpx.TimeoutException("timed out")]
@@ -168,6 +183,9 @@ def _unreachable_hub_causes() -> list[BaseException]:
         causes.append(RequestsConnectionError("connection refused"))
     except ImportError:  # pragma: no cover - requests ships with the hf extra's older lines
         pass
+    hub_errors = pytest.importorskip("huggingface_hub.errors")
+    down = httpx.Response(503, request=httpx.Request("HEAD", "https://hub.example/"))
+    causes.append(hub_errors.HfHubHTTPError("503 Service Unavailable", response=down))
     return causes
 
 

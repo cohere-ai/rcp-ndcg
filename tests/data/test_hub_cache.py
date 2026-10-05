@@ -155,7 +155,10 @@ def test_offline_pinned_run_serves_an_absent_optional_table(cache: Path) -> None
 
 
 def test_offline_uncached_optional_table_names_the_offline_fix(cache: Path) -> None:
-    """An optional table the cache knows nothing about is an error with the offline fix, not a silent absence."""
+    """An optional table the cache knows nothing about is an error with the offline fix, not a silent absence.
+
+    The revision is already pinned: the hint must not tell the caller to pin what is pinned.
+    """
     stage(cache, files={f"{SUBSET}/qrels.parquet": _TABLES[f"{SUBSET}/qrels.parquet"]})
 
     with pytest.raises(MissingInputError) as caught:
@@ -164,7 +167,46 @@ def test_offline_uncached_optional_table_names_the_offline_fix(cache: Path) -> N
     error = caught.value
     assert error.retryable is False
     assert "HF_HUB_OFFLINE" in (error.hint or "")
+    assert "--revision" not in (error.hint or ""), "the revision is already pinned; the hint says what is missing"
     assert error.details["path"] == f"{SUBSET}/top_ranked.parquet"
+
+
+def test_offline_pinned_required_table_the_cache_marks_absent_says_does_not_exist(cache: Path) -> None:
+    """A ``.no_exist`` mark is the cache's proof the repository has no such table: the error says so, at any pin."""
+    stage(cache, files={}, absent=(f"{SUBSET}/qrels.parquet",))
+
+    with pytest.raises(MissingInputError) as caught:
+        load_dataset(f"hf://{REPO}/{SUBSET}", revision=SHA)
+
+    assert f"{SUBSET}/qrels.parquet does not exist at {SHA}" in caught.value.message
+    assert caught.value.hint
+
+
+def test_offline_corpus_materializes_from_the_snapshot(cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Offline, the repository listing comes from the local snapshot, so a run reads its corpus from the cache."""
+    card = (
+        "---\nconfigs:\n- config_name: hr__english-corpus\n  data_files:\n  - path: hr__english/corpus/*.parquet\n---\n"
+    )
+    corpus = pd.DataFrame({"id": ["a", "b"], "title": ["A", ""], "text": ["alpha", "beta"]})
+    tables = {**_TABLES, f"{SUBSET}/corpus/part-0.parquet": corpus}
+    snapshot = stage(cache, files=tables, absent=(f"{SUBSET}/excluded.parquet",))
+    (snapshot / "README.md").write_text(card)
+    _offline(monkeypatch)
+
+    dataset = load_dataset(f"hf://{REPO}/{SUBSET}", revision=SHA)
+
+    assert {d: doc.text for d, doc in dataset.corpus.items()} == {"a": "A\n\nalpha", "b": "beta"}
+
+
+def test_offline_listing_without_a_snapshot_names_the_revision_fix(cache: Path) -> None:
+    """With no snapshot to list, the offline failure is the classified cache miss with the revision fix."""
+    from rcp_ndcg.data.dataset import _hub_listing
+
+    with pytest.raises(MissingInputError) as caught:
+        _hub_listing(REPO, None)
+
+    assert caught.value.retryable is False
+    assert "--revision" in (caught.value.hint or "")
 
 
 def test_an_unreachable_hub_is_a_retryable_provider_error(cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -106,6 +106,24 @@ class TestResolveRevision:
         assert (resolved.commit, resolved.verified) == (None, False)
         assert "org/data@main" in caplog.text
 
+    def test_a_corrupt_cache_ref_is_rewritten_online_and_absent_offline(
+        self, hub: FakeHub, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A ref file that is not valid text never breaks a resolution: the online resolve writes over it."""
+        import os
+
+        ref = Path(os.environ["HF_HUB_CACHE"]) / "datasets--BeIR--fiqa" / "refs" / "main"
+        ref.parent.mkdir(parents=True)
+        ref.write_bytes(b"\xff\xfe not utf-8")
+        hub.move("dataset", "BeIR/fiqa", SHA_A)
+
+        assert resolve_revision("BeIR/fiqa", None).commit == SHA_A
+        assert ref.read_text() == SHA_A
+
+        resolve_revision.cache_clear()  # the offline run is another process
+        monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+        assert resolve_revision("BeIR/fiqa", None).commit == SHA_A
+
 
 # ---------------------------------------------------------------------------
 # The corpus: dataset identity

@@ -305,9 +305,10 @@ def classify(exc: BaseException) -> RcpNdcgError:
       rejected credentials (``openai``, gated Hub repositories) are :class:`CredentialsError`; a Hub repository,
       file or revision that does not exist is :class:`MissingInputError`;
     * a Hub download that found neither the file nor a usable cache entry (``LocalEntryNotFoundError``) is read
-      from its cause (``__cause__`` / ``__context__``): offline with nothing to resolve is a non-retryable
-      :class:`MissingInputError` whose hint pins ``--revision <full sha>``; a Hub that cannot be reached is a
-      retryable :class:`ProviderError`;
+      from its cause (``__cause__`` / ``__context__``): offline is a non-retryable :class:`MissingInputError`
+      (the dataset surface adds the ``--revision`` wording where it knows the revision is not resolved); a Hub
+      that cannot be reached — connection failure, timeout, or answering 5xx or 429 — is a retryable
+      :class:`ProviderError`;
     * ``KeyboardInterrupt`` is :class:`Interrupted`.
 
     Everything else, including a bare ``ValueError`` or ``TypeError``, is an unexpected failure (exit 1): code
@@ -330,32 +331,50 @@ def classify(exc: BaseException) -> RcpNdcgError:
     if isinstance(exc, ImportError) and _INSTALL_MARKER in str(exc):
         text = str(exc)
         return DependencyError(text, hint=text[text.find("pip install") :] if "pip install" in text else None)
+
     # before FileNotFoundError, which it subclasses: an offline cache miss is not a missing file.
     # The library raises LocalEntryNotFoundError for every Hub failure it cannot answer from the local cache,
     # chaining the real cause; the cause says what a caller should do, the message alone does not.
+    # A Hub that is down (5xx) or rate-limiting (429) is unreachable for now: the same retryable provider failure
+    # huggingface_hub itself buckets with the transport errors.
+    def offline_miss() -> MissingInputError:
+        """The offline Hub failure: retrying cannot help; the fix is online once, or pinning what the cache has."""
+        return MissingInputError(
+            name,
+            hint="the Hub is unreachable offline (HF_HUB_OFFLINE); run once online to download the file, or pin "
+            "the revision the cache was filled at",
+        )
+
+    def hub_down(cause: BaseException | None) -> bool:
+        """Whether *cause* is the Hub answering with a failure a later retry can survive."""
+        if not _named(cause, "huggingface_hub.errors", "HfHubHTTPError"):
+            return False
+        status = getattr(getattr(cause, "response", None), "status_code", 0)
+        return status >= 500 or status == 429
+
+    if _named(exc, "huggingface_hub.errors", "OfflineModeIsEnabled"):
+        return offline_miss()
     if _named(exc, "huggingface_hub.errors", "LocalEntryNotFoundError"):
         cause = exc.__cause__ or exc.__context__
         # Offline with nothing to resolve: OfflineModeIsEnabled (a ConnectionError subclass, so told apart
         # before any transport check) with no resolvable commit, or the offline flag with no cause at all.
-        offline_with_nothing_to_resolve = _named(cause, "huggingface_hub.errors", "OfflineModeIsEnabled") or (
-            cause is None and os.environ.get("HF_HUB_OFFLINE", "").strip().lower() in {"1", "true", "yes", "on"}
+        offline = _named(cause, "huggingface_hub.errors", "OfflineModeIsEnabled") or (
+            cause is None
+            # the values revisions.hub_offline() accepts; importing it would point errors below data
+            and os.environ.get("HF_HUB_OFFLINE", "").strip().lower() in {"1", "true", "yes", "on"}
         )
-        if not offline_with_nothing_to_resolve and (
+        if not offline and (
             _named(cause, "httpx", "TransportError")
             or _named(cause, "requests", "ConnectionError", "Timeout", "ConnectTimeout", "ReadTimeout")
             or isinstance(cause, ConnectionError | TimeoutError)
+            or hub_down(cause)
         ):
             return ProviderError(
                 name,
                 hint="the Hugging Face Hub could not be reached; check connectivity and HF_ENDPOINT, then retry",
             )
-        if offline_with_nothing_to_resolve:
-            return MissingInputError(
-                name,
-                hint="the Hub is unreachable offline (HF_HUB_OFFLINE) and the cache cannot resolve the revision: "
-                "pass --revision <full sha> (the cache was filled by a commit-pinned download), or run once "
-                "online to fill it",
-            )
+        if offline:
+            return offline_miss()
         return MissingInputError(
             name,
             hint="the file is not in the local Hub cache and Hub access is off (HF_HUB_OFFLINE); "
