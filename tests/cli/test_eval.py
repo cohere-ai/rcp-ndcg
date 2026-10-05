@@ -370,3 +370,21 @@ def test_a_partial_snapshot_listing_carries_its_warning_in_the_envelope(
     assert [warning["code"] for warning in explained["warnings"]] == ["SNAPSHOT_LISTING"]
     assert "partial cache" in explained["warnings"][0]["message"]
     assert explained["data"]["texts"] == {"a": "alpha"}, "the corpus came from the snapshot"
+
+
+def test_explain_report_of_an_empty_summary_refuses_like_before(dataset: str, tmp_path: Path) -> None:
+    """A report whose only metric matched no labelled query has no systems: the query refusal, exit 12."""
+    rows = tmp_path / "no_qrels.jsonl"
+    rows.write_text(json.dumps({"query_id": "q1", "query": "q", "doc_ids": ["a"], "docs": ["A"], "qrels": {}}) + "\n")
+    rankings = tmp_path / "run.jsonl"
+    Rankings.from_orders({"q1": ["a"]}, system="mine").save(rankings)
+
+    scored = _invoke("score", "--rankings", str(rankings), "--dataset", f"jsonl:{rows}", "--metrics", "qrel_ndcg",
+                     "--out", str(tmp_path / "empty.json"))  # fmt: skip
+    assert scored["ok"] is True, scored
+    assert scored["data"]["summary"] == []
+
+    explained = _invoke("explain", "--report", str(tmp_path / "empty.json"), "--query-id", "q1")
+
+    assert explained["exit_code"] == 12, explained
+    assert "not in the report" in explained["error"]["message"]

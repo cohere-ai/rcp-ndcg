@@ -207,6 +207,11 @@ def explain(
 
     systems, orders = [], {}
     scored = report.systems  # the systems the report scored (systems= may have restricted the rankings' file)
+    if not scored:
+        raise DataError(
+            f"the report scored no systems (its metrics matched no labelled queries of {data.name!r})",
+            hint="score the query with a metric that has labels for it: RCP gains for rcp_ndcg, qrels for qrel_ndcg",
+        )
     for system in scored:
         scores = _system_queries(rankings, system, part.name).get(query_id, {})
         entering = candidate_docs(

@@ -78,7 +78,7 @@ def _targets_of_import(node: ast.Import | ast.ImportFrom, *, module: str, is_pac
             if node.level - 1 >= len(parts):  # relative beyond the top-level package: an ImportError, not a layer
                 return
             parts = parts[: len(parts) - (node.level - 1)]
-            if not parts or not all(parts):  # relative beyond the top-level package: unresolvable statically
+            if not parts:  # relative beyond the top-level package: unresolvable statically
                 return
             module = ".".join([*parts, node.module or ""])
         else:

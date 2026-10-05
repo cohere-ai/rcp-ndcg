@@ -369,7 +369,7 @@ def _explain_report(request: EvalExplainRequest) -> tuple[QueryExplanation, Any]
         protocol=saved.protocol,
         k=saved.k,
         metrics=saved.metrics,
-        systems=request.system or saved.systems,  # the systems the report scored, unless the caller narrows them
+        systems=request.system or saved.systems or None,  # the report's own systems, unless narrowed or none
         bootstrap=0,
     )
     calibration = _calibration(inputs.calibration)

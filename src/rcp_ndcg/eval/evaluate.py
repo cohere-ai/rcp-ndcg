@@ -525,11 +525,9 @@ def _way_out_for_the_others(error: DataError, rankings: Rankings) -> DataError:
     """
     if len(rankings.systems) <= 1:
         return error
-    base, python, cli = (
-        error.hint,
-        "drop this system's rows, or score the others with systems=[...]",
-        ("drop this system's rows, or score the others with --system (repeatable)"),
-    )
+    python = "drop this system's rows, or score the others with systems=[...]"
+    cli = "drop this system's rows, or score the others with --system (repeatable)"
+    base = error.hint
     error.hint = f"{base}; {python}" if base else python
     error.cli_hint = f"{base}; {cli}" if base else cli
     return error

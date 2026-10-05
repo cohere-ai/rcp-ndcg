@@ -670,3 +670,15 @@ def test_a_non_finite_score_is_a_data_error_not_a_crash() -> None:
         Rankings.from_scores({"q0": {"d1": float("nan"), "d2": 1.0}}, system="s")
 
     assert caught.value.details["query_id"] == "q0"
+
+
+def test_explain_refuses_a_report_that_scored_no_systems() -> None:
+    """A report whose metrics matched no labelled query has no systems to explain: a typed refusal, not a crash."""
+    empty = evaluate(
+        _rankings(), dataset=Dataset(name="gains-only", gains={"q0": {"d1": 1.0}}), metrics=["qrel_ndcg"],
+        bootstrap=0,
+    )  # fmt: skip
+
+    assert empty.systems == []
+    with pytest.raises(DataError, match="scored no systems"):
+        explain(empty, "q0")
