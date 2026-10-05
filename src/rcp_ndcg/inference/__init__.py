@@ -12,11 +12,14 @@ paths send their requests through one set of names:
   :func:`l2_normalize`; the rerankers' :class:`RerankRequest` and :class:`RerankResult`)
   (:mod:`rcp_ndcg.inference.types`);
 * :class:`Adapter` and its registry -- the one seam a third party implements (C2), selected from a config with
-  ``api: <name>`` (:mod:`rcp_ndcg.inference.adapters.base`);
+  ``api: <name>`` (:mod:`rcp_ndcg.inference.adapters.base`); the shipped rerank adapters -- the served
+  Cohere-shaped wire and its hosted ``cohere`` and ``voyage`` profiles -- register at import
+  (:mod:`rcp_ndcg.inference.adapters.rerank`);
 * :class:`Sender` and :class:`Transport` -- the transport's frozen interface; behaviour arrives with the transport work
   (:mod:`rcp_ndcg.inference.transport`);
 * the role endpoint configs -- :class:`EmbeddingEndpoint`, :class:`PoolingEndpoint`, :class:`RerankEndpoint`
   (:mod:`rcp_ndcg.inference.config`);
+* the role clients -- :class:`RerankClient` (:mod:`rcp_ndcg.inference.clients`);
 * :data:`FAKE_SCHEME` -- the offline fakes' URL scheme (:mod:`rcp_ndcg.inference.fake`).
 """
 
@@ -28,6 +31,8 @@ from rcp_ndcg.inference.adapters.base import (
     known_adapters,
     register_adapter,
 )
+from rcp_ndcg.inference.adapters.rerank import CohereRerankAdapter, RerankAdapter, VoyageRerankAdapter
+from rcp_ndcg.inference.clients import RerankClient
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.fake import FAKE_SCHEME
@@ -54,6 +59,7 @@ __all__ = [
     "Adapter",
     "AdapterRole",
     "Call",
+    "CohereRerankAdapter",
     "Completion",
     "CompletionInput",
     "EmbedRequest",
@@ -65,6 +71,8 @@ __all__ = [
     "FAKE_SCHEME",
     "PoolRequest",
     "PoolingEndpoint",
+    "RerankAdapter",
+    "RerankClient",
     "RerankEndpoint",
     "RerankRequest",
     "RerankResult",
@@ -73,6 +81,7 @@ __all__ = [
     "TokenCount",
     "Transport",
     "Usage",
+    "VoyageRerankAdapter",
     "get_adapter",
     "known_adapters",
     "l2_normalize",
