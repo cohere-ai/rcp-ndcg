@@ -71,9 +71,9 @@ placements per document hold for any pool: a pool of 4 gets $\operatorname{round
 A query of 150 candidates thus costs 216 calls. The adaptive windows per batch are
 $\operatorname{round}(p\,n / (w_a \cdot \text{batches}))$ with the effective adaptive window
 $w_a$ = `min(adaptive_window, n)`. A pool no larger than the adaptive window gets one adaptive window in total
-(one batch, whatever `adaptive_batches` says): every adaptive window would be the whole pool in its current
-order, so a further batch would ask the same window again, and at temperature 0 a repeated window is answered
-identically. `estimate` counts exactly these windows. A re-judged subset of a pool (`docs=`)
+(one batch, whatever `adaptive_batches` says): every adaptive window of such a pool holds the whole pool, so a
+further batch asks only comparisons the first window's answers already cover. `estimate` counts exactly these
+windows. A re-judged subset of a pool (`docs=`)
 gets the windows its own size gives; a new document is judged against opponents chosen from the calibration with
 `windows=` ([primitives](primitives.md)). Reversed copies (`mirror=True`) cancel the judge's position bias.
 Stratified windows keep documents of similar quality together, which keeps a dominant document from lowering the

@@ -71,7 +71,7 @@ def test_small_pools_and_subsets() -> None:
     assert TournamentSchedule().calls_per_query(4) == 2 * (4 + 2) + 1
     assert TournamentSchedule().windows_for(8) == (4, 2, 1)
     # A pool no larger than the adaptive window: one adaptive window in total, whatever the placements -- every
-    # batch would ask the whole pool in its current order, and a repeated window answers the same thing again.
+    # batch would ask the whole pool again, and the first window's answers already cover its comparisons.
     assert TournamentSchedule(stratified_placements=5, adaptive_placements=20).windows_for(8) == (4, 5, 1)
     assert TournamentSchedule(stratified_placements=5, adaptive_placements=20).calls_per_query(8) == 2 * (4 + 5) + 1
     assert TournamentSchedule(adaptive_batches=0).windows_for(8) == (4, 2, 0)
@@ -89,7 +89,7 @@ def test_small_pools_and_subsets() -> None:
 
 
 def test_a_pool_no_larger_than_the_adaptive_window_runs_one_adaptive_batch() -> None:
-    """Every adaptive window of such a pool is the whole pool in its current order, so another batch repeats it."""
+    """Every adaptive window of such a pool holds the whole pool, so another batch has nothing new to ask."""
     schedule = TournamentSchedule()
     assert schedule.adaptive_batches_for(2) == 1
     assert schedule.adaptive_batches_for(10) == 1

@@ -27,8 +27,8 @@ the placements per document hold for any pool: a pool of 4 gets
    boundaries (Fisher information x nDCG discount x novelty, covered boundaries
    discounted by ``overlap_discount``), with a Bradley-Terry refit between batches.
    A pool no larger than ``adaptive_window`` has one adaptive window in total
-   (one batch): every adaptive window would be the whole pool in its current
-   order, so a further batch would repeat the first.
+   (one batch): every adaptive window of such a pool holds the whole pool, so a
+   further batch asks only comparisons the first window's answers already cover.
 
 The defaults give the paper's schedule at its pool of 150: 53 + 27 mirrored windows
 of 10 (160 calls) and 7 x 8 = 56 adaptive calls, 216 calls per query.
@@ -130,9 +130,9 @@ class TournamentSchedule(BaseModel):
     def adaptive_batches_for(self, n_docs: int) -> int:
         """Adaptive batches the tournament runs for a pool of ``n_docs`` documents.
 
-        A pool no larger than ``adaptive_window`` runs one batch: every adaptive window of such a pool is the
-        whole pool in its current order, so a further batch would ask the same window again, and at temperature
-        0 a repeated window is answered identically. Above the adaptive window the pool is the schedule's own
+        A pool no larger than ``adaptive_window`` runs one batch: every adaptive window of such a pool holds the
+        whole pool, so a further batch asks the same documents again (in the refit order) and compares only what
+        the first window's answers already cover. Above the adaptive window the pool is the schedule's own
         ``adaptive_batches``. A pool of fewer than two documents runs none.
         """
         if not self.adaptive_batches or n_docs < 2:

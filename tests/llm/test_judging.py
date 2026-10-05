@@ -134,7 +134,7 @@ class TestSubsets:
         projected = estimate(ROWS, None, client.config, stages=["tournament"], schedules={"tournament": schedule},
                              docs=subset)  # fmt: skip
         # Windows of the pair at the placements per document: 4 random and 2 stratified windows, each mirrored, and
-        # one adaptive window (one batch: every batch would ask the pair in its current order); not a whole query's 216.
+        # one adaptive window (one batch: every batch would ask the same pair again); not a whole query's 216.
         assert schedule.windows_for(2) == (4, 2, 1)
         assert client.usage.requests == len(result.judgements) == projected.calls == 2 * (4 + 2) + 1
 
@@ -154,8 +154,8 @@ class TestSubsets:
         assert (size < 2 and stage == "tournament") or projected.calls > 0
 
     def test_a_tiny_pool_asks_one_adaptive_window_not_one_per_batch(self, tmp_path: Path) -> None:
-        """A pool no larger than the adaptive window: every batch would ask the whole pool in its current order,
-        and at temperature 0 a repeated window is answered identically -- so the schedule asks it once."""
+        """A pool no larger than the adaptive window: every batch would ask the whole pool again, whose
+        comparisons the first window's answers already cover -- so the schedule asks it once."""
         from rcp_ndcg.llm import TournamentSchedule
 
         schedule = TournamentSchedule()
