@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg.errors import MissingInputError, dependency_error
+from rcp_ndcg.errors import ConfigError, MissingInputError, dependency_error
 
 #: The file a tokenizer is read from, locally or in a Hub repository.
 TOKENIZER_FILE = "tokenizer.json"
@@ -31,6 +31,17 @@ def _backend_class() -> Any:
     except ModuleNotFoundError as exc:
         raise dependency_error("tokenizers", needed_for="counting text in the judge's tokens") from exc
     return Tokenizer
+
+
+def _added_tokens(backend: Any) -> dict[str, str]:
+    """The backend's added vocabulary, resolved once at load: name -> literal text (see ``added_tokens``)."""
+    tokens: dict[str, str] = {}
+    for token in backend.get_added_tokens_decoder().values():
+        content = token.content
+        name = content[2:-2] if content.startswith("<|") and content.endswith("|>") else content
+        tokens.setdefault(name, content)
+        tokens.setdefault(content, content)
+    return tokens
 
 
 @dataclass(frozen=True)
@@ -47,6 +58,12 @@ class TextTokenizer:
     name: str
     sha256: str
     backend: Any = field(repr=False, compare=False)
+    #: The added vocabulary, resolved once at load (see :meth:`added_tokens`); not part of the identity.
+    _specials: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if not self._specials:
+            object.__setattr__(self, "_specials", _added_tokens(self.backend))
 
     @classmethod
     def from_json(cls, data: bytes, *, name: str) -> TextTokenizer:
@@ -59,9 +76,14 @@ class TextTokenizer:
         """Wrap a ``tokenizers.Tokenizer`` built in memory; its identity is the hash of its serialisation."""
         return cls.from_json(backend.to_str().encode("utf-8"), name=name)
 
-    def count(self, text: str) -> int:
-        """The number of tokens of ``text``."""
-        return len(self.backend.encode(text, add_special_tokens=False).ids)
+    def count(self, text: str, *, add_special_tokens: bool = False) -> int:
+        """The number of tokens of ``text``; with ``add_special_tokens``, as the engine counts it
+        (the tokenizer's post-processor tokens included, e.g. an appended end-of-text anchor)."""
+        return len(self.backend.encode(text, add_special_tokens=add_special_tokens).ids)
+
+    def ids(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
+        """The token ids of ``text``, optionally with the post-processor's (as the engine reads them)."""
+        return list(self.backend.encode(text, add_special_tokens=add_special_tokens).ids)
 
     def offsets(self, text: str) -> list[tuple[int, int]]:
         """``(start, end)`` character offsets in ``text`` of each of its tokens, in order."""
@@ -70,6 +92,39 @@ class TextTokenizer:
     def identity(self) -> dict[str, str]:
         """``{"name", "sha256"}``: what a preprocessing record names the tokenizer by."""
         return {"name": self.name, "sha256": self.sha256}
+
+    def added_tokens(self) -> dict[str, str]:
+        """The added vocabulary: a special token's name (its literal text without the ``<|...|>`` wrapper)
+        to that literal text, e.g. the end-of-turn marker's name to its literal form. Both the bare name and
+        the literal text are accepted as lookup keys by :meth:`special_text`; the literal text is what a
+        template's fixed segment is rendered with.
+        """
+        return dict(self._specials)
+
+    def special_text(self, name: str) -> str:
+        """The literal text of the tokenizer's added token named ``name`` (the bare name or the wrapped
+        form), for splicing into a rendered template; the engine's tokenizer then matches it back to one id.
+
+        Raises:
+            ConfigError: the tokenizer has no added token by that name; the message lists the names it has.
+        """
+        tokens = self.added_tokens()
+        try:
+            return tokens[name]
+        except KeyError:
+            known = sorted({key for key in tokens if not key.startswith("<|")})
+            raise ConfigError(
+                f"the tokenizer {self.name!r} has no special token named {name!r}",
+                hint=f"its added tokens are named {known}; write one as {{special:<name>}} in the template",
+            ) from None
+
+    def special_id(self, name: str) -> int:
+        """The token id of the added token named ``name`` (as :meth:`special_text` resolves it).
+
+        Raises:
+            ConfigError: the tokenizer has no added token by that name.
+        """
+        return self.backend.token_to_id(self.special_text(name))
 
 
 def _local_path(spec: str) -> Path | None:
