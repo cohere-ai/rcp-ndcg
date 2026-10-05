@@ -9,6 +9,7 @@ namespace.
 
 from rcp_ndcg.inference.adapters.base import (
     ADAPTER_ENTRY_POINTS,
+    ROLES,
     Adapter,
     AdapterRole,
     get_adapter,
@@ -24,6 +25,7 @@ from rcp_ndcg.inference.adapters.rerank import (
 
 __all__ = [
     "ADAPTER_ENTRY_POINTS",
+    "ROLES",
     "Adapter",
     "AdapterRole",
     "CohereRerankAdapter",

@@ -8670,6 +8670,16 @@
         "frozen": true,
         "kind": "pydantic_model"
       },
+      "ROLES": {
+        "kind": "constant",
+        "type": "tuple",
+        "value": [
+          "judge",
+          "embed",
+          "rerank",
+          "multi_vector"
+        ]
+      },
       "Reply": {
         "bases": [],
         "defined_in": "rcp_ndcg.inference.types",

@@ -152,16 +152,17 @@ def register_adapter(cls: type[Adapter[Any, Any]]) -> type[Adapter[Any, Any]]:
 def _load_plugins() -> dict[tuple[str, str], type[Adapter[Any, Any]]]:
     """Load the ``rcp_ndcg.adapters`` entry points once; a broken one is an error, never a silent skip.
 
-    Each entry is named ``<role>.<name>`` (``embed.bedrock``); an adapter whose class role disagrees with its
-    entry name's prefix is refused, so a typo cannot route one role's requests to another role's adapter.
-    A plugin is registered under its class's ``(role, name)``; one that would take a shipped adapter's key is
+    Each entry is named ``<role>.<name>`` (``embed.bedrock``) with ``<name>`` the class's registered name; an
+    adapter whose class role or name disagrees with its entry name is refused, so a typo cannot route one
+    role's requests to another role's adapter or register a class under a name no entry point spells. A
+    plugin is registered under its class's ``(role, name)``; one that would take a shipped adapter's key is
     refused, so a built-in is never silently shadowed.
     """
     global _PLUGINS
     if _PLUGINS is None:
         loaded: dict[tuple[str, str], type[Adapter[Any, Any]]] = {}
         for entry in entry_points(group=ADAPTER_ENTRY_POINTS):
-            prefix, separator, _ = entry.name.partition(".")
+            prefix, separator, suffix = entry.name.partition(".")
             if not separator or prefix not in ROLES:
                 raise ConfigError(
                     f"the adapter entry point {entry.name!r} ({entry.value}) must be named <role>.<name> "
@@ -185,6 +186,12 @@ def _load_plugins() -> dict[tuple[str, str], type[Adapter[Any, Any]]]:
                 raise ConfigError(
                     f"the adapter entry point {entry.name!r} ({entry.value}) loads "
                     f"{getattr(adapter, '__name__', adapter)!r}, which has no adapter name to register under"
+                )
+            if key[1] != suffix:
+                raise ConfigError(
+                    f"the adapter entry point {entry.name!r} ({entry.value}) loads "
+                    f"{getattr(adapter, '__name__', adapter)!r}, which registers as {key[1]!r}, not {suffix!r} "
+                    "as its entry name's <role>.<name> declares"
                 )
             if key in _BUILTINS:
                 raise ConfigError(

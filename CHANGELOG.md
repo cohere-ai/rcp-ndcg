@@ -35,7 +35,9 @@ released together.
   `rcp_ndcg.adapters` entry-point group names its entries `<role>.<name>` (e.g. `embed.bedrock`); an entry
   whose class role disagrees with its prefix is refused with a `ConfigError`, as is an entry without a role
   prefix. The role clients pass their role to the registry (an unknown or wrong-role `api` is refused there),
-  and each role config's default `api` is unchanged (`openai_embeddings`, `rerank`, `vllm_pooling`).
+  and each role config's default `api` is unchanged (`openai_embeddings`, `rerank`, `vllm_pooling`). The role
+  list is public as `ROLES` (`rcp_ndcg.inference`, `rcp_ndcg.inference.adapters`), and an entry point's name
+  must spell the class's registered name, not just its role.
 - **One tokenizer-identity method for every role config**: `Endpoint.identity_extra()` (default `{}`) returns
   `{"tokenizer_sha256": <sha>}` — the SHA-256 of the config's `tokenizer.json` through the one helper
   `rcp_ndcg.data.tokenizer.tokenizer_identity` (over the judge's existing `load_tokenizer`; no second hashing

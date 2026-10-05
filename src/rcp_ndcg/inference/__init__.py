@@ -28,6 +28,7 @@ paths send their requests through one set of names:
 
 from rcp_ndcg.inference.adapters.base import (
     ADAPTER_ENTRY_POINTS,
+    ROLES,
     Adapter,
     AdapterRole,
     get_adapter,
@@ -75,6 +76,7 @@ __all__ = [
     "FAKE_SCHEME",
     "PoolRequest",
     "PoolingEndpoint",
+    "ROLES",
     "RerankAdapter",
     "RerankClient",
     "RerankEndpoint",

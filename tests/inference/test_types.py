@@ -358,6 +358,10 @@ class _EmbedProbe(_ProbeAdapter):
     role: ClassVar[AdapterRole] = "embed"
 
 
+class _EmbedProbeAlias(_EmbedProbe):
+    """A second class under the same registered name, for the duplicate-plugin refusal test."""
+
+
 @pytest.fixture(autouse=True)
 def _clean_registry() -> Iterator[None]:
     """Run each registry test against an empty registry, restoring whatever was there."""
@@ -492,6 +496,24 @@ class TestAdapterEntryPoints:
         register_adapter(_EmbedProbe)
         self._install(monkeypatch, self._entry("embed.probe_adapter", "tests.inference.test_types:_EmbedProbe"))
         with pytest.raises(ConfigError, match="already registered"):
+            known_adapters()
+
+    def test_an_entry_point_whose_name_suffix_disagrees_with_the_class_name_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The entry names its role *and* the adapter's registered name: a class registered under a name its
+        entry point does not spell is a typo, not a convention."""
+        self._install(monkeypatch, self._entry("embed.not_the_name", "tests.inference.test_types:_EmbedProbe"))
+        with pytest.raises(ConfigError, match="not_the_name"):
+            known_adapters()
+
+    def test_two_entry_points_registering_one_name_are_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._install(
+            monkeypatch,
+            self._entry("embed.probe_adapter", "tests.inference.test_types:_EmbedProbe"),
+            self._entry("embed.probe_adapter", "tests.inference.test_types:_EmbedProbeAlias"),
+        )
+        with pytest.raises(ConfigError, match="a second time"):
             known_adapters()
 
     def test_a_broken_entry_point_import_is_an_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
