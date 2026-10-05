@@ -40,27 +40,39 @@ pacing across queries, set `concurrency` low (2--4) for Voyage, which enforces s
 ## The client
 
 `RerankClient(config)` sends one query's whole candidate set per request and reads the scores back aligned to
-the documents, in the order they were given:
+the documents, in the order they were given. It derives from the shared client base
+(`rcp_ndcg.inference.clients.RoleClient`), which owns the adapter lookup within the rerank role's registry,
+the hosted profiles' public roots, the transport (or an injected `Sender` with the sync bridge `run`), and the
+lifecycle: `close()` synchronous, `await aclose()` asynchronous, both context managers. `rerank_many` runs
+`concurrency` queries in flight under one `asyncio.TaskGroup`: a failing query cancels its siblings, and no
+`checkpoint` lands after the failure.
 
 - `rerank(query, documents, *, instruction=None) -> RerankResult` -- one query's scores (and `arerank`, the
   async half). Empty documents are sent as given and score whatever the server returns; an empty candidate
   set makes no request and scores nothing.
 - `rerank_many(examples, *, checkpoint=None) -> list[RerankResult]` -- every example, `concurrency` queries
   in flight, results in input order. The `checkpoint` callable is called once per query as it lands, with the
-  query id and its scores aligned to the example's `doc_ids`: write the record and flush there, and a crash
-  costs at most the queries in flight.
-- `close()` -- closes the transport the client built, if any.
+  query id and its (pooled) scores aligned to the example's `doc_ids`: write the record and flush there, and a
+  crash costs at most the queries in flight.
+- `close()` / `await aclose()` -- closes the transport the client built, if any.
 
 The query text follows one rule for every path, decided by the config's `instruction` mode (`fold` by
 default): `fold` sends `Task: <instruction>\nQuery: <text>` (the served path's render, byte for byte),
 `field` sends the bare query plus the engine's `instruction` request field (served vLLM only -- a hosted
-profile has no such field and refuses the mode), `none` sends the bare query.
+profile has no such field and refuses the mode), `none` sends the bare query. A served config (`api:
+rerank`) sets `use_activation` explicitly (`true`: the score is a probability; `false`: the raw logit is
+stored) -- `None` would send nothing and let the engine's default apply, and two engines with different
+defaults would then share an identity; a hosted profile keeps it unset (its scale is fixed).
 
 **Preparation.** Every input passes through one seam, `_prepare(contents, role)`, where the instruction mode
-and, once wired, the text-budget mechanism apply. Until that mechanism lands the client cuts nothing:
-contents are sent as given, and a config that sets `max_tokens` is refused with a `ConfigError` rather than
-silently ignored. No `truncate_prompt_tokens` or similar is ever sent: a rendered prompt is never truncated
-by the engine.
+applies, and then the pair budget: when the config declares one, every request is fitted through the shared
+text-budget mechanism (`rcp_ndcg.data.preprocess.fit`, the `pair` shape) -- the query cut to
+`query_max_tokens` when it is set, each document cut to what remains, the template's fixed segments
+re-attached so the anchors survive, every cut recorded in the census, and a chunked document sent as one
+request per chunk with the chunks' scores pooled back by `max`. The wire carries the cut spans (the engine
+renders the template itself), and no `truncate_prompt_tokens` or `max_tokens_per_doc` is ever sent: the client
+cut already, so there is nothing left for the engine to truncate. A config without `max_tokens` sends every
+pair whole.
 
 ## Identity
 
@@ -73,8 +85,20 @@ digest under this one key (`Endpoint.identity_extra()`), computed by the one hel
 `rcp_ndcg.data.tokenizer`; the judge's own identity payload keeps its existing keys and is unchanged.
 
 ```python
+from pathlib import Path
+
+from tokenizers import Tokenizer, models, pre_tokenizers
 from rcp_ndcg.inference import RerankClient, RerankEndpoint
 from rcp_ndcg.inference.types import Call, Reply, Usage
+
+
+# A served rerank config declares its text budget (the tokenizer the pair budget counts in, the cap) and
+# sets use_activation explicitly (F10). The tokenizer here is a tiny in-memory one, saved to disk so the
+# client can load it; a recipe names the model's own.
+backend = Tokenizer(models.WordLevel({"[UNK]": 0}, unk_token="[UNK]"))
+backend.pre_tokenizer = pre_tokenizers.Whitespace()
+Path("tok").mkdir()
+(Path("tok") / "tokenizer.json").write_text(backend.to_str())
 
 
 class FakeRerankServer:
@@ -95,9 +119,21 @@ class FakeRerankServer:
     def usage(self) -> Usage:
         return Usage()
 
+    def run(self, coroutine):
+        import asyncio
 
-config = RerankEndpoint(base_url="http://127.0.0.1:8000/v1", model="qwen3-reranker-8b")
+        return asyncio.run(coroutine)
+
+
+config = RerankEndpoint(
+    base_url="http://127.0.0.1:8000/v1",
+    model="qwen3-reranker-8b",
+    tokenizer="tok",
+    max_tokens=8192,
+    use_activation=False,
+)
 client = RerankClient(config, sender=FakeRerankServer())
 result = client.rerank("what does rcp-ndcg measure", ["a metric", "a fruit"], instruction="Find the relevant passage")
 print(result.scores)  # aligned to the input documents, whatever order the server answered in
+client.close()
 ```

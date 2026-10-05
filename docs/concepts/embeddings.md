@@ -20,13 +20,13 @@ An embedding endpoint is an `EmbeddingEndpoint` (`rcp_ndcg.inference.config`): t
 |---|---|
 | `api` | The wire adapter, from the embed role's registry: `openai_embeddings` (default), `cohere`, `voyage`, `gemini`, or a third party's from the `rcp_ndcg.adapters` entry-point group (entries named `embed.<name>`) |
 | `base_url` | The endpoint; `null` for a hosted API, which then uses the profile's public URL |
-| `api_key_env` | The variable holding the key; when unset, a hosted profile reads its own (e.g. `CO_API_KEY` or `COHERE_API_KEY`) |
+| `api_key_env` | The variable holding the key, resolved by the transport; when unset, a hosted profile reads its own (e.g. `CO_API_KEY` or `COHERE_API_KEY`) in its own header |
 | `query_prompt`, `doc_prompt` | Text prepended to every query / document (an asymmetric embedder's instruction prefix) |
 | `normalize` | L2-normalise the vectors (the default); normalising twice is harmless |
 | `dimensions` | The Matryoshka cut, sent only when set |
 | `batch_size` | Texts per request, refused above the profile's published cap (Cohere 96, Voyage 128, Gemini 100, the OpenAI route 128) |
 | `concurrency` | Batch requests in flight at once |
-| `recipe`, `max_tokens`, `tokenizer` | Declared for the served engine's settings and the client-side text budget (see below). The hosted profiles take no `dimensions` (their APIs fix the output dimension); a config that sets `dimensions` on one is refused |
+| `recipe`, `tokenizer`, `max_tokens` | Declared for the served engine's settings and the client-side text budget (below): a self-hosted config must declare both `tokenizer` and `max_tokens`, and the client cuts the content spans itself (`on_overflow: cut`, the default; `chunk` pools scores by max, and an embedding has none to pool, so it is refused). The hosted profiles take no `dimensions` (their APIs fix the output dimension); a config that sets `dimensions` on one is refused |
 
 Two hosted shortcuts: a config with no `base_url` points at the profile's public URL
 (`https://api.cohere.com/v2` for Cohere, and so on), and a profile that requires a key raises a
@@ -73,9 +73,11 @@ print(call.path, sorted(call.json))
 ## The client
 
 `EmbeddingClient` (`rcp_ndcg.inference.clients`) applies the config's content decisions and sends the batches
-through a transport -- its own, built from the config, or one you pass as `sender` (until the built-in
-transport is wired, construct the client with an explicit `sender`). The config declares the
-content; the client applies it:
+through a transport -- its own, built from the config, or one you pass as `sender` (any `Sender` with the sync
+bridge `run`; a transport's is used as is and pointed at the profile's credential facts). The config declares
+the content; the client applies it, on the shared client base (`RoleClient` -- the adapter lookup, the hosted
+profile's URL, the transport, the sync bridge, `close()`/`await aclose()` and the context managers, and the
+fan-out under one `asyncio.TaskGroup`):
 
 ```python
 from rcp_ndcg.inference.config import EmbeddingEndpoint
@@ -83,6 +85,8 @@ from rcp_ndcg.inference.config import EmbeddingEndpoint
 config = EmbeddingEndpoint(
     base_url="http://127.0.0.1:8000/v1",
     model="octen-embedding-8b",
+    tokenizer="tok",
+    max_tokens=8192,
     query_prompt="query: ",
     doc_prompt="- ",
     normalize=True,
@@ -95,14 +99,16 @@ print(config.api, config.batch_size, config.concurrency)
 `client.encode(contents, role)` is synchronous and `client.aencode(contents, role)` asynchronous; both return
 an `Embeddings` with one vector per content, in the input's order. The client:
 
-* prepends `query_prompt` / `doc_prompt` per side, through one private seam the text-budget mechanism plugs
-  into when it lands (until then a config that sets `max_tokens` is refused with a `ConfigError`, never
-  silently ignored);
-* slices the items into `batch_size`-sized requests and keeps at most `concurrency` in flight, reassembling in
-  the input's order whatever order the replies arrive in;
+* prepends `query_prompt` / `doc_prompt` per side, through one private seam, and then fits every request into
+  the declared budget: the side's shape (`query` or `document`), only content spans cut, the template
+  re-attached with its anchors, every cut recorded in the census (a config without `max_tokens` sends every
+  item whole);
+* slices the items into `batch_size`-sized requests and keeps at most `concurrency` in flight under one
+  `asyncio.TaskGroup` (a failing request cancels its siblings), reassembling in the input's order whatever
+  order the replies arrive in;
 * L2-normalises when `normalize`;
-* resolves the API key from `api_key_env` (else the profile's own variables) and sends it in the profile's
-  header, so the transport never adds a second one.
+* resolves nothing credential-wise: the key is the transport's, from `api_key_env` (else the profile's own
+  variables), sent in the profile's header.
 
 The vectors are raw float32 from the adapter -- the normalisation is the client's content decision, not the
 wire's. Each adapter's `usage()` reports the input tokens its API names (OpenAI's `usage.prompt_tokens`,
@@ -122,9 +128,13 @@ of the name once the retrieval wiring moves onto this layer -- the same rule the
 `tokenizer`. Every role config with a `tokenizer` (the judge's, the embedding, pooling and rerank configs)
 carries the digest under this one key, from the one helper in `rcp_ndcg.data.tokenizer`.
 
-## Text limits
+## Text budgets
 
-A config that sets `max_tokens` is refused today: cutting to a token budget is the text-budget mechanism's job
-(`rcp_ndcg.data.preprocess`), which will wire into this client and cut each text at token boundaries of the
-declared `tokenizer`, never by engine-side truncation. Until then, send text that already fits -- a request an
-engine cannot take fails with a `CapabilityError`, never a silent cut.
+A self-hosted role config declares its budget explicitly (`tokenizer` + `max_tokens`; a config with one and
+not the other is refused): the client fits every request through the one text-budget mechanism
+(`rcp_ndcg.data.preprocess.fit`), cutting each text at token boundaries of the declared `tokenizer`, with the
+template re-attached around the cut so every anchor survives, and every cut recorded. Never engine-side:
+no request asks for truncation, and an over-length HTTP 400 from an engine maps to a `CapabilityError` whose
+hint names `max_tokens` and `batch_size`. A hosted profile may declare only `max_tokens` (its documented
+limit): the content is sent uncut and the limit is recorded as the effective budget (`budget_source:
+vendor`). See [preprocessing](preprocessing.md#text-budgets-for-served-roles) for the mechanism.

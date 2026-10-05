@@ -1,8 +1,12 @@
 """Shared offline plumbing for the embedding tests: a fake ``Sender`` and the profiles' reply shapes.
 
-The real transport (and the ``fake://`` fakes below it) arrive with the transport work, so these tests speak
-straight to the frozen ``Sender`` seam: a sender that records every call, replies from a handler, counts
-requests in flight, and bridges synchronous calls with ``asyncio.run``.
+The real transport (and the ``fake://`` fakes below it) serve the auth tests, so these tests speak to the
+frozen ``Sender`` seam: a sender that records every call, replies from a handler, counts requests in
+flight, and bridges synchronous calls with ``asyncio.run``.
+
+``DEFAULT_TOKENIZER`` is the saved test tokenizer the ``conftest`` fixture fills in: a self-hosted role
+config must declare its budget (``tokenizer`` + ``max_tokens``), so ``endpoint`` declares the default one
+for the served wire adapters; a hosted profile needs neither.
 """
 
 from __future__ import annotations
@@ -11,8 +15,11 @@ import asyncio
 from collections.abc import Callable
 from typing import Any
 
-from rcp_ndcg.inference.config import EmbeddingEndpoint
+from rcp_ndcg.inference.config import SELF_HOSTED_APIS, EmbeddingEndpoint
 from rcp_ndcg.inference.types import Call, Reply, Usage
+
+#: The default explicit budget's tokenizer, filled by the ``conftest`` fixture (a saved ``tokenizer.json``).
+DEFAULT_TOKENIZER = ""
 
 
 def vendor_payload(api: str, vectors: list[list[float]]) -> dict[str, Any]:
@@ -72,5 +79,11 @@ class FakeSender:
 
 
 def endpoint(api: str = "openai_embeddings", **overrides: Any) -> EmbeddingEndpoint:
-    """An embedding endpoint for tests: model ``m``, any profile, any overrides."""
+    """An embedding endpoint for tests: model ``m``, any profile, any overrides.
+
+    A self-hosted profile (``openai_embeddings``) declares the explicit budget by default (the saved test
+    tokenizer and a cap of 8192 tokens); a hosted profile declares neither, unless the test overrides."""
+    if api in SELF_HOSTED_APIS and DEFAULT_TOKENIZER:
+        overrides.setdefault("tokenizer", DEFAULT_TOKENIZER)
+        overrides.setdefault("max_tokens", 8192)
     return EmbeddingEndpoint(api=api, model="m", **overrides)

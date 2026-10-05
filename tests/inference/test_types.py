@@ -236,7 +236,13 @@ class TestRoleConfigs:
         [(EmbeddingEndpoint, "openai_embeddings"), (PoolingEndpoint, "vllm_pooling"), (RerankEndpoint, "rerank")],
     )
     def test_each_role_defaults_its_wire_adapter(self, config_cls: type[Endpoint], api: str) -> None:
-        assert config_cls(model="m", tokenizer="test/tokenizer", max_tokens=8192).api == api
+        config = config_cls(
+            model="m",
+            tokenizer="test/tokenizer",
+            max_tokens=8192,
+            **({"use_activation": False} if config_cls is RerankEndpoint else {}),
+        )
+        assert config.api == api
 
     def test_an_embedding_config_declares_its_content_and_runtime_knobs(self) -> None:
         config = EmbeddingEndpoint(
@@ -273,14 +279,19 @@ class TestRoleConfigs:
 
     def test_a_rerank_config_folds_its_instruction_by_default(self) -> None:
         config = RerankEndpoint(
-            base_url="http://a:8000/v1", model="qwen3-reranker-8b", tokenizer="test/tokenizer", max_tokens=8192
+            use_activation=False,
+            base_url="http://a:8000/v1",
+            model="qwen3-reranker-8b",
+            tokenizer="test/tokenizer",
+            max_tokens=8192,
         )
-        assert config.instruction == "fold" and config.use_activation is None and config.listwise is False
+        assert config.instruction == "fold" and config.use_activation is False and config.listwise is False
         assert identity_payload(config)["instruction"] == "fold"
 
     def test_a_listwise_reranker_refuses_a_batch_size(self) -> None:
         with pytest.raises(ValidationError, match="listwise"):
             RerankEndpoint(
+                use_activation=False,
                 base_url="http://a:8000/v1",
                 model="jina-reranker-v3",
                 tokenizer="test/tokenizer",
@@ -290,6 +301,7 @@ class TestRoleConfigs:
             )
         assert (
             RerankEndpoint(
+                use_activation=False,
                 base_url="http://a:8000/v1",
                 model="qwen3-reranker-8b",
                 tokenizer="test/tokenizer",
@@ -301,6 +313,7 @@ class TestRoleConfigs:
 
     def test_a_rerank_config_can_split_the_pair_budget(self) -> None:
         config = RerankEndpoint(
+            use_activation=False,
             base_url="http://a:8000/v1",
             model="qwen3-reranker-8b",
             tokenizer="test/tokenizer",
@@ -312,19 +325,32 @@ class TestRoleConfigs:
         assert identity_payload(config)["query_max_tokens"] == 256
         assert "query_max_tokens" not in identity_payload(
             RerankEndpoint(
-                base_url="http://a:8000/v1", model="qwen3-reranker-8b", tokenizer="test/tokenizer", max_tokens=8192
+                use_activation=False,
+                base_url="http://a:8000/v1",
+                model="qwen3-reranker-8b",
+                tokenizer="test/tokenizer",
+                max_tokens=8192,
             )
         )
 
     def test_role_configs_are_frozen_and_refuse_unknown_fields(self) -> None:
         config = RerankEndpoint(
-            base_url="http://a:8000/v1", model="qwen3-reranker-8b", tokenizer="test/tokenizer", max_tokens=8192
+            use_activation=False,
+            base_url="http://a:8000/v1",
+            model="qwen3-reranker-8b",
+            tokenizer="test/tokenizer",
+            max_tokens=8192,
         )
         with pytest.raises(ValidationError):
             config.listwise = True  # type: ignore[misc]
         with pytest.raises(ValidationError):
             RerankEndpoint(
-                base_url="http://a:8000/v1", model="m", tokenizer="test/tokenizer", max_tokens=8192, surprise=1
+                use_activation=False,
+                base_url="http://a:8000/v1",
+                model="m",
+                tokenizer="test/tokenizer",
+                max_tokens=8192,
+                surprise=1,
             )  # type: ignore[call-arg]
 
 
@@ -345,7 +371,7 @@ class TestExplicitTextBudget:
             config_cls(model="m", max_tokens=8192)
 
     def test_a_self_hosted_role_with_both_fields_is_accepted(self) -> None:
-        config = RerankEndpoint(model="m", tokenizer="test/tokenizer", max_tokens=8192)
+        config = RerankEndpoint(use_activation=False, model="m", tokenizer="test/tokenizer", max_tokens=8192)
         assert config.tokenizer == "test/tokenizer" and config.max_tokens == 8192
 
     def test_a_hosted_vendor_profile_without_a_tokenizer_declares_its_documented_limit(self) -> None:
@@ -427,16 +453,16 @@ class TestTextBudgetFields:
         assert hosted_with_tokenizer.chunk is not None
 
     def test_an_instruction_can_be_a_system_message(self) -> None:
-        config = RerankEndpoint(model="m", tokenizer="t", max_tokens=8192, instruction="system")
+        config = RerankEndpoint(use_activation=False, model="m", tokenizer="t", max_tokens=8192, instruction="system")
         assert config.instruction == "system"
         with pytest.raises(ValidationError):
-            RerankEndpoint(model="m", tokenizer="t", max_tokens=8192, instruction="whisper")  # type: ignore[arg-type]
+            RerankEndpoint(use_activation=False, model="m", tokenizer="t", max_tokens=8192, instruction="whisper")  # type: ignore[arg-type]
 
     def test_a_rerank_config_refuses_a_non_positive_document_share(self) -> None:
         with pytest.raises(ValidationError, match="max_tokens"):
-            RerankEndpoint(model="m", tokenizer="t", max_tokens=8192, query_max_tokens=8192)
+            RerankEndpoint(use_activation=False, model="m", tokenizer="t", max_tokens=8192, query_max_tokens=8192)
         with pytest.raises(ValidationError, match="max_tokens"):
-            RerankEndpoint(model="m", tokenizer="t", max_tokens=8192, query_max_tokens=8193)
+            RerankEndpoint(use_activation=False, model="m", tokenizer="t", max_tokens=8192, query_max_tokens=8193)
 
 
 class TestIdentityExtra:
@@ -462,10 +488,28 @@ class TestIdentityExtra:
         directory = tmp_path / "tok"
         directory.mkdir()
         file = save(word_tokenizer(), directory)
-        named = config_cls(base_url="http://a:8000/v1", model="m", tokenizer=str(file))
+        # A role config that declares a tokenizer declares its budget with it (the served roles); the judge
+        # has no budget fields and names the tokenizer alone.
+        budget: dict[str, Any] = (
+            {}
+            if config_cls is JudgeConfig
+            else {
+                "max_tokens": 8192,
+                **({"use_activation": False} if config_cls is RerankEndpoint else {}),
+            }
+        )
+        named = config_cls(base_url="http://a:8000/v1", model="m", tokenizer=str(file), **budget)
         assert named.identity_extra() == {"tokenizer_sha256": hashlib.sha256(file.read_bytes()).hexdigest()}
         assert set(named.identity_extra()) == {"tokenizer_sha256"}
-        assert config_cls(base_url="http://a:8000/v1", model="m").identity_extra() == {}
+        assert (
+            config_cls(
+                base_url="http://a:8000/v1",
+                model="m",
+                api=None if config_cls is JudgeConfig else "cohere",
+                **({"max_tokens": 1024} if config_cls is RerankEndpoint else {}),
+            ).identity_extra()
+            == {}
+        )
 
     def test_the_judge_identity_payload_does_not_move(self, tmp_path: Any) -> None:
         """The judgement family's keys must not move: ``identity_extra()`` is not part of ``identity()``."""
@@ -782,3 +826,53 @@ class TestDeclarations:
         assert Endpoint.IDENTITY_ROLES["api"] is FieldRole.CONTENT
         assert Endpoint.IDENTITY_ROLES["headers_env"] is FieldRole.RUNTIME
         assert Endpoint.IDENTITY_ROLES["wait_on_outage_s"] is FieldRole.RUNTIME
+
+
+class TestUseActivationExplicit:
+    """F10 (integration review): ``use_activation: None`` on a served rerank config means 'send nothing and
+    the engine's default applies' -- and two engines with different defaults would then share an identity.
+    A served config must set it explicitly; hosted profiles keep ``None`` (their scale is fixed)."""
+
+    def test_a_served_rerank_config_refuses_use_activation_none(self) -> None:
+        with pytest.raises(ConfigError, match="use_activation"):
+            RerankEndpoint(model="m", tokenizer="test/tokenizer", max_tokens=8192)
+        with pytest.raises(ConfigError, match="use_activation"):
+            RerankEndpoint(model="m", tokenizer="t", max_tokens=8192, use_activation=None, api="rerank")
+
+    def test_a_hosted_profile_keeps_none(self) -> None:
+        for api in ("cohere", "voyage"):
+            config = RerankEndpoint(model="m", api=api, max_tokens=1024)
+            assert config.use_activation is None
+
+    def test_the_explicit_value_is_content(self) -> None:
+        config = RerankEndpoint(model="m", tokenizer="t", max_tokens=8192, use_activation=False)
+        assert identity_payload(config)["use_activation"] is False
+
+
+class TestHostedFlag:
+    """R8: ``HOSTED`` is declared, not inferred from ``DEFAULT_BASE_URL is not None``."""
+
+    def test_the_rerank_profiles_declare_hosted(self) -> None:
+        from rcp_ndcg.inference.adapters.rerank import CohereRerankAdapter, RerankAdapter, VoyageRerankAdapter
+
+        assert RerankAdapter.HOSTED is False
+        assert CohereRerankAdapter.HOSTED is True
+        assert VoyageRerankAdapter.HOSTED is True
+
+    def test_the_embed_profiles_declare_hosted(self) -> None:
+        from rcp_ndcg.inference.adapters.embeddings import (
+            CohereEmbeddings,
+            GeminiEmbeddings,
+            OpenAIEmbeddings,
+            VoyageEmbeddings,
+        )
+
+        assert OpenAIEmbeddings.HOSTED is False  # the served engines' wire shape
+        assert CohereEmbeddings.HOSTED and VoyageEmbeddings.HOSTED and GeminiEmbeddings.HOSTED
+
+    def test_a_hosted_profile_refuses_use_activation_by_its_flag(self) -> None:
+        """The refusal keys on the declared flag, not on the base-URL proxy."""
+        from rcp_ndcg.inference.adapters.rerank import CohereRerankAdapter
+
+        with pytest.raises(ConfigError, match="use_activation"):
+            CohereRerankAdapter(RerankEndpoint(model="m", api="cohere", max_tokens=1024, use_activation=False))

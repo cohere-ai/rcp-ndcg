@@ -8723,6 +8723,34 @@
           "multi_vector"
         ]
       },
+      "AuthProfile": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.transport",
+        "init": [
+          {
+            "annotation": "tuple[str, ...]",
+            "default": [],
+            "kind": "positional_or_keyword",
+            "name": "variables"
+          },
+          {
+            "annotation": "bool",
+            "default": false,
+            "kind": "positional_or_keyword",
+            "name": "required"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "header"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
       "Call": {
         "bases": [],
         "defined_in": "rcp_ndcg.inference.types",
@@ -8856,6 +8884,15 @@
           "has_media": "property"
         }
       },
+      "ENGINE_ADAPTER_ROLES": {
+        "keys": [
+          "encoder",
+          "judge",
+          "reranker"
+        ],
+        "kind": "constant",
+        "type": "dict"
+      },
       "EmbedRequest": {
         "bases": [],
         "defined_in": "rcp_ndcg.inference.types",
@@ -8885,7 +8922,9 @@
         "kind": "class"
       },
       "EmbeddingClient": {
-        "bases": [],
+        "bases": [
+          "rcp_ndcg.inference.clients._base.RoleClient"
+        ],
         "defined_in": "rcp_ndcg.inference.clients.embed",
         "init": [
           {
@@ -8899,6 +8938,12 @@
             "default": null,
             "kind": "keyword_only",
             "name": "sender"
+          },
+          {
+            "annotation": "TextTruncationCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "census"
           },
           {
             "returns": "None"
@@ -9568,7 +9613,9 @@
         "kind": "class"
       },
       "PoolingClient": {
-        "bases": [],
+        "bases": [
+          "rcp_ndcg.inference.clients._base.RoleClient"
+        ],
         "defined_in": "rcp_ndcg.inference.clients.pool",
         "init": [
           {
@@ -9582,6 +9629,12 @@
             "default": null,
             "kind": "keyword_only",
             "name": "sender"
+          },
+          {
+            "annotation": "TextTruncationCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "census"
           },
           {
             "returns": "None"
@@ -9621,7 +9674,6 @@
               }
             ]
           },
-          "config": "property",
           "encode": {
             "kind": "method",
             "signature": [
@@ -9920,7 +9972,9 @@
         "kind": "class"
       },
       "RerankClient": {
-        "bases": [],
+        "bases": [
+          "rcp_ndcg.inference.clients._base.RoleClient"
+        ],
         "defined_in": "rcp_ndcg.inference.clients.rerank",
         "init": [
           {
@@ -9934,6 +9988,12 @@
             "default": null,
             "kind": "keyword_only",
             "name": "sender"
+          },
+          {
+            "annotation": "TextTruncationCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "census"
           },
           {
             "returns": "None"
@@ -9996,20 +10056,6 @@
               },
               {
                 "returns": "list[RerankResult]"
-              }
-            ]
-          },
-          "close": {
-            "kind": "method",
-            "signature": [
-              {
-                "annotation": null,
-                "default": "<required>",
-                "kind": "positional_or_keyword",
-                "name": "self"
-              },
-              {
-                "returns": "None"
               }
             ]
           },
@@ -10338,6 +10384,80 @@
           }
         }
       },
+      "RoleClient": {
+        "bases": [
+          "typing.Generic"
+        ],
+        "defined_in": "rcp_ndcg.inference.clients._base",
+        "init": [
+          {
+            "annotation": "C",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "config"
+          },
+          {
+            "annotation": "Sender | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "sender"
+          },
+          {
+            "annotation": "TextTruncationCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "census"
+          },
+          {
+            "returns": null
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "aclose": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "close": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "gather": {
+            "kind": "staticmethod",
+            "signature": [
+              {
+                "annotation": "list[Coroutine[Any, Any, T]]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "tasks"
+              },
+              {
+                "returns": "list[T]"
+              }
+            ]
+          }
+        }
+      },
       "SELF_HOSTED_APIS": {
         "kind": "constant",
         "type": "frozenset"
@@ -10434,6 +10554,12 @@
             "default": "<required>",
             "kind": "positional_or_keyword",
             "name": "endpoint"
+          },
+          {
+            "annotation": "AuthProfile | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "auth"
           },
           {
             "annotation": "httpx.AsyncBaseTransport | None",
@@ -10576,6 +10702,26 @@
               }
             ]
           },
+          "set_auth": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "AuthProfile",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "auth"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
           "usage": "property"
         }
       },
@@ -10714,6 +10860,48 @@
           }
         ],
         "kind": "class"
+      },
+      "adapter_roles_of": {
+        "defined_in": "rcp_ndcg.inference.adapters.base",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "EngineRole",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "engine_role"
+          },
+          {
+            "returns": "frozenset[AdapterRole]"
+          }
+        ]
+      },
+      "check_engine_api": {
+        "defined_in": "rcp_ndcg.inference.adapters.base",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | None",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "api"
+          },
+          {
+            "annotation": "EngineRole",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "engine_role"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "where"
+          },
+          {
+            "returns": "None"
+          }
+        ]
       },
       "get_adapter": {
         "defined_in": "rcp_ndcg.inference.adapters.base",

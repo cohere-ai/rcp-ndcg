@@ -25,6 +25,50 @@ released together.
 
 ### Public surface
 
+- **One client base for every role** (`rcp_ndcg.inference.clients.RoleClient`, R5/R14/R15): the adapter
+  lookup within the client's role, the hosted profile's default base URL, the transport (built from the
+  config unless a `Sender` is given), the sync bridge -- one rule: a non-transport sender must provide
+  `run`, or the constructor raises `ConfigError` (no `asyncio.run` fallback) -- and the lifecycle:
+  `close()` synchronous, `async aclose()` awaited, both context managers. `EmbeddingClient`,
+  `RerankClient` and `PoolingClient` derive from it; the judge client adopts it later.
+- **Auth in the transport** (R6): every adapter profile declares `API_KEY_ENV`, `KEY_REQUIRED` and
+  `AUTH_HEADER` (the rerank profiles gain them: `cohere` `CO_API_KEY`/`COHERE_API_KEY`, `voyage`
+  `VOYAGE_API_KEY`; the served wires and pooling take none), and the transport resolves the key -- the
+  config's `api_key_env` first (an unset named variable is a `CredentialsError`), else the profile's
+  variables in order, in the profile's header. The transport takes the facts as `AuthProfile`
+  (`Transport(endpoint, auth=...)`, and `Transport.set_auth(...)` for an injected transport); every
+  client-side key handling and the `api_key_env` clearing are gone. Key values never appear in logs or
+  error messages.
+- **No sibling left running** (R7): every client's fan-out runs in one `asyncio.TaskGroup` -- a failing
+  request cancels its siblings, no rerank `checkpoint` lands after the failure, and no task is left
+  pending; a group carrying exactly one failure is raised as that failure, so the typed errors surface.
+- **The text budget and the media seam wired into every client** (item 4): a config with `max_tokens` fits
+  every request through the shared mechanism (`rcp_ndcg.data.preprocess.fit`), cutting only content spans
+  with the template re-attached, recording every cut in the census (`client.census`, a
+  `TextTruncationCensus`); the interim refusal of `max_tokens` is gone. The served rerank path sends no
+  `truncate_prompt_tokens`/`max_tokens_per_query`/`max_tokens_per_doc` (the client cut already). Media is
+  prepared with the role config's media policy and counted through the named seam `RoleClient._media_tokens`
+  (the budget-media lane wires it; until then media is refused by the text-only adapters as before).
+- **Explicit budgets for the role clients**: a self-hosted role config must declare `tokenizer` +
+  `max_tokens` (already enforced at the config); a hosted profile may declare only the vendor's documented
+  limit (`budget_source: vendor`, content uncut). `on_overflow: chunk` is refused for the embed and pooling
+  roles (chunks pool scores by max; vectors have none to pool -- a late-interaction document is chunked at
+  the corpus layer); the rerank role chunks and pools by `max_pool_scores_by_document`.
+- **`dim` refused at construction** (R13): `PoolingClient` refuses a config whose `dim` is unset (the
+  base64 frame of `/pooling` is flat and carries no shape), before any request runs on the GPU.
+- **`HOSTED` declared, not inferred** (R8): the adapters declare `HOSTED: ClassVar[bool]`; the rerank
+  profiles' `use_activation` refusal keys on it, not on `DEFAULT_BASE_URL is not None`.
+- **`EngineRole` meets `AdapterRole` in one written mapping** (F7): `ENGINE_ADAPTER_ROLES` and
+  `check_engine_api(api, engine_role=..., where=...)` in `rcp_ndcg.inference.adapters.base`; the runners'
+  engine overlay refuses a config whose `api` selects an adapter of a different engine role.
+- **A served rerank config sets `use_activation` explicitly** (F10): `RerankEndpoint` with `api: rerank`
+  refuses `use_activation: None` (two engines with different defaults would share an identity); hosted
+  profiles keep `None` (their scale is fixed).
+- `Transport.aclose()` is a true async close (R15): awaited on the pool's own loop; `close()` stays the
+  synchronous twin.
+- The Python-surface snapshot records the new names (`RoleClient`, `AuthProfile`, `ENGINE_ADAPTER_ROLES`,
+  `adapter_roles_of`, `check_engine_api`, `Transport.set_auth`); no CLI command, flag, exit code or
+  `schemas/` file changes.
 - `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
   larger than `adaptive_window` runs one batch, not one per batch: every adaptive window of such a pool holds
   the whole pool, so a further batch asks the same documents again (in the refit order) and covers only what

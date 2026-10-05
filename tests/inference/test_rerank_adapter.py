@@ -36,10 +36,26 @@ def _request(
     )
 
 
+#: The served configs declare their budget explicitly; ``tokenizer`` is filled per session from the saved
+#: test tokenizer (the ``tokenizer_json`` fixture).
+_TOKENIZER: str = ""
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _default_budget(tokenizer_json: str) -> None:
+    global _TOKENIZER
+    _TOKENIZER = tokenizer_json
+
+
 def _config(**kwargs: Any) -> RerankEndpoint:
-    """A served config; hosted profiles pass ``api`` and drop ``base_url``."""
+    """A served config; hosted profiles pass ``api`` and drop ``base_url``. A served one declares its
+    explicit budget (tokenizer + max_tokens) and ``use_activation`` (F10)."""
     kwargs.setdefault("base_url", "http://engine:8000/v1")
     kwargs.setdefault("model", "qwen3-reranker-8b")
+    if kwargs.get("api", "rerank") == "rerank":
+        kwargs.setdefault("tokenizer", _TOKENIZER or "test/tokenizer")
+        kwargs.setdefault("max_tokens", 8192)
+        kwargs.setdefault("use_activation", False)
     return RerankEndpoint(**kwargs)
 
 
@@ -69,15 +85,17 @@ class TestServedBody:
             "query": "q",
             "documents": ["first", "second", "third"],
             "top_n": 3,
+            "use_activation": False,  # F10: a served config sets it explicitly, and it travels
         }
 
     def test_the_engine_extensions_are_absent_until_the_config_sets_them(self) -> None:
-        """A plain Cohere-shaped server never receives an unknown field."""
+        """A plain Cohere-shaped server receives only the fields the config and request set: the
+        instruction field waits for ``instruction: field``, and no engine-side truncation field is ever sent."""
         adapter = RerankAdapter(_config())
         call = adapter.calls(_request("a", "b"), model="m")[0]
 
-        assert set(call.json) == {"model", "query", "documents", "top_n"}
-        assert not {"instruction", "use_activation", "max_tokens_per_doc", "truncate_prompt_tokens"} & set(call.json)
+        assert set(call.json) == {"model", "query", "documents", "top_n", "use_activation"}
+        assert not {"instruction", "max_tokens_per_doc", "truncate_prompt_tokens"} & set(call.json)
 
     def test_the_instruction_field_travels_only_when_the_request_carries_one(self) -> None:
         adapter = RerankAdapter(_config(instruction="field"))
