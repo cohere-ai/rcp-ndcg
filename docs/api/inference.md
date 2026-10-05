@@ -31,6 +31,10 @@ out-of-range index raises a non-retryable `ProviderError` naming the server. An 
 request as too long raises a `CapabilityError` whose hint names `max_tokens`; any other refusal is a
 `RequestRejectedError`.
 
+The pauses pace *one query's* requests. `rerank_many` still runs `concurrency` queries in flight, so an
+`api: voyage` endpoint sees about `concurrency` requests every half second; until the transport work owns
+pacing across queries, set `concurrency` low (2--4) for Voyage, which enforces strict rate limits.
+
 ## The client
 
 `RerankClient(config)` sends one query's whole candidate set per request and reads the scores back aligned to

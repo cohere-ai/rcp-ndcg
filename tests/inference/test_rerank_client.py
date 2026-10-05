@@ -16,7 +16,7 @@ from rcp_ndcg_core._records import RankingExample
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference.clients import RerankClient
 from rcp_ndcg.inference.config import RerankEndpoint
-from rcp_ndcg.inference.types import Call, Reply, Usage
+from rcp_ndcg.inference.types import Call, Reply, RerankResult, Usage
 
 # ---------------------------------------------------------------------------------------------------------------
 # The fake server: a Sender answering /rerank over the three body shapes
@@ -293,3 +293,45 @@ class TestTokenizerIdentity:
 
         config = RerankEndpoint(base_url="http://a:8000/v1", model="m", tokenizer="Qwen/Qwen3-Reranker-8B@abc")
         assert "tokenizer" not in identity_payload(config)
+
+
+def test_the_adapter_seam_re_exports_the_family_and_its_base() -> None:
+    """The third-party seam: the concrete wires and the base they share, one import away."""
+    from rcp_ndcg.inference import adapters
+    from rcp_ndcg.inference.adapters.rerank import RerankAdapter, RerankWire
+
+    assert adapters.RerankWire is RerankWire
+    assert issubclass(RerankAdapter, RerankWire)
+
+
+def test_a_client_tolerates_an_adapter_without_the_profile_facts() -> None:
+    """A third-party rerank adapter that shape-matches only the Adapter protocol still constructs: no default
+    base URL (the config must set one) and no pause."""
+    from rcp_ndcg.inference.adapters import register_adapter
+    from rcp_ndcg.inference.adapters.base import AdapterRole
+
+    class _ThirdParty:
+        name = "third_party_rerank"
+        role: ClassVar[AdapterRole] = "rerank"
+
+        def __init__(self, config: RerankEndpoint) -> None:
+            self.config = config
+
+        def calls(self, request: Any, *, model: str) -> list[Call]:
+            return [Call("POST", "/rerank", {"model": model, "query": "q", "documents": ["a"], "top_n": 1})]
+
+        def interpret(self, request: Any, replies: Sequence[Reply]) -> RerankResult:
+            return RerankResult(scores=(0.5,))
+
+        def usage(self, reply: Reply) -> None:
+            return None
+
+    register_adapter(_ThirdParty)
+    server = _server()
+    client = RerankClient(
+        RerankEndpoint(api="third_party_rerank", base_url="http://a:8000/v1", model="m"), sender=server
+    )
+
+    assert client.rerank("q", ["a"]).scores == (0.5,)
+    # The client read the profile facts defensively: no default base URL was invented, no pause applied.
+    assert server.calls[0].json == {"model": "m", "query": "q", "documents": ["a"], "top_n": 1}

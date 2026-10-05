@@ -13,7 +13,12 @@ from rcp_ndcg.inference.adapters.base import (
     known_adapters,
     register_adapter,
 )
-from rcp_ndcg.inference.adapters.rerank import CohereRerankAdapter, RerankAdapter, VoyageRerankAdapter
+from rcp_ndcg.inference.adapters.rerank import (
+    CohereRerankAdapter,
+    RerankAdapter,
+    RerankWire,
+    VoyageRerankAdapter,
+)
 
 __all__ = [
     "ADAPTER_ENTRY_POINTS",
@@ -21,6 +26,7 @@ __all__ = [
     "AdapterRole",
     "CohereRerankAdapter",
     "RerankAdapter",
+    "RerankWire",
     "VoyageRerankAdapter",
     "get_adapter",
     "known_adapters",

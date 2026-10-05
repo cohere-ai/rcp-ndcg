@@ -83,7 +83,9 @@ class RerankClient:
             )
         adapter_cls = cast("type[RerankWire]", get_adapter(config.api))
         if config.base_url is None:
-            default = adapter_cls.DEFAULT_BASE_URL
+            # The shipped adapters (and a third party's matching the RerankWire shape) declare the hosted
+            # profiles' public root; anything else answers through the config's own base_url.
+            default = getattr(adapter_cls, "DEFAULT_BASE_URL", None)
             if default is None:
                 raise ConfigError(
                     f"the {config.api!r} rerank endpoint needs base_url",
@@ -225,7 +227,7 @@ class RerankClient:
         sender = self._transport if self._transport is not None else self._sender
         if sender is None:  # pragma: no cover - __init__ always leaves one of the two set
             raise RuntimeError("rerank client has neither a transport nor a sender")
-        pause = self._adapter.PAUSE_S
+        pause = getattr(self._adapter, "PAUSE_S", 0.0)
         if not pause:
             return await sender.send(calls)
         replies: list[Reply] = []
