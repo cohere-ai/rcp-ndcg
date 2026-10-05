@@ -60,7 +60,7 @@ class DemoAdapter:
 
 endpoint = EmbeddingEndpoint(base_url="fake://embed?dim=8", model="demo-encoder")
 transport = Transport(endpoint)
-adapter = get_adapter("demo")()
+adapter = get_adapter("demo", role="embed")()
 replies = transport.run(transport.send(adapter.calls(None, model=endpoint.model)))
 for reply in replies:
     transport.add_usage(adapter.usage(reply))
