@@ -285,7 +285,6 @@ def evaluate(
         raise ConfigError("evaluate needs the data to score against: suite= or dataset=")
     rules = _protocol(protocol if protocol is not None else dataset.protocol or "plain")
     _refuse_undivided(rankings, dataset)
-    _refuse_unmatched(rankings, dataset)
 
     rcp_gains, source = _resolve_gains(gains, dataset) if "rcp_ndcg" in metrics else (None, "none")
     if "count_ndcg" in metrics and count_gains is None:
@@ -303,11 +302,12 @@ def evaluate(
     per_query: list[QueryValue] = []
     unranked: dict[str, set[tuple[str, str]]] = {}
     for system in rankings.systems:
+        scores = {part.name: _system_queries(rankings, system, part.name) for part in dataset.parts}
+        _refuse_unmatched(rankings, dataset, system, scores)
         for part in dataset.parts:
-            scores = _system_queries(rankings, system, part.name)
             for metric in computed:
                 for query_id, query_labels in labels[metric][part.name].items():
-                    ranked = scores.get(query_id)
+                    ranked = scores[part.name].get(query_id)
                     if ranked is None:
                         unranked.setdefault(system, set()).add((part.name, query_id))
                     for cutoff in ks:
@@ -448,7 +448,12 @@ def _system_queries(rankings: Rankings, system: str, dataset: str) -> dict[str, 
     return rankings.queries(system=system, dataset=dataset)
 
 
-def _refuse_unmatched(rankings: Rankings, dataset: Dataset) -> None:
+def _refuse_unmatched(
+    rankings: Rankings,
+    dataset: Dataset,
+    system: str,
+    scores: Mapping[str, dict[str, dict[str, float]]],
+) -> None:
     """Refuse a system whose rankings match nothing of the scored dataset: every score would be 0.
 
     Two broken inputs otherwise score every query 0 with ``ok``; both are refused instead:
@@ -459,9 +464,18 @@ def _refuse_unmatched(rankings: Rankings, dataset: Dataset) -> None:
     A system that matches some subsets, or some documents, keeps scoring as before: the missing subsets score 0
     with ``UNRANKED_QUERIES`` (naming them), and out-of-pool documents score 0 silently.
 
+    Args:
+        rankings: The systems' scores, for the datasets the rows name.
+        dataset: The scored dataset.
+        system: The system being scored; the error names it.
+        scores: The system's per-subset scores, as :func:`_system_queries` returned them (read once, reused for
+            the scoring, so the check adds no pass over the rankings).
+
     Raises:
         DataError: Naming the system and the datasets its rows do name, or one ranked id next to one dataset id.
     """
+    if not any(scores.values()):
+        raise no_rankings_error(dataset.name, rankings.datasets, system=system, hint=_dataset_column_hint(dataset))
     pools = {doc_id for part in dataset.parts for pool in (part.candidates or {}).values() for doc_id in pool}
     labels = {
         doc_id
@@ -469,14 +483,10 @@ def _refuse_unmatched(rankings: Rankings, dataset: Dataset) -> None:
         for docs in [*part.qrels.values(), *(part.gains or {}).values()]
         for doc_id in docs
     }
+    ranked = {doc_id for part_scores in scores.values() for docs in part_scores.values() for doc_id in docs}
     targets = pools | labels
-    for system in rankings.systems:
-        scores = [_system_queries(rankings, system, part.name) for part in dataset.parts]
-        if not any(scores):
-            raise no_rankings_error(dataset.name, rankings.datasets, system=system, hint=_dataset_column_hint(dataset))
-        ranked = {doc_id for part_scores in scores for docs in part_scores.values() for doc_id in docs}
-        if targets and not ranked & targets:
-            raise _no_overlap_error(system, dataset, ranked, pools, labels)
+    if targets and not ranked & targets:
+        raise _no_overlap_error(system, dataset, ranked, pools, labels)
 
 
 def _dataset_column_hint(dataset: Dataset) -> str:

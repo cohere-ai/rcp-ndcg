@@ -405,6 +405,18 @@ def test_no_subset_of_a_suite_is_named_is_a_data_error() -> None:
     assert "hr__english" in caught.value.hint and "energy__french" in caught.value.hint
 
 
+def test_a_file_is_refused_when_any_of_its_systems_matches_nothing() -> None:
+    """The checks are per system: a file of a matching and a non-matching system is refused, naming the bad one."""
+    dataset = _vidore_like()
+    broken = Rankings.from_orders(
+        {q: list(docs) for q, docs in (dataset.candidates or {}).items()}, system="broken", dataset="hr"
+    )
+
+    with pytest.raises(DataError, match="system 'broken'"):
+        evaluate(Rankings.concat([_pool_orders(dataset), broken]), dataset=dataset, gains=dataset.gains,
+                 protocol="vidore", bootstrap=0)  # fmt: skip
+
+
 @pytest.mark.parametrize("protocol", ["plain", "vidore"])
 def test_rankings_of_another_corpus_are_refused_under_every_protocol(protocol: str) -> None:
     """Doc ids without the `corpus-test-` prefix match no pool or label: a DataError, under any protocol."""
