@@ -221,10 +221,13 @@ def test_single_and_multi_vector_retrievers_are_different_kinds() -> None:
     pooling = {"api": "vllm_pooling", "model": "colqwen", "base_url": "http://h:8000/v1"}
     served = {"api": "openai_embeddings", "model": "colqwen", "base_url": "http://h:8000/v1"}
 
-    with pytest.raises(ValidationError, match="vllm_pooling"):
+    # A cross-role api is refused where the config is read, with the registry's own message.
+    with pytest.raises(ConfigError, match="unknown embed adapter 'vllm_pooling'") as caught:
         adapter.validate_python({"kind": "dense", "encoder": pooling})
-    with pytest.raises(ValidationError, match="vllm_pooling"):
+    assert "multi_vector" in (caught.value.hint or "")
+    with pytest.raises(ConfigError, match="unknown multi_vector adapter 'openai_embeddings'") as caught:
         adapter.validate_python({"kind": "late_interaction", "encoder": served})
+    assert "embed" in (caught.value.hint or "")
     assert adapter.validate_python({"kind": "late_interaction", "encoder": pooling}).kind == "late_interaction"
 
 

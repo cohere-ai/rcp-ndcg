@@ -61,6 +61,27 @@ def test_each_served_paper_reranker_names_its_recipe_tokenizer_and_budgets(path:
     assert config.instruction == "none", "the release's in-process path passed the bare query"
 
 
+def test_every_recipe_id_is_the_lowercased_hub_repo_name_of_its_tokenizer() -> None:
+    """One recipe-id rule (the recipe package's canonical list): the id is the checkpoint's lowercased Hub repo
+    name, never a short Hub redirect (``zerank-1-reranker``, not ``zerank-1``)."""
+    checked = 0
+    for directory in ("retrieval", "rerankers"):
+        for path, data in _configs(PAPER / directory):
+            recipe = data.get("recipe")
+            tokenizer = data.get("tokenizer") or data.get("encoder", {}).get("tokenizer")
+            if recipe is None:
+                recipe = data.get("encoder", {}).get("recipe")
+            if recipe is None:
+                continue
+            tokenizer = str(tokenizer)
+            assert "@" in tokenizer, path
+            repo = tokenizer.rsplit("@", 1)[0].split("/")[-1]
+            expected = repo.lower()
+            assert recipe == expected, f"{path}: recipe {recipe!r} != the tokenizer's lowercased repo {expected!r}"
+            checked += 1
+    assert checked == 11, f"every paper config with a recipe names its checkpoint (checked {checked})"
+
+
 def test_the_jina_paper_config_is_listwise_and_the_octen_one_carries_its_prefix() -> None:
     jina = validate_reranker(yaml.safe_load((PAPER / "rerankers" / "jina_v3.yaml").read_text(encoding="utf-8")))
     assert jina.listwise is True

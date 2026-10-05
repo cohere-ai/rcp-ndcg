@@ -26,6 +26,12 @@ wait), and every role client -- :class:`~rcp_ndcg.inference.clients.EmbeddingCli
 them over the shared transport. A field a variant cannot use is refused, never ignored; an old config shape
 (``provider:``) is refused with a hint that shows the new one.
 
+The shipped names are not the whole surface: an ``api`` that names any other registered adapter of the role -- a
+third party's from the ``rcp_ndcg.adapters`` entry-point group, or a test's -- selects the role's generic
+endpoint config (:class:`PluginEmbedding`, :class:`PluginPooling`, :class:`PluginReranker`), after the registry
+has confirmed the name (an unregistered or wrong-role name is refused with the registry's hint). The adapter
+name is ``CONTENT``: a step identity keys on it, as the judge's does for its third-party adapters.
+
 Every config declares ``IDENTITY_ROLES``: what the model computes (the model, its revision, its recipe, its
 prompts and budgets, the tokenizer's SHA-256 through ``Endpoint.identity_extra()``) enters an index's or a
 step's identity; where and how fast it is asked does not.
@@ -35,7 +41,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, TypeAdapter, model_validator
 
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp_ndcg.support.identity import FieldRole
@@ -50,6 +56,40 @@ _OLD_SHAPE_HINT = (
     "and point api at it"
 )
 """The hint an old config shape carries: what replaced ``provider``, in the shape a config file spells."""
+
+_SHIPPED_EMBED_APIS = frozenset({"openai_embeddings", "cohere", "voyage", "gemini"})
+_SHIPPED_POOLING_APIS = frozenset({"vllm_pooling"})
+_SHIPPED_RERANK_APIS = frozenset({"rerank", "cohere", "voyage"})
+"""The ``api`` values that select a shipped config class; every other registered adapter of the role selects
+the role's generic endpoint (:class:`PluginEmbedding`, :class:`PluginPooling`, :class:`PluginReranker`)."""
+
+
+def _resolve_plugin_api(data: Any, shipped: frozenset[str], role: str) -> Any:
+    """Confirm a non-shipped ``api`` names a registered adapter of *role* (C2), and pass the data on.
+
+    The shipped names select their own config classes in the union that follows; any other ``api`` is the
+    third-party seam, and must resolve in the role's registry before a config is built -- an unregistered name
+    or one registered for another role is refused with the registry's hint, where the config is read.
+
+    Args:
+        data: The parsed config (a mapping with ``api``, at the union's entry).
+        shipped: The role's shipped ``api`` names.
+        role: The adapter role whose registry resolves the name.
+
+    Returns:
+        ``data`` unchanged, for the union to validate as the role's generic endpoint.
+
+    Raises:
+        ConfigError: ``api`` names no adapter of the role (the registry's hint lists that role's names, and
+            names the role when the name is registered elsewhere).
+    """
+    if isinstance(data, dict):
+        api = data.get("api")
+        if isinstance(api, str) and api not in shipped:
+            from rcp_ndcg.inference.adapters.base import get_adapter
+
+            get_adapter(api, role=role)  # type: ignore[arg-type]
+    return data
 
 
 class _ApiSelected(BaseModel):
@@ -118,11 +158,49 @@ class GeminiEmbedding(_ApiSelected, EmbeddingEndpoint):
     api: Literal["gemini"] = "gemini"  # type: ignore[assignment]
 
 
-EncoderConfig = ServedEmbedding | CohereEmbedding | VoyageEmbedding | GeminiEmbedding
-"""An embedding model: the served :class:`ServedEmbedding` or the hosted :class:`CohereEmbedding`,
-:class:`VoyageEmbedding` and :class:`GeminiEmbedding`, by ``api``. A plain union rather than a discriminated
-one, so an old shape (``provider:``) reaches the members' refusals and gets the migration hint instead of a
-bare "cannot extract tag"."""
+class PluginEmbedding(_ApiSelected, EmbeddingEndpoint):
+    """A third-party embed wire: ``api`` names a registered adapter of the embed role that is not a shipped
+    one, and the role's generic config carries it (the shipped names select their own classes).
+
+    The registry check happens where the config is read (:func:`_resolve_embed_api`); this class is the shape a
+    registered plugin name builds, every field inherited from
+    :class:`~rcp_ndcg.inference.config.EmbeddingEndpoint`. A shipped ``api`` is refused here, so it always
+    selects its own class.
+    """
+
+    @model_validator(mode="before")
+    @classmethod
+    def _shipped_apis_have_their_own_class(cls, data: Any) -> Any:
+        if isinstance(data, dict) and data.get("api") in _SHIPPED_EMBED_APIS:
+            raise ValueError(f"{data['api']!r} is a shipped wire and selects its own config class")
+        return data
+
+
+def _resolve_embed_api(data: Any) -> Any:
+    """Confirm a non-shipped ``api`` names a registered embed adapter (the registry's hint when it does not)."""
+    return _resolve_plugin_api(data, _SHIPPED_EMBED_APIS, "embed")
+
+
+def _resolve_pooling_api(data: Any) -> Any:
+    """Confirm a non-shipped multi-vector ``api`` against the ``multi_vector`` role's registry."""
+    return _resolve_plugin_api(data, _SHIPPED_POOLING_APIS, "multi_vector")
+
+
+def _resolve_rerank_api(data: Any) -> Any:
+    """Confirm a non-shipped rerank ``api`` against the ``rerank`` role's registry."""
+    return _resolve_plugin_api(data, _SHIPPED_RERANK_APIS, "rerank")
+
+
+EncoderConfig = Annotated[
+    ServedEmbedding | CohereEmbedding | VoyageEmbedding | GeminiEmbedding | PluginEmbedding,
+    BeforeValidator(_resolve_embed_api),
+]
+"""An embedding model: the served :class:`ServedEmbedding`, the hosted :class:`CohereEmbedding`,
+:class:`VoyageEmbedding` and :class:`GeminiEmbedding`, or -- for any other registered embed-role adapter -- the
+generic :class:`PluginEmbedding`, by ``api``. A plain union rather than a discriminated one, so an old shape
+(``provider:``) reaches the members' refusals and gets the migration hint instead of a bare "cannot extract
+tag"; the :func:`BeforeValidator` resolves a non-shipped ``api`` against the embed role's registry before the
+union runs."""
 
 
 class ServedPooling(_ApiSelected, PoolingEndpoint):
@@ -135,6 +213,20 @@ class ServedPooling(_ApiSelected, PoolingEndpoint):
     """
 
     api: Literal["vllm_pooling"] = "vllm_pooling"  # type: ignore[assignment]
+
+
+class PluginPooling(_ApiSelected, PoolingEndpoint):
+    """A third-party multi-vector wire: ``api`` names a registered adapter of the ``multi_vector`` role that is
+    not a shipped one, and the role's generic config carries it. See :class:`PluginEmbedding`; a shipped
+    ``api`` is refused here, so ``vllm_pooling`` always selects :class:`ServedPooling`.
+    """
+
+    @model_validator(mode="before")
+    @classmethod
+    def _shipped_apis_have_their_own_class(cls, data: Any) -> Any:
+        if isinstance(data, dict) and data.get("api") in _SHIPPED_POOLING_APIS:
+            raise ValueError(f"{data['api']!r} is a shipped wire and selects its own config class")
+        return data
 
 
 # ---------------------------------------------------------------------------
@@ -189,9 +281,27 @@ class VoyageReranker(_HostedReranker):
     api: Literal["voyage"] = "voyage"  # type: ignore[assignment]
 
 
-RerankerConfig = ServedReranker | CohereReranker | VoyageReranker
-"""A reranker: the served :class:`ServedReranker` or the hosted :class:`CohereReranker` and
-:class:`VoyageReranker`, by ``api``."""
+class PluginReranker(_ApiSelected, RerankEndpoint):
+    """A third-party rerank wire: ``api`` names a registered adapter of the rerank role that is not a shipped
+    one, and the role's generic config carries it. See :class:`PluginEmbedding`; a shipped ``api`` is refused
+    here, so ``rerank``, ``cohere`` and ``voyage`` always select their own classes.
+    """
+
+    @model_validator(mode="before")
+    @classmethod
+    def _shipped_apis_have_their_own_class(cls, data: Any) -> Any:
+        if isinstance(data, dict) and data.get("api") in _SHIPPED_RERANK_APIS:
+            raise ValueError(f"{data['api']!r} is a shipped wire and selects its own config class")
+        return data
+
+
+RerankerConfig = Annotated[
+    ServedReranker | CohereReranker | VoyageReranker | PluginReranker, BeforeValidator(_resolve_rerank_api)
+]
+"""A reranker: the served :class:`ServedReranker`, the hosted :class:`CohereReranker` and
+:class:`VoyageReranker`, or -- for any other registered rerank-role adapter -- the generic
+:class:`PluginReranker`, by ``api``; the :func:`BeforeValidator` resolves a non-shipped ``api`` against the
+rerank role's registry before the union runs."""
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +340,7 @@ class LateInteractionConfig(_ApiSelected):
     IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"kind": _CONTENT, "encoder": _CONTENT}
 
     kind: Literal["late_interaction"] = "late_interaction"
-    encoder: ServedPooling
+    encoder: Annotated[ServedPooling | PluginPooling, BeforeValidator(_resolve_pooling_api)]
 
 
 RetrieverConfig = Annotated[BM25Config | DenseConfig | LateInteractionConfig, Field(discriminator="kind")]
@@ -255,10 +365,13 @@ def validate_retriever(data: Any) -> RetrieverConfig:
         ConfigError: the data is not a retriever config: an old shape (``provider:``, ``engine:``), an unknown
             ``api``, or a field its variant does not take. The hint shows the new shape.
     """
+    from rcp_ndcg.errors import ConfigError
     from rcp_ndcg.support.config import config_error
 
     try:
         return _RETRIEVER.validate_python(data)
+    except ConfigError:
+        raise  # a typed refusal (a plugin api the registry does not know) already carries its own hint
     except Exception as exc:  # noqa: BLE001 -- config_error maps the pydantic ValidationError
         raise config_error(exc, model=_RETRIEVER, hint=_OLD_SHAPE_HINT) from exc
 
@@ -276,10 +389,13 @@ def validate_reranker(data: Any) -> RerankerConfig:
         ConfigError: the data is not a reranker config: an old shape (``provider:``, ``engine:``), an unknown
             ``api``, or a field its variant does not take. The hint shows the new shape.
     """
+    from rcp_ndcg.errors import ConfigError
     from rcp_ndcg.support.config import config_error
 
     try:
         return _RERANKER.validate_python(data)
+    except ConfigError:
+        raise  # a typed refusal (a plugin api the registry does not know) already carries its own hint
     except Exception as exc:  # noqa: BLE001 -- config_error maps the pydantic ValidationError
         raise config_error(exc, model=_RERANKER, hint=_OLD_SHAPE_HINT) from exc
 
@@ -292,6 +408,9 @@ __all__ = [
     "EncoderConfig",
     "GeminiEmbedding",
     "LateInteractionConfig",
+    "PluginEmbedding",
+    "PluginPooling",
+    "PluginReranker",
     "RerankerConfig",
     "RetrieverConfig",
     "ServedEmbedding",

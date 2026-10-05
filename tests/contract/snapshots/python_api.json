@@ -1607,7 +1607,7 @@
       },
       "RerankerConfig": {
         "kind": "type_alias",
-        "type": "rcp_ndcg.retrieval.config.ServedReranker | rcp_ndcg.retrieval.config.CohereReranker | rcp_ndcg.retrieval.config.VoyageReranker"
+        "type": "rcp_ndcg.retrieval.config.ServedReranker | rcp_ndcg.retrieval.config.CohereReranker | rcp_ndcg.retrieval.config.VoyageReranker | rcp_ndcg.retrieval.config.PluginReranker"
       },
       "RetrieverConfig": {
         "kind": "type_alias",
@@ -11529,7 +11529,7 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "rcp_ndcg.retrieval.config.ServedEmbedding | rcp_ndcg.retrieval.config.CohereEmbedding | rcp_ndcg.retrieval.config.VoyageEmbedding | rcp_ndcg.retrieval.config.GeminiEmbedding"
+            "type": "rcp_ndcg.retrieval.config.ServedEmbedding | rcp_ndcg.retrieval.config.CohereEmbedding | rcp_ndcg.retrieval.config.VoyageEmbedding | rcp_ndcg.retrieval.config.GeminiEmbedding | rcp_ndcg.retrieval.config.PluginEmbedding"
           },
           "kind": {
             "alias": null,
@@ -11708,7 +11708,7 @@
       },
       "EncoderConfig": {
         "kind": "type_alias",
-        "type": "rcp_ndcg.retrieval.config.ServedEmbedding | rcp_ndcg.retrieval.config.CohereEmbedding | rcp_ndcg.retrieval.config.VoyageEmbedding | rcp_ndcg.retrieval.config.GeminiEmbedding"
+        "type": "rcp_ndcg.retrieval.config.ServedEmbedding | rcp_ndcg.retrieval.config.CohereEmbedding | rcp_ndcg.retrieval.config.VoyageEmbedding | rcp_ndcg.retrieval.config.GeminiEmbedding | rcp_ndcg.retrieval.config.PluginEmbedding"
       },
       "GeminiEmbedding": {
         "bases": [
@@ -11920,7 +11920,7 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "rcp_ndcg.retrieval.config.ServedPooling"
+            "type": "rcp_ndcg.retrieval.config.ServedPooling | rcp_ndcg.retrieval.config.PluginPooling"
           },
           "kind": {
             "alias": null,
@@ -11935,7 +11935,7 @@
       },
       "RerankerConfig": {
         "kind": "type_alias",
-        "type": "rcp_ndcg.retrieval.config.ServedReranker | rcp_ndcg.retrieval.config.CohereReranker | rcp_ndcg.retrieval.config.VoyageReranker"
+        "type": "rcp_ndcg.retrieval.config.ServedReranker | rcp_ndcg.retrieval.config.CohereReranker | rcp_ndcg.retrieval.config.VoyageReranker | rcp_ndcg.retrieval.config.PluginReranker"
       },
       "RetrieverConfig": {
         "kind": "type_alias",

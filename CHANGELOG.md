@@ -42,6 +42,15 @@ released together.
   - The per-query rerank checkpoint moves to `rcp_ndcg.retrieval._api`: the record format (`{"q", "k", "s"}`),
     the per-record fsync, the file (`rank000.jsonl`) and the key payload are the served path's historical ones,
     so a resumed rerank reads a checkpoint an earlier release wrote.
+  - **Plugin adapters reach retrieval**: a non-shipped `api` is resolved against the role's registry where the
+    config is read (an unregistered or wrong-role name is refused with the registry's hint) and builds the
+    role's generic endpoint config — `PluginEmbedding`, `PluginPooling` (a late-interaction encoder may also be
+    one) and `PluginReranker`, exported from `rcp_ndcg.retrieval[.config]`. The adapter name is content, so a
+    step (and an index) identity keys on it, as the judge's does for its third-party adapters; the retrieval
+    steps run the third-party wire like a shipped one.
+  - Every paper config's `recipe:` id is the checkpoint's lowercased Hub repo name, never a short Hub redirect
+    (`zerank-1-reranker`, `zerank-1-small-reranker`, not `zerank-1`/`zerank-1-small`); pinned by a test over
+    every config with a `recipe:`.
   - `EncoderConfig` is `ServedEmbedding | CohereEmbedding | VoyageEmbedding | GeminiEmbedding`,
     `RerankerConfig` is `ServedReranker | CohereReranker | VoyageReranker` (both plain unions, so old shapes
     reach the members' refusals); `RetrieverConfig` stays a `kind`-discriminated union.

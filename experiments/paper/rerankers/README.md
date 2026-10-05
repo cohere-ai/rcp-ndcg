@@ -26,7 +26,8 @@ rcp-ndcg retrieval rerank --dataset <uri> --rankings fused.parquet --reranker my
 
 The paper's in-process rerankers are served now (the package carries no in-process model code). Each config names
 the recipe that serves it (`recipe:`; the recipes live in `packages/rcp-ndcg-vllm`, with the paper's exact scoring
-kept under `reference/` for the equivalence check), its checkpoint's `tokenizer` (whose SHA-256 keys the rerun's
+kept under `reference/` for the equivalence check) — the id is the checkpoint's lowercased Hub repo name, never a
+short redirect (`zerank-1-reranker`, not `zerank-1`) — its checkpoint's `tokenizer` (whose SHA-256 keys the rerun's
 resumes), and the paper's budgets (`max_tokens: 8192`, `query_max_tokens: 4096`). Their `base_url` is a
 placeholder: a `serve.reranker` engine replaces it at runtime through `RCP_NDCG_ENGINES`, or pass your own with
 `--set base_url=...`. Until the text-budget mechanism wires the clients, a config that sets `max_tokens` is

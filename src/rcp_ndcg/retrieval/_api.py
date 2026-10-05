@@ -37,7 +37,6 @@ from rcp_ndcg.retrieval.config import (
     RerankerConfig,
     RetrieverConfig,
     ServedEmbedding,
-    ServedPooling,
 )
 from rcp_ndcg.support.identity import combine_digests, hash_payload, hash_strings, identity_payload, short
 from rcp_ndcg.support.logging import get_logger
@@ -332,7 +331,10 @@ def _checkpoint_key(config: RerankerConfig, example: Any) -> str:
 
     A rerun with another reranker, another depth or other candidates has another key and is scored again. The
     payload spells the budgets and the served framework exactly as the earlier release that wrote today's
-    checkpoint files did, so a resumed rerank reads them.
+    checkpoint files did, so a resumed rerank reads them. When the config sets no budget, the historical
+    ``8192``/``4096`` defaults stand in only to keep those pre-0.0.1 checkpoint keys stable: they are never
+    sent to an endpoint and never used to cut text (the clients cut nothing until the text-budget mechanism
+    wires the declared tokenizer; a config that sets a budget is refused there, not cut by these numbers).
     """
     payload = {
         "model": config.model,
@@ -529,17 +531,20 @@ def _no_base_url() -> ConfigError:
 def _encode(config: Any, contents: Sequence[Any], role: EncodeRole) -> Embeddings:
     """Encode *contents* through the encoder config's role client, its transport closed after the call.
 
-    A :class:`~rcp_ndcg.retrieval.config.ServedEmbedding` runs the
-    :class:`~rcp_ndcg.inference.clients.EmbeddingClient`, a
-    :class:`~rcp_ndcg.retrieval.config.ServedPooling` the
-    :class:`~rcp_ndcg.inference.clients.PoolingClient` (ragged), and a hosted profile the embedding client at
-    the vendor's public URL.
+    Any pooling config (:class:`~rcp_ndcg.retrieval.config.ServedPooling` or a third-party
+    :class:`~rcp_ndcg.retrieval.config.PluginPooling`) runs the
+    :class:`~rcp_ndcg.inference.clients.PoolingClient` (ragged); every embedding config -- served, hosted, or
+    a third-party :class:`~rcp_ndcg.retrieval.config.PluginEmbedding` -- the
+    :class:`~rcp_ndcg.inference.clients.EmbeddingClient`, a hosted profile at the vendor's public URL.
 
     Raises:
-        ConfigError: a served encoder's ``base_url`` is unset: give it, or start its engine with
-            ``serve.encoder`` (the job then passes the URL at runtime).
+        ConfigError: a pooling encoder's ``base_url`` is unset: give it, or start its engine with
+            ``serve.encoder`` (the job then passes the URL at runtime); a served one without a public root
+            likewise.
     """
-    if isinstance(config, ServedPooling):
+    from rcp_ndcg.inference.config import PoolingEndpoint
+
+    if isinstance(config, PoolingEndpoint):
         if config.base_url is None:
             raise _no_base_url()
         client: Any = PoolingClient(config)
