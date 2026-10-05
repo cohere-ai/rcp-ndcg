@@ -25,6 +25,7 @@ import os
 import threading
 import time
 from collections.abc import Coroutine, Mapping, Sequence
+from dataclasses import dataclass
 from types import TracebackType
 from typing import Any, ClassVar, Protocol, Self, TypeVar, runtime_checkable
 
@@ -48,6 +49,33 @@ logger = get_logger(__name__)
 
 T = TypeVar("T")
 """The result type of a coroutine the sync bridge runs."""
+
+
+@dataclass(frozen=True)
+class AuthProfile:
+    """The credential facts a wire adapter declares: where its key may live, whether it is required, and the
+    header it travels in.
+
+    A role client builds one from its adapter's ``API_KEY_ENV`` / ``KEY_REQUIRED`` / ``AUTH_HEADER`` class
+    attributes (R6) and hands it to the transport, which owns the whole key decision: the endpoint config's
+    ``api_key_env`` names the variable when it is set (an unset named variable is a
+    :class:`~rcp_ndcg.errors.CredentialsError`), else the profile's variables are tried in order, and a
+    required key that is missing is a ``CredentialsError`` naming them. The key value is read from the
+    environment at send time and never logged or put into an error message.
+
+    A transport built without a profile (the judge's, or any sender without an adapter) resolves only the
+    config's ``api_key_env``, into ``Authorization: Bearer`` -- the behaviour the judge client relies on.
+    """
+
+    variables: tuple[str, ...] = ()
+    """The environment variables that may hold the key, most preferred first (empty: the endpoint takes no
+    key beyond the config's own ``api_key_env``)."""
+
+    required: bool = False
+    """Whether the API refuses to answer without a key (a hosted profile) or takes none (a served engine)."""
+
+    header: str | None = None
+    """The header the key goes in; ``None`` is the OpenAI-standard ``Authorization: Bearer <key>``."""
 
 
 @runtime_checkable
@@ -158,9 +186,10 @@ class Transport:
       transport, then the fewest sent;
     * **bounded concurrency** -- at most the endpoint's ``concurrency`` requests in flight over all replicas,
       and an httpx pool sized to it;
-    * **credentials** -- ``Authorization: Bearer`` from ``api_key_env`` when the endpoint names one, plus one
-      header per :attr:`~rcp_ndcg.inference.endpoint.Endpoint.headers_env` entry, every value read from the
-      environment at send time and never logged;
+    * **credentials** -- the API key resolved from the endpoint's ``api_key_env``, or the adapter profile's own
+      variables when the config names none, sent in the profile's header (``Authorization: Bearer`` where the
+      adapter declares none), plus one header per :attr:`~rcp_ndcg.inference.endpoint.Endpoint.headers_env`
+      entry, every value read from the environment at send time and never logged;
     * **the shared status map** -- a connection error or timeout, or an HTTP 408, 429 or 5xx reply, is
       *unavailable*: retried up to ``max_retries`` with an exponential backoff (1 s doubling, capped at 60 s,
       the retrieval clients' policy) or the server's ``Retry-After``, then the replica is set aside. 401 and
@@ -185,13 +214,23 @@ class Transport:
     RETRY_BACKOFF_S: ClassVar[float] = 1.0
     RETRY_MAX_BACKOFF_S: ClassVar[float] = 60.0
 
-    def __init__(self, endpoint: Endpoint, *, httpx_transport: httpx.AsyncBaseTransport | None = None) -> None:
+    def __init__(
+        self,
+        endpoint: Endpoint,
+        *,
+        auth: AuthProfile | None = None,
+        httpx_transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
         """A transport for ``endpoint``'s replicas.
 
         Args:
             endpoint: The endpoint whose replicas are routed; ``base_url`` is one URL or a replica list, and a
                 ``fake://`` URL sends through the offline fakes (:mod:`rcp_ndcg.inference.fake`) unless
                 ``httpx_transport`` is supplied, which answers instead of them.
+            auth: The adapter profile's credential facts (R6): the variables that may hold the key, whether
+                one is required, and the header it travels in. The endpoint config's ``api_key_env``, when it
+                names one, overrides the variables and must then be set. ``None`` (a sender with no adapter
+                behind it) resolves only the config's ``api_key_env``.
             httpx_transport: A caller-supplied ``httpx.AsyncBaseTransport`` (a mock in tests), wrapped in the
                 transport's own ``httpx.AsyncClient`` with the endpoint's timeouts and pool limits -- never
                 replacing them, unlike the judge client of today, where a supplied client replaced both. The
@@ -203,6 +242,7 @@ class Transport:
                 f"the endpoint {endpoint.model!r} has no base_url to send to: give one URL, or a list of replica URLs"
             )
         self.endpoint = endpoint
+        self._auth = auth if auth is not None else AuthProfile()
         self._replicas = [_Replica(url) for url in endpoint.urls]
         self._httpx_transport: httpx.AsyncBaseTransport | None = httpx_transport
         if httpx_transport is None and any(url.startswith(FAKE_SCHEME) for url in endpoint.urls):
@@ -332,18 +372,42 @@ class Transport:
 
     def _base_headers(self) -> dict[str, str]:
         """The endpoint's credentials and gateway headers of one send; every value is read from the environment
-        only, at send time, and never logged."""
+        only, at send time, and never logged.
+
+        The key is resolved here (R6): the config's ``api_key_env`` names the variable when it is set -- an
+        unset named variable is an error, whatever the adapter profile's own rule is -- else the adapter
+        profile's variables are tried in order, and a required key that is missing names them. The header is
+        the profile's ``AUTH_HEADER``, or ``Authorization: Bearer`` where the adapter declares none.
+
+        Raises:
+            CredentialsError: the key variable this endpoint resolved to is not set (an explicitly named one,
+                or every variable of a profile that requires a key).
+        """
         headers: dict[str, str] = {}
         api_key_env = self.endpoint.api_key_env
         if api_key_env is not None:
-            value = os.environ.get(api_key_env)
-            if not value:
+            variables, required = (api_key_env,), True
+        else:
+            variables, required = self._auth.variables, self._auth.required
+        value = next((os.environ[name] for name in variables if os.environ.get(name)), None)
+        if value is None and (required or api_key_env is not None):
+            if api_key_env is not None:
                 raise CredentialsError(
                     f"the endpoint needs an API key in ${api_key_env}, which is not set",
                     hint=f"export {api_key_env}=...  (keys are read from the environment, never from configs)",
                     details={"variable": api_key_env},
                 )
-            headers["Authorization"] = f"Bearer {value}"
+            names = " or ".join(variables)
+            raise CredentialsError(
+                f"the endpoint needs an API key ({names} is not set)",
+                hint=f"export {names}=...  (keys are read from the environment, never from configs)",
+                details={"variables": list(variables)},
+            )
+        if value:
+            if self._auth.header is not None:
+                headers[self._auth.header] = value
+            else:
+                headers["Authorization"] = f"Bearer {value}"
         for header, variable in self.endpoint.headers_env.items():
             value = os.environ.get(variable)
             if not value:
@@ -555,12 +619,35 @@ class Transport:
             self._background_thread.start()
         return self._background_loop
 
-    def aclose(self) -> None:
+    def set_auth(self, auth: AuthProfile) -> None:
+        """Point the transport at an adapter profile's credential facts.
+
+        A role client does this when it is handed an existing transport (instead of building its own), so
+        the key resolution follows the adapter whichever way the transport was built (R6). Safe to call
+        again; the next send resolves the key from the new profile.
+        """
+        self._auth = auth
+
+    async def aclose(self) -> None:
         """Close the underlying client and its connection pool; safe to call more than once.
 
-        Synchronous, so a caller of :meth:`run` can clean up without an event loop of its own: the async close
-        runs on the pool's own loop. Called from the loop the pool serves (an async caller), the close is
-        scheduled instead of blocking that loop on itself. A later :meth:`run` builds a fresh pool.
+        Asynchronous: an async caller awaits it directly, on the loop the pool serves. A synchronous caller
+        uses :meth:`close`, which runs the same close on the pool's own loop. A later :meth:`run` builds a
+        fresh pool.
+        """
+        pool = self._pool
+        self._pool = None
+        self._semaphore = None
+        self._loop = None
+        if pool is None:
+            return
+        await pool.aclose()
+
+    def close(self) -> None:
+        """The synchronous twin of :meth:`aclose`: closes the pool on the loop it serves; safe to call twice.
+
+        Called from the loop the pool serves (an async caller closing without an ``await``), the close is
+        scheduled instead of blocking that loop on itself.
         """
         pool, loop = self._pool, self._loop
         self._pool = None
@@ -580,10 +667,6 @@ class Transport:
             return
         loop.run_until_complete(pool.aclose())
 
-    def close(self) -> None:
-        """The sync twin of :meth:`aclose` (which is synchronous too): closes the pool; safe to call twice."""
-        self.aclose()
-
     def __enter__(self) -> Self:
         return self
 
@@ -596,4 +679,4 @@ class Transport:
         self.close()
 
 
-__all__ = ["Sender", "Transport"]
+__all__ = ["AuthProfile", "Sender", "Transport"]
