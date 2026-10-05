@@ -1,8 +1,9 @@
 # Preprocessing and chunking
 
-What a judge reads decides what its judgements mean. This page describes the one place that decides it: the
-preprocessing policy of a judging pass, for text, page images and video. Nothing is cut silently: every cut is either
-declared policy or a per-window budget cut, and both are recorded.
+What a judge reads decides what its judgements mean, and what a served model reads decides what its vectors and
+scores mean. This page describes the one place that decides both: the preprocessing policy of a judging pass, for
+text, page images and video, and the text budget that fits every served role's requests into a model's input.
+Nothing is cut silently: every cut is either declared policy or a per-window budget cut, and both are recorded.
 
 ## Text
 
@@ -169,6 +170,123 @@ policy = Preprocessing.model_validate(
 )
 print(policy.chunk)  # the chunk geometry the judging pass applies
 ```
+
+## Text budgets for served roles
+
+A served model (an embedder, a reranker) reads its requests through a fixed frame: a system turn, instruction
+prefixes, role markers, and the end-of-turn token its score is pooled from. That frame is the **anchor** rule this
+package implements everywhere text is cut: a model reads its output from fixed positions of its template, so a cut
+must apply to the content spans only, inside a budget computed after reserving every fixed template token, and the
+template must be re-attached after the cut. A right cut of a whole rendered prompt drops tail anchors, a left cut
+drops head anchors -- which is why the package never asks an engine to truncate (`truncate_prompt_tokens`,
+`--allow-auto-truncate` and their relatives are absent from the role configs by design), and why the fixed overhead
+is measured rather than guessed.
+
+One mechanism does this for every role: the declared :class:`~rcp_ndcg.data.TextBudget` and
+:func:`~rcp_ndcg.data.preprocess.fit`.
+
+### The template as data
+
+A `TemplateSpec` declares, per request shape (an embedder's `query` and `document`, a reranker's `pair`), an
+ordered list of segments -- a fixed piece of frame text or a content span:
+
+```python
+from rcp_ndcg.data import Segment, TemplateSpec
+
+pair = TemplateSpec(
+    pair=(
+        Segment(fixed="<instruct>: judge the pair\\n<query>: "),
+        Segment(content="query"),
+        Segment(fixed="\\n<document>: "),
+        Segment(content="document"),
+        Segment(fixed="{special:end_turn}"),
+    ),
+    anchor="last",
+)
+print(pair.shapes())
+```
+
+The `pair` shape orders query and document per model -- the reranker above reads the query first; a
+reranker whose template puts the document first makes the query block an anchor, and the segments say so. A
+special token is written by name (`{special:end_turn}`) and resolved at render time from the tokenizer's added
+tokens; specials are never typed literally, so a template outlives tokenizer rewrites. The template also declares
+`anchor` (`last`, `first`, `mean` or `marker`, with `anchor_markers` naming the specials) -- the position the
+model reads its output from -- and `add_special_tokens` per shape: what the engine does to the rendered string
+for that route (vLLM's pooling and scoring routes append the tokenizer's post-processor tokens; the chat-embed
+form does not). The budget reserves those tokens too: they are part of the measured overhead.
+
+### The budget and the fit
+
+The budget names the tokenizer, the `max_tokens` (the model's whole input sequence, in that tokenizer's tokens),
+optionally `query_max_tokens` (the query's share of a pair budget: the query is cut to it first, the document
+gets the rest), `on_overflow` (`cut` by default, `chunk` or `fail` opt-in), the chunk geometry, and
+`aggregation: max`. `fit` then, per input:
+
+1. measures the fixed overhead once per (template, shape): the template rendered with every content span empty,
+   counted as the engine reads it (the shape's `add_special_tokens` flag included);
+2. cuts only the content spans, at token boundaries, verified against the *assembled* render so a byte-level
+   merge across a span join cannot push the request over the budget, and re-attaches the template;
+3. on `chunk`, splits the document into verbatim chunks and renders **every chunk with the full template** --
+   engine-side chunking of a framed render keeps the frame only on the first and last chunk, so chunking is
+   always client-side here;
+4. records every cut in the census under the `text_budget` mechanism.
+
+An input under budget comes back byte-identical to the uncut render. The function returns the rendered strings
+(the wire routes take text; tokenising once here to measure and cut is the same work either way), the cut content
+per span (for routes the engine renders the template on), the output ids, and the chunk mapping.
+
+```python
+from tokenizers import Tokenizer, models, pre_tokenizers, processors
+
+from rcp_ndcg.data import Segment, TemplateSpec, TextBudget, TextTokenizer
+from rcp_ndcg.data.preprocess import fit
+
+backend = Tokenizer(
+    models.WordLevel({"[UNK]": 0, "the": 1, "query": 2, "document": 3, "evidence": 4, "page": 5}, unk_token="[UNK]")
+)
+backend.pre_tokenizer = pre_tokenizers.Whitespace()
+backend.add_special_tokens(["<|end_turn|>", "<|end_of_text|>"])
+backend.post_processor = processors.TemplateProcessing(
+    single="$A <|end_of_text|>",
+    pair="$A $B <|end_of_text|>",
+    special_tokens=[("<|end_of_text|>", backend.token_to_id("<|end_of_text|>"))],
+)
+tokenizer = TextTokenizer.from_backend(backend, name="docs/word-level")
+
+document_template = TemplateSpec(
+    document=(Segment(fixed="<doc> "), Segment(content="document"), Segment(fixed=" {special:end_turn}"))
+)
+budget = TextBudget(tokenizer="docs/word-level", max_tokens=16, template=document_template, on_overflow="cut")
+result = fit(["the document with evidence " * 10], shape="document", budget=budget, tokenizer=tokenizer)
+print(result.texts[0])          # the frame re-attached around the cut: '<doc> the document with evidence ...'
+print(result.cuts[0].as_row())  # the cut, mechanism 'text_budget', budget_source 'tokenizer'
+```
+
+### Chunked documents pool by maximum
+
+A document chunked under `on_overflow: chunk` is scored once per chunk and its document score is **the maximum
+over its chunks** -- a document is as relevant as its best chunk, the same rule as
+`max_pool_scores_by_document` (the aggregation the judging pass applies to its own chunks). It is declared on
+the config (`aggregation: max`, the only value for now), returned on every `FitResult` of a chunked call, and
+named on every census row of a chunked document, so a reader of `preprocessing.jsonl` never has to guess how the
+numbers were pooled. `FitResult.chunk_mapping` carries each chunk id (`<id>#<k>`) back to its input, ready for
+that pooling function.
+
+### Explicit budgets, and hosted vendor profiles
+
+A self-hosted role config (`api: openai_embeddings`, `vllm_pooling` or `rerank`) must declare `tokenizer` and
+`max_tokens` -- the package cuts the content itself, so it must know both; without them the config is refused
+with a hint naming the two fields. A hosted vendor profile (cohere, voyage, gemini) without a tokenizer sends
+its content uncut: the vendor's documented limit is declared as `max_tokens`, recorded as the effective budget
+(`budget_source: vendor` in the census, one warning per run), and nothing is measured or cut client-side. With a
+tokenizer, a vendor profile follows the same rule as self-hosted.
+
+The role configs also declare `template` (the `TemplateSpec` above), `empty_doc` (`send`, `omit_zero` -- filter
+and score `0.0` -- or `send_text` with its `empty_doc_text` placeholder), `request_shape` (`text`, `messages` or
+`token_ids`; the adapters implement it), and the reranker's `instruction` gains a `system` value (the
+instruction as a system message). Media are never cut: a request's media token count is declared per input and
+reserved whole out of the budget before the content is cut (the hook the media lane builds on -- a vision block
+is counted, never cut through).
 
 ## Page images and video
 

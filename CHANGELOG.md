@@ -25,6 +25,37 @@ released together.
 
 ### Public surface
 
+- **One text-budget mechanism for every served role** (`rcp_ndcg.data.preprocess`): a declared `TextBudget`
+  (frozen, content identity: `max_tokens`, `query_max_tokens`, `template`, `on_overflow` `cut|chunk|fail`,
+  `chunk` geometry, `aggregation: max`) and one function `fit(inputs, shape, budget, tokenizer) -> FitResult`.
+  The template is data (`rcp_ndcg.data.templates`: `TemplateSpec`, `Segment`, `RequestShape`, `AnchorKind`,
+  `ContentSpan`): per request shape (`query`, `document`, `pair`) an ordered list of `{fixed: ...}` /
+  `{content: ...}` segments, special tokens written by name (`{special:<name>}`, resolved from the tokenizer's
+  added tokens), the anchor the model reads its output from (`last | first | mean | marker`, with
+  `anchor_markers`), and `add_special_tokens` per shape (the engine's behaviour for that route). `fit` measures
+  the fixed overhead once per (template, shape), cuts only the content spans (offset-based, verified against
+  the assembled render), re-attaches the template, chunks documents with the full template per chunk (ids
+  `<id>#<k>`, chunk mapping), reserves declared `media_tokens` whole, and records every cut in the census under
+  the new `text_budget` mechanism with `budget_source` and -- on chunked inputs -- the `max` aggregation. The
+  tokenizer's SHA-256 is content (`TextBudget.identity(tokenizer)`), its name runtime; the template's canonical
+  JSON is content. A hosted vendor profile without a tokenizer sends content uncut: its documented limit is
+  recorded as the effective budget (`budget_source: vendor`, one warning per run).
+- The role endpoint configs gain the text-budget fields (all CONTENT): `template`, `on_overflow`
+  (`cut | chunk | fail`), `chunk`, `aggregation` (`max`), `empty_doc` (`send | omit_zero | send_text`, with
+  `empty_doc_text`), and `request_shape` (`text | messages | token_ids`); `RerankEndpoint.instruction` gains
+  `system`. A self-hosted role config (`api` in the new `rcp_ndcg.inference.SELF_HOSTED_APIS`:
+  `openai_embeddings`, `vllm_pooling`, `rerank`) must declare `tokenizer` and `max_tokens` -- without them it is
+  refused with a `ConfigError` whose hint shows the two fields; a hosted vendor profile may declare only
+  `max_tokens` (its documented limit), and a tokenizer without a number is refused for every role.
+  `RerankEndpoint` refuses `query_max_tokens >= max_tokens` (the document's share would be non-positive), and
+  `TextBudget` refuses it wherever the budget is resolved.
+- `rcp_ndcg.data` exports `TextBudget`, `TemplateSpec`, `Segment`, `FitResult` and `fit`;
+  `rcp_ndcg.data.preprocess` additionally exports `BUDGET_DOC_ID`, `ContentParts` and
+  `TextBudgetExceededError` (a `DataError`); `rcp_ndcg.inference` exports `SELF_HOSTED_APIS`.
+  `TextTokenizer` gains `ids()` (token ids, optionally with the post-processor's), `count(...,
+  add_special_tokens=)`, and the special-token lookup by name (`added_tokens`, `special_text`, `special_id`);
+  `token_prefix` gains `add_special_tokens` (default unchanged). `ChunkPolicy` declares its field roles (all
+  CONTENT) so a `TextBudget` feeds an identity.
 - `JobSpec` gains `phases` (a tuple of `JobPhase`: the engines one phase starts, by role, and the command it runs
   while they serve); a job sets `phases` or `serve`, not both.
 - `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
