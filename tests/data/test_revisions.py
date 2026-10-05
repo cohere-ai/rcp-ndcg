@@ -56,10 +56,12 @@ class FakeHub:
 
 
 @pytest.fixture
-def hub(monkeypatch: pytest.MonkeyPatch) -> FakeHub:
+def hub(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> FakeHub:
     fake = FakeHub()
     monkeypatch.setitem(sys.modules, "huggingface_hub", fake.module())
     monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    # An online resolution records refs/<ref> in the hub cache; keep that out of the shared empty cache.
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
     return fake
 
 
@@ -103,6 +105,39 @@ class TestResolveRevision:
             resolved = resolve_revision("org/data", "main")
         assert (resolved.commit, resolved.verified) == (None, False)
         assert "org/data@main" in caplog.text
+
+    def test_a_corrupt_cache_ref_is_sanitized_not_fatal(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """A ref file that is not valid UTF-8 is removed before resolution, never crashes it."""
+        import os
+
+        monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+        ref = Path(os.environ["HF_HUB_CACHE"]) / "datasets--BeIR--fiqa" / "refs" / "main"
+        ref.parent.mkdir(parents=True)
+        ref.write_bytes(b"\xff\xfe not utf-8")
+        monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+
+        resolved = resolve_revision("BeIR/fiqa", None)
+
+        assert (resolved.commit, resolved.verified) == (None, False)
+        assert not ref.exists(), "the corrupt ref is gone; the next online resolution rewrites it"
+
+    def test_a_corrupt_cache_ref_is_rewritten_online_and_absent_offline(
+        self, hub: FakeHub, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A ref file that is not valid text never breaks a resolution: the online resolve writes over it."""
+        import os
+
+        ref = Path(os.environ["HF_HUB_CACHE"]) / "datasets--BeIR--fiqa" / "refs" / "main"
+        ref.parent.mkdir(parents=True)
+        ref.write_bytes(b"\xff\xfe not utf-8")
+        hub.move("dataset", "BeIR/fiqa", SHA_A)
+
+        assert resolve_revision("BeIR/fiqa", None).commit == SHA_A
+        assert ref.read_text() == SHA_A
+
+        resolve_revision.cache_clear()  # the offline run is another process
+        monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+        assert resolve_revision("BeIR/fiqa", None).commit == SHA_A
 
 
 # ---------------------------------------------------------------------------
