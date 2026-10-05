@@ -24,11 +24,16 @@ _ATTRIBUTES = re.compile(
     r"(?:\"(?P<double>[^\"]*)\"|'(?P<single>[^']*)'|(?P<bare>[^\s>]+))"
 )
 
-#: Markdown images (``![alt](target)``): :func:`tests.docs._markdown.links` deliberately skips them.
-_IMAGES = re.compile(r"!\[[^\]]*\]\((?P<url>[^)\s]+)(?:\s+\"[^\"]*\")?\)")
+#: Markdown images (``![alt](target)``): :func:`tests.docs._markdown.links` deliberately skips them; titles in
+#: both quote styles are tolerated after the target.
+_IMAGES = re.compile(r"!\[[^\]]*\]\((?P<url>[^)\s]+)(?:\s+(?:\"[^\"]*\"|'[^']*'))?\)")
 
-#: Markdown link-reference definitions (``[text]: target``): neither ``links`` nor ``_IMAGES`` scans them.
-_REFS = re.compile(r"(?m)^\s{0,3}\[[^\]]+\]:\s+(?:<)?(?P<url>[^\s>]+)")
+#: Markdown link-reference definitions (``[text]: target``): neither ``links`` nor ``_IMAGES`` scans them, and
+#: CommonMark allows the target without a space after the colon.
+_REFS = re.compile(r"(?m)^\s{0,3}\[[^\]]+\]:\s*(?:<)?(?P<url>[^\s>]+)")
+
+#: HTML comments render nowhere on PyPI, so URLs inside them raise no alarm.
+_COMMENTS = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
 def _attribute_urls(text: str) -> list[str]:
@@ -49,7 +54,7 @@ def _image_urls(text: str) -> list[str]:
 
 
 def test_readme_html_sources_are_absolute() -> None:
-    text = prose((ROOT / "README.md").read_text(encoding="utf-8"))
+    text = _COMMENTS.sub("", prose((ROOT / "README.md").read_text(encoding="utf-8")))
     sources = _attribute_urls(text)
     assert sources, "the README is expected to embed images"
     relative = [url for url in sources if not url.startswith((*ABSOLUTE, "#"))]
