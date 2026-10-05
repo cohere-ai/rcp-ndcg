@@ -2455,6 +2455,12 @@
             "name": "count_gains"
           },
           {
+            "annotation": "Sequence[str] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "systems"
+          },
+          {
             "annotation": "int",
             "default": 1000,
             "kind": "keyword_only",
@@ -7484,6 +7490,12 @@
             "default": null,
             "kind": "keyword_only",
             "name": "count_gains"
+          },
+          {
+            "annotation": "Sequence[str] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "systems"
           },
           {
             "annotation": "int",

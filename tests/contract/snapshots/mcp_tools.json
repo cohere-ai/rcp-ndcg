@@ -331,6 +331,14 @@
           "default": null,
           "description": "The query's dataset, when a suite's report has it twice.",
           "title": "Subset"
+        },
+        "system": {
+          "description": "With --report, re-score only these systems of the saved rankings (repeatable; default all).",
+          "items": {
+            "type": "string"
+          },
+          "title": "System",
+          "type": "array"
         }
       },
       "required": [

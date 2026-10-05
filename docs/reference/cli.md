@@ -74,6 +74,7 @@ The same flag means the same thing on every command that has it:
 | `--docs QUERY_ID:DOC_ID` | judge only these documents (re-annotation, insertion) |
 | `--plan FILE` | `judge tournament`: ask exactly the windows of an insertion plan (`calibration insert --plan --out FILE`), with the `--out` store's schedule |
 | `--k INT` | a cutoff; repeatable |
+| `--system NAME` | `eval score` (and `eval explain --report`): score only these systems of the rankings file (repeatable); an unknown name is refused (exit 3) with the systems the file names. One system whose rankings match nothing of the dataset no longer has to stop the others |
 | `--per-query`, `--fields NAME` | `eval score --json`: add the per-query values; print only the named top-level fields (repeatable). The full report goes to `--out` |
 | `--include-text` | `eval explain`: add the query and document texts |
 | `--include-reference` | `eval compare --run`: also compare the run's reference systems `candidates` and `judge` |

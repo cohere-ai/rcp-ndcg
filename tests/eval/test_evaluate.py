@@ -417,6 +417,68 @@ def test_a_file_is_refused_when_any_of_its_systems_matches_nothing() -> None:
                  protocol="vidore", bootstrap=0)  # fmt: skip
 
 
+def test_systems_scores_only_the_named_systems_of_a_file_with_one_broken() -> None:
+    """`systems=` scores the named systems of a multi-system file; the broken one no longer fails the command."""
+    dataset = _vidore_like()
+    broken = Rankings.from_orders(
+        {q: list(docs) for q, docs in (dataset.candidates or {}).items()}, system="broken", dataset="hr"
+    )
+    both = Rankings.concat([_pool_orders(dataset), broken])
+
+    report = evaluate(both, dataset=dataset, gains=dataset.gains, protocol="vidore", bootstrap=0, systems=["mine"])
+
+    assert report.systems == ["mine"], "only the named system, in the rankings' order"
+    assert report.value("mine") == 1.0
+    with pytest.raises(ConfigError, match="systems \\['nobody'\\] are not in the rankings") as caught:
+        evaluate(both, dataset=dataset, gains=dataset.gains, protocol="vidore", bootstrap=0, systems=["nobody"])
+    assert "'mine'" in caught.value.message and "'broken'" in caught.value.message, "the file's systems are listed"
+    with pytest.raises(ConfigError, match="names no system"):
+        evaluate(both, dataset=dataset, gains=dataset.gains, protocol="vidore", bootstrap=0, systems=[])
+
+
+def test_the_refusal_of_a_multi_system_file_names_the_way_out_for_the_others() -> None:
+    """With several systems in the file, the hint says to drop the broken one's rows or score the others."""
+    dataset = _vidore_like()
+    broken = Rankings.from_orders(
+        {q: list(docs) for q, docs in (dataset.candidates or {}).items()}, system="broken", dataset="hr"
+    )
+
+    with pytest.raises(DataError) as caught:
+        evaluate(Rankings.concat([_pool_orders(dataset), broken]), dataset=dataset, gains=dataset.gains,
+                 protocol="vidore", bootstrap=0)  # fmt: skip
+
+    assert caught.value.hint is not None and "exact subset name" in caught.value.hint
+    assert "--system" in caught.value.hint and "drop" in caught.value.hint
+    no_prefix = Rankings.concat(
+        [
+            _pool_orders(dataset),
+            Rankings.from_orders(
+                {q: [d.removeprefix("corpus-test-") for d in docs] for q, docs in (dataset.candidates or {}).items()},
+                system="broken",
+                dataset=dataset.name,
+            ),
+        ]
+    )
+    with pytest.raises(DataError) as no_overlap:
+        evaluate(no_prefix, dataset=dataset, gains=dataset.gains, protocol="vidore", bootstrap=0, systems=["broken"])
+    assert "no ranked document is in the pools or labels" in no_overlap.value.message
+    assert "--system" in (no_overlap.value.hint or ""), "the file still holds the other systems"
+
+
+def test_a_single_system_file_is_refused_without_the_multi_system_hint() -> None:
+    """One system alone: dropping its rows or --system helps nobody, so the hint stays as it was."""
+    dataset = _vidore_like()
+    broken = Rankings.from_orders(
+        {q: list(docs) for q, docs in (dataset.candidates or {}).items()}, system="broken", dataset="hr"
+    )
+
+    with pytest.raises(DataError) as caught:
+        evaluate(broken, dataset=dataset, gains=dataset.gains, protocol="vidore", bootstrap=0)
+
+    assert caught.value.hint is not None and "exact subset name" in caught.value.hint
+    assert "--system" not in caught.value.hint
+
+
 @pytest.mark.parametrize("protocol", ["plain", "vidore"])
 def test_rankings_of_another_corpus_are_refused_under_every_protocol(protocol: str) -> None:
     """Doc ids without the `corpus-test-` prefix match no pool or label: a DataError, under any protocol."""

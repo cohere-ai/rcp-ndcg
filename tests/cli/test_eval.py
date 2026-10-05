@@ -229,6 +229,62 @@ def test_count_ndcg_is_not_offered_by_eval_score(dataset: str, tmp_path: Path) -
     assert result.exit_code == 2 and json.loads(result.stdout)["error"]["code"] == "USAGE", result.output
 
 
+def test_a_broken_system_no_longer_stops_the_others_with_system(dataset: str, tmp_path: Path) -> None:
+    """One broken system of a multi-system file fails the whole command; --system scores the rest (issue #5)."""
+    good = Rankings.from_orders({"q1": ["b", "a", "c"]}, system="good")
+    broken = Rankings.from_orders({"q1": ["x1", "x2"]}, system="broken", dataset="hr")
+    rankings = tmp_path / "mixed.parquet"
+    Rankings.concat([good, broken]).save(rankings)
+
+    document = _invoke(
+        "score", "--rankings", str(rankings), "--dataset", dataset, "--metrics", "qrel_ndcg", "--system", "good"
+    )
+
+    assert document["exit_code"] == 0, document
+    assert [row["system"] for row in document["data"]["summary"]] == ["good"]
+    dcg = 0.4 + 0.9 / math.log2(3) + 0.1 / 2.0
+    ideal = 0.9 + 0.4 / math.log2(3) + 0.1 / 2.0
+    assert _summary(document, "qrel_ndcg", 10, "good") == pytest.approx(dcg / ideal)
+
+    everything = _invoke("score", "--rankings", str(rankings), "--dataset", dataset, "--metrics", "qrel_ndcg")
+    assert everything["exit_code"] == 12, everything
+    assert "system 'broken'" in everything["error"]["message"]
+    assert "--system" in everything["error"]["hint"]
+
+
+def test_an_unknown_system_is_a_config_error_listing_the_systems(dataset: str, tmp_path: Path) -> None:
+    rankings = tmp_path / "run.parquet"
+    Rankings.from_orders({"q1": ["b", "a", "c"]}, system="mine").save(rankings)
+
+    document = _invoke(
+        "score", "--rankings", str(rankings), "--dataset", dataset, "--metrics", "qrel_ndcg", "--system", "nobody"
+    )
+
+    assert document["exit_code"] == 3, document
+    assert document["error"]["code"] == "CONFIG"
+    assert "nobody" in document["error"]["message"] and "mine" in document["error"]["message"]
+
+
+def test_explain_report_re_scores_only_the_named_system(scored: dict) -> None:
+    """`eval explain --report --system`: a system added to the rankings file after scoring is no longer fatal."""
+    from rcp_ndcg.data import load_rankings
+
+    rankings = Rankings.concat(
+        [
+            Rankings.from_scores({"q1": {"a": 1.0}}, system="broken", dataset="zzz"),
+            load_rankings(scored["args"][1]),
+        ]
+    )
+    rankings.save(scored["args"][1])
+
+    document = _invoke("explain", "--report", str(scored["report"]), "--query-id", "q1", "--system", "forward")
+
+    assert document["exit_code"] == 0, document
+    assert [system["system"] for system in document["data"]["systems"]] == ["forward"]
+    without = _invoke("explain", "--report", str(scored["report"]), "--query-id", "q1")
+    assert without["exit_code"] == 12 and "broken" in without["error"]["message"]
+
+
 def test_score_json_is_lean_and_the_full_report_goes_to_out(scored: dict) -> None:
     """The per-query rows (539 KB on NanoBEIR) stay out of stdout unless asked for; --out holds everything."""
     data = scored["document"]["data"]
