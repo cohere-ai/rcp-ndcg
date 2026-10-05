@@ -271,6 +271,17 @@ class TestRoleConfigs:
             RerankEndpoint(base_url="http://a:8000/v1", model="jina-reranker-v3", listwise=True, batch_size=8)
         assert RerankEndpoint(base_url="http://a:8000/v1", model="qwen3-reranker-8b", batch_size=8).batch_size == 8
 
+    def test_a_rerank_config_can_split_the_pair_budget(self) -> None:
+        config = RerankEndpoint(
+            base_url="http://a:8000/v1", model="qwen3-reranker-8b", max_tokens=8192, query_max_tokens=256
+        )
+        assert config.query_max_tokens == 256
+        # Content: the split changes what the model reads, so it keys; unset, it is the absence of a split.
+        assert identity_payload(config)["query_max_tokens"] == 256
+        assert "query_max_tokens" not in identity_payload(
+            RerankEndpoint(base_url="http://a:8000/v1", model="qwen3-reranker-8b")
+        )
+
     def test_role_configs_are_frozen_and_refuse_unknown_fields(self) -> None:
         config = RerankEndpoint(base_url="http://a:8000/v1", model="qwen3-reranker-8b")
         with pytest.raises(ValidationError):

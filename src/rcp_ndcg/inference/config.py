@@ -31,8 +31,14 @@ class EmbeddingEndpoint(Endpoint):
         tokenizer: The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository
             id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name;
             the file's SHA-256 enters the identity, as the judge's already does.
-        max_tokens: The token cut per item, applied on the client at token boundaries; ``None`` sends every
-            item whole. Content.
+        max_tokens: What the budget counts is the model's whole input sequence as the engine sees it -- the
+            rendered template, its special tokens, the instruction (the prompts) and the content together,
+            in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after
+            reserving every fixed template token (the anchors a model reads its output from: for a last-token
+            pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the
+            anchors always survive. The cut is never left to the engine: an engine-side truncation of the
+            rendered prompt drops anchors from one end or the other. ``None`` sends every item whole.
+            Content.
         query_prompt: Text prepended to every query (an asymmetric embedder's instruction prefix). Content.
         doc_prompt: Text prepended to every document. Content.
         normalize: Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising
@@ -95,9 +101,20 @@ class RerankEndpoint(Endpoint):
         api: The wire adapter; ``"rerank"`` by default.
         recipe: As on :class:`EmbeddingEndpoint`: the server-side settings the package cannot read (the
             ``hf_overrides``, the score template), as a free string. Content.
-        tokenizer: The model's tokenizer, in whose tokens ``max_tokens`` is counted. Runtime by name.
-        max_tokens: The pair budget (query plus document), cut on the client; the adapter derives a served
-            reranker's per-document cut from it. Content.
+        tokenizer: The model's tokenizer, in whose tokens ``max_tokens`` and ``query_max_tokens`` are counted.
+            Runtime by name.
+        max_tokens: What the budget counts is the model's whole input sequence as the engine sees it -- the
+            rendered template, its special tokens, the instruction and the query-and-document content
+            together, in the declared tokenizer's tokens. The content is cut on the client, in a budget
+            computed after reserving every fixed template token (the anchors: a pointwise reranker reads its
+            score from the last position, so the generation prompt or "yes-no" suffix always survives; when
+            the template puts the document first, so does the query), and the template is re-attached after
+            the cut. The cut is never left to the engine: an engine-side truncation of the rendered prompt
+            drops anchors from one end or the other. The query is cut first, to ``query_max_tokens``; the
+            document gets the rest of the budget. ``None`` sends every pair whole. Content.
+        query_max_tokens: The query's share of the pair budget (``max_tokens``), in the declared tokenizer's
+            tokens; the document gets what remains. ``None`` (the default) declares no split, and the
+            adapter's recipe decides. Content.
         instruction: How the reranker's instruction reaches the model: ``"fold"`` folds it into the query text
             (``Task: ...\\nQuery: ...``, today's served behaviour), ``"field"`` sends the engine's own
             ``instruction`` request field (vLLM), ``"none"`` sends none. Content.
@@ -116,6 +133,7 @@ class RerankEndpoint(Endpoint):
         "max_tokens": FieldRole.CONTENT,
         "instruction": FieldRole.CONTENT,
         "use_activation": FieldRole.CONTENT,
+        "query_max_tokens": FieldRole.CONTENT,
         "listwise": FieldRole.CONTENT,
         "batch_size": FieldRole.RUNTIME,
     }
@@ -126,6 +144,7 @@ class RerankEndpoint(Endpoint):
     max_tokens: int | None = Field(default=None, ge=1)
     instruction: Literal["none", "field", "fold"] = "fold"
     use_activation: bool | None = None
+    query_max_tokens: int | None = Field(default=None, ge=1)
     listwise: bool = False
     batch_size: int | None = Field(default=None, ge=1)
 

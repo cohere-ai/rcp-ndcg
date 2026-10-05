@@ -50,6 +50,12 @@ released together.
     `PoolingEndpoint` (default `vllm_pooling`, with `embed_dtype: float16` by default, `float32` opt-in) and
     `RerankEndpoint` (default `rerank`, `instruction: fold` default, a `batch_size` refused for a `listwise`
     model). Not wired into `rcp_ndcg.retrieval.config` yet
+- **`RerankEndpoint` gains `query_max_tokens`** (CONTENT): the query's share of the pair budget
+  (`max_tokens`), with the document getting the rest; `None` (the default) declares no split and leaves it to
+  the adapter's recipe. The `max_tokens` docstring of every role config now states exactly what the budget
+  counts: the model's whole input sequence as the engine sees it (template, special tokens, instruction and
+  content), with the content cut on the client so the fixed template tokens (the anchors) always survive --
+  truncation is never left to the engine.
 - **`rcp_ndcg.errors` gains `BackendUnavailableError` and `RequestRejectedError`**, moved unchanged from
   `rcp_ndcg.llm.client` (still importable and exported there). Exit codes do not change: both remain
   `ProviderError` subclasses at `PROVIDER`, `RequestRejectedError` non-retryable.
