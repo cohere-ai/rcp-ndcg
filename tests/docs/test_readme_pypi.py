@@ -1,9 +1,10 @@
 """The README is PyPI's long description, and PyPI does not resolve relative paths.
 
-Images (``<img src=`` and the ``<picture>`` ``srcset=``, quoted or unquoted) and Markdown link targets — regular
-links and ``![alt](...)`` images alike — must therefore be absolute: ``https://raw.githubusercontent.com/...`` for
-images and ``https://github.com/cohere-ai/rcp-ndcg/blob/main/...`` for links to repository files. Paths that resolve
-in a checkout (``docs/data.md``) render as broken links on PyPI.
+Images (``<img src=`` and the ``<picture>`` ``srcset=``, quoted or unquoted, ``<a href=`` too) and Markdown link
+targets — regular links and ``![alt](...)`` images alike — must therefore be absolute:
+``https://raw.githubusercontent.com/...`` for images and ``https://github.com/cohere-ai/rcp-ndcg/blob/main/...``
+for links to repository files. Paths that resolve in a checkout (``docs/data.md``) render as broken links on PyPI.
+All scans run outside code (fenced blocks and inline code), which PyPI does not render as HTML or links.
 """
 
 from __future__ import annotations
@@ -14,15 +15,19 @@ from tests.docs._markdown import ROOT, links, prose
 
 ABSOLUTE = ("http://", "https://", "mailto:")
 
-#: ``<img src=...>`` and ``<source ... srcset=...>`` of the README, in both quote styles and unquoted.
-_ATTRIBUTES = re.compile(r"\b(?:src|srcset)=" r"(?:\"(?P<double>[^\"]*)\"|'(?P<single>[^']*)'|(?P<bare>[^\s>]+))")
+#: ``<img src=...>``, ``<source ... srcset=...>`` and ``<a href=...>`` of the README, in both quote styles and
+#: unquoted, with optional spaces around ``=``; the lookbehind keeps ``data-src=`` and friends out.
+_ATTRIBUTES = re.compile(
+    r"(?<=[\s<\"'])(?:src|srcset|href)\s*=\s*"
+    r"(?:\"(?P<double>[^\"]*)\"|'(?P<single>[^']*)'|(?P<bare>[^\s>]+))"
+)
 
 #: Markdown images (``![alt](target)``): :func:`tests.docs._markdown.links` deliberately skips them.
 _IMAGES = re.compile(r"!\[[^\]]*\]\((?P<url>[^)\s]+)(?:\s+\"[^\"]*\")?\)")
 
 
 def _attribute_urls(text: str) -> list[str]:
-    """Every URL an HTML ``src`` or ``srcset`` attribute names; a ``srcset`` may list several candidates."""
+    """Every URL an HTML ``src``, ``srcset`` or ``href`` attribute names; a ``srcset`` may list several candidates."""
     urls = []
     for match in _ATTRIBUTES.finditer(text):
         value = match.group("double") or match.group("single") or match.group("bare") or ""
@@ -39,10 +44,10 @@ def _image_urls(text: str) -> list[str]:
 
 
 def test_readme_html_sources_are_absolute() -> None:
-    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    text = prose((ROOT / "README.md").read_text(encoding="utf-8"))
     sources = _attribute_urls(text)
     assert sources, "the README is expected to embed images"
-    relative = [url for url in sources if not url.startswith(ABSOLUTE)]
+    relative = [url for url in sources if not url.startswith((*ABSOLUTE, "#"))]
     assert relative == [], f"PyPI does not resolve relative image paths: {relative}"
 
 

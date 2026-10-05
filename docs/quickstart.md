@@ -24,8 +24,8 @@ protocols need numpy and pydantic only; the IRT estimators need its `irt` extra 
 | `dev` | the test and lint tools |
 
 From a checkout of the repository, `uv sync --extra hf --extra calibrate` sets up the same environment with
-[uv](https://github.com/astral-sh/uv). From git, the release tag installs both packages (pip needs the core named
-first, because `rcp-ndcg` pins it; with uv the `rcp-ndcg` line alone suffices):
+[uv](https://github.com/astral-sh/uv). From git, the release tag installs both packages (pip needs the core in the
+same command, because `rcp-ndcg` pins it; with uv the `rcp-ndcg` line alone suffices):
 
 ```bash
 pip install "rcp-ndcg-core @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=packages/rcp-ndcg-core" \
