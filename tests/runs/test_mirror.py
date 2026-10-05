@@ -107,24 +107,24 @@ def test_a_run_whose_node_vanished_resumes_from_its_mirror_asking_only_the_missi
 
     import rcp_ndcg
     from rcp_ndcg.cli.main import cli
+    from rcp_ndcg.llm import JudgeClient
     from rcp_ndcg.llm.client import BackendUnavailableError
-    from rcp_ndcg.testing import FakeJudge
     from tests.runs.conftest import tiny_config
 
-    answer = FakeJudge._send
+    complete = JudgeClient.complete
     answered = []
 
-    async def down_after_three(self, request, replica=None):
+    async def down_after_three(self, request):
         if len(answered) >= 3:
             raise BackendUnavailableError("the endpoint went away")
         answered.append(request)
-        return await answer(self, request, replica)
+        return await complete(self, request)
 
-    monkeypatch.setattr(FakeJudge, "_send", down_after_three)
+    monkeypatch.setattr(JudgeClient, "complete", down_after_three)
     config = tiny_config(data, steps=["tournament"], mirror=REMOTE)
     with pytest.raises(BackendUnavailableError):  # the endpoint stops the run partway
         rcp_ndcg.run(config, runs_dir=str(tmp_path / "runs"))
-    monkeypatch.setattr(FakeJudge, "_send", answer)
+    monkeypatch.setattr(JudgeClient, "complete", complete)
     (run_dir,) = (tmp_path / "runs").iterdir()
     stopped = rcp_ndcg.runs.run.Run(str(run_dir))
     store = Path(stopped.dir) / "judgements" / "tournament.jsonl"

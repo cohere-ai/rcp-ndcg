@@ -1,18 +1,24 @@
-"""The engines a job starts by role: :class:`ServeConfig` (an engine), and the serve-by-role types that phase
-planning builds on.
+"""The engines a run starts beside its job, by role: :class:`ServeByRole`, the phase plan, and the
+``RCP_NDCG_ENGINES`` runtime overlay that carries the engines' URLs to the steps.
 
 A leaf model, like :class:`~rcp_ndcg.support.resources.Resources`: a job's phases declare their engines
-(``JobPhase.engines``) and the job runners render them, without the run layer importing the runners; the single
-``serve:`` section of a run config is no longer submitted (it is refused).
+(``JobPhase.engines``, built from the run config's ``serve:`` by :func:`plan_phases`) and the job runners render
+them, without the run layer importing the runners.
 
 rcp-ndcg's contract with a model is one OpenAI-compatible URL. An engine does not change that: the package never
 builds, translates or reads an engine's flags. It starts the user's image with the user's command, waits until
-``GET <readiness_path>`` answers, and hands the replicas' URLs to the run's judge as its ``base_url`` list.
+``GET <readiness_path>`` answers, and hands the replicas' URLs to the run's step through the environment
+(:data:`ENGINES_ENV`), which applies them as a runtime overlay on the role's config.
 
-A job that owns its engine never outlives it: an engine that dies, or does not answer within
-``startup_timeout_s``, ends the job with a non-zero exit, and the judge of such a job stops waiting for an engine
-that stopped answering after ``outage_timeout_s``. Resuming is cheap (the stores are asked only for the windows they
-lack): ``rcp-ndcg run resume --run <dir> --runner slurm|kubernetes`` submits the run again, engine included.
+A run that serves engines runs in **phases** (:func:`plan_phases`): the job starts each phase's engines, waits for
+readiness, runs the phase's steps, and stops its engines, so the job's GPUs are the maximum over phases instead of
+the sum over engines.
+
+A job that owns its engines never outlives them: an engine that dies, or does not answer within
+``startup_timeout_s``, ends the job with a non-zero exit, and the step that calls such an engine stops waiting for
+one that stopped answering after the phase's ``wait_on_outage_s`` (the engine config's ``outage_timeout_s``).
+Resuming is cheap (the stores are asked only for the windows they lack): ``rcp-ndcg run resume --run <dir>
+--runner slurm|kubernetes`` submits the run again, engines included.
 """
 
 from __future__ import annotations
@@ -28,40 +34,37 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.support.resources import Environment, Resources
 
-#: The environment variable a rendered job used to set to the replica URLs (comma-separated), read by
-#: ``rcp-ndcg run resume --judge-urls``. DEPRECATED, to be deleted: the runners export ``ENGINES_ENV`` now, and
-#: ``rcp-ndcg run resume`` gains ``--engine role=url``; only the CLI's old flag still reads it.
-JUDGE_URLS_ENV = "RCP_NDCG_JUDGE_URLS"
-
 #: The environment variable a phase's runner sets to the engines of the current phase, as JSON
 #: ``{"encoder": {"urls": [...], "wait_on_outage_s": 900}, ...}``; the coordinator
 #: applies it as a runtime overlay. It is never written into ``run.yaml`` and never reaches an identity, since
-#: ``base_url`` and ``wait_on_outage_s`` are runtime fields. It has replaced ``JUDGE_URLS_ENV`` in the runners;
-#: the old variable remains only for ``rcp-ndcg run resume --judge-urls`` until that flag goes.
+#: ``base_url`` and ``wait_on_outage_s`` are runtime fields. Its command-line spelling is
+#: ``rcp-ndcg run resume --engine role=url[,url]``.
 ENGINES_ENV = "RCP_NDCG_ENGINES"
 
 
 class ServeConfig(BaseModel):
-    """The engine replicas a run's job starts for its judge.
+    """The engine replicas a run's job starts for one role's config (the judge, the retrieval encoder, the
+    reranker).
 
     Attributes:
         image: The engine's container image, e.g. ``vllm/vllm-openai:<tag>`` or ``lmsysorg/sglang:<tag>``; pin the
             tag. Kubernetes and the SLURM runner's container runtimes need it; with the SLURM runner's
             ``container_runtime: none`` the command runs on the node, and an image is refused (it would be ignored).
         command: The command that starts one replica, verbatim: an argv list, or one shell-quoted string. It must
-            serve the judge's ``model`` name on ``port`` on all interfaces (``--host 0.0.0.0``) when there are
-            several replicas.
+            serve the role config's ``model`` name on ``port`` on all interfaces (``--host 0.0.0.0``) when there
+            are several replicas.
         env: Environment of the engine (e.g. ``HF_HOME``).
         resources: What one replica needs (``gpus``, ``cpus``, ``memory_gb``).
-        replicas: Independent engine replicas, one URL each; the judge sends each request to the one with the
-            fewest requests in flight.
+        replicas: Independent engine replicas, one URL each; a client that reaches several sends each request to
+            the live one with the fewest requests in flight (the judge; a retrieval role takes one replica).
         port: The port each replica serves on.
         readiness_path: The path that answers once a replica serves (``GET``, any 2xx).
         nodes_per_replica: Nodes one replica spans; only 1 is implemented (another value fails validation).
         startup_timeout_s: Seconds a job waits for a replica to answer ``readiness_path`` before it fails; an engine
             that exits before it answers fails the job at once. 0 fails unless the first probe answers.
-        outage_timeout_s: Seconds the judge of the job waits while every replica is down before it fails with
-            ``BackendUnavailableError`` (it becomes the judge's ``wait_on_outage_s`` in the job).
+        outage_timeout_s: Seconds the step that calls this engine waits while every replica is down before it
+            fails with ``BackendUnavailableError`` (the phase carries it to the role config's
+            ``wait_on_outage_s``).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -157,6 +160,8 @@ class EngineURLs(BaseModel):
         urls = tuple(url.rstrip("/") for url in value)
         if any(not url for url in urls):
             raise ValueError("urls: every entry must be a non-empty base URL")
+        if len(set(urls)) < len(urls):
+            raise ValueError(f"urls lists a replica twice: {list(urls)}")
         return urls
 
 
@@ -232,12 +237,18 @@ def plan_phases(
 
     Returns:
         One :class:`Phase` per group of consecutive steps sharing their engines, in order, each with the roles
-        of the engines it starts and the steps it runs.
-
-    Raises:
-        NotImplementedError: The behaviour is the serve-phases work's; this is the frozen signature.
+        of the engines it starts and the steps it runs. A run with no steps plans no phase.
     """
-    raise NotImplementedError("lane L4a")
+    planned: list[Phase] = []
+    for step in steps:
+        roles = uses.get(step, frozenset[EngineRole]())
+        kept: list[EngineRole] = [role for role in roles if getattr(serve, role, None) is not None]
+        wanted = frozenset(kept)
+        if planned and planned[-1].engines == wanted:
+            planned[-1] = Phase(engines=wanted, steps=(*planned[-1].steps, step))
+        else:
+            planned.append(Phase(engines=wanted, steps=(step,)))
+    return planned
 
 
 __all__ = [

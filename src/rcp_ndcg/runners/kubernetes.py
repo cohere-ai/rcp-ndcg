@@ -181,6 +181,8 @@ class KubernetesRunner:
     """
 
     name = "kubernetes"
+    #: This runner renders a job's phases (a job whose phases start engines is handed to it).
+    renders_phases = True
     #: Where a run is restored inside the pod (the scratch volume), from the run's mirror.
     run_root = f"{SCRATCH}/runs"
 

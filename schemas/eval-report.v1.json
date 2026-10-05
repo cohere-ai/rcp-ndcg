@@ -263,7 +263,9 @@
                 "APPROXIMATE_IMAGE_TOKENS",
                 "BT_L2_MISMATCH",
                 "INVALID_WINDOWS",
+                "SNAPSHOT_LISTING",
                 "UNCALIBRATED_DOCUMENTS",
+                "UNPINNED_REVISION",
                 "UNREADABLE_RUN"
               ],
               "type": "string"

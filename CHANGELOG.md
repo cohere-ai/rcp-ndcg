@@ -25,43 +25,173 @@ released together.
 
 ### Public surface
 
-- **`JobSpec.serve` is removed; `JobSpec.phases` is the way a job owns engines.** A job with phases runs them in
-  order in one allocation: each phase (`JobPhase`, newly exported from `rcp_ndcg.runners`) names the engines it
-  starts by role (`judge`, `encoder`, `reranker`) and the command to run while they serve. The runner starts the
-  phase's engines, waits until each role has a replica answering its readiness path, exports their URLs to the
-  phase's command in `RCP_NDCG_ENGINES` (JSON of `role -> {urls, wait_on_outage_s}`; a runtime overlay, never in a
-  config, never in an identity), runs it, stops the engines, and only then starts the next phase; a phase without
-  engines runs its command directly, with an empty `RCP_NDCG_ENGINES`. Any failure ends the job with the previous
-  single-engine semantics (`ENGINE_FAILED`, fail-fast supervision, `SIGTERM`/`SIGKILL` cleanup).
-  - `rcp_ndcg.runners.script`: `supervise(engines, *, coordinator, engines_env, uv)` renders one phase's
-    supervision (its signature changes from the single-engine form); the engines are `EngineStep(serve, role,
-    start, hosts)` entries, and a `start` of `None` waits for replicas that are already running elsewhere (a
-    Kubernetes StatefulSet; a phase whose engines are all remote is rendered coherently). The phase stops what it
-    started and reaps it, so a next phase's `wait -n` cannot see a stale status, and an engine that ended non-zero
-    before the coordinator's exit is observed fails the phase even where `wait -n` would miss it (bash -c). New
-    `engines_env_value` (the phase's JSON) and, for hosts the script only learns when the job starts,
-    `engines_env_spec`/`engines_env_command`; the readiness probe (`wait_for_replicas`, whose signature gains
-    `pid_var`) is parameterised by the engine's pid variable.
-  - `SlurmRunner`: one `sbatch` asks for the maximum nodes and GPUs over the phases; each role's engines run as
-    one `srun --overlap` step, pinned to their slice of the allocation's nodes on a multi-node allocation; a
-    one-node allocation answers on `localhost`.
-  - `KubernetesRunner`: each engine phase is an init container whose engines run in one container of the (single)
-    engine's image (a phase's engines share one image and, if several, need distinct ports; a phase whose engines
-    are all StatefulSet replicas waits in the coordinator's image), the last phase the main container;
-    several-replica engines are StatefulSets owned by the Job as before, run-scoped (they live for the whole run)
-    and named `<job>-engine-<role>`. A phase that starts one engine names its role in the failure message
-    (`supervise`'s `EngineStep` gains a `role` field); with several, the message says an engine exited.
-  - `JobSpec.serve` and the runners' `JUDGE_URLS_ENV`/`RCP_NDCG_JUDGE_URLS` exports are gone;
-    `support.serve.JUDGE_URLS_ENV` remains only for `run resume --judge-urls`, marked for deletion. A run config's
-    `serve:` section is refused at submission (the runners no longer render a single serve: engine; the schema and
-    `--help` texts describe the refusal), and the local runner refuses a job whose phases start engines, with a
-    `--judge-url` hint; its engine-free phases run in order in one script.
-- `rcp_ndcg.runners` exports `JobPhase` (the type of `JobSpec.phases`).
+- `rcp_ndcg.data.revisions.is_commit(revision)` is the public form of the commit-shape check (exactly 40
+  lowercase hex characters, ``False`` for ``None`` or any other revision); no other module reads the private
+  pattern, and the resolve paths use the same strict check: a 40-hex revision with trailing whitespace is no
+  longer echoed back as a verified commit but resolved like any ref (offline, it warns `UNPINNED_REVISION`).
+- `rcp_ndcg.errors.WarningCode` gains `SNAPSHOT_LISTING` (an additive change to the closed list): an offline
+  corpus read whose file listing came from the local Hub snapshot instead of the Hub warns with it (the snapshot
+  holds only the files a download left, and a partial cache reads as missing data). With `--json` it shows in the
+  envelope's `warnings`; otherwise it prints on stderr. `schemas/cli.v1.json` and `schemas/eval-report.v1.json`
+  follow.
+- `rcp-ndcg eval score` gains a repeatable `--system NAME` (and `eval explain --report` one; the library call
+  `rcp_ndcg.eval.evaluate` gains `systems: Sequence[str] | None = None`; the MCP tool `eval_score` takes
+  `system` too): score only the named systems of the rankings file. One system whose rankings match nothing of
+  the scored dataset is still refused (exit 12; every score would be 0), but it no longer stops the healthy
+  systems of a multi-system file: score them with `--system NAME`. The refusal's hint names the way out (drop
+  the system's rows, or score the others) with `systems=` for Python callers and `--system` on the command
+  line, whenever the file holds several systems. An unknown name is a `ConfigError` (exit 3) listing the
+  systems the file names; `eval explain --report` re-scores the saved rankings for the systems the report
+  scored (its own, by default; `--system` narrows them further), so one broken system of the file does not
+  kill the explanation, and `--system` with `--run` there is a `UsageError` (it has no effect on a run).
+
+- `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
+  larger than `adaptive_window` runs one batch, not one per batch: every adaptive window of such a pool holds
+  the whole pool, so a further batch asks the same documents again (in the refit order) and covers only what
+  the first window's answers already hold. `phase_calls` and `calls_per_query` count it, so the estimates and
+  the passes agree; the paper's counts at a pool of 150 are unchanged.
+- `schemas/run-config.v1.json`: the `adaptive_batches` description states the one-batch rule; the Python-surface
+  snapshot records the new method.
+- **The adapter registry is scoped by role** (one namespace per role): `register_adapter(cls)` keys
+  on `(cls.role, cls.name)`, `get_adapter(name, *, role)` resolves a config's `api` within its role's names,
+  and `known_adapters(role=None)` lists one role's names (or every registered name once without a role). The
+  same name registers once per role, so the embed role's `cohere`, `voyage` and the rerank role's `cohere`,
+  `voyage` coexist; a wrong-role lookup fails with a hint listing that role's names (and, when the name is
+  registered in another role, says so). The embedding profiles take the roles' plain names: `cohere`,
+  `voyage`, `gemini` for the embed role. The
+  `rcp_ndcg.adapters` entry-point group names its entries `<role>.<name>` (e.g. `embed.bedrock`); an entry
+  whose class role disagrees with its prefix is refused with a `ConfigError`, as is an entry without a role
+  prefix. The role clients pass their role to the registry (an unknown or wrong-role `api` is refused there),
+  and each role config's default `api` is unchanged (`openai_embeddings`, `rerank`, `vllm_pooling`). The role
+  list is public as `ROLES` (`rcp_ndcg.inference`, `rcp_ndcg.inference.adapters`), and an entry point's name
+  must spell the class's registered name, not just its role.
+- **One tokenizer-identity method for every role config**: `Endpoint.identity_extra()` (default `{}`) returns
+  `{"tokenizer_sha256": <sha>}` — the SHA-256 of the config's `tokenizer.json` through the one helper
+  `rcp_ndcg.data.tokenizer.tokenizer_identity` (over the judge's existing `load_tokenizer`; no second hashing
+  function) — for every role config that declares a `tokenizer` (the judge's, the embedding, pooling and
+  rerank configs). `RerankEndpoint.tokenizer_identity()` is removed; the judge's identity payload keeps its
+  existing keys (the judgement family's tokenizer digest and the preprocessing record's `sha256`) and is
+  byte-identical for every shipped judge preset, so no judgement family re-keys.
+- `JobSpec` runs its work through `phases` (a tuple of `JobPhase`: the engines one phase starts, by role, and the
+  command it runs while they serve); the phases replace `argv`.
+- **`rcp_ndcg.inference` gains the embedding wire adapters and the embedding role client** (dense embeddings over
+  one wire shape; no transport behaviour yet, so the client is exercised with a `Sender` a caller supplies):
+  - `inference.adapters.embeddings`: four registered adapters of role `embed` — `openai_embeddings` (OpenAI
+    `POST {base_url}/embeddings`: `model`, `input`, `encoding_format: "float"`, `dimensions` only when set;
+    reply read from `data[].embedding` in `data[].index` order, float lists or base64 float32) and the hosted
+    profiles `cohere` (v2 `POST {base_url}/embed`, `input_type` `search_query`/`search_document`, reply
+    `embeddings.float`, cap 96), `voyage` (the OpenAI body with `input_type` `query`/`document`, cap 128)
+    and `gemini` (`POST {base_url}/models/{model}:batchEmbedContents`, `taskType`
+    `RETRIEVAL_QUERY`/`RETRIEVAL_DOCUMENT`, key in `x-goog-api-key`, reply `embeddings[].values`, cap 100).
+    Names are scoped by role: the rerank role registers its own `cohere` and `voyage`, and an embed config's
+    `api` resolves only among the embed role's names.
+    Each profile carries its public base URL and key variables for when the config sets no `base_url`, and
+    takes no `dimensions` parameter (its API fixes the output dimension): a config that sets one is refused at
+    construction and the adapter refuses such a request, never silently ignored. Media raises
+    `CapabilityError` naming the media type; a malformed reply (an index list that is not exactly one
+    `0..n-1` per entry, an empty, scalar, non-finite or non-float32 embedding) raises `RequestRejectedError`; an
+    over-length HTTP 400 ("maximum context length") maps to
+    `CapabilityError` with a hint naming `max_tokens`/`batch_size`; HTTP 413 maps to `CapabilityError` naming
+    `batch_size`; other 400/422 are `RequestRejectedError`; `usage()` reads the OpenAI-shaped token report
+    (`usage.prompt_tokens`; the Cohere profile reads `meta.billed_units.input_tokens`), `None` when an API
+    reports none.
+  - `inference.clients` (new public module): `EmbeddingClient` — the role client for `EmbeddingEndpoint`. It
+    applies `query_prompt`/`doc_prompt` per side through one `_prepare` seam, sends `dimensions` only when set
+    (refused for the hosted profiles, which have no such parameter), L2-normalises when `normalize`, slices
+    into `batch_size`-sized requests with at most `concurrency` in
+    flight and reassembles in input order, resolves the API key from `api_key_env` (else the profile's
+    variables) into the profile's header — an explicitly named but unset `api_key_env` variable is a
+    `CredentialsError`, never a silent missing header — and refuses media, a `batch_size` over a profile's
+    cap, an unknown or wrong-role `api`, and — until the text-budget mechanism is wired — any `max_tokens`
+    (`ConfigError`: "max_tokens needs the text-budget mechanism, which is not wired yet"). An empty call makes
+    no request and needs no key.
+  - `inference.config`: `EmbeddingEndpoint.identity_extra()` returns `{"tokenizer_sha256": <sha>}` — the
+    SHA-256 of the named tokenizer's `tokenizer.json` for a step identity, never its name (the name stays
+    RUNTIME; the judge's rule for `JudgeConfig.tokenizer`). `check_declarations` is unchanged.
+  - `rcp_ndcg.inference.__all__` gains `EmbeddingClient`.
+- **`Endpoint.api_key_env` refuses an empty name** (`min_length: 1`; `schemas/index.v1.json`,
+  `schemas/judge-config.v1.json`, `schemas/run-config.v1.json` regenerated): an empty variable name would
+  silently send no credential header, for every role; ``None`` (unset) still sends no key.
+- `rcp_ndcg.errors.WarningCode` gains `UNPINNED_REVISION` (an additive change to the closed list): a Hub dataset
+  whose branch (or no revision at all) resolves to no commit — offline, or with the Hub unreachable, and no
+  recorded ref in the local cache — warns with it, naming `--revision <full sha>` as the fix. With `--json` it
+  shows in the envelope's `warnings`; otherwise it prints on stderr. `schemas/cli.v1.json`,
+  `schemas/eval-report.v1.json` and the public-surface snapshot follow.
+- **The rerank role goes on the wire** (in `rcp_ndcg.inference`, whose transport behaviour is still the
+  transport work's; a role client used with an injected `Sender` runs today):
+  - `inference.adapters.rerank`: the shipped wire adapters, registered at import and selectable from a config's
+    `api` field -- `RerankAdapter` (`api: rerank`, the served Cohere-shaped `POST {base_url}/rerank`),
+    `CohereRerankAdapter` (`api: cohere`, `https://api.cohere.com/v2/rerank`, at most 1000 documents per
+    request) and `VoyageRerankAdapter` (`api: voyage`, `https://api.voyageai.com/v1/rerank`, at most 1000
+    documents, requests of one query spaced half a second apart, no `top_n` -- Voyage's return-limit field is
+    `top_k` and it returns every document by default), all subclasses of the new `RerankWire`.
+    Requests are `model`, `query`, `documents`, `top_n`; the served engine's `instruction` and
+    `use_activation` travel only when the config sets them. `interpret` parses the `results`, Voyage `data`
+    and SGLang bare-list answer shapes and realigns the scores by `index`; an index missing, duplicated or out
+    of range is a non-retryable `ProviderError` naming the server, an over-length 400/422 a `CapabilityError`
+    hinting `max_tokens`, any other refusal a `RequestRejectedError`. A candidate set above the cap (or a set
+    `batch_size`) is split into requests and merged; a `listwise` config refuses to split
+    (`CapabilityError`).
+  - `inference.clients`: `RerankClient(config, *, sender=None)` with `rerank`/`arerank` (one query's whole
+    candidate set per request, scores aligned to the input documents), `rerank_many`/`arerank_many`
+    (`concurrency` queries in flight, the per-query `checkpoint(query_id, scores)` of today's served path)
+    and `close`. The query text follows one rule for every path, from the config's `instruction` mode:
+    `fold` (default) sends `Task: <instruction>\nQuery: <text>` exactly as the served path did, `field` sends
+    the bare query plus the engine's `instruction` field (served only), `none` the bare query. Empty
+    documents are sent as given (the hosted profiles' old empty-document filter is gone); an empty candidate
+    set makes no request. Preparation runs through one seam (`RerankClient._prepare`); until the text-budget
+    mechanism is wired the client cuts nothing and refuses a config that sets `max_tokens` with a
+    `ConfigError`.
+  - `Endpoint.identity_extra()`: `{"tokenizer_sha256": ...}` of the named tokenizer's `tokenizer.json`, the
+    content identity a rerank step records (the name stays runtime, as the judge's already works).
+  - The facade `rcp_ndcg.inference` additionally exports `RerankClient`, `RerankAdapter`,
+    `CohereRerankAdapter`, `VoyageRerankAdapter` (and `rcp_ndcg.inference.adapters` re-exports them with
+    `RerankWire`); `known_adapters()` now lists `cohere`, `rerank` and `voyage`.
+- **`rcp_ndcg.inference` ships the first wire adapter, `vllm_pooling`, and its role client `PoolingClient`**:
+  late-interaction (multi-vector) encoding over vLLM `POST {base_url}/pooling` with `task: token_embed`, the
+  exact request and response field names verified against the vLLM entrypoints (the adapter's docstring cites
+  them). The adapter sends `encoding_format: "base64"` with `embed_dtype` from the endpoint config and
+  `endianness: "little"` (explicit, so a frame decodes the same on any server platform), one `input` batch per
+  text-only request and one `messages` request per media item (the only shape in which the server applies the
+  model's chat template to image placeholders). `interpret` accepts nested float lists (shape as sent), flat
+  base64 frames (reshaped to `(tokens, dim)` from the declared `dim`) and the framed `bytes` encoding (per-item
+  `start`/`end`/`shape` metadata from the response header; `bytes_only` has no framing and is refused, naming
+  the lane that will pin it). Over-length HTTP 400 and 422 refusals raise `CapabilityError`; any other client
+  error raises `RequestRejectedError`; a reply whose decoded token counts disagree with its own
+  `usage.prompt_tokens` (a `token_embed` answer has one vector per prompt token) raises `ProviderError` — a
+  mistyped `dim` is a loud error, never a silently mis-shaped corpus. `maxsim_topk` no longer raises
+  `IndexError` when an empty item sits at the end of a ragged buffer.
+- **`PoolingClient`** (`rcp_ndcg.inference.clients.pool`, exported from `rcp_ndcg.inference`): a
+  `PoolingEndpoint` plus a `Sender` becomes ragged `Embeddings`. It prepends the role's prompt (`_prepare`, the
+  one seam the text budget will join), splits into `batch_size`-sized requests, keeps at most `concurrency` in
+  flight and reassembles in input order, L2-normalises per token when `normalize` is set (in float32, stored
+  back in the transfer dtype), and refuses a config that sets `max_tokens` (`ConfigError`: the text-budget
+  mechanism is not wired yet, and a budget silently ignored would change the vectors). The sync `encode` runs
+  on the sender's own bridge when it has one (`Transport.run`), else on a fresh event loop.
+- **`PoolingEndpoint` gains `dim`** (CONTENT): the checkpoint's token-vector width, needed to reshape the flat
+  base64 frame of `/pooling` (which carries no shape); the float and bytes encodings are self-describing, and
+  the `bytes` encoding makes it unnecessary. `dimensions` is never sent — vLLM's `/pooling` refuses it.
+- **`PoolRequest` gains `embed_dtype`** (default `"float16"`, the owner's Q11 decision; `"float32"` opt-in)
+  **and `dim`**, both copied from the endpoint config by the client and consumed by the adapter.
+- **`Embeddings` keeps the transfer dtype for ragged buffers**: `ragged(per_item, *, dtype=np.float32)` and
+  `empty(dim, *, multi_vector=False, dtype=np.float32)` accept the storage precision, so a multi-vector buffer
+  stays float16 end to end (2 bytes per token vector, against 4 for float32); single-vector buffers are
+  float32 as before. `l2_normalize` computes in float32 and returns the input's dtype (float32 in, float32
+  out; float16 stays float16).
+- **`maxsim_topk` accepts float16 or float32 vectors** and computes every dot product and per-query sum in
+  float32, upcasting one query block and one document block at a time — never a float32 copy of the whole
+  corpus (each block copy is bounded by the 64 MiB tile budget, alongside the score tile). Results for float32
+  inputs are unchanged; float16 inputs match a float64 reference within 1e-3 relative on 2,000-token documents.
+- `rcp_ndcg.inference.adapters` exports `VllmPooling`, and the shipped adapters register when that package is
+  imported (`known_adapters()` now reports `vllm_pooling`).
+- `tests/contract/snapshots/python_api.json` regenerated; it also records the already-committed additive
+  `JobSpec.phases` field, which its own commit left out of the snapshot.
+    `RerankWire`); `known_adapters("rerank")` now lists `cohere`, `rerank` and `voyage`.
 - `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
   the step identities (its `IDENTITY_ROLES` declarations); no property changed.
 - **New public module `rcp_ndcg.inference`**: the inference layer between `rcp_ndcg.data` and
-  `rcp_ndcg.retrieval`, with the frozen interfaces the transport, the adapters and the role clients build on. No
-  transport behaviour yet: every behavioural method raises `NotImplementedError`, naming the lane that owns it.
+  `rcp_ndcg.retrieval`, with the wire types, the adapter seam, the transport, the probe and the offline fakes
+  the roles (the judge, the encoders, the rerankers) build on.
   - `inference.endpoint`: `Endpoint` moved here from `rcp_ndcg.support.endpoint` (that module is deleted), with
     new fields `api` (CONTENT; the wire adapter, each role config sets its default), `headers_env` (RUNTIME;
     header name -> environment variable name, values read from the environment only) and `wait_on_outage_s`
@@ -74,31 +204,194 @@ released together.
     `rcp_ndcg.retrieval.encoder` (re-exported there and from `rcp_ndcg.retrieval`); and the new role request and
     result types `EmbedRequest`, `PoolRequest`, `RerankRequest` and `RerankResult` (whose
     `RerankResult.aligned(request, scores)` refuses a score count that does not match the request's documents).
-  - `inference.adapters`: the `Adapter` protocol (generic in request and result) and its registry
+  - `inference.adapters`: the `Adapter` protocol (generic in request and result), the `AdapterRole` literal
+    (`"judge"`, `"embed"`, `"rerank"`, `"multi_vector"`) and its registry
     (`register_adapter`, `get_adapter`, `known_adapters`, constant `ADAPTER_ENTRY_POINTS =
-    "rcp_ndcg.adapters"`). No adapter is registered yet.
+    "rcp_ndcg.adapters"`). The `vllm_pooling` adapter ships below.
   - `inference.transport`: the `Sender` protocol and the `Transport` class -- the transport's frozen interface
     only (`send`, `probe`, `run`, `aclose`); its routing, retries, parking and status-map behaviour is the transport lane's.
   - `inference.fake`: `FAKE_SCHEME = "fake://"` and the offline fakes' contract; no implementation yet.
+    "rcp_ndcg.adapters"`). No adapter is registered yet.
+  - `inference.transport`: the `Sender` protocol and the `Transport`, now implemented -- the judge client's
+    behaviour over `httpx` instead of the OpenAI SDK, with the same numbers: least-busy replica routing, a
+    semaphore and an HTTP pool sized to `concurrency`, the within-request retries (exponential backoff, the
+    server's `Retry-After` honoured, capped at 60 s), the set-aside of a failing replica (5 s doubling to 60 s),
+    parking until `wait_on_outage_s` (the outage clock starts when the request holds a slot; the message states
+    how long the endpoint was unavailable), the rejection rule, and the shared status map (outages retried then
+    parked; 401 and 403 raise `CredentialsError`; 404 raises a non-retryable `ProviderError` naming the URL and
+    the model; every other 4xx is returned as a `Reply` for the adapter to interpret). Credentials and
+    `headers_env` are read from the environment at send time and never logged; JSON bodies are decoded and
+    `application/octet-stream` stays `bytes`; a caller-supplied `httpx_transport` is wrapped in the transport's
+    own client with the endpoint's timeouts and pool limits. The sync bridge `run` reuses one event loop and
+    one pool across calls and runs on a private background thread when a loop is already running in the thread;
+    `aclose` (and `close`, and the context manager) close the pool. `Transport` carries the provenance probe
+    (`probe`, `engines`, `note_system_fingerprint`, over the new module `inference.probe`'s `read_replica`) and
+    the usage accounting (`usage`, and `add_usage` for the tokens the adapter's `usage(reply)` reports).
+  - `inference.fake`: the offline fakes, implemented. A `fake://` base URL makes the transport send through an
+    in-process `httpx.MockTransport` speaking each role's wire: `GET /models`; `POST /embeddings` (OpenAI shape;
+    deterministic hash-seeded unit vectors, dimension from the URL's `?dim=` query, default 64, cut to a
+    request's `dimensions`); `POST /pooling` (vLLM `task: token_embed`; ragged per-token vectors, as floats or
+    base64-packed in the request's `embed_dtype`, default `float16`); `POST /rerank` (Cohere shape; each
+    document scored by the same hidden ability the fake judge reads, so a tiny run's rerank and judge agree).
+    `register_fake_route(method, path, handler)` registers extra routes (the judge's chat completions arrive
+    with the judge port; a route path must name its route, e.g. ``/chat/completions``); the shared draws
+    `fake_uniform` and `hidden_ability` are the fake judge's too. The
+    fakes sit below the transport, so routing, retries, parking and usage run in every offline test; the
+    package exports `register_fake_route` and `FakeEndpoint`.
+  - `inference.probe`: `read_replica`, one replica's best-effort `GET {url}/models` into `EngineInfo` (an
+    unreadable endpoint recorded with its `error`, never raised; a server that does not list the endpoint's
+    model named in a warning).
   - `inference.config`: the role endpoint configs `EmbeddingEndpoint` (`api` default `openai_embeddings`),
     `PoolingEndpoint` (default `vllm_pooling`, with `embed_dtype: float16` by default, `float32` opt-in) and
     `RerankEndpoint` (default `rerank`, `instruction: fold` default, a `batch_size` refused for a `listwise`
     model). Not wired into `rcp_ndcg.retrieval.config` yet
+- **`RerankEndpoint` gains `query_max_tokens`** (CONTENT): the query's share of the pair budget
+  (`max_tokens`), with the document getting the rest; `None` (the default) declares no split and leaves it to
+  the adapter's recipe. The `max_tokens` docstring of every role config now states exactly what the budget
+  counts: the model's whole input sequence as the engine sees it (template, special tokens, instruction and
+  content), with the content cut on the client so the fixed template tokens (the anchors) always survive --
+  truncation is never left to the engine.
 - **`rcp_ndcg.errors` gains `BackendUnavailableError` and `RequestRejectedError`**, moved unchanged from
   `rcp_ndcg.llm.client` (still importable and exported there). Exit codes do not change: both remain
   `ProviderError` subclasses at `PROVIDER`, `RequestRejectedError` non-retryable.
+- **`rcp_ndcg.errors` gains the shared status map**: `UNAVAILABLE_STATUSES` (408 and 429), `status_is_unavailable`
+  and `status_error` (401/403 → `CredentialsError`; 404 → a non-retryable `ProviderError` naming the URL and the
+  model; every other 4xx → `None`, a reply for the wire adapter). One table, in one place, for every role's
+  transport.
+- **`Endpoint.base_url` takes a replica list** (one URL, or a non-empty list of replicas of the same served
+  model, without duplicates, never mixing the offline fakes with real URLs), and `Endpoint` gains the `urls`
+  property; the widening moves the judge's list normalisation onto `Endpoint`, whose `JudgeConfig` keeps its own
+  (required, and unchanged in behaviour and identity payloads). The retrieval layer's hosted configs
+  (`rcp_ndcg.retrieval.config._Hosted`) keep `base_url` a single optional URL until the retrieval port: a
+  replica list is refused there.
 - **`rcp_ndcg.support.serve` gains the serve-by-role types**: `EngineRole`, `EngineConfig` (an alias of the
   unchanged `ServeConfig`), `ServeByRole`, `Phase`, `ENGINES_ENV = "RCP_NDCG_ENGINES"`, `EngineURLs`,
-  `parse_engines_env`, and the frozen `plan_phases(steps, serve, uses)` signature (behaviour arrives with the serve-phases work).
+  `parse_engines_env`, and `plan_phases(steps, serve, uses)`, the pure phase plan.
 - **`rcp_ndcg.llm.client` gains `api` and `headers_env`** through `Endpoint`; `wait_on_outage_s` moves up to
   `Endpoint` and the judge keeps declaring it only through that inheritance. A judge's identity payload is
   unchanged: `api` defaults to `None` (omitted from identities until a role config sets it), the other two are
   runtime fields.
 - New layering charter (`AGENTS.md`): `data → inference → retrieval`; enforced by the new
   `tests/test_layering.py` (eager imports only; the current tree has no outward import).
+- **The judge is ported onto the shared transport and the `openai_chat` wire adapter**:
+  - `inference.adapters.chat` (new module, registered at import of `rcp_ndcg.inference.adapters`):
+    `OpenAIChat` (role `judge`, name `openai_chat`) -- the judge's wire adapter. `calls()` builds the
+    `POST {base_url}/chat/completions` body exactly as the OpenAI SDK built it (`messages`, `temperature` only
+    when set, `max_completion_tokens` from `max_output_tokens`, the window's `response_format`, `extra_body`
+    merged at the top level) and runs the pre-send media gate against `max_images`/`max_videos`; `interpret()`
+    reads the first choice's `message.content`, the reasoning channel from `reasoning_content` or `reasoning`,
+    `finish_reason` and `usage`, runs the reasoning watch under an answer schema (one warning after 8 answers
+    without reasoning), and maps the refusals: a media-count text (HTTP 400/422) and a refusal of the answer
+    schema are `CapabilityError`, every other returned 4xx and an answer with no choices are
+    `RequestRejectedError`; `usage(reply)` reads the token report; `fingerprint(reply)` reads
+    `system_fingerprint`. One wire nuance moves with the SDK: a judge without `api_key_env` no longer sends
+    `Authorization: Bearer EMPTY` on its requests (the SDK always did); the transport sends credentials only
+    from the environment variables the config names.
+    The judge's message/media lowering (`build_messages`, `media_counts`,
+    `MAX_VIDEO_BYTES`, `VIDEO_CACHE_SIZE`) moved here unchanged from the internal `rcp_ndcg.llm._payload`
+    (deleted; the layering forbids `inference` importing `llm`), importable at the new home.
+  - `JudgeClient` keeps its public API (`from_config`, `complete`, `probe`, `engines`, `model`, `usage`) and is
+    thin: it builds the adapter from `api` within the judge role's registry (the role-scoped registry refuses a
+    name of another role with that role's known names in the hint; unset resolves to `openai_chat` and stays
+    out of the identity payload, so every identity is unchanged) and sends through the shared `Transport`
+    (routing, retries, parking, credentials, token usage).
+    parking, credentials, token usage). Its constructor takes `httpx_transport` (the transport wraps it with
+    the endpoint's timeouts and pool) instead of `http_client` (which used to replace both); `config` and
+    `usage` are properties now (assigning a `model_copy` of the config rebuilds the wire at the next call);
+    the client-level `usage` keeps its shape (requests, failed_requests, tokens; `cached_input_tokens` stays
+    at 0 -- the wire reports tokens and calls only; the old client counted the endpoint's
+    `prompt_tokens_details.cached_tokens`), and a request refused while its body is built (an unprepared
+    image, an oversized video container) counts as neither a request nor a failed request, where the old
+    client counted it as failed -- it is refused before the transport is engaged, like the media gate.
+    `is_unavailable` and the judge's private status table are gone: the shared status map in
+    `rcp_ndcg.errors` is the one home.
+  - `JudgeConfig.api` stays unset by default (the judge's `openai_chat` wire is resolved from it), so judge
+    identity payloads are byte-identical: no shipped preset, and not `JudgeConfig.fake`, changes key.
+  - The offline fake judge answers behind the transport: `fake://` endpoints answer `POST /chat/completions`
+    through the route registered by `rcp_ndcg.llm._fake`, so `JudgeConfig.fake(seed)` builds a real
+    `JudgeClient` over the real transport; `rcp_ndcg.testing.FakeJudge` stays importable and keeps its ability
+    mapping and severity, answering through its own in-process endpoint below the transport with the same
+    answer logic (its test doubles override `FakeJudge._answer`, the wire handler, where they used to override
+    the client's `_send`). One numeric edge, declared: the fake reads the prompt rebuilt from the lowered
+    request blocks, so a window whose clip is judged as sampled frames draws from a changed key (the prompt
+    carried one marker per part, the wire carries one block per frame); text, page-image and whole-container
+    windows round-trip exactly, and the tiny world's judgements are byte-identical.
+- **One `Usage` for every role**: the run manifest's requests-and-tokens shape
+  (`requests`, `failed_requests`, `input_tokens`, `output_tokens`, `cached_input_tokens`; frozen; merged with
+  `merged_with`) is the one type, defined in `rcp_ndcg.inference.types` and re-exported from
+  `rcp_ndcg.llm.client`; the transport's accumulator produces it (its former `calls`/`failed_calls`
+  vocabulary is gone, renamed to `requests`/`failed_requests` with the same accounting semantics), and the
+  judge client maps its own answers and refusals onto it. The run manifest's serialised usage fields are
+  unchanged; no property changed.
+- **`Reply` gains `url`** (default `None`): the replica base URL that answered, set by the transport -- a role
+  client needs it to record a per-replica fact such as a completion's `system_fingerprint` (the judge calls
+  `transport.note_system_fingerprint(reply.url, ...)` for its first completion per replica, as it did).
+- **`serve:` names one engine per role, and a job runs the run in phases** (each phase starts only the engines its steps use).
+  `RunConfig.serve` is a `ServeByRole` (`judge`, `encoder`, `reranker`; the old single-engine mapping is refused
+  with a hint showing the new shape), and `plan_phases(steps, serve, uses)` builds the phase plan: consecutive
+  steps that call the same served engines share a phase, steps that call no served engine form an engine-free
+  phase, and the paper run becomes four phases. `RunConfig.engine_uses()` derives the per-step engine roles from
+  the config. `runs.execution` builds the job's `JobSpec(phases=...)`: per phase the engines by role and the
+  coordinator argv `rcp-ndcg run resume --run <dir> --only <steps>`; `run_argv` lost its outage argument —
+  `wait_on_outage_s` travels in `RCP_NDCG_ENGINES` per role now. A runner that neither renders nor runs phases
+  refuses a job that would start engines; the local runner runs the engine-free phases and refuses the ones with
+  engines. `rcp_ndcg.runners` exports `JobPhase`, the per-phase engine set and coordinator command.
+- **The `slurm` and `kubernetes` runners render a job's phases** (`renders_phases`), so a serving run submits
+  instead of being refused. A job with phases runs them in order in one allocation: each phase that starts engines
+  runs one supervision block — it starts the phase's engines once (no restart), waits until every role has a
+  replica answering its readiness path, exports their URLs in `RCP_NDCG_ENGINES`, runs the phase's coordinator,
+  stops and reaps its engines, and only then starts the next phase; a phase without engines runs its command
+  directly. Any failure ends the job with the single-engine semantics (`ENGINE_FAILED`, fail-fast supervision,
+  `SIGTERM`/`SIGKILL` cleanup, and an engine that ends non-zero before the coordinator's exit is observed fails
+  the phase even where `wait -n` would miss it).
+  - `runners.script`: `supervise(engines, *, coordinator, engines_env, uv)` renders one phase; the engines are
+    `EngineStep(serve, role, start, hosts)` entries, and a `start` of `None` waits for replicas that are already
+    running elsewhere (a Kubernetes StatefulSet). New `engines_env_value` (the phase's JSON) and, for hosts the
+    script only learns when the job starts, `engines_env_spec`/`engines_env_command`; the readiness probe
+    (`wait_for_replicas`, whose signature gains `pid_var`) is parameterised by the engine's pid variable.
+  - SLURM: one `sbatch` asks for the maximum nodes and GPUs over the phases; each role's engines run as one
+    `srun --overlap` step pinned to its slice of the allocation's nodes; a one-node allocation answers on
+    `localhost`. GPUs are partitioned among the engines of a phase (below, [serving](docs/concepts/serving.md)).
+  - Kubernetes: each engine phase is an init container whose engines run in one container of the (single)
+    engine's image (a phase's engines share one image and, if several, need distinct ports), the last phase the
+    main container; several-replica engines are StatefulSets owned by the Job as before, run-scoped, named
+    `<job>-engine-<role>`. A phase that starts one engine names its role in the failure message; with several,
+    the message says an engine exited.
+  - The single-engine `serve:` rendering (the `RCP_NDCG_JUDGE_URLS` export) is gone, with the deprecated
+    `support.serve.JUDGE_URLS_ENV` alias; a run's `serve:` reaches the job only as phases.
+- **`RCP_NDCG_ENGINES` is the runtime overlay that carries the engines' URLs to the steps.** The coordinator
+  applies each role's `urls` and `wait_on_outage_s` to the role config in memory — never written into `run.yaml`,
+  never in a step identity, so a run is byte-identical with and without the variable; the
+  `--set judge.wait_on_outage_s=<outage_timeout_s>` job argument is gone. A failed resume keeps treating the
+  injected URLs as no config change: `_substance` subtracts every declared RUNTIME field of the candidates'
+  nested configs too.
+- **Served-role refusals.** A role config whose engine is served must not set `base_url` (the job's URLs for it
+  reach the step at runtime; setting both is refused, never silently overridden): enforced for `encoder` and
+  `reranker`, whose `base_url` is now optional, omitted exactly when served; a retrieval client built without a
+  URL is refused rather than silently addressing a vendor's public API. A hosted or in-process model, a BM25
+  retriever, a role no step of the run calls, and more than one replica for a retrieval role are refused with a
+  hint. A served encoder needs no judge (the old any-`serve:` check is gone); `serve.judge` needs a real judge
+  (not `fake`) and a judging step. The judge's own `base_url` stays required (the judge client requires it) and
+  is the placeholder the job's runtime URLs replace. `EngineURLs` refuses a replica listed twice.
+- **`rcp-ndcg doctor --endpoint <url>`** replaces `--judge-url` and probes any role's endpoint URL
+  (`GET <url>/models`).
+- The `ServeConfig` fields' schema descriptions are role-neutral (the same engine shape serves the judge, the
+  retrieval encoder and the reranker); no property changed.
 
 ### Fixed
 
+- `_hub_absent` no longer crashes when huggingface_hub drops its private `_CACHED_NO_EXIST` sentinel: without
+  the sentinel the cache cannot tell "absent upstream" from "not cached", so the file is treated as not cached
+  (the load refuses with the offline hint and one debug line records it; an optional table is never silently
+  `None`, a required one never reported as upstream-404).
+
+- The MCP server logs the typed warnings a tool call collects (its results have no `warnings` field, so the
+  server's log is where e.g. `UNPINNED_REVISION` surfaces there).
+- A recorded config (run.yaml, the manifest) re-validates without refusing its own defaults: a hosted or served
+  encoder's or reranker's `concurrency` equal to its default no longer fails `run start`, a resume or `run status`
+  with `drop concurrency`. The one-at-a-time check compares the value against the field's default (a full dump
+  cannot preserve which fields the user set); an explicitly non-default `concurrency` on a provider that sends one
+  request at a time is still refused.
 - Changing a served encoder's or reranker's URL no longer re-runs retrieval or reranking: the `retrieve` and
   `rerank` step identities hold the candidates config's content payload (`identity_payload`, as the judge steps
   already do), so its runtime fields (`base_url`, `api_key_env`, `concurrency`, the timeouts and retries,
@@ -110,6 +403,17 @@ released together.
   its ranked document ids is in the dataset's pools or labels (the message shows one ranked id next to one
   dataset id). Partial overlap keeps scoring as before, and the `UNRANKED_QUERIES` warning names the subsets it
   counts when the scored dataset has more than one.
+- An offline run over a hub cache an online run filled now works without `--revision`: the online resolution
+  records the commit behind the branch (`refs/<ref>` in the cache), which a download pinned to a commit never
+  wrote, and offline the repository's file listing falls back to the local snapshot (with one warning that it
+  holds only the files a download left), so a run materializes its corpus from the cache. Offline with nothing
+  to resolve, the failure is a non-retryable `MISSING_INPUT` whose hint says to pass `--revision <full sha>`
+  and whose details name the table looked for; a Hub that cannot be reached — connection failure, timeout, or
+  answering 5xx or 429 — is a retryable `PROVIDER` naming `HF_ENDPOINT`, also when the listing is what failed.
+  Offline, an optional table (`excluded.parquet`, `top_ranked.parquet`) is treated as absent only when the cache
+  records it so (`.no_exist`); an uncached optional table is an error with the offline hint, never a silently
+  empty pool, and the pinned offline run keeps working. A corrupt cache ref is removed before resolution and
+  rewritten by the next online one instead of failing it.
 
 ### Changed
 
@@ -117,6 +421,54 @@ released together.
   `schemas/run-config.v1.json`) regenerated for the moved and new fields; `tests/test_errors.py` now requires
   one *root* class per exit code, since the moved outage and refusal types are `ProviderError` subclasses and
   exit codes do not change.
+- `tests/contract` snapshots and the exported schemas regenerated for the embedding adapters, the
+  embedding role client and the `api_key_env` refusal (the
+  `EmbeddingClient` export, its constructor and `EmbeddingEndpoint.identity_extra()`).
+  exit codes do not change. The `python_api` snapshot regeneration also records `JobSpec.phases`, which its
+  commit (the job-phase shape) had left out.
+- The fake judge's deterministic draws (`_uniform`, `_hidden_ability` in `rcp_ndcg.llm._fake`) now come from
+  `rcp_ndcg.inference.fake` (`fake_uniform`, `hidden_ability`): one home for the mechanism the fakes share;
+  identical values, and both names stay importable from `rcp_ndcg.llm._fake`.
+- `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/run-config.v1.json`)
+  regenerated for the transport, the fakes and the status map (new names and members, `Endpoint.base_url`
+  widened, and the retrieval configs' `base_url` described per its type: one URL, required for the served
+  ones, optional for the hosted ones); `tests/test_errors.py` now requires one *root* class per exit code,
+  since the moved outage and refusal types are `ProviderError` subclasses and exit codes do not change.
+- **The judge's retry delays are the transport's** (the one visible change of the port): within-request
+  retries back off 1 s doubling capped at 60 s, or the server's `Retry-After`, where the OpenAI SDK used its
+  own delays; the set-aside and parking numbers (5 s doubling to 60 s) are unchanged. `requirements-constraints.txt`
+  regenerated without `openai` (and without `httpx2`, its transport, and `jiter`): the judge sends over `httpx`
+  through the shared transport. `openai` and `httpx2` remain in `uv.lock` only as the `[vllm]` extra's engine
+  package's own dependency (vLLM's server speaks the OpenAI protocol with its own client); the `rcp-ndcg`
+  package itself declares and resolves neither.
+- `tests/contract` snapshots and the exported schemas (`schemas/judge-config.v1.json`,
+  `schemas/run-config.v1.json`) regenerated for the judge port: `OpenAIChat` exported from
+  `rcp_ndcg.inference`, `Reply.url`, `JudgeClient`'s `httpx_transport` keyword and its `config`/`usage`
+  properties, and the `api`/`extra_body` field descriptions.
+
+### Removed
+
+- **The OpenAI SDK dependency** (`openai` left `pyproject.toml`'s dependencies; the accepted design of the
+  unified inference layer): the judge's chat completions go over `httpx` through the shared transport and the
+  `openai_chat` wire adapter, so the package ships one HTTP stack, one retry policy and one error mapping.
+  What the judge sent and read is unchanged (the request body, the reasoning channel, the refusals and the
+  usage), the judgement family keys do not move, and the only visible difference is the retry delays, which
+  now follow the transport's policy. One reading edge, declared: the adapter reads an answer's **first**
+  choice, where the SDK era read the last; the judge never sends a `n` above 1, so no shipped answer moves. `requirements-constraints.txt` no longer carries `openai`, `httpx2` or
+  `jiter`; in `uv.lock` the two remain only as the `[vllm]` extra's engine package's own dependency.
+- The release workflow publishes three packages, one GitHub environment each: the build job builds `rcp-ndcg`,
+  `rcp-ndcg-core` and `rcp-ndcg-vllm` (the last from its own directory, outside the uv workspace), checks each
+  version against the tag, `rcp-ndcg`'s exact `rcp-ndcg-core` pin and the constraints file against the lock, runs
+  `twine check` on every file, and uploads one artifact per package; `publish-core` (environment `pypi-core`),
+  `publish-rcp-ndcg` (`pypi`, after the core it pins exactly) and `publish-vllm` (`pypi-vllm`) publish by trusted
+  publishing, and the GitHub release still attaches the constraints file. The one-time PyPI trusted-publisher
+  registration for the three environments (`pypi`, `pypi-core`, `pypi-vllm`) is done; `AGENTS.md` "Releasing" and
+  the workflow header describe it.
+- **`run resume --judge-urls` and its environment variable** (`RCP_NDCG_JUDGE_URLS` as the
+  coordinator's input): pass `run resume --engine judge=url[,url]` instead (repeatable; the runtime overlay of
+  the engines you started yourself). The single-engine `serve:` mapping (`serve: {image: ...}`) on a run
+  config: `serve:` now maps roles to engines (`serve: {judge: {...}}`). The doctor's `--judge-url` flag is
+  `--endpoint <url>`, which probes any role's endpoint.
 
 ## 0.1.0
 

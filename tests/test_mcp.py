@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from rcp_ndcg import mcp
 from rcp_ndcg.cli.introspect import command_specs
+from rcp_ndcg.data import SUITES, Rankings
 from rcp_ndcg.runs.config import RunConfig
 from rcp_ndcg.runs.pipeline import Pipeline
 
@@ -96,6 +99,35 @@ def test_a_failure_is_a_tool_error_carrying_the_error_object(name: str, argument
     assert set(result["structuredContent"]) == {"code", "exit_code", "message", "hint", "retryable", "details"}
 
 
+def test_a_typed_warning_reaches_the_server_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A typed warning a tool call collected is logged, the MCP analogue of the CLI's stderr line."""
+    cache = tmp_path / "hub"
+    cache.mkdir()
+    monkeypatch.setenv("HF_HUB_CACHE", str(cache))
+    from huggingface_hub import constants as hub_constants
+
+    monkeypatch.setattr(hub_constants, "HF_HUB_CACHE", str(cache))
+    repo = SUITES["vidore"].repo
+    snapshot = cache / f"datasets--{repo.replace('/', '--')}" / "snapshots" / ("4" * 40)
+    (snapshot / "hr__english").mkdir(parents=True)
+    pd.DataFrame({"query-id": ["q1"], "corpus-id": ["a"], "score": [1.0], "gain": [1.0], "theta": [1.0]}).to_parquet(
+        snapshot / "hr__english/qrels.parquet"
+    )
+    pd.DataFrame({"query-id": ["q1"], "corpus-ids": [["a"]]}).to_parquet(snapshot / "hr__english/top_ranked.parquet")
+    no_exist = cache / f"datasets--{repo.replace('/', '--')}" / ".no_exist" / ("4" * 40) / "hr__english"
+    no_exist.mkdir(parents=True)
+    (no_exist / "excluded.parquet").touch()
+    rankings = tmp_path / "run.jsonl"
+    Rankings.from_orders({"q1": ["a"]}, system="mine").save(rankings)
+
+    with caplog.at_level(logging.WARNING, logger="rcp_ndcg.mcp"):
+        mcp.call_tool("eval_score", {"rankings": str(rankings), "suite": "vidore", "subset": "hr__english"})
+
+    assert "UNPINNED_REVISION" in caplog.text
+
+
 def test_the_builtin_loop_speaks_json_rpc(run_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
     requests = [
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
@@ -130,3 +162,28 @@ def test_the_sdk_server_returns_the_same_results() -> None:
     assert {tool.name for tool in listed.tools} == READ_ONLY | {"run_cancel", "estimate"}
     assert wire["isError"] is True
     assert wire["structuredContent"] == mcp.call_tool("run_show", {"run": "/x"})["structuredContent"]
+
+
+def test_eval_score_takes_the_system_argument(tmp_path: Path) -> None:
+    """`eval_score` exposes `system` and scores only the named systems of a multi-system file."""
+    manifest = mcp.tool_manifest().model_dump(mode="json", by_alias=True)["tools"]
+    (score,) = [tool for tool in manifest if tool["name"] == "eval_score"]
+    assert "system" in score["inputSchema"]["properties"]
+
+    dataset = tmp_path / "rows.jsonl"
+    dataset.write_text(json.dumps({"id": "q1", "query": "q", "doc_ids": ["a", "b"], "qrels": {"a": 1, "b": 0}}) + "\n")
+    rankings = tmp_path / "mixed.jsonl"
+    Rankings.concat(
+        [
+            Rankings.from_orders({"q1": ["a", "b"]}, system="good"),
+            Rankings.from_orders({"q1": ["x1"]}, system="broken", dataset="zzz"),
+        ]
+    ).save(rankings)
+
+    result = mcp.call_tool(
+        "eval_score",
+        {"rankings": str(rankings), "dataset": f"jsonl:{dataset}", "metrics": ["qrel_ndcg"], "system": ["good"]},
+    )
+
+    assert result["isError"] is False, result
+    assert [row["system"] for row in result["structuredContent"]["summary"]] == ["good"]

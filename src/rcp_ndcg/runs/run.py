@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import Any
@@ -23,6 +23,7 @@ from rcp_ndcg.runs.layout import RunLayout
 from rcp_ndcg.runs.manifest import RunManifest, RunStatus, StepStatus
 from rcp_ndcg.runs.mirror import MirrorState, check_target, mirrored, read_state
 from rcp_ndcg.support.logging import BASE_LOGGER_NAME
+from rcp_ndcg.support.serve import EngineRole, EngineURLs
 
 #: The run statuses after which nothing more happens without a new command.
 TERMINAL = frozenset({RunStatus.COMPLETED, RunStatus.PARTIAL, RunStatus.FAILED, RunStatus.CANCELLED})
@@ -238,6 +239,7 @@ def reopen(
     *,
     overrides: Sequence[str] = (),
     steps: Sequence[str] | None = None,
+    engines: Mapping[EngineRole, EngineURLs] | None = None,
 ):
     """The :class:`~rcp_ndcg.runs.pipeline.Pipeline` of an existing run directory, with changes applied.
 
@@ -246,10 +248,12 @@ def reopen(
         overrides: ``key=value`` overrides applied to the recorded config (each value a YAML literal). They are
             kept only when the resumed run succeeds (:meth:`~rcp_ndcg.runs.pipeline.Pipeline.run`).
         steps: Run only these steps now; the run's recorded ``steps`` are not changed.
+        engines: The engines overlay of this invocation (a phase's ``RCP_NDCG_ENGINES``, or ``run resume
+            --engine``); ``None`` reads the environment variable.
     """
     from rcp_ndcg.runs.pipeline import Pipeline
 
-    return Pipeline.resume(run_dir, overrides=list(overrides), only=steps)
+    return Pipeline.resume(run_dir, overrides=list(overrides), only=steps, engines=engines)
 
 
 def execute_run(pipeline, *, resume: bool = True) -> Run:

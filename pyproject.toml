@@ -39,9 +39,8 @@ dependencies = [
   "click>=8.1",
   # Read only by ``rcp-ndcg --env-file``; the package never loads a .env file on its own.
   "python-dotenv>=1.0",
-  "openai>=1.0",
-  # The judge client (llm/client.py) and the hosted embedding and rerank clients import httpx directly;
-  # openai >= 3 depends on httpx2 (openai 2.x still pulled httpx in), so httpx must be declared, not inherited.
+  # The judge client (llm/client.py) and the hosted embedding and rerank clients send their requests over
+  # httpx through the shared transport (rcp_ndcg.inference); there is no second HTTP stack.
   "httpx>=0.27",
   # Storage: fsspec is the universal path layer (rcp_ndcg.storage); gcsfs keeps
   # gs:// URIs working out of the box.  Other protocols are extras below, so a
@@ -225,6 +224,9 @@ asyncio_default_fixture_loop_scope = "function"
 markers = [
   "network: needs the public HuggingFace Hub; the test also skips itself unless RCP_NDCG_NETWORK_TESTS=1",
 ]
+# A test whose code raises one of the package's warnings must assert it (pytest.warns, or a recorded set in the
+# docs snippets): an unasserted RcpNdcgWarning is an error, not a line in the warnings summary.
+filterwarnings = ["error::rcp_ndcg.errors.RcpNdcgWarning"]
 
 [tool.ruff]
 line-length = 120

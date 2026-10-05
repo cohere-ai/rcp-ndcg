@@ -6,10 +6,8 @@ import html
 import json
 import logging
 from pathlib import Path
-from typing import Any
 
 import httpx
-import openai
 import pytest
 from rcp_ndcg_core._records import RankingExample
 
@@ -17,7 +15,7 @@ from rcp_ndcg.data.preprocess import ChunkPolicy, Preprocessing, TextPolicy, chu
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.errors import CapabilityError, ConfigError, DataError, IdentityError
 from rcp_ndcg.llm import JudgeClient, JudgeConfig, JudgementStore, RubricSchedule, judge
-from rcp_ndcg.llm._fake import _DOC_BLOCK
+from rcp_ndcg.llm._fake import _DOC_BLOCK, _answer_text
 from rcp_ndcg.llm._parsing.schema import response_format
 from rcp_ndcg.llm.client import BackendUnavailableError, Completion, CompletionInput
 from rcp_ndcg.llm.judging import CHAT_TEMPLATE_TOKENS, MAX_ATTEMPTS, prompt_overhead_tokens, window_tokens
@@ -134,9 +132,9 @@ class TestSubsets:
         projected = estimate(ROWS, None, client.config, stages=["tournament"], schedules={"tournament": schedule},
                              docs=subset)  # fmt: skip
         # Windows of the pair at the placements per document: 4 random and 2 stratified windows, each mirrored, and
-        # one adaptive window in each of 7 batches; not a whole query's 216.
+        # one adaptive window (one batch: every batch would ask the same pair again); not a whole query's 216.
         assert schedule.windows_for(2) == (4, 2, 1)
-        assert client.usage.requests == len(result.judgements) == projected.calls == 2 * (4 + 2) + 7
+        assert client.usage.requests == len(result.judgements) == projected.calls == 2 * (4 + 2) + 1
 
     @pytest.mark.parametrize("size", [1, 2, 4, 10, 11])
     @pytest.mark.parametrize("stage", ["tournament", "rubric"])
@@ -152,6 +150,19 @@ class TestSubsets:
         projected = estimate(ROWS, None, client.config, stages=[stage], schedules={stage: schedule}, docs=subset)
         assert client.usage.requests == len(result.judgements) == projected.calls == schedule.calls_per_query(size)
         assert (size < 2 and stage == "tournament") or projected.calls > 0
+
+    def test_a_tiny_pool_asks_one_adaptive_window_not_one_per_batch(self, tmp_path: Path) -> None:
+        """A pool no larger than the adaptive window: every batch would ask the whole pool again, whose
+        comparisons the first window's answers already cover -- so the schedule asks it once."""
+        from rcp_ndcg.llm import TournamentSchedule
+
+        schedule = TournamentSchedule()
+        subset = {"q1": ROWS[0].doc_ids[:4]}
+        client = _fake()
+        result = judge(ROWS, None, client, stage="tournament", out=tmp_path, schedule=schedule, docs=subset)
+        adaptive = [tuple(p.doc_id for p in j.placements) for j in result.judgements if j.phase == "adaptive"]
+        assert len(adaptive) == 1
+        assert client.usage.requests == schedule.calls_per_query(4)
 
     def test_docs_judges_only_those_documents(self, tmp_path: Path) -> None:
         pools = {row.id: row.doc_ids[:8] for row in ROWS}
@@ -170,35 +181,47 @@ class TestSubsets:
 
 
 class _Garbled(FakeJudge):
-    async def _send(self, request: CompletionInput, replica: Any = None) -> Completion:
-        self.usage = self.usage.merged_with(type(self.usage)(requests=1))
-        return Completion(response="I think doc_1 is great.")
+    """An endpoint that answers, but in prose the parser refuses."""
+
+    def _answer(self, request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": "I think doc_1 is great."},
+                        "finish_reason": "stop",
+                    }
+                ]
+            },
+        )
 
 
 class _Refuses(FakeJudge):
     """An endpoint that refuses every request with HTTP 400."""
 
-    async def _send(self, request: CompletionInput, replica: Any = None) -> Completion:
-        response = httpx.Response(400, request=httpx.Request("POST", "http://judge.test/v1/chat/completions"))
-        raise openai.BadRequestError("prompt too long", response=response, body=None)
+    def _answer(self, request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"error": {"message": "prompt too long"}})
 
 
 class _Broken(FakeJudge):
     """A judge client with a defect in it."""
 
-    async def _send(self, request: CompletionInput, replica: Any = None) -> Completion:
+    def _answer(self, request: httpx.Request) -> httpx.Response:
         raise TypeError("a defect, not an answer")
 
 
 class _GoesDown(FakeJudge):
+    """A judge whose endpoint starts refusing connections after ``after`` answers."""
+
     def __init__(self, after: int, **kwargs) -> None:
         super().__init__(lambda text: ABILITY[text.split()[-1]], **kwargs)
         self.after = after
 
-    async def _send(self, request: CompletionInput, replica: Any = None) -> Completion:
+    def _answer(self, request: httpx.Request) -> httpx.Response:
         if self.usage.requests >= self.after:
-            raise BackendUnavailableError("down")
-        return await super()._send(request, replica)
+            raise httpx.ConnectError("connection refused")
+        return super()._answer(request)
 
 
 class TestFailures:
@@ -242,8 +265,9 @@ class TestFailures:
         assert not JudgementStore(tmp_path).records("rubric")
 
     def test_an_outage_propagates_and_keeps_the_answers_received(self, tmp_path: Path) -> None:
+        config = JudgeConfig.fake(0).model_copy(update={"wait_on_outage_s": 0.02, "max_retries": 0})
         with pytest.raises(BackendUnavailableError):
-            _rubric(tmp_path, _GoesDown(after=5))
+            _rubric(tmp_path, _GoesDown(after=5, config=config))
         assert len(JudgementStore(tmp_path).records("rubric")) == 5
 
     def test_a_prompt_written_for_pages_is_refused_on_prose(self, tmp_path: Path) -> None:
@@ -302,9 +326,9 @@ class _Recording(FakeJudge):
         super().__init__(*args, **kwargs)
         self.requests: list[CompletionInput] = []
 
-    async def _send(self, request: CompletionInput, replica: Any = None) -> Completion:
+    async def complete(self, request: CompletionInput) -> Completion:
         self.requests.append(request)
-        return await super()._send(request, replica)
+        return await super().complete(request)
 
 
 class TestTheWindowTextBudget:
@@ -498,7 +522,7 @@ class _SchemaEndpoint:
             )
         payload = json.loads(request.content)
         self.requests.append(payload)
-        answer = await self.fake._send(CompletionInput(user_prompt=payload["messages"][-1]["content"]))
+        answer = _answer_text(self.fake.seed, self.fake.ability, self.fake.severity, payload["messages"][-1]["content"])
         return httpx.Response(
             200,
             json={
@@ -506,16 +530,14 @@ class _SchemaEndpoint:
                 "object": "chat.completion",
                 "created": 0,
                 "model": payload["model"],
-                "choices": [
-                    {"index": 0, "message": {"role": "assistant", "content": answer.response}, "finish_reason": "stop"}
-                ],
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": answer}, "finish_reason": "stop"}],
                 "system_fingerprint": f"engine-{self.version}",
             },
         )
 
     def client(self, **fields) -> JudgeClient:
         config = JudgeConfig(base_url="http://judge.test/v1", model="m", **fields)
-        return JudgeClient(config, http_client=httpx.AsyncClient(transport=httpx.MockTransport(self)))
+        return JudgeClient(config, httpx_transport=httpx.MockTransport(self))
 
 
 def test_the_store_records_what_the_endpoint_serves_beside_the_identity(tmp_path: Path) -> None:

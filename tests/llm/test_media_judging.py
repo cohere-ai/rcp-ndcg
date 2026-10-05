@@ -10,7 +10,6 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
-from typing import Any
 
 import pytest
 from rcp_ndcg_core._records import RankingExample
@@ -21,8 +20,8 @@ from rcp_ndcg.data.preprocess import Preprocessing
 from rcp_ndcg.data.resolution import ImagePolicy, content_media_tokens
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.errors import CapabilityError, ConfigError, DataError
+from rcp_ndcg.inference.adapters.chat import build_messages, media_counts
 from rcp_ndcg.llm import RubricSchedule, judge, load_prompt
-from rcp_ndcg.llm._payload import build_messages, media_counts
 from rcp_ndcg.llm._templates import collect_media, split_media, wrap_xml
 from rcp_ndcg.llm.client import Completion, CompletionInput
 from rcp_ndcg.llm.judging import prompt_overhead_tokens, window_tokens
@@ -107,7 +106,7 @@ class TestThePayload:
     ) -> None:
         clip = tmp_path / "clip.mp4"
         clip.write_bytes(b"\x00" * 64)
-        monkeypatch.setattr("rcp_ndcg.llm._payload.MAX_VIDEO_BYTES", 10)
+        monkeypatch.setattr("rcp_ndcg.inference.adapters.chat.MAX_VIDEO_BYTES", 10)
         big = Content.from_parts([VideoPart(ref=MediaRef(uri=str(clip), mime="video/mp4", num_bytes=64))])
         with pytest.raises(DataError, match="RCP_NDCG_MAX_VIDEO_BYTES"):
             build_messages(CompletionInput(user_prompt="x", user_content=big))
@@ -117,13 +116,15 @@ class TestThePayload:
 
 
 class _Recording(FakeJudge):
+    """The fake judge, keeping every request it answers."""
+
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self.requests: list[CompletionInput] = []
 
-    async def _send(self, request: CompletionInput, replica: Any = None) -> Completion:
+    async def complete(self, request: CompletionInput) -> Completion:
         self.requests.append(request)
-        return await super()._send(request, replica)
+        return await super().complete(request)
 
 
 def _page_rows(pages: list[MediaRef]) -> list[RankingExample]:

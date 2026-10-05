@@ -32,7 +32,8 @@ Read `data.summary`: one row per system and metric (`rcp_ndcg`, `qrel_ndcg`) wit
 `data.per_dataset` holds the mean per dataset. The per-query values stay out of stdout: `--per-query` adds them,
 `--fields summary` keeps only the named fields, and `--out report.json` writes the full report (what `eval compare
 --report` and `eval explain --report` read). Suites: `nanobeir`, `bright`, `vidore`, `trecdl`. Python:
-`rcp_ndcg.evaluate(rcp_ndcg.load_rankings(path), suite="nanobeir")`.
+`rcp_ndcg.evaluate(rcp_ndcg.load_rankings(path), suite="nanobeir")`. One system matching nothing of the dataset
+is refused (exit 12); score the others with `--system NAME` (repeatable; `systems=[...]` in Python).
 
 **2. Re-judge a pool with an OpenAI-compatible endpoint (calls the judge).** Ask the user for the model's
 tokenizer (its Hugging Face repo id, or a `tokenizer.json` path): `--set judge.tokenizer=<id>` makes text limits
@@ -154,13 +155,15 @@ rcp-ndcg run status --run runs/<run_id> --json
 rcp-ndcg run resume --run runs/<run_id> --mirror s3://bucket/runs/nano --json
 ```
 
-Serve the judge on the cluster with the run (the user's image and command, verbatim; SLURM or Kubernetes, never the
-local runner): declare the engines per phase of the job (`image`, `command`, `resources`, `replicas`, each under
-its role), check what would be submitted, then submit. On SLURM the image needs `container_runtime: apptainer` or
-`pyxis`; with the default `none` the command runs on the node and `image` is refused. The job hands each phase's
-engine URLs to the coordinator in `RCP_NDCG_ENGINES`; `run logs` shows both. (Until a run config declares engines
-per phase, a `serve:` section is refused at submission: start the engine yourself and pass `--judge-url`.) A job that failed (`run status`: `failed`, with a `note` when the job ended without recording
-it) is submitted again, engine included, with `run resume --runner`; it asks only for the windows its stores lack.
+Serve the models on the cluster with the run (the user's image and command, verbatim; SLURM or Kubernetes, never the
+local runner): add a `serve:` section to the run config, one engine per role — `serve: {judge: {image, command,
+resources, replicas}}`, `encoder` for the retrieval encoder, `reranker` for its reranker (a served
+`openai_compatible` model without `base_url`: the job's URLs for it reach the step at runtime) — check what would
+be submitted, then submit. On SLURM the image needs `container_runtime: apptainer` or `pyxis`; with the default
+`none` the command runs on the node and `image` is refused. The job runs the steps in phases, each starting only the engines its steps use and handing their URLs to the
+coordinator in `RCP_NDCG_ENGINES`; `run logs` shows both. A job that failed (`run status`: `failed`, with a `note` when the job ended
+without recording it) is submitted again, engines included, with `run resume --runner`; it asks only for the
+windows its stores lack.
 
 ```bash
 rcp-ndcg run start <config> --runner slurm --dry-run --json

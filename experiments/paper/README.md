@@ -25,12 +25,16 @@ experiments/paper/serve/qwen35_397b_nvfp4.sglang.sh            # the primary jud
 rcp-ndcg judge tournament --dataset <uri> --judge qwen35_397b_nvfp4 --out store/
 ```
 
-`IMAGE=<tag>` overrides the pinned image. To run a judge step through a job runner instead of this host, start the
-engine yourself with the script's `ENGINE` array ([serving](../../docs/concepts/serving.md)) and point the run's
-judge at it:
+`IMAGE=<tag>` overrides the pinned image. For a job runner, copy the script's image and its `ENGINE` array into a
+run config's `serve:` section under the judge role ([serving](../../docs/concepts/serving.md)):
 
-```bash
-rcp-ndcg run start <config> --judge-url http://127.0.0.1:8000/v1 --judge-model qwen3.5-397b
+```yaml
+judge: qwen35_397b_nvfp4
+serve:
+  judge:
+    image: lmsysorg/sglang:v0.5.17-cu129
+    command: [python3, -m, sglang.launch_server, --model-path, nvidia/Qwen3.5-397B-A17B-NVFP4, ...]
+    resources: {gpus: 8}
 ```
 
 The paper's third judge, Qwen3.6-27B in its FP8 release (TREC-DL), has no recorded engine settings beyond its

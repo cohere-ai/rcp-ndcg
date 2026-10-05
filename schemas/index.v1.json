@@ -47,6 +47,7 @@
         "api_key_env": {
           "anyOf": [
             {
+              "minLength": 1,
               "type": "string"
             },
             {
@@ -54,7 +55,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -67,7 +68,7 @@
             }
           ],
           "default": null,
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
+          "description": "One URL, or none for the provider's own public API; the hosted APIs take no replica list yet (the retrieval port moves them onto the shared transport).",
           "title": "Base Url"
         },
         "batch_size": {
@@ -232,6 +233,7 @@
         "api_key_env": {
           "anyOf": [
             {
+              "minLength": 1,
               "type": "string"
             },
             {
@@ -239,7 +241,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -252,7 +254,7 @@
             }
           ],
           "default": null,
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
+          "description": "One URL, or none for the provider's own public API; the hosted APIs take no replica list yet (the retrieval port moves them onto the shared transport).",
           "title": "Base Url"
         },
         "batch_size": {
@@ -503,6 +505,7 @@
         "api_key_env": {
           "anyOf": [
             {
+              "minLength": 1,
               "type": "string"
             },
             {
@@ -510,14 +513,21 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
-          "minLength": 1,
-          "title": "Base Url",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint; ``None`` only when the run's job starts the encoder's engine (``serve.encoder``): the engine's URLs then reach the step at runtime, through ``RCP_NDCG_ENGINES``, and setting both is refused rather than silently overridden.",
+          "title": "Base Url"
         },
         "batch_size": {
           "anyOf": [
@@ -649,7 +659,6 @@
         }
       },
       "required": [
-        "base_url",
         "model"
       ],
       "title": "OpenAICompatibleEncoder",
@@ -675,6 +684,7 @@
         "api_key_env": {
           "anyOf": [
             {
+              "minLength": 1,
               "type": "string"
             },
             {
@@ -682,7 +692,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key.",
+          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -695,7 +705,7 @@
             }
           ],
           "default": null,
-          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
+          "description": "One URL, or none for the provider's own public API; the hosted APIs take no replica list yet (the retrieval port moves them onto the shared transport).",
           "title": "Base Url"
         },
         "batch_size": {

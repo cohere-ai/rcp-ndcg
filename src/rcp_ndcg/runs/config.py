@@ -45,7 +45,7 @@ from rcp_ndcg.runners.local import LocalOptions
 from rcp_ndcg.runners.slurm import SlurmOptions
 from rcp_ndcg.runs.mirror import DEFAULT_INTERVAL_S
 from rcp_ndcg.support.identity import FieldRole
-from rcp_ndcg.support.serve import ServeConfig
+from rcp_ndcg.support.serve import EngineRole, ServeByRole, ServeConfig
 
 #: The steps of a run, in the order they run.
 StepName = Literal["retrieve", "rerank", "tournament", "rubric", "calibrate", "evaluate"]
@@ -253,9 +253,11 @@ class RunConfig(BaseModel):
             offline judge (``judge: fake``) and of the evaluation's bootstrap intervals.
         limit: Judge only the first ``limit`` queries.
         runner: Where the steps run.
-        serve: The judge's engine, as a single ``serve:`` section (:class:`~rcp_ndcg.support.serve.ServeConfig`).
-            No longer submitted: a job's engines are declared per phase, and submitting a run with this section is
-            refused. Omit it to bring your own endpoint (``judge.base_url``).
+        serve: The engines the run's job starts, by role (``judge`` serves the judge, ``encoder`` the retrieval
+            config's encoder, ``reranker`` its reranker; :class:`~rcp_ndcg.support.serve.ServeByRole`). A job runs
+            the run in phases, each starting only the engines its steps use; the engines' URLs reach the steps at
+            runtime, through ``RCP_NDCG_ENGINES`` (never through this config). Omit it to bring your own endpoints
+            (the role configs' ``base_url``).
     """
 
     model_config = _FORBID
@@ -275,7 +277,151 @@ class RunConfig(BaseModel):
     seed: int = TournamentSchedule.model_fields["seed"].default
     limit: int | None = Field(default=None, ge=1)
     runner: RunnerConfig = LocalRunnerConfig()
-    serve: ServeConfig | None = None
+    serve: ServeByRole | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _serve_names_roles(cls, data: Any) -> Any:
+        """Refuse the old single-engine ``serve:`` shape and unknown roles, with the shape that replaced them."""
+        if not isinstance(data, dict) or data.get("serve") is None:
+            return data
+        serve = data["serve"]
+        if not isinstance(serve, dict):
+            return data
+        roles = ("judge", "encoder", "reranker")
+        unknown = sorted(str(key) for key in serve if key not in roles)
+        if not unknown:
+            return data
+        named = sorted(str(key) for key in serve if key in roles)
+        if named:
+            raise ConfigError(
+                f"serve.{unknown[0]}: unexpected key beside the role(s) {', '.join(named)}",
+                hint="an engine's fields belong under its role: serve: {<role>: {image: ..., command: [...]}}",
+            )
+        if set(unknown) <= set(ServeConfig.model_fields):
+            raise ConfigError(
+                f"serve: is the old single-engine shape (fields {', '.join(unknown)} at the top); since "
+                "serve-by-role it maps one engine per role",
+                hint=f"serve: {{judge: {{image: ..., command: [...]}}}} names the role whose config the engine "
+                f"serves: one of {', '.join(roles)}",
+            )
+        raise ConfigError(
+            f"serve.{unknown[0]}: unknown engine role (known roles: {', '.join(roles)})",
+            hint="a role is one of judge, encoder, reranker; the engine under it is "
+            "{image: ..., command: [...], resources: ...}",
+        )
+
+    @model_validator(mode="after")
+    def _served_roles_serve_this_run(self) -> Self:
+        """A served role must name a config the job's engine can serve, for a step that calls it.
+
+        The served model name is the role config's ``model``. A role config whose engine is served names no
+        ``base_url``: the runner sets it at runtime (through ``RCP_NDCG_ENGINES``), and setting both is refused
+        rather than silently overridden. A hosted or in-process model is not served by a job's engine at all.
+        """
+        serve = self.serve
+        if serve is None:
+            return self
+        if serve.judge is not None:
+            if self.judge is None:
+                raise ConfigError("serve.judge starts the judge's engine, and this run has no judge (judge: <config>)")
+            if self.judge == "fake" or (isinstance(self.judge, JudgeConfig) and self.judge.is_fake):
+                raise ConfigError(
+                    "serve: starts the judge's engine, and this run has no served judge (judge: fake | none)",
+                    hint="the offline fake judge is answered in process: judge: <config>",
+                )
+            if not JUDGE_STEPS & set(self.steps):
+                raise ConfigError(
+                    f"serve.judge: no step of this run calls the judge (steps: {', '.join(self.ordered_steps)})"
+                )
+        if serve.encoder is not None:
+            self._refuse_unservable_encoder()
+            if serve.encoder.replicas != 1:
+                raise ConfigError(
+                    f"serve.encoder: {serve.encoder.replicas} replicas, and the retrieval client addresses one "
+                    "replica URL",
+                    hint="run one replica (replicas: 1) for a served encoder or reranker",
+                )
+            if "retrieve" not in self.steps:
+                raise ConfigError(
+                    f"serve.encoder: no step of this run uses the encoder (steps: {', '.join(self.ordered_steps)})",
+                    hint="drop serve.encoder, or add the retrieve step",
+                )
+        if serve.reranker is not None:
+            self._refuse_unservable_reranker()
+            if serve.reranker.replicas != 1:
+                raise ConfigError(
+                    f"serve.reranker: {serve.reranker.replicas} replicas, and the rerank client addresses one "
+                    "replica URL",
+                    hint="run one replica (replicas: 1) for a served encoder or reranker",
+                )
+            if "rerank" not in self.steps:
+                raise ConfigError(
+                    f"serve.reranker: no step of this run uses the reranker (steps: {', '.join(self.ordered_steps)})",
+                    hint="drop serve.reranker, or add the rerank step",
+                )
+        return self
+
+    def _refuse_unservable_encoder(self) -> None:
+        """Refuse ``serve.encoder`` for a config no engine can serve (the validator's encoder half)."""
+        from rcp_ndcg.retrieval.config import BM25Config, OpenAICompatibleEncoder
+
+        retrieval = self.candidates.retrieval
+        if retrieval is None:
+            raise ConfigError("serve.encoder: this run has no encoder (candidates.retrieval)")
+        if isinstance(retrieval, BM25Config):
+            raise ConfigError("serve.encoder: this run retrieves with BM25, which calls no encoder")
+        encoder = retrieval.encoder
+        if not isinstance(encoder, OpenAICompatibleEncoder):
+            raise ConfigError(
+                f"serve.encoder: the {encoder.provider} encoder is not reached at a URL",
+                hint="serve.encoder starts an engine for a served (openai_compatible) encoder; a hosted encoder is "
+                "reached at its vendor's API, and an in-process one loads its weights here, so drop serve.encoder",
+            )
+        if encoder.base_url is not None:
+            raise ConfigError(
+                "serve.encoder: the encoder config sets base_url, and the job's engine sets it at runtime",
+                hint="drop encoder.base_url: the served URLs reach the step through RCP_NDCG_ENGINES",
+            )
+
+    def _refuse_unservable_reranker(self) -> None:
+        """Refuse ``serve.reranker`` for a config no engine can serve (the validator's reranker half)."""
+        from rcp_ndcg.retrieval.config import OpenAICompatibleReranker
+
+        reranker = self.candidates.rerank
+        if reranker is None:
+            raise ConfigError("serve.reranker: this run has no reranker (candidates.rerank)")
+        if not isinstance(reranker, OpenAICompatibleReranker):
+            raise ConfigError(
+                f"serve.reranker: the {reranker.provider} reranker is not reached at a URL",
+                hint="serve.reranker starts an engine for a served (openai_compatible) reranker; a hosted reranker "
+                "is reached at its vendor's API, and an in-process one loads its weights here, so drop "
+                "serve.reranker",
+            )
+        if reranker.base_url is not None:
+            raise ConfigError(
+                "serve.reranker: the reranker config sets base_url, and the job's engine sets it at runtime",
+                hint="drop rerank.base_url: the served URLs reach the step through RCP_NDCG_ENGINES",
+            )
+
+    def engine_uses(self) -> dict[str, frozenset[EngineRole]]:
+        """Per step, the engine roles the step calls (the ``uses`` of :func:`rcp_ndcg.support.serve.plan_phases`).
+
+        A step absent from the mapping calls no model of a servable role: BM25 retrieval and the hosted APIs call
+        their models at URLs no engine of this run serves, and ``calibrate`` and ``evaluate`` call none. A role a
+        step uses but ``serve`` does not start is ignored for that step when the plan is built.
+        """
+        from rcp_ndcg.retrieval.config import DenseConfig, LateInteractionConfig
+
+        uses: dict[str, frozenset[EngineRole]] = {}
+        if self.judge is not None and self.judge != "fake":
+            for step in sorted(JUDGE_STEPS & set(self.steps), key=STEPS.index):
+                uses[step] = frozenset({"judge"})
+        if isinstance(self.candidates.retrieval, (DenseConfig, LateInteractionConfig)):
+            uses["retrieve"] = frozenset({"encoder"})
+        if self.candidates.rerank is not None:
+            uses["rerank"] = frozenset({"reranker"})
+        return uses
 
     @model_validator(mode="after")
     def _steps_have_their_inputs(self) -> Self:
@@ -285,8 +431,6 @@ class RunConfig(BaseModel):
             raise ValueError("the rerank step needs candidates.rerank (the reranker's settings)")
         if JUDGE_STEPS & set(self.steps) and self.judge is None:
             raise ValueError("the tournament and rubric steps need a judge (judge: <config path> | fake | {...})")
-        if self.serve is not None and (self.judge is None or self.judge == "fake"):
-            raise ValueError("serve: starts the judge's engine, and this run has no served judge (judge: fake | none)")
         return self
 
     @model_validator(mode="after")

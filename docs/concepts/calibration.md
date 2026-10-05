@@ -152,11 +152,18 @@ The package's offline test world judges two small queries with a deterministic f
 calibration end to end:
 
 ```python
+import warnings
+
 from rcp_ndcg.calibration import Calibration, calibrate, read_judgements
 from rcp_ndcg.testing import build_tiny_world
 
 build_tiny_world("tiny")  # judgements of a fake judge under tiny/judgements
-calibration = calibrate(read_judgements("tiny/judgements"))  # mode="auto" picks "tournament" here
+# The store also holds two rubric-only documents (the re-judged q2-d10, q2-d11 above), so the fit warns about
+# them -- the warning is expected here, not an accident:
+with warnings.catch_warnings(record=True) as caught:
+    warnings.simplefilter("always")
+    calibration = calibrate(read_judgements("tiny/judgements"))  # mode="auto" picks "tournament" here
+assert {getattr(w.message, "code", None) for w in caught} == {"UNCALIBRATED_DOCUMENTS"}
 print(calibration.mode, calibration.items)
 calibration.save("tiny/my_calibration")
 

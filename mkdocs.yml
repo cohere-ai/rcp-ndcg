@@ -25,6 +25,9 @@ nav:
       - "The calibration": concepts/calibration.md
       - "Primitives": concepts/primitives.md
       - "Preprocessing and chunking": concepts/preprocessing.md
+      - "The inference layer: one transport for every role": concepts/inference.md
+      - "Embedding endpoints": concepts/embeddings.md
+      - "Late interaction: pooling and MaxSim": concepts/late-interaction.md
       - "Judges, serving and runners": concepts/serving.md
   - Tutorials:
       - "Calibrate your benchmark": tutorials/calibrate-your-benchmark.md
@@ -34,6 +37,7 @@ nav:
       - "Command line": reference/cli.md
       - "rcp_ndcg_core": api/metric.md
       - "rcp_ndcg.eval": api/evaluate.md
+      - "rcp_ndcg.inference": api/inference.md
 
 # Links to files outside docs/ (experiments/, the repository root) resolve on GitHub, not in the local preview.
 validation:

@@ -47,6 +47,7 @@ from rcp_ndcg.llm import JudgeConfig
 from rcp_ndcg.support.identity import FieldRole, check_declarations, identity_payload
 from rcp_ndcg.support.serve import (
     ENGINES_ENV,
+    EngineConfig,
     EngineURLs,
     Phase,
     ServeByRole,
@@ -85,19 +86,24 @@ class TestCallAndReply:
 
 
 class TestUsage:
-    def test_usage_adds_element_wise(self) -> None:
-        total = Usage(calls=1, failed_calls=0, input_tokens=10, output_tokens=2) + Usage(
-            calls=2, failed_calls=1, input_tokens=5, output_tokens=3
-        )
-        assert total == Usage(calls=3, failed_calls=1, input_tokens=15, output_tokens=5)
+    def test_the_judge_and_the_transport_share_one_usage(self) -> None:
+        from rcp_ndcg.llm.client import Usage as JudgeUsage
 
-    def test_usage_refuses_another_type(self) -> None:
-        with pytest.raises(TypeError):
-            Usage() + 1  # type: ignore[operator]
+        assert JudgeUsage is Usage, "one Usage for one concept: the manifest's requests-and-tokens shape"
+
+    def test_usage_merges_element_wise(self) -> None:
+        total = Usage(requests=1, failed_requests=0, input_tokens=10, output_tokens=2).merged_with(
+            Usage(requests=2, failed_requests=1, input_tokens=5, output_tokens=3)
+        )
+        assert total == Usage(requests=3, failed_requests=1, input_tokens=15, output_tokens=5)
+
+    def test_usage_merges_the_cached_tokens_too(self) -> None:
+        total = Usage(cached_input_tokens=7).merged_with(Usage(cached_input_tokens=2))
+        assert total.cached_input_tokens == 9
 
     def test_usage_is_frozen(self) -> None:
-        with pytest.raises(AttributeError):
-            Usage().calls = 3  # type: ignore[misc]
+        with pytest.raises(ValidationError):
+            Usage().requests = 3  # type: ignore[misc]
 
 
 class TestTokenCount:
@@ -271,12 +277,64 @@ class TestRoleConfigs:
             RerankEndpoint(base_url="http://a:8000/v1", model="jina-reranker-v3", listwise=True, batch_size=8)
         assert RerankEndpoint(base_url="http://a:8000/v1", model="qwen3-reranker-8b", batch_size=8).batch_size == 8
 
+    def test_a_rerank_config_can_split_the_pair_budget(self) -> None:
+        config = RerankEndpoint(
+            base_url="http://a:8000/v1", model="qwen3-reranker-8b", max_tokens=8192, query_max_tokens=256
+        )
+        assert config.query_max_tokens == 256
+        # Content: the split changes what the model reads, so it keys; unset, it is the absence of a split.
+        assert identity_payload(config)["query_max_tokens"] == 256
+        assert "query_max_tokens" not in identity_payload(
+            RerankEndpoint(base_url="http://a:8000/v1", model="qwen3-reranker-8b")
+        )
+
     def test_role_configs_are_frozen_and_refuse_unknown_fields(self) -> None:
         config = RerankEndpoint(base_url="http://a:8000/v1", model="qwen3-reranker-8b")
         with pytest.raises(ValidationError):
             config.listwise = True  # type: ignore[misc]
         with pytest.raises(ValidationError):
             RerankEndpoint(base_url="http://a:8000/v1", model="m", surprise=1)  # type: ignore[call-arg]
+
+
+class TestIdentityExtra:
+    """One tokenizer-identity rule for every role config (RFC-0001 section 7.4).
+
+    ``identity_extra()`` carries the SHA-256 of the config's ``tokenizer.json`` under the one key
+    ``tokenizer_sha256`` -- never the tokenizer's name (RUNTIME) -- and the judge's own identity payload
+    never moves: its family carries the digest under its own keys, which stay as they are.
+    """
+
+    @pytest.mark.parametrize(
+        "config_cls",
+        [EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint, JudgeConfig],
+        ids=lambda cls: cls.__name__,
+    )
+    def test_identity_extra_is_the_tokenizers_sha256_under_one_key(
+        self, config_cls: type[Endpoint], tmp_path: Any
+    ) -> None:
+        import hashlib
+
+        from tests._tokenizers import save, word_tokenizer
+
+        directory = tmp_path / "tok"
+        directory.mkdir()
+        file = save(word_tokenizer(), directory)
+        named = config_cls(base_url="http://a:8000/v1", model="m", tokenizer=str(file))
+        assert named.identity_extra() == {"tokenizer_sha256": hashlib.sha256(file.read_bytes()).hexdigest()}
+        assert set(named.identity_extra()) == {"tokenizer_sha256"}
+        assert config_cls(base_url="http://a:8000/v1", model="m").identity_extra() == {}
+
+    def test_the_judge_identity_payload_does_not_move(self, tmp_path: Any) -> None:
+        """The judgement family's keys must not move: ``identity_extra()`` is not part of ``identity()``."""
+        from tests._tokenizers import save, word_tokenizer
+
+        directory = tmp_path / "tok"
+        directory.mkdir()
+        file = save(word_tokenizer(), directory)
+        config = JudgeConfig(base_url="http://a:8000/v1", model="m", tokenizer=str(file))
+        assert config.identity_extra() != {}
+        assert "tokenizer_sha256" not in config.identity()
+        assert "tokenizer" not in identity_payload(config)
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -300,6 +358,16 @@ class _ProbeAdapter:
         return None
 
 
+class _EmbedProbe(_ProbeAdapter):
+    """The same adapter name in the embed role: the registry keys on ``(role, name)``."""
+
+    role: ClassVar[AdapterRole] = "embed"
+
+
+class _EmbedProbeAlias(_EmbedProbe):
+    """A second class under the same registered name, for the duplicate-plugin refusal test."""
+
+
 @pytest.fixture(autouse=True)
 def _clean_registry() -> Iterator[None]:
     """Run each registry test against an empty registry, restoring whatever was there."""
@@ -312,18 +380,57 @@ def _clean_registry() -> Iterator[None]:
 
 
 class TestAdapterRegistry:
+    def test_an_unknown_adapter_with_an_empty_registry_promises_nothing_shipped(self) -> None:
+        """The empty-registry test clears the registry in place: rebinding the module attribute through
+        ``monkeypatch`` would leave every later client in the process with no shipped adapter (the undo runs
+        after this fixture's own teardown, restoring an emptied dict object)."""
+        import rcp_ndcg.inference.adapters.base as adapter_base
+
+        plugins = adapter_base._PLUGINS
+        adapter_base._BUILTINS.clear()  # the autouse fixture already emptied it
+        adapter_base._PLUGINS = {}
+        try:
+            with pytest.raises(ConfigError) as caught:
+                get_adapter("nope", role="embed")
+            hint = caught.value.hint or ""
+            assert "no embed wire adapter is registered in this process" in hint
+            assert "importing ``rcp_ndcg.inference.adapters`` registers the shipped ones" in hint
+            assert "arrive with the transport" not in hint  # no promise of adapters that do not exist
+        finally:
+            adapter_base._BUILTINS.clear()
+            adapter_base._PLUGINS = plugins
+
     def test_an_adapter_is_registered_under_its_name_and_returned_by_it(self) -> None:
         register_adapter(_ProbeAdapter)
-        assert get_adapter("probe_adapter") is _ProbeAdapter
-        assert "probe_adapter" in known_adapters()
+        assert get_adapter("probe_adapter", role="judge") is _ProbeAdapter
+        assert "probe_adapter" in known_adapters("judge")
+
+    def test_the_registry_is_scoped_by_role(self) -> None:
+        """One name in two roles resolves per role: ``api: cohere`` names a different adapter for embed and
+        for rerank, and every lookup and hint stays inside its role's namespace."""
+        register_adapter(_ProbeAdapter)
+        register_adapter(_EmbedProbe)
+        assert get_adapter("probe_adapter", role="judge") is _ProbeAdapter
+        assert get_adapter("probe_adapter", role="embed") is _EmbedProbe
+        assert known_adapters("judge") == ("probe_adapter",)
+        assert known_adapters("embed") == ("probe_adapter",)
+
+    def test_known_adapters_without_a_role_lists_every_name_once(self) -> None:
+        register_adapter(_ProbeAdapter)
+        register_adapter(_EmbedProbe)
+        assert known_adapters() == ("probe_adapter",)
 
     def test_register_adapter_returns_its_class_so_it_composes(self) -> None:
         assert register_adapter(_ProbeAdapter) is _ProbeAdapter
 
-    def test_a_duplicate_name_is_refused(self) -> None:
+    def test_a_duplicate_name_in_one_role_is_refused(self) -> None:
         register_adapter(_ProbeAdapter)
         with pytest.raises(ConfigError, match="already registered"):
             register_adapter(_ProbeAdapter)
+
+    def test_the_same_name_in_two_roles_is_no_duplicate(self) -> None:
+        register_adapter(_ProbeAdapter)
+        register_adapter(_EmbedProbe)  # must not raise: the roles' namespaces are separate
 
     def test_an_adapter_without_a_name_or_a_role_is_refused(self) -> None:
         class _Nameless(_ProbeAdapter):
@@ -338,31 +445,120 @@ class TestAdapterRegistry:
         with pytest.raises(ConfigError, match="role"):
             register_adapter(_Roleless)
 
-    def test_an_unknown_adapter_names_the_known_ones(self) -> None:
+    def test_a_wrong_role_lookup_fails_with_that_role_s_names(self) -> None:
+        """A name registered in another role is still unknown here, and the hint names where it lives."""
+        register_adapter(_ProbeAdapter)
+        register_adapter(_EmbedProbe)
+        with pytest.raises(ConfigError) as caught:
+            get_adapter("probe_adapter", role="rerank")
+        assert caught.value.details["known"] == []
+        assert "rerank" in str(caught.value)
+        assert "judge" in (caught.value.hint or "") and "embed" in (caught.value.hint or "")
+
+    def test_an_unknown_adapter_names_the_known_ones_of_its_role(self) -> None:
         register_adapter(_ProbeAdapter)
         with pytest.raises(ConfigError) as caught:
-            get_adapter("nope")
+            get_adapter("nope", role="judge")
         assert caught.value.details["known"] == ["probe_adapter"]
         assert "probe_adapter" in (caught.value.hint or "")
+
+    def test_the_role_is_a_required_keyword(self) -> None:
+        register_adapter(_ProbeAdapter)
+        with pytest.raises(TypeError):
+            get_adapter("probe_adapter")  # type: ignore[call-arg]
+
+    def test_an_unknown_role_is_refused(self) -> None:
+        with pytest.raises(ConfigError, match="role"):
+            get_adapter("probe_adapter", role="embezzle")  # type: ignore[arg-type]
+
+    def test_known_adapters_validates_the_role(self) -> None:
+        """A typo'd role is refused, never silently reported as an empty namespace."""
+        register_adapter(_ProbeAdapter)
+        with pytest.raises(ConfigError, match="role"):
+            known_adapters("embezzle")  # type: ignore[arg-type]
 
     def test_the_entry_point_group_name_is_the_charter_s(self) -> None:
         assert ADAPTER_ENTRY_POINTS == "rcp_ndcg.adapters"
 
     def test_the_protocol_is_satisfied_by_an_ordinary_class(self) -> None:
         register_adapter(_ProbeAdapter)
-        adapter = get_adapter("probe_adapter")()
+        adapter = get_adapter("probe_adapter", role="judge")()
         assert isinstance(adapter, Adapter)
 
 
+class TestAdapterEntryPoints:
+    """The ``rcp_ndcg.adapters`` group names its entries ``<role>.<name>``; a disagreeing prefix is refused."""
+
+    @staticmethod
+    def _entry(name: str, value: str) -> Any:
+        from importlib.metadata import EntryPoint
+
+        return EntryPoint(name=name, value=value, group=ADAPTER_ENTRY_POINTS)
+
+    def _install(self, monkeypatch: pytest.MonkeyPatch, *entries: Any) -> None:
+        monkeypatch.setattr(_adapters.base, "entry_points", lambda *, group: list(entries))
+        monkeypatch.setattr(_adapters.base, "_PLUGINS", None)
+
+    def test_an_entry_point_registers_under_its_class_role_and_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._install(monkeypatch, self._entry("embed.probe_adapter", "tests.inference.test_types:_EmbedProbe"))
+        assert get_adapter("probe_adapter", role="embed") is _EmbedProbe
+        assert known_adapters("embed") == ("probe_adapter",)
+
+    def test_an_entry_point_whose_role_disagrees_with_its_prefix_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._install(monkeypatch, self._entry("judge.probe_adapter", "tests.inference.test_types:_EmbedProbe"))
+        with pytest.raises(ConfigError, match="judge.*embed"):
+            get_adapter("probe_adapter", role="embed")
+
+    def test_an_entry_point_without_a_role_prefix_is_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._install(monkeypatch, self._entry("probe_adapter", "tests.inference.test_types:_EmbedProbe"))
+        with pytest.raises(ConfigError, match="<role>.<name>"):
+            known_adapters()
+
+    def test_an_entry_point_shadowing_a_builtin_is_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A plugin that would take a shipped adapter's (role, name) is an error, never a silent skip: the
+        built-in would otherwise win the lookup and the plugin would never run."""
+        register_adapter(_EmbedProbe)
+        self._install(monkeypatch, self._entry("embed.probe_adapter", "tests.inference.test_types:_EmbedProbe"))
+        with pytest.raises(ConfigError, match="already registered"):
+            known_adapters()
+
+    def test_an_entry_point_whose_name_suffix_disagrees_with_the_class_name_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The entry names its role *and* the adapter's registered name: a class registered under a name its
+        entry point does not spell is a typo, not a convention."""
+        self._install(monkeypatch, self._entry("embed.not_the_name", "tests.inference.test_types:_EmbedProbe"))
+        with pytest.raises(ConfigError, match="not_the_name"):
+            known_adapters()
+
+    def test_two_entry_points_registering_one_name_are_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._install(
+            monkeypatch,
+            self._entry("embed.probe_adapter", "tests.inference.test_types:_EmbedProbe"),
+            self._entry("embed.probe_adapter", "tests.inference.test_types:_EmbedProbeAlias"),
+        )
+        with pytest.raises(ConfigError, match="a second time"):
+            known_adapters()
+
+    def test_a_broken_entry_point_import_is_an_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._install(monkeypatch, self._entry("embed.probe_adapter", "tests.inference.test_types:_Missing"))
+        with pytest.raises(ConfigError, match="failed to import"):
+            known_adapters()
+
+
 # ---------------------------------------------------------------------------------------------------------------
-# The transport's interface (behaviour is lane L1's)
+# The transport (built by lane L1: behaviour in tests/inference/test_transport.py)
 # ---------------------------------------------------------------------------------------------------------------
 
 
 class TestTransport:
-    def test_the_transport_is_not_built_yet(self) -> None:
-        with pytest.raises(NotImplementedError, match="lane L1"):
-            Transport(Endpoint(base_url="http://a:8000/v1", model="m"))
+    def test_the_transport_is_built_and_satisfies_the_sender(self) -> None:
+        from rcp_ndcg.inference.transport import Sender
+
+        transport = Transport(Endpoint(base_url="http://a:8000/v1", model="m"))
+        assert isinstance(transport, Sender)
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -418,12 +614,21 @@ class TestEnginesEnv:
         with pytest.raises(ValidationError):
             EngineURLs(urls=["http://a:8000/v1", ""])
 
+    def test_urls_must_not_list_a_replica_twice(self) -> None:
+        with pytest.raises(ValidationError, match="twice"):
+            EngineURLs(urls=["http://a:8000/v1", "http://a:8000/v1/"])
+        with pytest.raises(ConfigError, match="twice"):
+            parse_engines_env('{"judge": {"urls": ["http://a:8000/v1", "http://a:8000/v1"]}}')
+
     def test_the_variable_name_is_the_charter_s(self) -> None:
         assert ENGINES_ENV == "RCP_NDCG_ENGINES"
 
     def test_plan_phases_is_lane_l4a_s(self) -> None:
-        with pytest.raises(NotImplementedError, match="lane L4a"):
-            plan_phases(["retrieve"], ServeByRole(), {"retrieve": frozenset({"encoder"})})
+        """The serve-phases lane filled the frozen signature in; the full table is tests/support/test_serve.py."""
+        engine = EngineConfig(command=("vllm", "serve", "m"))
+        assert plan_phases(["retrieve"], ServeByRole(encoder=engine), {"retrieve": frozenset({"encoder"})}) == [
+            Phase(engines=frozenset({"encoder"}), steps=("retrieve",))
+        ]
 
 
 # ---------------------------------------------------------------------------------------------------------------

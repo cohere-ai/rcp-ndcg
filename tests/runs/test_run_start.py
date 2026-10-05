@@ -204,12 +204,14 @@ def _failed(name: str, *args: str) -> dict:
 
 
 SERVE = {
-    "image": "vllm/vllm-openai:v0.30.0",
-    "command": "vllm serve org/model --served-model-name m --host 0.0.0.0 --port 8000",
-    "resources": {"gpus": 8},
+    "judge": {
+        "image": "vllm/vllm-openai:v0.30.0",
+        "command": "vllm serve org/model --served-model-name m --host 0.0.0.0 --port 8000",
+        "resources": {"gpus": 8},
+    }
 }
 SERVED_JUDGE = {"base_url": "http://unused/v1", "model": "m"}
-#: SLURM with a container runtime, so the engine runs in serve.image.
+#: SLURM with a container runtime, so an engine would run in the engine's image.
 SLURM_PYXIS = {"name": "slurm", "options": {"container_runtime": "pyxis"}}
 
 
@@ -237,41 +239,51 @@ class TestRunnersAndServe:
         plan = _start(str(config), "--runs-dir", str(tmp_path / "runs"), "--dry-run")
         (script,) = plan["rendered"].values()
         assert script.startswith("#!/usr/bin/env bash\n#SBATCH --job-name=rcp-")
+        assert "rcp-ndcg run resume --run" in script
         assert not (tmp_path / "runs").exists()
         text = CliRunner().invoke(cli, ["run", "start", str(config), "--runs-dir", str(tmp_path), "--dry-run"])
         assert "what the runner would submit" in text.stdout and "#SBATCH --ntasks=1" in text.stdout
-
-    def test_a_run_config_with_the_removed_single_engine_serve_is_refused(self, data: Path, tmp_path: Path) -> None:
-        """The runners start a job's engines per phase now; the single serve: engine is no longer a job."""
-        config = tmp_path / "run.yaml"
-        served = tiny_config(data, judge=SERVED_JUDGE, serve=SERVE, runner=SLURM_PYXIS).resolved()
-        config.write_text(yaml.safe_dump(served), encoding="utf-8")
-        error = _failed("start", str(config), "--runs-dir", str(tmp_path / "runs"), "--dry-run")
-        assert error["exit_code"] == 3
-        assert "no longer start a job's single serve: engine" in error["message"]
-        assert not (tmp_path / "runs").exists()
-
-    def test_wait_on_outage_s_is_a_runtime_field_that_moves_no_identity(self, data: Path, tmp_path: Path) -> None:
-        """A job that owns its engine bounds its judge's outage wait with serve.outage_timeout_s; it is runtime."""
-        from rcp_ndcg.runs import RunConfig
-
-        shipped = tmp_path / "shipped.yaml"
-        shipped.write_text(yaml.safe_dump({**tiny_config(data).resolved(), "judge": "gpt_oss_120b", "serve": SERVE}))
-        bounded = RunConfig.load(shipped, overrides=["judge.wait_on_outage_s=120"]).judge_config()
-        plain = RunConfig.load(shipped).judge_config()
-        assert (bounded.wait_on_outage_s, plain.wait_on_outage_s) == (120, None)
-        assert plain.identity() == bounded.identity()
 
     def test_serve_is_refused_where_no_engine_is_started(self, data: Path, tmp_path: Path) -> None:
         config = tmp_path / "run.yaml"
         config.write_text(yaml.safe_dump(tiny_config(data, judge=SERVED_JUDGE, serve=SERVE).resolved()))
         runs = str(tmp_path / "runs")
-        error = _failed("start", str(config), "--runs-dir", runs)
-        assert error["exit_code"] == 3 and "starts no engine" in error["message"]
-        # A runner submission reaches the same refusal through the job: the runners start engines per phase now.
-        for extra in (("--runner", "local"), ("--detach",), ("--runner", "slurm", "--dry-run")):
+        for extra in ((), ("--runner", "local"), ("--detach",)):
             error = _failed("start", str(config), "--runs-dir", runs, *extra)
-            assert error["exit_code"] == 3 and "no longer start a job's single serve: engine" in error["message"], extra
+            assert error["exit_code"] == 3 and "starts no engine" in error["message"], extra
+        assert not (tmp_path / "runs").exists()
+
+    def test_a_serving_run_is_refused_on_a_runner_that_does_not_render_phases(
+        self, data: Path, tmp_path: Path, fake_runner: list
+    ) -> None:
+        """A serving run is refused on a runner that renders no phases (a plugin), never degraded."""
+        config = tmp_path / "run.yaml"
+        config.write_text(
+            yaml.safe_dump(tiny_config(data, judge=SERVED_JUDGE, serve=SERVE, runner={"name": "fake"}).resolved())
+        )
+        error = _failed("start", str(config), "--runs-dir", str(tmp_path / "runs"), "--dry-run")
+        assert error["exit_code"] == 3 and "does not start a phase's engines" in error["message"]
+        assert "--engine" in error["hint"] and not (tmp_path / "runs").exists()
+
+    def test_a_served_encoder_run_reaches_the_refusal_through_prepare(
+        self, data: Path, tmp_path: Path, fake_runner: list
+    ) -> None:
+        """`run start` of a served-encoder run (no judge) reaches the runners' phase refusal — not the recorded
+        config's re-validation of its own defaults."""
+        config = tmp_path / "run.yaml"
+        fields = {
+            "candidates": {
+                "from": "retrieval",
+                "retrieval": {"kind": "dense", "encoder": {"provider": "openai_compatible", "model": "e"}},
+            },
+            "steps": ["retrieve"],
+            "serve": {"encoder": {"command": ["vllm", "serve", "e", "--host", "0.0.0.0", "--port", "8000"]}},
+        }
+        config.write_text(
+            yaml.safe_dump(tiny_config(data, **{"runner": {"name": "fake"}, **fields}).resolved()), encoding="utf-8"
+        )
+        error = _failed("start", str(config), "--runs-dir", str(tmp_path / "runs"), "--dry-run")
+        assert error["exit_code"] == 3 and "does not start a phase's engines" in error["message"]
         assert not (tmp_path / "runs").exists()
 
     def test_a_replica_over_several_nodes_is_a_config_error(self, data: Path, tmp_path: Path) -> None:
@@ -280,28 +292,57 @@ class TestRunnersAndServe:
         config.write_text(
             yaml.safe_dump(tiny_config(data, judge=SERVED_JUDGE, serve=SERVE, runner=SLURM_PYXIS).resolved())
         )
-        error = _failed("start", str(config), "--set", "serve.nodes_per_replica=2", "--dry-run")
-        assert error["exit_code"] == 3 and error["details"]["errors"][0]["field"] == "serve.nodes_per_replica"
+        error = _failed("start", str(config), "--set", "serve.judge.nodes_per_replica=2", "--dry-run")
+        assert error["exit_code"] == 3 and error["details"]["errors"][0]["field"] == "serve.judge.nodes_per_replica"
 
     def test_serve_needs_a_served_judge(self, data: Path) -> None:
-        from pydantic import ValidationError
+        from rcp_ndcg.errors import ConfigError
 
-        with pytest.raises(ValidationError, match="no served judge"):
+        with pytest.raises(ConfigError, match="no served judge"):
             tiny_config(data, serve=SERVE)  # judge: fake
 
-    def test_a_resumed_job_takes_the_replica_urls_from_the_environment(
+    def test_an_old_single_engine_serve_shape_shows_the_new_one(self, data: Path) -> None:
+        from rcp_ndcg.errors import ConfigError
+
+        old = {"image": "vllm/vllm-openai:v0.30.0", "command": ["vllm", "serve", "m"]}
+        with pytest.raises(ConfigError, match="old single-engine shape") as refused:
+            tiny_config(data, judge=SERVED_JUDGE, serve=old)
+        assert "serve: {judge:" in (refused.value.hint or "")
+        with pytest.raises(ConfigError, match="unknown engine role"):
+            tiny_config(data, judge=SERVED_JUDGE, serve={"gpu": {"command": ["x"]}})
+
+
+class TestTheEngineFlag:
+    """``run resume --engine role=url[,url]``: the runtime overlay's command-line spelling."""
+
+    def test_the_flag_sets_the_engines_the_run_applies_at_runtime(
         self, finished: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        seen: list[list[str]] = []
+        """The finished run is judged by the offline fake, so a judge URL is refused there — which shows the flag
+        reached the run as an overlay (a fake judge takes no engine URL)."""
+        code, error = _refusal("resume", "--run", str(finished), "--engine", "judge=http://node:8000/v1")
+        assert code == 3 and "offline fake" in error["message"]
+        monkeypatch.delenv("RCP_NDCG_ENGINES", raising=False)  # the flag, not a stray variable, did this
 
-        def reopen(run, *, overrides, **kwargs):
-            seen.append(list(overrides))
-            raise KeyboardInterrupt  # stop here: the overrides are what this test reads
+    def test_bad_role_and_empty_and_repeated_roles_are_usage_errors(self, finished: Path) -> None:
+        for spec, match in (
+            ("gpu=http://n:8000/v1", "not <role>=<url>"),
+            ("judge", "not <role>=<url>"),
+            ("judge=", "has no URL"),
+            ("judge=,", "has no URL"),
+        ):
+            code, error = _refusal("resume", "--run", str(finished), "--engine", spec)
+            assert code == 2 and match in error["message"], spec
+        code, error = _refusal(
+            "resume", "--run", str(finished), "--engine", "judge=http://a/v1", "--engine", "judge=http://b/v1"
+        )
+        assert code == 2 and "twice" in error["message"]
 
-        monkeypatch.setattr("rcp_ndcg.runs.run.reopen", reopen)
-        monkeypatch.setenv("RCP_NDCG_JUDGE_URLS", "http://node1:8000/v1,http://node2:8000/v1")
-        CliRunner().invoke(cli, ["run", "resume", "--run", str(finished)])
-        assert seen == [['judge.base_url=["http://node1:8000/v1", "http://node2:8000/v1"]']]
+    def test_the_flag_does_not_change_a_resubmission(self, finished: Path) -> None:
+        code, error = _refusal(
+            "resume", "--run", str(finished), "--engine", "judge=http://node:8000/v1", "--runner", "local"
+        )
+        assert code == 2 and "--engine apply to a resume in this process" in error["message"]
 
 
 def test_a_packaged_config_starts_by_name_from_any_directory(tmp_path: Path, monkeypatch) -> None:
@@ -395,3 +436,21 @@ def test_the_judge_flags_say_what_they_take_and_refuse_what_they_would_ignore(da
     config.write_text(yaml.safe_dump(tiny_config(data).resolved()), encoding="utf-8")
     error = _failed("start", str(config), "--judge", "fake", "--judge-model", "other", "--dry-run")
     assert error["exit_code"] == 2 and "--judge-url" in error["message"]
+
+
+class TestEngineFlagEdges:
+    """Round-2 polish: the flag's own refusals stay usage errors, and an inline fake judge is refused."""
+
+    def test_a_duplicate_replica_is_a_usage_error_naming_the_flag(self, finished: Path) -> None:
+        code, error = _refusal("resume", "--run", str(finished), "--engine", "judge=http://a/v1,http://a/v1")
+        assert code == 2 and "twice" in error["message"] and "--engine" in error["hint"]
+
+    def test_an_inline_fake_judge_is_refused_like_the_name(self, data: Path) -> None:
+        from rcp_ndcg.errors import ConfigError
+
+        with pytest.raises(ConfigError, match="no served judge"):
+            tiny_config(
+                data,
+                judge={"base_url": "fake://seed/0", "model": "fake"},
+                serve={"judge": {"command": ["vllm", "serve", "m"]}},
+            )

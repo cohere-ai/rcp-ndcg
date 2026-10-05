@@ -2,7 +2,7 @@
 
 It reports the Python and package versions, which optional extras are installed (without importing them, so
 the check itself stays fast), the cache and runs directories, which credential variables are set (names only,
-never values), and, given ``--judge-url``, whether an OpenAI-compatible endpoint answers.
+never values), and, given ``--endpoint``, whether an OpenAI-compatible endpoint answers (any role's URL).
 """
 
 from __future__ import annotations
@@ -34,10 +34,12 @@ Status = Literal["ok", "missing", "fail"]
 
 
 class DoctorRequest(BaseModel):
-    judge_url: str | None = Field(
-        default=None, description="An OpenAI-compatible base URL (.../v1) to probe with GET /models."
+    endpoint: str | None = Field(
+        default=None,
+        description="An OpenAI-compatible base URL (.../v1) to probe with GET /models: any role's endpoint "
+        "(a judge, a served encoder or reranker).",
     )
-    timeout_s: float = Field(default=5.0, gt=0, description="Seconds to wait for --judge-url.")
+    timeout_s: float = Field(default=5.0, gt=0, description="Seconds to wait for --endpoint.")
 
 
 class Check(BaseModel):
@@ -81,18 +83,18 @@ def _probe(url: str, timeout_s: float) -> Check:
     try:
         response = httpx.get(target, timeout=timeout_s)
     except httpx.HTTPError as exc:
-        return Check(name="judge endpoint", status="fail", detail=f"{target}: {type(exc).__name__}: {exc}")
+        return Check(name="endpoint", status="fail", detail=f"{target}: {type(exc).__name__}: {exc}")
     if response.status_code in (401, 403):
         detail = f"{target}: HTTP {response.status_code} (check the API key)"
-        return Check(name="judge endpoint", status="fail", detail=detail)
+        return Check(name="endpoint", status="fail", detail=detail)
     if response.status_code >= 400:
-        return Check(name="judge endpoint", status="fail", detail=f"{target}: HTTP {response.status_code}")
+        return Check(name="endpoint", status="fail", detail=f"{target}: HTTP {response.status_code}")
     try:
         models = [str(row.get("id")) for row in response.json().get("data", [])]
     except (ValueError, AttributeError):
         models = []
     served = ", ".join(models) or "no models listed"
-    return Check(name="judge endpoint", status="ok", detail=f"{target}: serving {served}")
+    return Check(name="endpoint", status="ok", detail=f"{target}: serving {served}")
 
 
 def _text(report: DoctorReport) -> str:
@@ -135,8 +137,8 @@ def doctor(request: DoctorRequest) -> DoctorReport:
         checks.append(
             Check(name=f"${variable}", status="ok" if present else "missing", detail="set" if present else "")
         )
-    if request.judge_url is not None:
-        checks.append(_probe(request.judge_url, request.timeout_s))
+    if request.endpoint is not None:
+        checks.append(_probe(request.endpoint, request.timeout_s))
     return DoctorReport(
         ok=not any(check.status == "fail" for check in checks),
         python=platform.python_version(),

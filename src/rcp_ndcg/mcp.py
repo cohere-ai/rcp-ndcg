@@ -75,6 +75,7 @@ TOOLS: tuple[Tool, ...] = (
             "protocol",
             "k",
             "metrics",
+            "system",
             "bootstrap",
             "seed",
             "per_query",
@@ -224,6 +225,8 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
     if unknown:
         return _error_result(UsageError(f"{name} takes no argument {unknown[0]!r}", details={"unknown": unknown}))
     outcome = execute(spec, {**arguments, **tool.fixed})
+    for warning in outcome.warnings:  # the MCP analogue of the CLI's stderr line; the envelope has no warnings
+        logger.warning(f"{warning['code']}: {warning['message']}")
     if outcome.error is not None:
         return _error_result(outcome.error)
     data = outcome.data if isinstance(outcome.data, dict) else {"result": outcome.data}

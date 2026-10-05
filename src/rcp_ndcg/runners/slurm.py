@@ -155,6 +155,8 @@ class SlurmRunner:
     """
 
     name = "slurm"
+    #: This runner renders a job's phases (a job whose phases start engines is handed to it).
+    renders_phases = True
 
     def __init__(self, **options: Any) -> None:
         self.options = SlurmOptions.parse(self.name, options)
