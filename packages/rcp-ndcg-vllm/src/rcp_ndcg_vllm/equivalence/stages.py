@@ -244,7 +244,9 @@ def _rerank_stage2(
             _pair_tokens(recipe, row["query"], document, tokenizer) <= recipe.client.max_tokens
             for document in row["documents"]
         ]
-        if not deviation or all(under_cap_flags):
+        if not deviation or any(under_cap_flags):
+            # Under the deviation the tau covers exactly the under-cap pairs (mixed queries included); an
+            # all-over-cap query has no ranking to gate and gets no row.
             tau_served = [s for s, under in zip(served, under_cap_flags, strict=True) if under]
             tau_values = [v for v, under in zip(values, under_cap_flags, strict=True) if under]
             tau = kendall_tau_b(tau_served, tau_values)
@@ -554,6 +556,11 @@ def stage1_anchor_check(
         "anchor": recipe.client.template.anchor if recipe.client.template else None,
         "over_length_per_shape": over_length_per_shape,
         "shapes": _shape_names(recipe),
+        "reference_audited": [
+            shape
+            for shape in _shape_names(recipe)
+            if reference.has_render_shape() or shape == ("pair" if recipe.role == "rerank" else "document")
+        ],
         "passed": not failures,
         "failures": failures,
     }

@@ -34,9 +34,12 @@ def load(device: str) -> Any:
 def render(query: str, document: str, instruction: str | None) -> list[int]:
     """Stage 1 for an embedding recipe: the reference ids of the prompted document (the query side is unused)."""
     del query, instruction
-    from deterministic import token_id, tokens
+    from deterministic import reserve_and_append, token_id, tokens
 
-    return [token_id(word) for word in tokens(DOC_PROMPT + document + END_SUFFIX)]
+    prefix_ids = [token_id(word) for word in tokens(DOC_PROMPT)]
+    suffix_ids = [49998]  # the sep special's reserved id, declared in the recipe as anchor_markers
+    content_ids = [token_id(word) for word in tokens(document)]
+    return reserve_and_append(prefix_ids, content_ids, suffix_ids, MAX_TOKENS)
 
 
 def embed(texts: list[str], role: str) -> list[np.ndarray]:
@@ -46,7 +49,7 @@ def embed(texts: list[str], role: str) -> list[np.ndarray]:
     return [vector(prefix + text + SEP_SUFFIX, "embed") for text in texts]
 
 
-__all__ = ["DIM", "DOC_PROMPT", "QUERY_PROMPT", "SEP_SUFFIX", "embed", "load", "render"]
+__all__ = ["DIM", "DOC_PROMPT", "QUERY_PROMPT", "SEP_SUFFIX", "embed", "load", "render", "render_shape"]
 
 
 def tokenizer() -> FixtureTokenizer:
@@ -55,17 +58,15 @@ def tokenizer() -> FixtureTokenizer:
 
 
 def render_shape(shape: str, query: str, document: str, instruction: str | None) -> list[int]:
-    """The optional per-shape stage-1 hook: the same assembly for every declared shape."""
+    """The per-shape hook: [prefix][content][sep marker], the marker id declared in the recipe."""
     del instruction
     from deterministic import reserve_and_append, token_id, tokens
 
-    shapes = {
-        "query": ({token_id("query: ")} and [token_id(word) for word in tokens("query: ")], []),
-        "document": ([token_id(word) for word in tokens(DOC_PROMPT)], []),
+    heads = {
+        "query": [token_id(word) for word in tokens(QUERY_PROMPT)],
+        "document": [token_id(word) for word in tokens(DOC_PROMPT)],
     }
-    if shape == "query":
-        prefix_ids, suffix_ids = shapes["query"]
-    else:
-        prefix_ids, suffix_ids = shapes["document"]
+    suffix_ids = [49998]  # the sep special's reserved id, declared in the recipe as anchor_markers
+    prefix_ids = heads[shape]
     content_ids = [token_id(word) for word in tokens(query if shape == "query" else document)]
     return reserve_and_append(prefix_ids, content_ids, suffix_ids, MAX_TOKENS)

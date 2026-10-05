@@ -298,19 +298,19 @@ def anchor_report(recipe: Recipe, tokenizer: Any, shape: str, ids: list[int]) ->
     template = recipe.client.template
     assert template is not None
     segments = getattr(template, shape) or []
-    fixed = [segment for segment in segments if segment.content is None]
     failures: list[dict[str, Any]] = []
     if template.anchor == "last":
-        if fixed:
+        if segments and segments[-1].content is None:
+            # A fixed tail: the shape's last fixed segment plus the post-processor's end token.
             tail = _fixed_ids(recipe, tokenizer, shape)[-1] + _specials_ids(recipe, tokenizer)
         else:
-            # A content-final shape pins add_special_tokens: true: the tokenizer's post-processor end token IS
-            # the anchor. The specials block (everything the tokenizer appends) must sit at the very tail; a
-            # post-processor that also prepends a token makes this assertion fail loudly rather than silently.
+            # A content-final shape pins add_special_tokens: true: the tokenizer's post-processor block IS the
+            # anchor and must sit at the very tail. A post-processor that also prepends (BOS) makes this fail
+            # loudly rather than silently.
             tail = _specials_ids(recipe, tokenizer)
         if not tail or ids[-len(tail) :] != tail:
             failures.append({"check": "tail", "expected_tail_ids": tail, "actual_tail_ids": ids[-len(tail) :]})
-    elif template.anchor == "first" and fixed:
+    elif template.anchor == "first" and segments[0].content is None:
         head = _fixed_ids(recipe, tokenizer, shape)[0]
         if ids[: len(head)] != head:
             failures.append({"check": "head", "expected_head_ids": head, "actual_head_ids": ids[: len(head)]})

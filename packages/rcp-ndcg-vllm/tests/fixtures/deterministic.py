@@ -46,8 +46,39 @@ def token_id(word: str) -> int:
 
 
 def tokens(text: str) -> list[str]:
-    """The stub's tokenisation: whitespace words, lowercased, deterministic and dependency-free."""
-    return [word for word in text.lower().replace(".", " ").split() if word]
+    """The stub's tokenisation: whitespace words, lowercased, with the specials split out like added tokens.
+
+    Real tokenizers treat an added-token literal as one token even when it is glued to other text; the fixture
+    does the same, so assembling segment texts never merges a special into its neighbour.
+    """
+    words = text.lower().replace(".", " ").split()
+    out: list[str] = []
+    for word in words:
+        out.extend(_split_specials(word))
+    return out
+
+
+_SPECIAL_LITERALS = ("<<cls>>", "<<sep>>", "<<end>>")
+
+
+def _split_specials(word: str) -> list[str]:
+    """One word into its special-literal pieces and the remaining text."""
+    pieces: list[str] = []
+    rest = word
+    while rest:
+        positions = [rest.index(literal) for literal in _SPECIAL_LITERALS if literal in rest]
+        if not positions:
+            pieces.append(rest)
+            break
+        cut = min(positions)
+        if cut:
+            pieces.append(rest[:cut])
+        for literal in _SPECIAL_LITERALS:
+            if rest.startswith(literal, cut):
+                pieces.append(literal)
+                rest = rest[cut + len(literal) :]
+                break
+    return [piece for piece in pieces if piece]
 
 
 class FixtureTokenizer:

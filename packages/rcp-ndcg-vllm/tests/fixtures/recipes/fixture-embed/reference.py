@@ -56,7 +56,7 @@ def tokenizer() -> FixtureTokenizer:
 
 
 def render_shape(shape: str, query: str, document: str, instruction: str | None) -> list[int]:
-    """The optional per-shape stage-1 hook: the same assembly for every declared shape."""
+    """The optional per-shape stage-1 hook: the same reserve-and-append assembly for every declared shape."""
     del instruction
     from deterministic import reserve_and_append, token_id, tokens
 

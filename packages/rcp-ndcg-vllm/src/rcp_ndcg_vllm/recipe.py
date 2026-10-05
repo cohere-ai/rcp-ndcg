@@ -548,9 +548,9 @@ class Recipe(BaseModel):
             if self.client.template.query_max_tokens is not None:
                 if self.client.template.query_max_tokens >= self.client.max_tokens:
                     raise ValueError(
-                        f"template.query_max_tokens ({self.client.template.query_max_tokens}) must leave room for "
-                        f"the document span and the fixed segments inside client.max_tokens "
-                        f"({self.client.max_tokens})"
+                        f"template.query_max_tokens ({self.client.template.query_max_tokens}) must be smaller "
+                        f"than client.max_tokens ({self.client.max_tokens}): the query share plus the fixed "
+                        "segments and the document span must all fit the budget"
                     )
         if self.client.max_tokens > self.serve.max_model_len:
             raise ValueError(

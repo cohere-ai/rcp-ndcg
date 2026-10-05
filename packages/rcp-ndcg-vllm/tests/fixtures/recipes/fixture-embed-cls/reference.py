@@ -36,7 +36,7 @@ def render(query: str, document: str, instruction: str | None) -> list[int]:
     del query, instruction
     from deterministic import token_id, tokens
 
-    return [token_id(word) for word in tokens(DOC_PROMPT + document + END_SUFFIX)]
+    return [49999] + [token_id(word) for word in tokens(document)][: max(MAX_TOKENS - 1, 0)]
 
 
 def embed(texts: list[str], role: str) -> list[np.ndarray]:
@@ -55,17 +55,10 @@ def tokenizer() -> FixtureTokenizer:
 
 
 def render_shape(shape: str, query: str, document: str, instruction: str | None) -> list[int]:
-    """The optional per-shape stage-1 hook: the same assembly for every declared shape."""
+    """The per-shape hook: the cls special leads every shape; there is no text prefix or suffix."""
     del instruction
-    from deterministic import reserve_and_append, token_id, tokens
+    from deterministic import token_id, tokens
 
-    shapes = {
-        "query": ({token_id("query: ")} and [token_id(word) for word in tokens("query: ")], []),
-        "document": ([token_id(word) for word in tokens(DOC_PROMPT)], []),
-    }
-    if shape == "query":
-        prefix_ids, suffix_ids = shapes["query"]
-    else:
-        prefix_ids, suffix_ids = shapes["document"]
+    prefix_ids = [49999]  # the cls special, the same head on every shape
     content_ids = [token_id(word) for word in tokens(query if shape == "query" else document)]
-    return reserve_and_append(prefix_ids, content_ids, suffix_ids, MAX_TOKENS)
+    return prefix_ids + content_ids[: max(MAX_TOKENS - 1, 0)]

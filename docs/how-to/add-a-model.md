@@ -126,8 +126,14 @@ def embed(texts: list[str], role: str) -> "list[numpy.ndarray]":
     role is "query" or "document"; the reference composes its own prompts."""
 
 def render(query: str, document: str, instruction: str | None) -> list[int]:
-    """Stage 1: the token ids of the exact prompt the engine must see for that pair.
-    For an embedding recipe: the ids of doc_prompt + document."""
+    """Stage 1, default shape: the token ids of the exact prompt the engine must see for that pair.
+    The default shape is the pair shape for a rerank recipe and the document shape for an embedding recipe
+    (the recipe's declared shapes assembled with the anchor-preserving cuts, or the prompted text when no
+    template block is declared)."""
+
+def render_shape(shape: str, query: str, document: str, instruction: str | None) -> list[int]:
+    """Optional: the same for the other declared shapes, so the anchor audit checks the reference's render
+    of every shape; without the hook, only the default shape's reference-side audit is possible."""
 ```
 
 Optionally `tokenizer()`, an object with `encode(text) -> list[int]` and `id_to_token(id) -> str`, so stage 1 can

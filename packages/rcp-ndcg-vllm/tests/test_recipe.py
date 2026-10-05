@@ -452,7 +452,7 @@ def test_client_budget_must_fit_the_engine_context(tmp_path_factory: pytest.Temp
 
 def test_query_max_tokens_must_leave_room_for_the_document(tmp_path_factory: pytest.TempPathFactory) -> None:
     """A query share that swallows the budget would cut the document span to zero — refused, not silent."""
-    with pytest.raises(RecipeError, match="must leave room"):
+    with pytest.raises(RecipeError, match="must be smaller than client.max_tokens"):
         _load_with(
             tmp_path_factory.mktemp("qshare"),
             {

@@ -533,10 +533,21 @@ def test_stage3_runs_for_a_stored_scores_recipe(tmp_path: Path) -> None:
         ("fixture-rerank-pointwise", "last"),
     ],
 )
-def test_every_anchor_kind_declares_its_anchor(recipe_id: str, anchor: str) -> None:
+def test_every_anchor_kind_declares_its_anchor_and_passes_the_audit(recipe_id: str, anchor: str) -> None:
+    """Every anchor-kind fixture loads with its anchor AND passes the per-shape over-length audit.
+
+    This is the regression pin for the per-shape audit: a revert to auditing the default shape's render
+    against every shape's rule fails here the moment a recipe's shapes disagree (the marker fixture's query
+    and document shapes both carry sep, but their heads differ; the cls fixture's head is special on both).
+    """
     recipe = load(recipe_id)
     assert recipe.client.template is not None
     assert recipe.client.template.anchor == anchor
+    reference = load_reference(str(RECIPES / recipe_id), recipe.reference.entry)
+    report = stage1_prompts(
+        recipe, sample_pairs()[:1], reference, reference._module.tokenizer(), over_length_per_shape=3
+    )
+    assert report["passed"] is True, (recipe_id, report["anchor_check"]["failures"][:1])
 
 
 def test_every_fixture_recipe_is_covered_by_the_anchor_kind_table() -> None:
@@ -616,6 +627,17 @@ def test_stage2_gates_only_under_cap_pairs_when_the_deviation_is_declared(
         assert document["over_cap"]["gating"] is False
         assert document["over_cap"]["pairs"][0]["over_cap"] is True
         assert document["passed"] is False  # the under-cap pair's gates still decide
+        # A mixed query (over-cap + under-cap documents) contributes its under-cap pairs to the tau gate:
+        # a query whose under-cap docs are inverted fails the tau gate under the deviation.
+        clean_pairs = sample_pairs(2)
+        mixed = [
+            {"query": "mixed query", "documents": ["long document " * 400, *clean_pairs[0]["documents"]]},
+        ]
+        document = stage2_scores(deviating, engine.base_url, mixed, reference, tokenizer=tokenizer)
+        assert document["over_cap"]["n_pairs"] == 1
+        assert document["per_query"], "the mixed query must contribute a tau row over its under-cap pairs"
+        assert document["per_query"][0]["documents"] == 2  # the tau covers exactly the under-cap pairs
+        assert document["passed"] is False  # the stub's noise inverts the under-cap ranking
         # Without the declared deviation the over-cap pair gates like any other (and fails on the noise).
         document = stage2_scores(recipe, engine.base_url, over_cap_pairs, reference, tokenizer=tokenizer)
         assert document["over_cap"]["n_pairs"] == 1
