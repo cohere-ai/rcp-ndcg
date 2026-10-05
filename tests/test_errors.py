@@ -172,6 +172,34 @@ def test_offline_mode_raised_bare_is_a_missing_input_not_a_provider_error() -> N
     assert "HF_HUB_OFFLINE" in (error.hint or "")
 
 
+def test_a_rejected_token_is_a_credential_error_not_a_bug() -> None:
+    """A bare 401 from the Hub (not a gated-repo class) names the credential, not the traceback."""
+    import httpx
+
+    hub_errors = pytest.importorskip("huggingface_hub.errors")
+    response = httpx.Response(401, request=httpx.Request("HEAD", "https://hub.example/"))
+
+    error = classify(hub_errors.HfHubHTTPError("401 Unauthorized", response=response))
+
+    assert isinstance(error, errors.CredentialsError)
+    assert "HF_TOKEN" in (error.hint or "")
+
+
+def test_a_metadataless_answer_names_the_endpoint_not_the_offline_flag() -> None:
+    """Online, an answer without the Hub's headers (a mirror or proxy) is not an offline failure."""
+    hub_errors = pytest.importorskip("huggingface_hub.errors")
+    raised = _chained(
+        hub_errors.LocalEntryNotFoundError("An error happened while trying to locate the file on the Hub"),
+        hub_errors.FileMetadataError("Response is missing the X-Repo-Commit header"),
+    )
+
+    error = classify(raised)
+
+    assert isinstance(error, MissingInputError)
+    assert "HF_ENDPOINT" in (error.hint or "")
+    assert "HF_HUB_OFFLINE" not in (error.hint or "")
+
+
 def _unreachable_hub_causes() -> list[BaseException]:
     """The connection failures huggingface_hub chains under a cache miss (httpx, requests, sockets, a down Hub)."""
     import httpx

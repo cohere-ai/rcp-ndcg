@@ -341,8 +341,8 @@ def classify(exc: BaseException) -> RcpNdcgError:
         """The offline Hub failure: retrying cannot help; the fix is online once, or pinning what the cache has."""
         return MissingInputError(
             name,
-            hint="the Hub is unreachable offline (HF_HUB_OFFLINE); run once online to download the file, or pin "
-            "the revision the cache was filled at",
+            hint="the Hub is unreachable offline (HF_HUB_OFFLINE); run once online to download the file — or, if "
+            "the revision is not already pinned, pin the revision the cache was filled at",
         )
 
     def hub_down(cause: BaseException | None) -> bool:
@@ -375,19 +375,37 @@ def classify(exc: BaseException) -> RcpNdcgError:
             )
         if offline:
             return offline_miss()
+        if _named(cause, "huggingface_hub.errors", "FileMetadataError"):
+            # the Hub answered, but without its headers: a mirror or proxy that is not a Hub endpoint
+            return MissingInputError(
+                name,
+                hint="the endpoint answered without the Hub's metadata: check HF_ENDPOINT points to a Hub-compatible "
+                "endpoint, and the proxy settings",
+            )
         return MissingInputError(
             name,
             hint="the file is not in the local Hub cache and Hub access is off (HF_HUB_OFFLINE); "
             "unset HF_HUB_OFFLINE or download the file first",
         )
-    if _named(exc, "huggingface_hub.errors", "HfHubHTTPError") and (
-        (status := getattr(getattr(exc, "response", None), "status_code", 0)) >= 500 or status == 429
+    if _named(exc, "huggingface_hub.errors", "HfHubHTTPError") and not _named(
+        exc,
+        "huggingface_hub.errors",
+        "GatedRepoError",
+        "RepositoryNotFoundError",
+        "RevisionNotFoundError",
+        "EntryNotFoundError",
     ):
-        # the Hub answered but is down or rate-limiting: the same retryable provider failure as a connection one
-        return ProviderError(
-            name,
-            hint="the Hugging Face Hub could not be reached; check connectivity and HF_ENDPOINT, then retry",
-        )
+        status = getattr(getattr(exc, "response", None), "status_code", 0)
+        if status == 401:
+            return CredentialsError(
+                name, hint="check the token the request carries (HF_TOKEN) and the repository's access terms"
+            )
+        if status >= 500 or status == 429:
+            # the Hub answered but is down or rate-limiting: the same retryable provider failure as a connection one
+            return ProviderError(
+                name,
+                hint="the Hugging Face Hub could not be reached; check connectivity and HF_ENDPOINT, then retry",
+            )
     if isinstance(exc, FileNotFoundError):
         details = {"path": str(exc.filename)} if exc.filename is not None else None
         return MissingInputError(str(exc), hint="check the path, or run the step that produces it", details=details)
@@ -407,6 +425,7 @@ def classify(exc: BaseException) -> RcpNdcgError:
         return MissingInputError(name, hint="check the dataset id, subset and revision")
     if (
         _named(exc, "httpx", "TransportError")
+        or _named(exc, "requests", "ConnectionError", "Timeout", "ConnectTimeout", "ReadTimeout")
         or _named(exc, "openai", "APIConnectionError", "RateLimitError", "InternalServerError")
         or isinstance(exc, ConnectionError | TimeoutError)
     ):

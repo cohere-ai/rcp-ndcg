@@ -282,6 +282,42 @@ def test_an_unreachable_hub_on_the_listing_is_a_retryable_provider_error_not_off
     assert "HF_ENDPOINT" in (caught.value.hint or "")
 
 
+def test_a_requests_unreachable_or_non_json_listing_is_a_provider_error(
+    cache: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On the requests-based hub floor too, an unreachable or non-JSON listing is a provider failure."""
+    import json
+
+    import huggingface_hub
+    import requests
+
+    from rcp_ndcg.data.dataset import _hub_listing
+
+    stage(cache, files=_TABLES)
+    _online(monkeypatch, {(REPO, "main"): SHA})
+    fake = huggingface_hub.HfApi()
+    shutil.rmtree(next((cache / f"datasets--{REPO.replace('/', '--')}").glob("snapshots/*")))  # nothing to stand in
+
+    def unreachable(*args: object, **kwargs: object):
+        raise requests.ConnectionError("connection refused")
+
+    monkeypatch.setattr(fake, "list_repo_files", unreachable, raising=False)
+    with pytest.raises(ProviderError) as caught:
+        _hub_listing(REPO, SHA)
+
+    assert caught.value.retryable is True
+    assert "HF_ENDPOINT" in (caught.value.hint or "")
+
+    def not_json(*args: object, **kwargs: object):
+        raise json.JSONDecodeError("Expecting value", "<html>portal</html>", 0)
+
+    monkeypatch.setattr(fake, "list_repo_files", not_json, raising=False)
+    with pytest.raises(ProviderError) as caught:
+        _hub_listing(REPO, SHA)
+
+    assert "HF_ENDPOINT" in (caught.value.hint or "")
+
+
 def test_a_snapshot_listing_needs_a_commit(cache: Path) -> None:
     """An unresolved revision lists nothing: the snapshot tree is per commit, never across commits."""
     from rcp_ndcg.data.dataset import _snapshot_listing

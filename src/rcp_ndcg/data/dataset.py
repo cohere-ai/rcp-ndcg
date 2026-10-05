@@ -600,7 +600,7 @@ def _read_hub_table(repo: str, path: str, revision: str | None, *, optional: boo
         return MissingInputError(
             f"hf://{repo}: {path} does not exist" + (f" at {revision}" if revision else ""),
             hint="check the subset and the revision: the repository has no such table at it",
-            details={"repo": repo, "path": path},
+            details={"repo": repo, "path": path, "revision": revision},
         )
 
     try:
@@ -727,17 +727,25 @@ def _hub_listing(repo: str, revision: str | None) -> list[str]:
     Online the Hub answers. Offline, or with the Hub unreachable or down, the local snapshot for the commit
     stands in — it holds the files the download left — with one warning that it does; with no snapshot the
     failure names the real cause (see :func:`_hub_miss`), so a run materializes its corpus from a cache an
-    online run filled.
+    online run filled. An answer that is not the Hub's JSON names the endpoint instead.
     """
-    import httpx
+    import json
+
     from huggingface_hub import HfApi
     from huggingface_hub.errors import HfHubHTTPError, OfflineModeIsEnabled
 
-    unreachable: Exception | None = None
+    unreachable: BaseException | None = None
     try:
         if not hub_offline():
             return list(HfApi().list_repo_files(repo, repo_type="dataset", revision=revision))
-    except (httpx.TransportError, OfflineModeIsEnabled, HfHubHTTPError) as exc:
+    except json.JSONDecodeError as exc:
+        raise ProviderError(
+            f"{type(exc).__name__}: {exc}",
+            hint="the endpoint did not answer with the Hub's JSON: check HF_ENDPOINT (a mirror or captive portal "
+            "may be in the way)",
+            details={"repo": repo, "path": "(file listing)", "revision": revision},
+        ) from exc
+    except _hub_unreachable_errors() as exc:
         status = getattr(getattr(exc, "response", None), "status_code", 0)
         if isinstance(exc, HfHubHTTPError) and status < 500 and status != 429:
             raise  # the Hub answered: the repository, the revision or the credentials are the problem
@@ -753,6 +761,24 @@ def _hub_listing(repo: str, revision: str | None) -> list[str]:
         raise _hub_miss(unreachable, repo, "(file listing)", revision) from unreachable
     offline = OfflineModeIsEnabled(f"cannot list the files of hf://{repo} offline (HF_HUB_OFFLINE)")
     raise _hub_miss(offline, repo, "(file listing)", revision) from offline
+
+
+def _hub_unreachable_errors() -> tuple[type[BaseException], ...]:
+    """The exception types of a Hub that did not answer, across the huggingface_hub generations.
+
+    huggingface-hub >= 1.x speaks httpx, the ``>=0.34`` floor speaks requests; their transport errors, the
+    offline refusal and a Hub answering 5xx or 429 all mean "not answered usable".
+    """
+    import httpx
+    from huggingface_hub.errors import HfHubHTTPError, OfflineModeIsEnabled
+
+    errors: list[type[BaseException]] = [httpx.TransportError, OfflineModeIsEnabled, HfHubHTTPError]
+    try:
+        from requests.exceptions import ConnectionError as RequestsConnectionError
+        from requests.exceptions import Timeout as RequestsTimeout
+    except ImportError:  # pragma: no cover - the 1.x line does not need requests
+        return tuple(errors)
+    return tuple(errors + [RequestsConnectionError, RequestsTimeout])
 
 
 def _snapshot_listing(repo: str, revision: str | None) -> list[str] | None:
