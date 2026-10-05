@@ -8649,6 +8649,13 @@
             "required": true,
             "type": "str"
           },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "recipe": {
             "alias": null,
             "default": null,
