@@ -3,8 +3,8 @@
 The transport owns everything around a request so that no adapter repeats it: the least-busy replica pick, the
 bounded concurrency, the retries with their backoff and ``Retry-After``, the set-aside of a failing replica, the
 parking while every replica is down, the shared status map, and the calls-and-tokens usage. Its behaviour is
-assigned by RFC-0001 section 4.3 and arrives with lane L1; every method below is the frozen signature the other
-lanes build against.
+assigned by the unified-inference design and arrives with that work; every method below is the frozen
+signature the other lanes build against.
 """
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ class Transport:
     async def send(self, calls: Sequence[Call]) -> list[Reply]:
         """Send ``calls`` for one request to one live replica and return their replies, one per call, in order.
 
-        The behaviour RFC-0001 section 4.3 assigns (today's judge client, over ``httpx`` instead of the OpenAI
+        The behaviour the unified-inference design assigns (today's judge client, over ``httpx`` instead of the OpenAI
         SDK):
 
         * **routing** -- each request goes to the live replica with the fewest requests in flight from this

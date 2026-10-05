@@ -2,8 +2,8 @@
 
 Each role sets the fields its wire protocol needs; every field is declared CONTENT or RUNTIME, so
 :func:`rcp_ndcg.support.identity.check_declarations` passes and the roles' configs can feed identities. These
-configs are not wired into :mod:`rcp_ndcg.retrieval.config` yet (lane L3e does that); they are the frozen shapes
-the later lanes build against.
+configs are not wired into :mod:`rcp_ndcg.retrieval.config` yet (the retrieval-config wiring does
+that); they are the frozen shapes the later lanes build against.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ class EmbeddingEndpoint(Endpoint):
             share a cache.
         tokenizer: The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository
             id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name;
-            the file's SHA-256 enters the identity (lane L3a), as the judge's does.
+            the file's SHA-256 enters the identity, as the judge's already does.
         max_tokens: The token cut per item, applied on the client at token boundaries; ``None`` sends every
             item whole. Content.
         query_prompt: Text prepended to every query (an asymmetric embedder's instruction prefix). Content.

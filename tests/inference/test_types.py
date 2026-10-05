@@ -130,7 +130,7 @@ class TestCompletionTypes:
         done = Completion(response="yes", reasoning="why", input_tokens=11, output_tokens=2)
         assert done.finish_reason == "stop" and done.input_tokens == 11 and done.output_tokens == 2
 
-    def test_completions_are_frozen(self) -> None:
+    def test_a_completion_input_is_frozen(self) -> None:
         with pytest.raises(ValidationError):
             CompletionInput(user_prompt="hi").user_prompt = "no"  # type: ignore[misc]
 

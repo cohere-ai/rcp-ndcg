@@ -87,7 +87,7 @@ class Adapter(Protocol[Req, Res]):
 
 
 _BUILTINS: dict[str, type[Adapter[Any, Any]]] = {}
-"""The adapters registered in this process; the shipped ones register at import (none yet: lane L1)."""
+"""The adapters registered in this process; the shipped ones register at import (none yet)."""
 
 _PLUGINS: dict[str, type[Adapter[Any, Any]]] | None = None
 """The adapters of the entry-point group, loaded once on first use (``None``: not loaded yet)."""

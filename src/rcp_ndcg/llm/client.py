@@ -71,7 +71,7 @@ _UNAVAILABLE_STATUSES = frozenset({408, 429})
 #: Keys the endpoint may use for the reasoning channel.
 REASONING_KEYS = ("reasoning_content", "reasoning")
 
-# The outage and rejection types are the inference layer's (rfc-0001 section 4.2): their home is
+# The outage and rejection types are the inference layer's: their home is
 # ``rcp_ndcg.errors`` and they are imported at the top, so every path that imports them from
 # ``rcp_ndcg.llm.client`` keeps working. They stay in this module's ``__all__``.
 
@@ -259,7 +259,7 @@ class JudgeConfig(Endpoint):
 
 
 # The judge's prompt and answer types, and the per-replica probe record, are the inference layer's
-# (rfc-0001 section 4.2): their home is ``rcp_ndcg.inference.types`` and they are imported at the top, so every
+# their home is ``rcp_ndcg.inference.types`` and they are imported at the top, so every
 # path that imports them from ``rcp_ndcg.llm.client`` keeps working. They stay in this module's ``__all__``.
 
 

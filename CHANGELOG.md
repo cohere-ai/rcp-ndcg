@@ -34,8 +34,9 @@ released together.
     (RUNTIME; moved up from `JudgeConfig`, which keeps it through inheritance). Every earlier field and validator
     is unchanged.
   - `inference.types`: the wire types `Call`, `Reply`, `TokenCount` and `Usage` (with `__add__`); `EngineInfo`,
-    `CompletionInput` and `Completion` moved here from `rcp_ndcg.llm.client` unchanged (still importable and
-    exported from `rcp_ndcg.llm.client`); `EncodeRole`, `Embeddings` and `l2_normalize` moved here from
+    `CompletionInput` and `Completion` moved here from `rcp_ndcg.llm.client` unchanged (they stay importable
+    from `rcp_ndcg.llm.client`, where the first two and the two error types remain in its `__all__`);
+    `EncodeRole`, `Embeddings` and `l2_normalize` moved here from
     `rcp_ndcg.retrieval.encoder` (re-exported there and from `rcp_ndcg.retrieval`); and the new role request and
     result types `EmbedRequest`, `PoolRequest`, `RerankRequest` and `RerankResult` (whose
     `RerankResult.aligned(request, scores)` refuses a score count that does not match the request's documents).

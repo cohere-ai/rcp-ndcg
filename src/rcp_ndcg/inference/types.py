@@ -1,7 +1,7 @@
 """The wire types of the inference layer: what an adapter asks the transport to send, and what comes back.
 
-Per role, the request and result types are the vocabulary the adapters (lane L1) and the role clients (lanes L3a,
-L3b, L3c) build on: the judge's prompts and answers, the encoders' content batches and vector buffers, one rerank
+Per role, the request and result types are the vocabulary the adapters and the role clients build on: the
+judge's prompts and answers, the encoders' content batches and vector buffers, one rerank
 query with its documents and the aligned scores. Nothing here knows HTTP: :class:`Call` and :class:`Reply` are
 the whole contract between an adapter and the transport.
 """

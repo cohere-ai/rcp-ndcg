@@ -147,8 +147,8 @@ class ProviderError(RcpNdcgError):
 class BackendUnavailableError(ProviderError):
     """Every replica of an endpoint stayed unavailable for longer than its ``wait_on_outage_s``.
 
-    The public outage type of the inference layer (``api_key``, routing, parking and retries are the
-    transport's; RFC-0001 section 4.2): a run against dead servers parks instead of turning the outage into
+    The public outage type of the inference layer (the API key, routing, parking and retries are the
+    transport's): a run against dead servers parks instead of turning the outage into
     missing judgements, and this error says the parking gave up. Retryable: the endpoint may come back.
     """
 

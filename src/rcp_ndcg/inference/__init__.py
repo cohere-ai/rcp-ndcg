@@ -13,7 +13,7 @@ paths send their requests through one set of names:
   (:mod:`rcp_ndcg.inference.types`);
 * :class:`Adapter` and its registry -- the one seam a third party implements (C2), selected from a config with
   ``api: <name>`` (:mod:`rcp_ndcg.inference.adapters.base`);
-* :class:`Sender` and :class:`Transport` -- the transport's frozen interface; behaviour arrives with lane L1
+* :class:`Sender` and :class:`Transport` -- the transport's frozen interface; behaviour arrives with the transport work
   (:mod:`rcp_ndcg.inference.transport`);
 * the role endpoint configs -- :class:`EmbeddingEndpoint`, :class:`PoolingEndpoint`, :class:`RerankEndpoint`
   (:mod:`rcp_ndcg.inference.config`);

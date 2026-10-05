@@ -1,5 +1,5 @@
-"""The engines a run starts beside its job: :class:`ServeConfig`, and the serve-by-role types of RFC-0001
-section 5 that phase planning (lane L4a) builds on.
+"""The engines a run starts beside its job: :class:`ServeConfig`, and the serve-by-role types that phase
+planning builds on.
 
 A leaf model, like :class:`~rcp_ndcg.support.resources.Resources`: the run config declares it (``serve:``) and the
 job runners render it, without the run layer importing the runners.
@@ -32,9 +32,10 @@ from rcp_ndcg.support.resources import Environment, Resources
 JUDGE_URLS_ENV = "RCP_NDCG_JUDGE_URLS"
 
 #: The environment variable a phase's runner sets to the engines of the current phase, as JSON
-#: ``{"encoder": {"urls": [...], "wait_on_outage_s": 900}, ...}`` (RFC-0001 section 5.4); the coordinator
+#: ``{"encoder": {"urls": [...], "wait_on_outage_s": 900}, ...}``; the coordinator
 #: applies it as a runtime overlay. It is never written into ``run.yaml`` and never reaches an identity, since
-#: ``base_url`` and ``wait_on_outage_s`` are runtime fields. Replaces ``JUDGE_URLS_ENV``.
+#: ``base_url`` and ``wait_on_outage_s`` are runtime fields. It will replace ``JUDGE_URLS_ENV`` when the
+#: serve-phases work lands; until then the runners still export ``RCP_NDCG_JUDGE_URLS``.
 ENGINES_ENV = "RCP_NDCG_ENGINES"
 
 
@@ -95,7 +96,7 @@ class ServeConfig(BaseModel):
 
 
 #: A role an engine can serve. The role fixes which config the engine serves: ``judge`` serves the run's judge,
-#: ``encoder`` serves the retrieval config's encoder, ``reranker`` its reranker (RFC-0001 section 5.1).
+#: ``encoder`` serves the retrieval config's encoder, ``reranker`` its reranker.
 EngineRole = Literal["judge", "encoder", "reranker"]
 
 #: The engine a role runs: today's single-engine ``ServeConfig`` (an alias, so every existing use keeps
@@ -122,7 +123,7 @@ class ServeByRole(BaseModel):
 
 @dataclass(frozen=True)
 class Phase:
-    """One phase of a phased run: the engines it starts, and the steps it runs (RFC-0001 section 5.2).
+    """One phase of a phased run: the engines it starts, and the steps it runs.
 
     Attributes:
         engines: The roles whose engines the phase starts and stops around its steps.
@@ -210,7 +211,7 @@ def plan_phases(
     serve: ServeByRole,
     uses: Mapping[str, frozenset[EngineRole]],
 ) -> list[Phase]:
-    """The phase plan of a run (RFC-0001 section 5.2): a pure function of the steps, the engines and their use.
+    """The phase plan of a run: a pure function of the steps, the engines and their use.
 
     A phased run starts each phase's engines, waits for readiness, runs the phase's steps, and stops its
     engines, so the job's GPUs are the maximum over phases instead of the sum over engines. Consecutive steps
@@ -232,7 +233,7 @@ def plan_phases(
         of the engines it starts and the steps it runs.
 
     Raises:
-        NotImplementedError: The behaviour is lane L4a's; this is the frozen signature.
+        NotImplementedError: The behaviour is the serve-phases work's; this is the frozen signature.
     """
     raise NotImplementedError("lane L4a")
 
