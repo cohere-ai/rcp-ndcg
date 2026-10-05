@@ -49,6 +49,7 @@ case "${ENGINE_MODE_OVERRIDE:-$ENGINE_MODE}" in
   crash) echo "engine: CUDA out of memory" >&2; exit 3 ;;
   ready) touch "$STUBS/ready-${PORT:-8000}"; exec sleep 60 ;;
   dies) touch "$STUBS/ready-${PORT:-8000}"; sleep 0.3; exit 7 ;;
+  dies_ready) touch "$STUBS/ready-${PORT:-8000}"; exit 7 ;;
   hang) exec sleep 60 ;;
 esac
 """
@@ -88,8 +89,8 @@ def _script(platform: str) -> list[str]:
     return command
 
 
-def _two_phase_script(phase_two_env: dict[str, str] | None = None) -> list[str]:
-    """A SLURM job of two engine phases, each starting its own judge (told apart by $PHASE and by its port)."""
+def _two_phase_text(phase_two_env: dict[str, str] | None = None) -> str:
+    """The rendered sbatch body of a two-engine-phase job (told apart by $PHASE and by its port)."""
     phases = (
         PHASE.model_copy(
             update={
@@ -113,7 +114,11 @@ def _two_phase_script(phase_two_env: dict[str, str] | None = None) -> list[str]:
         ),
     )
     job = JobSpec(name="run", argv=("rcp-ndcg", "run", "resume"), phases=phases)
-    return ["bash", "-c", SlurmRunner().render([job])["run"]]
+    return SlurmRunner().render([job])["run"]
+
+
+def _two_phase_script(phase_two_env: dict[str, str] | None = None) -> list[str]:
+    return ["bash", "-c", _two_phase_text(phase_two_env)]
 
 
 @pytest.fixture
@@ -148,6 +153,24 @@ def _env(stubs: Path, engine: str, coordinator: str) -> dict[str, str]:
 def _run(script: list[str], stubs: Path, engine: str, coordinator: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         script,
+        cwd=stubs,
+        env=_env(stubs, engine, coordinator),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
+def _run_file(script_text: str, stubs: Path, engine: str, coordinator: str) -> subprocess.CompletedProcess[str]:
+    """Run a rendered script the way sbatch runs the batch body: as a file, so all its phases share one bash.
+
+    ``bash -c`` (the Kubernetes invocation) differs: a child that ended before ``wait -n`` is invisible there, and
+    a stopped-but-unreaped one is not re-reported either -- both once hid a phase boundary from the tests.
+    """
+    path = stubs / "job.sh"
+    path.write_text(script_text)
+    return subprocess.run(
+        ["bash", str(path)],
         cwd=stubs,
         env=_env(stubs, engine, coordinator),
         capture_output=True,
@@ -311,6 +334,36 @@ def test_phase_two_starts_only_after_phase_one_exited_zero_and_its_engine_stoppe
         'coord {"judge": {"urls": ["http://127.0.0.1:8001/v1"], "wait_on_outage_s": 900}}',
     ]
     assert _gone(stubs / "engine-2.pid")
+
+
+def test_a_rendered_sbatch_runs_as_a_file_two_phases_in_order(stubs: Path) -> None:
+    """sbatch execs the batch file: all phases share one bash, and a stopped step must be reaped at the boundary.
+
+    Run as a file, the stopped phase-1 engine step is a terminated job of that bash; unreaped, the next phase's
+    ``wait -n`` consumed its stale status and failed the job with a phantom engine exit (bash -c does not re-report
+    it, which is why the ``bash -c`` tests above never saw it).
+    """
+    done = _run_file(_two_phase_text(), stubs, engine="ready", coordinator="done")
+    assert done.returncode == 0, done.stderr
+    order = (stubs / "order").read_text().splitlines()
+    assert order == [
+        "engine-1 start",
+        'coord {"judge": {"urls": ["http://127.0.0.1:8000/v1"], "wait_on_outage_s": 900}}',
+        "engine-2 start",
+        "engine-2 saw phase 1 stopped",
+        'coord {"judge": {"urls": ["http://127.0.0.1:8001/v1"], "wait_on_outage_s": 900}}',
+    ]
+
+
+def test_an_engine_that_dies_between_readiness_and_the_wait_fails_the_job(stubs: Path) -> None:
+    """An engine that exits after answering but before the phase's wait must not be swallowed.
+
+    The container command runs as ``bash -c``, where ``wait -n`` does not report a child that ended before it was
+    invoked: the engine's failure reached the phase only through the started engines' reaped statuses.
+    """
+    done = _run(_script("kubernetes"), stubs, engine="dies_ready", coordinator="done")
+    assert done.returncode != 0, done.stderr
+    assert "exited with status 7" in done.stderr
 
 
 def test_a_failing_phase_one_engine_ends_the_job_and_never_starts_phase_two(stubs: Path) -> None:

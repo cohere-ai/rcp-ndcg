@@ -18,6 +18,6 @@ def test_a_phase_needs_a_command() -> None:
         JobPhase(argv=())
 
 
-def test_a_job_with_phases_sets_no_serve() -> None:
+def test_a_job_round_trips_its_phases() -> None:
     phases = (JobPhase(engines={"judge": ENGINE}, argv=("a",)), JobPhase(argv=("b",)))
     assert JobSpec(name="run", argv=("b",), phases=phases).phases == phases

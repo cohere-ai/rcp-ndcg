@@ -242,12 +242,8 @@ class SlurmRunner:
             command = self._in_container(image, worker_var, srun=[]) if container else f'bash -c "${worker_var}"'
             return [*heredoc(worker_var, worker), command]
         roles = sorted(phase.engines)
-        if one_node and len({phase.engines[role].port for role in roles}) != len(roles):
-            raise ConfigError(
-                f"phase {index} of job {job.name!r} starts several engines on one port on the one-node "
-                f"allocation ({[phase.engines[role].port for role in roles]}), where only one of them can listen",
-                hint="give the phase's engines distinct ports",
-            )
+        # On a one-node allocation every phase has at most one engine (the largest phase's replica total sizes the
+        # allocation), so roles never share a port there; on larger ones each role gets its own node slice.
         lines = [*heredoc(worker_var, self._phase_worker(job, phase.argv, install=container))]
         steps: list[EngineStep] = []
         offset = 0

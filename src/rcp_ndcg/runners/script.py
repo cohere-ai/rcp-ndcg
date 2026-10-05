@@ -351,12 +351,15 @@ def supervise(engines: Sequence[EngineStep], *, coordinator: str, engines_env: s
     * an engine: the coordinator is stopped, and the phase exits with :data:`ENGINE_FAILED` and a message naming
       the engine (only engines the script started are watched; replicas that live elsewhere are restarted by
       whatever runs them, and the judge bounds the outage instead);
-    * the coordinator: the engines are stopped, and the phase exits with the coordinator's status.
+    * the coordinator: what the script started is stopped and reaped, and the phase exits with the coordinator's
+      status -- unless a started engine ended non-zero before the coordinator's exit is observed (``wait -n`` does
+      not report such a child when the script runs as ``bash -c``, as a Kubernetes container command does), which
+      fails the phase with :data:`ENGINE_FAILED`.
 
     A phase whose coordinator exited 0 stops its engines and the script continues with the next phase (the
     renderers run one call per engine phase, in order); a non-zero exit of either ends the job. On ``SIGTERM``,
-    ``SIGINT`` and at any exit the started engines and the coordinator are stopped: ``SIGTERM``, then ``SIGKILL``
-    after :data:`STOP_GRACE_S` seconds. Needs bash 4.3 or later (``wait -n``).
+    ``SIGINT`` and at any exit the started engines and the coordinator are stopped, and reaped, so the next
+    phase's ``wait -n`` cannot see a stale status. Needs bash 4.3 or later (``wait -n``).
 
     Args:
         engines: The phase's engines, in the order they start (roles sorted, per the renderers); at least one with
@@ -379,20 +382,24 @@ def supervise(engines: Sequence[EngineStep], *, coordinator: str, engines_env: s
     ]
     return [
         *require_tools(uv=uv),
-        "rcp_ndcg_stop() {  # SIGTERM the processes, SIGKILL what is left after the grace period",
-        "  local pid waited=0",
+        "rcp_ndcg_stop() {  # SIGTERM the processes, SIGKILL what is left after the grace period, and reap them",
+        "  local pid waited=0 es",
         "  local -a left",
         '  for pid in "$@"; do kill -TERM "$pid" 2>/dev/null || true; done',
         "  while true; do",
         "    left=()",
         '    for pid in "$@"; do if kill -0 "$pid" 2>/dev/null; then left+=("$pid"); fi; done',
-        "    if ((${#left[@]} == 0)); then return 0; fi",
+        "    if ((${#left[@]} == 0)); then break; fi",
         f"    if ((waited >= {STOP_GRACE_S * 10})); then  # tenths of a second",
         '      kill -KILL "${left[@]}" 2>/dev/null || true',
-        "      return 0",
+        "      break",
         "    fi",
         "    sleep 0.1",
         "    waited=$((waited + 1))",
+        "  done",
+        '  for pid in "$@"; do  # reap what this script started, so the next phase\'s wait -n cannot see it',
+        "    es=0",
+        '    wait "$pid" 2>/dev/null || es=$?',
         "  done",
         "}",
         "rcp_ndcg_cleanup() {",
@@ -425,14 +432,23 @@ def supervise(engines: Sequence[EngineStep], *, coordinator: str, engines_env: s
         '--run <run dir> --runner <this runner>)" >&2',
         f"  exit {ENGINE_FAILED}",
         "fi",
+        # The coordinator has ended. A started engine that also ended non-zero failed while the run was going
+        # (invisible to wait -n when the script runs as bash -c, as a Kubernetes container command does): reap
+        # what this script started and fail fast. 127 is a status wait -n already consumed.
         *(
             [
-                "if "
-                + " && ".join(f'! kill -0 "${pid}" 2>/dev/null' for pid in pid_vars)
-                + "; then  # the {'engine has' if len(pid_vars) == 1 else 'engines have'} ended too: the status is "
-                "the coordinator's",
-                "  status=0",
-                '  wait "$RCP_NDCG_COORDINATOR_PID" || status=$?',
+                "failed=0",
+                "for pid in " + " ".join(f"${{{pid}}}" for pid in pid_vars) + "; do",
+                '  if ! kill -0 "$pid" 2>/dev/null; then',
+                "    es=0",
+                '    wait "$pid" 2>/dev/null || es=$?',
+                '    if [ "$es" -ne 0 ] && [ "$es" -ne 127 ]; then failed=$es; fi',
+                "  fi",
+                "done",
+                'if [ "$failed" -ne 0 ]; then',
+                '  echo "rcp-ndcg: an engine exited with status $failed while the run was going; stopping the run '
+                '(submit it again with rcp-ndcg run resume --run <run dir> --runner <this runner>)" >&2',
+                f"  exit {ENGINE_FAILED}",
                 "fi",
             ]
             if pid_vars

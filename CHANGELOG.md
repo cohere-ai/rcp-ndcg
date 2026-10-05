@@ -34,11 +34,14 @@ released together.
   engines runs its command directly, with an empty `RCP_NDCG_ENGINES`. Any failure ends the job with the previous
   single-engine semantics (`ENGINE_FAILED`, fail-fast supervision, `SIGTERM`/`SIGKILL` cleanup).
   - `rcp_ndcg.runners.script`: `supervise(engines, *, coordinator, engines_env, uv)` renders one phase's
-    supervision (its signature changes from the single-engine form); the engines are `EngineStep(serve, start,
-    hosts)` entries, and a `start` of `None` waits for replicas that are already running elsewhere (a Kubernetes
-    StatefulSet). New `engines_env_value` (the phase's JSON) and, for hosts the script only learns when the job
-    starts, `engines_env_spec`/`engines_env_command`; the readiness probe (`wait_for_replicas`, whose signature
-    gains `pid_var`) is parameterised by the engine's pid variable.
+    supervision (its signature changes from the single-engine form); the engines are `EngineStep(serve, role,
+    start, hosts)` entries, and a `start` of `None` waits for replicas that are already running elsewhere (a
+    Kubernetes StatefulSet; a phase whose engines are all remote is rendered coherently). The phase stops what it
+    started and reaps it, so a next phase's `wait -n` cannot see a stale status, and an engine that ended non-zero
+    before the coordinator's exit is observed fails the phase even where `wait -n` would miss it (bash -c). New
+    `engines_env_value` (the phase's JSON) and, for hosts the script only learns when the job starts,
+    `engines_env_spec`/`engines_env_command`; the readiness probe (`wait_for_replicas`, whose signature gains
+    `pid_var`) is parameterised by the engine's pid variable.
   - `SlurmRunner`: one `sbatch` asks for the maximum nodes and GPUs over the phases; each role's engines run as
     one `srun --overlap` step, pinned to their slice of the allocation's nodes on a multi-node allocation; a
     one-node allocation answers on `localhost`.
@@ -46,8 +49,8 @@ released together.
     engine's image (a phase's engines share one image and, if several, need distinct ports; a phase whose engines
     are all StatefulSet replicas waits in the coordinator's image), the last phase the main container;
     several-replica engines are StatefulSets owned by the Job as before, run-scoped (they live for the whole run)
-    and named `<job>-engine-<role>`. A phase's failure message names its engine's role (`supervise`'s `EngineStep`
-    gains a `role` field).
+    and named `<job>-engine-<role>`. A phase that starts one engine names its role in the failure message
+    (`supervise`'s `EngineStep` gains a `role` field); with several, the message says an engine exited.
   - `JobSpec.serve` and the runners' `JUDGE_URLS_ENV`/`RCP_NDCG_JUDGE_URLS` exports are gone;
     `support.serve.JUDGE_URLS_ENV` remains only for `run resume --judge-urls`, marked for deletion. A run config's
     `serve:` section is refused at submission (the runners no longer render a single serve: engine; the schema and

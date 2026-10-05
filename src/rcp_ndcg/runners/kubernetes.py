@@ -146,8 +146,8 @@ def _engine_image(serve: ServeConfig) -> str:
     """
     if serve.image is None:
         raise ConfigError(
-            "serve: names no image, and a Kubernetes engine runs in one",
-            hint="set serve.image to the engine's image (pin the tag)",
+            "an engine names no image, and a Kubernetes engine runs in one",
+            hint="set the engine's image (pin the tag)",
         )
     return serve.image
 
