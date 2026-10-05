@@ -29,12 +29,25 @@ released together.
   serving recipes for vLLM as data (the `Recipe` schema in `rcp_ndcg_vllm.recipe`, one directory per model under
   `recipes/<id>/` with `recipe.yaml`, an optional `template.jinja` and `reference.py`), the three-stage equivalence
   harness (`rcp_ndcg_vllm.equivalence`, also the CLI `python -m rcp_ndcg_vllm.equivalence`), the engine recorder
-  (`rcp_ndcg_vllm.record`) for the contract fixtures, and the GPU wave runner (`rcp_ndcg_vllm.jobs`) with
-  `bootstrap.sh` and `submit.sh`. Public names: `Recipe`, `ClientConfig`, `EngineSpec`, `Gates`, `ReferenceSpec`,
-  `Resources`, `ServeConfig`, `StatusSpec`, `RecipeError`, `HarnessError`, `load_recipe`, `iter_recipes`,
-  `serve_argv`, `client_config`, `effective_embed_dtype`, `recipe_json_schema`, `default_recipes_root`; the JSON
-  Schema of `Recipe` is exported at `packages/rcp-ndcg-vllm/schema/recipe.schema.json`. The package is deliberately
-  free of vLLM, torch and `rcp-ndcg` imports: it meets the engine and the pipeline over HTTP and the command line.
+  (`rcp_ndcg_vllm.record`) for the contract fixtures, and the GPU wave runner (`rcp_ndcg_vllm.jobs`, with
+  `bootstrap.sh` and `submit.sh` next to it in the package). The recipe schema declares the request shapes as
+  data (`client.template` with `query`/`document`/`pair` shapes, special tokens by name, `anchor` and
+  `anchor_markers`, `query_max_tokens`), explicit budgets (`client.tokenizer` + `client.max_tokens` required,
+  `on_overflow` cut-by-default, `aggregation: max` the only chunk aggregation, `empty_doc`,
+  `blocking` for listwise, `request_shape`/`add_special_tokens`, `instruction` with `system`) and the engine
+  fields `serve.io_processor_plugin`, `serve.mm_processor_kwargs`, `serve.limit_mm_per_prompt`, with
+  `pooler_config` keys validated against the pinned vLLM `PoolerConfig`. There is no engine-side truncation
+  field: the client owns every cut, reserving the fixed template tokens (the anchors) — a recipe whose reference
+  deliberately drops anchors declares `reference.known_deviations: [anchor_drop_over_cap]`, and stage 1's
+  `anchor_check` samples over-length inputs per shape and asserts every anchor survived, with
+  `template_render_check` proving a served template renders to the same ids as the declared shapes. `embed_dtype`
+  defaults to float16 for `multi_vector` (owner decision; the engine's own default is float32, so the client
+  always sends it explicitly). Public names: `Recipe`, `ClientConfig`, `EngineSpec`, `Gates`, `ReferenceSpec`,
+  `Resources`, `ServeConfig`, `StatusSpec`, `TemplateSpec`, `TemplateSegment`, `BlockingSpec`, `RecipeError`,
+  `HarnessError`, `load_recipe`, `iter_recipes`, `serve_argv`, `client_config`, `effective_embed_dtype`,
+  `recipe_json_schema`, `default_recipes_root`, `PINNED_POOLER_CONFIG_FIELDS`; the JSON Schema of `Recipe` is
+  exported at `packages/rcp-ndcg-vllm/schema/recipe.schema.json`. The package is deliberately free of vLLM, torch
+  and `rcp-ndcg` imports: it meets the engine and the pipeline over HTTP and the command line.
 
 ## 0.1.0
 
