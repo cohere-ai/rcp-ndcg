@@ -57,13 +57,22 @@ class FixtureTokenizer:
     omits it and the harness loads ``client.tokenizer`` with transformers.
     """
 
-    def encode(self, text: str) -> list[int]:
-        """Token ids of ``text`` without special tokens."""
+    def encode(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
+        """Token ids of ``text``; the fixture tokenizer adds no specials, so the flag changes nothing."""
+        del add_special_tokens
         return [token_id(word) for word in tokens(text)]
 
     def id_to_token(self, token_id_value: int) -> str:
         """The token string of one id (the fixture prints the id itself; strings are for the report only)."""
         return f"tok:{token_id_value}"
+
+    def decode(self, token_ids: list[int]) -> str:
+        """A stand-in text for a kept prefix of ids: the ids rendered like the report's token strings.
+
+        The fixture only compares ids, so any stable text does; the ids round-trip through encode only for
+        whitespace tokenisations, and the fixture templates cut whole words, so this is exact for them.
+        """
+        return " ".join(self.id_to_token(value) for value in token_ids)
 
 
 def token_vectors(text: str, tag: str, *, noise: float = 0.0) -> np.ndarray:

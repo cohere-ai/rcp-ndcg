@@ -103,7 +103,7 @@ def test_a_broken_reference_fails_only_its_recipe(tmp_path: Path) -> None:
     # A self-contained broken reference: stage 1 passes (ids and tokenizer hook), stage 2 raises.
     (broken_root / "fixture-rerank-pointwise" / "reference.py").write_text(
         "class _Tokenizer:\n"
-        "    def encode(self, text):\n"
+        "    def encode(self, text, add_special_tokens=False):\n"
         "        return [len(word) for word in text.split()]\n\n"
         "    def id_to_token(self, token_id):\n"
         "        return f'tok:{token_id}'\n\n\n"

@@ -1,8 +1,36 @@
 {
   "$defs": {
+    "BlockingSpec": {
+      "additionalProperties": false,
+      "description": "The block loop of a listwise reranker (jina-v3 style): the client renders blocks, the engine scores them.\n\nAttributes:\n    block_size: Documents per block.\n    capacity_formula: How the block budget is computed, as data (e.g. ``\"max_tokens - query - separator\"``).\n    weighting: How block scores combine into document scores (e.g. ``max``).",
+      "properties": {
+        "block_size": {
+          "exclusiveMinimum": 0,
+          "title": "Block Size",
+          "type": "integer"
+        },
+        "capacity_formula": {
+          "minLength": 1,
+          "title": "Capacity Formula",
+          "type": "string"
+        },
+        "weighting": {
+          "minLength": 1,
+          "title": "Weighting",
+          "type": "string"
+        }
+      },
+      "required": [
+        "block_size",
+        "capacity_formula",
+        "weighting"
+      ],
+      "title": "BlockingSpec",
+      "type": "object"
+    },
     "ClientConfig": {
       "additionalProperties": false,
-      "description": "The ``rcp-ndcg`` endpoint fields this recipe implies.\n\nThe fields mirror the design's configuration section for a served encoder or reranker.  Role-dependent fields\nare validated in :class:`Recipe`: ``instruction`` and ``use_activation`` exist only for a reranker,\n``normalize`` only for ``embed`` and ``multi_vector``, ``embed_dtype`` only for ``multi_vector``, and a\n``listwise`` reranker has no ``batch_size`` (the whole candidate set is one request).\n\nAttributes:\n    api: Which route the client speaks: ``openai_embeddings`` (dense), ``vllm_pooling`` (late interaction,\n        ``POST /pooling`` with ``task: token_embed``) or ``rerank`` (Cohere shape).\n    query_prompt: Text prepended to every query client-side (embedding models with a query prefix).\n    doc_prompt: Text prepended to every document client-side (Octen-style ``\"- \"``).\n    instruction: How the client passes a reranker instruction: ``none`` (drop it), ``field`` (the endpoint's\n        ``instruction`` field) or ``fold`` (appended to the query text).\n    default_instruction: The instruction used when the caller passes none; required when ``instruction`` is\n        ``field`` or ``fold``, because those move the instruction's text to the client.\n    tokenizer: The tokenizer the client cuts text with, ``repo@revision`` (40-hex revision).\n    max_tokens: The pair (or text) budget in tokens; the client cuts at token boundaries with the tokenizer.\n    normalize: L2-normalise returned vectors (``embed`` and ``multi_vector`` only).\n    dimensions: Matryoshka cut requested through the endpoint's ``dimensions`` field.\n    embed_dtype: The transfer precision of ``/pooling`` vectors; ``multi_vector`` only, ``float16`` by default\n        (set ``float32`` to opt out; the field must stay unset for other roles).\n    use_activation: Rerank request field for raw-logit rerankers (``false``) or activated scores (``true``);\n        ``None`` sends nothing and the server's default applies.\n    batch_size: Texts per request, where a batch is meaningful; a listwise reranker must leave it unset.",
+      "description": "The ``rcp-ndcg`` endpoint fields this recipe implies.\n\nThe fields mirror the design's configuration section for a served encoder or reranker.  Role-dependent fields\nare validated in :class:`Recipe`: ``instruction`` and ``use_activation`` exist only for a reranker,\n``normalize`` only for ``embed`` and ``multi_vector``, ``embed_dtype`` only for ``multi_vector``, and a\n``listwise`` reranker has no ``batch_size`` (the whole candidate set is one request).  Budgets are explicit:\n``tokenizer`` and ``max_tokens`` are required, and ``on_overflow`` names what happens past the budget (the\nclient owns every cut \u2014 there is no engine-side truncation field, and a recipe that needs one to reproduce its\nreference declares ``reference.known_deviations`` instead).\n\nAttributes:\n    api: Which route the client speaks: ``openai_embeddings`` (dense), ``vllm_pooling`` (late interaction,\n        ``POST /pooling`` with ``task: token_embed``) or ``rerank`` (Cohere shape).\n    request_shape: What the client sends: ``text`` (the rendered prompt string), ``messages`` (chat messages)\n        or ``token_ids`` (the client's own ids).\n    add_special_tokens: Pins the request form's special-token flag; ``None`` sends nothing and the engine's\n        per-form default applies.  ``true`` declares the tokenizer's end token as the shape's declared anchor.\n    template: The request shapes as data: ordered segments, the anchors and the pair's query budget.\n    query_prompt: Text prepended to every query client-side (embedding models with a query prefix).\n    doc_prompt: Text prepended to every document client-side (Octen-style ``\"- \"``).\n    instruction: How the client passes a reranker instruction: ``none`` (drop it), ``field`` (the endpoint's\n        ``instruction`` field), ``fold`` (appended to the query text) or ``system`` (a system message).\n    default_instruction: The instruction used when the caller passes none; required when ``instruction`` is\n        ``field``, ``fold`` or ``system``, because those move the instruction's text to the client.  An empty\n        string is refused: the engine would silently serve its template default where the reference renders\n        the empty instruction.\n    tokenizer: The tokenizer the client cuts text with, ``repo@revision`` (40-hex revision).  Required \u2014\n        there is no implicit tokenizer.\n    max_tokens: The pair (rerank) or text (embed) budget in the declared tokenizer's tokens.  Required \u2014\n        there is no implicit budget.\n    on_overflow: What the client does when content exceeds its share of the budget: ``cut`` (default, at\n        token boundaries, anchors reserved), ``chunk`` (chunks each carrying the full template) or ``fail``.\n    aggregation: How chunk scores collapse into a document score; ``max`` is the only supported\n        aggregation (the cobble/max-over-chunks families; the engine's own chunked processing is a different\n        mechanism and must never be combined with a client one).\n    empty_doc: What an empty document becomes: ``omit_zero`` (filtered, scored 0.0 without a request),\n        ``send`` (the empty string is sent) or ``send_text`` (a literal placeholder text is sent).\n    normalize: L2-normalise returned vectors (``embed`` and ``multi_vector`` only).\n    dimensions: Matryoshka cut requested through the endpoint's ``dimensions`` field.\n    embed_dtype: The transfer precision of ``/pooling`` vectors; ``multi_vector`` only, **float16 by owner\n        decision**.  The engine's own default is float32, so the client always sends this field explicitly\n        (the effective value is emitted in the client config for every multi_vector recipe).\n    use_activation: Rerank request field for raw-logit rerankers (``false``) or activated scores (``true``);\n        ``None`` sends nothing and the server's default applies.\n    batch_size: Texts per request, where a batch is meaningful; a listwise reranker must leave it unset.\n    blocking: The listwise block loop (jina-v3 style), as data; ``listwise`` only.",
       "properties": {
         "api": {
           "enum": [
@@ -12,6 +40,39 @@
           ],
           "title": "Api",
           "type": "string"
+        },
+        "request_shape": {
+          "default": "text",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
+        "add_special_tokens": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Add Special Tokens"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "query_prompt": {
           "default": "",
@@ -29,7 +90,8 @@
               "enum": [
                 "none",
                 "field",
-                "fold"
+                "fold",
+                "system"
               ],
               "type": "string"
             },
@@ -59,9 +121,43 @@
           "type": "string"
         },
         "max_tokens": {
+          "description": "the pair (rerank) or text (embed) budget, in tokenizer tokens",
           "exclusiveMinimum": 0,
           "title": "Max Tokens",
           "type": "integer"
+        },
+        "on_overflow": {
+          "default": "cut",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
+        },
+        "aggregation": {
+          "anyOf": [
+            {
+              "const": "max",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aggregation"
+        },
+        "empty_doc": {
+          "default": "omit_zero",
+          "enum": [
+            "omit_zero",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
         },
         "normalize": {
           "anyOf": [
@@ -128,6 +224,17 @@
           ],
           "default": null,
           "title": "Batch Size"
+        },
+        "blocking": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlockingSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -307,6 +414,15 @@
           "description": "reference module file inside the recipe directory",
           "title": "Entry",
           "type": "string"
+        },
+        "known_deviations": {
+          "description": "deliberate reference deviations the paper code carries (e.g. a whole-prompt right cut that drops tail anchors on over-cap pairs); stage 2 gates only pairs under the cap and reports the rest in a separate, non-gating table",
+          "items": {
+            "const": "anchor_drop_over_cap",
+            "type": "string"
+          },
+          "title": "Known Deviations",
+          "type": "array"
         }
       },
       "required": [
@@ -334,7 +450,7 @@
     },
     "ServeConfig": {
       "additionalProperties": false,
-      "description": "Everything rendered into the ``vllm serve`` argv \u2014 nothing implicit.\n\nSee :func:`serve_argv` for the exact argv.  ``plugin`` is the one field that never reaches the argv: it names\na ``vllm.general_plugins`` pip package that must be installed into the image before the engine starts\n(bootstrap installs the directories a wave's ``plugins.txt`` lists).",
+      "description": "Everything rendered into the ``vllm serve`` argv \u2014 nothing implicit.\n\nSee :func:`serve_argv` for the exact argv.  ``plugin`` and ``io_processor_plugin`` never reach the argv: they\nname packages that must be installed into the image before the engine starts (a ``vllm.general_plugins``\npackage and the checkpoint's IO-processor plugin, respectively; bootstrap installs the directories a wave's\n``plugins.txt`` lists).",
       "properties": {
         "runner": {
           "description": "vLLM --runner; the rcp-ndcg routes need pooling",
@@ -383,7 +499,7 @@
         },
         "pooler_config": {
           "additionalProperties": true,
-          "description": "vLLM --pooler-config, a JSON object sent verbatim (keys sorted)",
+          "description": "vLLM --pooler-config, a JSON object; keys must be PoolerConfig fields at the pinned engine",
           "title": "Pooler Config",
           "type": "object"
         },
@@ -394,7 +510,7 @@
           "type": "boolean"
         },
         "max_model_len": {
-          "description": "vLLM --max-model-len",
+          "description": "vLLM --max-model-len; at least every client budget",
           "exclusiveMinimum": 0,
           "title": "Max Model Len",
           "type": "integer"
@@ -424,6 +540,41 @@
           "default": null,
           "description": "pip spec of a vllm.general_plugins package, installed before the engine starts",
           "title": "Plugin"
+        },
+        "io_processor_plugin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "name of the checkpoint's io-processor plugin, resolved through its config (the sanctioned seam when the stock embed IO-processor's prompt construction cannot express the model)",
+          "title": "Io Processor Plugin"
+        },
+        "mm_processor_kwargs": {
+          "additionalProperties": true,
+          "description": "vLLM --mm-processor-kwargs (min/max_pixels etc.): changes image-token counts, so content",
+          "title": "Mm Processor Kwargs",
+          "type": "object"
+        },
+        "limit_mm_per_prompt": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "vLLM --limit-mm-per-prompt, the per-request media caps",
+          "title": "Limit Mm Per Prompt"
         },
         "extra_args": {
           "description": "further vllm serve flags, verbatim (one argv element per item)",
@@ -494,6 +645,160 @@
         }
       },
       "title": "StatusSpec",
+      "type": "object"
+    },
+    "TemplateSegment": {
+      "additionalProperties": false,
+      "description": "One segment of a declared request shape: exactly one of ``special``, ``text``, ``ids`` or ``content``.\n\n``special`` names an added/special token of the recipe's tokenizer (resolved by the harness by name, never\ntyped literally in the recipe); ``text`` is ordinary template text; ``ids`` is a measured token-id sequence;\n``content`` names the cuttable span (``query`` or ``document``).  Fixed segments (everything but ``content``)\nare reserved in the text budget and re-attached after a cut \u2014 they carry the model's anchors.",
+      "properties": {
+        "special": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "added/special token NAME of the tokenizer",
+          "title": "Special"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ordinary template text (never a special-token literal)",
+          "title": "Text"
+        },
+        "ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "explicit token ids of a measured fixed segment",
+          "title": "Ids"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "enum": [
+                "query",
+                "document"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the cuttable span this segment stands for",
+          "title": "Content"
+        }
+      },
+      "title": "TemplateSegment",
+      "type": "object"
+    },
+    "TemplateSpec": {
+      "additionalProperties": false,
+      "description": "The request shapes as data: ordered segments per shape, the anchors, and the pair's query budget.\n\nShapes are ``query`` and ``document`` (embedding roles) and ``pair`` (rerank, the full scored prompt).  Every\ndeclared shape must contain at least one content span; with ``anchor: last`` every declared shape must end\nwith a fixed segment (or the recipe pins ``add_special_tokens: true``, declaring the tokenizer's end token as\nthe anchor).  ``anchor: marker`` requires ``anchor_markers``.  ``query_max_tokens`` splits the pair budget:\nthe document span gets the rest.",
+      "properties": {
+        "query": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/TemplateSegment"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query"
+        },
+        "document": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/TemplateSegment"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document"
+        },
+        "pair": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/TemplateSegment"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pair"
+        },
+        "anchor": {
+          "enum": [
+            "last",
+            "first",
+            "mean",
+            "marker"
+          ],
+          "title": "Anchor",
+          "type": "string"
+        },
+        "anchor_markers": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Anchor Markers",
+          "type": "array"
+        },
+        "query_max_tokens": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Max Tokens"
+        }
+      },
+      "required": [
+        "anchor"
+      ],
+      "title": "TemplateSpec",
       "type": "object"
     }
   },

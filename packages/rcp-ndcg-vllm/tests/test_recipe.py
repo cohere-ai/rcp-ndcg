@@ -181,7 +181,7 @@ def test_serve_argv_rerank_pointwise_is_golden() -> None:
         "--chat-template",
         str(recipe_dirs_path() / "fixture-rerank-pointwise" / "template.jinja"),
         "--pooler-config",
-        '{"activation": "sigmoid"}',
+        '{"use_activation": true}',
     ]
 
 
@@ -301,7 +301,7 @@ def test_serve_argv_embed_and_multi_vector_are_golden() -> None:
     argv = serve_argv(embed, port=8102, served_model_name="fixture-embed")
     assert argv[:9] == ["vllm", "serve", "fixtures/DenseEmbedder", "--revision", REV, "--served-model-name",
                         "fixture-embed", "--host", "0.0.0.0"]  # fmt: skip
-    assert argv[argv.index("--pooler-config") + 1] == '{"normalize": true}'
+    assert argv[argv.index("--pooler-config") + 1] == '{"seq_pooling_type": "LAST"}'
     assert "--chat-template" not in argv
     multi = load_recipe(recipe_dirs_path() / "fixture-multi-vector")
     argv = serve_argv(multi, port=8103, served_model_name="fixture-multi-vector")

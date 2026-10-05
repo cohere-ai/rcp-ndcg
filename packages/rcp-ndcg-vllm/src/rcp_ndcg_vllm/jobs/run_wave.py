@@ -2,8 +2,8 @@
 
 For every recipe it packs the engine onto ``resources.gpus`` GPUs (``--tensor-parallel-size`` follows the recipe),
 starts one ``vllm serve`` per slot from :func:`~rcp_ndcg_vllm.recipe.serve_argv` with its own
-``CUDA_VISIBLE_DEVICES`` and port (``--port-base`` + slot; default 8100; ``--port-base 0`` gives every engine port 0), waits for
-``GET /v1/models`` within the
+``CUDA_VISIBLE_DEVICES`` and port (``--port-base`` + slot; default 8100; ``--port-base 0`` gives every engine port 0),
+waits for ``GET /v1/models`` within the
 recipe's ``engine.startup_timeout_s`` (an engine that exits early fails that recipe only), then runs smoke,
 equivalence (stages 1 and 2) and — with ``--record`` — the recorder, stops the engine's process group, and moves
 on.  It writes ``<out>/<id>/{serve.log, equivalence.json, EQUIVALENCE.md, status.json}``, a wave summary
@@ -83,7 +83,9 @@ def run_wave(
                 )
                 directory = out / recipe.id
                 directory.mkdir(parents=True, exist_ok=True)
-                (directory / "status.json").write_text(json.dumps(results[recipe.id], indent=2) + "\n", encoding="utf-8")
+                (directory / "status.json").write_text(
+                    json.dumps(results[recipe.id], indent=2) + "\n", encoding="utf-8"
+                )
                 pending.remove(recipe)
                 continue
             if len(used_gpus) + need <= gpus:
@@ -242,7 +244,7 @@ def _lowest_free(used: set[int], count: int) -> list[int]:
 
 
 def _start(recipe: Recipe, gpus: list[int], slot: int, out: Path, vllm_cmd: str | None, port_base: int) -> _EngineRun:
-    """Start one engine on the given GPUs; the port is ``port_base + slot``, or 0 (the engine announces) in test mode."""
+    """Start one engine on the given GPUs; the port is ``port_base + slot``, or 0 (announced) in test mode."""
     port = port_base if port_base == 0 else port_base + slot
     argv = serve_argv(recipe, port=port, served_model_name=recipe.id)
     if vllm_cmd:
@@ -273,9 +275,12 @@ def _start(recipe: Recipe, gpus: list[int], slot: int, out: Path, vllm_cmd: str 
 def _mark_serve_step(run: _EngineRun, state: str) -> None:
     """Record the serve step's final state, keeping any error the failure path recorded."""
     step = run.status["steps"].get("serve") or {}
-    run.status["steps"]["serve"] = {"state": state, "port": run.port, "gpus": run.gpus, **(
-        {"error": step["error"]} if step.get("error") else {}
-    )}
+    run.status["steps"]["serve"] = {
+        "state": state,
+        "port": run.port,
+        "gpus": run.gpus,
+        **({"error": step["error"]} if step.get("error") else {}),
+    }
 
 
 def _finalise(

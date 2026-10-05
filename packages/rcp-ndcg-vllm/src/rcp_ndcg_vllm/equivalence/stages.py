@@ -17,8 +17,76 @@ from ..errors import HarnessError
 from ..recipe import Recipe
 from .client import EngineClient, fold_instruction
 from .gates import ResolvedGates, kendall_tau_b, resolve_gates
-from .prompt import TokenizerAdapter, served_prompt_text
+from .prompt import TokenizerAdapter, anchor_report, served_prompt_text, template_render_check
 from .reference import Reference
+
+__all__ = ["load_pairs", "stage1_prompts", "stage2_scores"]
+
+_SNIPPET = 80
+
+
+def stage1_prompts(
+    recipe: Recipe,
+    pairs: list[dict[str, Any]],
+    reference: Reference,
+    tokenizer: TokenizerAdapter,
+    *,
+    limit: int | None = None,
+    over_length_per_shape: int = 20,
+) -> dict[str, Any]:
+    """Stage 1: the served prompt's token ids must equal the reference's, with zero tolerance.
+
+    Inputs: the recipe, the sampled pairs, the loaded reference and the recipe's tokenizer (a reference-provided
+    ``tokenizer()`` hook or the recipe's ``client.tokenizer``).  In addition to the in-budget pairs, every
+    declared shape is sampled on purpose with over-length inputs (at least ``over_length_per_shape`` per shape,
+    longer than ``client.max_tokens``): every anchor must survive the client's cut, on the served render and on
+    ``reference.render``.  The report carries ``anchor_check`` separately from the token-id mismatches, and
+    ``template_render_check`` when ``serve.chat_template`` is set (the declared shapes must render to the same
+    token ids as the template file).  ``limit`` truncates the in-budget run (a quick CPU check).
+    """
+    checked = 0
+    rows = pairs if limit is None else pairs[:limit]
+    for row_index, row in enumerate(rows):
+        for document_index, document in enumerate(row["documents"]):
+            served_ids = tokenizer.encode(
+                served_prompt_text(recipe, row["query"], document, tokenizer),
+                add_special_tokens=bool(recipe.client.add_special_tokens),
+            )
+            reference_ids = reference.render(row["query"], document, recipe.client.default_instruction)
+            if served_ids != reference_ids:
+                return {
+                    "pairs": len(pairs),
+                    "checked": checked,
+                    "passed": False,
+                    "mismatch": {
+                        "query_index": row_index,
+                        "document_index": document_index,
+                        "query": row["query"],
+                        "document": document[:_SNIPPET],
+                        "served_ids": served_ids,
+                        "reference_ids": reference_ids,
+                        "served_tokens": [tokenizer.id_to_token(i) for i in served_ids],
+                        "reference_tokens": [tokenizer.id_to_token(i) for i in reference_ids],
+                    },
+                    "anchor_check": None,
+                    "template_render_check": None,
+                }
+            checked += 1
+    anchor_check = (
+        stage1_anchor_check(recipe, reference, tokenizer, pairs, over_length_per_shape=over_length_per_shape)
+        if recipe.client.template is not None
+        else {"anchor": None, "passed": True, "failures": [], "note": "no declared shapes to audit"}
+    )
+    template_check = stage1_template_check(recipe, tokenizer, pairs)
+    return {
+        "pairs": len(pairs),
+        "checked": checked,
+        "passed": bool(anchor_check["passed"] and (template_check is None or template_check["passed"])),
+        "mismatch": None,
+        "anchor_check": anchor_check,
+        "template_render_check": template_check,
+    }
+
 
 __all__ = ["load_pairs", "stage1_prompts", "stage2_scores"]
 
@@ -53,45 +121,6 @@ def load_pairs(path: str | Path) -> list[dict[str, Any]]:
     if not pairs:
         raise HarnessError(f"{path} holds no pairs")
     return pairs
-
-
-def stage1_prompts(
-    recipe: Recipe,
-    pairs: list[dict[str, Any]],
-    reference: Reference,
-    tokenizer: TokenizerAdapter,
-    *,
-    limit: int | None = None,
-) -> dict[str, Any]:
-    """Stage 1: compare served and reference token ids for every (query, document) pair; zero tolerance.
-
-    Output: a report dict with ``pairs``, ``checked``, ``passed`` and, on the first mismatch, ``mismatch`` carrying
-    both token-id lists and their token strings.  ``limit`` truncates the run (a quick CPU check).
-    """
-    checked = 0
-    rows = pairs if limit is None else pairs[:limit]
-    for row_index, row in enumerate(rows):
-        for document_index, document in enumerate(row["documents"]):
-            served_ids = tokenizer.encode(served_prompt_text(recipe, row["query"], document))
-            reference_ids = reference.render(row["query"], document, recipe.client.default_instruction)
-            if served_ids != reference_ids:
-                return {
-                    "pairs": len(pairs),
-                    "checked": checked,
-                    "passed": False,
-                    "mismatch": {
-                        "query_index": row_index,
-                        "document_index": document_index,
-                        "query": row["query"],
-                        "document": document[:_SNIPPET],
-                        "served_ids": served_ids,
-                        "reference_ids": reference_ids,
-                        "served_tokens": [tokenizer.id_to_token(i) for i in served_ids],
-                        "reference_tokens": [tokenizer.id_to_token(i) for i in reference_ids],
-                    },
-                }
-            checked += 1
-    return {"pairs": len(pairs), "checked": checked, "passed": True, "mismatch": None}
 
 
 def stage2_scores(
@@ -147,6 +176,17 @@ def _score_bound(gates: ResolvedGates, scale: str, reference_score: float) -> fl
     return gates.cos_max_abs
 
 
+def _pair_over_cap(recipe: Recipe, tokenizer: TokenizerAdapter, query: str, document: str) -> int:
+    """The token length of one pair's UNCUT served prompt (the wire never carries more than the budget)."""
+    served_prompt_text_len = len(
+        tokenizer.encode(
+            served_prompt_text(recipe, _served_query(recipe, query), document, tokenizer),
+            add_special_tokens=bool(recipe.client.add_special_tokens),
+        )
+    )
+    return served_prompt_text_len
+
+
 def _rerank_stage2(
     recipe: Recipe,
     pairs: list[dict[str, Any]],
@@ -154,10 +194,17 @@ def _rerank_stage2(
     client: EngineClient,
     gates: ResolvedGates,
 ) -> dict[str, Any]:
-    """Scores from the served /rerank against the reference, with the scale's gates and the per-query tau."""
+    """Scores from the served /rerank against the reference, with the scale's gates and the per-query tau.
+
+    With ``reference.known_deviations: [anchor_drop_over_cap]``, pairs whose uncut prompt exceeds
+    ``client.max_tokens`` are excluded from the gates (the reference deliberately drops its anchors there, so
+    served and reference may differ by design) and reported in a separate, non-gating ``over_cap`` table.
+    """
     scale = recipe.reference.score_scale
+    deviation = "anchor_drop_over_cap" in recipe.reference.known_deviations
     per_document: list[dict[str, Any]] = []
     per_query: list[dict[str, Any]] = []
+    over_cap: list[dict[str, Any]] = []
     for row_index, row in enumerate(pairs):
         served = client.rerank(
             _served_query(recipe, row["query"]),
@@ -167,32 +214,56 @@ def _rerank_stage2(
         )
         values = reference.score(row["query"], row["documents"], recipe.client.default_instruction)
         for document_index, (served_score, reference_score) in enumerate(zip(served, values, strict=True)):
+            document = row["documents"][document_index]
+            uncut_tokens = _pair_tokens(recipe, row["query"], document, reference)
+            over = uncut_tokens > recipe.client.max_tokens
             delta = abs(served_score - reference_score)
-            bound = _score_bound(gates, scale, reference_score)
-            per_document.append(
+            entry = {
+                "query_index": row_index,
+                "document_index": document_index,
+                "query": row["query"],
+                "document": document[:_SNIPPET],
+                "served": served_score,
+                "reference": reference_score,
+                "abs_delta": delta,
+                "bound": _score_bound(gates, scale, reference_score),
+                "within": bool(delta <= _score_bound(gates, scale, reference_score)),
+                "over_cap": over,
+            }
+            if over and deviation:
+                over_cap.append(entry)
+                continue
+            per_document.append(entry)
+        if not deviation or any(
+            _pair_tokens(recipe, row["query"], document, reference) <= recipe.client.max_tokens
+            for document in row["documents"]
+        ):
+            tau = kendall_tau_b(served, values)
+            per_query.append(
                 {
                     "query_index": row_index,
-                    "document_index": document_index,
                     "query": row["query"],
-                    "document": row["documents"][document_index][:_SNIPPET],
-                    "served": served_score,
-                    "reference": reference_score,
-                    "abs_delta": delta,
-                    "bound": bound,
-                    "within": bool(delta <= bound),
+                    "documents": len(served),
+                    "kendall_tau": tau,
+                    "within": bool(tau is not None and tau >= gates.tau_min),
                 }
             )
-        tau = kendall_tau_b(served, values)
-        per_query.append(
-            {
-                "query_index": row_index,
-                "query": row["query"],
-                "documents": len(served),
-                "kendall_tau": tau,
-                "within": bool(tau is not None and tau >= gates.tau_min),
-            }
-        )
-    return _rerank_summary(per_document, per_query, gates, scale)
+    summary = _rerank_summary(per_document, per_query, gates, scale)
+    summary["over_cap"] = {
+        "known_deviation": deviation,
+        "n_pairs": len(over_cap),
+        "gating": False,
+        "pairs": over_cap,
+        "passed": True,
+        "referent": "pairs whose uncut prompt exceeds client.max_tokens; served and reference may differ by "
+        "design when reference.known_deviations declares anchor_drop_over_cap",
+    }
+    return summary
+
+
+def _pair_tokens(recipe: Recipe, query: str, document: str, reference: Reference) -> int:
+    """The uncut pair's token count, measured from the reference's own render."""
+    return len(reference.render(_served_query(recipe, query), document, recipe.client.default_instruction))
 
 
 def _rerank_summary(
@@ -392,3 +463,81 @@ def _vector_summary(
         "gates": gate_rows,
         "passed": bool(all(row["passed"] for row in gate_rows) and all(entry["within"] for entry in per_vector)),
     }
+
+
+def _shape_names(recipe: Recipe) -> list[str]:
+    """The recipe's declared shapes, in the fixed order (query, document, pair)."""
+    template = recipe.client.template
+    assert template is not None  # anchor checking only runs for templated recipes
+    return [name for name in ("query", "document", "pair") if getattr(template, name) is not None]
+
+
+def _over_length_text(seed: str, max_tokens: int, tokenizer: TokenizerAdapter, index: int) -> str:
+    """One over-length sample: the seed text repeated deterministically past the cap."""
+    unit = f"{seed} part {index}"
+    one = len(tokenizer.encode(unit))
+    repetitions = max(max_tokens // max(one, 1) + 2, 2)
+    return " ".join([unit] * repetitions)
+
+
+def stage1_anchor_check(
+    recipe: Recipe,
+    reference: Reference,
+    tokenizer: TokenizerAdapter,
+    pairs: list[dict[str, Any]],
+    *,
+    over_length_per_shape: int = 20,
+) -> dict[str, Any]:
+    """The anchor audit: over-length inputs must keep every anchor after the client's cut.
+
+    For every declared shape, ``over_length_per_shape`` inputs are padded beyond ``client.max_tokens``; the
+    assembled render and ``reference.render(...)`` are both asserted to carry every anchor — the tail (or head)
+    fixed segments plus the post-processor end token, or the declared markers.  The result is reported
+    separately from the token-id mismatches in ``equivalence.json``.
+    """
+    seed = pairs[0] if pairs else {"query": "anchor check", "documents": ["anchor check document"]}
+    failures: list[dict[str, Any]] = []
+    for shape in _shape_names(recipe):
+        for index in range(max(over_length_per_shape, 1)):
+            document = _over_length_text(seed["documents"][0], recipe.client.max_tokens, tokenizer, index)
+            served_ids = tokenizer.encode(
+                served_prompt_text(recipe, seed["query"], document, tokenizer),
+                add_special_tokens=bool(recipe.client.add_special_tokens),
+            )
+            served_report = anchor_report(recipe, tokenizer, shape, served_ids)
+            if not served_report["passed"]:
+                failures.append({"side": "served", "shape": shape, "index": index, **served_report})
+            reference_ids = reference.render(seed["query"], document, recipe.client.default_instruction)
+            reference_report = anchor_report(recipe, tokenizer, shape, reference_ids)
+            if not reference_report["passed"]:
+                failures.append(
+                    {
+                        "side": "reference",
+                        "shape": shape,
+                        "index": index,
+                        "passed": False,
+                        "failures": reference_report["failures"],
+                        "note": "reference.render lost an anchor on an over-cap pair",
+                    }
+                )
+    return {
+        "anchor": recipe.client.template.anchor if recipe.client.template else None,
+        "over_length_per_shape": over_length_per_shape,
+        "shapes": _shape_names(recipe),
+        "passed": not failures,
+        "failures": failures,
+    }
+
+
+def stage1_template_check(
+    recipe: Recipe, tokenizer: TokenizerAdapter, pairs: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    """When ``serve.chat_template`` and ``client.template`` are both set: the shapes must match the file.
+
+    A template file without a declared shape block has nothing to prove the shapes against, so the check is
+    skipped (reported ``None``); the token-id equality against the reference still applies.
+    """
+    if recipe.serve.chat_template is None or recipe.client.template is None or not pairs:
+        return None
+    row = pairs[0]
+    return template_render_check(recipe, tokenizer, row["query"], row["documents"][0])

@@ -15,7 +15,7 @@ serve:
     classifier_from_token: ["no", "yes"]
     is_original_fixture_reranker: true
   chat_template: template.jinja
-  pooler_config: {activation: sigmoid}
+  pooler_config: {use_activation: true}
   trust_remote_code: false
   max_model_len: 512
   dtype: bfloat16

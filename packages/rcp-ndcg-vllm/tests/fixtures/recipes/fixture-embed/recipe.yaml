@@ -11,7 +11,7 @@ serve:
   convert: null
   hf_overrides: {}
   chat_template: null
-  pooler_config: {normalize: true}
+  pooler_config: {seq_pooling_type: LAST}
   trust_remote_code: false
   max_model_len: 512
   dtype: bfloat16
