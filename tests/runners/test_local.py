@@ -134,7 +134,7 @@ def test_a_phase_that_starts_an_engine_is_refused() -> None:
         JobPhase(engines={"encoder": engine}, argv=("echo", "first")),
         JobPhase(argv=("echo", "rest")),
     )
-    with pytest.raises(ConfigError, match="role\(s\) encoder") as caught:
+    with pytest.raises(ConfigError, match=r"role\(s\) encoder") as caught:
         LocalRunner().render([JobSpec(name="j", argv=("echo", "all"), phases=phases)])
     assert "--engine" in (caught.value.hint or "")
 
