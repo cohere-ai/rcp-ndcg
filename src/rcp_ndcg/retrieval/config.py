@@ -178,6 +178,9 @@ class OpenAICompatibleEncoder(OpenAICompatible):
     token through vLLM's ``/pooling`` route (late interaction).
 
     Attributes:
+        base_url: The endpoint; ``None`` only when the run's job starts the encoder's engine (``serve.encoder``):
+            the engine's URLs then reach the step at runtime, through ``RCP_NDCG_ENGINES``, and setting both is
+            refused rather than silently overridden.
         pooling: ``token`` for late interaction; ``None`` (the server's pooler) for one vector per text.
         query_prompt: Text prepended to every query.
         doc_prompt: Text prepended to every document.
@@ -186,7 +189,7 @@ class OpenAICompatibleEncoder(OpenAICompatible):
     IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = dict(_ENCODER_ROLES)
     _CONCURRENT: ClassVar[bool] = False
 
-    base_url: str = Field(min_length=1)  # type: ignore[assignment]
+    base_url: str | None = None  # type: ignore[assignment]
     pooling: Literal["token"] | None = None
     query_prompt: str | None = None
     doc_prompt: str | None = None
@@ -200,9 +203,14 @@ EncoderConfig = Annotated[
 
 
 class OpenAICompatibleReranker(OpenAICompatible):
-    """A served ``/rerank`` endpoint (``vllm serve <model> --runner pooling``); ``base_url`` is the server root."""
+    """A served ``/rerank`` endpoint (``vllm serve <model> --runner pooling``); ``base_url`` is the server root.
 
-    base_url: str = Field(min_length=1)  # type: ignore[assignment]
+    ``base_url`` is ``None`` only when the run's job starts the reranker's engine (``serve.reranker``): the
+    engine's URL then reaches the step at runtime, through ``RCP_NDCG_ENGINES``, and setting both is refused
+    rather than silently overridden.
+    """
+
+    base_url: str | None = None  # type: ignore[assignment]
 
     @model_validator(mode="after")
     def _one_query_per_request(self) -> OpenAICompatibleReranker:

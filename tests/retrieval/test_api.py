@@ -86,7 +86,6 @@ def test_the_retriever_config_is_a_union_discriminated_on_kind_and_provider() ->
         ({"provider": "local", "model": "m", "pooling": "mean"}, "last token"),
         ({"provider": "cohere", "model": "m", "pooling": "token"}, "pooling"),
         ({"provider": "local", "model": "m", "pooling": "last", "query_prompt": "q: "}, "no query prompt"),
-        ({"provider": "openai_compatible", "model": "m"}, "base_url"),
         ({"provider": "openai_compatible", "model": "m", "base_url": "http://h", "concurrency": 4}, "one at a time"),
         ({"provider": "gemini", "model": "m", "concurrency": 4}, "one at a time"),
     ],
@@ -408,7 +407,6 @@ def test_the_paper_cohere_configs_read_either_key_variable(monkeypatch: pytest.M
     ("config", "match"),
     [
         ({"provider": "openai_compatible", "model": "m", "base_url": "http://h", "batch_size": 4}, "batch_size"),
-        ({"provider": "openai_compatible", "model": "m"}, "base_url"),
         ({"provider": "cohere", "model": "rerank-v4.0-pro", "concurrency": 4}, "concurrency"),
         ({"provider": "local", "model": "m", "base_url": "http://h"}, "base_url"),
         ({"provider": "gemini", "model": "m"}, "provider"),
@@ -417,6 +415,16 @@ def test_the_paper_cohere_configs_read_either_key_variable(monkeypatch: pytest.M
 def test_a_field_the_provider_does_not_use_is_refused(config: dict, match: str) -> None:
     with pytest.raises(ValidationError, match=match):
         _RERANKER.validate_python(config)
+
+
+def test_a_served_model_without_a_url_is_refused_where_its_client_is_built() -> None:
+    """``base_url`` is omitted only when the run's job starts the model's engine (``serve.``); building the
+    retrieval client without one is refused, never silently pointed at a vendor's public API."""
+    from rcp_ndcg.retrieval import _api as retrieval_api
+    from rcp_ndcg.retrieval.config import OpenAICompatibleEncoder
+
+    with pytest.raises(ConfigError, match="has no base_url"):
+        retrieval_api._encoder(OpenAICompatibleEncoder(model="m"))
 
 
 @pytest.mark.parametrize("model", ["jinaai/jina-reranker-v3", "zeroentropy/zerank-2"])
