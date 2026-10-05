@@ -640,7 +640,23 @@
           }
         },
         "frozen": true,
-        "kind": "pydantic_model"
+        "kind": "pydantic_model",
+        "members": {
+          "identity_extra": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, Any]"
+              }
+            ]
+          }
+        }
       },
       "EvalReport": {
         "bases": [
@@ -8158,23 +8174,7 @@
           }
         },
         "frozen": true,
-        "kind": "pydantic_model",
-        "members": {
-          "identity_extra": {
-            "kind": "method",
-            "signature": [
-              {
-                "annotation": null,
-                "default": "<required>",
-                "kind": "positional_or_keyword",
-                "name": "self"
-              },
-              {
-                "returns": "dict[str, str]"
-              }
-            ]
-          }
-        }
+        "kind": "pydantic_model"
       },
       "Embeddings": {
         "bases": [],
@@ -8414,7 +8414,23 @@
           }
         },
         "frozen": true,
-        "kind": "pydantic_model"
+        "kind": "pydantic_model",
+        "members": {
+          "identity_extra": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, Any]"
+              }
+            ]
+          }
+        }
       },
       "EngineInfo": {
         "bases": [
@@ -8996,23 +9012,7 @@
           }
         },
         "frozen": true,
-        "kind": "pydantic_model",
-        "members": {
-          "tokenizer_identity": {
-            "kind": "method",
-            "signature": [
-              {
-                "annotation": null,
-                "default": "<required>",
-                "kind": "positional_or_keyword",
-                "name": "self"
-              },
-              {
-                "returns": "dict[str, str] | None"
-              }
-            ]
-          }
-        }
+        "kind": "pydantic_model"
       },
       "RerankRequest": {
         "bases": [],
@@ -9324,6 +9324,12 @@
             "name": "name"
           },
           {
+            "annotation": "AdapterRole",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "role"
+          },
+          {
             "returns": "type[Adapter[Any, Any]]"
           }
         ]
@@ -9332,6 +9338,12 @@
         "defined_in": "rcp_ndcg.inference.adapters.base",
         "kind": "function",
         "signature": [
+          {
+            "annotation": "AdapterRole | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "role"
+          },
           {
             "returns": "tuple[str, ...]"
           }

@@ -15,7 +15,9 @@ answers a bare list of `{"index", "score"}` rows. One adapter family builds the 
 answer shapes, realigning every score to the request's documents by `index` -- the answers come back ranked,
 so reading them positionally would silently permute the association between scores and documents.
 
-A config's `api` field selects the wire by its registered name:
+A config's `api` field selects the wire by its registered name within the rerank role's registry (the same
+registry the other roles use, scoped by role: the embed role registers its own `cohere` and `voyage`, and one
+role's lookup never reaches another role's adapters):
 
 | `api` | Wire | Cap per request | Notes |
 |---|---|---|---|
@@ -64,8 +66,11 @@ by the engine.
 
 A rerank endpoint keys on its `api`, `model` and `revision` (content); where and how fast it is asked
 (`base_url`, `concurrency`, timeouts, `batch_size`) never enters an identity. `max_tokens` is content, and
-with it the tokenizer's SHA-256: `RerankEndpoint.tokenizer_identity()` returns `{"sha256": ...}` of the
+with it the tokenizer's SHA-256: `RerankEndpoint.identity_extra()` returns `{"tokenizer_sha256": ...}` of the
 named `tokenizer.json` (the name itself stays runtime), so two passes whose tokenizers differ never pool.
+Every role config with a `tokenizer` -- the judge's, the embedding, pooling and rerank configs -- carries the
+digest under this one key (`Endpoint.identity_extra()`), computed by the one helper in
+`rcp_ndcg.data.tokenizer`; the judge's own identity payload keeps its existing keys and is unchanged.
 
 ```python
 from rcp_ndcg.inference import RerankClient, RerankEndpoint

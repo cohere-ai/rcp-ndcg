@@ -290,6 +290,47 @@ class TestRoleConfigs:
             RerankEndpoint(base_url="http://a:8000/v1", model="m", surprise=1)  # type: ignore[call-arg]
 
 
+class TestIdentityExtra:
+    """One tokenizer-identity rule for every role config (RFC-0001 section 7.4).
+
+    ``identity_extra()`` carries the SHA-256 of the config's ``tokenizer.json`` under the one key
+    ``tokenizer_sha256`` -- never the tokenizer's name (RUNTIME) -- and the judge's own identity payload
+    never moves: its family carries the digest under its own keys, which stay as they are.
+    """
+
+    @pytest.mark.parametrize(
+        "config_cls",
+        [EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint, JudgeConfig],
+        ids=lambda cls: cls.__name__,
+    )
+    def test_identity_extra_is_the_tokenizers_sha256_under_one_key(
+        self, config_cls: type[Endpoint], tmp_path: Any
+    ) -> None:
+        import hashlib
+
+        from tests._tokenizers import save, word_tokenizer
+
+        directory = tmp_path / "tok"
+        directory.mkdir()
+        file = save(word_tokenizer(), directory)
+        named = config_cls(base_url="http://a:8000/v1", model="m", tokenizer=str(file))
+        assert named.identity_extra() == {"tokenizer_sha256": hashlib.sha256(file.read_bytes()).hexdigest()}
+        assert set(named.identity_extra()) == {"tokenizer_sha256"}
+        assert config_cls(base_url="http://a:8000/v1", model="m").identity_extra() == {}
+
+    def test_the_judge_identity_payload_does_not_move(self, tmp_path: Any) -> None:
+        """The judgement family's keys must not move: ``identity_extra()`` is not part of ``identity()``."""
+        from tests._tokenizers import save, word_tokenizer
+
+        directory = tmp_path / "tok"
+        directory.mkdir()
+        file = save(word_tokenizer(), directory)
+        config = JudgeConfig(base_url="http://a:8000/v1", model="m", tokenizer=str(file))
+        assert config.identity_extra() != {}
+        assert "tokenizer_sha256" not in config.identity()
+        assert "tokenizer" not in identity_payload(config)
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # The adapter seam (C2)
 # ---------------------------------------------------------------------------------------------------------------
@@ -311,6 +352,12 @@ class _ProbeAdapter:
         return None
 
 
+class _EmbedProbe(_ProbeAdapter):
+    """The same adapter name in the embed role: the registry keys on ``(role, name)``."""
+
+    role: ClassVar[AdapterRole] = "embed"
+
+
 @pytest.fixture(autouse=True)
 def _clean_registry() -> Iterator[None]:
     """Run each registry test against an empty registry, restoring whatever was there."""
@@ -325,16 +372,35 @@ def _clean_registry() -> Iterator[None]:
 class TestAdapterRegistry:
     def test_an_adapter_is_registered_under_its_name_and_returned_by_it(self) -> None:
         register_adapter(_ProbeAdapter)
-        assert get_adapter("probe_adapter") is _ProbeAdapter
-        assert "probe_adapter" in known_adapters()
+        assert get_adapter("probe_adapter", role="judge") is _ProbeAdapter
+        assert "probe_adapter" in known_adapters("judge")
+
+    def test_the_registry_is_scoped_by_role(self) -> None:
+        """One name in two roles resolves per role: ``api: cohere`` names a different adapter for embed and
+        for rerank, and every lookup and hint stays inside its role's namespace."""
+        register_adapter(_ProbeAdapter)
+        register_adapter(_EmbedProbe)
+        assert get_adapter("probe_adapter", role="judge") is _ProbeAdapter
+        assert get_adapter("probe_adapter", role="embed") is _EmbedProbe
+        assert known_adapters("judge") == ("probe_adapter",)
+        assert known_adapters("embed") == ("probe_adapter",)
+
+    def test_known_adapters_without_a_role_lists_every_name_once(self) -> None:
+        register_adapter(_ProbeAdapter)
+        register_adapter(_EmbedProbe)
+        assert known_adapters() == ("probe_adapter",)
 
     def test_register_adapter_returns_its_class_so_it_composes(self) -> None:
         assert register_adapter(_ProbeAdapter) is _ProbeAdapter
 
-    def test_a_duplicate_name_is_refused(self) -> None:
+    def test_a_duplicate_name_in_one_role_is_refused(self) -> None:
         register_adapter(_ProbeAdapter)
         with pytest.raises(ConfigError, match="already registered"):
             register_adapter(_ProbeAdapter)
+
+    def test_the_same_name_in_two_roles_is_no_duplicate(self) -> None:
+        register_adapter(_ProbeAdapter)
+        register_adapter(_EmbedProbe)  # must not raise: the roles' namespaces are separate
 
     def test_an_adapter_without_a_name_or_a_role_is_refused(self) -> None:
         class _Nameless(_ProbeAdapter):
@@ -349,20 +415,75 @@ class TestAdapterRegistry:
         with pytest.raises(ConfigError, match="role"):
             register_adapter(_Roleless)
 
-    def test_an_unknown_adapter_names_the_known_ones(self) -> None:
+    def test_a_wrong_role_lookup_fails_with_that_role_s_names(self) -> None:
+        """A name registered in another role is still unknown here, and the hint names where it lives."""
+        register_adapter(_ProbeAdapter)
+        register_adapter(_EmbedProbe)
+        with pytest.raises(ConfigError) as caught:
+            get_adapter("probe_adapter", role="rerank")
+        assert caught.value.details["known"] == []
+        assert "rerank" in str(caught.value)
+        assert "judge" in (caught.value.hint or "") and "embed" in (caught.value.hint or "")
+
+    def test_an_unknown_adapter_names_the_known_ones_of_its_role(self) -> None:
         register_adapter(_ProbeAdapter)
         with pytest.raises(ConfigError) as caught:
-            get_adapter("nope")
+            get_adapter("nope", role="judge")
         assert caught.value.details["known"] == ["probe_adapter"]
         assert "probe_adapter" in (caught.value.hint or "")
+
+    def test_the_role_is_a_required_keyword(self) -> None:
+        register_adapter(_ProbeAdapter)
+        with pytest.raises(TypeError):
+            get_adapter("probe_adapter")  # type: ignore[call-arg]
+
+    def test_an_unknown_role_is_refused(self) -> None:
+        with pytest.raises(ConfigError, match="role"):
+            get_adapter("probe_adapter", role="embezzle")  # type: ignore[arg-type]
 
     def test_the_entry_point_group_name_is_the_charter_s(self) -> None:
         assert ADAPTER_ENTRY_POINTS == "rcp_ndcg.adapters"
 
     def test_the_protocol_is_satisfied_by_an_ordinary_class(self) -> None:
         register_adapter(_ProbeAdapter)
-        adapter = get_adapter("probe_adapter")()
+        adapter = get_adapter("probe_adapter", role="judge")()
         assert isinstance(adapter, Adapter)
+
+
+class TestAdapterEntryPoints:
+    """The ``rcp_ndcg.adapters`` group names its entries ``<role>.<name>``; a disagreeing prefix is refused."""
+
+    @staticmethod
+    def _entry(name: str, value: str) -> Any:
+        from importlib.metadata import EntryPoint
+
+        return EntryPoint(name=name, value=value, group=ADAPTER_ENTRY_POINTS)
+
+    def _install(self, monkeypatch: pytest.MonkeyPatch, *entries: Any) -> None:
+        monkeypatch.setattr(_adapters.base, "entry_points", lambda *, group: list(entries))
+        monkeypatch.setattr(_adapters.base, "_PLUGINS", None)
+
+    def test_an_entry_point_registers_under_its_class_role_and_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._install(monkeypatch, self._entry("embed.probe_adapter", "tests.inference.test_types:_EmbedProbe"))
+        assert get_adapter("probe_adapter", role="embed") is _EmbedProbe
+        assert known_adapters("embed") == ("probe_adapter",)
+
+    def test_an_entry_point_whose_role_disagrees_with_its_prefix_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._install(monkeypatch, self._entry("judge.probe_adapter", "tests.inference.test_types:_EmbedProbe"))
+        with pytest.raises(ConfigError, match="judge.*embed"):
+            get_adapter("probe_adapter", role="embed")
+
+    def test_an_entry_point_without_a_role_prefix_is_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._install(monkeypatch, self._entry("probe_adapter", "tests.inference.test_types:_EmbedProbe"))
+        with pytest.raises(ConfigError, match="<role>.<name>"):
+            known_adapters()
+
+    def test_a_broken_entry_point_import_is_an_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._install(monkeypatch, self._entry("embed.probe_adapter", "tests.inference.test_types:_Missing"))
+        with pytest.raises(ConfigError, match="failed to import"):
+            known_adapters()
 
 
 # ---------------------------------------------------------------------------------------------------------------

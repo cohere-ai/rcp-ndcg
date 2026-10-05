@@ -9,7 +9,7 @@ computed, and do.
 from __future__ import annotations
 
 import re
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -92,6 +92,33 @@ class Endpoint(BaseModel):
                     "(a letter or underscore, then letters, digits or underscores)"
                 )
         return value
+
+    def identity_extra(self) -> dict[str, Any]:
+        """The identity fields beyond :func:`rcp_ndcg.support.identity.identity_payload`; default: none.
+
+        A role config that declares a ``tokenizer`` field -- the judge's, and the embedding, pooling and
+        rerank configs -- carries the tokenizer's content identity here: ``{"tokenizer_sha256": <sha>}``,
+        the SHA-256 of its ``tokenizer.json``, through the one helper
+        :func:`rcp_ndcg.data.tokenizer.tokenizer_identity`. What cuts (or budgets) the text enters every
+        identity by that digest, never by how it is named -- the name is RUNTIME and is only recorded beside
+        the identity as a source. A step identity (``runs/pipeline.py``) merges this into the config's
+        ``identity_payload``; the judge's own identity payload keeps its existing keys and is unchanged by
+        this method.
+
+        Returns:
+            ``{"tokenizer_sha256": <sha>}`` when the config declares and names a tokenizer, else ``{}``.
+
+        Raises:
+            DependencyError: ``tokenizers`` (or, for a Hub id, ``huggingface_hub``) is not installed.
+            MissingInputError: The local file, or the repository's ``tokenizer.json`` at the named revision,
+                does not exist; an unknown repository raises the Hub client's own error.
+        """
+        tokenizer = getattr(self, "tokenizer", None)
+        if tokenizer is None:
+            return {}
+        from rcp_ndcg.data.tokenizer import tokenizer_identity
+
+        return tokenizer_identity(tokenizer)
 
 
 __all__ = ["Endpoint"]

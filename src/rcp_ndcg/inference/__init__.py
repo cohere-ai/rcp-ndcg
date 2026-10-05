@@ -11,10 +11,11 @@ paths send their requests through one set of names:
   encoders' :class:`EncodeRole`, :class:`EmbedRequest`, :class:`PoolRequest`, :class:`Embeddings` and
   :func:`l2_normalize`; the rerankers' :class:`RerankRequest` and :class:`RerankResult`)
   (:mod:`rcp_ndcg.inference.types`);
-* :class:`Adapter` and its registry -- the one seam a third party implements (C2), selected from a config with
-  ``api: <name>`` (:mod:`rcp_ndcg.inference.adapters.base`); the shipped rerank adapters -- the served
-  Cohere-shaped wire and its hosted ``cohere`` and ``voyage`` profiles -- register at import
-  (:mod:`rcp_ndcg.inference.adapters.rerank`);
+* :class:`Adapter` and its role-scoped registry -- the one seam a third party implements (C2), selected from a
+  config with ``api: <name>`` within the config's role (:mod:`rcp_ndcg.inference.adapters.base`); the shipped
+  embed adapters (`openai_embeddings` and the hosted `cohere`, `voyage`, `gemini` profiles) and rerank adapters
+  (the served Cohere-shaped wire and its hosted `cohere` and `voyage` profiles) register at import
+  (:mod:`rcp_ndcg.inference.adapters.embeddings`, :mod:`rcp_ndcg.inference.adapters.rerank`);
 * :class:`Sender` and :class:`Transport` -- the transport's frozen interface; behaviour arrives with the transport work
   (:mod:`rcp_ndcg.inference.transport`);
 * the role clients -- the content decisions above the wire: :class:`EmbeddingClient` (dense embeddings;

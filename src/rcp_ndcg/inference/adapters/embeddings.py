@@ -4,11 +4,12 @@ of the same role.
 Every adapter here speaks one role: an :class:`~rcp_ndcg.inference.types.EmbedRequest` in (the items, which side
 of the retrieval pair they are, the ``dimensions`` cut), :class:`~rcp_ndcg.inference.types.Embeddings` out
 (one float32 vector per item, raw -- the client normalises). The adapters are stateless and registered under
-their ``name``; a config selects one with ``api: <name>``:
+their ``(role, name)``; a config of the embed role selects one with ``api: <name>``:
 
 * ``openai_embeddings`` -- the shape every self-hosted engine (vLLM, SGLang, TEI, Infinity) and the OpenAI API
   serve, with ``dimensions`` when the config sets one and ``encoding_format: float``;
-* ``cohere_embed``, ``voyage_embed``, ``gemini_embed`` -- the hosted APIs as profiles: their request and
+* ``cohere``, ``voyage``, ``gemini`` -- the hosted APIs as profiles (the same names the rerank role registers
+  for its own wire; the registry is scoped by role, so the roles' namespaces are separate): their request and
   response shapes, their ``input_type`` / ``taskType`` mapping and their published batch caps, with the
   profile's public base URL used when the config sets no ``base_url``.
 
@@ -350,7 +351,7 @@ class CohereEmbeddings(_EmbedAdapter):
     from ``embeddings.float`` in request order.
     """
 
-    name: ClassVar[str] = "cohere_embed"
+    name: ClassVar[str] = "cohere"
 
     MAX_BATCH: ClassVar[int | None] = 96
     DEFAULT_BASE_URL: ClassVar[str | None] = "https://api.cohere.com/v2"
@@ -403,7 +404,7 @@ class VoyageEmbeddings(_EmbedAdapter):
     ``data[].index`` order (float lists or base64 float32).
     """
 
-    name: ClassVar[str] = "voyage_embed"
+    name: ClassVar[str] = "voyage"
 
     MAX_BATCH: ClassVar[int | None] = 128
     DEFAULT_BASE_URL: ClassVar[str | None] = "https://api.voyageai.com/v1"
@@ -434,7 +435,7 @@ class GeminiEmbeddings(_EmbedAdapter):
     from ``embeddings[].values`` in request order.
     """
 
-    name: ClassVar[str] = "gemini_embed"
+    name: ClassVar[str] = "gemini"
 
     MAX_BATCH: ClassVar[int | None] = 100
     DEFAULT_BASE_URL: ClassVar[str | None] = "https://generativelanguage.googleapis.com/v1beta"

@@ -25,6 +25,25 @@ released together.
 
 ### Public surface
 
+- **The adapter registry is scoped by role** (one namespace per role): `register_adapter(cls)` keys
+  on `(cls.role, cls.name)`, `get_adapter(name, *, role)` resolves a config's `api` within its role's names,
+  and `known_adapters(role=None)` lists one role's names (or every registered name once without a role). The
+  same name registers once per role, so the embed role's `cohere`, `voyage` and the rerank role's `cohere`,
+  `voyage` coexist; a wrong-role lookup fails with a hint listing that role's names (and, when the name is
+  registered in another role, says so). The embedding profiles take the roles' plain names: `cohere`,
+  `voyage`, `gemini` for the embed role. The
+  `rcp_ndcg.adapters` entry-point group names its entries `<role>.<name>` (e.g. `embed.bedrock`); an entry
+  whose class role disagrees with its prefix is refused with a `ConfigError`, as is an entry without a role
+  prefix. The role clients pass their role to the registry (an unknown or wrong-role `api` is refused there),
+  and each role config's default `api` is unchanged (`openai_embeddings`, `rerank`, `vllm_pooling`).
+- **One tokenizer-identity method for every role config**: `Endpoint.identity_extra()` (default `{}`) returns
+  `{"tokenizer_sha256": <sha>}` — the SHA-256 of the config's `tokenizer.json` through the one helper
+  `rcp_ndcg.data.tokenizer.tokenizer_identity` (over the judge's existing `load_tokenizer`; no second hashing
+  function) — for every role config that declares a `tokenizer` (the judge's, the embedding, pooling and
+  rerank configs). `RerankEndpoint.tokenizer_identity()` is removed; the judge's identity payload keeps its
+  existing keys (the judgement family's tokenizer digest and the preprocessing record's `sha256`) and is
+  byte-identical for every shipped judge preset, so no judgement family re-keys.
+
 - `JobSpec` gains `phases` (a tuple of `JobPhase`: the engines one phase starts, by role, and the command it runs
   while they serve); a job sets `phases` or `serve`, not both.
 - **`rcp_ndcg.inference` gains the embedding wire adapters and the embedding role client** (dense embeddings over
@@ -32,10 +51,12 @@ released together.
   - `inference.adapters.embeddings`: four registered adapters of role `embed` — `openai_embeddings` (OpenAI
     `POST {base_url}/embeddings`: `model`, `input`, `encoding_format: "float"`, `dimensions` only when set;
     reply read from `data[].embedding` in `data[].index` order, float lists or base64 float32) and the hosted
-    profiles `cohere_embed` (v2 `POST {base_url}/embed`, `input_type` `search_query`/`search_document`, reply
-    `embeddings.float`, cap 96), `voyage_embed` (the OpenAI body with `input_type` `query`/`document`, cap 128)
-    and `gemini_embed` (`POST {base_url}/models/{model}:batchEmbedContents`, `taskType`
+    profiles `cohere` (v2 `POST {base_url}/embed`, `input_type` `search_query`/`search_document`, reply
+    `embeddings.float`, cap 96), `voyage` (the OpenAI body with `input_type` `query`/`document`, cap 128)
+    and `gemini` (`POST {base_url}/models/{model}:batchEmbedContents`, `taskType`
     `RETRIEVAL_QUERY`/`RETRIEVAL_DOCUMENT`, key in `x-goog-api-key`, reply `embeddings[].values`, cap 100).
+    Names are scoped by role: the rerank role registers its own `cohere` and `voyage`, and an embed config's
+    `api` resolves only among the embed role's names.
     Each profile carries its public base URL and key variables for when the config sets no `base_url`, and
     takes no `dimensions` parameter (its API fixes the output dimension): a config that sets one is refused at
     construction and the adapter refuses such a request, never silently ignored. Media raises
@@ -93,11 +114,11 @@ released together.
     set makes no request. Preparation runs through one seam (`RerankClient._prepare`); until the text-budget
     mechanism is wired the client cuts nothing and refuses a config that sets `max_tokens` with a
     `ConfigError`.
-  - `RerankEndpoint.tokenizer_identity()`: `{"sha256": ...}` of the named tokenizer's `tokenizer.json`, the
+  - `Endpoint.identity_extra()`: `{"tokenizer_sha256": ...}` of the named tokenizer's `tokenizer.json`, the
     content identity a rerank step records (the name stays runtime, as the judge's already works).
   - The facade `rcp_ndcg.inference` additionally exports `RerankClient`, `RerankAdapter`,
     `CohereRerankAdapter`, `VoyageRerankAdapter` (and `rcp_ndcg.inference.adapters` re-exports them with
-    `RerankWire`); `known_adapters()` now lists `cohere`, `rerank` and `voyage`.
+    `RerankWire`); `known_adapters("rerank")` now lists `cohere`, `rerank` and `voyage`.
 - `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
   the step identities (its `IDENTITY_ROLES` declarations); no property changed.
 - **New public module `rcp_ndcg.inference`**: the inference layer between `rcp_ndcg.data` and

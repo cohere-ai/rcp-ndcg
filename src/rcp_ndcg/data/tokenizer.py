@@ -72,6 +72,28 @@ class TextTokenizer:
         return {"name": self.name, "sha256": self.sha256}
 
 
+def tokenizer_identity(spec: str) -> dict[str, str]:
+    """The tokenizer's content identity as every role config carries it in ``identity_extra()``.
+
+    The one tokenizer-identity helper: the SHA-256 comes from :attr:`TextTokenizer.sha256` (the one hashing
+    site, over the ``tokenizer.json`` the spec names), under the one key ``tokenizer_sha256`` -- never the
+    name the spec spells, which is runtime and only recorded beside the identity as a source.
+
+    Args:
+        spec: A Hugging Face repository id with an optional ``@revision``, or a local path to a
+            ``tokenizer.json`` or to a directory holding one -- the value a role config's ``tokenizer`` field
+            holds.
+
+    Returns:
+        ``{"tokenizer_sha256": <sha>}``.
+
+    Raises:
+        DependencyError: ``tokenizers`` (or, for a Hub id, ``huggingface_hub``) is not installed.
+        MissingInputError: the local file, or the repository's ``tokenizer.json``, does not exist.
+    """
+    return {"tokenizer_sha256": load_tokenizer(spec).sha256}
+
+
 def _local_path(spec: str) -> Path | None:
     """The local path ``spec`` names, or ``None`` for a Hub repository id.
 
@@ -126,4 +148,4 @@ def load_tokenizer(spec: str) -> TextTokenizer:
     return TextTokenizer.from_json(Path(file).read_bytes(), name=spec)
 
 
-__all__ = ["TOKENIZER_FILE", "TextTokenizer", "load_tokenizer"]
+__all__ = ["TOKENIZER_FILE", "TextTokenizer", "load_tokenizer", "tokenizer_identity"]
