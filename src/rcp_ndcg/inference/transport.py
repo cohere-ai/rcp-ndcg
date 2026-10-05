@@ -190,7 +190,8 @@ class Transport:
 
         Args:
             endpoint: The endpoint whose replicas are routed; ``base_url`` is one URL or a replica list, and a
-                ``fake://`` URL sends through the offline fakes (:mod:`rcp_ndcg.inference.fake`).
+                ``fake://`` URL sends through the offline fakes (:mod:`rcp_ndcg.inference.fake`) unless
+                ``httpx_transport`` is supplied, which answers instead of them.
             httpx_transport: A caller-supplied ``httpx.AsyncBaseTransport`` (a mock in tests), wrapped in the
                 transport's own ``httpx.AsyncClient`` with the endpoint's timeouts and pool limits -- never
                 replacing them, unlike the judge client of today, where a supplied client replaced both. The

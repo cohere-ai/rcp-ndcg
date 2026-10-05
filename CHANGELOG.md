@@ -67,7 +67,8 @@ released together.
     base64-packed in the request's `embed_dtype`, default `float16`); `POST /rerank` (Cohere shape; each
     document scored by the same hidden ability the fake judge reads, so a tiny run's rerank and judge agree).
     `register_fake_route(method, path, handler)` registers extra routes (the judge's chat completions arrive
-    with the judge port); the shared draws `fake_uniform` and `hidden_ability` are the fake judge's too. The
+    with the judge port; a route path must name its route, e.g. ``/chat/completions``); the shared draws
+    `fake_uniform` and `hidden_ability` are the fake judge's too. The
     fakes sit below the transport, so routing, retries, parking and usage run in every offline test; the
     package exports `register_fake_route` and `FakeEndpoint`.
   - `inference.probe`: `read_replica`, one replica's best-effort `GET {url}/models` into `EngineInfo` (an
@@ -121,9 +122,9 @@ released together.
   identical values, and both names stay importable from `rcp_ndcg.llm._fake`.
 - `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/run-config.v1.json`)
   regenerated for the transport, the fakes and the status map (new names and members, `Endpoint.base_url`
-  widened, and the hosted retrieval configs' `base_url` described as its single URL, which its type already
-  says); `tests/test_errors.py` now requires one *root* class per exit code, since the moved outage and
-  refusal types are `ProviderError` subclasses and exit codes do not change.
+  widened, and the retrieval configs' `base_url` described per its type: one URL, required for the served
+  ones, optional for the hosted ones); `tests/test_errors.py` now requires one *root* class per exit code,
+  since the moved outage and refusal types are `ProviderError` subclasses and exit codes do not change.
 
 ## 0.1.0
 

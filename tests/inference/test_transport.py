@@ -363,6 +363,15 @@ class TestPool:
         assert request.url.path == "/v1/x"  # neither query swallows the other
         assert dict(request.url.params) == {"api-version": "7", "a": "1"}
 
+    def test_a_supplied_transport_takes_precedence_over_the_fakes(self) -> None:
+        script = ReplicaScript()
+        transport = Transport(
+            Endpoint(base_url="fake://embed", model="enc"), httpx_transport=httpx.MockTransport(script)
+        )
+        replies = transport.run(transport.send([Call("POST", "/embeddings", {"input": ["x"]})]))
+        assert replies[0].body["object"] == "chat.completion"  # the caller's transport answers, not the built-in fake
+        assert len(script.requests) == 1
+
     def test_a_wrapped_transport_keeps_the_timeouts_and_its_own_pool(self) -> None:
         supplied = httpx.AsyncHTTPTransport(limits=httpx.Limits(max_connections=123, max_keepalive_connections=123))
         transport = Transport(

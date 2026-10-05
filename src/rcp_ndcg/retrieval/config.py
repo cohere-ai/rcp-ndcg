@@ -98,6 +98,9 @@ class OpenAICompatible(_Hosted):
     As a reranker, ``POST <base_url>/rerank`` (``vllm serve --runner pooling``), one query's candidates per request,
     ``concurrency`` requests in flight; a late-interaction checkpoint scores MaxSim on the server. ``base_url`` is
     required.
+
+    Attributes:
+        base_url: The served endpoint (required), e.g. ``http://localhost:8000/v1``; one URL, not a replica list.
     """
 
     _CONCURRENT: ClassVar[bool] = True

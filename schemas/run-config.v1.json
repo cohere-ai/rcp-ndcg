@@ -1347,7 +1347,7 @@
           "title": "Api Key Env"
         },
         "base_url": {
-          "description": "One URL, or none for the provider's own public API; the hosted APIs take no replica list yet (the retrieval port moves them onto the shared transport).",
+          "description": "The served endpoint (required), e.g. ``http://localhost:8000/v1``; one URL, not a replica list.",
           "minLength": 1,
           "title": "Base Url",
           "type": "string"
@@ -1519,7 +1519,7 @@
           "title": "Api Key Env"
         },
         "base_url": {
-          "description": "One URL, or none for the provider's own public API; the hosted APIs take no replica list yet (the retrieval port moves them onto the shared transport).",
+          "description": "The served endpoint (required), e.g. ``http://localhost:8000/v1``; one URL, not a replica list.",
           "minLength": 1,
           "title": "Base Url",
           "type": "string"

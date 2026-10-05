@@ -67,6 +67,13 @@ def test_the_seed_is_the_urls_numeric_tail_and_dim_its_query() -> None:
     assert _fake_endpoint("fake://embed", model="m").dim == 64  # DEFAULT_DIM
 
 
+def test_a_route_must_name_its_path() -> None:
+    with pytest.raises(ConfigError, match="route"):
+        register_fake_route("POST", "", lambda request, endpoint: httpx.Response(200))
+    with pytest.raises(ConfigError, match="route"):
+        register_fake_route("GET", "s", lambda request, endpoint: httpx.Response(200))  # a fragment would shadow
+
+
 class TestEmbeddings:
     def test_vectors_are_unit_and_of_the_urls_dimension(self) -> None:
         transport = _transport("fake://embed?dim=8", "enc")
@@ -91,6 +98,11 @@ class TestEmbeddings:
         another_seed = _transport("fake://seed/8?dim=8", "enc")
         other = another_seed.run(another_seed.send([Call("POST", "/embeddings", request)]))
         assert other[0].body["data"][0]["embedding"] != first[0].body["data"][0]["embedding"]
+
+    def test_the_embeddings_usage_counts_the_items_tokens_like_the_pooling_does(self) -> None:
+        transport = _transport("fake://embed?dim=4", "enc")
+        replies = transport.run(transport.send([Call("POST", "/embeddings", {"input": ["", "a b"]})]))
+        assert replies[0].body["usage"]["prompt_tokens"] == 3  # an empty item still holds its one token
 
     def test_the_matryoshka_dimensions_cut_the_vector(self) -> None:
         transport = _transport("fake://embed?dim=8", "enc")

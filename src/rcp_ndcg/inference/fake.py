@@ -90,14 +90,18 @@ def register_fake_route(method: str, path: str, handler: FakeRouteHandler) -> No
 
     Args:
         method: The HTTP method the handler answers (``"POST"``).
-        path: The call path the handler answers (``"/chat/completions"``).
+        path: The call path the handler answers (``"/chat/completions"``); it must name its route, or a
+            fragment of one would shadow broad sets of routes.
         handler: The answer, called with the request and the :class:`FakeEndpoint`.
 
     Raises:
-        ConfigError: A different handler is already registered for that route (the same handler again is
-            accepted, so importing a module twice changes nothing).
+        ConfigError: ``path`` names no route (it does not start with ``/`` or is just ``/``), or a different
+            handler is already registered for that route (the same handler again is accepted, so importing a
+            module twice changes nothing).
     """
-    key = (method.upper(), path if path.startswith("/") else f"/{path}")
+    if not path.startswith("/") or path == "/":
+        raise ConfigError(f"a fake route path must name its route (e.g. '/chat/completions'), got {path!r}")
+    key = (method.upper(), path)
     with _ROUTES_LOCK:
         registered = _ROUTES.get(key)
         if registered is None:
@@ -230,7 +234,7 @@ def _embeddings(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
                 }
                 for index, text in enumerate(texts)
             ],
-            "usage": {"prompt_tokens": sum(len(text.split()) for text in texts), "total_tokens": 0},
+            "usage": {"prompt_tokens": sum(_tokens(text) for text in texts), "total_tokens": 0},
         },
     )
 
