@@ -16,20 +16,23 @@ The client prepares every image itself (:mod:`rcp_ndcg.data.prepare`), so a stoc
   processor decides, which also means its token cost is unknown.
 * :class:`VideoPolicy` -- ``num_frames`` uniformly spaced frames per clip, and how they travel. With ``wire:
   frames`` the client samples the frames (:func:`uniform_frame_indices`) and sizes each by the image policy;
-  with ``wire: video_url`` the container is sent unchanged and the engine samples it. :func:`sample_video_part`
-  is the one place a video's frames are chosen, and :func:`content_media_tokens` prices exactly what it returns.
+  with ``wire: video_url`` the container is sent unchanged and the engine samples it, which it may only do
+  when the policy declares the engine pinned to the same frame count. :func:`sample_video_part` is the one
+  place a video's frames are chosen, and :func:`content_media_tokens` counts exactly what it returns, as the
+  engine will count it in the prompt.
 """
 
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Literal, NamedTuple, Self
+from typing import TYPE_CHECKING, ClassVar, Literal, NamedTuple, Self
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 
 from rcp_ndcg.errors import ConfigError, DataError
+from rcp_ndcg.support.identity import FieldRole
 
 ImageProcessor = Literal["qwen2_vl", "qwen2_5_vl", "qwen3_vl"]
 """The image processor families whose resize the client reproduces (the judge config's ``image_processor``).
@@ -39,30 +42,79 @@ Qwen3.5-397B and Qwen3.6-27B, whose checkpoints ship the same image processor wi
 
 
 class ProcessorGeometry(NamedTuple):
-    """How one processor family sizes an image, and the budget both engines apply when started without media flags.
+    """How one processor family sizes an image and a video, and the budgets both engines apply when started
+    without media flags.
 
     Attributes:
-        factor: Pixels per token edge: the vision patch times the spatial merge. Both edges of a resized image are
-            multiples of it, and each ``factor x factor`` block costs one token.
-        min_pixels: The engines' default floor, in pixels.
+        factor: Pixels per token edge: the vision patch times the spatial merge. Both edges of a resized image
+            are multiples of it, and each ``factor x factor`` block costs one token.
+        min_pixels: The engines' default floor, in pixels, for images the client sends prepared.
         max_pixels: The engines' default ceiling, in pixels. Where vLLM and SGLang differ, the lower one.
+        temporal_patch: Frames the vision tower merges in time, so a container of ``num_frames`` frames costs
+            ``ceil(num_frames / temporal_patch)`` per-frame token runs (transformers' video processors patchify
+            with ``temporal_patch_size = 2`` for every family here, padding an odd clip by repeating its last
+            frame).
+        video_min_pixels: The per-frame floor the engine's video accounting applies to a container's frames,
+            in pixels.
+        video_max_pixels: The per-frame ceiling, in pixels -- or, when :attr:`video_pixels_per_clip` is set,
+            the whole clip's ceiling, which shrinks the per-frame resolution as the frame count grows.
+        video_pixels_per_clip: Whether the video pixel budget constrains the whole clip together (the
+            Qwen3-VL video processor's clip-level resize) rather than each frame independently (the
+            Qwen2-VL families' video processors, and stock vLLM's video accounting, which sizes each frame
+            by the checkpoint's image-processor size).
+        video_timestamp_tokens: The tokens of the timestamp line the family's processor renders before each
+            temporal group's vision block in the prompt (a declared bound; 0 when a family renders none).
+            The bound covers every timestamp a clip of up to 99,999.9 s (~27.8 h) can carry; a longer clip
+            (only possible with ``max_duration_s`` unset) adds a token per group, so declare
+            ``max_duration_s`` for clips of that length.
     """
 
     factor: int
     min_pixels: int
     max_pixels: int
+    temporal_patch: int = 2
+    video_min_pixels: int | None = None
+    video_max_pixels: int | None = None
+    video_pixels_per_clip: bool = False
+    video_timestamp_tokens: int = 0
 
 
 PROCESSORS: dict[str, ProcessorGeometry] = {
     # Qwen2-VL checkpoints: patch 14 x merge 2 and {min,max}_pixels 3136..12845056 in preprocessor_config.json,
-    # which vLLM applies; SGLang overrides the ceiling to 1003520 for model_type qwen2_vl
-    # (sglang python/sglang/srt/utils/hf_transformers/processor.py:279-281 @ 45c8ddd).
-    "qwen2_vl": ProcessorGeometry(factor=28, min_pixels=56 * 56, max_pixels=28 * 28 * 1280),
+    # which vLLM applies; SGLang overrides the image ceiling to 1003520 for model_type qwen2_vl
+    # (sglang python/sglang/srt/utils/hf_transformers/processor.py:279-281 @ 45c8ddd). A container's frames
+    # are sized by that same checkpoint budget per frame (vLLM's video accounting passes the image
+    # processor's size, qwen2_vl.py:1014 @ d0d6e5f3a); SGLang's video path caps per-frame pixels lower
+    # (602112px, clip-dependent).
+    "qwen2_vl": ProcessorGeometry(
+        factor=28,
+        min_pixels=56 * 56,
+        max_pixels=28 * 28 * 1280,
+        video_min_pixels=56 * 56,
+        video_max_pixels=12845056,
+    ),
     # Qwen2.5-VL checkpoints: the same processor and budget, which both engines apply as shipped.
-    "qwen2_5_vl": ProcessorGeometry(factor=28, min_pixels=56 * 56, max_pixels=28 * 28 * 16384),
+    "qwen2_5_vl": ProcessorGeometry(
+        factor=28,
+        min_pixels=56 * 56,
+        max_pixels=28 * 28 * 16384,
+        video_min_pixels=56 * 56,
+        video_max_pixels=28 * 28 * 16384,
+    ),
     # Qwen3-VL, Qwen3.5-397B and Qwen3.6-27B checkpoints: patch 16 x merge 2 and size {shortest_edge: 65536,
-    # longest_edge: 16777216} in preprocessor_config.json, which both engines apply as shipped.
-    "qwen3_vl": ProcessorGeometry(factor=32, min_pixels=65536, max_pixels=16777216),
+    # longest_edge: 16777216} in preprocessor_config.json, which both engines apply as shipped. The video
+    # processor ships its own per-clip budget, 4096..25165824 px (video_preprocessor_config.json), on the
+    # same 2-frame temporal patch, and renders one timestamp line (a bound of 10 tokens) per temporal
+    # group in the prompt.
+    "qwen3_vl": ProcessorGeometry(
+        factor=32,
+        min_pixels=65536,
+        max_pixels=16777216,
+        video_min_pixels=4096,
+        video_max_pixels=25165824,
+        video_pixels_per_clip=True,
+        video_timestamp_tokens=10,
+    ),
 }
 """Every :data:`ImageProcessor` family's geometry. The resize itself is transformers' ``Qwen2VLImageProcessor``
 (``smart_resize`` with ``factor = patch_size * merge_size``, BICUBIC), which vLLM and SGLang both run for these
@@ -89,14 +141,17 @@ class VideoPolicy(BaseModel):
     (``hash_media=True``) before it can be judged over ``video_url``.
 
     ``wire`` is how the judge receives the frames, and it is part of the
-    instrument. ``frames`` (client-sampled): the client picks the frames from the
-    corpus's pre-extracted frames and sends each, sized by the image policy, as its
-    own image, which any OpenAI-compatible endpoint accepts. ``video_url``
-    (engine-sampled, an opt-in for models with a native video encoder): the container
-    is sent unchanged and the engine decodes and samples it (Qwen-VL towers then merge
-    frame pairs in time and see timestamps). The same clips judged both ways are
-    different measurements, so the wire is part of the policy and a corpus whose
-    videos do not match it is refused.
+    instrument. ``frames`` (client-sampled, the default and the exact one): the
+    client picks the frames from the corpus's pre-extracted frames and sends each,
+    sized by the image policy, as its own image, which any OpenAI-compatible
+    endpoint accepts -- so the frames counted are the frames sent.
+    ``video_url`` (engine-sampled, an opt-in for models with a native video encoder):
+    the container is sent unchanged and the engine decodes and samples it (Qwen-VL
+    towers then merge frame pairs in time and see timestamps). A stock engine samples
+    its own default number of frames (32 on vLLM), so ``video_url`` is refused unless
+    :attr:`engine_video_pinning` declares the engine pinned to ``num_frames`` -- and
+    the same clips judged both ways are different measurements, so the wire is part
+    of the policy and a corpus whose videos do not match it is refused.
 
     ``max_duration_s`` is a refusal, not a cut: uniform sampling of a long clip
     spreads the same frame budget ever thinner, so a corpus that declares it refuses
@@ -112,16 +167,58 @@ class VideoPolicy(BaseModel):
     wire: Literal["frames", "video_url"]
     """``frames``: sampled frames sent as images. ``video_url``: the container, decoded by the engine."""
 
+    engine_video_pinning: bool = False
+    """Whether the engine serving this corpus is pinned to sample exactly :attr:`num_frames` frames per
+    container: vLLM ``--media-io-kwargs '{"video": {"num_frames": N}}'``, SGLang ``--mm-process-config``.
+    Required for ``wire: video_url`` -- the engine's own default sampling (32 frames on vLLM) would make the
+    counted tokens and the recorded instrument describe frames nobody chose -- and refused under ``wire:
+    frames``, which samples on the client."""
+
     max_duration_s: float | None = Field(default=None, gt=0)
     """Longest clip, in seconds, this corpus may be judged on; ``None`` for no limit.
 
     Checked against :attr:`MediaRef.duration_s`, which ingest records for
     containers (``hash_media=True``)."""
 
+    @model_validator(mode="after")
+    def _pinning_matches_the_wire(self) -> Self:
+        """A container's frame count is the engine's to sample, so the declaration is required for
+        ``video_url`` and meaningless under ``frames``; neither may pass silently."""
+        if self.wire == "video_url" and self.num_frames < 2:
+            raise ValueError(
+                f"`wire: video_url` shows {self.num_frames} frame, but the declared instrument merges frames "
+                "in time, which needs at least a temporal pair -- the one rule under which a clip's realised "
+                "frame count is the policy's. A single frame is an image: declare `wire: frames` with "
+                "num_frames >= 2, or judge the clip as an image."
+            )
+        if self.wire == "video_url" and not self.engine_video_pinning:
+            raise ValueError(
+                "`wire: video_url` sends the container for the engine to sample, so the frame count is the "
+                "engine's default (32 frames on vLLM), not the declared one. Declare `engine_video_pinning: "
+                "true` and serve the engine pinned to the same frame count (--media-io-kwargs on vLLM, "
+                "--mm-process-config on SGLang), or declare `wire: frames`, which the client samples itself."
+            )
+        if self.wire == "frames" and self.engine_video_pinning:
+            raise ValueError(
+                "`engine_video_pinning` declares how the engine samples a container, but `wire: frames` sends "
+                "sampled frames as images and the engine never samples. Drop the declaration."
+            )
+        return self
+
     @property
     def descriptor(self) -> str:
         """Human-readable one-liner, e.g. ``frames-n8`` or ``video_url-n8``."""
         return f"{self.wire}-n{self.num_frames}"
+
+    #: Every field is content: the frame policy is part of the instrument (the preprocessing record and the
+    #: judgement family), and the roles are declared so a media policy nested in an identity payload passes
+    #: :func:`~rcp_ndcg.support.identity.check_declarations`.
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {
+        "num_frames": FieldRole.CONTENT,
+        "wire": FieldRole.CONTENT,
+        "engine_video_pinning": FieldRole.CONTENT,
+        "max_duration_s": FieldRole.CONTENT,
+    }
 
 
 def uniform_frame_indices(total_frames: int, num_frames: int) -> list[int]:
@@ -293,15 +390,24 @@ class ImagePolicy(BaseModel):
         """The ``(height, width)`` the client sends: the processor's resize under this budget, else unchanged.
 
         Raises:
-            DataError: the resized size is not one a stock engine keeps: flooring or ceiling to the factor left it
-                outside the engines' default budget, so the engine would resize the prepared image again, or left
-                an aspect ratio above 200, which the engine refuses.
+            DataError: the image is one a stock engine serving this processor refuses or would resize again:
+                an input whose aspect ratio is above 200 (the processor refuses it outright), a resized size
+                whose aspect ratio the processor refuses, or flooring to the factor left it outside the
+                engines' default budget, so the engine would resize the prepared image again. The message
+                names the fix; nothing is sent that the engine would change.
         """
         if not self.resizes:
             return height, width
         assert self.min_px is not None and self.max_px is not None and self.processor is not None
         geometry = PROCESSORS[self.processor]
-        target = smart_resize(height, width, factor=geometry.factor, min_pixels=self.min_px, max_pixels=self.max_px)
+        try:
+            target = smart_resize(height, width, factor=geometry.factor, min_pixels=self.min_px, max_pixels=self.max_px)
+        except ValueError as exc:  # the input's aspect ratio is one the processor refuses (above 200)
+            raise DataError(
+                f"a {height}x{width} image under the budget {self.descriptor} has an aspect ratio the "
+                f"{self.processor} processor refuses ({exc}); the image must be cropped or split at ingest",
+                hint="crop or split the image at ingest so its aspect ratio is below 200",
+            ) from exc
         try:
             kept = smart_resize(
                 *target, factor=geometry.factor, min_pixels=geometry.min_pixels, max_pixels=geometry.max_pixels
@@ -310,13 +416,15 @@ class ImagePolicy(BaseModel):
             raise DataError(
                 f"a {height}x{width} image resizes to {target[0]}x{target[1]} under the budget {self.descriptor}, "
                 f"which a stock engine serving the {self.processor} processor refuses ({exc}); crop the image at "
-                "ingest"
+                "ingest",
+                hint="crop the image at ingest",
             ) from exc
         if kept != target:
             raise DataError(
                 f"a {height}x{width} image resizes to {target[0]}x{target[1]} under the budget {self.descriptor}, "
                 f"which a stock engine serving the {self.processor} processor would resize again to "
-                f"{kept[0]}x{kept[1]}; widen the budget, or crop the image at ingest"
+                f"{kept[0]}x{kept[1]}; widen the budget, or crop the image at ingest",
+                hint="widen the budget, or crop the image at ingest",
             )
         return target
 
@@ -362,6 +470,15 @@ class ImagePolicy(BaseModel):
         """No budget: the image goes at its stored size and the processor decides."""
         return cls()
 
+    #: Every field is content: the pixel budget and the processor family are part of the instrument (the
+    #: preprocessing record and the judgement family), and the roles are declared so a media policy nested in
+    #: an identity payload passes :func:`~rcp_ndcg.support.identity.check_declarations`.
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {
+        "min_px": FieldRole.CONTENT,
+        "max_px": FieldRole.CONTENT,
+        "processor": FieldRole.CONTENT,
+    }
+
 
 class MediaTokenCount(NamedTuple):
     """Token cost of some content's media, and how much of it was a bound.
@@ -375,6 +492,61 @@ class MediaTokenCount(NamedTuple):
     bounded: int
 
 
+#: The tokens around one media item's patch run in the rendered prompt: the processor's vision start and
+#: vision end markers. The same two for every family here (``vision_start`` and ``vision_end`` wrap the
+#: placeholder run the engine expands to the patch tokens).
+VISION_WRAPPER_TOKENS = 2
+
+
+class EngineMediaMismatch(NamedTuple):
+    """An engine's prompt-token count for one prepared probe image, against the client's counted one.
+
+    The two numbers disagree when the engine was started with a media budget nobody declared, when its
+    processor family is not the one the client reproduced, or when the served model changed under the same
+    name: any of these means the counted tokens do not describe what the engine sees.
+    """
+
+    reported: int
+    counted: int
+
+    @property
+    def difference(self) -> int:
+        """How many tokens the engine reports above the client's count (negative: fewer)."""
+        return self.reported - self.counted
+
+    @property
+    def message(self) -> str:
+        """What the mismatch means, for a person or a record."""
+        return (
+            f"the engine reports {self.reported:,} prompt tokens for the probe, but the client counted "
+            f"{self.counted:,} ({self.difference:+,}): the served engine's media handling is not the one the "
+            "counted tokens describe. Check that the engine runs the declared image_processor without media "
+            "flags that resize again, and that its prompt-token report covers the same request as the probe."
+        )
+
+
+def engine_media_check(reported: int, counted: int) -> EngineMediaMismatch | None:
+    """Compare an engine's prompt-token count for one prepared probe image with the counted one.
+
+    The probe is one prepared image whose prompt-token count the client has counted exactly -- as
+    :func:`content_media_tokens` does -- plus whatever template tokens the probe request carries; both numbers
+    must cover the same request. ``None`` when the engine counts exactly what the client counted; the typed
+    mismatch otherwise, which the caller records or raises: a mismatch means the engine's media handling is
+    not what the declared policy and the counted tokens describe (a reconfigured engine, a mis-declared
+    processor family), so every later count is suspect.
+
+    Args:
+        reported: The engine's ``usage.prompt_tokens`` for the probe request.
+        counted: The client's exact count of the same probe request's prompt tokens.
+
+    Returns:
+        ``None`` when the two agree; the :class:`EngineMediaMismatch` when they do not.
+    """
+    if reported == counted:
+        return None
+    return EngineMediaMismatch(reported=reported, counted=counted)
+
+
 class VideoPolicyError(DataError):
     """A video the declared frame policy refuses to show the judge (exit code 12, like every :class:`DataError`);
     the message names the fix."""
@@ -383,9 +555,9 @@ class VideoPolicyError(DataError):
 def sample_video_part(part: VideoPart, video: VideoPolicy | None) -> VideoPart:
     """*part* as the judge is shown it under the frame policy *video*.
 
-    The one place a video's frames are chosen; token accounting and the media
+    The one place a video's frames are chosen; token counting and the media
     preparation (:func:`rcp_ndcg.data.prepare.prepare_content`) both go through it,
-    so the frames priced are the frames sent.
+    so the frames counted are the frames sent.
 
     * ``wire: frames`` -- the uniformly sampled subset of ``part.frames``, with
       ``frame_indices`` recording which source frames were kept. A container
@@ -394,7 +566,7 @@ def sample_video_part(part: VideoPart, video: VideoPolicy | None) -> VideoPart:
       decodes and samples it with its own video loader (engine-sampled).
     * **No frame policy** -- the part as it is: every frame, or the container at
       the engine's own defaults, which :func:`content_media_tokens` then refuses
-      to price.
+      to count.
 
     Raises:
         VideoPolicyError: when the part lacks what its declared wire sends (frames
@@ -471,25 +643,30 @@ def _check_frame_count(where: str, available: int | None, frame_policy: VideoPol
 
 
 def content_media_tokens(content: Content, image: ImagePolicy, video: VideoPolicy | None = None) -> MediaTokenCount:
-    """What *content*'s images and videos cost under the image policy and the frame policy.
+    """What *content*'s media costs the prompt, as the engine counts it, under the image and frame policies.
 
-    Uses each reference's recorded ``width`` / ``height`` where present -- our own
-    ingest records them, so a page corpus prices exactly -- and
-    :attr:`ImagePolicy.max_image_tokens` where they are absent. It never
-    fetches bytes: a preflight that downloaded the corpus to price it would cost
-    more than the thing it is pricing.
+    Each image costs its merged patch tokens plus the family's vision start and end markers
+    (:data:`VISION_WRAPPER_TOKENS`); a sampled frame is its own image and costs its own wrapper; a container
+    is the engine's own video accounting (never the image policy's -- the container is sent unchanged, so
+    the client's pixel budget never reaches the engine): ``ceil(num_frames / temporal_patch)`` per-frame
+    token runs under the family's video budget (:data:`PROCESSORS`) -- each frame sized independently for
+    the Qwen2-VL families (stock vLLM's accounting; SGLang's video path caps per-frame pixels lower, so
+    there the count differs, and :func:`engine_media_check` compares the engine's actual count at run
+    time), the whole clip budgeted together for ``qwen3_vl``, whose prompt adds one timestamp line and one
+    vision block per temporal group. It uses each reference's recorded ``width`` / ``height`` where
+    present -- our own ingest records them, so a page corpus counts exactly -- and the family's budget
+    ceiling where they are absent. It never fetches bytes: a preflight that downloaded the corpus to count
+    it would cost more than the thing it is counting.
 
-    Videos are priced as shown (:func:`sample_video_part`, which refuses clips
-    shorter than the frame budget): a frame directory as its sampled frames, a
-    container as ``num_frames`` frames of its recorded size, or at the
-    policy's bound -- counted in ``bounded`` -- when its size was never recorded.
+    Videos are counted as shown (:func:`sample_video_part`, which refuses clips shorter than the frame
+    budget), and ``bounded`` counts the references counted at a bound.
 
     Raises:
-        ValueError: for a container without a video policy --
-            the engine's own default sampling decides its cost, and nothing here
-            can know it.
-        ConfigError: for an image under a native policy or an unknown processor
-            (:meth:`ImagePolicy.image_tokens`).
+        VideoPolicyError: the video policy refuses a clip -- a container under the other wire, a clip
+            shorter than the frame budget or over ``max_duration_s``.
+        ConfigError: for a container without a video policy -- the engine's own default sampling decides
+            its cost, and nothing here can know it -- or for an image under a native policy or an unknown
+            processor (:meth:`ImagePolicy.image_tokens`).
     """
     tokens = 0
     bounded = 0
@@ -497,40 +674,149 @@ def content_media_tokens(content: Content, image: ImagePolicy, video: VideoPolic
         if isinstance(part, TextPart):
             continue
         if isinstance(part, ImagePart):
-            cost, unpriced = _ref_tokens(part.ref, image)
-            tokens, bounded = tokens + cost, bounded + unpriced
+            cost, bound = _ref_tokens(part.ref, image)
+            tokens, bounded = tokens + cost + VISION_WRAPPER_TOKENS, bounded + bound
             continue
         shown = sample_video_part(part, video)
         if shown.frames:
             for ref in shown.frames:
-                cost, unpriced = _ref_tokens(ref, image)
-                tokens, bounded = tokens + cost, bounded + unpriced
+                cost, bound = _ref_tokens(ref, image)
+                # each sampled frame is sent as its own image and gets its own vision block
+                tokens, bounded = tokens + cost + VISION_WRAPPER_TOKENS, bounded + bound
             continue
         assert shown.ref is not None
-        cost, unpriced = _container_tokens(shown.ref, image, video)
-        tokens, bounded = tokens + cost, bounded + unpriced
+        cost, bound = _container_tokens(shown.ref, image, video)
+        tokens, bounded = tokens + cost, bounded + bound
     return MediaTokenCount(tokens=tokens, bounded=bounded)
 
 
 def _ref_tokens(ref: MediaRef, image: ImagePolicy) -> tuple[int, int]:
+    """One image's patch tokens (no wrapper), and whether the count was a bound."""
     if ref.width and ref.height:
         return image.image_tokens(ref.height, ref.width), 0
     return image.max_image_tokens, 1
 
 
 def _container_tokens(ref: MediaRef, image: ImagePolicy, video: VideoPolicy | None) -> tuple[int, int]:
+    """One container's prompt tokens, as a stock engine's video accounting counts them.
+
+    The engine samples :attr:`VideoPolicy.num_frames` frames (pinned, :attr:`VideoPolicy.engine_video_pinning`)
+    and patchifies them in time, so ``ceil(num_frames / temporal_patch)`` per-frame token runs are shown, not
+    ``num_frames``. The frames' geometry is the family's own video budget (:data:`PROCESSORS`), never the
+    image policy's -- the container is sent unchanged, so the client's pixel budget never reaches the engine:
+
+    * the Qwen2-VL families size each frame independently by the checkpoint's per-frame budget -- stock
+      vLLM's accounting, which passes the image processor's size for videos (qwen2_vl.py:1014 @
+      d0d6e5f3a) -- under one vision block for the whole clip. SGLang's video path caps per-frame pixels
+      lower and clip-dependently, so there the count differs: the pinning declaration ties the frame count,
+      and :func:`engine_media_check` compares the engine's actual count at run time.
+    * ``qwen3_vl`` constrains the whole clip (a clip-level budget that shrinks per-frame resolution as the
+      frame count grows) and renders one timestamp line and one vision block per temporal group.
+    """
     if video is None:
         raise ConfigError(
             f"{ref.uri} is a video container, but no video policy is declared, so the engine's default sampling "
             "would decide how many frames the judge sees. Declare `preprocessing.video: {num_frames: N, wire: "
             "video_url}`."
         )
-    per_frame, unpriced = _ref_tokens(ref, image)
-    return video.num_frames * per_frame, unpriced
+    if image.processor is None:
+        raise ConfigError(
+            f"cannot count the tokens of the container {ref.uri}: the image policy is native or its processor "
+            "is unknown, so the engine's video processor decides the geometry, and nothing here can count it.",
+            hint=f"set image_processor in the judge config (one of {', '.join(PROCESSORS)})",
+        )
+    geometry = PROCESSORS[image.processor]
+    steps = math.ceil(video.num_frames / geometry.temporal_patch)
+    assert geometry.video_min_pixels is not None and geometry.video_max_pixels is not None
+    if geometry.video_pixels_per_clip:
+        # the clip-level budget constrains all frames together and shrinks per-frame resolution as the
+        # frame count grows; the prompt renders one timestamp line and one vision block per group
+        if ref.width and ref.height:
+            height, width = _clip_frame_size(geometry, video.num_frames, ref.height, ref.width)
+            per_frame = (height // geometry.factor) * (width // geometry.factor)
+            return steps * (per_frame + VISION_WRAPPER_TOKENS + geometry.video_timestamp_tokens), 0
+        # no recorded size: the per-clip ceiling bounds the whole clip's patch tokens (each merged token
+        # covers temporal_patch x factor^2 pixels), plus each group's wrapper and timestamp
+        clip_bound = geometry.video_max_pixels // (geometry.temporal_patch * geometry.factor**2)
+        return clip_bound + steps * (VISION_WRAPPER_TOKENS + geometry.video_timestamp_tokens), 1
+    per_frame, bound = _video_frame_tokens(ref, geometry)
+    return steps * per_frame + VISION_WRAPPER_TOKENS, bound
+
+
+def _video_frame_tokens(ref: MediaRef, geometry: ProcessorGeometry) -> tuple[int, int]:
+    """One container frame's patch tokens under the family's per-frame video budget, as the engine's
+    accounting sizes it (a faithful port of the pinned vLLM ``Qwen2VLProcessingInfo._get_vision_info``,
+    qwen2_vl.py:989-1053 @ d0d6e5f3a, whose default size is the checkpoint's image-processor size).
+
+    Returns:
+        ``(tokens, bound)``: the frame's merged patch tokens, and whether it was a bound (the reference's
+        size was never recorded, so the budget's ceiling bounds it).
+
+    Raises:
+        DataError: an aspect ratio above 200, which the video processors refuse.
+    """
+    assert geometry.video_min_pixels is not None and geometry.video_max_pixels is not None
+    if ref.width and ref.height:
+        try:
+            height, width = smart_resize(
+                ref.height,
+                ref.width,
+                factor=geometry.factor,
+                min_pixels=geometry.video_min_pixels,
+                max_pixels=geometry.video_max_pixels,
+            )
+        except ValueError as exc:  # the frame's aspect ratio is one the video processors refuse
+            raise DataError(
+                f"a {ref.width}x{ref.height} video frame has an aspect ratio the video processors refuse "
+                "(above 200); crop or split the clip at ingest",
+                hint="crop or split the clip at ingest so its aspect ratio is below 200",
+            ) from exc
+        return (height // geometry.factor) * (width // geometry.factor), 0
+    assert geometry.video_max_pixels is not None
+    return geometry.video_max_pixels // geometry.factor**2, 1
+
+
+def _clip_frame_size(geometry: ProcessorGeometry, num_frames: int, height: int, width: int) -> tuple[int, int]:
+    """The per-frame size the family's video processor picks for a whole clip of ``num_frames`` frames.
+
+    The family's per-clip pixel budget (:attr:`ProcessorGeometry.video_min_pixels`,
+    :attr:`ProcessorGeometry.video_max_pixels`) constrains all frames together, so the per-frame resolution
+    shrinks as the frame count grows. A faithful port of transformers' Qwen3-VL video ``smart_resize``
+    (models/qwen3_vl/video_processing_qwen3_vl.py:75-109 @ 2c8526d; Apache-2.0, see NOTICE): checked against
+    the real ``Qwen3VLVideoProcessor`` with 0 mismatches over 65 frame-count and size combinations.
+
+    Raises:
+        DataError: an aspect ratio above 200, which the video processor refuses.
+    """
+    factor = geometry.factor
+    if height < factor or width < factor:
+        scale = max(factor / height, factor / width)
+        height, width = int(height * scale), int(width * scale)
+    if max(height, width) / min(height, width) > 200:
+        raise DataError(
+            f"a {num_frames}-frame clip with {height}x{width} frames has an aspect ratio the video processor "
+            "refuses (above 200); crop or split the clip at ingest",
+            hint="crop or split the clip at ingest so its aspect ratio is below 200",
+        )
+    h_bar = round(height / factor) * factor
+    w_bar = round(width / factor) * factor
+    assert geometry.video_min_pixels is not None and geometry.video_max_pixels is not None
+    t_bar = round(num_frames / geometry.temporal_patch) * geometry.temporal_patch
+    if t_bar * h_bar * w_bar > geometry.video_max_pixels:
+        beta = math.sqrt((num_frames * height * width) / geometry.video_max_pixels)
+        h_bar = max(factor, math.floor(height / beta / factor) * factor)
+        w_bar = max(factor, math.floor(width / beta / factor) * factor)
+    elif t_bar * h_bar * w_bar < geometry.video_min_pixels:
+        beta = math.sqrt(geometry.video_min_pixels / (num_frames * height * width))
+        h_bar = math.ceil(height * beta / factor) * factor
+        w_bar = math.ceil(width * beta / factor) * factor
+    return h_bar, w_bar
 
 
 __all__ = [
     "PROCESSORS",
+    "VISION_WRAPPER_TOKENS",
+    "EngineMediaMismatch",
     "ImagePolicy",
     "ImageProcessor",
     "MediaTokenCount",
@@ -538,6 +824,7 @@ __all__ = [
     "VideoPolicy",
     "VideoPolicyError",
     "content_media_tokens",
+    "engine_media_check",
     "sample_video_part",
     "smart_resize",
     "uniform_frame_indices",

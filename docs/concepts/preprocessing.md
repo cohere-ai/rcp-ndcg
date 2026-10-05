@@ -83,9 +83,11 @@ Apart from the load-time policy, each judging window has a text budget, counted 
 It starts from the judge's `context_tokens` and subtracts, in order:
 
 1. the prompt's own tokens: the stage's template rendered with the query and empty documents;
-2. a fixed reserve of 256 tokens for what the tokenizer file does not describe (the chat template's role markers, its
-   generation prompt, and a system message that some templates insert);
-3. the documents' image tokens;
+2. a fixed reserve of 256 tokens for what the tokenizer file does not describe and no media occupies (the chat
+   template's role markers, its generation prompt, and a system message that some templates insert);
+3. the documents' media charge: each image and each sampled video frame its vision block (the processor's
+   vision start and end markers plus its patch tokens), a video container its temporal grid, and the
+   template's media marker per media part, counted with the judge's tokenizer;
 4. the completion reserve, `max_output_tokens`, at most half of what is left.
 
 The rest is shared equally by the documents of the window. Each document's text, as the prompt carries it (stripped
@@ -353,14 +355,39 @@ aspect ratio above 200.
 
 `video` sets the number of frames shown per clip, `num_frames`, and how they are sent, `wire`:
 
-- **`wire: frames` (the default path).** The client samples `num_frames` frames from the clip's pre-extracted
-  frames (the `frames` reader) at `np.linspace(0, total - 1, num_frames)` truncated to integers. vLLM's video loader
-  and SGLang's Qwen-VL video preprocessing apply the same rule to a decoded container. Each frame is prepared as an
-  image under the image policy and sent as a standard `image_url` part.
-- **`wire: video_url` (opt-in, for models with a native video encoder).** The container is sent unchanged and the
-  engine decodes and samples it with its own video loader. The policy records this as engine-sampled. Pinning the
-  engine's frame count takes engine flags (`--media-io-kwargs` on vLLM, `--mm-process-config` on SGLang); see
-  [serving](serving.md).
+- **`wire: frames` (the default and the exact one).** The client samples `num_frames` frames from the clip's
+  pre-extracted frames (the `frames` reader) at `np.linspace(0, total - 1, num_frames)` truncated to integers.
+  vLLM's video loader and SGLang's Qwen-VL video preprocessing apply the same rule to a decoded container.
+  Each frame is prepared as an image under the image policy and sent as a standard `image_url` part, so the
+  frames counted are the frames sent.
+- **`wire: video_url` (opt-in, for models with a native video encoder).** The container is sent unchanged and
+  the engine decodes and samples it with its own video loader. A stock engine samples its own default number
+  of frames (32 on vLLM), which would make the counted tokens and the recorded instrument describe frames
+  nobody chose, so the policy refuses `video_url` unless `engine_video_pinning: true` declares the engine
+  pinned to the same frame count -- `--media-io-kwargs '{"video": {"num_frames": N}}'` on vLLM,
+  `--mm-process-config` on SGLang (see [serving](serving.md)) -- and refuses a single-frame container (the
+  declared instrument merges frames in time, which needs a temporal pair; a single frame is an image). Run
+  `engine_media_check` once against a prepared probe when a serving setup changes (below); a mismatch says
+  the engine's media handling is not the one the counted tokens describe.
+
+### What a container costs
+
+A container is counted as a stock engine's video accounting counts it, never at the client's declared image
+budget -- the container is sent unchanged, so the client's pixel budget never reaches the engine. It is
+patchified in time: 8 frames merge into `ceil(8 / 2) = 4` per-frame token runs, not 8. The frames' geometry is
+the family's own video budget (`PROCESSORS`):
+
+- The Qwen2-VL families size each frame independently by the checkpoint's per-frame budget -- stock vLLM's
+  accounting, which passes the checkpoint's image-processor size for videos -- under one vision block for the
+  whole clip: 8 frames of 720x1280 cost 4,786 tokens. SGLang's video path caps per-frame pixels lower
+  (602,112 px, clip-dependently), so there the count differs; the pinning declaration ties the frame count,
+  and `engine_media_check` compares the engine's actual count at run time.
+- `qwen3_vl` budgets the whole clip together (4,096 to 25,165,824 px), which shrinks the per-frame resolution
+  as the frame count grows -- 8 frames of 720x1280 cost 3,520 patch tokens, 128 frames 11,520 -- and renders
+  one timestamp line (`<0.0 seconds>`, a declared bound of 10 tokens, covering every timestamp a clip of up
+  to 27.8 hours can carry) and one vision block per temporal group.
+
+An odd frame count is padded by repeating its last frame, as the processors do.
 
 A clip with fewer frames than `num_frames` is refused, and so is a clip longer than an optional `max_duration_s`.
 
@@ -372,12 +399,17 @@ processors therefore never pool. Every prepared image, frame and container is al
 store to `preprocessing.jsonl`, beside the text cuts, as a `media` row. The row holds the stored size and hash, the
 sent size, hash and MIME type, the processor, whether the image was resized, and who sampled the frames.
 
-The judge's window text budget subtracts the image tokens, which are `(height / factor) x (width / factor)` per
-prepared image. They cannot be counted when there is no pixel budget or no `image_processor`. A judge with a text
-budget (`context_tokens` and a `tokenizer`) is then refused (`ConfigError`) instead of budgeted on a guess. A judge
-without one, such as a hosted API with no public tokenizer, is sent the images as stored. For such a judge,
-`estimate` assumes 1,000 tokens per image or video frame shown, roughly one document page at a hosted API's high
-detail, and says so in its `assumptions`. The value is an assumption, not a bound, and no text is ever cut on it.
+The judge's window text budget subtracts the documents' media charge: each image and each sampled video frame
+its vision block, `(height / factor) x (width / factor)` patch tokens plus the processor's vision start and end
+markers, a video container its temporal grid, and -- a declared reserve, not an engine count -- the template's
+media marker per media part, counted with the judge's tokenizer. The payload builder replaces each marker with
+the media part, so the charge errs a few tokens high per media part, never low. They cannot be counted when
+there is no pixel budget or no `image_processor`. A judge with a text budget (`context_tokens` and a
+`tokenizer`) is then refused (`ConfigError`) instead of budgeted on a guess. A judge without one, such as a
+hosted API with no public
+tokenizer, is sent the images as stored. For such a judge, `estimate` assumes 1,000 tokens per image or video
+frame shown, roughly one document page at a hosted API's high detail, and says so in its `assumptions`. The
+value is an assumption, not a bound, and no text is ever cut on it.
 
 A prompt with images or video is refused (`CapabilityError`) unless the judge config declares that the model reads
 them (`max_images`, `max_videos` above 0).
@@ -387,8 +419,47 @@ from rcp_ndcg.data import ImagePolicy
 
 policy = ImagePolicy(min_px=65536, max_px=1280 * 32 * 32).for_processor("qwen3_vl")
 print(policy.target_size(2200, 1700))  # (1280, 992): the size the judge's processor keeps
-print(policy.image_tokens(2200, 1700))  # 1240 tokens
+print(policy.image_tokens(2200, 1700))  # 1240 patch tokens; the vision block costs two more
+print(policy.max_image_tokens)  # 1280: the bound when a size was never recorded
 ```
+
+### Retrieval roles: one preparation path, and what to send when media do not fit
+
+The same policy objects size the media of the retrieval roles (encoders, rerankers). A role config declares
+the judge's `image_processor`, `max_images`, `max_videos` and the optional image and video policies (the same
+`ImagePolicy` / `VideoPolicy` types, content fields), and its clients prepare one request's contents with
+`rcp_ndcg.data.prepare.prepare_request`, which returns the prepared contents and the request's exact media
+token counts -- so the role's text budget can subtract them, never cut them:
+
+```python
+from pathlib import Path
+
+from PIL import Image
+from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+
+from rcp_ndcg.data import ImagePolicy
+from rcp_ndcg.data.prepare import MediaCensus, fit_media_to_budget, prepare_request
+
+image_policy = ImagePolicy(min_px=65536, max_px=1280 * 32 * 32).for_processor("qwen3_vl")
+Image.new("RGB", (2560, 2560), (30, 30, 30)).save("page.png")
+page = Content.from_parts([ImagePart(ref=MediaRef(uri="page.png", mime="image/png"))])
+
+prepared = prepare_request([page], image_policy, None)
+print(prepared.tokens)  # MediaTokenCount(tokens=1227, bounded=0): what the media cost the prompt
+
+# When the media alone exceed the text budget, a vision block is never cut; the declared rule is
+# shrink to the policy's minimum, then drop whole items, recorded in the census:
+fit = fit_media_to_budget(prepared.media, image=image_policy, video=None, text_budget_tokens=800)
+print(fit.tokens, len(fit.dropped))  # 66 0: shrunk to the 65,536px floor, nothing dropped
+MediaCensus(sink="preprocessing.jsonl").record(corpus="c", doc_id="d1", media=fit.dropped, dropped=True)
+```
+
+Run `rcp_ndcg.data.resolution.engine_media_check` against a prepared probe whenever a serving setup changes:
+send one prepared image, count its prompt exactly (`content_media_tokens` plus the template tokens the probe
+request carries), and compare the engine's `usage.prompt_tokens` against it. A returned mismatch
+(`EngineMediaMismatch`) says the served engine's media handling is not what the counted tokens describe -- a
+reconfigured engine or a mis-declared `image_processor` -- and every later count is suspect: record or raise
+it instead of judging around it. The runtime call site (a serving recipe's startup check) is a later lane's.
 
 ## Identity
 
