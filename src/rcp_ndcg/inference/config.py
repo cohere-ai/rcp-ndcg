@@ -98,6 +98,22 @@ def _no_inert_overflow_policies(config: EmbeddingEndpoint | RerankEndpoint) -> N
         )
 
 
+def _use_activation_is_explicit_on_a_served_wire(config: RerankEndpoint) -> None:
+    """F10 (integration review): ``use_activation: None`` sends nothing and the engine's default applies --
+    and two engines with different defaults would then share an identity, because ``identity_payload`` omits
+    ``None``. A served rerank config (``api: rerank``) sets it explicitly (the hint names both values); a
+    hosted profile keeps ``None``: its scale is the vendor's own and fixed."""
+    if config.use_activation is None and config.api in SELF_HOSTED_APIS:
+        raise ConfigError(
+            f"{type(config).__name__} with api {config.api!r} must set use_activation explicitly: None sends "
+            "nothing and the engine's default applies, so two engines with different defaults would share "
+            "an identity",
+            hint="set use_activation: true (the engine's activation runs: the score is a probability) or "
+            "use_activation: false (the raw logit is stored) -- the choice is content and enters the identity; "
+            "a hosted profile (api: cohere, api: voyage) leaves it unset, its scale is fixed",
+        )
+
+
 class EmbeddingEndpoint(Endpoint):
     """A dense-embedding endpoint speaking OpenAI ``POST {base_url}/embeddings``.
 
@@ -329,9 +345,11 @@ class RerankEndpoint(Endpoint):
     @model_validator(mode="after")
     def _explicit_budget_and_declared_shares(self) -> RerankEndpoint:
         """A self-hosted role declares its budget; a query share at or over the budget would leave the
-        document nothing to read; ``send_text`` names its text; the chunk geometry matches the overflow."""
+        document nothing to read; a served wire sets ``use_activation`` explicitly; ``send_text`` names its
+        text; the chunk geometry matches the overflow."""
         _require_explicit_budget(self)
         _no_inert_overflow_policies(self)
+        _use_activation_is_explicit_on_a_served_wire(self)
         _chunk_geometry_matches_overflow(self)
         if (
             self.query_max_tokens is not None

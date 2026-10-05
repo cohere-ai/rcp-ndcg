@@ -50,7 +50,18 @@ _TOO_LONG = re.compile(r"maximum context length|context length|too long|token li
 
 #: The class attributes that make a subclass a complete wire (validated at construction, so an incomplete
 #: third-party profile fails with a typed error instead of an AttributeError at first use).
-_WIRE_FACTS = ("SERVER", "REQUEST_CAP", "PAUSE_S", "SENDS_TOP_N", "HAS_INSTRUCTION_FIELD", "DEFAULT_BASE_URL")
+_WIRE_FACTS = (
+    "SERVER",
+    "REQUEST_CAP",
+    "PAUSE_S",
+    "SENDS_TOP_N",
+    "HAS_INSTRUCTION_FIELD",
+    "DEFAULT_BASE_URL",
+    "HOSTED",
+    "API_KEY_ENV",
+    "KEY_REQUIRED",
+    "AUTH_HEADER",
+)
 
 
 def _score_input(content: Content) -> str | dict[str, Any]:
@@ -114,6 +125,22 @@ class RerankWire:
     """The hosted profile's public API root, used when the config sets no ``base_url``; ``None``: ``base_url``
     is required (a served endpoint has no public root)."""
 
+    HOSTED: ClassVar[bool]
+    """Whether this wire is a hosted vendor profile (its public API root is its default ``base_url``; its
+    score scale is the vendor's own). Declared (R8), never inferred from whether a default URL happens to be
+    set: a served wire's ``use_activation`` is refused on a hosted profile, where the field does not exist."""
+
+    API_KEY_ENV: ClassVar[tuple[str, ...]]
+    """The environment variables that may hold the API key, most preferred first; the config's
+    ``api_key_env`` names one instead. The transport resolves the key and sends it in :attr:`AUTH_HEADER`
+    (R6): an adapter never touches a key itself. Empty: the endpoint takes no key (a served engine)."""
+
+    KEY_REQUIRED: ClassVar[bool]
+    """Whether the API refuses to answer without a key (the hosted profiles) or takes none."""
+
+    AUTH_HEADER: ClassVar[str | None]
+    """The header the key goes in; ``None`` is the OpenAI-standard ``Authorization: Bearer <key>``."""
+
     def __init__(self, config: RerankEndpoint) -> None:
         """Build the adapter for ``config``.
 
@@ -141,7 +168,7 @@ class RerankWire:
                     "set instruction: fold to fold the instruction into the query text, or instruction: none to drop it"
                 ),
             )
-        if config.use_activation is not None and self.DEFAULT_BASE_URL is not None:
+        if config.use_activation is not None and self.HOSTED:
             raise ConfigError(
                 f"the {self.name!r} rerank API has no use_activation field on its wire: it scores on its own "
                 "scale, which the package records as returned",
@@ -337,9 +364,9 @@ class RerankWire:
             raise CapabilityError(
                 f"{self._server} refused the rerank request as too long (HTTP {reply.status}): {message}",
                 hint=(
-                    "the query and its documents exceed what the endpoint scores in one request; the "
-                    "client-side budget (max_tokens) that would bound them is not wired yet, so shorten the "
-                    "inputs or serve with a larger context"
+                    "the query and its documents exceed what the endpoint scores in one request; declare the "
+                    "endpoint config's text budget (tokenizer and max_tokens), which cuts the pair spans on "
+                    "the client, or shorten the inputs"
                 ),
                 details={"server": self._server, "status": reply.status},
             )
@@ -412,9 +439,9 @@ class RerankAdapter(RerankWire):
     prefix across the documents, and a listwise model needs the set together); a config that sets
     ``batch_size`` asks for that many documents per request instead. The engine's extensions
     (``instruction``, ``use_activation``) travel only when the config or request sets them. The budgets are a
-    client concern and not wired yet (:meth:`RerankClient._prepare`), so no ``max_tokens_per_doc``,
-    ``max_tokens_per_query`` or ``truncate_prompt_tokens`` is ever sent: a rendered prompt is never truncated
-    by the engine.
+    client concern (:meth:`RerankClient._prepare` fits every request to the declared one), so no
+    ``max_tokens_per_doc``, ``max_tokens_per_query`` or ``truncate_prompt_tokens`` is ever sent: a rendered
+    prompt is never truncated by the engine.
     """
 
     name: ClassVar[str] = "rerank"
@@ -424,6 +451,10 @@ class RerankAdapter(RerankWire):
     SENDS_TOP_N = True
     HAS_INSTRUCTION_FIELD = True
     DEFAULT_BASE_URL = None
+    HOSTED = False
+    API_KEY_ENV = ()
+    KEY_REQUIRED = False
+    AUTH_HEADER = None
 
 
 @register_adapter
@@ -445,6 +476,10 @@ class CohereRerankAdapter(RerankWire):
     SENDS_TOP_N = True
     HAS_INSTRUCTION_FIELD = False
     DEFAULT_BASE_URL = "https://api.cohere.com/v2"
+    HOSTED = True
+    API_KEY_ENV = ("CO_API_KEY", "COHERE_API_KEY")
+    KEY_REQUIRED = True
+    AUTH_HEADER = None
 
 
 @register_adapter
@@ -466,6 +501,10 @@ class VoyageRerankAdapter(RerankWire):
     SENDS_TOP_N = False
     HAS_INSTRUCTION_FIELD = False
     DEFAULT_BASE_URL = "https://api.voyageai.com/v1"
+    HOSTED = True
+    API_KEY_ENV = ("VOYAGE_API_KEY",)
+    KEY_REQUIRED = True
+    AUTH_HEADER = None
 
 
 __all__ = ["CohereRerankAdapter", "RerankAdapter", "RerankWire", "VoyageRerankAdapter"]
