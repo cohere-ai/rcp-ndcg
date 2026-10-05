@@ -31,7 +31,8 @@ released together.
     `api` field -- `RerankAdapter` (`api: rerank`, the served Cohere-shaped `POST {base_url}/rerank`),
     `CohereRerankAdapter` (`api: cohere`, `https://api.cohere.com/v2/rerank`, at most 1000 documents per
     request) and `VoyageRerankAdapter` (`api: voyage`, `https://api.voyageai.com/v1/rerank`, at most 1000
-    documents, requests of one query spaced half a second apart), all subclasses of the new `RerankWire`.
+    documents, requests of one query spaced half a second apart, no `top_n` -- Voyage's return-limit field is
+    `top_k` and it returns every document by default), all subclasses of the new `RerankWire`.
     Requests are `model`, `query`, `documents`, `top_n`; the served engine's `instruction` and
     `use_activation` travel only when the config sets them. `interpret` parses the `results`, Voyage `data`
     and SGLang bare-list answer shapes and realigns the scores by `index`; an index missing, duplicated or out

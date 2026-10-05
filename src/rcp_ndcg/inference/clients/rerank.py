@@ -82,6 +82,13 @@ class RerankClient:
                 "budget would otherwise be silently ignored",
             )
         adapter_cls = cast("type[RerankWire]", get_adapter(config.api))
+        role = getattr(adapter_cls, "role", None)
+        if role != "rerank":
+            raise ConfigError(
+                f"the adapter {config.api!r} is not a rerank wire adapter (its role is {role!r})",
+                hint="api on a rerank endpoint names a rerank-role wire adapter: rerank (served), cohere or "
+                "voyage (hosted), or a third party's registered in the 'rcp_ndcg.adapters' group",
+            )
         if config.base_url is None:
             # The shipped adapters (and a third party's matching the RerankWire shape) declare the hosted
             # profiles' public root; anything else answers through the config's own base_url.

@@ -367,6 +367,13 @@ class TestUsage:
         assert adapter.usage(_reply(200, {"results": []})) is None
         assert adapter.usage(_reply(200, {"results": [], "usage": {"total_tokens": 9}})) is None
 
+    def test_a_boolean_token_count_is_no_count(self) -> None:
+        """JSON booleans are ints to ``isinstance``; a non-conforming body reports no tokens."""
+        adapter = RerankAdapter(_config())
+        reply = _reply(200, {"results": [], "usage": {"prompt_tokens": True, "completion_tokens": False}})
+
+        assert adapter.usage(reply) is None
+
 
 # ---------------------------------------------------------------------------------------------------------------
 # The registry: the three adapters are the role's shipped names

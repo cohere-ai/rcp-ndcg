@@ -228,12 +228,12 @@ class RerankWire:
         if not isinstance(usage, dict):
             return None
         prompt, completion = usage.get("prompt_tokens"), usage.get("completion_tokens")
-        if not isinstance(prompt, int) and not isinstance(completion, int):
+        # JSON booleans are ints to isinstance, but "prompt_tokens": true is no count.
+        prompt = prompt if type(prompt) is int else None
+        completion = completion if type(completion) is int else None
+        if prompt is None and completion is None:
             return None
-        return TokenCount(
-            input_tokens=prompt if isinstance(prompt, int) else None,
-            output_tokens=completion if isinstance(completion, int) else None,
-        )
+        return TokenCount(input_tokens=prompt, output_tokens=completion)
 
     # -- the shared wire logic ----------------------------------------------
     def _chunk_sizes(self, request: RerankRequest) -> list[int]:

@@ -316,6 +316,21 @@ def test_an_incomplete_rerank_wire_subclass_is_refused_at_construction() -> None
         _HalfWire(_config())
 
 
+def test_an_adapter_of_another_role_is_refused_by_the_client() -> None:
+    """A registered adapter of the wrong role (a judge's, say, selected by typo) is a config error, not a
+    silent no-op."""
+    from rcp_ndcg.inference.adapters import register_adapter
+    from rcp_ndcg.inference.adapters.base import AdapterRole
+
+    class _JudgeShaped:
+        name = "wrong_role_probe"
+        role: ClassVar[AdapterRole] = "judge"
+
+    register_adapter(_JudgeShaped)
+    with pytest.raises(ConfigError, match="not a rerank wire adapter.*judge"):
+        RerankClient(RerankEndpoint(api="wrong_role_probe", base_url="http://a:8000/v1", model="m"), sender=_server())
+
+
 def test_a_client_tolerates_an_adapter_without_the_profile_facts() -> None:
     """A third-party rerank adapter that shape-matches only the Adapter protocol still constructs: no default
     base URL (the config must set one) and no pause."""

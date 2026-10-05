@@ -21,7 +21,7 @@ A config's `api` field selects the wire by its registered name:
 |---|---|---|---|
 | `rerank` (default) | a served engine's `POST {base_url}/rerank` | none | the engine's `instruction` and `use_activation` travel only when the config sets them |
 | `cohere` | `https://api.cohere.com/v2/rerank` | 1000 documents | Cohere's recommendation, declared policy |
-| `voyage` | `https://api.voyageai.com/v1/rerank` | 1000 documents | requests of one query spaced half a second apart (Voyage enforces strict rate limits) |
+| `voyage` | `https://api.voyageai.com/v1/rerank` | 1000 documents | requests of one query spaced half a second apart; no `top_n` sent -- Voyage's return-limit field is `top_k`, and it returns every document by default |
 
 A candidate set larger than the cap (or than a set `batch_size`) is split into requests of that many documents
 and the chunks' scores are merged back into one aligned result; for a `listwise` config splitting is refused
