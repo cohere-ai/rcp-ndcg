@@ -25,6 +25,30 @@ released together.
 
 ### Public surface
 
+- **`rcp_ndcg.inference` gains the embedding wire adapters and the embedding role client** (dense embeddings over
+  one wire shape; no transport behaviour yet, so the client is exercised with a `Sender` a caller supplies):
+  - `inference.adapters.embeddings`: four registered adapters of role `embed` — `openai_embeddings` (OpenAI
+    `POST {base_url}/embeddings`: `model`, `input`, `encoding_format: "float"`, `dimensions` only when set;
+    reply read from `data[].embedding` in `data[].index` order, float lists or base64 float32) and the hosted
+    profiles `cohere_embed` (v2 `POST {base_url}/embed`, `input_type` `search_query`/`search_document`, reply
+    `embeddings.float`, cap 96), `voyage_embed` (the OpenAI body with `input_type` `query`/`document`, cap 128)
+    and `gemini_embed` (`POST {base_url}/models/{model}:batchEmbedContents`, `taskType`
+    `RETRIEVAL_QUERY`/`RETRIEVAL_DOCUMENT`, key in `x-goog-api-key`, reply `embeddings[].values`, cap 100).
+    Each profile carries its public base URL and key variables for when the config sets no `base_url`. Media
+    raises `CapabilityError` naming the media type; an over-length HTTP 400 ("maximum context length") maps to
+    `CapabilityError` with a hint naming `max_tokens`/`batch_size`; HTTP 413 maps to `CapabilityError` naming
+    `batch_size`; other 400/422 are `RequestRejectedError`; `usage()` reads the API's token report.
+  - `inference.clients` (new public module): `EmbeddingClient` — the role client for `EmbeddingEndpoint`. It
+    applies `query_prompt`/`doc_prompt` per side through one `_prepare` seam, sends `dimensions` only when set,
+    L2-normalises when `normalize`, slices into `batch_size`-sized requests with at most `concurrency` in
+    flight and reassembles in input order, resolves the API key from `api_key_env` (else the profile's
+    variables) into the profile's header, and refuses media, a `batch_size` over a profile's cap, an unknown
+    or wrong-role `api`, and — until the text-budget mechanism is wired — any `max_tokens` (`ConfigError`:
+    "max_tokens needs the text-budget mechanism, which is not wired yet").
+  - `inference.config`: `EmbeddingEndpoint.identity_extra()` returns `{"tokenizer_sha256": <sha>}` — the
+    SHA-256 of the named tokenizer's `tokenizer.json` for a step identity, never its name (the name stays
+    RUNTIME; the judge's rule for `JudgeConfig.tokenizer`). `check_declarations` is unchanged.
+  - `rcp_ndcg.inference.__all__` gains `EmbeddingClient`.
 - `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
   the step identities (its `IDENTITY_ROLES` declarations); no property changed.
 - **New public module `rcp_ndcg.inference`**: the inference layer between `rcp_ndcg.data` and
@@ -85,6 +109,8 @@ released together.
   `schemas/run-config.v1.json`) regenerated for the moved and new fields; `tests/test_errors.py` now requires
   one *root* class per exit code, since the moved outage and refusal types are `ProviderError` subclasses and
   exit codes do not change.
+- `tests/contract` snapshots regenerated for the embedding adapters and the embedding role client (the
+  `EmbeddingClient` export, its constructor and `EmbeddingEndpoint.identity_extra()`).
 
 ## 0.1.0
 
