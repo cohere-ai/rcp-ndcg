@@ -1,9 +1,5 @@
-"""The adapter seam: the :class:`Adapter` protocol, its registry and the entry-point group (C2).
-
-The shipped adapters register at import: the rerank role's Cohere-shaped wire and its hosted profiles
-(:mod:`rcp_ndcg.inference.adapters.rerank`). The rest arrive with their lanes (the judge and the encoders with
-the transport work).
-"""
+"""The adapter seam: the :class:`Adapter` protocol, its registry, the entry-point group (C2) and the shipped
+adapters, which register at import of this package (the embedding, rerank and multi-vector pooling wires)."""
 
 from rcp_ndcg.inference.adapters.base import (
     ADAPTER_ENTRY_POINTS,
@@ -13,6 +9,7 @@ from rcp_ndcg.inference.adapters.base import (
     known_adapters,
     register_adapter,
 )
+from rcp_ndcg.inference.adapters.pooling import VllmPooling
 from rcp_ndcg.inference.adapters.rerank import (
     CohereRerankAdapter,
     RerankAdapter,
@@ -28,6 +25,7 @@ __all__ = [
     "RerankAdapter",
     "RerankWire",
     "VoyageRerankAdapter",
+    "VllmPooling",
     "get_adapter",
     "known_adapters",
     "register_adapter",

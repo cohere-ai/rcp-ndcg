@@ -26,6 +26,7 @@ nav:
       - "Primitives": concepts/primitives.md
       - "Preprocessing and chunking": concepts/preprocessing.md
       - "Embedding endpoints": concepts/embeddings.md
+      - "Late interaction: pooling and MaxSim": concepts/late-interaction.md
       - "Judges, serving and runners": concepts/serving.md
   - Tutorials:
       - "Calibrate your benchmark": tutorials/calibrate-your-benchmark.md

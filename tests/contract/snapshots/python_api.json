@@ -8255,6 +8255,12 @@
                 "name": "multi_vector"
               },
               {
+                "annotation": "DTypeLike",
+                "default": "<callable float32>",
+                "kind": "keyword_only",
+                "name": "dtype"
+              },
+              {
                 "returns": "Embeddings"
               }
             ]
@@ -8289,6 +8295,12 @@
                 "default": "<required>",
                 "kind": "positional_or_keyword",
                 "name": "per_item"
+              },
+              {
+                "annotation": "DTypeLike",
+                "default": "<callable float32>",
+                "kind": "keyword_only",
+                "name": "dtype"
               },
               {
                 "returns": "Embeddings"
@@ -8498,10 +8510,111 @@
             "name": "role"
           },
           {
+            "annotation": "Literal['float16', 'float32']",
+            "default": "float16",
+            "kind": "positional_or_keyword",
+            "name": "embed_dtype"
+          },
+          {
+            "annotation": "int | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "dim"
+          },
+          {
             "returns": "None"
           }
         ],
         "kind": "class"
+      },
+      "PoolingClient": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.clients.pool",
+        "init": [
+          {
+            "annotation": "PoolingEndpoint",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "config"
+          },
+          {
+            "annotation": "Sender | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "sender"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "aencode": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Sequence[Content]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "contents"
+              },
+              {
+                "annotation": "EncodeRole",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "role"
+              },
+              {
+                "annotation": "int | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "batch_size"
+              },
+              {
+                "returns": "Embeddings"
+              }
+            ]
+          },
+          "config": "property",
+          "encode": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Sequence[Content]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "contents"
+              },
+              {
+                "annotation": "EncodeRole",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "role"
+              },
+              {
+                "annotation": "int | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "batch_size"
+              },
+              {
+                "returns": "Embeddings"
+              }
+            ]
+          }
+        }
       },
       "PoolingEndpoint": {
         "bases": [
@@ -8551,6 +8664,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "dim": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "dimensions": {
             "alias": null,
@@ -9294,6 +9414,90 @@
           }
         ],
         "kind": "class"
+      },
+      "VllmPooling": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.adapters.pooling",
+        "init": [
+          {
+            "returns": null
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "calls": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "PoolRequest",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "request"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "keyword_only",
+                "name": "model"
+              },
+              {
+                "returns": "Sequence[Call]"
+              }
+            ]
+          },
+          "interpret": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "PoolRequest",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "request"
+              },
+              {
+                "annotation": "Sequence[Reply]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "replies"
+              },
+              {
+                "returns": "Embeddings"
+              }
+            ]
+          },
+          "usage": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Reply",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "reply"
+              },
+              {
+                "returns": "TokenCount | None"
+              }
+            ]
+          }
+        }
       },
       "VoyageRerankAdapter": {
         "bases": [
@@ -10805,6 +11009,12 @@
                 "name": "multi_vector"
               },
               {
+                "annotation": "DTypeLike",
+                "default": "<callable float32>",
+                "kind": "keyword_only",
+                "name": "dtype"
+              },
+              {
                 "returns": "Embeddings"
               }
             ]
@@ -10839,6 +11049,12 @@
                 "default": "<required>",
                 "kind": "positional_or_keyword",
                 "name": "per_item"
+              },
+              {
+                "annotation": "DTypeLike",
+                "default": "<callable float32>",
+                "kind": "keyword_only",
+                "name": "dtype"
               },
               {
                 "returns": "Embeddings"

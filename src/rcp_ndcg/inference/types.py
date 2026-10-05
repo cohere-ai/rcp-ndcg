@@ -15,6 +15,7 @@ from types import MappingProxyType
 from typing import Any, Literal
 
 import numpy as np
+from numpy.typing import DTypeLike
 from pydantic import BaseModel, ConfigDict, Field
 from rcp_ndcg_core.content import Content
 
@@ -194,7 +195,10 @@ class Embeddings:
 
     Attributes:
         vectors: ``(N, D)`` when single-vector; ``(total_vectors, D)`` when
-            ragged, in item order. Values are float32.
+            ragged, in item order. Values are float32, except that a ragged
+            multi-vector buffer may keep the transfer dtype it crossed the wire
+            in (``float16``: half the bytes of a corpus index; :func:`l2_normalize`
+            and MaxSim compute in float32 either way).
         offsets: ``None`` when single-vector; otherwise ``(N + 1,)``, so item
             ``i`` owns ``vectors[offsets[i]:offsets[i + 1]]``.
     """
@@ -256,23 +260,30 @@ class Embeddings:
         return cls(vectors=np.ascontiguousarray(vectors, dtype=np.float32))
 
     @classmethod
-    def ragged(cls, per_item: Sequence[np.ndarray]) -> Embeddings:
-        """Build from one ``(T_i, D)`` array per item (width 0 when every item is empty)."""
+    def ragged(cls, per_item: Sequence[np.ndarray], *, dtype: DTypeLike = np.float32) -> Embeddings:
+        """Build from one ``(T_i, D)`` array per item (width 0 when every item is empty).
+
+        Args:
+            per_item: One ``(T_i, D)`` array per item.
+            dtype: The stored precision: float32, or the wire transfer dtype
+                (``float16``) to keep a multi-vector buffer in the precision it
+                crossed the wire in; every item is cast to it.
+        """
         lengths = [len(item) for item in per_item]
         width = next((int(item.shape[1]) for item in per_item if len(item)), 0)
         stacked = (
-            np.concatenate([np.asarray(item, dtype=np.float32) for item in per_item if len(item)], axis=0)
+            np.concatenate([np.asarray(item, dtype=dtype) for item in per_item if len(item)], axis=0)
             if any(lengths)
-            else np.zeros((0, width), dtype=np.float32)
+            else np.zeros((0, width), dtype=dtype)
         )
         offsets = np.zeros(len(per_item) + 1, dtype=np.int64)
         np.cumsum(lengths, out=offsets[1:])
-        return cls(vectors=np.ascontiguousarray(stacked, dtype=np.float32), offsets=offsets)
+        return cls(vectors=np.ascontiguousarray(stacked, dtype=dtype), offsets=offsets)
 
     @classmethod
-    def empty(cls, dim: int, *, multi_vector: bool = False) -> Embeddings:
+    def empty(cls, dim: int, *, multi_vector: bool = False, dtype: DTypeLike = np.float32) -> Embeddings:
         """The zero-item value, so an empty shard needs no special-casing."""
-        vectors = np.zeros((0, dim), dtype=np.float32)
+        vectors = np.zeros((0, dim), dtype=dtype)
         return cls(vectors=vectors, offsets=np.zeros(1, dtype=np.int64) if multi_vector else None)
 
     # -- transforms --------------------------------------------------------
@@ -280,6 +291,7 @@ class Embeddings:
         """Unit-norm every vector, so an inner product is a cosine.
 
         Applies per *vector*, not per item, which is what MaxSim needs too.
+        The computation runs in float32 and the buffer keeps its dtype.
         """
         return Embeddings(vectors=l2_normalize(self.vectors), offsets=self.offsets)
 
@@ -297,9 +309,19 @@ class Embeddings:
 
 
 def l2_normalize(vectors: np.ndarray) -> np.ndarray:
-    """Every row of ``vectors`` scaled to unit L2 norm (a zero row stays zero), as float32."""
-    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-    return (vectors / np.maximum(norms, 1e-12)).astype(np.float32, copy=False)
+    """Every row of ``vectors`` scaled to unit L2 norm (a zero row stays zero).
+
+    Computed in float32 (a float16 sum of squares loses most of its three
+    decimal digits), then cast back to the input dtype: float32 in, float32
+    out; a float16 buffer stays float16 so a multi-vector index keeps its
+    transfer precision end to end.
+    """
+    source = np.asarray(vectors, dtype=np.float32)
+    norms = np.linalg.norm(source, axis=1, keepdims=True)
+    normalized = source / np.maximum(norms, 1e-12)
+    if np.asarray(vectors).dtype == np.float16:
+        return normalized.astype(np.float16)
+    return normalized
 
 
 @dataclass(frozen=True)
@@ -319,17 +341,26 @@ class EmbedRequest:
 
 @dataclass(frozen=True)
 class PoolRequest:
-    """One multi-vector (late interaction) pooling call: the items and their side.
+    """One multi-vector (late interaction) pooling call: the items, their side, and the wire precision.
 
     The result is :class:`Embeddings` in ragged layout -- one slice of vectors per item, not one vector.
 
     Attributes:
         contents: The queries or documents as content parts, in order.
         role: Which side of the retrieval pair this batch is.
+        embed_dtype: The precision the vectors cross the wire in, copied from the endpoint config
+            (``"float16"`` by default, ``"float32"`` opt-in); sent as the request's ``embed_dtype`` and the
+            dtype the reply's base64 frames decode in.
+        dim: The width of one token vector, declared so the flat base64 frame of ``/pooling`` (which carries
+            no shape) can be reshaped to ``(tokens, dim)``; ``None`` when undeclared, which only the
+            self-describing float frames can decode. Filled from the endpoint config; the reply's token
+            counts cross-check it.
     """
 
     contents: tuple[Content, ...]
     role: EncodeRole
+    embed_dtype: Literal["float16", "float32"] = "float16"
+    dim: int | None = None
 
 
 # ---------------------------------------------------------------------------
