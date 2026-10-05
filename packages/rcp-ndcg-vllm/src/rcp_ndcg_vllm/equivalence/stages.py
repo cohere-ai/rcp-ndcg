@@ -197,38 +197,67 @@ def _rerank_stage2(
 def _rerank_summary(
     per_document: list[dict[str, Any]], per_query: list[dict[str, Any]], gates: ResolvedGates, scale: str
 ) -> dict[str, Any]:
-    """Aggregate the per-document deltas and per-query taus into the gate rows."""
+    """Aggregate the per-document deltas and per-query taus into the gate rows of the score's scale."""
     deltas = [entry["abs_delta"] for entry in per_document]
     p99 = float(np.percentile(deltas, 99)) if deltas else 0.0
     worst = max(deltas) if deltas else 0.0
     taus = [entry["kendall_tau"] for entry in per_query if entry["kendall_tau"] is not None]
     median_tau = float(np.median(taus)) if taus else None
+    tau_row = {
+        "gate": "kendall_tau_median",
+        "passed": bool(median_tau is not None and median_tau >= gates.tau_min),
+        "value": median_tau,
+        "bound": gates.tau_min,
+        "referent": "median per-query Kendall tau between served and reference scores",
+    }
+    if scale == "probability":
+        gate_rows = [
+            {
+                "gate": "p99_abs_delta",
+                "passed": bool(p99 <= gates.prob_p99_abs),
+                "value": p99,
+                "bound": gates.prob_p99_abs,
+                "referent": "|served - reference|, 99th percentile over all documents",
+            },
+            {
+                "gate": "max_abs_delta",
+                "passed": bool(worst <= gates.prob_max_abs),
+                "value": worst,
+                "bound": gates.prob_max_abs,
+                "referent": "max |served - reference| over all documents",
+            },
+            tau_row,
+        ]
+    elif scale == "logit":
+        ratios = [
+            entry["abs_delta"] / (1.0 + abs(entry["reference"])) if entry["reference"] is not None else 0.0
+            for entry in per_document
+        ]
+        worst_ratio = max(ratios) if ratios else 0.0
+        gate_rows = [
+            {
+                "gate": "max_relative_delta",
+                "passed": bool(worst_ratio <= gates.logit_rel_abs),
+                "value": worst_ratio,
+                "bound": gates.logit_rel_abs,
+                "referent": "max |served - reference| / (1 + |reference|) over all documents",
+            },
+            tau_row,
+        ]
+    else:
+        gate_rows = [
+            {
+                "gate": "max_abs_delta",
+                "passed": bool(worst <= gates.cos_max_abs),
+                "value": worst,
+                "bound": gates.cos_max_abs,
+                "referent": "max |served - reference| over all documents",
+            },
+            tau_row,
+        ]
     within_p99 = sum(1 for entry in per_document if entry["abs_delta"] <= gates.prob_p99_abs) / max(
         len(per_document), 1
     )
-    gate_rows = [
-        {
-            "gate": "p99_abs_delta",
-            "passed": bool(p99 <= gates.prob_p99_abs),
-            "value": p99,
-            "bound": gates.prob_p99_abs,
-            "referent": "|served - reference|, 99th percentile over all documents",
-        },
-        {
-            "gate": "max_abs_delta",
-            "passed": bool(worst <= gates.prob_max_abs),
-            "value": worst,
-            "bound": gates.prob_max_abs,
-            "referent": "max |served - reference| over all documents",
-        },
-        {
-            "gate": "kendall_tau_median",
-            "passed": bool(median_tau is not None and median_tau >= gates.tau_min),
-            "value": median_tau,
-            "bound": gates.tau_min,
-            "referent": "median per-query Kendall tau between served and reference scores",
-        },
-    ]
     return {
         "score_scale": scale,
         "n_queries": len(per_query),
