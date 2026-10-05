@@ -35,6 +35,7 @@ from rcp_ndcg.retrieval import (
     VoyageReranker,
     fuse,
     index,
+    load_index,
     rerank,
     retrieve,
     search,
@@ -314,6 +315,52 @@ def test_a_served_encoder_without_a_url_is_refused_where_its_client_is_built(dat
 # ---------------------------------------------------------------------------
 # Hosted profiles through the role clients over a mock wire
 # ---------------------------------------------------------------------------
+
+
+def test_an_index_from_the_previous_release_is_a_config_error_with_the_hint(dataset, tmp_path: Path) -> None:
+    """An index.json written before the api rewiring (provider:-shaped) is refused by name, not as a raw error."""
+    root = tmp_path / "idx"
+    root.mkdir()
+    (root / "index.json").write_text(
+        json.dumps(
+            {
+                "schema": "rcp-ndcg.index.v1",
+                "path": str(root),
+                "dataset": "beir",
+                "retriever": {"kind": "dense", "encoder": {"provider": "local", "model": "m", "pooling": "last"}},
+                "identity": "0" * 64,
+                "num_documents": 3,
+            }
+        )
+    )
+
+    with pytest.raises(ConfigError, match="api, not by provider") as caught:
+        load_index(root)
+    assert "api: openai_embeddings" in (caught.value.hint or "")
+
+
+def test_the_index_identity_carries_the_tokenizer_digest(dataset, tmp_path: Path) -> None:
+    """The encoder's tokenizer digest enters the index identity (as it enters the step identities): the same
+    bytes under another path share it, different bytes do not, and a URL change never does."""
+    from tests._tokenizers import byte_bpe_tokenizer, save, word_tokenizer
+
+    for directory in ("one", "two", "other"):
+        (tmp_path / directory).mkdir()
+    first = save(word_tokenizer(), tmp_path / "one")
+    second = save(word_tokenizer(), tmp_path / "two")  # same bytes, different path
+    other = save(byte_bpe_tokenizer(), tmp_path / "other")
+
+    def identity(encoder: dict) -> str:
+        config = DenseConfig(encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub", **encoder))
+        doc_ids, contents = retrieval_api._corpus(dataset)
+        return retrieval_api._identity(config, doc_ids, contents)
+
+    plain = identity({})
+    with_digest = identity({"tokenizer": str(first)})
+
+    assert "tokenizer" not in plain and plain != with_digest
+    assert identity({"tokenizer": str(second)}) == with_digest, "the same bytes (any path) share the identity"
+    assert identity({"tokenizer": str(other)}) != with_digest, "different tokenizer bytes re-key"
 
 
 def test_a_hosted_encoder_embeds_through_its_public_profile(dataset, tmp_path: Path, hosted_wire) -> None:

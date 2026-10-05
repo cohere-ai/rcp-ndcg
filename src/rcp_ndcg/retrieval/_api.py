@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from rcp_ndcg.data.dataset import Dataset
 from rcp_ndcg.data.rankings import Rankings
@@ -170,7 +170,18 @@ def load_index(path: str | Path) -> Index:
             hint="build one with rcp_ndcg.retrieval.index",
             cli_hint="build one with `rcp-ndcg retrieval index`",
         )
-    return Index.model_validate_json(record.read_text(encoding="utf-8"))
+    try:
+        return Index.model_validate_json(record.read_text(encoding="utf-8"))
+    except ValidationError as exc:
+        from rcp_ndcg.retrieval.config import _OLD_SHAPE_HINT
+        from rcp_ndcg.support.config import config_error
+
+        raise config_error(
+            exc,
+            model=Index,
+            source=f"{record}",
+            hint=f"this index was written before the api rewiring; rebuild it with index(). {_OLD_SHAPE_HINT}",
+        ) from exc
 
 
 def retrieve(
@@ -483,8 +494,20 @@ def _corpus_hash(contents: Sequence[Any], doc_ids: Sequence[str]) -> str:
 
 
 def _identity(retriever: RetrieverConfig, doc_ids: list[str], contents: list[Any]) -> str:
-    """What an index is: the retriever's content fields (``IDENTITY_ROLES``) and the corpus."""
-    return combine_digests(hash_payload(identity_payload(retriever)), _corpus_hash(contents, doc_ids))
+    """What an index is: the retriever's content fields (``IDENTITY_ROLES``), the encoder's tokenizer digest and
+    the corpus.
+
+    The tokenizer digest (``identity_extra()``) is spliced in at the encoder, as the step identities splice it:
+    what cuts the text is content, and the tokenizer's *name* is not. Two configs that declare different
+    tokenizer bytes never share an index, so a corpus indexed before the text-budget mechanism lands is not
+    silently reused once budgets become content-bearing.
+    """
+    payload = identity_payload(retriever)
+    encoder = getattr(retriever, "encoder", None)
+    if encoder is not None:
+        payload = payload.copy()
+        payload["encoder"] = {**payload.get("encoder", {}), **encoder.identity_extra()}
+    return combine_digests(hash_payload(payload), _corpus_hash(contents, doc_ids))
 
 
 def _system_name(retriever: RetrieverConfig) -> str:

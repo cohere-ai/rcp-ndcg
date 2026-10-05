@@ -22,8 +22,9 @@ from tqdm import tqdm
 def _l2_normalize(vectors: np.ndarray) -> np.ndarray:
     """Every row scaled to unit L2 norm (a zero row stays zero), in float32, returned as float32.
 
-    The deleted ``rcp_ndcg.inference.types.l2_normalize`` verbatim, so the vectors are bit for bit what the
-    package's encoders computed."""
+    The float32 path of the deleted ``rcp_ndcg.inference.types.l2_normalize``, with the same formula (the
+    module's callers pass float32, so the helper's float16 branch is unused here): the vectors are bit for bit
+    what the package's encoders computed."""
     source = np.asarray(vectors, dtype=np.float32)
     norms = np.linalg.norm(source, axis=1, keepdims=True)
     return source / np.maximum(norms, 1e-12)
