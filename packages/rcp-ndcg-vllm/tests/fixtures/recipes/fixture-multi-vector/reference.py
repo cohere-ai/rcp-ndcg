@@ -12,6 +12,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from deterministic import DIM, FixtureTokenizer, token_id, token_vectors, tokens  # noqa: E402
 
+MAX_TOKENS = 512  # the recipe's client.max_tokens; the reference pins the same budget
+
 QUERY_PROMPT = "query: "
 DOC_PROMPT = "doc: "
 

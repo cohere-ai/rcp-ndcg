@@ -17,7 +17,14 @@ from ..errors import HarnessError
 from ..recipe import Recipe
 from .client import EngineClient, fold_instruction
 from .gates import ResolvedGates, kendall_tau_b, resolve_gates
-from .prompt import TokenizerAdapter, anchor_report, served_prompt_text, template_render_check
+from .prompt import (
+    TokenizerAdapter,
+    _specials_ids,
+    anchor_report,
+    served_prompt_text,
+    shape_overhead,
+    template_render_check,
+)
 from .reference import Reference
 
 __all__ = ["load_pairs", "stage1_prompts", "stage2_scores"]
@@ -149,15 +156,17 @@ def stage2_scores(
             "stage 2 needs a runnable reference; reference.kind=stored_scores supports stage 1 and stage 3 only"
         )
     reference.load(device)
-    if recipe.client.template is not None and tokenizer is None:
+    needs_tokenizer = recipe.role == "rerank" or recipe.client.template is not None
+    if needs_tokenizer and tokenizer is None:
         raise HarnessError(
-            f"recipe {recipe.id}: stage 2 renders the declared shapes, which needs the recipe's tokenizer "
-            "(pass the stage-1 adapter, or install rcp-ndcg-vllm[reference])"
+            f"recipe {recipe.id}: stage 2 renders the served prompts and audits the over-cap pairs, which "
+            "needs the recipe's tokenizer (pass the stage-1 adapter, or install rcp-ndcg-vllm[reference])"
         )
     gates = resolve_gates(recipe)
     with EngineClient(recipe, base_url, served_model_name=served_model_name, timeout_s=timeout_s or 300.0) as client:
         if recipe.role == "rerank":
-            return _rerank_stage2(recipe, pairs, reference, client, gates)
+            assert tokenizer is not None  # a rerank recipe always needs it (the guard above)
+            return _rerank_stage2(recipe, pairs, reference, client, gates, tokenizer)
         return _vector_stage2(recipe, pairs, reference, client, gates, tokenizer)
 
 
@@ -201,6 +210,7 @@ def _rerank_stage2(
     reference: Reference,
     client: EngineClient,
     gates: ResolvedGates,
+    tokenizer: TokenizerAdapter | None = None,
 ) -> dict[str, Any]:
     """Scores from the served /rerank against the reference, with the scale's gates and the per-query tau.
 
@@ -213,6 +223,7 @@ def _rerank_stage2(
     per_document: list[dict[str, Any]] = []
     per_query: list[dict[str, Any]] = []
     over_cap: list[dict[str, Any]] = []
+    assert tokenizer is not None  # the caller's guard: a rerank stage always has the tokenizer
     for row_index, row in enumerate(pairs):
         served = client.rerank(
             _served_query(recipe, row["query"]),
@@ -223,7 +234,7 @@ def _rerank_stage2(
         values = reference.score(row["query"], row["documents"], recipe.client.default_instruction)
         for document_index, (served_score, reference_score) in enumerate(zip(served, values, strict=True)):
             document = row["documents"][document_index]
-            uncut_tokens = _pair_tokens(recipe, row["query"], document, reference)
+            uncut_tokens = _pair_tokens(recipe, row["query"], document, tokenizer)
             over = uncut_tokens > recipe.client.max_tokens
             delta = abs(served_score - reference_score)
             entry = {
@@ -238,12 +249,13 @@ def _rerank_stage2(
                 "within": bool(delta <= _score_bound(gates, scale, reference_score)),
                 "over_cap": over,
             }
-            if over and deviation:
+            if over:
                 over_cap.append(entry)
-                continue
+            if over and deviation:
+                continue  # declared deviation: the over-cap pair is reported, never gated
             per_document.append(entry)
         if not deviation or any(
-            _pair_tokens(recipe, row["query"], document, reference) <= recipe.client.max_tokens
+            _pair_tokens(recipe, row["query"], document, tokenizer) <= recipe.client.max_tokens
             for document in row["documents"]
         ):
             tau = kendall_tau_b(served, values)
@@ -269,9 +281,18 @@ def _rerank_stage2(
     return summary
 
 
-def _pair_tokens(recipe: Recipe, query: str, document: str, reference: Reference) -> int:
-    """The uncut pair's token count, measured from the reference's own render."""
-    return len(reference.render(_served_query(recipe, query), document, recipe.client.default_instruction))
+def _pair_tokens(recipe: Recipe, query: str, document: str, tokenizer: TokenizerAdapter) -> int:
+    """The token count of one pair's prompt with NO client cut: fixed overhead plus full content."""
+    served_query = _served_query(recipe, query)
+    overhead = (
+        shape_overhead(recipe, tokenizer, "pair") + len(_specials_ids(recipe, tokenizer))
+        if recipe.client.template
+        else 0
+    )
+    content = len(tokenizer.encode(served_query, add_special_tokens=False)) + len(
+        tokenizer.encode(document, add_special_tokens=False)
+    )
+    return overhead + content
 
 
 def _rerank_summary(
@@ -372,7 +393,10 @@ def _vector_stage2(
             served_texts = [
                 served_prompt_text(recipe, "", document, tokenizer, shape="document") for document in documents
             ]
-            served_texts.append(served_prompt_text(recipe, query, "", tokenizer, shape="query"))  # fmt: skip
+            if recipe.client.template.query is not None:
+                served_texts.append(served_prompt_text(recipe, query, "", tokenizer, shape="query"))
+            else:
+                served_texts.append(recipe.client.query_prompt + query)
         else:
             served_texts = [recipe.client.doc_prompt + document for document in documents]
             served_texts.append(recipe.client.query_prompt + query)

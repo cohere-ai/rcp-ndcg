@@ -1,7 +1,7 @@
-id: fixture-multi-vector
-model: fixtures/LateInteractionEmbedder
+id: fixture-embed-cls
+model: fixtures/ClsEmbedder
 revision: "0123456789abcdef0123456789abcdef01234567"
-role: multi_vector
+role: embed
 input: [text]
 licence: apache-2.0
 engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0", startup_timeout_s: 60}
@@ -11,30 +11,38 @@ serve:
   convert: null
   hf_overrides: {}
   chat_template: null
-  pooler_config: {task: token_embed}
+  pooler_config: {seq_pooling_type: CLS}
   trust_remote_code: false
   max_model_len: 512
-  dtype: float16
+  dtype: bfloat16
   plugin: null
   extra_args: []
 client:
-  api: vllm_pooling
-  query_prompt: "query: "
-  doc_prompt: ""
+  api: openai_embeddings
+  request_shape: text
+  add_special_tokens: null
   template:
+    query:
+      - {special: cls}
+      - {text: "query: "}
+      - {content: query}
     document:
-      - {text: "doc: "}
+      - {special: cls}
       - {content: document}
-    anchor: mean
+    anchor: first
+  query_prompt: ""
+  doc_prompt: ""
   instruction: null
   default_instruction: null
-  tokenizer: "fixtures/LateInteractionEmbedder@0123456789abcdef0123456789abcdef01234567"
+  tokenizer: "fixtures/ClsEmbedder@0123456789abcdef0123456789abcdef01234567"
   max_tokens: 512
-  normalize: false
+  on_overflow: cut
+  empty_doc: omit_zero
+  normalize: true
   dimensions: null
-  embed_dtype: float16
+  embed_dtype: null
   use_activation: null
-  batch_size: null
+  batch_size: 4
 reference:
   kind: transformers
   score_scale: cosine
@@ -42,4 +50,4 @@ reference:
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources: []
-notes: "A fixture for the late-interaction rules: per-token vectors over /pooling, transfer in float16."
+notes: "A fixture for the anchor: first rules: a CLS-pooling embedder whose head anchor is fixed."

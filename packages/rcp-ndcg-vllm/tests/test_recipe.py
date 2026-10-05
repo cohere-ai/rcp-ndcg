@@ -222,6 +222,18 @@ def test_client_config_rerank() -> None:
         "default_instruction": "Follow the task.",
         "tokenizer": f"fixtures/PointwiseReranker@{REV}",
         "max_tokens": 512,
+        "template": {
+            "anchor": "last",
+            "anchor_markers": [],
+            "pair": [
+                {"text": "SYSTEM: Judge whether the Document answers the Query. Answer yes or no.\nUSER:\nQuery: "},
+                {"content": "query"},
+                {"text": "\nDocument: "},
+                {"content": "document"},
+                {"text": "\nASSISTANT:"},
+            ],
+            "query_max_tokens": 256,
+        },
     }
 
 
@@ -353,3 +365,86 @@ def test_cli_reports_a_recipe_error_without_a_traceback(tmp_path: Path, capsys: 
     argv = ["--recipe", str(directory), "--pairs", str(tmp_path / "pairs.jsonl"), "--out", str(tmp_path / "o")]
     assert main(argv) == 2
     assert "must equal the directory name" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# The anchor/budget validators (research-lane follow-up).
+# ---------------------------------------------------------------------------
+
+
+def test_template_shape_without_content_span_is_refused(tmp_path_factory: pytest.TempPathFactory) -> None:
+    with pytest.raises(RecipeError, match="content span"):
+        _load_with(
+            tmp_path_factory.mktemp("shape"),
+            {
+                "client.template": {
+                    "pair": [{"text": "fixed head "}, {"text": "fixed tail"}],
+                    "anchor": "last",
+                    "query_max_tokens": 64,
+                }
+            },  # fmt: skip
+        )
+
+
+def test_anchor_last_shape_must_end_fixed(tmp_path_factory: pytest.TempPathFactory) -> None:
+    with pytest.raises(RecipeError, match="anchor=last"):
+        _load_with(
+            tmp_path_factory.mktemp("tail"),
+            {
+                "client.template": {
+                    "pair": [{"text": "head "}, {"content": "query"}, {"content": "document"}],
+                    "anchor": "last",
+                    "query_max_tokens": 64,
+                }
+            },  # fmt: skip
+        )
+
+
+def test_anchor_marker_needs_markers(tmp_path_factory: pytest.TempPathFactory) -> None:
+    with pytest.raises(RecipeError, match="anchor_markers"):
+        _load_with(
+            tmp_path_factory.mktemp("markers"),
+            {"client.template": {"document": [{"text": "doc: "}, {"content": "document"}], "anchor": "marker"}},
+        )
+
+
+def test_anchor_first_shape_must_start_fixed(tmp_path_factory: pytest.TempPathFactory) -> None:
+    with pytest.raises(RecipeError, match="anchor=first"):
+        _load_with(
+            tmp_path_factory.mktemp("head"),
+            {"client.template": {"document": [{"content": "document"}, {"text": " tail"}], "anchor": "first"}},
+        )
+
+
+def test_empty_default_instruction_is_refused(tmp_path_factory: pytest.TempPathFactory) -> None:
+    with pytest.raises(RecipeError, match="empty string"):
+        _load_with(tmp_path_factory.mktemp("empty"), {"client.default_instruction": ""})
+
+
+def test_blocking_is_listwise_only(tmp_path_factory: pytest.TempPathFactory) -> None:
+    with pytest.raises(RecipeError, match="listwise"):
+        _load_with(
+            tmp_path_factory.mktemp("blocking"),
+            {"client.blocking": {"block_size": 8, "capacity_formula": "max_tokens - query", "weighting": "max"}},
+        )
+
+
+def test_pooler_config_unknown_key_is_refused(tmp_path_factory: pytest.TempPathFactory) -> None:
+    with pytest.raises(RecipeError, match="not PoolerConfig fields"):
+        _load_with(tmp_path_factory.mktemp("pooler"), {"serve.pooler_config": {"normalize": True}})
+
+
+def test_truncate_prompt_tokens_field_does_not_exist(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Engine-side truncation is not a recipe field: the client owns every cut."""
+    with pytest.raises(RecipeError, match="truncate_prompt_tokens"):
+        _load_with(tmp_path_factory.mktemp("trunc"), {"client.truncate_prompt_tokens": 4096})
+
+
+def test_aggregation_requires_chunking(tmp_path_factory: pytest.TempPathFactory) -> None:
+    with pytest.raises(RecipeError, match="on_overflow: chunk"):
+        _load_with(tmp_path_factory.mktemp("aggr"), {"client.aggregation": "max"})
+
+
+def test_client_budget_must_fit_the_engine_context(tmp_path_factory: pytest.TempPathFactory) -> None:
+    with pytest.raises(RecipeError, match="max_model_len"):
+        _load_with(tmp_path_factory.mktemp("budget"), {"client.max_tokens": 4096})

@@ -60,11 +60,13 @@ class FixtureTokenizer:
     def encode(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
         """Token ids of ``text``; the fixture tokenizer adds no specials, so the flag changes nothing."""
         del add_special_tokens
-        return [token_id(word) for word in tokens(text)]
+        return [self.id_to_token_value(word) for word in tokens(text)]
 
-    def id_to_token(self, token_id_value: int) -> str:
-        """The token string of one id (the fixture prints the id itself; strings are for the report only)."""
-        return f"tok:{token_id_value}"
+    @staticmethod
+    def id_to_token_value(word: str) -> int:
+        """The id of one word: specials keep their reserved ids, content words hash."""
+        specials = {"<<cls>>": 49999, "<<sep>>": 49998, "<<end>>": 49997}
+        return specials.get(word, token_id(word))
 
     def truncate(self, text: str, max_tokens: int) -> str:
         """The words of the first ``max_tokens`` tokens of ``text``, joined (a right token-boundary cut)."""
@@ -72,6 +74,15 @@ class FixtureTokenizer:
         if len(words) <= max_tokens:
             return text
         return " ".join(words[:max_tokens])
+
+    def special_tokens(self) -> dict[str, int]:
+        """The fixture's special tokens by name, resolved like a real tokenizer's added-vocab map."""
+        return {"cls": 49999, "sep": 49998, "end": 49997}
+
+    def id_to_token(self, token_id_value: int) -> str:
+        """The token string of one id; special ids resolve to their literal framing, content ids to the report's."""
+        specials = {49999: "<<cls>>", 49998: "<<sep>>", 49997: "<<end>>"}
+        return specials.get(token_id_value, f"tok:{token_id_value}")
 
     def decode(self, token_ids: list[int]) -> str:
         """A stand-in text for a kept prefix of ids: the ids rendered like the report's token strings.
@@ -91,3 +102,17 @@ def token_vectors(text: str, tag: str, *, noise: float = 0.0) -> np.ndarray:
 def _noise(tag: str, key: str, scale: float) -> float:
     """One seeded noise value in ``(-scale, scale)``, deterministic per (tag, key)."""
     return (int.from_bytes(_digest(tag, key)[:4], "big") / 2**31 - 1.0) * scale
+
+
+def reserve_and_append(
+    prefix_ids: list[int], content_ids: list[int], suffix_ids: list[int], max_tokens: int
+) -> list[int]:
+    """The anchor-preserving cut: reserve the fixed segments, cut only the content, re-attach.
+
+    This is the fixture references' implementation of the design's cut rule; the harness assembles the same
+    ids from the declared shapes, and stage 1 requires the two to agree exactly.
+    """
+    budget = max_tokens - len(prefix_ids) - len(suffix_ids)
+    if budget < 0:
+        raise ValueError(f"the fixed segments ({len(prefix_ids) + len(suffix_ids)}) exceed the budget {max_tokens}")
+    return prefix_ids + content_ids[:budget] + suffix_ids

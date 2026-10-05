@@ -53,7 +53,7 @@ def test_stage1_passes_for_prompted_embedding_roles() -> None:
 
 
 def test_stage1_reports_the_first_mismatch_with_token_strings(tmp_path: Path) -> None:
-    """A template drift is reported with both sides' token strings, not just a boolean.
+    """A template drift is reported: the served template file and the declared shapes must render identically.
 
     The drifted recipe lives in tmp_path: the tracked fixture is never written.
     """
@@ -74,17 +74,18 @@ def test_stage1_reports_the_first_mismatch_with_token_strings(tmp_path: Path) ->
     reference = load_reference(str(copied), recipe.reference.entry)
     report = stage1_prompts(recipe, sample_pairs()[:1], reference, reference._module.tokenizer())
     assert report["passed"] is False
-    mismatch = report["mismatch"]
-    assert mismatch["served_tokens"] != mismatch["reference_tokens"]
-    assert mismatch["served_ids"] != mismatch["reference_ids"]
-    assert mismatch["query_index"] == 0
+    check = report["template_render_check"]
+    assert check is not None and check["passed"] is False
+    # The drift rewrites "Query: " to "Question: ": the id sequences diverge even at the same length.
+    assert check["shape_ids_head"] != check["template_ids_head"]
 
 
 def test_stage2_rerank_passes_exactly_against_the_clean_stub(stub: Any, tmp_path: Path) -> None:
     """A clean stub engine equals its reference bit for bit; every gate holds with zero slack."""
     recipe = load("fixture-rerank-pointwise")
     reference = load_reference(str(RECIPE_DIRS / recipe.id), recipe.reference.entry)
-    document = stage2_scores(recipe, stub.base_url, sample_pairs(), reference)
+    tokenizer = reference._module.tokenizer()
+    document = stage2_scores(recipe, stub.base_url, sample_pairs(), reference, tokenizer=tokenizer)
     assert document["passed"] is True
     assert document["abs_delta_max"] == 0.0
     assert document["kendall_tau_median"] == 1.0
@@ -97,7 +98,8 @@ def test_stage2_rerank_fails_when_the_stub_adds_noise(tmp_path: Path) -> None:
     try:
         recipe = load("fixture-rerank-pointwise")
         reference = load_reference(str(RECIPE_DIRS / recipe.id), recipe.reference.entry)
-        document = stage2_scores(recipe, engine.base_url, sample_pairs(), reference)
+        tokenizer = reference._module.tokenizer()
+        document = stage2_scores(recipe, engine.base_url, sample_pairs(), reference, tokenizer=tokenizer)
         assert document["passed"] is False
         assert document["abs_delta_max"] > 0.05
         assert any(not row["within"] for row in document["per_document"])
@@ -320,9 +322,10 @@ def test_stage2_cosine_scale_uses_the_cosine_gate(tmp_path: Path) -> None:
         update={"reference": recipe.reference.model_copy(update={"score_scale": "cosine"})}
     )
     reference = load_reference(str(RECIPE_DIRS / recipe.id), recipe.reference.entry)
+    tokenizer = reference._module.tokenizer()
     engine = start_stub("--noise", "0.012")  # deltas ~0.012: above the 0.01 cosine gate, below 0.05 and tau-safe
     try:
-        document = stage2_scores(cosine_recipe, engine.base_url, sample_pairs(), reference)
+        document = stage2_scores(cosine_recipe, engine.base_url, sample_pairs(), reference, tokenizer=tokenizer)
         assert document["passed"] is False
         assert document["gates"][0]["gate"] == "max_abs_delta"
         assert document["gates"][0]["bound"] == 0.01
@@ -331,7 +334,7 @@ def test_stage2_cosine_scale_uses_the_cosine_gate(tmp_path: Path) -> None:
     loose = cosine_recipe.model_copy(update={"gates": cosine_recipe.gates.model_copy(update={"cos_max_abs": 0.05})})
     engine = start_stub("--noise", "0.012")
     try:
-        document = stage2_scores(loose, engine.base_url, sample_pairs(), reference)
+        document = stage2_scores(loose, engine.base_url, sample_pairs(), reference, tokenizer=tokenizer)
         assert document["passed"] is True
     finally:
         engine.stop()
@@ -513,3 +516,109 @@ def test_stage3_runs_for_a_stored_scores_recipe(tmp_path: Path) -> None:
         stored, base_url=None, pairs=[], out_dir=tmp_path, stages=[3], reference=None, rankings_dir=rankings_dir
     )  # fmt: skip
     assert document["passed"] is True
+
+
+# ---------------------------------------------------------------------------
+# Anchors: one fixture per anchor kind, over-length survival, the naive-cut mutation.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("recipe_id", "anchor"),
+    [
+        ("fixture-embed", "last"),
+        ("fixture-embed-cls", "first"),
+        ("fixture-embed-marker", "marker"),
+        ("fixture-multi-vector", "mean"),
+        ("fixture-rerank-pointwise", "last"),
+    ],
+)
+def test_every_anchor_kind_declares_its_anchor(recipe_id: str, anchor: str) -> None:
+    recipe = load(recipe_id)
+    assert recipe.client.template is not None
+    assert recipe.client.template.anchor == anchor
+
+
+def test_every_fixture_recipe_is_covered_by_the_anchor_kind_table() -> None:
+    assert {
+        recipe.id
+        for recipe in (
+            load(name)
+            for name in (
+                "fixture-embed",
+                "fixture-embed-cls",
+                "fixture-embed-marker",
+                "fixture-multi-vector",
+                "fixture-rerank-pointwise",
+            )
+        )
+    } == {
+        "fixture-embed",
+        "fixture-embed-cls",
+        "fixture-embed-marker",
+        "fixture-multi-vector",
+        "fixture-rerank-pointwise",
+    }  # the noisy fixture is a copy of the pointwise one (same anchors)
+
+
+def test_anchor_check_catches_a_whole_prompt_right_cut(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The mutation: a naive whole-prompt right cut (the ZeRank/ctxl defect class) loses the tail anchor.
+
+    The recipe's renderer is replaced with the naive cut and the anchor audit must fail on the over-length
+    samples; with the real renderer the same inputs pass.
+    """
+    import rcp_ndcg_vllm.equivalence.prompt as prompt_module
+
+    recipe = load("fixture-embed")
+    reference = load_reference(str(RECIPE_DIRS / recipe.id), recipe.reference.entry)
+    tokenizer = reference._module.tokenizer()
+
+    real_segment_text = prompt_module._segment_text
+
+    def naive_assemble(recipe: Recipe, tokenizer: Any, shape: str, contents: dict[str, str]) -> str:
+        # Render every segment UNCUT, join, then truncate the whole prompt at the budget: the defect class.
+        parts = [
+            contents[segment.content]
+            if segment.content is not None
+            else real_segment_text(recipe, tokenizer, segment, shape, 0)
+            for segment in (recipe.client.template and getattr(recipe.client.template, shape)) or []
+        ]
+        return tokenizer.truncate("".join(parts), recipe.client.max_tokens)
+
+    monkeypatch.setattr(prompt_module, "assemble_shape_text", naive_assemble)
+    audit = stage1_prompts(recipe, sample_pairs()[:1], reference, tokenizer, over_length_per_shape=5)
+    assert audit["anchor_check"]["passed"] is False
+    assert audit["anchor_check"]["failures"]
+    assert audit["anchor_check"]["failures"][0]["side"] == "served"
+
+
+def test_stage2_gates_only_under_cap_pairs_when_the_deviation_is_declared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With anchor_drop_over_cap, over-cap pairs are reported non-gating; the gates use the under-cap pairs."""
+    recipe = load("fixture-rerank-pointwise")
+    reference = load_reference(str(RECIPE_DIRS / recipe.id), recipe.reference.entry)
+    tokenizer = reference._module.tokenizer()
+    deviating = recipe.model_copy(
+        update={"reference": recipe.reference.model_copy(update={"known_deviations": ["anchor_drop_over_cap"]})}
+    )
+    over_cap_pairs = [
+        {
+            "query": "over the cap",
+            "documents": ["long document " * 400],  # uncut render far beyond max_tokens
+        },
+        *sample_pairs(2)[:1],
+    ]
+    engine = start_stub("--noise", "0.2")  # above every gate: the under-cap pair must still fail
+    try:
+        document = stage2_scores(deviating, engine.base_url, over_cap_pairs, reference, tokenizer=tokenizer)
+        assert document["over_cap"]["n_pairs"] == 1
+        assert document["over_cap"]["gating"] is False
+        assert document["over_cap"]["pairs"][0]["over_cap"] is True
+        assert document["passed"] is False  # the under-cap pair's gates still decide
+        # Without the declared deviation the over-cap pair gates like any other (and fails on the noise).
+        document = stage2_scores(recipe, engine.base_url, over_cap_pairs, reference, tokenizer=tokenizer)
+        assert document["over_cap"]["n_pairs"] == 1
+        assert document["passed"] is False
+    finally:
+        engine.stop()

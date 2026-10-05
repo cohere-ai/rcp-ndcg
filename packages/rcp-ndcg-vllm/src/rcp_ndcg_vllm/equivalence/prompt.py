@@ -153,10 +153,9 @@ def served_prompt_text(recipe: Recipe, query: str, document: str, tokenizer: Any
     """
     if recipe.client.template is not None:
         shape = shape or ("pair" if recipe.role == "rerank" else "document")
-        folded_query = (
-            fold_instruction(recipe.client.default_instruction, query) if recipe.client.instruction == "fold" else query
-        )
-        return assemble_shape_text(recipe, tokenizer, shape, {"query": folded_query, "document": document})
+        if recipe.client.instruction == "fold":
+            query = fold_instruction(recipe.client.default_instruction, query)
+        return assemble_shape_text(recipe, tokenizer, shape, {"query": query, "document": document})
     if recipe.role == "rerank":
         return render_template_for(recipe, query, document)
     return recipe.client.doc_prompt + document
@@ -329,8 +328,11 @@ def template_render_check(recipe: Recipe, tokenizer: Any, query: str, document: 
     are tokenised with the same tokenizer and flags and compared exactly.
     """
     shape = "pair" if recipe.role == "rerank" else "document"
-    from_ids = assemble_shape_ids(recipe, tokenizer, shape, {"query": query, "document": document})
-    template_text = render_template_for(recipe, query, document)
+    folded_query = (
+        fold_instruction(recipe.client.default_instruction, query) if recipe.client.instruction == "fold" else query
+    )
+    from_ids = assemble_shape_ids(recipe, tokenizer, shape, {"query": folded_query, "document": document})
+    template_text = render_template_for(recipe, query, document)  # context() applies the fold
     template_ids = tokenizer.encode(template_text, add_special_tokens=bool(recipe.client.add_special_tokens))
     passed = from_ids == template_ids
     report: dict[str, Any] = {

@@ -16,6 +16,8 @@ MAX_TOKENS = 512  # the recipe's client.max_tokens; the reference pins the same 
 
 QUERY_PROMPT = "query: "
 DOC_PROMPT = "doc: "
+CLS_PREFIX = "<<CLS>>"
+"""The template's fixed head: the first-token anchor, resolved from the tokenizer's special map."""
 END_SUFFIX = " [END]"
 """The template's fixed tail: the last-token anchor, reserved and re-attached by the cut."""
 
@@ -25,29 +27,26 @@ _loaded: Any = None
 def load(device: str) -> Any:
     """Load the reference model (a fixture: nothing to load)."""
     global _loaded
-    _loaded = f"fixture-embed-reference@{device}"
+    _loaded = f"fixture-cls-reference@{device}"
     return _loaded
 
 
 def render(query: str, document: str, instruction: str | None) -> list[int]:
     """Stage 1 for an embedding recipe: the reference ids of the prompted document (the query side is unused)."""
     del query, instruction
-    from deterministic import reserve_and_append, token_id, tokens
+    from deterministic import token_id, tokens
 
-    prefix_ids = [token_id(word) for word in tokens(DOC_PROMPT)]
-    suffix_ids = [token_id(word) for word in tokens(END_SUFFIX)]
-    content_ids = [token_id(word) for word in tokens(document)]
-    return reserve_and_append(prefix_ids, content_ids, suffix_ids, MAX_TOKENS)
+    return [token_id(word) for word in tokens(DOC_PROMPT + document + END_SUFFIX)]
 
 
 def embed(texts: list[str], role: str) -> list[np.ndarray]:
     """Stage 2: one unit vector per text; the reference composes the same prompts the client sends."""
     assert _loaded
     prefix = QUERY_PROMPT if role == "query" else DOC_PROMPT
-    return [vector(prefix + text + END_SUFFIX, "embed") for text in texts]
+    return [vector(CLS_PREFIX + prefix + text, "embed") for text in texts]
 
 
-__all__ = ["DIM", "DOC_PROMPT", "END_SUFFIX", "QUERY_PROMPT", "embed", "load", "render"]
+__all__ = ["CLS_PREFIX", "DIM", "DOC_PROMPT", "QUERY_PROMPT", "embed", "load", "render"]
 
 
 def tokenizer() -> FixtureTokenizer:
