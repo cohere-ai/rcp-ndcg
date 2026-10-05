@@ -240,8 +240,9 @@ class TestContentMediaTokens:
         )
 
     def test_a_single_frame_container_is_refused(self):
-        """A container of one frame has no temporal pair to merge, and no engine's video processor accepts
-        one (the temporal resize demands at least two frames); a single frame is an image."""
+        """A single frame is an image: the declared container instrument merges frames in time, which
+        needs at least a temporal pair (the Qwen3-VL processors refuse one outright; the Qwen2-VL ones
+        would silently pad it)."""
         with pytest.raises(ValueError, match="temporal"):
             _video(1, "video_url", engine_video_pinning=True)
 

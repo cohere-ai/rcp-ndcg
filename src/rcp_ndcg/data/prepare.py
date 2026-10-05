@@ -181,9 +181,11 @@ def fit_media_to_budget(
 
     1. Media that fit the budget whole go whole.
     2. Otherwise every image and frame shrinks to the image policy's minimum pixel budget
-       (``min_px`` as both bounds) and is re-prepared -- a container cannot shrink (the engine decodes it
-       whole), and an image whose floored minimum is not a fixed point of the engine's resize is refused
-       by :meth:`~rcp_ndcg.data.resolution.ImagePolicy.target_size` and so cannot shrink either.
+       (``min_px`` as both bounds) and is re-prepared, kept only if the shrunk size is one the declared
+       budget itself keeps (:meth:`~rcp_ndcg.data.resolution.ImagePolicy.target_size` of the sent size
+       returns it) -- a container cannot shrink (the engine decodes it whole), and a minimum whose floored
+       size is not a fixed point of the engine's resize, or not one the declared budget keeps, is refused,
+       and the item cannot shrink.
     3. What still does not fit is dropped, most expensive first (ties keep the earlier part), until the
        remaining media fit. Items are dropped whole: tokens are never cut inside a vision block.
 
@@ -221,9 +223,17 @@ def fit_media_to_budget(
                 shrunk.append(item)  # the engine decodes the container; nothing client-side to shrink
                 continue
             try:
-                shrunk.append(prepare_image(item.source, minimum, kind=item.kind))
+                candidate = prepare_image(item.source, minimum, kind=item.kind)
             except DataError:
                 shrunk.append(item)  # no fixed point at the floor; the drop step decides instead
+                continue
+            sent_height, sent_width = candidate.sent.height or 0, candidate.sent.width or 0
+            if image.target_size(sent_height, sent_width) == (sent_height, sent_width):
+                shrunk.append(candidate)
+            else:
+                # flooring at the minimum landed below the declared budget, which would scale the image
+                # back up: the sent size would leave the declared instrument, so the item cannot shrink
+                shrunk.append(item)
         tokens = count(shrunk)
         if tokens <= text_budget_tokens:
             return MediaFit(shrunk, tokens, [])

@@ -203,7 +203,7 @@ class TestJudgingPages:
         words = load_tokenizer(str(word_tokenizer_file))
         overhead = prompt_overhead_tokens(load_prompt("rubric_vision"), "rubric", "q", 2, words)
         patches = policy.image_tokens(16, 16)
-        per_doc_old = patches  # the pre-D6 charge: patches only
+        per_doc_old = patches  # the pre-fix charge: patches only
         per_doc_true = patches + 2 + media_marker_tokens(words)  # + vision start/end + the marker
         # a context that the old accounting called a fit and the true accounting cannot hold
         slack = (per_doc_true - per_doc_old) * 2

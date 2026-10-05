@@ -369,6 +369,20 @@ class TestFitMediaToBudget:
             == (fit.dropped[0].sent.height, fit.dropped[0].sent.width)
         )  # both shrunk to the same size first; the later one was dropped
 
+    def test_a_shrink_that_leaves_the_declared_budget_is_refused(self, tmp_path: Path):
+        """A min_px above the engines' floor: flooring at the minimum can land below it, and the declared
+        budget would scale the image back up -- so the image cannot shrink within the declared instrument,
+        and the budget drops it whole instead of sending a size the declaration does not describe."""
+        policy = ImagePolicy(min_px=131072, max_px=1310720, processor="qwen3_vl")
+        media = [prepare_image(_png(tmp_path / f"p{i}.png", (1000, 300), color=(i, i, i)), policy) for i in range(2)]
+        whole = policy.image_tokens(300, 1000) + 2  # (288, 992): the declared budget keeps it
+
+        fit = fit_media_to_budget(media, image=policy, video=None, text_budget_tokens=400)
+
+        assert fit.tokens == whole <= 400
+        assert len(fit.media) == 1 and len(fit.dropped) == 1
+        assert all((item.sent.height, item.sent.width) == (288, 992) for item in fit.media + fit.dropped)
+
     def test_an_image_that_cannot_shrink_to_a_fixed_point_is_dropped_whole(self, tmp_path: Path):
         """2200x1700 floored to the 65,536px floor lands under it, which the engine would resize again --
         so the image cannot shrink, and the budget drops it rather than sending a size the engine changes."""

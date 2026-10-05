@@ -64,6 +64,9 @@ class ProcessorGeometry(NamedTuple):
             by the checkpoint's image-processor size).
         video_timestamp_tokens: The tokens of the timestamp line the family's processor renders before each
             temporal group's vision block in the prompt (a declared bound; 0 when a family renders none).
+            The bound covers every timestamp a clip of up to 99,999.9 s (~27.8 h) can carry; a longer clip
+            (only possible with ``max_duration_s`` unset) adds a token per group, so declare
+            ``max_duration_s`` for clips of that length.
     """
 
     factor: int
@@ -183,9 +186,10 @@ class VideoPolicy(BaseModel):
         ``video_url`` and meaningless under ``frames``; neither may pass silently."""
         if self.wire == "video_url" and self.num_frames < 2:
             raise ValueError(
-                f"`wire: video_url` shows {self.num_frames} frame, but the engines' video processors merge "
-                "frames in time and demand at least a temporal pair; a single frame is an image. Declare "
-                "`wire: frames` with num_frames >= 2, or judge the clip as an image."
+                f"`wire: video_url` shows {self.num_frames} frame, but the declared instrument merges frames "
+                "in time, which needs at least a temporal pair -- the one rule under which a clip's realised "
+                "frame count is the policy's. A single frame is an image: declare `wire: frames` with "
+                "num_frames >= 2, or judge the clip as an image."
             )
         if self.wire == "video_url" and not self.engine_video_pinning:
             raise ValueError(
@@ -643,26 +647,26 @@ def content_media_tokens(content: Content, image: ImagePolicy, video: VideoPolic
 
     Each image costs its merged patch tokens plus the family's vision start and end markers
     (:data:`VISION_WRAPPER_TOKENS`); a sampled frame is its own image and costs its own wrapper; a container
-    is one vision block whose patch run the engine merges in time:
-    ``ceil(num_frames / temporal_patch)`` per-frame runs under the family's video geometry -- per-clip
-    budgeted for ``qwen3_vl`` (:data:`PROCESSORS`), at the image policy's per-frame budget for the
-    Qwen2-VL families whose video geometry is engine-contingent. It uses each reference's recorded
-    ``width`` / ``height`` where present -- our own ingest records them, so a page corpus counts exactly --
-    and :attr:`ImagePolicy.max_image_tokens` (or the family's per-clip ceiling) where they are absent.
-    It never fetches bytes: a preflight that downloaded the corpus to count it would cost more than the
-    thing it is counting.
+    is the engine's own video accounting (never the image policy's -- the container is sent unchanged, so
+    the client's pixel budget never reaches the engine): ``ceil(num_frames / temporal_patch)`` per-frame
+    token runs under the family's video budget (:data:`PROCESSORS`) -- each frame sized independently for
+    the Qwen2-VL families (stock vLLM's accounting; SGLang's video path caps per-frame pixels lower, so
+    there the count differs, and :func:`engine_media_check` compares the engine's actual count at run
+    time), the whole clip budgeted together for ``qwen3_vl``, whose prompt adds one timestamp line and one
+    vision block per temporal group. It uses each reference's recorded ``width`` / ``height`` where
+    present -- our own ingest records them, so a page corpus counts exactly -- and the family's budget
+    ceiling where they are absent. It never fetches bytes: a preflight that downloaded the corpus to count
+    it would cost more than the thing it is counting.
 
     Videos are counted as shown (:func:`sample_video_part`, which refuses clips shorter than the frame
     budget), and ``bounded`` counts the references counted at a bound.
 
     Raises:
-        VideoPolicyError: a container under ``wire: video_url`` without :attr:`VideoPolicy.engine_video_pinning`
-            -- the engine's own sampling would decide the frame count, so the count would describe an
-            instrument nobody ran.
-        ValueError: for a container without a video policy -- the engine's own default sampling decides its
-            cost, and nothing here can know it.
-        ConfigError: for an image under a native policy or an unknown processor
-            (:meth:`ImagePolicy.image_tokens`).
+        VideoPolicyError: the video policy refuses a clip -- a container under the other wire, a clip
+            shorter than the frame budget or over ``max_duration_s``.
+        ConfigError: for a container without a video policy -- the engine's own default sampling decides
+            its cost, and nothing here can know it -- or for an image under a native policy or an unknown
+            processor (:meth:`ImagePolicy.image_tokens`).
     """
     tokens = 0
     bounded = 0
