@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import click
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from rcp_ndcg.cli.command import command
 from rcp_ndcg.errors import RcpNdcgWarning, UsageError
@@ -353,7 +353,13 @@ def _engine_overlays(specs: list[str]) -> dict[EngineRole, EngineURLs]:
                 f"--engine {role}= has no URL",
                 hint=f"give at least one replica base URL (.../v1): --engine {role}=http://127.0.0.1:8000/v1",
             )
-        engines[role] = EngineURLs(urls=replicas)  # type: ignore[index]
+        try:
+            engines[role] = EngineURLs(urls=replicas)  # type: ignore[index]
+        except ValidationError as exc:
+            raise UsageError(
+                f"--engine {spec!r}: {exc.errors(include_url=False)[0]['msg']}",
+                hint=f"give each replica once: --engine {role}=http://127.0.0.1:8000/v1,http://127.0.0.1:8001/v1",
+            ) from exc
     return engines
 
 

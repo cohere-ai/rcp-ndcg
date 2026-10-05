@@ -292,6 +292,12 @@ class RunConfig(BaseModel):
         unknown = sorted(str(key) for key in serve if key not in roles)
         if not unknown:
             return data
+        named = sorted(str(key) for key in serve if key in roles)
+        if named:
+            raise ConfigError(
+                f"serve.{unknown[0]}: unexpected key beside the role(s) {', '.join(named)}",
+                hint="an engine's fields belong under its role: serve: {<role>: {image: ..., command: [...]}}",
+            )
         if set(unknown) <= set(ServeConfig.model_fields):
             raise ConfigError(
                 f"serve: is the old single-engine shape (fields {', '.join(unknown)} at the top); since "
@@ -319,9 +325,12 @@ class RunConfig(BaseModel):
         if serve.judge is not None:
             if self.judge is None:
                 raise ConfigError("serve.judge starts the judge's engine, and this run has no judge (judge: <config>)")
-            if self.judge == "fake":
+            if self.judge == "fake" or (
+                isinstance(self.judge, JudgeConfig) and self.judge.is_fake
+            ):
                 raise ConfigError(
-                    "serve: starts the judge's engine, and this run has no served judge (judge: fake | none)"
+                    "serve: starts the judge's engine, and this run has no served judge (judge: fake | none)",
+                    hint="the offline fake judge is answered in process: judge: <config>",
                 )
             if not JUDGE_STEPS & set(self.steps):
                 raise ConfigError(

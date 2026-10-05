@@ -431,3 +431,21 @@ def test_the_judge_flags_say_what_they_take_and_refuse_what_they_would_ignore(da
     config.write_text(yaml.safe_dump(tiny_config(data).resolved()), encoding="utf-8")
     error = _failed("start", str(config), "--judge", "fake", "--judge-model", "other", "--dry-run")
     assert error["exit_code"] == 2 and "--judge-url" in error["message"]
+
+
+class TestEngineFlagEdges:
+    """Round-2 polish: the flag's own refusals stay usage errors, and an inline fake judge is refused."""
+
+    def test_a_duplicate_replica_is_a_usage_error_naming_the_flag(self, finished: Path) -> None:
+        code, error = _refusal("resume", "--run", str(finished), "--engine", "judge=http://a/v1,http://a/v1")
+        assert code == 2 and "twice" in error["message"] and "--engine" in error["hint"]
+
+    def test_an_inline_fake_judge_is_refused_like_the_name(self, data: Path) -> None:
+        from rcp_ndcg.errors import ConfigError
+
+        with pytest.raises(ConfigError, match="no served judge"):
+            tiny_config(
+                data,
+                judge={"base_url": "fake://seed/0", "model": "fake"},
+                serve={"judge": {"command": ["vllm", "serve", "m"]}},
+            )
