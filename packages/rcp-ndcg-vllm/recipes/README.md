@@ -1,0 +1,10 @@
+# Recipes
+
+One directory per served model, written by the recipe lanes:
+
+    recipes/<id>/recipe.yaml       # the Recipe schema (schema/recipe.schema.json in the package)
+    recipes/<id>/template.jinja    # the chat template for vllm serve --chat-template, when the model needs one
+    recipes/<id>/reference.py      # the in-process reference the equivalence harness compares against
+
+`<id>` matches `^[a-z0-9][a-z0-9.-]*$` and equals the directory name. See `docs/how-to/add-a-model.md` for the
+field-by-field guide, and the tests' fixtures under `tests/fixtures/recipes/` for complete examples per role.

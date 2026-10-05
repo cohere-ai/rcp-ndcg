@@ -97,8 +97,11 @@ def run(
     return document
 
 
-def _tokenizer_for(recipe: Recipe, reference: Reference) -> TokenizerAdapter:
-    """The stage-1 tokenizer: a reference-provided ``tokenizer()`` hook, else the recipe's ``client.tokenizer``."""
+def _tokenizer_for(recipe: Recipe, reference: Reference) -> Any:
+    """The stage-1 tokenizer: a reference-provided ``tokenizer()`` hook, else the recipe's ``client.tokenizer``.
+
+    A reference-provided tokenizer is duck-typed (``encode`` and ``id_to_token``), like the adapter protocol.
+    """
     provided = getattr(reference._module, "tokenizer", None)
     if callable(provided):
         return provided()

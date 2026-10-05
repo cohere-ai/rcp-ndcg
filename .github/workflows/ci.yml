@@ -111,6 +111,21 @@ jobs:
           print("rcp_ndcg_core alone:", ndcg(scores, gains, k=10))
           PY
 
+  vllm-recipes:
+    name: rcp-ndcg-vllm recipes (CPU)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      # The package is outside the uv workspace on purpose (the engine image carries vLLM and torch): its own
+      # venv, its own editable install, its own pytest. The test extra adds pytest and jinja2; the reference and
+      # metrics extras stay uninstalled (a torch pin would fight the image's; rcp-ndcg is only needed for stage 3).
+      - run: uv venv "$RUNNER_TEMP/vllm-pkg" --python 3.12
+      - run: uv pip install --python "$RUNNER_TEMP/vllm-pkg/bin/python" -e 'packages/rcp-ndcg-vllm[test]'
+      - run: "$RUNNER_TEMP/vllm-pkg/bin/python" -m pytest packages/rcp-ndcg-vllm/tests -q
+
   mteb:
     name: mteb tasks (non-blocking)
     runs-on: ubuntu-latest

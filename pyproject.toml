@@ -186,8 +186,12 @@ where = ["src"]
 # the CLI.  ``packages/rcp-ndcg-core`` is the metric, the gains, the protocols,
 # the schemas and the IRT estimators (numpy + pydantic; the estimators need its
 # [irt] extra: torch, scipy), released in lockstep with this package.
+# ``packages/rcp-ndcg-vllm`` is deliberately outside the workspace: it installs
+# into an engine image that carries its own vLLM and torch, and a lock entry
+# would bring their conflict back.  See packages/rcp-ndcg-vllm/README.md.
 [tool.uv.workspace]
 members = ["packages/*"]
+exclude = ["packages/rcp-ndcg-vllm"]
 
 [tool.uv.sources]
 rcp-ndcg = { workspace = true }
@@ -239,7 +243,7 @@ exclude = ["*.md"]
 select = ["E", "F", "I", "B", "UP"]
 
 [tool.basedpyright]
-include = ["src", "packages/rcp-ndcg-core/src"]
+include = ["src", "packages/rcp-ndcg-core/src", "packages/rcp-ndcg-vllm/src"]
 exclude = ["**/__pycache__"]
 # "standard" rather than basedpyright's default "all": the strict-adjacent rules
 # (reportAny, reportUnusedCallResult, reportMissingTypeArgument) fire thousands

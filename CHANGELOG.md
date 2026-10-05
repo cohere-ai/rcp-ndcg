@@ -21,6 +21,21 @@ Every artifact schema carries its own version (`rcp-ndcg.<name>.v1`), bumped onl
 incompatibly, independently of the package version. `rcp-ndcg` pins `rcp-ndcg-core` to its own version; the two are
 released together.
 
+## Unreleased
+
+### Public surface
+
+- New package `rcp-ndcg-vllm` (`packages/rcp-ndcg-vllm/`, outside the root uv workspace and lock; version 0.0.1):
+  serving recipes for vLLM as data (the `Recipe` schema in `rcp_ndcg_vllm.recipe`, one directory per model under
+  `recipes/<id>/` with `recipe.yaml`, an optional `template.jinja` and `reference.py`), the three-stage equivalence
+  harness (`rcp_ndcg_vllm.equivalence`, also the CLI `python -m rcp_ndcg_vllm.equivalence`), the engine recorder
+  (`rcp_ndcg_vllm.record`) for the contract fixtures, and the GPU wave runner (`rcp_ndcg_vllm.jobs`) with
+  `bootstrap.sh` and `submit.sh`. Public names: `Recipe`, `ClientConfig`, `EngineSpec`, `Gates`, `ReferenceSpec`,
+  `Resources`, `ServeConfig`, `StatusSpec`, `RecipeError`, `HarnessError`, `load_recipe`, `iter_recipes`,
+  `serve_argv`, `client_config`, `effective_embed_dtype`, `recipe_json_schema`, `default_recipes_root`; the JSON
+  Schema of `Recipe` is exported at `packages/rcp-ndcg-vllm/schema/recipe.schema.json`. The package is deliberately
+  free of vLLM, torch and `rcp-ndcg` imports: it meets the engine and the pipeline over HTTP and the command line.
+
 ## 0.1.0
 
 The first public release, accompanying the paper

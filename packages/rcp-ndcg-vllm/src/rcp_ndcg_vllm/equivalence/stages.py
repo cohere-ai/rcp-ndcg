@@ -260,7 +260,7 @@ def _vector_stage2(
         documents: list[str] = row["documents"]
         served_texts = [recipe.client.doc_prompt + document for document in documents]
         served_texts.append(recipe.client.query_prompt + query)
-        served_items = (
+        served_items: list[tuple[np.ndarray, str, list[int] | None]] = (
             client.pooling(served_texts)
             if multi
             else [(np.asarray(v, dtype=np.float32), "float32", None) for v in client.embeddings(served_texts)]
