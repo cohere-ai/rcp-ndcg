@@ -42,11 +42,11 @@ def render(query: str, document: str, instruction: str | None) -> list[int]:
 def embed(texts: list[str], role: str) -> list[np.ndarray]:
     """Stage 2: one unit vector per text; the reference composes the same prompts the client sends."""
     assert _loaded
-    del role
-    return [vector(CLS_PREFIX + text, "embed") for text in texts]
+    prefix = QUERY_PROMPT if role == "query" else ""
+    return [vector(CLS_PREFIX + prefix + text, "embed") for text in texts]
 
 
-__all__ = ["CLS_PREFIX", "DIM", "DOC_PROMPT", "QUERY_PROMPT", "embed", "load", "render"]
+__all__ = ["CLS_PREFIX", "DIM", "embed", "load", "render"]
 
 
 def tokenizer() -> FixtureTokenizer:

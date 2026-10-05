@@ -20,7 +20,7 @@ from .metrics import stage3_metrics
 from .prompt import TokenizerAdapter, load_tokenizer
 from .reference import Reference, load_reference
 from .report import write_report
-from .stages import load_pairs, stage1_prompts, stage2_scores
+from .stages import load_pairs, stage1_anchor_check, stage1_prompts, stage2_scores
 
 __all__ = [
     "Reference",
@@ -32,6 +32,7 @@ __all__ = [
     "load_tokenizer",
     "resolve_gates",
     "run",
+    "stage1_anchor_check",
     "stage1_prompts",
     "stage2_scores",
     "stage3_metrics",

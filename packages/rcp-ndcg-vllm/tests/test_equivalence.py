@@ -12,12 +12,14 @@ from rcp_ndcg_vllm.equivalence import (
     load_pairs,
     load_reference,
     run,
+    stage1_anchor_check,
     stage1_prompts,
     stage2_scores,
 )
 from rcp_ndcg_vllm.errors import HarnessError
 
 from tests.conftest import RECIPES, sample_pairs, start_stub, write_pairs
+from tests.fixtures.deterministic import token_id, tokens
 
 RECIPE_DIRS = RECIPES
 
@@ -547,7 +549,10 @@ def test_every_anchor_kind_declares_its_anchor_and_passes_the_audit(recipe_id: s
     report = stage1_prompts(
         recipe, sample_pairs()[:1], reference, reference._module.tokenizer(), over_length_per_shape=3
     )
-    assert report["passed"] is True, (recipe_id, report["anchor_check"]["failures"][:1])
+    assert report["passed"] is True, (
+        recipe_id,
+        (report["anchor_check"] or {}).get("failures"),
+    )
 
 
 def test_every_fixture_recipe_is_covered_by_the_anchor_kind_table() -> None:
@@ -644,3 +649,82 @@ def test_stage2_gates_only_under_cap_pairs_when_the_deviation_is_declared(
         assert document["passed"] is False
     finally:
         engine.stop()
+
+
+def test_content_final_anchor_last_with_a_post_processor_end_token(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    """The declared-end-token escape, end to end: the audit asserts the tokenizer's block at the tail.
+
+    The recipe's document shape is content-final; ``add_special_tokens: true`` makes the post-processor's
+    appended block the anchor. A tokenizer that appends exactly that block passes; one that also prepends
+    (BOS) fails the audit loudly instead of silently.
+    """
+    import shutil
+
+    copied = tmp_path_factory.mktemp("escape") / "fixture-embed"
+    copied.mkdir(parents=True)
+    for name in ("recipe.yaml", "reference.py"):
+        shutil.copy(RECIPES / "fixture-embed" / name, copied / name)
+    (copied.parent / "deterministic.py").write_bytes((RECIPE_DIRS.parent / "deterministic.py").read_bytes())
+    recipe = load_recipe(copied)
+    content_final = recipe.model_copy(
+        update={
+            "client": recipe.client.model_copy(
+                update={
+                    "add_special_tokens": True,
+                    "template": recipe.client.template.model_copy(update={"document": None}),
+                }
+            ),
+        },
+    )
+    from rcp_ndcg_vllm import TemplateSegment
+
+    content_final = content_final.model_copy(
+        update={
+            "client": content_final.client.model_copy(
+                update={
+                    "template": content_final.client.template.model_copy(
+                        update={"document": [TemplateSegment(text="doc: "), TemplateSegment(content="document")]}
+                    ),
+                }
+            ),
+        }
+    )
+
+    class AppendOnly:
+        """A tokenizer whose post-processor appends one end token (id 49997) with add_special_tokens."""
+
+        def encode(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
+            ids = [token_id(word) for word in tokens(text)]
+            return ids + [49997] if add_special_tokens else ids
+
+        def id_to_token(self, token_id_value: int) -> str:
+            return {49997: "<<end>>"}.get(token_id_value, f"tok:{token_id_value}")
+
+        def special_tokens(self) -> dict[str, int]:
+            return {"end": 49997}
+
+        def decode(self, token_ids: list[int]) -> str:
+            return " ".join(self.id_to_token(value) for value in token_ids)
+
+        def truncate(self, text: str, max_tokens: int) -> str:
+            words = tokens(text)
+            return text if len(words) <= max_tokens else " ".join(words[:max_tokens])
+
+    class BosAndAppends(AppendOnly):
+        """A post-processor that also prepends a BOS token: the tail assertion fails loudly."""
+
+        def encode(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
+            ids = super().encode(text, add_special_tokens=add_special_tokens)
+            return [49996] + ids if add_special_tokens else ids
+
+    reference = load_reference(str(RECIPES / "fixture-embed"), recipe.reference.entry)
+    report = stage1_anchor_check(content_final, reference, AppendOnly(), sample_pairs()[:1], over_length_per_shape=3)
+    # The reference's own render is the un-pinned fixture render; only the served side is asserted here.
+    served_failures = [failure for failure in report["failures"] if failure["side"] == "served"]
+    assert report["passed"] is False  # the reference render carries no appended specials: the audit says so
+    assert served_failures == []
+    loud = stage1_anchor_check(content_final, reference, BosAndAppends(), sample_pairs()[:1], over_length_per_shape=2)
+    assert loud["passed"] is False
+    assert loud["failures"][0]["side"] == "served"

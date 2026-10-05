@@ -165,11 +165,6 @@ def served_prompt_text(recipe: Recipe, query: str, document: str, tokenizer: Any
 
 
 # ---------------------------------------------------------------------------
-# Declared shapes: the template block as data, with anchor-preserving cuts.
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
 # Declared shapes as data: assembly with anchor-preserving cuts, and the checks.
 #
 # The contract (the design's binding finding): a cut applies to content spans only, inside a budget computed

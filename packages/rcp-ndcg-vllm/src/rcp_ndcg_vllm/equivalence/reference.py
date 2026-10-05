@@ -19,6 +19,9 @@ code).  The interface, which every recipe lane implements:
 An optional fifth member serves CPU-only checking (tests and CI): ``tokenizer() -> object`` returning an object
 with ``encode(text) -> list[int]`` and ``id_to_token(id) -> str``; when present the harness uses it for stage 1
 instead of loading ``client.tokenizer`` from the Hub with transformers.  Production references omit it.
+
+A second optional member, ``render_shape(shape, query, document, instruction)``, gives the reference's render of
+every declared shape; without it the anchor audit checks the reference side on the default shape only.
 """
 
 from __future__ import annotations
