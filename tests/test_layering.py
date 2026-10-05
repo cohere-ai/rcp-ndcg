@@ -1,0 +1,123 @@
+"""The layering charter, as a test: eager imports point inward only.
+
+``AGENTS.md`` fixes the import order
+(``rcp_ndcg_core → support → storage → data → inference → retrieval → llm → calibration → eval → runners → runs
+→ schemas | mcp → cli``, with ``errors`` below ``support``, the facade just above ``runs``, and ``testing`` and
+``examples`` above it). This module parses every module under ``src/rcp_ndcg/`` with :mod:`ast` and fails when an
+eager import -- module-level, outside ``if TYPE_CHECKING:`` -- points outward in that order (toward a layer that
+typically imports this one).
+
+An import of the facade (``rcp_ndcg``) resolves to the layer of the name it binds (``from rcp_ndcg import
+storage`` is a storage import); a name the facade itself defines (``__version__``) resolves to the facade. A
+lazily imported module is exempt: its cost is paid when it runs, not when its layer is imported.
+"""
+
+from __future__ import annotations
+
+import ast
+from collections.abc import Iterator
+from pathlib import Path
+
+SRC = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg"
+
+#: The layers, from the one every module may import to the one that may import everything; the charter of
+#: ``AGENTS.md`` (Layout and layering), with the two single-file modules it does not name placed where the
+#: current tree already satisfies them.
+LAYERS: tuple[str, ...] = (
+    "rcp_ndcg_core",
+    "errors",
+    "support",
+    "storage",
+    "data",
+    "inference",
+    "retrieval",
+    "llm",
+    "calibration",
+    "eval",
+    "runners",
+    "runs",
+    "rcp_ndcg",  # the facade (its __init__): it re-exports everything up to runs, and cli reads its __version__
+    "schemas",
+    "mcp",
+    "cli",
+    "testing",
+    "examples",
+)
+
+_LAYER = {name: index for index, name in enumerate(LAYERS)}
+
+#: Eager imports the charter would refuse, allowed to stand until the lane that owns their layer moves them.
+#: Each entry names its module and the outward target it may keep importing; nothing may be added here without
+#: naming it in the lane report. Empty today: the tree the charter was first written against satisfies it.
+_ALLOW_LIST: dict[str, frozenset[str]] = {}
+
+
+def _module_layer(dotted: str) -> str:
+    """The layer of a module of ``rcp_ndcg`` (its top-level part; the facade's own ``__init__`` is the facade)."""
+    parts = dotted.split(".")
+    return parts[0] if parts else "rcp_ndcg"
+
+
+def _targets_of_import(node: ast.Import | ast.ImportFrom) -> Iterator[str]:
+    """The layers one import statement binds, as layers of ``rcp_ndcg`` (relative imports bind none)."""
+    if isinstance(node, ast.ImportFrom):
+        if node.level:  # a relative import stays inside its own layer
+            return
+        module = node.module or ""
+        names = [alias.name for alias in node.names]
+    else:
+        module = ""
+        names = [alias.name for alias in node.names]
+    for name in names:
+        target = f"{module}.{name}" if module else name
+        if target.startswith("rcp_ndcg_core"):
+            yield "rcp_ndcg_core"
+        elif target == "rcp_ndcg" or target.startswith("rcp_ndcg."):
+            rest = target[len("rcp_ndcg") :].strip(".")
+            top = rest.split(".")[0] if rest else ""
+            # ``from rcp_ndcg import storage`` binds the storage package; a name the facade itself defines
+            # (``__version__``) binds the facade.
+            yield top if top in _LAYER else "rcp_ndcg"
+
+
+def _eager_imports(tree: ast.Module) -> Iterator[tuple[ast.Import | ast.ImportFrom, int]]:
+    """Every eager import of a module's syntax tree, with its line: module scope, outside ``TYPE_CHECKING``."""
+    for statement in tree.body:
+        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            continue
+        if (
+            isinstance(statement, ast.If)
+            and isinstance(statement.test, ast.Name)
+            and statement.test.id == "TYPE_CHECKING"
+        ):
+            continue
+        for node in ast.walk(statement):
+            if isinstance(node, ast.Import | ast.ImportFrom):
+                yield node, node.lineno
+
+
+def outward_imports() -> list[str]:
+    """Every eager import of ``src/rcp_ndcg`` that points outward in the charter order (allow-listed excepted)."""
+    findings: list[str] = []
+    for path in sorted(SRC.rglob("*.py")):
+        module = ".".join(path.relative_to(SRC).with_suffix("").parts)
+        if module == "__init__":
+            module = "rcp_ndcg"  # the facade itself
+        elif module.endswith(".__init__"):
+            module = module[: -len(".__init__")]
+        layer = _module_layer(module)
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node, line in _eager_imports(tree):
+            for target in _targets_of_import(node):
+                if target not in _LAYER or target == layer:
+                    continue
+                if _LAYER[target] <= _LAYER[layer]:
+                    continue
+                if target in _ALLOW_LIST.get(module, frozenset()):
+                    continue
+                findings.append(f"src/rcp_ndcg/{path.relative_to(SRC)}:{line}: {layer} -> {target} (outward)")
+    return findings
+
+
+def test_no_eager_import_points_outward() -> None:
+    assert outward_imports() == [], "eager imports point outward in the charter order"

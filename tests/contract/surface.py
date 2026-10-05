@@ -177,6 +177,7 @@ PUBLIC_MODULES: tuple[str, ...] = (
     "rcp_ndcg.eval",
     "rcp_ndcg.eval.mteb",
     "rcp_ndcg.examples",
+    "rcp_ndcg.inference",
     "rcp_ndcg.llm",
     "rcp_ndcg.retrieval",
     "rcp_ndcg.runners",

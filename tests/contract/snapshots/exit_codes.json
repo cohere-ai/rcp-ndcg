@@ -1,5 +1,6 @@
 {
   "error_classes": {
+    "BackendUnavailableError": "PROVIDER",
     "CapabilityError": "CAPABILITY",
     "ConfigError": "CONFIG",
     "CredentialsError": "CREDENTIALS",
@@ -11,6 +12,7 @@
     "ProviderError": "PROVIDER",
     "RcpNdcgError": "INTERNAL",
     "RcpNdcgWarning": null,
+    "RequestRejectedError": "PROVIDER",
     "UsageError": "USAGE"
   },
   "exit_codes": {
