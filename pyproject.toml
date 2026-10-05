@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rcp-ndcg"
-version = "0.1.0"
+version = "0.0.1"
 description = "Calibrated relevance for retrieval evaluation: RCP-nDCG, listwise tournament + rubric, 2PL IRT, MTEB-compatible evaluator."
 readme = "README.md"
 license = "Apache-2.0"
@@ -25,7 +25,7 @@ dependencies = [
   # so a client-only install stays small.  ``rcp-ndcg run`` names the extra in its
   # error when the fit is reached without it.
   # The core is released in lockstep with this package: the same version, pinned.
-  "rcp-ndcg-core==0.1.0",
+  "rcp-ndcg-core==0.0.1",
   "numpy>=1.26",
   "pandas>=2.2",
   # Parquet artifacts (calibration queries/thetas tables).
