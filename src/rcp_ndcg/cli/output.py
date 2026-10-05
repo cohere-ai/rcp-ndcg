@@ -6,7 +6,7 @@ included; logs and progress go to stderr. Success::
     {"schema": "rcp-ndcg.cli.v1", "command": "data inspect", "ok": true,
      "data": {"schema": "rcp-ndcg.dataset-summary.v1", ...},
      "warnings": [{"code": "UNREADABLE_RUN", "message": "..."}],
-     "meta": {"version": "0.1.0", "elapsed_s": 0.42, "run_dir": null}}
+     "meta": {"version": "0.0.1", "elapsed_s": 0.42, "run_dir": null}}
 
 Failure: ``ok`` is false, ``data`` is absent and ``error`` is :meth:`rcp_ndcg.errors.RcpNdcgError.to_dict`.
 Without ``--json`` the same result is rendered as text on stdout and failures as ``error [CODE]: ...`` on
