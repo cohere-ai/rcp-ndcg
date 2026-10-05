@@ -180,7 +180,8 @@ def load_index(path: str | Path) -> Index:
             exc,
             model=Index,
             source=f"{record}",
-            hint=f"this index was written before the api rewiring; rebuild it with index(). {_OLD_SHAPE_HINT}",
+            hint=f"this index was written before the api rewiring; rebuild it with rcp_ndcg.retrieval.index. "
+            f"{_OLD_SHAPE_HINT}",
         ) from exc
 
 
