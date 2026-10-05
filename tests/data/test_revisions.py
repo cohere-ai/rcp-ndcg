@@ -56,10 +56,12 @@ class FakeHub:
 
 
 @pytest.fixture
-def hub(monkeypatch: pytest.MonkeyPatch) -> FakeHub:
+def hub(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> FakeHub:
     fake = FakeHub()
     monkeypatch.setitem(sys.modules, "huggingface_hub", fake.module())
     monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    # An online resolution records refs/<ref> in the hub cache; keep that out of the shared empty cache.
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
     return fake
 
 

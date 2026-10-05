@@ -6,6 +6,9 @@ was judged record the commit it resolved to instead (a judge's ``revision`` is r
 * :func:`resolve_revision` asks the Hub (``HfApi.dataset_info``) once per process and falls back to the local cache
   (``<hub cache>/datasets--org--name/refs/<revision>``) when offline (``HF_HUB_OFFLINE=1``) or when the Hub cannot
   be reached. A revision that is already a full 40-character commit resolves to itself without any lookup.
+* An online resolution records the ref in the cache (``refs/<ref>``), so the offline run without ``--revision``
+  resolves the same commit from it; a download pinned to a commit cannot write that ref itself, which is why a
+  cache an online run filled otherwise serves nothing offline.
 * When neither answers, the commit is ``None`` and the result is not verified. Nothing is invented, and a warning
   names the repository once per process.
 
@@ -21,6 +24,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from rcp_ndcg.support.logging import get_logger
 
@@ -103,12 +107,42 @@ def _hub_commit(repo_id: str, ref: str) -> str | None:
     try:
         from huggingface_hub import HfApi
 
-        info = HfApi().dataset_info(repo_id, revision=ref)
+        api = HfApi()
+        resolve = getattr(api, "resolve_revision", None)  # huggingface-hub >= 1.x
+        if resolve is not None:
+            # One call resolves the ref and records refs/<ref> in the cache, best effort, so an offline run
+            # without --revision later resolves the same commit from the cache.
+            sha = getattr(resolve(repo_id, repo_type="dataset", revision=ref), "resolved", None)
+        else:
+            sha = getattr(api.dataset_info(repo_id, revision=ref), "sha", None)
+            if isinstance(sha, str) and _COMMIT.match(sha):
+                _record_ref(repo_id, ref, sha)
     except Exception as exc:  # noqa: BLE001 - any Hub failure falls back to the cache, and is logged
         logger.info(f"Hub lookup of dataset {repo_id}@{ref} failed ({type(exc).__name__}: {exc}); trying the cache")
         return None
-    sha = getattr(info, "sha", None)
     return sha if isinstance(sha, str) and _COMMIT.match(sha) else None
+
+
+def _record_ref(repo_id: str, ref: str, commit: str) -> None:
+    """Record ``refs/<ref> -> <commit>`` in the local hub cache, so an offline run resolves *ref* without the Hub.
+
+    Best effort and atomic (temp file + rename): a cache that refuses the write costs one debug line, never a
+    failure. huggingface-hub >= 1.x records the ref itself in ``HfApi.resolve_revision``; this fallback keeps the
+    ``>=0.34`` floor working.
+    """
+    path = hub_cache_dir() / f"datasets--{repo_id.replace('/', '--')}" / "refs" / ref
+    try:
+        if path.is_file() and path.read_text(encoding="utf-8").strip() == commit:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f"{path.name}.{os.getpid():x}{uuid4().hex[:8]}.tmp")
+        tmp.write_text(commit, encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError as exc:
+        logger.debug(
+            f"Could not record dataset {repo_id}@{ref} -> {commit} in the local hub cache ({exc}); an offline run "
+            "without --revision will not resolve it"
+        )
 
 
 def _cached_commit(repo_id: str, ref: str) -> str | None:
