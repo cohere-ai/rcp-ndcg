@@ -8,8 +8,9 @@ ask the runner through it. A runner whose jobs do not see this host's files (``r
 through its mirror: the prepared directory is uploaded to the mirror before the job is submitted, and the job
 restores it into ``run_root``.
 
-A run config's ``serve:`` (:class:`~rcp_ndcg.support.serve.ServeConfig`) goes into the job, and the runner starts the
-judge's engine beside it; the local runner and a run in this process start none, and refuse it.
+A run config's single ``serve:`` engine is no longer submitted: a job's engines are declared per phase
+(:class:`~rcp_ndcg.runners.JobPhase`), and submitting a run with a ``serve:`` section is refused. The local runner
+and a run in this process start no engine.
 
 Three keys of a run config's ``runner.options`` (typed per runner: :mod:`rcp_ndcg.runs.config`) describe the job
 rather than the runner (:data:`JOB_OPTIONS`): ``resources`` (:class:`~rcp_ndcg.runners.Resources`: ``gpus``,
@@ -58,7 +59,7 @@ def _split_options(options: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str
 def run_argv(run_dir: str, mirror: str | None = None, outage_timeout_s: int | None = None) -> tuple[str, ...]:
     """The command a job runs to execute a prepared run directory (restored from ``mirror`` when it is missing).
 
-    A job that starts its judge's engine passes ``outage_timeout_s`` (``serve.outage_timeout_s``): its judge then
+    A job that starts its judge's engine passes ``outage_timeout_s`` (its ``outage_timeout_s``): its judge then
     stops waiting for an engine that stopped answering after that many seconds (``judge.wait_on_outage_s``).
     """
     wait = ("--set", f"judge.wait_on_outage_s={outage_timeout_s}") if outage_timeout_s is not None else ()
@@ -117,7 +118,7 @@ def job_for(
     try:
         job = JobSpec(
             name=slugify(f"rcp-{layout.run_id}", max_length=60),
-            argv=run_argv(run_dir, config.mirror, config.serve.outage_timeout_s if config.serve else None),
+            argv=run_argv(run_dir, config.mirror),
             **fields,
         )
     except ValidationError as exc:
@@ -176,7 +177,7 @@ def submit_run(pipeline: Any, runner: str, options: Mapping[str, Any] | None = N
 
     Raises:
         ConfigError: the runner's options or the job's fields do not validate (e.g. an unknown resource), the
-            runner cannot run the job as configured (e.g. ``serve:`` on the local runner), or a job of the run is
+            runner cannot run the job as configured, or a job of the run is
             still pending or running.
     """
     from rcp_ndcg.runs.mirror import Mirror
@@ -417,9 +418,6 @@ def recorded_options(run_dir: str | Path, runner: str) -> dict[str, Any] | None:
 def refuse_serving_here(config: RunConfig) -> None:
     """Refuse to start a run with a ``serve:`` section in this process, which starts no engine.
 
-    A job of the ``slurm`` or ``kubernetes`` runner resumes its run here with the engine already up beside it, so
-    only a new run is refused.
-
     Raises:
         ConfigError: ``config`` has a ``serve:`` section.
     """
@@ -427,7 +425,7 @@ def refuse_serving_here(config: RunConfig) -> None:
         raise ConfigError(
             "this run has a serve: section, and a run in this process (or on the local runner) starts no engine",
             hint="start the engine yourself (docs/concepts/serving.md) and pass its URL with --judge-url and "
-            "--judge-model; or hand the run to a runner that starts it: --runner slurm | kubernetes",
+            "--judge-model; a run's engines are declared per phase instead",
         )
 
 

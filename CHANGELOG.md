@@ -47,8 +47,9 @@ released together.
     StatefulSets owned by the Job as before, run-scoped (they live for the whole run) and named `<job>-engine-<role>`.
   - `JobSpec.serve` and the runners' `JUDGE_URLS_ENV`/`RCP_NDCG_JUDGE_URLS` exports are gone;
     `support.serve.JUDGE_URLS_ENV` remains only for `run resume --judge-urls`, marked for deletion. A run config's
-    `serve:` section is refused at submission (the runners no longer render a single serve: engine); the local
-    runner refuses a job whose phases start engines, with a `--judge-url` hint.
+    `serve:` section is refused at submission (the runners no longer render a single serve: engine; the schema and
+    `--help` texts describe the refusal), and the local runner refuses a job whose phases start engines, with a
+    `--judge-url` hint; its engine-free phases run in order in one script.
 - `rcp_ndcg.runners` exports `JobPhase` (the type of `JobSpec.phases`).
 - `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
   the step identities (its `IDENTITY_ROLES` declarations); no property changed.

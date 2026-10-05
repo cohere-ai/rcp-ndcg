@@ -253,9 +253,9 @@ class RunConfig(BaseModel):
             offline judge (``judge: fake``) and of the evaluation's bootstrap intervals.
         limit: Judge only the first ``limit`` queries.
         runner: Where the steps run.
-        serve: The judge's engine, started beside the run's job by the ``slurm`` or ``kubernetes`` runner
-            (:class:`~rcp_ndcg.support.serve.ServeConfig`); the judge then uses its replicas' URLs. Omit it to
-            bring your own endpoint (``judge.base_url``).
+        serve: The judge's engine, as a single ``serve:`` section (:class:`~rcp_ndcg.support.serve.ServeConfig`).
+            No longer submitted: a job's engines are declared per phase, and submitting a run with this section is
+            refused. Omit it to bring your own endpoint (``judge.base_url``).
     """
 
     model_config = _FORBID

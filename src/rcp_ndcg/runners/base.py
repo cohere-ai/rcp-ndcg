@@ -183,6 +183,7 @@ def tail_lines(text: str, tail: int | None) -> str:
 __all__ = [
     "JobHandle",
     "JobOptions",
+    "JobPhase",
     "JobRunner",
     "JobSpec",
     "JobStatus",

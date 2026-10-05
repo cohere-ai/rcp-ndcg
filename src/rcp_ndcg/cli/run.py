@@ -327,8 +327,8 @@ class RunResumeRequest(RunJudgeFields):
     run: str = Field(description="The run directory.")
     judge_urls: str | None = Field(
         default=None,
-        description="Replace the judge's base_url by these replica URLs, comma-separated (a runner that starts the "
-        "engine sets it for its job).",
+        description="Replace the judge's base_url by these replica URLs, comma-separated (deprecated: the runners "
+        "hand their engines' URLs to a job in RCP_NDCG_ENGINES).",
     )
     mirror: str | None = Field(
         default=None,
@@ -356,8 +356,8 @@ class RunResumeRequest(RunJudgeFields):
     runner: str | None = Field(
         default=None,
         description="Submit the run again as one job of this runner (slurm, kubernetes, local or a plugin), with "
-        "the runner options of its last job and its serve: section, e.g. after its job failed; the job resumes it. "
-        "Without it, the run resumes in this process.",
+        "the runner options of its last job, e.g. after its job failed; the job resumes it. Without it, the run "
+        "resumes in this process.",
     )
 
 

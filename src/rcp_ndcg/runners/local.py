@@ -91,9 +91,26 @@ class LocalRunner:
                     "--judge-url http://localhost:8000/v1 --judge-model <served name>; or hand the run to a "
                     "runner that starts its engines: --runner slurm | kubernetes",
                 )
-        return {
-            job.name: worker_script(self.options.defaults_for(job), install=False, workdir=self.cwd) for job in jobs
-        }
+        return {job.name: self._phased_script(self.options.defaults_for(job)) for job in jobs}
+
+    def _phased_script(self, job: JobSpec) -> str:
+        """The job's worker script: its phases run in order, each its command; a job without phases runs ``argv``."""
+        if not job.phases:
+            return worker_script(job, install=False, workdir=self.cwd)
+        steps = [
+            worker_script(job.model_copy(update={"argv": phase.argv}), install=False, workdir=self.cwd)
+            for phase in job.phases
+        ]
+        return (
+            "\n".join(
+                [
+                    "#!/usr/bin/env bash",
+                    "set -euo pipefail",
+                    *(f"bash -c {shlex.quote(script.rstrip(chr(10)))}" for script in steps),
+                ]
+            )
+            + "\n"
+        )
 
     def submit(self, jobs: Sequence[JobSpec]) -> list[JobHandle]:
         """Run every job in order, stopping at the first failure; with ``detach``, start them and return.

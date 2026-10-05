@@ -197,7 +197,7 @@ class KubernetesRunner:
     def _engine(self, serve: ServeConfig) -> dict[str, Any]:
         """A StatefulSet's engine container: the user's image and command, verbatim, probed on the readiness path."""
         probe = {"httpGet": {"path": serve.readiness_path, "port": serve.port}, "periodSeconds": PROBE_PERIOD_S}
-        startup = max(1, -(-serve.startup_timeout_s // PROBE_PERIOD_S))  # the kubelet restarts it after that
+        startup = max(1, -(-serve.startup_timeout_s // PROBE_PERIOD_S))  # the pod fails after that
         container: dict[str, Any] = {
             "name": "engine",
             "image": _engine_image(serve),

@@ -129,8 +129,13 @@ def test_the_local_runner_starts_no_engine() -> None:
     with pytest.raises(ConfigError, match="starts no engine") as caught:
         LocalRunner().render([JobSpec(name="j", argv=("true",), phases=phases)])
     assert "--judge-url" in (caught.value.hint or "")
-    script = LocalRunner().render([JobSpec(name="j", argv=("true",), phases=(phases[1],))])["j"]
-    assert "exec true" in script
+    # Engine-free phases run in order, in one script.
+    script = LocalRunner(cwd="/work").render([JobSpec(name="j", argv=("true",), phases=(phases[1],))])["j"]
+    assert script == (
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "bash -c '#!/usr/bin/env bash\nset -euo pipefail\ncd /work\nexec rcp-ndcg run resume --only evaluate'\n"
+    )
 
 
 def test_options_are_config_errors() -> None:
