@@ -25,6 +25,26 @@ released together.
 
 ### Public surface
 
+- **Every retrieval role declares the media it sends (p-media D1)**: `EmbeddingEndpoint`, `PoolingEndpoint` and
+  `RerankEndpoint` gain the judge's `image_processor` (CONTENT), `max_images` and `max_videos` (RUNTIME, as on
+  the judge: the server's per-request media limits are a gate, not a transformation) and the optional
+  `image_policy` / `video_policy` (CONTENT; the judge's own `ImagePolicy` / `VideoPolicy` types, no copies),
+  carried by a shared base `_MediaEndpoint`. One preparation path for every role that sends media:
+  `rcp_ndcg.data.prepare.prepare_request(contents, image, video) -> PreparedRequest` (the prepared contents,
+  every prepared item, and the request's exact media token counts, `MediaTokenCount`), and
+  `rcp_ndcg.data.prepare.fit_media_to_budget(...)` -- the vision-block integrity rule (p-media Q8, the fork's
+  rule R3): when media alone exceed a request's text budget, images shrink to the policy's minimum pixel
+  budget, then whole items are dropped most-expensive-first, each with a census record (`MediaCensus.record`
+  gains `dropped=`, and every media census row carries `dropped`); tokens are never cut inside a vision block.
+- `rcp_ndcg.data.resolution` gains `engine_media_check(reported, counted)` and the typed
+  `EngineMediaMismatch` (p-media Q7 `engine_check`): the pure comparison of an engine's prompt-token count for
+  one prepared probe image against the counted one; the runtime call site comes later. `ImagePolicy` and
+  `VideoPolicy` declare `IDENTITY_ROLES` (every field CONTENT: the media policy is the instrument), so a
+  policy nested in an identity payload passes `check_declarations`.
+- `VideoPolicy` gains `engine_video_pinning` (CONTENT, default false): whether the engine serving this corpus
+  is pinned to sample exactly `num_frames` frames per container (vLLM `--media-io-kwargs`, SGLang
+  `--mm-process-config`). Required for `wire: video_url`, refused under `wire: frames` (see below).
+
 - `JobSpec` gains `phases` (a tuple of `JobPhase`: the engines one phase starts, by role, and the command it runs
   while they serve); a job sets `phases` or `serve`, not both.
 - `schemas/run-config.v1.json`: the `CandidatesConfig` description states that the whole section is content for
@@ -75,6 +95,28 @@ released together.
 
 ### Fixed
 
+- **Video containers are counted on the temporal grid (p-media D2)**: `_container_tokens` counted
+  `num_frames x per-frame` tokens for a `video_url` container, but the engines patchify in time -- a stock
+  engine samples 32 frames (2x under) and a pinned one shows `ceil(num_frames / 2)` merged steps (2x over).
+  A container now counts `ceil(num_frames / temporal_patch) x per-frame tokens` under one vision block (+2),
+  per processor family: `qwen3_vl` sizes the frames by its own per-clip video budget (4,096..25,165,824 px,
+  which shrinks per-frame resolution as the frame count grows: 8 frames of 720x1280 = 3,522 tokens, 128 =
+  11,522, measured against the real `Qwen3VLVideoProcessor` with 0 mismatches over 65 combinations); the
+  Qwen2-VL families at the image policy's per-frame budget (8 frames of 720x1280 = 4,786). Correspondingly,
+  `wire: video_url` is refused (pydantic, at config load) unless the new `VideoPolicy.engine_video_pinning`
+  declares the engine pinned to the same frame count (vLLM `--media-io-kwargs`, SGLang
+  `--mm-process-config`), and the declaration is refused under `wire: frames`, which samples on the client.
+  `wire: frames` stays the default and exact. Stored judgements and the paper's tables do not move: only the
+  window budgets and estimates of new judge passes over video containers change.
+- **The window budget charges each media item's vision block and the template's media marker (p-media D6)**:
+  the old accounting charged merged patch tokens only, so a wide multi-image window could exceed the judge's
+  context by ~(2 x n_images + markers - 256) tokens and fail mid-pass at the engine. The charge per document
+  is now `content_media_tokens(...)` (every image and sampled frame its vision start/end + patch tokens, a
+  container its temporal grid) plus the template's media marker per media part, measured with the judge's
+  tokenizer (`media_marker_tokens`); the 256-token chat-scaffold reserve covers only what is not media.
+  A window whose media alone do not fit is refused (`CapabilityError`) before anything is spent.
+- `ImagePolicy.target_size` raises the documented `DataError` (exit 12, with a hint) for an input whose aspect
+  ratio exceeds 200, instead of a bare `ValueError` (p-media D7).
 - Changing a served encoder's or reranker's URL no longer re-runs retrieval or reranking: the `retrieve` and
   `rerank` step identities hold the candidates config's content payload (`identity_payload`, as the judge steps
   already do), so its runtime fields (`base_url`, `api_key_env`, `concurrency`, the timeouts and retries,
