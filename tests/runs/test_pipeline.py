@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -12,6 +13,7 @@ from rcp_ndcg.data import load_rankings
 from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError, RcpNdcgWarning
 from rcp_ndcg.llm import TournamentSchedule
 from rcp_ndcg.runs import Pipeline, RunManifest, RunStatus, StepStatus
+from rcp_ndcg.support.identity import check_declarations, identity_payload
 from rcp_ndcg.testing import TINY_TOURNAMENT, tiny_rows
 from tests.runs.conftest import STEPS, tiny_config
 
@@ -342,6 +344,295 @@ class TestEstimateAndRetrieve:
             {"step": "rerank", "status": "would skip"},
             {"step": "tournament", "status": "would skip"},
         ]
+
+
+class TestTheRetrieveAndRerankIdentities:
+    """RFC-0001 5.4: the retrieve and rerank step identities hold the content payload of the candidates config
+    (``identity_payload``, like the judge steps), never its runtime fields: a served encoder's or reranker's URL,
+    its key variable, its concurrency, timeouts and retries move the work, not the numbers.
+    """
+
+    @staticmethod
+    def _dense(**encoder: Any) -> dict[str, Any]:
+        served = {"model": "embedder", "base_url": "http://engine.test/v1", **encoder}
+        return {
+            "from": "retrieval",
+            "retrieval": {"kind": "dense", "encoder": {"provider": "openai_compatible", **served}},
+        }
+
+    @staticmethod
+    def _cohere(**encoder: Any) -> dict[str, Any]:
+        hosted = {"model": "embed-v4.0", **encoder}
+        return {"from": "retrieval", "retrieval": {"kind": "dense", "encoder": {"provider": "cohere", **hosted}}}
+
+    @staticmethod
+    def _rerank(**reranker: Any) -> dict[str, Any]:
+        served = {"model": "reranker", "base_url": "http://engine.test:8000", **reranker}
+        return {"rerank": {"provider": "openai_compatible", **served}}
+
+    def _two(self, data: Path, tmp_path: Path, candidates_a: dict, candidates_b: dict, step: str):
+        """Two pipelines on one run directory whose candidates sections differ as given."""
+        first = Pipeline(tiny_config(data, candidates=candidates_a, steps=[step]), runs_dir=str(tmp_path / "runs"))
+        second = Pipeline(tiny_config(data, candidates=candidates_b, steps=[step]), layout=first.layout)
+        return first._identity(step), second._identity(step)
+
+    @pytest.mark.parametrize(
+        "field, value",
+        [
+            ("base_url", "http://elsewhere.test:9000/v1"),
+            ("api_key_env", "OTHER_KEY"),
+            ("timeout_s", 5.0),
+            ("max_retries", 9),
+            ("connect_timeout_s", 1.0),
+        ],
+    )
+    def test_a_served_encoders_runtime_fields_do_not_rekey_the_retrieve_step(
+        self, data: Path, tmp_path: Path, field: str, value: Any
+    ) -> None:
+        one, two = self._two(data, tmp_path, self._dense(), self._dense(**{field: value}), "retrieve")
+        assert one == two
+
+    @pytest.mark.parametrize(
+        "field, value",
+        [
+            ("model", "other-embedder"),
+            ("revision", "20260101"),
+            ("query_prompt", "Query: "),
+            ("doc_prompt", "Passage: "),
+        ],
+    )
+    def test_a_served_encoders_content_fields_rekey_the_retrieve_step(
+        self, data: Path, tmp_path: Path, field: str, value: Any
+    ) -> None:
+        one, two = self._two(data, tmp_path, self._dense(), self._dense(**{field: value}), "retrieve")
+        assert one != two
+
+    @pytest.mark.parametrize(
+        "field, value",
+        [
+            ("base_url", "http://proxy.test/v1"),
+            ("api_key_env", "OTHER_KEY"),
+            ("batch_size", 96),
+            ("timeout_s", 5.0),
+            ("max_retries", 9),
+        ],
+    )
+    def test_a_hosted_encoders_runtime_fields_do_not_rekey_the_retrieve_step(
+        self, data: Path, tmp_path: Path, field: str, value: Any
+    ) -> None:
+        one, two = self._two(data, tmp_path, self._cohere(), self._cohere(**{field: value}), "retrieve")
+        assert one == two
+
+    @pytest.mark.parametrize(
+        "field, value",
+        [("model", "embed-v4.0-preview"), ("revision", "20260101")],
+    )
+    def test_a_hosted_encoders_content_fields_rekey_the_retrieve_step(
+        self, data: Path, tmp_path: Path, field: str, value: Any
+    ) -> None:
+        one, two = self._two(data, tmp_path, self._cohere(), self._cohere(**{field: value}), "retrieve")
+        assert one != two
+
+    @pytest.mark.parametrize(
+        "field, value",
+        [
+            ("base_url", "http://elsewhere.test:9000"),
+            ("concurrency", 2),
+            ("api_key_env", "OTHER_KEY"),
+            ("timeout_s", 5.0),
+            ("max_retries", 9),
+        ],
+    )
+    def test_a_served_rerankers_runtime_fields_do_not_rekey_the_rerank_step(
+        self, data: Path, tmp_path: Path, field: str, value: Any
+    ) -> None:
+        one, two = self._two(data, tmp_path, self._rerank(), self._rerank(**{field: value}), "rerank")
+        assert one == two
+
+    @pytest.mark.parametrize("field, value", [("model", "other-reranker"), ("revision", "20260101")])
+    def test_a_served_rerankers_content_fields_rekey_the_rerank_step(
+        self, data: Path, tmp_path: Path, field: str, value: Any
+    ) -> None:
+        one, two = self._two(data, tmp_path, self._rerank(), self._rerank(**{field: value}), "rerank")
+        assert one != two
+
+    @pytest.mark.parametrize(
+        "reranker",
+        [
+            {"provider": "cohere", "model": "rerank-v4.0-pro"},
+            {"provider": "local", "model": "a-local-reranker"},
+        ],
+        ids=["cohere", "local"],
+    )
+    def test_a_rerankers_batch_size_does_not_rekey_the_rerank_step(
+        self, data: Path, tmp_path: Path, reranker: dict
+    ) -> None:
+        one, two = self._two(data, tmp_path, {"rerank": reranker}, {"rerank": {**reranker, "batch_size": 32}}, "rerank")
+        assert one == two
+
+    @pytest.mark.parametrize(
+        "reranker",
+        [
+            {"provider": "cohere", "model": "rerank-v4.0-pro"},
+            {"provider": "local", "model": "a-local-reranker"},
+        ],
+        ids=["cohere", "local"],
+    )
+    @pytest.mark.parametrize("field, value", [("model", "another"), ("revision", "20260101")])
+    def test_a_rerankers_content_fields_rekey_the_rerank_step(
+        self, data: Path, tmp_path: Path, reranker: dict, field: str, value: Any
+    ) -> None:
+        one, two = self._two(data, tmp_path, {"rerank": reranker}, {"rerank": {**reranker, field: value}}, "rerank")
+        assert one != two
+
+    def test_the_encoders_pooling_rekeys_the_retrieve_step(self, data: Path, tmp_path: Path) -> None:
+        """``pooling: token`` is the late-interaction route (``/pooling``), not the one-vector one."""
+        dense = {
+            "from": "retrieval",
+            "retrieval": {
+                "kind": "dense",
+                "encoder": {"provider": "openai_compatible", "model": "m", "base_url": "http://engine.test/v1"},
+            },
+        }
+        token = {
+            "from": "retrieval",
+            "retrieval": {
+                "kind": "late_interaction",
+                "encoder": {
+                    "provider": "openai_compatible",
+                    "model": "m",
+                    "base_url": "http://engine.test/v1",
+                    "pooling": "token",
+                },
+            },
+        }
+        one, two = self._two(data, tmp_path, dense, token, "retrieve")
+        assert one != two
+
+    def test_the_candidates_payload_keys_by_field_name_not_alias(self, data: Path, tmp_path: Path) -> None:
+        """``identity_payload`` keys by field name: ``from:`` in YAML is ``source`` in the identity."""
+        from rcp_ndcg.retrieval import BM25Config
+        from rcp_ndcg.runs.config import CandidatesConfig
+
+        pipeline = Pipeline(
+            tiny_config(data, candidates={"from": "retrieval", "retrieval": {"kind": "bm25"}}, steps=["retrieve"]),
+            runs_dir=str(tmp_path / "runs"),
+        )
+        candidates = pipeline._identity("retrieve")["candidates"]
+        assert "source" in candidates and "from" not in candidates
+        aliased = CandidatesConfig.model_validate({"from": "retrieval", "retrieval": {"kind": "bm25"}})
+        named = CandidatesConfig(source="retrieval", retrieval=BM25Config())
+        assert identity_payload(aliased) == identity_payload(named) == candidates
+
+    @pytest.mark.parametrize(
+        "candidates",
+        [
+            {"from": "retrieval", "retrieval": {"kind": "bm25"}},
+            {
+                "from": "retrieval",
+                "retrieval": {"kind": "dense", "encoder": {"provider": "cohere", "model": "embed-v4.0"}},
+            },
+            {
+                "from": "retrieval",
+                "retrieval": {"kind": "dense", "encoder": {"provider": "voyage", "model": "voyage-3-large"}},
+            },
+            {
+                "from": "retrieval",
+                "retrieval": {"kind": "dense", "encoder": {"provider": "gemini", "model": "gemini-embedding-001"}},
+            },
+            {
+                "from": "retrieval",
+                "retrieval": {"kind": "dense", "encoder": {"provider": "local", "model": "m", "pooling": "last"}},
+            },
+            {
+                "from": "retrieval",
+                "retrieval": {
+                    "kind": "dense",
+                    "encoder": {"provider": "openai_compatible", "model": "m", "base_url": "http://engine.test/v1"},
+                },
+            },
+            {
+                "from": "retrieval",
+                "retrieval": {
+                    "kind": "late_interaction",
+                    "encoder": {"provider": "local", "model": "m", "pooling": "token", "engine": "vllm"},
+                },
+            },
+            {
+                "from": "retrieval",
+                "retrieval": {
+                    "kind": "late_interaction",
+                    "encoder": {
+                        "provider": "openai_compatible",
+                        "model": "m",
+                        "base_url": "http://engine.test/v1",
+                        "pooling": "token",
+                    },
+                },
+            },
+            {"from": "rankings", "rankings": "rankings.jsonl", "system": "bm25"},
+            {"rerank": {"provider": "local", "model": "m"}},
+            {"rerank": {"provider": "openai_compatible", "model": "m", "base_url": "http://engine.test:8000"}},
+            {"rerank": {"provider": "cohere", "model": "rerank-v4.0-pro"}},
+            {"rerank": {"provider": "voyage", "model": "rerank-2.5"}},
+        ],
+    )
+    def test_every_model_the_candidates_payload_reaches_declares_its_roles(self, candidates: dict) -> None:
+        from rcp_ndcg.runs.config import CandidatesConfig
+
+        check_declarations(CandidatesConfig)
+        identity_payload(CandidatesConfig.model_validate(candidates))
+
+    @pytest.mark.parametrize(
+        "klass",
+        [
+            "Endpoint",
+            "_Hosted",
+            "OpenAICompatible",
+            "Local",
+            "LocalEncoder",
+            "OpenAICompatibleEncoder",
+            "OpenAICompatibleReranker",
+            "Cohere",
+            "Voyage",
+            "Gemini",
+            "BM25Config",
+            "DenseConfig",
+            "LateInteractionConfig",
+        ],
+    )
+    def test_every_retrieval_config_class_declares_its_roles(self, klass: str) -> None:
+        """Every class of the retrieval configs -- the abstract bases included -- declares exactly its own fields.
+
+        A role for a field the class does not define (say ``provider``, declared on a base whose subclasses own
+        the field) is stale on that class: the declaration lives next to the field, and the MRO merge hands it to
+        the leaves.
+        """
+        import rcp_ndcg.retrieval.config as retrieval_config
+
+        check_declarations(getattr(retrieval_config, klass))
+
+    def test_a_changed_reranker_url_skips_a_completed_rerank_step(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def reverse(examples, cfg, **kwargs):
+            return [e.model_copy(update={"scores": [float(i) for i in range(len(e.doc_ids))]}) for e in examples]
+
+        monkeypatch.setattr("rcp_ndcg.retrieval.cross_encoder.rerank_examples", reverse)
+        candidates = {
+            "rerank": {"provider": "openai_compatible", "model": "stub", "base_url": "http://stub.test:8000"},
+            "depth": 4,
+        }
+        pipeline = Pipeline(tiny_config(data, candidates=candidates, steps=["rerank"]), runs_dir=str(tmp_path / "runs"))
+        pipeline.run()
+        before = RunManifest.load(pipeline.layout.root).step("rerank")
+
+        manifest = Pipeline.resume(
+            pipeline.layout.root, overrides=["candidates.rerank.base_url=http://moved.test:8000"]
+        ).run()
+
+        assert manifest.step("rerank") == before, "the moved URL is runtime: the completed step is skipped"
+        assert manifest.status is RunStatus.COMPLETED
 
 
 class TestTheEvaluateIdentity:

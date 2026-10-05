@@ -67,7 +67,7 @@
     },
     "CandidatesConfig": {
       "additionalProperties": false,
-      "description": "Where each query's candidate pool comes from.",
+      "description": "Where each query's candidate pool comes from.\n\nEvery field changes the numbers (the retriever and the reranker declare their own roles, runtime fields and\nall, in rcp_ndcg.retrieval.config), so the whole section is content: a run's step identities hold it by\nrcp_ndcg.support.identity.identity_payload.",
       "properties": {
         "depth": {
           "default": 150,
