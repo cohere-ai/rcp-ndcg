@@ -225,6 +225,9 @@ asyncio_default_fixture_loop_scope = "function"
 markers = [
   "network: needs the public HuggingFace Hub; the test also skips itself unless RCP_NDCG_NETWORK_TESTS=1",
 ]
+# A test whose code raises one of the package's warnings must assert it (pytest.warns, or a recorded set in the
+# docs snippets): an unasserted RcpNdcgWarning is an error, not a line in the warnings summary.
+filterwarnings = ["error::rcp_ndcg.errors.RcpNdcgWarning"]
 
 [tool.ruff]
 line-length = 120

@@ -25,6 +25,13 @@ released together.
 
 ### Public surface
 
+- `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
+  larger than `adaptive_window` runs one batch, not one per batch: every adaptive window of such a pool holds
+  the whole pool, so a further batch asks the same documents again (in the refit order) and covers only what
+  the first window's answers already hold. `phase_calls` and `calls_per_query` count it, so the estimates and
+  the passes agree; the paper's counts at a pool of 150 are unchanged.
+- `schemas/run-config.v1.json`: the `adaptive_batches` description states the one-batch rule; the Python-surface
+  snapshot records the new method.
 - `JobSpec` gains `phases` (a tuple of `JobPhase`: the engines one phase starts, by role, and the command it runs
   while they serve); a job sets `phases` or `serve`, not both.
 - **`rcp_ndcg.inference` gains the embedding wire adapters and the embedding role client** (dense embeddings over

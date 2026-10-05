@@ -746,7 +746,7 @@ async def run_tournament(query: _Query, schedule: TournamentSchedule, run: _Pass
 
     aw = min(schedule.adaptive_window, n)
     max_tokens_adaptive = run.window_tokens(query, aw)
-    for _batch in range(schedule.adaptive_batches if per_batch > 0 else 0):
+    for _batch in range(schedule.adaptive_batches_for(n) if per_batch > 0 else 0):
         boundaries = _compute_boundary_values(theta, obs_counts, top_k=schedule.adaptive_depth)
         windows = _greedy_select_windows(
             theta,
