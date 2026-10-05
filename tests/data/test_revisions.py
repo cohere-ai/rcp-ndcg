@@ -237,3 +237,13 @@ def test_is_commit_is_public_and_the_private_pattern_stays_home() -> None:
     assert not is_commit(sha + "\n"), "no trailing newline"
     assert not is_commit(None)
     assert "_COMMIT" not in inspect.getsource(dataset_module), "dataset.py reads revisions through the public name"
+
+
+def test_a_revision_that_is_not_exactly_a_commit_is_resolved_not_echoed(hub: FakeHub) -> None:
+    """A 40-hex string with a trailing newline is no commit: it resolves (here: warns unverified), never echoes."""
+    with pytest.warns(RcpNdcgWarning, match="resolved to no commit") as seen:
+        resolved = resolve_revision("BeIR/fiqa", "a" * 40 + "\n")
+
+    assert seen[0].message.code == "UNPINNED_REVISION"
+    assert resolved.commit is None and resolved.verified is False
+    resolve_revision.cache_clear()
