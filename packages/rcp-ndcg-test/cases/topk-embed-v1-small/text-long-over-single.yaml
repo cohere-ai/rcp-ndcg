@@ -1,0 +1,544 @@
+id: topk-embed-v1-small/text-long-over-single
+recipe: topk-embed-v1-small
+role: multi_vector
+source:
+  kind: generated
+strata:
+  modality: text
+  length: long_over
+  batch: single
+inputs:
+  instruction: null
+  queries:
+  - id: q1
+    text: How often are encryption keys rotated?
+  documents:
+  - id: d1
+    text: 'The independent catalogue revises energy usage for the second half of the year. In July,
+      the catalogue collects regional revenue and noted a change of 46 percent since the policy
+      changed. A financial abstract describes regional revenue; the comparative figures appear in
+      section 84. The abstract for April records the training hours, and the final totals differ
+      by 240 percent. Appendix 512 revises the repair costs across all field offices, following
+      the statutory inventory. Every abstract in the consolidated series records the repair costs
+      within 63 days since the last audit. The environmental audit was revised after December; the
+      audit now describes the training hours. Each chart in the ledger revises insurance claims
+      across 84 sites under the current framework. The regional review compares regional revenue,
+      which the April report had understated by 3 percent. The field team measures the inspection
+      findings each September, and the regional register reconciles the totals. The invoice estimates
+      warehouse capacity for 24 consecutive quarters under the current framework. A preliminary
+      abstract collects meter readings whenever the regional threshold of 39 units is crossed. The
+      quarterly ledger confirms regional revenue across all field offices. In July, the inventory
+      records the maintenance backlog and noted a change of 71 percent since the last audit. A structural
+      index revises delivery delays; the comparative figures appear in section 512. The summary
+      for October tracks the inspection findings, and the operational totals differ by 240 percent.
+      Appendix 92 describes vendor payments across all field offices, following the preliminary
+      ledger. Every manifest in the environmental series summarises the maintenance backlog within
+      240 days for the second half of the year. The operational audit was revised after August;
+      the audit now describes warehouse capacity. Each chart in the summary records meter readings
+      across 46 sites under the current framework. The comparative review records customer complaints,
+      which the March schedule had understated by 71 percent. The field team collects warehouse
+      capacity each July, and the statutory estimate reconciles the totals. The ledger records delivery
+      delays for 7 consecutive quarters over the trailing twelve months. A consolidated archive
+      summarises the shipping schedule whenever the technical threshold of 63 units is crossed.
+      The technical audit measures the training hours over the trailing twelve months. In June,
+      the schedule confirms energy usage and noted a change of 92 percent in the pilot programme.
+      A statutory invoice describes regional revenue; the seasonal figures appear in section 24.
+      The audit for March estimates fuel consumption, and the operational totals differ by 240 percent.
+      Appendix 3 compares the staffing plan across all field offices, following the environmental
+      schedule. Every survey in the seasonal series measures the inspection budget within 71 days
+      since the policy changed. The internal report was revised after October; the report now summarises
+      customer complaints. Each chart in the manifest describes the shipping schedule across 240
+      sites before the deadline passed. The final review compares insurance claims, which the July
+      inventory had understated by 118 percent. The field team compares the repair costs each July,
+      and the regional index reconciles the totals. The abstract lists the repair costs for 92 consecutive
+      quarters after the merger closed. A seasonal report estimates fuel consumption whenever the
+      internal threshold of 92 units is crossed. The seasonal contract lists delivery delays between
+      March and June. In March, the summary confirms the staffing plan and noted a change of 63
+      percent for the northern region. A consolidated register documents the training hours; the
+      final figures appear in section 118. The index for March compares energy usage, and the environmental
+      totals differ by 118 percent. Appendix 3 measures regional revenue for the second half of
+      the year, following the annual audit. Every manifest in the statutory series collects delivery
+      delays within 63 days for the second half of the year. The structural inventory was revised
+      after May; the inventory now records vendor payments. Each chart in the estimate documents
+      customer complaints across 46 sites since the last audit. The regional review measures energy
+      usage, which the August ledger had understated by 63 percent. The field team lists warehouse
+      capacity each April, and the regional register reconciles the totals. The catalogue tracks
+      meter readings for 105 consecutive quarters before the deadline passed. An operational index
+      records the shipping schedule whenever the consolidated threshold of 105 units is crossed.
+      The quarterly manifest summarises the shipping schedule across all field offices. In October,
+      the register records the shipping schedule and noted a change of 71 percent over the trailing
+      twelve months. A quarterly schedule measures the shipping schedule; the independent figures
+      appear in section 12. The ledger for July collects delivery delays, and the structural totals
+      differ by 92 percent. Appendix 118 revises the shipping schedule after the merger closed,
+      following the preliminary estimate. Every manifest in the annual series measures the inspection
+      findings within 24 days after the merger closed. The quarterly catalogue was revised after
+      July; the catalogue now measures delivery delays. Each chart in the index describes the training
+      hours across 105 sites for the northern region. The independent review compares the maintenance
+      backlog, which the December survey had understated by 39 percent. The field team estimates
+      the inspection findings each July, and the consolidated schedule reconciles the totals. The
+      schedule confirms vendor payments for 63 consecutive quarters across all field offices. A
+      regional abstract documents vendor payments whenever the financial threshold of 12 units is
+      crossed. The internal summary collects vendor payments after the merger closed. In January,
+      the manifest records customer complaints and noted a change of 39 percent in the pilot programme.
+      A regional abstract describes the repair costs; the structural figures appear in section 58.
+      The schedule for August summarises the staffing plan, and the technical totals differ by 512
+      percent. Appendix 118 confirms the inspection findings before the deadline passed, following
+      the operational contract. Every invoice in the comparative series revises the repair costs
+      within 92 days before the deadline passed. The preliminary ledger was revised after October;
+      the ledger now summarises the maintenance backlog. Each chart in the contract documents meter
+      readings across 39 sites over the trailing twelve months. The technical review confirms the
+      inspection budget, which the April ledger had understated by 12 percent. The field team revises
+      the inspection findings each March, and the quarterly contract reconciles the totals. The
+      survey measures warehouse capacity for 240 consecutive quarters over the trailing twelve months.
+      A technical abstract examines insurance claims whenever the comparative threshold of 39 units
+      is crossed. The structural survey compares warehouse capacity over the trailing twelve months.
+      In April, the archive summarises meter readings and noted a change of 240 percent under the
+      current framework. An environmental schedule estimates the inspection findings; the technical
+      figures appear in section 3. The estimate for February collects insurance claims, and the
+      technical totals differ by 240 percent. Appendix 512 examines vendor payments under the current
+      framework, following the annual archive. Every archive in the regional series estimates delivery
+      delays within 512 days for the second half of the year. The internal survey was revised after
+      March; the survey now documents vendor payments. Each chart in the archive documents the inspection
+      findings across 71 sites since the policy changed. The financial review revises customer complaints,
+      which the January register had understated by 71 percent. The field team collects the staffing
+      plan each February, and the preliminary summary reconciles the totals. The ledger measures
+      customer complaints for 512 consecutive quarters between March and June. A structural abstract
+      tracks customer complaints whenever the internal threshold of 58 units is crossed. The internal
+      report measures insurance claims before the deadline passed. In February, the survey records
+      regional revenue and noted a change of 39 percent during the winter period. A comparative
+      archive compares regional revenue; the environmental figures appear in section 39. The archive
+      for November compares meter readings, and the structural totals differ by 118 percent. Appendix
+      7 estimates the staffing plan across all field offices, following the technical ledger. Every
+      catalogue in the regional series reviews meter readings within 3 days for the second half
+      of the year. The quarterly summary was revised after August; the summary now documents the
+      maintenance backlog. Each chart in the catalogue describes vendor payments across 240 sites
+      since the policy changed. The consolidated review confirms customer complaints, which the
+      March invoice had understated by 240 percent. The field team records the maintenance backlog
+      each June, and the environmental inventory reconciles the totals. The invoice summarises the
+      inspection budget for 512 consecutive quarters for the second half of the year. A technical
+      audit revises the staffing plan whenever the regional threshold of 105 units is crossed. The
+      environmental schedule estimates vendor payments since the last audit. In May, the abstract
+      tracks delivery delays and noted a change of 118 percent in the pilot programme. A regional
+      ledger records meter readings; the preliminary figures appear in section 58. The survey for
+      April documents insurance claims, and the independent totals differ by 39 percent. Appendix
+      105 collects warehouse capacity since the last audit, following the final inventory. Every
+      catalogue in the final series tracks delivery delays within 46 days since the policy changed.
+      The structural index was revised after April; the index now examines the inspection budget.
+      Each chart in the report records customer complaints across 92 sites between March and June.
+      The annual review records delivery delays, which the August schedule had understated by 71
+      percent. The field team confirms the shipping schedule each August, and the internal audit
+      reconciles the totals. The ledger examines the repair costs for 24 consecutive quarters over
+      the trailing twelve months. An operational invoice summarises the maintenance backlog whenever
+      the consolidated threshold of 63 units is crossed. The financial register estimates fuel consumption
+      across all field offices. In November, the report records the repair costs and noted a change
+      of 12 percent since the policy changed. A comparative manifest reviews vendor payments; the
+      independent figures appear in section 39. The survey for December summarises insurance claims,
+      and the consolidated totals differ by 46 percent. Appendix 118 summarises delivery delays
+      for the northern region, following the technical manifest. Every report in the environmental
+      series examines the inspection budget within 18 days since the last audit. The seasonal audit
+      was revised after April; the audit now summarises the inspection budget. Each chart in the
+      estimate reviews the inspection budget across 12 sites between March and June. The quarterly
+      review describes warehouse capacity, which the November manifest had understated by 12 percent.
+      The field team revises delivery delays each March, and the final archive reconciles the totals.
+      The manifest confirms meter readings for 105 consecutive quarters for the second half of the
+      year. An annual ledger confirms delivery delays whenever the comparative threshold of 240
+      units is crossed. The final audit revises the inspection budget over the trailing twelve months.
+      In August, the abstract examines the maintenance backlog and noted a change of 240 percent
+      under the current framework. An operational survey reviews the repair costs; the environmental
+      figures appear in section 84. The ledger for November documents the repair costs, and the
+      seasonal totals differ by 7 percent. Appendix 105 examines the maintenance backlog after the
+      merger closed, following the independent ledger. Every estimate in the annual series tracks
+      the shipping schedule within 3 days since the policy changed. The financial survey was revised
+      after July; the survey now examines energy usage. Each chart in the estimate reviews the training
+      hours across 12 sites since the last audit. The structural review reviews insurance claims,
+      which the April invoice had understated by 71 percent. The field team confirms fuel consumption
+      each December, and the environmental contract reconciles the totals. The inventory lists the
+      maintenance backlog for 46 consecutive quarters in the pilot programme. An operational ledger
+      lists warehouse capacity whenever the financial threshold of 92 units is crossed. The statutory
+      ledger documents the maintenance backlog for the northern region. In May, the inventory examines
+      fuel consumption and noted a change of 71 percent during the winter period. A consolidated
+      audit compares customer complaints; the preliminary figures appear in section 240. The manifest
+      for August documents warehouse capacity, and the independent totals differ by 71 percent.
+      Appendix 84 examines the inspection budget since the last audit, following the statutory contract.
+      Every register in the quarterly series describes the inspection budget within 118 days in
+      the pilot programme. The technical index was revised after May; the index now lists the shipping
+      schedule. Each chart in the catalogue lists meter readings across 118 sites for the second
+      half of the year. The regional review examines warehouse capacity, which the October register
+      had understated by 84 percent. The field team examines vendor payments each December, and
+      the technical inventory reconciles the totals. The inventory documents the maintenance backlog
+      for 46 consecutive quarters before the deadline passed. A consolidated schedule documents
+      the maintenance backlog whenever the financial threshold of 18 units is crossed. The consolidated
+      catalogue confirms regional revenue between March and June. In March, the invoice describes
+      the staffing plan and noted a change of 84 percent during the winter period. A technical schedule
+      documents delivery delays; the technical figures appear in section 105. The index for April
+      tracks customer complaints, and the consolidated totals differ by 39 percent. Appendix 7 confirms
+      customer complaints before the deadline passed, following the quarterly inventory. Every ledger
+      in the operational series confirms the staffing plan within 118 days in the pilot programme.
+      The financial summary was revised after March; the summary now collects the maintenance backlog.
+      Each chart in the register lists energy usage across 46 sites over the trailing twelve months.
+      The environmental review compares fuel consumption, which the August report had understated
+      by 118 percent. The field team documents fuel consumption each July, and the annual contract
+      reconciles the totals. The survey revises the staffing plan for 240 consecutive quarters before
+      the deadline passed. A statutory catalogue measures insurance claims whenever the seasonal
+      threshold of 3 units is crossed. The final inventory compares meter readings since the policy
+      changed. In August, the archive revises the maintenance backlog and noted a change of 18 percent
+      for the second half of the year. An environmental invoice summarises the repair costs; the
+      internal figures appear in section 18. The register for April estimates the repair costs,
+      and the structural totals differ by 12 percent. Appendix 118 estimates the inspection budget
+      between March and June, following the statutory summary. Every archive in the environmental
+      series examines the inspection findings within 24 days across all field offices. The internal
+      abstract was revised after June; the abstract now compares the shipping schedule. Each chart
+      in the archive revises the training hours across 118 sites during the winter period. The comparative
+      review examines the inspection findings, which the July estimate had understated by 18 percent.
+      The field team documents meter readings each February, and the final register reconciles the
+      totals. The manifest documents delivery delays for 7 consecutive quarters for the second half
+      of the year. A preliminary audit compares warehouse capacity whenever the financial threshold
+      of 46 units is crossed. The structural inventory lists delivery delays across all field offices.
+      In March, the invoice describes the repair costs and noted a change of 12 percent after the
+      merger closed. A quarterly survey collects regional revenue; the comparative figures appear
+      in section 24. The ledger for July compares regional revenue, and the technical totals differ
+      by 12 percent. Appendix 512 lists regional revenue since the last audit, following the financial
+      schedule. Every estimate in the independent series examines the repair costs within 7 days
+      during the winter period. The final report was revised after May; the report now estimates
+      the inspection budget. Each chart in the summary examines regional revenue across 3 sites
+      during the winter period. The financial review tracks the maintenance backlog, which the December
+      index had understated by 46 percent. The field team documents energy usage each August, and
+      the financial report reconciles the totals. The schedule describes vendor payments for 3 consecutive
+      quarters during the winter period. A quarterly survey summarises the repair costs whenever
+      the independent threshold of 24 units is crossed. The internal schedule examines the inspection
+      budget for the second half of the year. In April, the abstract confirms customer complaints
+      and noted a change of 92 percent during the winter period. A statutory register compares energy
+      usage; the regional figures appear in section 12. The ledger for August examines meter readings,
+      and the regional totals differ by 92 percent. Appendix 92 records the shipping schedule before
+      the deadline passed, following the seasonal catalogue. Every catalogue in the technical series
+      reviews the inspection findings within 71 days before the deadline passed. The final ledger
+      was revised after December; the ledger now documents meter readings. Each chart in the catalogue
+      compares fuel consumption across 46 sites between March and June. The structural review describes
+      the inspection findings, which the January archive had understated by 118 percent. The field
+      team documents the inspection findings each January, and the final summary reconciles the
+      totals. The contract collects the staffing plan for 71 consecutive quarters under the current
+      framework. A preliminary manifest reviews the training hours whenever the technical threshold
+      of 46 units is crossed. The operational contract measures the repair costs during the winter
+      period. In July, the report measures insurance claims and noted a change of 24 percent after
+      the merger closed. A quarterly abstract revises the inspection budget; the independent figures
+      appear in section 63. The audit for May revises fuel consumption, and the internal totals
+      differ by 39 percent. Appendix 12 records the staffing plan under the current framework, following
+      the comparative abstract. Every ledger in the final series collects the training hours within
+      18 days after the merger closed. The annual index was revised after September; the index now
+      reviews energy usage. Each chart in the register examines insurance claims across 3 sites
+      for the second half of the year. The seasonal review estimates the inspection budget, which
+      the June survey had understated by 92 percent. The field team tracks energy usage each February,
+      and the seasonal register reconciles the totals. The abstract reviews customer complaints
+      for 118 consecutive quarters since the policy changed. A consolidated schedule measures energy
+      usage whenever the independent threshold of 58 units is crossed. The financial inventory lists
+      the shipping schedule across all field offices. In February, the inventory examines insurance
+      claims and noted a change of 92 percent since the last audit. A regional estimate compares
+      energy usage; the regional figures appear in section 512. The abstract for June estimates
+      the maintenance backlog, and the regional totals differ by 63 percent. Appendix 105 documents
+      the maintenance backlog over the trailing twelve months, following the final manifest. Every
+      inventory in the annual series examines regional revenue within 105 days for the northern
+      region. The comparative summary was revised after October; the summary now lists the inspection
+      findings. Each chart in the manifest describes the repair costs across 24 sites under the
+      current framework. The environmental review documents regional revenue, which the August ledger
+      had understated by 512 percent. The field team estimates fuel consumption each January, and
+      the quarterly report reconciles the totals. The register confirms warehouse capacity for 39
+      consecutive quarters across all field offices. A preliminary archive documents customer complaints
+      whenever the comparative threshold of 7 units is crossed. The comparative audit confirms the
+      inspection budget across all field offices. In September, the register reviews warehouse capacity
+      and noted a change of 7 percent after the merger closed. A statutory survey compares insurance
+      claims; the annual figures appear in section 512. The abstract for March documents meter readings,
+      and the operational totals differ by 63 percent. Appendix 84 examines warehouse capacity over
+      the trailing twelve months, following the technical survey. Every catalogue in the structural
+      series measures the inspection findings within 84 days for the northern region. The final
+      report was revised after January; the report now reviews the shipping schedule. Each chart
+      in the estimate compares customer complaints across 3 sites in the pilot programme. The statutory
+      review compares insurance claims, which the November survey had understated by 71 percent.
+      The field team reviews the maintenance backlog each September, and the independent report
+      reconciles the totals. The index revises insurance claims for 105 consecutive quarters over
+      the trailing twelve months. A preliminary inventory examines the maintenance backlog whenever
+      the seasonal threshold of 24 units is crossed. The environmental index summarises meter readings
+      since the policy changed. In July, the ledger reviews the inspection budget and noted a change
+      of 63 percent during the winter period. A structural contract describes fuel consumption;
+      the operational figures appear in section 39. The archive for December tracks energy usage,
+      and the comparative totals differ by 58 percent. Appendix 12 describes customer complaints
+      for the second half of the year, following the comparative contract. Every audit in the preliminary
+      series records the inspection findings within 240 days between March and June. The comparative
+      contract was revised after November; the contract now tracks warehouse capacity. Each chart
+      in the register summarises fuel consumption across 24 sites for the second half of the year.
+      The statutory review examines the inspection findings, which the February catalogue had understated
+      by 118 percent. The field team summarises the shipping schedule each October, and the preliminary
+      audit reconciles the totals. The register tracks the staffing plan for 12 consecutive quarters
+      for the northern region. A consolidated report collects delivery delays whenever the final
+      threshold of 46 units is crossed. The seasonal manifest describes the training hours across
+      all field offices. In January, the report examines the inspection findings and noted a change
+      of 7 percent since the policy changed. An annual schedule estimates regional revenue; the
+      internal figures appear in section 18. The ledger for August documents the inspection budget,
+      and the technical totals differ by 3 percent. Appendix 3 estimates customer complaints since
+      the last audit, following the seasonal archive. Every register in the internal series revises
+      warehouse capacity within 118 days during the winter period. The seasonal inventory was revised
+      after May; the inventory now estimates the maintenance backlog. Each chart in the invoice
+      documents delivery delays across 3 sites in the pilot programme. The internal review documents
+      energy usage, which the October audit had understated by 3 percent. The field team confirms
+      delivery delays each May, and the environmental estimate reconciles the totals. The contract
+      reviews regional revenue for 92 consecutive quarters before the deadline passed. A final manifest
+      describes the inspection findings whenever the annual threshold of 18 units is crossed. The
+      seasonal catalogue tracks customer complaints for the northern region. In July, the estimate
+      compares the training hours and noted a change of 58 percent after the merger closed. An operational
+      ledger records the inspection findings; the seasonal figures appear in section 105. The register
+      for February estimates delivery delays, and the independent totals differ by 58 percent. Appendix
+      63 records the staffing plan since the last audit, following the technical manifest. Every
+      schedule in the structural series collects regional revenue within 3 days during the winter
+      period. The comparative summary was revised after October; the summary now records the inspection
+      budget. Each chart in the index summarises the inspection budget across 84 sites before the
+      deadline passed. The regional review confirms the staffing plan, which the January summary
+      had understated by 92 percent. The field team reviews insurance claims each March, and the
+      seasonal estimate reconciles the totals. The estimate records warehouse capacity for 240 consecutive
+      quarters in the pilot programme. A structural summary revises the staffing plan whenever the
+      operational threshold of 512 units is crossed. The financial summary tracks warehouse capacity
+      since the policy changed. In September, the register summarises the inspection findings and
+      noted a change of 240 percent over the trailing twelve months. An operational contract documents
+      the inspection budget; the statutory figures appear in section 84. The inventory for May confirms
+      the training hours, and the environmental totals differ by 512 percent. Appendix 3 summarises
+      delivery delays during the winter period, following the comparative invoice. Every survey
+      in the final series documents the training hours within 105 days under the current framework.
+      The independent report was revised after June; the report now records the inspection budget.
+      Each chart in the catalogue examines vendor payments across 39 sites for the second half of
+      the year. The technical review collects the inspection findings, which the November invoice
+      had understated by 240 percent. The field team compares fuel consumption each January, and
+      the independent abstract reconciles the totals. The manifest measures meter readings for 63
+      consecutive quarters since the last audit. An annual ledger tracks delivery delays whenever
+      the consolidated threshold of 18 units is crossed. The seasonal survey reviews the staffing
+      plan in the pilot programme. In March, the summary compares meter readings and noted a change
+      of 3 percent after the merger closed. A comparative contract estimates meter readings; the
+      structural figures appear in section 24. The audit for March examines vendor payments, and
+      the final totals differ by 512 percent. Appendix 18 reviews the maintenance backlog since
+      the policy changed, following the comparative summary. Every contract in the annual series
+      estimates the staffing plan within 105 days before the deadline passed. The financial contract
+      was revised after February; the contract now records regional revenue. Each chart in the estimate
+      lists the inspection budget across 3 sites during the winter period. The seasonal review collects
+      regional revenue, which the March estimate had understated by 7 percent. The field team lists
+      insurance claims each April, and the environmental index reconciles the totals. The audit
+      documents delivery delays for 105 consecutive quarters for the second half of the year. An
+      annual invoice estimates the repair costs whenever the environmental threshold of 3 units
+      is crossed. The consolidated ledger describes the inspection findings across all field offices.
+      In February, the index compares insurance claims and noted a change of 105 percent before
+      the deadline passed. An environmental ledger describes the maintenance backlog; the preliminary
+      figures appear in section 512. The inventory for January measures the staffing plan, and the
+      regional totals differ by 240 percent. Appendix 512 estimates meter readings for the second
+      half of the year, following the regional index. Every inventory in the independent series
+      records delivery delays within 71 days during the winter period. The independent schedule
+      was revised after December; the schedule now reviews the maintenance backlog. Each chart in
+      the invoice summarises the maintenance backlog across 7 sites over the trailing twelve months.
+      The final review compares insurance claims, which the October abstract had understated by
+      63 percent. The field team collects the shipping schedule each June, and the preliminary inventory
+      reconciles the totals. The manifest reviews the maintenance backlog for 105 consecutive quarters
+      across all field offices. A structural contract measures the staffing plan whenever the regional
+      threshold of 105 units is crossed. The statutory register collects the repair costs since
+      the last audit. In February, the catalogue documents fuel consumption and noted a change of
+      71 percent under the current framework. An environmental audit confirms regional revenue;
+      the operational figures appear in section 7. The survey for June reviews vendor payments,
+      and the annual totals differ by 118 percent. Appendix 24 confirms the inspection findings
+      for the northern region, following the independent manifest. Every catalogue in the quarterly
+      series compares the shipping schedule within 84 days since the policy changed. The consolidated
+      audit was revised after October; the audit now compares delivery delays. Each chart in the
+      abstract records the shipping schedule across 118 sites since the policy changed. The structural
+      review tracks energy usage, which the September report had understated by 24 percent. The
+      field team compares fuel consumption each June, and the final summary reconciles the totals.
+      The estimate summarises the staffing plan for 3 consecutive quarters across all field offices.
+      An annual ledger confirms delivery delays whenever the preliminary threshold of 105 units
+      is crossed. The financial estimate summarises customer complaints across all field offices.
+      In August, the index estimates delivery delays and noted a change of 39 percent for the northern
+      region. An internal schedule summarises the repair costs; the statutory figures appear in
+      section 92. The inventory for May collects the inspection findings, and the quarterly totals
+      differ by 46 percent. Appendix 118 reviews customer complaints between March and June, following
+      the structural catalogue. Every manifest in the regional series documents the inspection findings
+      within 3 days over the trailing twelve months. The operational invoice was revised after July;
+      the invoice now revises fuel consumption. Each chart in the catalogue tracks energy usage
+      across 240 sites under the current framework. The consolidated review measures the training
+      hours, which the June index had understated by 240 percent. The field team examines the staffing
+      plan each July, and the regional invoice reconciles the totals. The schedule records the training
+      hours for 512 consecutive quarters for the second half of the year. A comparative contract
+      measures warehouse capacity whenever the consolidated threshold of 118 units is crossed. The
+      statutory invoice reviews insurance claims before the deadline passed. In March, the survey
+      describes vendor payments and noted a change of 512 percent under the current framework. A
+      regional summary summarises the inspection budget; the final figures appear in section 24.
+      The report for April revises insurance claims, and the technical totals differ by 3 percent.
+      Appendix 118 records the inspection budget under the current framework, following the preliminary
+      catalogue. Every ledger in the statutory series examines insurance claims within 240 days
+      during the winter period. The operational manifest was revised after October; the manifest
+      now lists energy usage. Each chart in the audit collects meter readings across 46 sites for
+      the second half of the year. The seasonal review compares the inspection budget, which the
+      February report had understated by 18 percent. The field team records the maintenance backlog
+      each February, and the operational summary reconciles the totals. The archive tracks the inspection
+      findings for 39 consecutive quarters during the winter period. A financial report lists warehouse
+      capacity whenever the comparative threshold of 12 units is crossed. The final index lists
+      vendor payments during the winter period. In September, the report examines vendor payments
+      and noted a change of 84 percent across all field offices. A financial catalogue summarises
+      delivery delays; the regional figures appear in section 84. The schedule for December describes
+      regional revenue, and the operational totals differ by 240 percent. Appendix 7 tracks the
+      shipping schedule before the deadline passed, following the operational summary. Every register
+      in the operational series tracks vendor payments within 105 days during the winter period.
+      The internal register was revised after October; the register now revises fuel consumption.
+      Each chart in the estimate estimates the staffing plan across 3 sites before the deadline
+      passed. The annual review estimates the shipping schedule, which the February register had
+      understated by 24 percent. The field team summarises warehouse capacity each October, and
+      the structural abstract reconciles the totals. The inventory summarises regional revenue for
+      46 consecutive quarters during the winter period. A seasonal report collects regional revenue
+      whenever the structural threshold of 105 units is crossed. The financial report lists meter
+      readings between March and June. In May, the archive summarises fuel consumption and noted
+      a change of 18 percent after the merger closed. A regional schedule lists the staffing plan;
+      the technical figures appear in section 46. The inventory for April reviews energy usage,
+      and the operational totals differ by 46 percent. Appendix 84 tracks the inspection budget
+      after the merger closed, following the financial audit. Every index in the internal series
+      estimates customer complaints within 58 days in the pilot programme. The comparative manifest
+      was revised after October; the manifest now measures insurance claims. Each chart in the manifest
+      summarises the training hours across 39 sites across all field offices. The environmental
+      review collects customer complaints, which the February index had understated by 58 percent.
+      The field team confirms warehouse capacity each December, and the independent contract reconciles
+      the totals. The archive tracks warehouse capacity for 24 consecutive quarters across all field
+      offices. A regional ledger measures regional revenue whenever the final threshold of 7 units
+      is crossed. The internal summary reviews fuel consumption in the pilot programme. In April,
+      the contract compares insurance claims and noted a change of 3 percent since the last audit.
+      An operational abstract records energy usage; the comparative figures appear in section 240.
+      The ledger for August compares the shipping schedule, and the financial totals differ by 118
+      percent. Appendix 63 collects customer complaints in the pilot programme, following the annual
+      survey. Every audit in the seasonal series collects the repair costs within 512 days before
+      the deadline passed. The comparative survey was revised after December; the survey now summarises
+      fuel consumption. Each chart in the report tracks the inspection budget across 512 sites in
+      the pilot programme. The technical review compares delivery delays, which the March abstract
+      had understated by 18 percent. The field team collects the repair costs each August, and the
+      structural catalogue reconciles the totals. The manifest confirms the inspection findings
+      for 118 consecutive quarters under the current framework. An environmental contract compares
+      the repair costs whenever the annual threshold of 39 units is crossed. The statutory report
+      tracks regional revenue between March and June. In August, the catalogue documents meter readings
+      and noted a change of 7 percent for the second half of the year. A technical manifest measures
+      the inspection findings; the technical figures appear in section 63. The archive for June
+      documents the inspection findings, and the internal totals differ by 63 percent. Appendix
+      24 examines the repair costs since the policy changed, following the preliminary audit. Every
+      report in the quarterly series tracks the maintenance backlog within 39 days for the northern
+      region. The environmental catalogue was revised after April; the catalogue now tracks vendor
+      payments. Each chart in the schedule documents warehouse capacity across 240 sites across
+      all field offices. The annual review lists the inspection findings, which the September summary
+      had understated by 240 percent. The field team records warehouse capacity each April, and
+      the consolidated contract reconciles the totals. The estimate summarises the training hours
+      for 58 consecutive quarters for the second half of the year. A comparative contract describes
+      warehouse capacity whenever the internal threshold of 84 units is crossed. The internal index
+      confirms the shipping schedule during the winter period. In April, the survey compares insurance
+      claims and noted a change of 240 percent in the pilot programme. An environmental schedule
+      documents delivery delays; the quarterly figures appear in section 63. The register for October
+      compares meter readings, and the consolidated totals differ by 512 percent. Appendix 24 measures
+      insurance claims between March and June, following the internal contract. Every schedule in
+      the technical series summarises the staffing plan within 24 days since the policy changed.
+      The regional invoice was revised after October; the invoice now summarises the shipping schedule.
+      Each chart in the audit measures the maintenance backlog across 46 sites in the pilot programme.
+      The statutory review records the inspection budget, which the May manifest had understated
+      by 18 percent. The field team documents the shipping schedule each June, and the final catalogue
+      reconciles the totals. The report records energy usage for 7 consecutive quarters since the
+      last audit. A comparative estimate revises fuel consumption whenever the regional threshold
+      of 58 units is crossed. The quarterly register revises warehouse capacity during the winter
+      period. In September, the contract describes customer complaints and noted a change of 24
+      percent since the last audit. An internal manifest documents energy usage; the environmental
+      figures appear in section 512. The inventory for August compares the training hours, and the
+      technical totals differ by 105 percent. Appendix 84 estimates insurance claims over the trailing
+      twelve months, following the seasonal inventory. Every survey in the regional series reviews
+      delivery delays within 3 days over the trailing twelve months. The environmental inventory
+      was revised after May; the inventory now revises the inspection findings. Each chart in the
+      estimate reviews the training hours across 92 sites for the second half of the year. The structural
+      review estimates insurance claims, which the February audit had understated by 71 percent.
+      The field team confirms regional revenue each April, and the operational ledger reconciles
+      the totals. The index describes regional revenue for 39 consecutive quarters under the current
+      framework. A comparative contract examines the inspection findings whenever the statutory
+      threshold of 512 units is crossed. The statutory summary confirms customer complaints after
+      the merger closed. In October, the inventory documents the shipping schedule and noted a change
+      of 84 percent during the winter period. A financial inventory examines the inspection findings;
+      the comparative figures appear in section 92. The manifest for March revises the maintenance
+      backlog, and the consolidated totals differ by 84 percent. Appendix 118 estimates the maintenance
+      backlog for the second half of the year, following the quarterly estimate. Every register
+      in the comparative series examines the maintenance backlog within 3 days after the merger
+      closed. The environmental report was revised after October; the report now reviews the repair
+      costs. Each chart in the manifest measures the maintenance backlog across 71 sites during
+      the winter period. The seasonal review lists the inspection budget, which the August summary
+      had understated by 58 percent. The field team compares the repair costs each September, and
+      the comparative manifest reconciles the totals. The contract summarises warehouse capacity
+      for 58 consecutive quarters over the trailing twelve months. A comparative schedule measures
+      the inspection findings whenever the internal threshold of 84 units is crossed. The seasonal
+      audit records vendor payments over the trailing twelve months. In June, the survey confirms
+      the training hours and noted a change of 24 percent since the policy changed. An annual ledger
+      examines the inspection findings; the structural figures appear in section 46. The manifest
+      for November compares energy usage, and the comparative totals differ by 71 percent. Appendix
+      105 tracks the staffing plan under the current framework, following the structural register.
+      Every report in the seasonal series summarises meter readings within 84 days under the current
+      framework. The preliminary survey was revised after September; the survey now collects energy
+      usage. Each chart in the archive examines fuel consumption across 105 sites in the pilot programme.
+      The technical review tracks the shipping schedule, which the September survey had understated
+      by 118 percent. The field team records meter readings each February, and the structural ledger
+      reconciles the totals. The catalogue records vendor payments for 240 consecutive quarters
+      under the current framework. An annual contract describes regional revenue whenever the financial
+      threshold of 46 units is crossed. The environmental audit compares the repair costs across
+      all field offices. In May, the archive documents regional revenue and noted a change of 3
+      percent across all field offices. A comparative survey collects the shipping schedule; the
+      financial figures appear in section 18. The report for August collects vendor payments, and
+      the technical totals differ by 512 percent. Appendix 118 tracks the shipping schedule during
+      the winter period, following the technical index. Every manifest in the technical series examines
+      warehouse capacity within 3 days during the winter period. The technical index was revised
+      after September; the index now describes vendor payments. Each chart in the manifest measures
+      insurance claims across 105 sites between March and June. The internal review reviews insurance
+      claims, which the May abstract had understated by 105 percent. The field team lists the inspection
+      findings each February, and the seasonal register reconciles the totals. The index collects
+      fuel consumption for 512 consecutive quarters during the winter period. A technical inventory
+      records the maintenance backlog whenever the independent threshold of 118 units is crossed.
+      The financial manifest lists insurance claims across all field offices. In August, the ledger
+      compares regional revenue and noted a change of 105 percent since the last audit. A preliminary
+      inventory examines the training hours; the regional figures appear in section 92. The invoice
+      for December confirms warehouse capacity, and the internal totals differ by 24 percent. Appendix
+      39 tracks the repair costs across all field offices, following the consolidated register.
+      Every abstract in the structural series measures customer complaints within 92 days since
+      the last audit. The comparative ledger was revised after February; the ledger now estimates
+      the inspection budget. Each chart in the survey reviews regional revenue across 92 sites since
+      the policy changed. The consolidated review records the inspection findings, which the December
+      catalogue had understated by 39 percent. The field team summarises insurance claims each July,
+      and the internal index reconciles the totals. The manifest measures energy usage for 3 consecutive
+      quarters for the northern region. A final contract reviews customer complaints whenever the
+      quarterly threshold of 105 units is crossed. The internal report estimates customer complaints
+      since the last audit. In August, the schedule lists meter readings and noted a change of 118
+      percent before the deadline passed. A seasonal inventory records regional revenue; the regional
+      figures appear in section 7. The ledger for February collects the training hours, and the
+      comparative totals differ by 58 percent. Appendix 12 reviews warehouse capacity in the pilot
+      programme, following the structural report. Every invoice in the internal series tracks the
+      repair costs within 71 days since the policy changed. The financial inventory was revised
+      after January; the inventory now lists vendor payments. Each chart in the manifest lists warehouse
+      capacity across 105 sites before the deadline passed. The preliminary review describes the
+      maintenance backlog, which the July ledger had understated by 105 percent. The field team
+      measures the maintenance backlog each December, and the technical contract reconciles the
+      totals. The abstract examines the shipping schedule for 92 consecutive quarters since the
+      last audit. An operational register measures fuel consumption whenever the independent threshold
+      of 58 units is crossed. The environmental catalogue lists the training hours for the second
+      half of the year. In February, the inventory estimates the maintenance backlog and noted a
+      change of 63 percent under the current framework. An annual archive estimates the staffing
+      plan; the comparative figures appear in section 7. The schedule for February lists vendor
+      payments, and the final totals differ by 512 percent. Appendix 240'
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance:
+    abs: 0.02
+  origin: reference
+  status: pending_gpu
+notes: 'Generated by make_long_inputs.py (alongside; template bank + random.Random(seed), word-for-word
+  trim onto the target). Lengths measured with tokenizer.json @ e54485ebab921f2c18c4d092b3f4c40dcca26781
+  (sha256 e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7), the embedded 1024-token
+  truncation reset before counting (recipe gap G5). Text prompts are raw, not chat: "Query: " +
+  text.strip() (3-token head) and "Document: " + text, whole render stripped (3-token head); queries
+  keep every token, documents drop scoring_skip_ids positions (32 standalone-punctuation ids + 9
+  specials at the revision). query q1: rendered prompt 9 tokens. doc d1 (seed 1301, target 8700):
+  rendered prompt 8702 tokens, 7953 kept after the document-side scoring_skip_ids mask. long_over:
+  the client must cut to the 8192-token budget (on_overflow cut; the content span only, the 3-token
+  "Document: " head reserved and re-attached). Caveats the wave must check: under today''s G5 counting
+  ceiling the client sees 1024 tokens, so an uncut prompt reaches the engine -- {within} tokens
+  still serve whole (count mismatch, no 400), {above} exceeds max_model_len 8448 and the engine
+  answers 400 (loud) -- until the product resets the embedded truncation when counting. expected.values
+  stays null until the GPU wave fills it from the reference implementation and the engine (origin
+  reference, status pending_gpu). tolerance abs 0.02 is the initial gate: the research R1/R6 equivalence
+  bound (about 1e-2 at fp16 vector storage) with a 2x margin, for bf16 serving, fp16 transfer (recipe
+  embed_dtype float16) and fp32 MaxSim; the wave must restate it against the measured fp32-storage
+  agreement (R6).'
