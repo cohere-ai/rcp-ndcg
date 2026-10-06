@@ -116,7 +116,6 @@ class JudgementStore:
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
-        self._checked_tail: set[Path] = set()
 
     def path(self, stage: Stage) -> Path:
         """The JSONL file of one stage."""
@@ -335,15 +334,14 @@ class JudgementStore:
     def append(self, judgement: Judgement) -> None:
         """Append one record (one line, flushed).
 
-        Overlapping passes append to one file: the first append's torn-tail repair truncates to the last
-        complete line, and a peer's in-flight line is exactly what that truncation would cut -- so the tail
-        repair and the append hold the store's advisory lock, like every other writer of this directory."""
+        Overlapping passes append to one file: the torn-tail repair truncates to the last complete line, and
+        a peer's in-flight line is exactly what that truncation would cut -- so the tail cut and the append
+        hold the store's advisory lock, like every other writer of this directory, and the cut runs on every
+        append (a peer killed after this writer started leaves a tail only its next append merges into)."""
         with self._identity_lock():
             path = self.path(judgement.stage)
             path.parent.mkdir(parents=True, exist_ok=True)
-            if path not in self._checked_tail:
-                self._checked_tail.add(path)
-                _drop_torn_tail(path)
+            _drop_torn_tail(path)
             with path.open("a", encoding="utf-8") as handle:
                 handle.write(judgement.model_dump_json() + "\n")
                 handle.flush()
@@ -385,20 +383,12 @@ def records_stored(path: str | Path) -> int:
 def _drop_torn_tail(path: Path) -> None:
     """Cut a last line the writer did not finish (a process killed mid-write), so appends start on a fresh line.
 
-    The discipline's one home is :func:`rcp_ndcg.data.preprocess.drop_torn_last_line`; this wrapper keeps the
-    store's message and only logs when there is something to cut.
+    The discipline's one home is :func:`rcp_ndcg.data.preprocess.drop_torn_last_line` (which guards the empty
+    file and logs the cut); call it under the store's writer lock.
     """
     from rcp_ndcg.data.preprocess import drop_torn_last_line
 
-    if not path.exists():
-        return
-    size = path.stat().st_size
-    with path.open("r+b") as handle:
-        handle.seek(size - 1)
-        if handle.read(1) == b"\n":
-            return
     drop_torn_last_line(path)
-    logger.warning("%s: dropping a torn last record (%d bytes)", path, size)
 
 
 __all__ = [

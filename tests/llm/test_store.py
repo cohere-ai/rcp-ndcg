@@ -122,3 +122,12 @@ def test_the_store_and_merge_keep_the_same_copy_of_a_window(tmp_path: Path) -> N
     ]
     merged = JudgementSet.merge([JudgementSet(judgements=(copy,), families={family.key: family}) for copy in copies])
     assert kept.response == merged.judgements[0].response == "later answer"
+
+
+def test_an_empty_stage_file_appends_cleanly(tmp_path: Path) -> None:
+    """A zero-byte stage file (a killed writer's repair truncated a lone fragment to nothing) appends: the
+    tail probe guards the empty file instead of seeking to -1."""
+    store = JudgementStore(tmp_path)
+    (tmp_path / "tournament.jsonl").write_text("", encoding="utf-8")
+    store.append(_window("r1"))
+    assert len(store.records("tournament")) == 1
