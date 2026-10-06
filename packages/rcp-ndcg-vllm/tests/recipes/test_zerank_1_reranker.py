@@ -1,9 +1,10 @@
 """The zerank-1-reranker recipe: validation, stage 1 on CPU, and the anchor mutation.
 
 Stage 1 on CPU needs only the recipe tokenizer's ``tokenizer.json`` (11 MB), downloaded from the Hub
-at the revision the recipe pins, into the test's own tmp directory; when the Hub is unreachable
-(offline CI) the tokenizer-backed tests skip with that reason. The paper-exact reference subprocess
-(``--mode render``, stage 1's reference side) needs the recipe's reference environment
+at the revision the recipe pins, into the test's own tmp directory. Those tests are network tests
+(``@pytest.mark.network``): they skip unless ``RCP_NDCG_NETWORK_TESTS=1`` is set, and skip with the
+download error as the reason when the Hub is unreachable (offline CI). The paper-exact reference
+subprocess (``--mode render``, stage 1's reference side) needs the recipe's reference environment
 (``requirements-reference.txt`` in the recipe directory); the test runs it when
 ``RCP_ZERANK_REFERENCE_PYTHON`` names such an interpreter and reports the skip reason otherwise.
 
@@ -35,6 +36,12 @@ from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "zerank-1-reranker"
 REVISION = "d03c467e29e29c0a16a130a86ce3b62d30116a2c"
 TOKENIZER_SPEC = f"zeroentropy/zerank-1-reranker@{REVISION}"
+
+# The repo's network-test convention (AGENTS.md): the marker names the need, the env var gates it.
+_NETWORK = pytest.mark.network
+_NEEDS_HUB = pytest.mark.skipif(
+    not os.environ.get("RCP_NDCG_NETWORK_TESTS"), reason="set RCP_NDCG_NETWORK_TESTS=1 (HF Hub)"
+)
 
 _QUERY = "What is the capital of France?"
 _DOCUMENT = "Paris is the capital and the largest city of France."
@@ -217,6 +224,8 @@ def test_serve_argv_matches_the_measured_vllm_invocation() -> None:
     assert argv[argv.index("--chat-template") + 1].endswith("template.jinja")
 
 
+@_NETWORK
+@_NEEDS_HUB
 def test_template_file_renders_both_call_shapes_to_the_same_ids(tmp_path: Any, monkeypatch: Any) -> None:
     """The served template file renders the declared shape's ids, both call shapes, per sampled row.
 
@@ -253,6 +262,8 @@ def test_template_file_renders_both_call_shapes_to_the_same_ids(tmp_path: Any, m
     assert checked_in_budget >= 20  # the brief's floor: at least 20 sampled pairs with full id equality
 
 
+@_NETWORK
+@_NEEDS_HUB
 def test_stage1_on_cpu_passes_anchor_and_template_checks(tmp_path: Any, monkeypatch: Any) -> None:
     """Stage 1 on CPU: the anchor audit and the served-template check over >= 20 pairs, >= 5 over cap.
 
@@ -285,6 +296,8 @@ def test_stage1_on_cpu_passes_anchor_and_template_checks(tmp_path: Any, monkeypa
     assert document["engine_tokenize_check"]["status"] == "not_run"  # no engine on CPU; never reported passed
 
 
+@_NETWORK
+@_NEEDS_HUB
 def test_reference_render_matches(tmp_path: Any, monkeypatch: Any) -> None:
     """With a reference environment (RCP_ZERANK_REFERENCE_PYTHON), stage 1's render check passes.
 
@@ -305,6 +318,8 @@ def test_reference_render_matches(tmp_path: Any, monkeypatch: Any) -> None:
     assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:2]
 
 
+@_NETWORK
+@_NEEDS_HUB
 def test_padded_inputs_align_through_the_templates_trim(tmp_path: Any, monkeypatch: Any) -> None:
     """Whitespace-padded inputs: the engine's render (the file's trim) equals the paper's ``.strip()``
     construction; the declared shape keeps the raw text (its token count never undershoots the
@@ -320,6 +335,8 @@ def test_padded_inputs_align_through_the_templates_trim(tmp_path: Any, monkeypat
     assert result.texts[0] != engine_render  # the declared shape fills content raw: the conservative model
 
 
+@_NETWORK
+@_NEEDS_HUB
 def test_dropping_the_trailing_anchor_segment_turns_the_anchor_check_red(tmp_path: Any, monkeypatch: Any) -> None:
     """The mutation the brief asks for: the trailing anchor (the assistant header the score is pooled
     from) dropped from the declared template's tail segment - the anchor audit must fail, loudly."""

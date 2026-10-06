@@ -54,7 +54,8 @@ released together.
   ChatML turns, trimming content the way the paper strips it. The paper's whole-prompt 8192 right cut drops
   the trailing assistant header (the last-token anchor) over cap; the recipe declares
   `reference.known_deviations: [anchor_drop_over_cap]` and the served path cuts the content spans only. Its
-  stage 1 passes on CPU (tokenizer files only; the paper-prompt fidelity against the real reference
+  stage 1 passes on CPU (tokenizer files only, under the repo's network-test gate
+  `RCP_NDCG_NETWORK_TESTS=1`; the paper-prompt fidelity against the real reference
   environment is in `packages/rcp-ndcg-vllm/tests/recipes/test_zerank_1_reranker.py`), status `unverified`
   until the GPU waves run.
 
