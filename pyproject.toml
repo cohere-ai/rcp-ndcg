@@ -191,7 +191,12 @@ where = ["src"]
 # would bring their conflict back.  See packages/rcp-ndcg-vllm/README.md.
 [tool.uv.workspace]
 members = ["packages/*"]
-exclude = ["packages/rcp-ndcg-vllm"]
+exclude = [
+    "packages/rcp-ndcg-vllm",
+    # Temporary: the cases lanes create packages/rcp-ndcg-test/cases/ before the package's own
+    # pyproject.toml lands (lane/test-pkg). Remove this entry when that file exists.
+    "packages/rcp-ndcg-test",
+]
 
 [tool.uv.sources]
 rcp-ndcg = { workspace = true }
