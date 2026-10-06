@@ -47,7 +47,9 @@ released together.
   `default_cases_root`, `CaseResult`, `ConformanceReport`, `Target`, `run_case`, `run_suite`, `FakeEngine`,
   `FakeReply`, `FakeEmbedEngine`, `fake_engine_for`, `fake_http_transport`, `register_fake_engine`,
   `unregister_fake_engine`, `registered_fake_engines`, `fixture_path`, `package_tokenizer_path`,
-  `FIXTURE_RECIPE_ID`, `CaseRun`, `conformance_params`, `CaseError`, `ConformanceError`. The fake-engine
+  `FIXTURE_RECIPE_ID`, `CaseRun`, `conformance_params`, `CaseError`, `ConformanceError`, and the
+  `spearman_min` gate's one home: `spearman` and `average_ranks` (`rcp_ndcg_test.ranks`, tie-corrected,
+  numpy alone, no SciPy). The fake-engine
   registry ships no model-level fakes yet (they are built from the GPU recordings later); one test fake for
   the packaged fixture recipe (`fake-embed`) exercises the runner end to end on CPU.
 - New package `rcp-ndcg-vllm` (`packages/rcp-ndcg-vllm/`, outside the root uv workspace; version

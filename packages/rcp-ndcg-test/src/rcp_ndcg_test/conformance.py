@@ -35,6 +35,7 @@ import numpy as np
 
 from .cases import Case
 from .errors import ConformanceError
+from .ranks import spearman
 
 if TYPE_CHECKING:
     from rcp_ndcg_vllm.recipe import Recipe
@@ -534,7 +535,7 @@ def _compare_spearman(case: Case, matrix: Any, threshold: float) -> CaseResult:
     """Every row's rank correlation against the expected row, bounded from below."""
     worst: tuple[float, int] | None = None
     for index, (got_row, want_row) in enumerate(zip(matrix, case.expected.values, strict=True)):
-        rho = _spearman(np.asarray(got_row, dtype=np.float64), np.asarray(want_row, dtype=np.float64))
+        rho = spearman(got_row, want_row)
         if worst is None or rho < worst[0]:
             worst = (rho, index)
     if worst is None:  # pragma: no cover - the load requires at least one query
@@ -595,7 +596,7 @@ def _compare_ranking(case: Case, matrix: Any, tolerance: Any) -> CaseResult:
             rho = 1.0
         else:
             got = [float(position[doc_id]) for doc_id in expected_row]
-            rho = _spearman(np.asarray(got), np.arange(len(expected_row), dtype=np.float64))
+            rho = spearman(got, list(range(len(expected_row))))
         if worst is None or rho < worst[0]:
             worst = (rho, index)
     if worst is None:  # pragma: no cover - the load requires at least one query
@@ -624,35 +625,3 @@ def _ranking_of(row: Any, doc_ids: list[str]) -> list[str]:
     """The document ids of one score row, best first, ties toward the lower document index."""
     order = sorted(range(len(row)), key=lambda index: (-float(row[index]), index))
     return [doc_ids[index] for index in order]
-
-
-def _spearman(got: Any, want: Any) -> float:
-    """The Spearman rank correlation of two score rows, ties averaged.
-
-    The product has Kendall's tau only (:func:`rcp_ndcg_vllm.equivalence.gates.kendall_tau_b`); the
-    case format's ``spearman_min`` needs the rank correlation, so it is implemented here and reported
-    as a product gap (a shared helper belongs in the product's eval surface). Two constant rows carry
-    no ranking information: the correlation is ``nan`` and the comparison fails, never silently passes.
-    """
-    if len(got) != len(want):
-        raise ConformanceError(f"spearman needs two rows of one length, got {len(got)} and {len(want)}")
-    if len(got) < 2:
-        return 1.0
-    if float(np.ptp(got)) == 0.0 or float(np.ptp(want)) == 0.0:
-        return float("nan")
-    return float(np.corrcoef(_average_ranks(got), _average_ranks(want))[0, 1])
-
-
-def _average_ranks(values: Any) -> Any:
-    """Zero-based ranks with ties averaged (the rank correlation's convention, before correlating)."""
-    order = np.argsort(np.asarray(values, dtype=np.float64), kind="stable")
-    sorted_values = np.asarray(values, dtype=np.float64)[order]
-    ranks = np.empty(len(values), dtype=np.float64)
-    start = 0
-    while start < len(values):
-        stop = start + 1
-        while stop < len(values) and sorted_values[stop] == sorted_values[start]:
-            stop += 1
-        ranks[order[start:stop]] = (start + stop - 1) / 2.0
-        start = stop
-    return ranks
