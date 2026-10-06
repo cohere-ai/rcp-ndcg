@@ -3,7 +3,8 @@
 Derived with unchanged behaviour from the paper's exact in-process implementation,
 ``experiments/paper/rerankers/reference/qwen3.py`` (``QwenOGRerank``, itself moved unchanged from
 the former ``src/rcp_ndcg/retrieval/external_rerankers.py`` when the package stopped carrying
-in-process models; the paper's numbers rest on it). The paper pipeline loaded it with
+in-process models; the paper's numbers rest on it; the file lives on branch ``lane/l5-packaging``
+at this tree's HEAD and lands with the unified-inference merge). The paper pipeline loaded it with
 ``max_seq_len=8192`` (``MAX_SEQ_LENGTH``, ``rcp_ndcg.retrieval.cross_encoder``), the config's
 ``batch_size`` (16 for this model, ``experiments/paper/rerankers/qwen3_reranker_0_6b.yaml``),
 bfloat16 (the pipeline's ``DTYPE``; the class default would be float16) and the config's revision
@@ -36,7 +37,8 @@ reserved, the pair cut, the suffix re-attached); ``score`` writes
 
 Reference environment (``requirements-reference.txt`` beside this file, documented not installed):
 torch 2.9.1, transformers 4.57.6, accelerate, flash-attn 2.8.3 (the paper's former ``[local]``
-extra pins, from ``experiments/paper/rerankers/reference/requirements.txt``). ``render`` needs the
+extra pins, from ``experiments/paper/rerankers/reference/requirements.txt`` on branch
+``lane/l5-packaging``). ``render`` needs the
 tokenizer only (transformers, or the ``tokenizers`` library over the same ``tokenizer.json`` when
 transformers is absent — stage 1 on CPU); ``score`` needs the weights, the transformers pin and the
 device the harness passes.
