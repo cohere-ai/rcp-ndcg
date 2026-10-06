@@ -1,0 +1,129 @@
+# Serving recipe: ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b on stock vLLM
+# (vllm/vllm-openai:v0.31.0) as a pointwise reranker, reproducing the paper's in-process scorer
+# (experiments/paper/rerankers/reference/contextual.py, the paper's ContextualRerank) through /rerank.
+#
+# Mechanism, verified against the v0.31.0 tag sources by the r-ctxl research lane and re-verified
+# when this recipe was written: the ForSequenceClassification architecture override wraps the causal
+# LM into a 1-label sequence classifier (vllm/model_executor/models/adapters.py:307 as_seq_cls_model);
+# load_weights_no_post_processing (:593) lifts the lm_head row of classifier_from_token[0] into the
+# 1-row score head (:637; SEQ_CLS_LOAD_METHODS at :659) — "!" is token id 0 of this checkpoint's
+# tokenizer. The classify pooler's default activation for num_labels < 2 is sigmoid
+# (vllm/layers/pooler/activations.py), so serve.pooler_config pins use_activation: false as the
+# server-side default every /rerank request is merged with (vllm/entrypoints/pooling/
+# pooling_params.py _merge_default_parameters), and client.use_activation: false sends the field on
+# the wire as well. /rerank renders its two messages (roles query and document) through the
+# serve.chat_template file (vllm/entrypoints/pooling/scoring/io_processor.py:605 get_score_prompt;
+# without the file the engine falls back to un-templated pair encoding at :632) and tokenizes the
+# rendered string with add_special_tokens=True (vllm/entrypoints/pooling/scoring/protocol.py:72);
+# this checkpoint's ByteLevel post-processor adds nothing, and the rendered prompt IS the template:
+# the client's folded query and the document are the only variable parts.
+#
+# The recipe's template declares the same frame as data (the client block is the product's
+# RerankEndpoint): the score is read at the last position, after the fixed " ??" suffix — the
+# template's anchor. The client-side budget cuts the content spans only and re-attaches the frame,
+# so the query block (the template puts the document first) and the " ??" suffix survive every cut;
+# the paper's own code instead right-truncates the whole prompt (dropping the query and the suffix
+# over the cap), which reference.py keeps as declared behaviour and the recipe flags as
+# reference.known_deviations: [anchor_drop_over_cap].
+id: ctxl-rerank-v2-instruct-multilingual-1b
+model: ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b
+revision: "8fd1edf6a98564cb712064f884b8ef7df5c1b876"
+role: rerank
+input: [text]
+scoring: pointwise
+licence: CC-BY-NC-SA-4.0
+engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0"}
+resources: {gpus: 1}
+serve:
+  runner: pooling
+  # Not needed: the ForSequenceClassification architecture override applies the suffix default
+  # (runner pooling, convert classify); the explicit equivalent is --runner pooling --convert classify.
+  convert: null
+  hf_overrides:
+    # Wrap the causal LM into a 1-label sequence classifier: the score head is the lm_head row of
+    # classifier_from_token[0], lifted by method "no_post_processing"
+    # (vllm/model_executor/models/adapters.py load_weights_no_post_processing, v0.31.0).
+    architectures: [Qwen3ForSequenceClassification]
+    # "!" is token id 0 of this checkpoint's tokenizer (tokenizer.json vocab id 0).
+    classifier_from_token: ["!"]
+    method: no_post_processing
+  chat_template: template.jinja
+  # Server-side raw-logit default: the classify pooler's default activation for a 1-label head is
+  # sigmoid, and _merge_default_parameters fills the unset per-request field from the pooler config,
+  # so every /rerank score is a raw logit for any client. client.use_activation below sends the same
+  # value on the wire (the product's rerank adapter carries it when the config sets it).
+  pooler_config: {use_activation: false}
+  trust_remote_code: false
+  max_model_len: 32768       # the card's context claim (config max_position_embeddings 40960);
+                             # the paper's pair budget is the client's 8192 below
+  dtype: bfloat16            # the checkpoint's torch_dtype and the paper's DTYPE
+  plugin: null
+  extra_args: []
+client:
+  api: rerank
+  tokenizer: "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b@8fd1edf6a98564cb712064f884b8ef7df5c1b876"
+  max_tokens: 8192           # the paper's MAX_SEQ_LENGTH (src/rcp_ndcg/retrieval/cross_encoder.py:42);
+                             # content spans are cut client-side, inside the frame, anchors reserved
+  instruction: fold          # the instruction rides inside the query text ("Task: <instruction>\nQuery:
+                             # <text>"); the engine's own instruction request field is never sent, so
+                             # template.jinja does not read the kwarg
+  use_activation: false      # the reference scores the raw logit; probability-scale values would be a
+                             # different stored score (serve.pooler_config pins the same server-side)
+  query_max_tokens: 4096     # the served path's own query budget (cross_encoder.py:46 MAX_QUERY_LENGTH:
+                             # what the served client sent as max_tokens_per_query and the engine
+                             # head-truncated the query at). It binds on overflow only: a pair under
+                             # budget is sent byte-identical to the uncut render, so queries between
+                             # 4096 and the budget still reach the engine whole, matching the
+                             # reference (which caps no query); over-cap pairs are reported separately
+                             # (known_deviations below).
+  template:
+    pair:
+      - {fixed: "Check whether a given document contains information helpful to answer the query.\n<Document> "}
+      - {content: document}
+      - {fixed: "\n<Query> "}
+      - {content: query}
+      - {fixed: " ??"}       # the anchor: the score reads the last position, after this suffix
+    anchor: last
+    add_special_tokens: true # the /rerank route tokenizes with add_special_tokens=True
+                             # (scoring/protocol.py:72); this checkpoint's ByteLevel post-processor
+                             # adds no tokens, so the anchor edge is the " ??" ids themselves
+  on_overflow: cut
+  empty_doc: send            # the paper sends an empty document as the empty string; no omit rule
+  request_shape: text
+  listwise: false
+  batch_size: 32             # the paper config's batching (throughput only; never the scores)
+reference:
+  kind: transformers
+  score_scale: logit         # the raw bf16 logit at vocabulary position 0, final position
+  entry: reference.py
+  known_deviations: [anchor_drop_over_cap]
+  # reference.py derives from experiments/paper/rerankers/reference/contextual.py (the paper's
+  # in-process scorer) with the harness's subprocess CLI; its environment is
+  # experiments/paper/rerankers/reference/requirements.txt (torch 2.9.1, transformers 4.57.6,
+  # flash-attn 2.8.3; the 1B's weights are a ~3.28 GB download, so score() runs on the GPU wave).
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources:
+  - "https://huggingface.co/ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b/tree/8fd1edf6a98564cb712064f884b8ef7df5c1b876 — config.json (Qwen3ForCausalLM, id2label {0: LABEL_0}, bfloat16, max_position_embeddings 40960), tokenizer.json (token id 0 \"!\", ByteLevel post-processor), 1_LogitScore/config.json (true_token_id 0), config_sentence_transformers.json (Identity activation), README (prompt, licence, 32K context)"
+  - "experiments/paper/rerankers/ctxl_rerank_1b.yaml — the paper's config (provider local, batch_size 32)"
+  - "experiments/paper/rerankers/reference/contextual.py — the paper-exact in-process scorer reference.py derives from"
+  - "experiments/paper/rerankers/reference/requirements.txt — the reference environment"
+  - "src/rcp_ndcg/retrieval/cross_encoder.py:42 — MAX_SEQ_LENGTH = 8192, the paper's pair budget (client.max_tokens)"
+  - "src/rcp_ndcg/data/templates.py:103 — TemplateSpec: the pair frame, the anchor, add_special_tokens"
+  - "src/rcp_ndcg/data/preprocess.py:933 — fit(): the content-only cut that reserves the frame (the anchors)"
+  - "packages/rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipe.py — the Recipe schema; pooler_config keys validated against the pinned engine"
+  - "vLLM v0.31.0 (verified at the tag): model_executor/models/adapters.py:307 as_seq_cls_model, :593 load_weights_no_post_processing, :637 the score head from the lm_head row, :659 SEQ_CLS_LOAD_METHODS; entrypoints/pooling/scoring/io_processor.py:605 get_score_prompt (chat-template render), :632 the un-templated fallback when the template file is missing; entrypoints/pooling/scoring/protocol.py:56-65 the instruction field folded into chat_template_kwargs, :72 add_special_tokens=True; entrypoints/pooling/pooling_params.py _merge_default_parameters (pooler_config fills unset request fields); layers/pooler/activations.py (sigmoid for num_labels < 2); renderers/params.py (truncate right = slice(0, N))"
+notes: >
+  template.jinja is the vendor score template adapted for the served path: the instruction is read
+  from the folded query (the recipe's instruction: fold — the engine's instruction request field is
+  never sent, so the template does not read the kwarg), and the bos line the vendor 6B template
+  emits is absent (this checkpoint's ByteLevel post-processor adds no tokens; the 1B variant of the
+  shared research template). The engine renders exactly two messages (roles query and document) and
+  tokenizes the render with add_special_tokens=True; the same render must equal the client template's
+  segments (stage 1's template_render_check proves it) and the reference's prompt_text.
+  The card's own vLLM recipe (VLLM_USE_V1=0 plus a logits processor over generate/logprobs) is
+  unusable on v1 and is superseded by this one; the card documents the same target quantity (the raw
+  logit at token id 0, final position). GPU wave must check: the fp32 score head against the
+  reference's all-bf16 model (bounded by the logit gate; --hf-overrides head_dtype "model" is the
+  closer-to-reference option if the gate ever fails), and the engine's /tokenize agreement (stage 1
+  reports it not_run on CPU).
