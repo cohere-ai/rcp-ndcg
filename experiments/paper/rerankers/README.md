@@ -30,6 +30,6 @@ scoring kept under `reference/` for the equivalence check) — the id is the che
 short redirect (`zerank-1-reranker`, not `zerank-1`) — its checkpoint's `tokenizer` (whose SHA-256 keys the rerun's
 resumes), and the paper's budgets (`max_tokens: 8192`, `query_max_tokens: 4096`). Their `base_url` is a
 placeholder: a `serve.reranker` engine replaces it at runtime through `RCP_NDCG_ENGINES`, or pass your own with
-`--set base_url=...`. Until the text-budget mechanism wires the clients, a config that sets `max_tokens` is
-refused where the client is built (a budget is never silently ignored); validate the configs with
-`rcp-ndcg schema`-style tooling or the test suite in the meantime.
+`--set base_url=...`. The budgets are wired: the clients fit every (query, document) pair into
+`max_tokens` (the query's span to `query_max_tokens`), cutting the content spans at the declared
+`tokenizer`'s boundaries -- never engine-side truncation.

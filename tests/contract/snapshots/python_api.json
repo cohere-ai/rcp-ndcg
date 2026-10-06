@@ -8967,6 +8967,12 @@
             "name": "census"
           },
           {
+            "annotation": "MediaCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "media_census"
+          },
+          {
             "returns": "None"
           }
         ],
@@ -9803,6 +9809,12 @@
             "name": "census"
           },
           {
+            "annotation": "MediaCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "media_census"
+          },
+          {
             "returns": "None"
           }
         ],
@@ -10215,6 +10227,12 @@
             "default": null,
             "kind": "keyword_only",
             "name": "census"
+          },
+          {
+            "annotation": "MediaCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "media_census"
           },
           {
             "returns": "None"

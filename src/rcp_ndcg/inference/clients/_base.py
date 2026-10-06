@@ -20,10 +20,10 @@ URL comes from. This base answers each once:
   managers (``with`` and ``async with``);
 * **the fan-out, one rule** (R7) -- :meth:`RoleClient.gather`: :class:`asyncio.TaskGroup` semantics, so a
   failing request cancels its siblings and leaves no task pending;
-* **the text budget** (item 4) -- :class:`~rcp_ndcg.data.preprocess.TextBudget` resolved from the role
-  config's fields once, the tokenizer it names loaded once, the shared :func:`rcp_ndcg.data.preprocess.fit`
-  called from each client's ``_prepare``, and a named seam (:meth:`RoleClient._media_tokens`) for the
-  media lane.
+* **the text budget and the media** (item 4) -- :class:`~rcp_ndcg.data.preprocess.TextBudget` resolved
+  from the role config's fields once, the tokenizer it names loaded once, the shared
+  :func:`rcp_ndcg.data.preprocess.fit` called from each client's ``_prepare``, and the media prepared per
+  request through :func:`~rcp_ndcg.data.prepare.prepare_request` (tokens reserved whole, never cut).
 
 Typed errors only: a wrong role, a missing bridge, a missing base URL and a ``batch_size < 1`` are all
 :class:`~rcp_ndcg.errors.ConfigError`.
@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Coroutine, Sequence
+from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, Self, TypeVar
 
@@ -284,22 +285,24 @@ class RoleClient[C: Endpoint]:
 
     def _prepare_request(self, contents: Sequence[Content]) -> PreparedRequest:
         """The one preparation call for a request's contents: media sized exactly as the judge's, the
-        request's media token counts, and the ``max_images``/``max_videos`` gates before anything is sent.
+        request's media token counts, and the per-request media gates before anything is sent.
+
+        The gates run over one wire request's contents (the unit the judge's own per-request gate uses: the
+        pool adapter sends one media item per call, the rerank pair per pair), so a limit the server
+        enforces per prompt is checked against what one prompt will carry.
 
         Raises:
-            CapabilityError: The request carries more images or videos than the config's
+            CapabilityError: the wire request carries more images or videos than the config's
                 ``max_images``/``max_videos`` allow (as the judge's per-request gate).
         """
         if not self.MEDIA_ON_WIRE and any(content.has_media for content in contents):
             self._refuse_media_before_preparation(contents)
         image, video = self._media_policies()
         prepared = prepare_request(contents, image, video)
-        # The per-request media gates, as the judge's (``adapters.chat._check_media``): the request's
-        # images and videos against the config's declared limits, refused before anything is sent.
-        totals = media_counts(Content.from_parts([part for content in prepared.contents for part in content.parts]))
+        counts = media_counts(Content.from_parts([part for content in prepared.contents for part in content.parts]))
         for kind, count, limit in (
-            ("images", totals.images, getattr(self.config, "max_images", 0)),
-            ("videos", totals.videos, getattr(self.config, "max_videos", 0)),
+            ("images", counts.images, getattr(self.config, "max_images", 0)),
+            ("videos", counts.videos, getattr(self.config, "max_videos", 0)),
         ):
             if count and not limit:
                 raise CapabilityError(
@@ -338,54 +341,82 @@ class RoleClient[C: Endpoint]:
                         "media-preparation mechanism",
                     )
 
-    def _fit_media(self, prepared: PreparedRequest) -> tuple[list[Content], list[int]]:
-        """The prepared request under the declared budget: media never cut, drops recorded.
+    def _media_slices(self, prepared: PreparedRequest) -> list[list[Any]]:
+        """The request's prepared media, sliced per content (the same part order ``prepare_request``
+        flattened them in)."""
+        slices: list[list[Any]] = []
+        cursor = 0
+        for content in prepared.contents:
+            count = sum(len(part.media_refs()) for part in content.parts)
+            slices.append(prepared.media[cursor : cursor + count])
+            cursor += count
+        return slices
 
-        When the request's media alone exceed ``max_tokens``, the declared overflow policy decides --
-        ``cut`` (the default): :func:`~rcp_ndcg.data.prepare.fit_media_to_budget` shrinks to the policy
-        minimum, then drops whole items most expensive first, every drop recorded in the media census with
-        ``dropped=True``; ``fail``: the request is refused naming the media tokens and the budget;
-        ``chunk``: refused -- media are not chunkable, a vision block is atomic.
+    def _fit_media_for_request(
+        self, contents: Sequence[Content], *, doc_ids: Sequence[str]
+    ) -> tuple[list[Content], int]:
+        """The media fit for ONE wire request's contents: media never cut, drops recorded.
+
+        The budget's ``max_tokens`` bounds one wire request (the shipped tests cut each request
+        individually; ``batch_size`` is how fast, never what), so the fit runs per request -- the pool
+        role's per item (its media wire is one item per call), the rerank role's per (query, document)
+        pair. When the request's media alone exceed it, the declared overflow policy decides -- ``cut``
+        (the default): :func:`~rcp_ndcg.data.prepare.fit_media_to_budget` shrinks to the policy minimum,
+        then drops whole items most expensive first, every drop recorded in the media census with
+        ``dropped=True`` under the request's ``doc_ids``; ``fail``: the request is refused naming the media
+        tokens and the budget; ``chunk``: refused -- media are not chunkable, a vision block is atomic.
 
         Returns:
-            ``(contents, media_tokens)``: the contents to send (drops removed, their text untouched) and the
-            media token count to reserve per input -- the tokens the client's
+            ``(contents, tokens)``: the contents to send (the kept media in place, possibly shrunk, drops
+            removed, text untouched) and the request's media token count after the fit -- what the caller's
             :func:`~rcp_ndcg.data.preprocess.fit` call subtracts from the budget, never cutting media.
 
         Raises:
             TextBudgetExceededError: ``on_overflow: fail`` and media alone fill the budget.
             ConfigError: ``on_overflow: chunk`` and media alone fill the budget.
         """
-        contents = prepared.contents
-        per_content = [count.tokens for count in self._media_counts_of(prepared.contents)]
-        if self._budget is None or prepared.tokens.tokens <= self._budget.max_tokens:
-            return contents, per_content
         image, video = self._media_policies()
-        assert image is not None, (
-            "counted media imply an effective image policy (content_media_tokens refused one without a family)"
-        )
-        if self._budget.on_overflow == "fail":
-            raise TextBudgetExceededError(
-                f"this request's media alone cost {prepared.tokens.tokens} tokens, over the declared text "
-                f"budget of {self._budget.max_tokens}; the media are never cut, and the policy refuses to "
-                "shorten them",
-                hint="raise max_tokens, or declare a smaller image_policy (a smaller pixel budget is fewer "
-                "vision tokens)",
+        prepared = prepare_request(contents, image, video)
+        media = prepared.media
+        tokens = prepared.tokens.tokens
+        if self._budget is not None and tokens > self._budget.max_tokens:
+            assert image is not None, (
+                "counted media imply an effective image policy (content_media_tokens refused one without a family)"
             )
-        if self._budget.on_overflow == "chunk":
-            raise ConfigError(
-                f"this request's media alone cost {prepared.tokens.tokens} tokens, over the declared text "
-                f"budget of {self._budget.max_tokens}, and media overflow cannot be chunked: a vision block "
-                "is atomic -- the engine sees a whole media item or none of it",
-                hint="declare on_overflow: cut (the media fit shrinks to the policy minimum, then drops whole "
-                "items, every drop recorded), or a smaller image_policy",
-            )
-        fit = fit_media_to_budget(prepared.media, image=image, video=video, text_budget_tokens=self._budget.max_tokens)
-        contents = apply_media_fit(contents, prepared.media, fit)
-        for index, item in enumerate(fit.dropped):
-            self.media_census.record(corpus=self.ROLE, doc_id=str(index), media=[item], dropped=True)
-        per_content = [count.tokens for count in self._media_counts_of(contents)]
-        return contents, per_content
+            if self._budget.on_overflow == "fail":
+                raise TextBudgetExceededError(
+                    f"this request's media alone cost {tokens} tokens, over the declared text budget of "
+                    f"{self._budget.max_tokens}; the media are never cut, and the policy refuses to shorten "
+                    "them",
+                    hint="raise max_tokens, or declare a smaller image_policy (a smaller pixel budget is "
+                    "fewer vision tokens)",
+                )
+            if self._budget.on_overflow == "chunk":
+                raise ConfigError(
+                    f"this request's media alone cost {tokens} tokens, over the declared text budget of "
+                    f"{self._budget.max_tokens}, and media overflow cannot be chunked: a vision block is "
+                    "atomic -- the engine sees a whole media item or none of it",
+                    hint="declare on_overflow: cut (the media fit shrinks to the policy minimum, then drops "
+                    "whole items, every drop recorded), or a smaller image_policy",
+                )
+            fit = fit_media_to_budget(media, image=image, video=video, text_budget_tokens=self._budget.max_tokens)
+            contents = list(apply_media_fit(contents, media, fit))
+            media = fit.media
+            tokens = fit.tokens
+            for item in fit.dropped:
+                owner = next(
+                    (
+                        doc_id
+                        for doc_id, slice_ in zip(doc_ids, self._media_slices(prepared), strict=False)
+                        if item in slice_
+                    ),
+                    doc_ids[0] if doc_ids else self.ROLE,
+                )
+                self.media_census.record(corpus=self.ROLE, doc_id=owner, media=[item], dropped=True)
+        else:
+            contents = list(contents)
+        counted = self._media_counts_of(contents)
+        return contents, sum(count.tokens for count in counted)
 
     def _media_counts_of(self, contents: Sequence[Content]) -> list[MediaTokenCount]:
         """The exact media token count of each content, as the engine adds it to the prompt."""
@@ -438,10 +469,10 @@ class RoleClient[C: Endpoint]:
         Runs when the role declares an ``image_processor``: the probe sends one prepared image through the
         adapter, counts the request's prompt tokens exactly (the media block plus the render the engine
         reads), and :func:`~rcp_ndcg.data.resolution.engine_media_check` compares the engine's own
-        ``usage.prompt_tokens`` with it. A mismatch is a typed
-        :class:`~rcp_ndcg.errors.ProviderError` whose hint names ``image_processor``, the
-        ``image_policy`` and the server's media flags; a reply without usage is recorded in the media
-        census as ``not_checked`` -- the check never passes silently.
+        ``usage.prompt_tokens`` with it -- the counted number covers the same request (the media block
+        plus the probe's text tokens). A mismatch is a typed :class:`~rcp_ndcg.errors.ProviderError`
+        (the message names ``image_processor`` and the server's media flags); a reply without usage is
+        recorded in the media census as ``not_checked`` -- the check never passes silently.
 
         Raises:
             CapabilityError: the engine refused the probe request.
@@ -457,39 +488,46 @@ class RoleClient[C: Endpoint]:
         from rcp_ndcg.data.resolution import engine_media_check
         from rcp_ndcg.errors import ProviderError
 
-        with NamedTemporaryFile(suffix=".png", delete=False) as probe_file:
-            PILImage.new("RGB", (224, 224), (120, 120, 120)).save(probe_file, format="PNG")
-            probe_uri = probe_file.name
-        probe = Content.from_image(f"file://{probe_uri}")
-        prepared = self._prepare_request([probe])
-        counted = int(
-            content_media_tokens(
-                prepared.contents[0],
-                image_policy if image_policy is not None else ImagePolicy.native(),
-                video_policy,
-            ).tokens
-        )
-        calls = list(self._probe_calls(prepared.contents[0]))
-        replies = await self._sender.send(calls)
-        tokens = self._probe_usage(replies[0])
-        if tokens is None or tokens.input_tokens is None:
-            self.media_census.record(
-                corpus=self.ROLE,
-                doc_id="engine_media_check:not_checked",
-                media=[prepared.media[0]],
-                dropped=False,
+        probe_path = ""
+        try:
+            with NamedTemporaryFile(suffix=".png", delete=False) as probe_file:
+                PILImage.new("RGB", (224, 224), (120, 120, 120)).save(probe_file, format="PNG")
+                probe_path = probe_file.name
+            probe = Content.from_image(f"file://{probe_path}")
+            prepared = self._prepare_request([probe])
+            # The counted number must cover the same request the engine's report covers (the contract in
+            # :func:`~rcp_ndcg.data.resolution.engine_media_check`): the media block plus every text token
+            # the probe request carries, in the declared tokenizer's tokens (the render the engine reads
+            # is the client's own here -- the declared budget counts the client's render, not a server
+            # template the client cannot see).
+            assert self._tokenizer is not None, "an image_processor implies a declared budget tokenizer"
+            counted = sum(count.tokens for count in self._media_counts_of(prepared.contents)) + sum(
+                self._tokenizer.count(content.text) for content in prepared.contents
             )
-            get_logger(__name__).warning(
-                "engine media check: the %s reply reported no usage, so the counted prompt tokens cannot be "
-                "verified against the engine (recorded as not_checked); media counting proceeds on the "
-                "declared %s policy",
-                getattr(self._adapter_cls, "name", self.config.api),
-                getattr(self.config, "image_processor", None),
-            )
-            return
-        mismatch = engine_media_check(tokens.input_tokens, counted)
-        if mismatch is not None:
-            raise ProviderError(mismatch.message, hint=mismatch.message)
+            calls = list(self._probe_calls(prepared.contents[0]))
+            replies = await self._sender.send(calls)
+            tokens = self._probe_usage(replies[0])
+            if tokens is None or tokens.input_tokens is None:
+                self.media_census.record(
+                    corpus=self.ROLE,
+                    doc_id="engine_media_check:not_checked",
+                    media=[prepared.media[0]],
+                    dropped=False,
+                )
+                get_logger(__name__).warning(
+                    "engine media check: the %s reply reported no usage, so the counted prompt tokens cannot "
+                    "be verified against the engine (recorded as not_checked); media counting proceeds on "
+                    "the declared %s policy",
+                    getattr(self._adapter_cls, "name", self.config.api),
+                    getattr(self.config, "image_processor", None),
+                )
+                return
+            mismatch = engine_media_check(tokens.input_tokens, counted)
+            if mismatch is not None:
+                raise ProviderError(mismatch.message, hint=mismatch.message)
+        finally:
+            if probe_path:
+                Path(probe_path).unlink(missing_ok=True)
 
     def _probe_calls(self, content: Content) -> Sequence[Call]:
         """The calls one prepared probe item is sent as (the role's wire)."""

@@ -19,6 +19,8 @@ The client owns what the model reads and how the requests go out -- the client b
   requests in flight under one :class:`asyncio.TaskGroup` (a failing request cancels its siblings, R7),
   reassembled in the input's order.
 
+Credentials are the transport's (R6): the adapter profile's key variables, their required-ness and the
+header travel to the transport as an :class:`~rcp_ndcg.inference.transport.AuthProfile`; no client-side key
 handling remains. Media is refused before it is fetched (these adapters are text-only; the refusal is the
 base's, in front of the one preparation path).
 """
@@ -32,6 +34,7 @@ from typing import Any
 import numpy as np
 from rcp_ndcg_core.content import Content
 
+from rcp_ndcg.data.prepare import MediaCensus
 from rcp_ndcg.data.preprocess import TextTruncationCensus
 from rcp_ndcg.errors import ConfigError, RequestRejectedError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
@@ -84,7 +87,12 @@ class EmbeddingClient(RoleClient):
     MEDIA_ON_WIRE = False
 
     def __init__(
-        self, config: EmbeddingEndpoint, *, sender: Sender | None = None, census: TextTruncationCensus | None = None
+        self,
+        config: EmbeddingEndpoint,
+        *,
+        sender: Sender | None = None,
+        census: TextTruncationCensus | None = None,
+        media_census: MediaCensus | None = None,
     ) -> None:
         adapter_cls = get_adapter(config.api, role=self.ROLE)
         if config.dimensions is not None and not _profile(adapter_cls, "SUPPORTS_DIMENSIONS", True):
@@ -101,7 +109,7 @@ class EmbeddingClient(RoleClient):
                 "(the retrieval index keeps one slice per chunk)",
             )
         self._refuse_an_unimplemented_request_shape(config)
-        super().__init__(config, sender=sender, census=census)
+        super().__init__(config, sender=sender, census=census, media_census=media_census)
         self._adapter: Any = self._adapter_cls()
 
     @staticmethod
@@ -197,24 +205,27 @@ class EmbeddingClient(RoleClient):
             a media-only request that overflows the budget follows the declared overflow policy.
         """
         prompt = self.config.query_prompt if role is EncodeRole.QUERY else self.config.doc_prompt
-        prompted = [content.with_text_prefix(prompt) for content in contents]
-        request = self._prepare_request(prompted)
-        fitted, media_tokens = self._fit_media(request)
+        prepared = tuple(content.with_text_prefix(prompt) for content in contents)
+        if self._budget is None:
+            kept, omitted = list(prepared), []
+            return PreparedItems(
+                items=tuple(kept),
+                positions=tuple(range(len(contents))),
+                omitted=tuple(omitted),
+            )
+        request = self._prepare_request(list(prepared))
+        fitted, _media = self._fit_media_for_request(
+            request.contents, doc_ids=[str(index) for index in range(len(request.contents))]
+        )
+        if self._budget is not None:
+            result = self._fit(
+                [content.text for content in fitted], "query" if role is EncodeRole.QUERY else "document"
+            )
+            fitted = [self._with_text(content, text) for content, text in zip(fitted, result.texts, strict=True)]
         kept, omitted = self._apply_empty_documents(fitted)
         positions = [index for index in range(len(fitted)) if index not in set(omitted)]
-        if self._budget is None:
-            texts = [content.text for content in kept]
-        elif kept:
-            result = self._fit(
-                [content.text for content in kept],
-                "query" if role is EncodeRole.QUERY else "document",
-                media_tokens=[media_tokens[position] for position in positions],
-            )
-            texts = result.texts
-        else:
-            texts = []
         return PreparedItems(
-            items=tuple(self._with_text(content, text) for content, text in zip(kept, texts, strict=True)),
+            items=tuple(kept),
             positions=tuple(positions),
             omitted=tuple(omitted),
         )

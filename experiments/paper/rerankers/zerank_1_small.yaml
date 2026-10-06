@@ -15,4 +15,4 @@ tokenizer: zeroentropy/zerank-1-small-reranker@a65fd51c450e9b47fdddab98e31166eca
 max_tokens: 8192
 query_max_tokens: 4096
 instruction: none
-use_activation: false  # the recipes score the raw logit (the pooler runs no activation)
+use_activation: false  # the raw yes-logit is stored; the paper reference applies its own activation client-side (reference/<family>.py)

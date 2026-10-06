@@ -37,7 +37,9 @@ from typing import TYPE_CHECKING, Any
 from rcp_ndcg_core._records import Query, RankingExample
 from rcp_ndcg_core.content import Content
 
+from rcp_ndcg.data.prepare import MediaCensus
 from rcp_ndcg.data.preprocess import (
+    CHUNK_ID_SEPARATOR,
     DataError,
     FitResult,
     TextTruncationCensus,
@@ -77,7 +79,12 @@ class RerankClient(RoleClient):
     ROLE = "rerank"
 
     def __init__(
-        self, config: RerankEndpoint, *, sender: Sender | None = None, census: TextTruncationCensus | None = None
+        self,
+        config: RerankEndpoint,
+        *,
+        sender: Sender | None = None,
+        census: TextTruncationCensus | None = None,
+        media_census: MediaCensus | None = None,
     ) -> None:
         """A client for ``config``, sending over ``sender`` (a :class:`~rcp_ndcg.inference.transport.Transport`
         when none is given).
@@ -95,7 +102,7 @@ class RerankClient(RoleClient):
                 names), a hosted profile with ``instruction: field`` or ``use_activation`` (neither exists on
                 their wire), or a served endpoint without a ``base_url``.
         """
-        super().__init__(config, sender=sender, census=census)
+        super().__init__(config, sender=sender, census=census, media_census=media_census)
         self._adapter: RerankWire = self._adapter_cls(self.endpoint)
 
     # -- the synchronous API -------------------------------------------------
@@ -175,16 +182,10 @@ class RerankClient(RoleClient):
             instruction=instruction if self.config.instruction == "field" else None,
         )
         replies = await self._send(self._adapter.calls(request, model=self.config.model))
-        scored = self._pooled(fitted, self._adapter.interpret(request, replies), len(prepared_documents))
-        if not omitted:
-            return scored
-        # The omitted documents score 0.0 at their positions; the kept ones carry their real scores.
-        kept_scores = dict(zip(origin, scored.scores, strict=True))
-        return RerankResult(
-            scores=tuple(
-                0.0 if index in set(omitted) else kept_scores.get(index, 0.0) for index in range(len(documents))
-            )
-        )
+        # The scores pool back through `origin` (fit output -> original document index), so chunking and
+        # `empty_doc: omit_zero` compose: the pooled score lands on the document it was scored for, and an
+        # omitted document scores 0.0 at its position.
+        return self._pooled(fitted, self._adapter.interpret(request, replies), len(documents), omitted, origin)
 
     async def arerank_many(
         self, examples: Sequence[RankingExample], *, checkpoint: Checkpoint | None = None
@@ -260,18 +261,24 @@ class RerankClient(RoleClient):
         Raises:
             TextBudgetExceededError: the declared overflow policy refuses to shorten a pair.
         """
-        # The request's media, through the one preparation path: the gates, the budget's media fit (never
-        # cut), and the per-document token counts the fit reserves. The empty-document policy follows the
-        # drops (a document whose every media item was dropped is empty, exactly like an empty text one).
+        # The request's media, per wire request: the pooling of one query's candidate set is one
+        # RerankRequest (the adapter splits pointwise by batch_size, each call still one query's
+        # documents), so the fit runs per (query, document) pair -- the query's media reserved with the
+        # document's on every pair (the query rides every pair). The gates run per pair.
         request_prepared = self._prepare_request([query, *documents])
-        contents_after_media, media_tokens = self._fit_media(request_prepared)
-        query = contents_after_media[0]
-        documents = list(contents_after_media[1:])
+        query = request_prepared.contents[0]
+        documents = list(request_prepared.contents[1:])
+        # The media fit runs per (query, document) pair -- the wire request the engine sees -- and the
+        # fitted contents (the document's media possibly shrunk to the policy minimum) are what ships.
+        pairs_after_media = [
+            self._fit_media_for_request([query, document], doc_ids=[QUERY_DOC_ID, str(original_index)])
+            for original_index, document in enumerate(documents)
+        ]
+        documents = [pair[0][1] for pair in pairs_after_media]
+        pair_media = [pair[1] for pair in pairs_after_media]
         kept_documents, omitted = self._apply_empty_documents(documents)
-        kept_documents = list(kept_documents)
         kept_positions = [index for index in range(len(documents)) if index not in set(omitted)]
-        omitted = tuple(omitted)
-        max_media = max((media_tokens[1 + index] for index in kept_positions), default=0)
+        query_media = self._media_counts_of([query])[0].tokens
         if self._budget is None:
             return (
                 query,
@@ -283,8 +290,8 @@ class RerankClient(RoleClient):
                     ids=tuple(str(index) for index in range(len(kept_documents))),
                 ),
                 tuple(omitted),
-                list(range(len(kept_documents))),
-            )  # type: ignore[return-value]  # list[int] against tuple[int, ...] -- same shape
+                kept_positions,
+            )
         # One query rides per request: settle its span first, so every pair of the batch carries the same
         # one. fit settles a pair's query only when that pair overflows (the share binds on overflow only),
         # which would settle differently per document -- an under-budget pair keeps the whole query while an
@@ -311,7 +318,7 @@ class RerankClient(RoleClient):
                 [(query_text, "")],
                 "pair",
                 instruction=instruction,
-                media_tokens=[max_media],
+                media_tokens=[query_media],
                 record=False,
             ).contents[0][0]
             if settled != original_query:
@@ -330,7 +337,7 @@ class RerankClient(RoleClient):
             result = self._fit(
                 pairs,
                 "pair",
-                media_tokens=[media_tokens[1 + index] for index in range(len(kept_documents))],
+                media_tokens=[pair_media[position] for position in kept_positions],
                 instruction=instruction,
             )
         else:
@@ -384,19 +391,38 @@ class RerankClient(RoleClient):
         """The reply's prompt-token report (the served rerank wires report OpenAI-style usage)."""
         return self._adapter.usage(reply)
 
-    def _pooled(self, fitted: FitResult, result: RerankResult, documents: int) -> RerankResult:
-        """The scores of one query, pooled back onto its documents when the budget chunked them.
+    def _pooled(
+        self,
+        fitted: FitResult,
+        result: RerankResult,
+        documents: int,
+        omitted: Sequence[int] = (),
+        origin: Sequence[int] = (),
+    ) -> RerankResult:
+        """The scores of one query, realigned to the documents as they were given.
 
-        Without a chunk mapping the scores pass through. With one, the outputs' scores (one per chunk, in
-        fit's order, aligned to :attr:`FitResult.ids`) pool onto their documents by
-        :func:`rcp_ndcg.data.preprocess.max_pool_scores_by_document` (``aggregation: max``), and the result
-        is realigned to the original document order.
+        The fit's outputs (one per kept document, or per chunk of one) align to :attr:`FitResult.ids`;
+        ``origin`` carries, per fit output, the original document index it came from. Without a chunk
+        mapping the scores attach by that origin; with one they pool onto their documents by
+        :func:`rcp_ndcg.data.preprocess.max_pool_scores_by_document` (``aggregation: max``) first. The
+        result is one score per input document, in the input's order -- ``empty_doc: omit_zero``'s omitted
+        documents score 0.0 at their positions.
         """
+        scores = [0.0] * documents
         if fitted.chunk_mapping is None:
-            return result
-        per_chunk = dict(zip(fitted.ids, result.scores, strict=True))
-        pooled = max_pool_scores_by_document(per_chunk, fitted.chunk_mapping)
-        return RerankResult(scores=tuple(pooled[str(index)] for index in range(documents)))
+            for original_index, score in zip(origin, result.scores, strict=True):
+                scores[original_index] = score
+        else:
+            per_chunk = dict(zip(fitted.ids, result.scores, strict=True))
+            pooled = max_pool_scores_by_document(per_chunk, fitted.chunk_mapping)
+            for kept_id, score in pooled.items():
+                kept_origin = (
+                    origin[int(kept_id.rsplit(CHUNK_ID_SEPARATOR, 1)[0])]
+                    if CHUNK_ID_SEPARATOR in kept_id
+                    else origin[int(kept_id)]
+                )
+                scores[kept_origin] = score
+        return RerankResult(scores=tuple(scores))
 
     async def _send(self, calls: Sequence[Call]) -> list[Any]:
         """Send one request's calls and return their replies, one per call, in order.

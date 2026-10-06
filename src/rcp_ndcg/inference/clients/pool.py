@@ -11,8 +11,8 @@ A :class:`PoolingClient` turns :class:`~rcp_ndcg_core.content.Content` into the 
   with the anchor kept, every cut recorded in the census under ``text_budget``. A hosted profile with only
   ``max_tokens`` sends content uncut (the vendor path). ``on_overflow: chunk`` is refused: chunked documents
   pool *scores* by maximum, and token vectors are not scores -- a late-interaction document's chunking
-  happens at the corpus layer (the retrieval index keeps one slice per chunk). Media items keep their parts
-  beside the fitted text; the media lane wires the per-block token counts through ``_media_tokens``;
+  happens at the corpus layer (the retrieval index keeps one slice per chunk). Media items are prepared
+  with the request (``prepare_request``), their tokens counted and reserved whole beside the fitted text;
 * **Wire precision** -- the config's ``embed_dtype`` (``float16`` by the owner's decision, ``float32``
   opt-in) travels on every request and survives to the result: the ragged buffer keeps its transfer dtype
   end to end, so an index built from float16 vectors stores float16 (2 bytes per token vector, against 4
@@ -36,6 +36,7 @@ from typing import Any
 import numpy as np
 from rcp_ndcg_core.content import Content
 
+from rcp_ndcg.data.prepare import MediaCensus
 from rcp_ndcg.data.preprocess import TextTruncationCensus
 from rcp_ndcg.errors import ConfigError, ProviderError
 from rcp_ndcg.inference.adapters.base import Adapter
@@ -70,7 +71,12 @@ class PoolingClient(RoleClient):
     ROLE = "multi_vector"
 
     def __init__(
-        self, config: PoolingEndpoint, *, sender: Sender | None = None, census: TextTruncationCensus | None = None
+        self,
+        config: PoolingEndpoint,
+        *,
+        sender: Sender | None = None,
+        census: TextTruncationCensus | None = None,
+        media_census: MediaCensus | None = None,
     ) -> None:
         if config.dim is None:
             raise ConfigError(
@@ -93,7 +99,7 @@ class PoolingClient(RoleClient):
                 hint="the adapters implement text today; drop request_shape (the default) until the "
                 "messages and token_ids routes land",
             )
-        super().__init__(config, sender=sender, census=census)
+        super().__init__(config, sender=sender, census=census, media_census=media_census)
         self._adapter: Adapter[PoolRequest, Embeddings] = self._adapter_cls()
 
     # -- encoding ----------------------------------------------------------
@@ -197,20 +203,25 @@ class PoolingClient(RoleClient):
         prefix = self.config.query_prompt if role is EncodeRole.QUERY else self.config.doc_prompt
         prompted = [content.with_text_prefix(prefix) for content in contents]
         request = self._prepare_request(prompted)
-        fitted, media_tokens = self._fit_media(request)
+        # The media fit runs per wire request: the pooling wire sends one media item per call, so one
+        # item's fit bounds that item's media (drops recorded under the input's position).
+        prepared_pairs = [
+            self._fit_media_for_request([content], doc_ids=[str(index)])
+            for index, content in enumerate(request.contents)
+        ]
+        fitted = [pair[0][0] for pair in prepared_pairs]
+        media_tokens = [pair[1] for pair in prepared_pairs]
         kept, omitted = self._apply_empty_documents(fitted)
         positions = [index for index in range(len(fitted)) if index not in set(omitted)]
-        if self._budget is None:
+        if self._budget is None or not kept:
             texts = [content.text for content in kept]
-        elif kept:
+        else:
             result = self._fit(
                 [content.text for content in kept],
                 "query" if role is EncodeRole.QUERY else "document",
                 media_tokens=[media_tokens[position] for position in positions],
             )
             texts = result.texts
-        else:
-            texts = []
         return PreparedItems(
             items=tuple(self._with_text(content, text) for content, text in zip(kept, texts, strict=True)),
             positions=tuple(positions),

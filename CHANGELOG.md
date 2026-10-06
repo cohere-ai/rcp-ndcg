@@ -208,7 +208,7 @@ released together.
   gains `dropped=`, and every media census row carries `dropped`); tokens are never cut inside a vision block.
 - `rcp_ndcg.data.resolution` gains `engine_media_check(reported, counted)` and the typed
   `EngineMediaMismatch`: the pure comparison of an engine's prompt-token count for
-  one prepared probe image against the counted one; the runtime call site comes later. `ImagePolicy` and
+  one prepared probe image against the counted one. `ImagePolicy` and
   `VideoPolicy` declare `IDENTITY_ROLES` (every field CONTENT: the media policy is the instrument), so a
   policy nested in an identity payload passes `check_declarations`.
 - `VideoPolicy` gains `engine_video_pinning` (CONTENT, default false): whether the engine serving this corpus
