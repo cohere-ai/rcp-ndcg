@@ -26,7 +26,6 @@ expected:
     abs: 0.0001
   origin: engine
   status: reproduced
-notes: 'The first document is the word ''budgetpad'' joined by single spaces, 16 repeats: 144 tokens as
-  a raw span, rendered at 243 of the 224-token budget (the SYSTEM frame, the specials and the folded query
-  together) -- the product''s fit cuts it and re-attaches the ASSISTANT anchor. Values are the tests''
-  FakeRerankEngine answers for the cut render.'
+notes: 'The first document is the word ''budgetpad'' joined by single spaces, 18 repeats, measured 162
+  tokens (over max_tokens 160): the pair fit cuts it and re-attaches the ASSISTANT anchor. Values are
+  the tests'' FakeRerankEngine answers for the cut render.'

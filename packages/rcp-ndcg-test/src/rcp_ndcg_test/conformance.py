@@ -186,48 +186,29 @@ class _Resolved:
     def close(self) -> None:
         """Close the transport the runner built (a fake target's, or one built for the client)."""
         if self.transport is not None:
-            self.transport.aclose()
+            self.transport.close()
 
 
 def _resolve(recipe: Recipe, target: Target, base_url: str | None, fake_engine: Any | None) -> _Resolved:
     """The endpoint config and sender of one target.
 
-    The config is the recipe's ``client`` block -- the product's own endpoint model -- with ``base_url``
-    and the recipe id filled in. On this branch the runner pre-fits every input with the product's
-    ``fit``, so the budget fields are cleared (the client refuses a budget until the wiring lands) and
-    the recipe's per-side prompts must be empty (they would be prepended onto the fitted render a
-    second time). The transport's retries and outage parking are switched off: a conformance run fails
-    fast on a refusal instead of parking for minutes on a dead engine.
+    The config is the recipe's ``client`` block -- the product's own endpoint model, budget and media
+    fields included -- with ``base_url`` and the recipe id filled in: the wired role client fits, cuts,
+    folds and prepares the media itself, and the runner sends the case's raw contents. The transport's
+    retries and outage parking are switched off: a conformance run fails fast on a refusal instead of
+    parking for minutes on a dead engine.
     """
     client = recipe.client
-    if getattr(client, "query_prompt", "") or getattr(client, "doc_prompt", ""):
-        raise ConformanceError(
-            f"recipe {recipe.id}: the runner pre-fits with the product's fit and sends the fitted render "
-            "through the role client, which would prepend query_prompt/doc_prompt a second time; a recipe "
-            "with per-side prompts needs the budget wired into the client (clients-final) first"
-        )
-    if getattr(client, "on_overflow", "cut") != "cut":
-        raise ConformanceError(
-            f"recipe {recipe.id}: on_overflow {client.on_overflow!r} is not supported by the "
-            "conformance runner yet -- chunked documents would be sent as if they were documents (their "
-            "scores are never max-pooled back); declare on_overflow: cut, or run the chunk aggregation "
-            "through the product's retrieval path"
-        )
-    template = getattr(client, "template", None)
-    if (
-        getattr(client, "instruction", None) == "fold"
-        and template is not None
-        and any(
-            getattr(segment, "content", None) == "instruction"
-            for shape in template.shapes()
-            for segment in template.segments(shape)
-        )
-    ):
-        raise ConformanceError(
-            f"recipe {recipe.id}: instruction: fold folds the instruction into the query span, and the "
-            "recipe's template also declares an instruction span -- the fit would render it twice, so the "
-            "length strata would measure a prompt the engine never sees; declare one of the two"
-        )
+    # A recipe-relative tokenizer path resolves against the recipe directory (the harness's own rule);
+    # the wired client loads the tokenizer from the config, so the spec must be absolute here.
+    spec = getattr(client, "tokenizer", None)
+    directory = recipe._dir
+    if spec is not None and directory is not None:
+        from pathlib import Path
+
+        candidate = Path(spec)
+        if not candidate.is_absolute() and (directory / candidate).exists():
+            client = client.model_copy(update={"tokenizer": str(directory / candidate)})
     runtime = {"recipe": recipe.id, "max_retries": 0, "wait_on_outage_s": 0.0}
     if target == "engine":
         if base_url is None:
@@ -341,68 +322,64 @@ def _media_skip(recipe: Recipe, case: Case) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# The send: the product's fit, then the product's role client
+# ---------------------------------------------------------------------------
+# The send: the case's raw contents through the product's wired role client
 # ---------------------------------------------------------------------------
 
 
 def _send(resolved: _Resolved, case: Case) -> Any:
-    """The role client's answer for the case.
+    """The role client's answer for the case: the case's raw contents through the product's role client.
 
-    For ``embed`` and ``multi_vector``: the fitted queries and documents through the product's
-    :class:`~rcp_ndcg.inference.clients.EmbeddingClient` / ``PoolingClient``, as a pair of
-    :class:`~rcp_ndcg.inference.types.Embeddings`. For ``rerank``: the fitted pairs through
-    :class:`~rcp_ndcg.inference.clients.RerankClient`, as one
-    :class:`~rcp_ndcg.inference.types.RerankResult` per query.
+    The client does every content decision -- the per-side prompts, the text budget's fit and cut, the
+    instruction fold, the media preparation and the empty-document rule -- from the recipe's ``client``
+    block; the runner pre-fits nothing. For ``embed`` and ``multi_vector``: the raw queries and documents
+    through :class:`~rcp_ndcg.inference.clients.EmbeddingClient` / ``PoolingClient``, as a pair of
+    :class:`~rcp_ndcg.inference.types.Embeddings`. For ``rerank``: the raw queries, documents and
+    instruction through :class:`~rcp_ndcg.inference.clients.RerankClient` (``rerank_many``), as one
+    :class:`~rcp_ndcg.inference.types.RerankResult` per query, aligned to the case's documents.
     """
-    endpoint = _budget_fields_cleared(resolved.endpoint)
     if resolved.recipe.role == "rerank":
-        return _send_rerank(resolved, case, endpoint)
+        return _send_rerank(resolved, case)
     from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient
     from rcp_ndcg.inference.types import EncodeRole
 
-    queries = _fit_side(resolved.recipe, [query.text for query in case.inputs.queries], "query", case)
-    documents = _fit_side(
-        resolved.recipe, [document.text or "" for document in case.inputs.documents], "document", case
-    )
     client: Any = (PoolingClient if resolved.recipe.role == "multi_vector" else EmbeddingClient)(
-        endpoint, sender=resolved.sender
+        resolved.endpoint, sender=resolved.sender
     )
     try:
-        query_side = client.encode(_as_contents(queries), EncodeRole.QUERY)
-        document_side = client.encode(_as_contents(documents), EncodeRole.DOCUMENT)
+        query_side = client.encode(_query_contents(case), EncodeRole.QUERY)
+        document_side = client.encode(_document_contents(case), EncodeRole.DOCUMENT)
     finally:
-        client_close = getattr(client, "close", None)
-        if client_close is not None:
-            client_close()
+        client.close()
     return query_side, document_side
 
 
-def _send_rerank(resolved: _Resolved, case: Case, endpoint: Any) -> Any:
-    """The case's queries through :meth:`RerankClient.rerank_many`, the documents cut to the budget.
+def _send_rerank(resolved: _Resolved, case: Case) -> Any:
+    """The case's queries through :meth:`RerankClient.rerank_many`, raw.
 
-    The query goes in raw with the case's instruction, so the client applies its own fold
-    (``instruction: fold``) -- exactly the text the fit measured. When the fit had to cut the query
-    span (over its declared share), the folded-and-cut text goes in directly with no instruction: the
-    client cannot fold and cut in one step on this branch, and folding a folded query would fold twice.
+    The raw query and the case's instruction go in (the client folds per its ``instruction`` mode) and
+    the documents as the content parts the case declares (media included): the client fits the pairs, cuts
+    the query to its declared share, chunks on overflow and pools by max -- every content decision is the
+    product's.
     """
     from rcp_ndcg_core._records import RankingExample
 
     from rcp_ndcg.inference.clients import RerankClient
 
-    client = RerankClient(endpoint, sender=resolved.sender)
+    client = RerankClient(resolved.endpoint, sender=resolved.sender)
     doc_ids = [document.id for document in case.inputs.documents]
-    examples = []
-    for query in case.inputs.queries:
-        folded, documents, query_cut = _fit_pair(resolved.recipe, query.text, case)
-        examples.append(
-            RankingExample(
-                query_id=str(query.id),
-                query=query.text if not query_cut else folded,
-                docs=documents,
-                doc_ids=doc_ids,
-                instruction=None if query_cut else case.inputs.instruction,
-            )
+    documents = _document_contents(case)
+    examples = [
+        RankingExample(
+            query_id=str(query.id),
+            query=query.text,
+            docs=[content.text for content in documents],
+            contents=documents,
+            doc_ids=doc_ids,
+            instruction=case.inputs.instruction,
         )
+        for query in case.inputs.queries
+    ]
     try:
         results = client.rerank_many(examples)
     finally:
@@ -414,81 +391,42 @@ def _send_rerank(resolved: _Resolved, case: Case, endpoint: Any) -> Any:
     return results
 
 
-def _fitter(recipe: Recipe) -> tuple[Any, Any]:
-    """The recipe's (tokenizer, budget) pair -- the cases module's shared bridge (one home)."""
-    from .cases import _recipe_fitter as recipe_fitter
-
-    return recipe_fitter(recipe)
-
-
-def _fit_side(recipe: Recipe, texts: list[str], shape: str, case: Case) -> list[str]:
-    """One side's rendered (and cut) strings, through the product's :func:`fit`."""
-    from rcp_ndcg.data.preprocess import fit
-
-    tokenizer, budget = _fitter(recipe)
-    result = fit(
-        texts,
-        shape,  # type: ignore[arg-type]
-        budget,
-        tokenizer,
-        ids=[str(index) for index in range(len(texts))],
-        instruction=case.inputs.instruction,
-    )
-    return list(result.texts)
-
-
-def _fit_pair(recipe: Recipe, query: str, case: Case) -> tuple[str, list[str], bool]:
-    """The pair fit of one query against the case's documents.
-
-    Returns the folded query text, each document's fitted (cut) text, and whether the query span was
-    cut (the send then uses the cut text unfolded -- see :func:`_send_rerank`).
-    """
-    from rcp_ndcg.data.preprocess import fit
-
-    tokenizer, budget = _fitter(recipe)
-    folded = _fold_query(recipe, query, case.inputs.instruction)
-    inputs = [(folded, document.text or "") for document in case.inputs.documents]
-    result = fit(
-        inputs,
-        "pair",
-        budget,
-        tokenizer,
-        ids=[document.id for document in case.inputs.documents],
-        instruction=case.inputs.instruction,
-    )
-    # The product's pair fit settles the query span first (to its declared share) and cuts the document
-    # to the remainder; queries are never chunked, so every pair's query span is the same cut text.
-    query_cut = any(query_text != folded for query_text, _ in result.contents)
-    cut_query = result.contents[0][0] if query_cut else folded
-    documents = [document for _, document in result.contents]
-    return cut_query, documents, query_cut
-
-
-def _fold_query(recipe: Recipe, query: str, instruction: str | None) -> str:
-    """The query as the client folds it for ``instruction: fold`` (the cases module's shared render)."""
-    from .cases import _pair_fold_query
-
-    return _pair_fold_query(recipe, query, instruction)
-
-
-def _budget_fields_cleared(endpoint: Any) -> Any:
-    """The endpoint config without the budget fields (the client refuses them until the wiring lands)."""
-    updates: dict[str, Any] = {"max_tokens": None}
-    if getattr(endpoint, "query_max_tokens", None) is not None:
-        updates["query_max_tokens"] = None
-    return endpoint.model_copy(update=updates)
-
-
-def _as_contents(texts: list[str]) -> list[Any]:
-    """The fitted strings as the wire contents the role clients take."""
+def _query_contents(case: Case) -> list[Any]:
+    """The case's queries as the wire contents the role clients take (text-only by the case format)."""
     from rcp_ndcg_core.content import Content
 
-    return [Content.from_text(text) for text in texts]
+    return [Content.from_text(query.text) for query in case.inputs.queries]
 
 
-# ---------------------------------------------------------------------------
-# The answer: one query x document score matrix, however the role produced it
-# ---------------------------------------------------------------------------
+def _document_contents(case: Case) -> list[Any]:
+    """The case's documents as the wire contents: the text part plus the declared media parts.
+
+    The media references resolve against the case's recipe directory (the format's ``media/<file>``
+    paths), which :func:`load_case` pins on the case; the wired clients size and prepare them.
+    """
+    from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+
+    contents: list[Any] = []
+    for document in case.inputs.documents:
+        parts: list[Any] = []
+        if document.text is not None:
+            parts.append(TextPart(text=document.text))
+        if document.image is not None:
+            parts.append(ImagePart(ref=MediaRef(uri=str(_media_path(case, document.image)))))
+        if document.video is not None:
+            parts.append(VideoPart(ref=MediaRef(uri=str(_media_path(case, document.video)))))
+        contents.append(Content.from_parts(parts) if parts else Content.from_text(""))
+    return contents
+
+
+def _media_path(case: Case, relative: str) -> Any:
+    """A case's media file, resolved against the recipe's case directory."""
+    from pathlib import Path
+
+    directory = getattr(case, "_dir", None)
+    if directory is None:  # pragma: no cover - load_case always pins it
+        raise ConformanceError(f"case {case.id}: no recipe directory pinned; the media {relative!r} cannot resolve")
+    return Path(directory) / relative
 
 
 def _matrix(answer: Any) -> Any:

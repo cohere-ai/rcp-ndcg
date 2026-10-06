@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml  # pyright: ignore[reportMissingModuleSource]
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 from rcp_ndcg_vllm.recipe import Recipe, load_recipe
 
 from .errors import CaseError
@@ -251,6 +251,10 @@ class Case(BaseModel):
     expected: CaseExpected
     notes: str = ""
 
+    _dir: Path | None = PrivateAttr(default=None)
+    """The recipe's case directory the file was loaded from (set by :func:`load_case`): where the
+    ``media/<file>`` references resolve, and where the runner pins a case's own media."""
+
     def _check_strata_labels(self) -> None:
         """The strata labels describe the case's own inputs: a mislabel cannot satisfy the grid."""
         documents = self.inputs.documents
@@ -442,6 +446,7 @@ def load_case(path: str | Path) -> Case:
         case = Case.model_validate(data)
     except Exception as error:
         raise CaseError(f"{path}: {error}") from error
+    case._dir = path.parent
     _check_media(case, path.parent)
     return case
 
