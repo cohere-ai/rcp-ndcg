@@ -35,8 +35,10 @@ def _now() -> datetime:
 
 
 class StepStatus(StrEnum):
-    """The state of one step."""
+    """The state of one step (also what ``run status`` reports for it)."""
 
+    PENDING = "pending"
+    """Planned but not started (and not yet recorded in the manifest)."""
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"

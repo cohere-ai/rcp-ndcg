@@ -18,6 +18,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from rcp_ndcg.errors import MissingInputError
+from rcp_ndcg.runners.base import JobStatus
 from rcp_ndcg.runs.config import RunConfig
 from rcp_ndcg.runs.layout import RunLayout
 from rcp_ndcg.runs.manifest import RunManifest, RunStatus, StepStatus
@@ -46,7 +47,7 @@ class StepState(BaseModel):
     """One planned step of a run: its status, time, error and, for a judging step, its progress."""
 
     name: str
-    status: str = Field(description="pending, running, completed, failed or cancelled.")
+    status: StepStatus = Field(description="pending (planned, not started), running, completed, failed or cancelled.")
     duration_s: float | None = None
     error: str | None = None
     progress: StepProgress | None = Field(default=None, description="Judge windows done and planned (judging steps).")
@@ -57,7 +58,9 @@ class JobState(BaseModel):
 
     name: str
     handle: str
-    status: str = Field(description="pending, running, succeeded, failed, cancelled or unknown.")
+    status: JobStatus = Field(
+        description="pending, running, completed, failed, cancelled or unknown (a runner that cannot say)."
+    )
 
 
 class RunState(BaseModel):
@@ -65,7 +68,7 @@ class RunState(BaseModel):
 
     run_id: str
     run_dir: str
-    status: str = Field(description="submitted, running, completed, partial, failed or cancelled.")
+    status: RunStatus = Field(description="submitted, running, completed, partial, failed or cancelled.")
     done: bool = Field(description="Whether the status is terminal (completed, partial, failed or cancelled).")
     steps: list[StepState] = Field(description="Every planned step in run order; one not started yet is pending.")
     requests: int = Field(description="Judge requests made so far.")
@@ -157,7 +160,7 @@ class Run:
         return RunState(
             run_id=manifest.run_id,
             run_dir=self.dir,
-            status=manifest.status.value,
+            status=manifest.status,
             done=manifest.status in TERMINAL,
             steps=step_states(self.layout, manifest),
             requests=manifest.usage.requests,
@@ -165,7 +168,7 @@ class Run:
             mirror=read_state(self.layout.mirror_state),
             runner=jobs["runner"] if jobs else None,
             jobs=[
-                JobState(name=j["name"], handle=j["handle"] or "", status="unknown")
+                JobState(name=j["name"], handle=j["handle"] or "", status=JobStatus.UNKNOWN)
                 for j in (jobs or {}).get("jobs", [])
             ],
         )

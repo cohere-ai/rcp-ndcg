@@ -73,7 +73,7 @@ _STATES = {
     "RUNNING": JobStatus.RUNNING,
     "COMPLETING": JobStatus.RUNNING,
     "STAGE_OUT": JobStatus.RUNNING,
-    "COMPLETED": JobStatus.SUCCEEDED,
+    "COMPLETED": JobStatus.COMPLETED,
     "CANCELLED": JobStatus.CANCELLED,
     "FAILED": JobStatus.FAILED,
     "TIMEOUT": JobStatus.FAILED,
@@ -100,7 +100,7 @@ def _aggregate(states: Sequence[JobStatus]) -> JobStatus:
     for status in (JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.RUNNING, JobStatus.PENDING):
         if status in states:
             return status
-    return JobStatus.SUCCEEDED if all(s is JobStatus.SUCCEEDED for s in states) else JobStatus.UNKNOWN
+    return JobStatus.COMPLETED if all(s is JobStatus.COMPLETED for s in states) else JobStatus.UNKNOWN
 
 
 def _pyxis_image(image: str) -> str:

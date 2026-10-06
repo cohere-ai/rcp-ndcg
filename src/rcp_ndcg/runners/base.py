@@ -39,7 +39,7 @@ JobHandle = str
 class JobStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
-    SUCCEEDED = "succeeded"
+    COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
     UNKNOWN = "unknown"

@@ -493,6 +493,18 @@ released together.
 
 ### Changed
 
+- **The run/step/job status vocabularies are typed, one enum each, and the exported schema pins them**:
+  `RunState.status` is `RunStatus`, `StepState.status` is `StepStatus` and `JobState.status` is `JobStatus`
+  (they were bare `str` with the closed sets only in prose). `StepStatus` gains `PENDING` — `run status` lists
+  a step the run has not started as `pending`, which was a bare literal outside the enum. A finished-OK job now
+  reads `completed` like a finished-OK step and run (`JobStatus.SUCCEEDED` is renamed: `run status` used to say
+  `succeeded` for a job and `completed` for its steps in adjacent fields). `run list`'s rows are typed
+  (`RunListRow`), so `run-list.v1.json` pins the row shape, and a manifest that does not parse is listed with
+  `status: "unreadable"` — the one value outside `RunStatus`, validated and documented instead of invented per
+  call. `schemas/run-status.v1.json`, `run-list.v1.json`, `run-start.v1.json` and `run-manifest.v1.json`
+  (whose `StepStatus` enum gains `pending`) regenerated; nothing that reads a status by name changes value
+  except a finished-OK job: `succeeded` → `completed`.
+
 - **`--plan` means one thing in the CLI**: the plan file `judge tournament` asks exactly the windows of
   (`judge tournament --plan PLAN.json`). The boolean on `calibration insert` — plan the opponent windows,
   insert nothing — is now `--dry-run`, the no-side-effects switch every other command uses, so a script can

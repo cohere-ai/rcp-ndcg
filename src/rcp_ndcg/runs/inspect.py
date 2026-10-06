@@ -53,6 +53,7 @@ def step_states(layout: RunLayout, manifest: RunManifest) -> list[StepState]:
     """Every step the run's config plans, in run order, with its recorded status (``pending`` before it starts)
     and, for a judging step, the windows judged so far against the windows its schedule plans."""
     from rcp_ndcg.runs.config import JUDGE_STEPS, STEPS
+    from rcp_ndcg.runs.manifest import StepStatus
     from rcp_ndcg.runs.run import StepState
 
     wanted = set(manifest.config.get("steps") or []) | {record.name for record in manifest.steps}
@@ -62,12 +63,12 @@ def step_states(layout: RunLayout, manifest: RunManifest) -> list[StepState]:
         record = manifest.step(name)
         progress = _judge_progress(layout, manifest, name) if name in JUDGE_STEPS else None
         if record is None:
-            states.append(StepState(name=name, status="pending", progress=progress))
+            states.append(StepState(name=name, status=StepStatus.PENDING, progress=progress))
         else:
             states.append(
                 StepState(
                     name=name,
-                    status=record.status.value,
+                    status=record.status,
                     duration_s=record.duration_s,
                     error=record.error,
                     progress=progress,

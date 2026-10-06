@@ -571,7 +571,7 @@ class KubernetesRunner:
         if conditions.get("Failed") == "True":
             return JobStatus.FAILED
         if conditions.get("Complete") == "True":
-            return JobStatus.SUCCEEDED
+            return JobStatus.COMPLETED
         if status.get("active"):
             return JobStatus.RUNNING
         return JobStatus.PENDING

@@ -129,7 +129,7 @@ def test_submit_sends_each_script_to_sbatch_in_order(monkeypatch, tmp_path: Path
     [
         ("101 RUNNING\n", "", JobStatus.RUNNING),
         ("101 PENDING\n", "", JobStatus.PENDING),
-        ("", "101|COMPLETED\n", JobStatus.SUCCEEDED),
+        ("", "101|COMPLETED\n", JobStatus.COMPLETED),
         ("", "101|FAILED\n", JobStatus.FAILED),
         ("", "101|CANCELLED by 1000\n", JobStatus.CANCELLED),
         ("", "101|TIMEOUT\n", JobStatus.FAILED),
