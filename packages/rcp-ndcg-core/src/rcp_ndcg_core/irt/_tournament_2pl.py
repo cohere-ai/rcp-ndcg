@@ -149,6 +149,11 @@ class Tournament2PLCalibrator(nn.Module):
         """
         if self._finalized:
             raise RuntimeError("Cannot add observations after finalize()")
+        if not math.isfinite(theta_bt):
+            raise ValueError(
+                f"theta_bt must be finite, got {theta_bt!r}: a missing Bradley-Terry score is a dropped "
+                "observation, not a zero, and a NaN one would silently NaN the whole fit"
+            )
         if query_id not in self._query_to_idx:
             self._query_to_idx[query_id] = len(self._query_to_idx)
         q_idx = self._query_to_idx[query_id]

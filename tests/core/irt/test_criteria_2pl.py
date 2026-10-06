@@ -275,6 +275,21 @@ class TestValidation:
         with pytest.raises(ValueError, match="positive"):
             Criteria2PL(np.array([1.0, -1.0, 1.0, 1.0, 1.0]), ORACLE_BETA)
 
+    def test_rejects_non_finite_and_fractional_counts(self) -> None:
+        """Counts are counts: a NaN passes every comparison guard, a fractional pass count is
+        1.5 passes of 2 placements -- both silently biased the ability instead of being refused."""
+        model = Criteria2PL(ORACLE_GAMMA, ORACLE_BETA)
+        with pytest.raises(ValueError, match="finite"):
+            model.eap(np.array([2.0]), np.array([[float("nan"), 0, 0, 0, 0]]))
+        with pytest.raises(ValueError, match="finite"):
+            model.eap(np.array([np.nan]), np.zeros((1, 5)))
+        with pytest.raises(ValueError, match="finite"):
+            model.eap(np.array([2.0]), np.array([[np.inf, 0, 0, 0, 0]]))
+        with pytest.raises(ValueError, match="whole number"):
+            model.eap(np.array([2.5]), np.zeros((1, 5)))
+        with pytest.raises(ValueError, match="whole number"):
+            model.eap(np.array([2.0]), np.array([[1.5, 0, 0, 0, 0]]))
+
     def test_a_fit_with_exactly_two_criteria_is_accepted(self) -> None:
         """The identifiability floor is K >= 2: exactly two criteria sit on the accepted side of the
         boundary (one criterion cannot identify a 2PL; two can). The data is the module's own oracle
