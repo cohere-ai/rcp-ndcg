@@ -306,7 +306,7 @@ class TestRunnersAndServe:
             "judge": {"base_url": "http://unused/v1", "model": "m"},
             "candidates": {
                 "from": "retrieval",
-                "retrieval": {"kind": "dense", "encoder": {"provider": "openai_compatible", "model": "embedder"}},
+                "retrieval": {"kind": "dense", "encoder": {"api": "openai_embeddings", "model": "embedder"}},
             },
             "steps": ["retrieve", "tournament", "rubric", "calibrate", "evaluate"],
             "serve": {
