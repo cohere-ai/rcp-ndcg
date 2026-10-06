@@ -102,6 +102,26 @@ def _response_index(item: dict[str, Any]) -> int:
     return int(item.get("index", 0))
 
 
+def _validate_indices(items: Sequence[dict[str, Any]], *, where: str) -> list[dict[str, Any]]:
+    """The reply's items realigned by ``index``, exactly the embeddings parser's rule (one home): a request's
+    vectors must align to its items, and a reply that names an index on only some entries -- or anything but
+    exactly one int ``0..n-1`` per entry -- is refused, never read positionally (two ``index: 7`` rows would
+    silently hand item 0 another item's vectors)."""
+    present = [isinstance(item, dict) and "index" in item for item in items]
+    if all(present):
+        values = [item["index"] for item in items]
+        whole = all(isinstance(value, int) and not isinstance(value, bool) for value in values)
+        if not whole or sorted(values) != list(range(len(items))):
+            raise RequestRejectedError(
+                f"/pooling answered {[str(value) for value in values]!r} indices in its {where}; exactly one "
+                f"int 0..{len(items) - 1} index per entry, in any order"
+            )
+        return sorted(items, key=_response_index)
+    if any(present):
+        raise RequestRejectedError(f"/pooling answered an 'index' on only some of its {where}")
+    return list(items)
+
+
 def _decoded_tokens(arrays: Sequence[np.ndarray]) -> int:
     """The number of token vectors in decoded items (a 1-D pooled vector counts as one)."""
     return sum(1 if array.ndim == 1 else len(array) for array in arrays)
@@ -272,10 +292,12 @@ class VllmPooling(AdapterBase):
             if metadata is None:
                 return None
             try:
-                prompt_tokens = (json.loads(metadata).get("usage") or {}).get("prompt_tokens")
-            except (json.JSONDecodeError, AttributeError):
+                parsed = json.loads(metadata)
+            except json.JSONDecodeError:
                 return None
-            return _as_token_count(prompt_tokens)
+            if not isinstance(parsed, dict):  # a re-serialising proxy can answer [] or a scalar
+                return None
+            return _as_token_count((parsed.get("usage") or {}).get("prompt_tokens"))
         if not isinstance(body, dict):
             return None
         return _as_token_count((body.get("usage") or {}).get("prompt_tokens"))
@@ -294,7 +316,7 @@ class VllmPooling(AdapterBase):
             raise ProviderError(
                 f"the /pooling reply's data holds entries that are not items: {str(body)[:_MAX_MESSAGE_CHARS]}"
             )
-        items = sorted(body["data"], key=_response_index)
+        items = _validate_indices(body["data"], where="data")
         if len(items) != expected_items:
             raise RequestRejectedError(
                 f"the pooling endpoint returned {len(items)} item(s) for {expected_items} input(s); "
@@ -368,10 +390,15 @@ class VllmPooling(AdapterBase):
             metadata = json.loads(metadata_header)
         except json.JSONDecodeError as exc:
             raise ProviderError(f"the /pooling bytes framing metadata is not valid JSON: {exc}") from exc
+        if not isinstance(metadata, dict):
+            raise ProviderError(
+                f"the /pooling bytes framing metadata is a JSON {type(metadata).__name__}, not an object: "
+                "the framing cannot be read"
+            )
         items = metadata.get("data") or []
         if any(not isinstance(item, dict) for item in items):
             raise ProviderError(f"the /pooling bytes framing metadata is incomplete: {metadata!r}")
-        items = sorted(items, key=_response_index)
+        items = _validate_indices(items, where="bytes framing")
         if len(items) != expected_items:
             raise RequestRejectedError(
                 f"the pooling endpoint framed {len(items)} item(s) for {expected_items} input(s); "
@@ -407,8 +434,19 @@ class VllmPooling(AdapterBase):
         reply cannot honestly report (a string, a dict, a null) is a malformed reply, never a reason to skip
         the check.
         """
-        if not isinstance(usage, dict) or "prompt_tokens" not in usage:
-            return
+        if usage is None:
+            return  # the bytes framing may report none at all: there is nothing to check against
+        if not isinstance(usage, dict):
+            raise ProviderError(
+                f"the /pooling reply reports a malformed usage ({usage!r}); the token counts cannot be cross-checked"
+            )
+        if "prompt_tokens" not in usage:
+            raise ProviderError(
+                f"the /pooling reply's usage names no prompt_tokens ({usage!r}); the token counts cannot be "
+                "cross-checked, and a mistyped dim would silently mis-shape every vector",
+                hint="check the endpoint config's dim against the checkpoint's late-interaction width, or "
+                "serve the checkpoint without a gateway that reshapes the usage",
+            )
         reported = usage["prompt_tokens"]
         if isinstance(reported, bool) or not isinstance(reported, int):
             raise ProviderError(
@@ -452,7 +490,9 @@ def _frame_dtype(name: Any, endianness: Any) -> np.dtype:
         )
     if endianness == "big":
         return _FRAME_DTYPES[name].newbyteorder()
-    return _FRAME_DTYPES[name]
+    if endianness in ("little", "native"):
+        return _FRAME_DTYPES[name]
+    raise ProviderError(f"the /pooling frame names endianness {endianness!r}; the adapter reads little, native or big")
 
 
 __all__ = ["VllmPooling"]

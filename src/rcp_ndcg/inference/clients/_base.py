@@ -1,4 +1,4 @@
-"""The role-client base: the one class every role client derives from (R5, R14, R15).
+"""The role-client base: the one class every role client derives from.
 
 Three role clients built in parallel answered the same questions three ways -- how credentials are
 resolved, how a synchronous caller reaches asyncio, how a client closes, where a hosted profile's base
@@ -9,18 +9,18 @@ URL comes from. This base answers each once:
 * **the hosted profile's default base URL** -- the config's ``base_url``, else the adapter's
   ``DEFAULT_BASE_URL``; a config with neither is refused;
 * **the transport** -- built from the resolved config (with the adapter profile's
-  :class:`~rcp_ndcg.inference.transport.AuthProfile`, so the key resolution lives in the transport, R6)
+  :class:`~rcp_ndcg.inference.transport.AuthProfile`, so the key resolution lives in the transport)
   unless the caller supplies a :class:`~rcp_ndcg.inference.transport.Sender`;
 * **the sync bridge, one rule** -- the sender's ``run``: a :class:`~rcp_ndcg.inference.transport.Transport`
   always has it, and any other sender must provide ``run`` (or the constructor raises a ``ConfigError``).
   Chosen over an ``asyncio.run`` fallback: a fresh loop per call would give a non-transport sender no pool
   reuse and would fail inside a running loop (a notebook), where ``Transport.run`` already knows to switch
   to a background thread;
-* **the lifecycle** -- ``close()`` synchronous, ``async aclose()`` awaiting (R15), and both context
+* **the lifecycle** -- ``close()`` synchronous, ``async aclose()`` awaiting, and both context
   managers (``with`` and ``async with``);
-* **the fan-out, one rule** (R7) -- :meth:`RoleClient.gather`: :class:`asyncio.TaskGroup` semantics, so a
+* **the fan-out, one rule** -- :meth:`RoleClient.gather`: :class:`asyncio.TaskGroup` semantics, so a
   failing request cancels its siblings and leaves no task pending;
-* **the text budget and the media** (item 4) -- :class:`~rcp_ndcg.data.preprocess.TextBudget` resolved
+* **the text budget and the media** -- :class:`~rcp_ndcg.data.preprocess.TextBudget` resolved
   from the role config's fields once, the tokenizer it names loaded once, the shared
   :func:`rcp_ndcg.data.preprocess.fit` called from each client's ``_prepare``, and the media prepared per
   request through :func:`~rcp_ndcg.data.prepare.prepare_request` (tokens reserved whole, never cut).
@@ -74,9 +74,6 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 """The result type of a coroutine the fan-out runs."""
 
-C = TypeVar("C", bound=Endpoint)
-"""The role config a client serves (an :class:`~rcp_ndcg.inference.endpoint.Endpoint` subclass)."""
-
 
 class PreparedItems(NamedTuple):
     """What a role client's ``_prepare`` decided to send, aligned back to the inputs.
@@ -109,7 +106,8 @@ class RoleClient[C: Endpoint]:
     """
 
     #: The adapter role this client speaks: the registry namespace its config's ``api`` resolves in, and
-    #: the engine role of the configs it serves (F7 keeps the two vocabularies mapped in one place).
+    #: the engine role of the configs it serves (the two vocabularies are mapped in one place, in
+    #: :func:`~rcp_ndcg.inference.adapters.base.check_engine_api`).
     ROLE: ClassVar[AdapterRole]
 
     #: Whether this role's wires carry media. ``False`` (the embed role: its adapters are text-only)
@@ -180,7 +178,7 @@ class RoleClient[C: Endpoint]:
     @staticmethod
     def _resolved_endpoint(config: C, adapter: type[Any]) -> C:
         """The config as the transport and adapter receive it: the profile's public URL when ``base_url`` is
-        ``None``. The credentials are the transport's business now (R6): ``api_key_env`` is never cleared."""
+        ``None``. The credentials are the transport's business now: ``api_key_env`` is never cleared."""
         if config.base_url is not None:
             return config
         default = getattr(adapter, "DEFAULT_BASE_URL", None)
@@ -193,7 +191,7 @@ class RoleClient[C: Endpoint]:
         return config.model_copy(update={"base_url": default})
 
     def _check_use_activation(self, config: C) -> None:
-        """F10, keyed on the resolved adapter: a *served* rerank wire (one whose profile is not HOSTED)
+        """Keyed on the resolved adapter: a *served* rerank wire (one whose profile is not HOSTED)
         must be told whether its activation runs -- ``None`` would send nothing and let the engine's
         default apply, and two engines with different defaults would then share an identity. Hosted
         profiles keep ``None`` (their scale is fixed). The shipped names are refused at the config, so the
@@ -224,11 +222,12 @@ class RoleClient[C: Endpoint]:
 
     def _auth_profile(self) -> AuthProfile:
         """The credential facts of this client's config and adapter, for the transport to resolve the key
-        from (R6): the config's ``api_key_env`` names the variable when it is set (an unset named variable is
-        an error, whatever the profile's rule), else the adapter profile's variables -- but only when the
-        request goes to the profile's own default host (a variable set for one vendor must never
-        authenticate a request to a self-hosted engine or a third party, so any other ``base_url`` carries a
-        key only through an explicit ``api_key_env``); the header is always the adapter's."""
+        from the config's own rule: the config's ``api_key_env`` names the variable when it is set (an
+        unset named variable is an error, whatever the profile's rule), else the adapter profile's variables
+        -- but only when the request goes to the profile's own default host (a variable set for one vendor
+        must never authenticate a request to a self-hosted engine or a third party, so any other
+        ``base_url`` carries a key only through an explicit ``api_key_env``); the header is always the
+        adapter's."""
         named = getattr(self.config, "api_key_env", None)
         if named is not None:
             return AuthProfile(
@@ -257,7 +256,7 @@ class RoleClient[C: Endpoint]:
         if isinstance(self._sender, _TRANSPORT_CLASS):
             self._sender.set_auth(self._auth_profile())
 
-    # -- the text budget (item 4) -------------------------------------------
+    # -- the text budget ----------------------------------------------------
     def _resolve_budget(self) -> tuple[TextBudget | None, TextTokenizer | None]:
         """The client's text budget, from the role config's fields, with the tokenizer it names loaded once.
 
@@ -337,12 +336,15 @@ class RoleClient[C: Endpoint]:
                     raise CapabilityError(
                         f"{self.config.model} is not declared to read {kind} (max_{kind}: 0), but this "
                         f"request carries {count_}. Declare max_{kind} for a checkpoint that reads them, or "
-                        "drop the media parts from the corpus."
+                        "drop the media parts from the corpus.",
+                        hint=f"declare max_{kind} on the role config for a checkpoint that reads them",
                     )
                 if count_ > limit:
                     raise CapabilityError(
                         f"this request carries {count_} {kind} and the endpoint accepts {limit} per request "
-                        f"(max_{kind}). Split the request, or raise the limit on the server and here."
+                        f"(max_{kind}). Split the request, or raise the limit on the server and here.",
+                        hint=f"lower batch_size so fewer {kind} ride one request, or raise max_{kind} (and "
+                        "the server's per-request media limit with it)",
                     )
 
     def _prepare_request(self, contents: Sequence[Content], *, doc_ids: Sequence[str] | None = None) -> PreparedRequest:
@@ -695,7 +697,7 @@ class RoleClient[C: Endpoint]:
         """The reply's token report, through the adapter (``None`` when its API reports none)."""
         return self._adapter.usage(reply)
 
-    # -- the fan-out, one rule (R7) --------------------------------------------
+    # -- the fan-out, one rule ------------------------------------------------
     @staticmethod
     async def gather(tasks: list[Coroutine[Any, Any, T]]) -> list[T]:
         """Run the request coroutines concurrently, a failure cancelling the siblings: one
@@ -732,7 +734,7 @@ class RoleClient[C: Endpoint]:
             close()
 
     async def aclose(self) -> None:
-        """Close the sender asynchronously (R15): awaited on the pool's own loop. A sender with only a sync
+        """Close the sender asynchronously: awaited on the pool's own loop. A sender with only a sync
         ``close`` falls back to it; safe to call twice."""
         aclose = getattr(self._sender, "aclose", None)
         if aclose is None:

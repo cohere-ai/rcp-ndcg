@@ -324,3 +324,26 @@ class TestRefusals:
         body = {"data": [{"index": 0, "embedding": [1.0, 0.0]}, {"index": 1, "embedding": [1.0, 0.0, 0.0]}]}
         with pytest.raises(RequestRejectedError, match="differing dimension"):
             self.adapter.interpret(request(texts=("a", "b")), [reply(200, body)])
+
+
+class TestNullEmbeddingRefused:
+    """A NULL embedding (a mutation that survived the sweep's suite) is refused: one entry without usable
+    data is a refused answer, never a silent zero row the corpus would index."""
+
+    def test_a_null_embedding_is_refused(self) -> None:
+        from rcp_ndcg.errors import RequestRejectedError
+
+        reply = Reply(200, {"data": [{"index": 0, "embedding": None}]}, {})
+        with pytest.raises(RequestRejectedError, match="without"):
+            OpenAIEmbeddings().interpret(
+                EmbedRequest(contents=(Content.from_text("x"),), role=EncodeRole.DOCUMENT), [reply]
+            )
+
+    def test_a_missing_embedding_entry_is_refused(self) -> None:
+        from rcp_ndcg.errors import RequestRejectedError
+
+        reply = Reply(200, {"data": [{"index": 0}]}, {})
+        with pytest.raises(RequestRejectedError, match="embedding"):
+            OpenAIEmbeddings().interpret(
+                EmbedRequest(contents=(Content.from_text("x"),), role=EncodeRole.DOCUMENT), [reply]
+            )

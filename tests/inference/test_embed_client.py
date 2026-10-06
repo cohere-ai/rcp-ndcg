@@ -183,10 +183,18 @@ class TestBatching:
         client.encode(texts(*"abcd"), EncodeRole.DOCUMENT, batch_size=2)
         assert [len(call.json["input"]) for call in sender.calls] == [2, 2]
 
-        with pytest.raises(ConfigError, match="at most 128"):
-            client.encode(texts(*"abcd"), EncodeRole.DOCUMENT, batch_size=129)
+        # The hosted cap is a HOSTED fact: a served engine answers its own over-count batch (HTTP 413 ->
+        # CapabilityError naming batch_size), so a stale client-side 128 never fires here.
+        client.encode(texts(*"abcde"), EncodeRole.DOCUMENT, batch_size=200)
+        assert [len(call.json["input"]) for call in sender.calls][-1] == 5
         with pytest.raises(ConfigError, match="at least 1"):
             client.encode(texts(*"abcd"), EncodeRole.DOCUMENT, batch_size=0)
+
+    def test_a_hosted_profile_still_enforces_its_published_cap(self) -> None:
+        with pytest.raises(ConfigError, match="at most 96"):
+            EmbeddingClient(
+                endpoint("cohere", max_tokens=1024, batch_size=129), sender=FakeSender(handler("cohere", {}))
+            )
 
 
 class TestConcurrency:

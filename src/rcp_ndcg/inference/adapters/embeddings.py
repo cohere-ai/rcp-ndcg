@@ -288,15 +288,15 @@ class OpenAIEmbeddings(_EmbedAdapter):
 
     The body is ``{"model", "input": [texts], "encoding_format": "float"}`` plus ``dimensions`` only when the
     config sets one; the reply is read from ``data[].embedding`` in ``data[].index`` order, as float lists or
-    base64 float32 strings. The 128-texts-per-request cap of the hosted OpenAI API is enforced client-side; a
-    served engine answers an over-count batch with its own refusal (TEI's HTTP 413), which maps to a
+    base64 float32 strings. The hosted OpenAI cap is enforced for HOSTED use of this shape only: a served
+    engine answers an over-count batch with its own refusal (TEI's HTTP 413), which maps to a
     :class:`~rcp_ndcg.errors.CapabilityError` naming ``batch_size``.
     """
 
     name: ClassVar[str] = "openai_embeddings"
 
-    #: The hosted OpenAI API's published cap (128 texts per request); a served engine's own cap answers
-    #: HTTP 413 and is mapped like any other.
+    #: The hosted OpenAI API's published cap; only enforced when this profile is used HOSTED (a served
+    #: engine's own cap answers HTTP 413 and is mapped like any other).
     MAX_BATCH: ClassVar[int | None] = 128
     DEFAULT_BASE_URL: ClassVar[str | None] = "https://api.openai.com/v1"
     HOSTED: ClassVar[bool] = False  # the served engines speak this shape; the key stays optional

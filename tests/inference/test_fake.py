@@ -235,3 +235,68 @@ class TestModelsAndRoutes:
         assert fake_uniform("a", 1) == fake_uniform("a", 1)
         assert fake_uniform("a", 1) != fake_uniform("a", 2)
         assert 0.0 <= fake_uniform("anything") < 1.0
+
+
+class TestFakeWireFidelity:
+    """The fake speaks the wire shapes it claims to: a usage's total matches its prompt, a rerank document
+    keyed by ``id`` draws that document's ability, and /pooling honours the request's endianness."""
+
+    def test_the_embeddings_usage_reports_total_equals_prompt(self) -> None:
+        import httpx
+
+        from rcp_ndcg.inference.fake import fake_transport
+
+        transport = fake_transport("fake://embed?dim=8", model="m")
+        response = transport.handler(
+            httpx.Request("POST", "fake://embed/embeddings?dim=8", json={"model": "m", "input": ["one two three"]})
+        )
+        usage = response.json()["usage"]
+        assert usage["total_tokens"] == usage["prompt_tokens"], "real engines report total == prompt"
+        assert usage["prompt_tokens"] > 0
+
+    def test_a_rerank_document_keyed_by_id_scores_that_document(self) -> None:
+        import httpx
+
+        from rcp_ndcg.inference.fake import fake_transport
+
+        transport = fake_transport("fake://rerank?dim=8", model="m")
+        plain = transport.handler(
+            httpx.Request("POST", "fake://rerank/rerank?dim=8", json={"model": "m", "query": "q", "documents": ["d1"]})
+        ).json()["results"][0]["relevance_score"]
+        keyed = transport.handler(
+            httpx.Request(
+                "POST", "fake://rerank/rerank?dim=8", json={"model": "m", "query": "q", "documents": [{"id": "d1"}]}
+            )
+        ).json()["results"][0]["relevance_score"]
+        assert keyed == plain, "the id key draws the same hidden ability the text would"
+
+    def test_the_pooling_frames_are_byte_swapped_for_a_big_request(self) -> None:
+        import base64
+
+        import httpx
+        import numpy as np
+
+        from rcp_ndcg.inference.fake import fake_transport
+
+        transport = fake_transport("fake://pool?dim=2", model="m")
+
+        def frame(endianness: str) -> bytes:
+            response = transport.handler(
+                httpx.Request(
+                    "POST",
+                    "fake://pool/pooling?dim=2",
+                    json={
+                        "task": "token_embed",
+                        "encoding_format": "base64",
+                        "embed_dtype": "float32",
+                        "endianness": endianness,
+                        "model": "m",
+                        "input": ["hello"],
+                    },
+                )
+            )
+            return base64.b64decode(response.json()["data"][0]["data"])
+
+        little = np.frombuffer(frame("little"), dtype="<f4")
+        big = np.frombuffer(frame("big"), dtype=">f4")
+        assert little.size > 0 and np.allclose(little, big), "the fake honours the request's endianness"

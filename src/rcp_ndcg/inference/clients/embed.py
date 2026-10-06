@@ -51,9 +51,15 @@ def _profile(adapter: type[Any], attribute: str, default: Any) -> Any:
 
 
 def _check_batch_size(adapter: type[Any], size: int) -> None:
-    """Refuse a request size above the profile's published cap, instead of silently capping it."""
+    """Refuse a request size above the profile's published cap, instead of silently capping it.
+
+    The cap is a HOSTED profile's own fact: a served engine (vLLM, SGLang, TEI, Infinity -- the
+    ``openai_embeddings`` shape) answers an over-count batch with its own refusal, which the adapter maps to
+    a typed :class:`~rcp_ndcg.errors.CapabilityError` naming ``batch_size`` -- a stale client-side cap must
+    not refuse a batch the engine would serve.
+    """
     max_batch = _profile(adapter, "MAX_BATCH", None)
-    if max_batch is not None and size > max_batch:
+    if max_batch is not None and getattr(adapter, "HOSTED", False) and size > max_batch:
         raise ConfigError(
             f"the {getattr(adapter, 'name', '?')} embedding API takes at most {max_batch} texts per request; "
             f"batch_size is {size}",
