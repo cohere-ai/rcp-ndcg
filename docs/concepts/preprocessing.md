@@ -475,7 +475,9 @@ send one prepared image, count its prompt exactly (`content_media_tokens` plus t
 request carries), and compare the engine's `usage.prompt_tokens` against it. A returned mismatch
 (`EngineMediaMismatch`) says the served engine's media handling is not what the counted tokens describe -- a
 reconfigured engine or a mis-declared `image_processor` -- and every later count is suspect: record or raise
-it instead of judging around it. The runtime call site (a serving recipe's startup check) is a later lane's.
+it instead of judging around it. The runtime call site is wired: a role client with an `image_processor`
+exposes `probe()` and `check_engine_media()` -- the startup probe sends one prepared probe image and refuses
+on a mismatch; a reply without usage is recorded `not_checked` (never silent).
 
 ## Identity
 
