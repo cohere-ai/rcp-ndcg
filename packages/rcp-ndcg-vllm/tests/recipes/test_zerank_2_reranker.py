@@ -371,6 +371,33 @@ def test_reference_cli_renders_the_anchor_preserving_prompt_and_refuses_embed(
     assert "reranker" in (refused.stderr + refused.stdout)
 
 
+@pytest.mark.usefixtures("zerank_tokenizer")
+def test_reference_cli_reports_a_missing_local_tokenizer(tmp_path: Path) -> None:
+    """A local tokenizer spec whose file is absent is refused with the missing-file message, not
+    with a Hub download attempt of a path-shaped repo id."""
+    missing = tmp_path / "absent.json"
+    pairs_path = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(RECIPE_DIR / "reference.py"),
+            "--mode",
+            "render",
+            "--pairs",
+            str(pairs_path),
+            "--out",
+            str(tmp_path / "out.json"),
+            "--tokenizer",
+            str(missing),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert completed.returncode != 0
+    assert f"no tokenizer file at {missing}" in completed.stderr + completed.stdout
+
+
 # -----------------------------------------------------------------------------------------------
 # The mutation: dropping the template's trailing anchor segment turns the anchor check red.
 # -----------------------------------------------------------------------------------------------

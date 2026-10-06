@@ -72,25 +72,29 @@ ADD_SPECIAL_TOKENS = True
 # -------------------------------------------------------------------------------------------
 
 
-def _split_spec(spec: str) -> tuple[str, str | None]:
-    """``org/model@<revision>`` -> (repo, revision); a local path passes through with no revision.
-
-    The same resolution rule as the product's ``rcp_ndcg.data.tokenizer._local_path``: a path is
-    anything that exists, is absolute or relative, or ends in ``.json``.
-    """
+def _split_spec(spec: str) -> tuple[str, str | None, bool]:
+    """``org/model@<revision>`` -> (repo, revision, is_path); a local path passes through with no
+    revision. The same resolution rule as the product's ``rcp_ndcg.data.tokenizer._local_path``:
+    a path is anything that exists, is absolute or relative, or ends in ``.json``."""
     if spec.startswith(("/", "./", "../", "~")) or spec.endswith(".json") or Path(spec).exists():
-        return spec, None
+        return spec, None, True
     repo, _, revision = spec.partition("@")
-    return repo, revision or None
+    return repo, revision or None, False
 
 
 def _tokenizer_file(spec: str) -> Path:
-    """The tokenizer.json file ``spec`` names: a local path as given, else downloaded from the Hub."""
-    path, revision = _split_spec(spec)
+    """The tokenizer.json file ``spec`` names: a local path as given, else downloaded from the Hub.
+
+    A spec that names a local file (the product's path rule) but exists nowhere is refused with the
+    missing-file message -- never a Hub download attempt of a path-shaped repository id.
+    """
+    path, revision, is_path = _split_spec(spec)
     candidate = Path(path).expanduser()
     file = candidate / TOKENIZER_FILE if candidate.is_dir() else candidate
     if file.is_file():
         return file
+    if is_path:
+        raise SystemExit(f"no tokenizer file at {file}")
     from huggingface_hub import hf_hub_download
 
     return Path(hf_hub_download(path, TOKENIZER_FILE, revision=revision))
@@ -272,7 +276,7 @@ class ZerankReference:
     def load(self, device: str | None = None, *, tokenizer_spec: str = f"{REPO}@{REVISION}") -> ZerankReference:
         """Load the checkpoint the way the paper's ``ZerankRerank.__init__`` does (torch + transformers)."""
         torch, automodel, autotokenizer = _reference_stack()
-        repo, revision = _split_spec(tokenizer_spec)
+        repo, revision, _ = _split_spec(tokenizer_spec)
         self.tokenizer = autotokenizer.from_pretrained(repo, padding_side="right", revision=revision)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
