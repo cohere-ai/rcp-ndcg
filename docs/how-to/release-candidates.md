@@ -100,22 +100,24 @@ RC. It fails fast with a one-line reason at the first failure and writes one JSO
    python `gcsfs` helper — the image ships neither CLI).
 3. **bootstrap** — the three environments, and the engine's `pip freeze` unchanged (no plugin in
    wave 0).
-4. **uploads** — every report/log upload attempt, with its source, destination and error: a failed
-   upload is never silent.
-5. **reach** — the Hub with the token secret (a metadata call; the reply's commit must be the pinned
+4. **reach** — the Hub with the token secret (a metadata call; the reply's commit must be the pinned
    revision) and a `gs://` write/list/read/delete round-trip through `rcp_ndcg.storage` from the client
    environment. PyPI is not required.
-6. **engines** — `vllm serve Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3` on one
+5. **engines** — `vllm serve Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3` on one
    slot and a small second model on another, **at the same time**, each slot with its own
    `CUDA_VISIBLE_DEVICES`, HTTP port, `VLLM_PORT`, `TMPDIR` and log directory: both must answer their
    own model names, or the slots collide.
-7. **embed** — from the client environment, the product's `fit()` under an explicit budget and the
-   product's embedding client over 20 texts (5 of them over the budget, cut by the product); the
+6. **embed** — from the client environment, the product's wired `EmbeddingClient` (the config's
+   budget, fitted inside the client) over 20 texts (5 of them over the budget, cut by the product); the
    engine's `/tokenize` of every rendered input must equal the product's token ids (the engine is the
    tokenization truth), recorded per input.
-8. **evict** — the models out of the HF cache, the free disk before and after (the engine may still
+7. **evict** — the models out of the HF cache, the free disk before and after (the engine may still
    hold the weights mapped, so the stop step re-measures).
-9. **stop** — both engines' process groups stopped, then no engine process left on the node.
+8. **stop** — both engines' process groups stopped, then no engine process left on the node.
+9. **uploads** — every report/log upload attempt, with its source, destination and error: a failed
+    upload is never silent. The logs go up first so their records reach the uploaded report; the
+    report's own final copy is the one attempt that cannot appear in the artifact (the stdout emit
+    carries the complete record).
 
 Run it through `submit.sh` (which mounts `wave0.sh` beside `bootstrap.sh`), or as the plain
 `kjobs-go submit` line it prints — the exact command, with `KJOBS=echo` showing the overrides:

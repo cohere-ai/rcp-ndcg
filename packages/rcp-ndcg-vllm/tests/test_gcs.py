@@ -145,6 +145,87 @@ def test_gcs_cli_fails_with_one_line(
 # --- the shell dispatch: the auth script runs first, then gcloud | gsutil | the python path -----------
 
 
+def test_gcs_cp_remote_directory_download_through_the_real_dispatch(tmp_path: Path) -> None:
+    """A gs:// prefix source takes the contents form on the CLI path (the stage download's shape).
+
+    The dispatch probes the listing: a prefix with children goes to `cp -r SRC/* DST` (contents), a
+    single object to `cp SRC DST`. The fake gcloud records the argv, so the regression this test pins
+    (a gs:// source silently losing the recursive form, which broke the stage download) cannot return.
+    """
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log = tmp_path / "gcloud-dir.log"
+    fake_gcloud = bin_dir / "gcloud"
+    fake_gcloud.write_text(
+        "#!/usr/bin/env bash\n"
+        f'printf "%s\\n" "$*" >>"{log}"\n'
+        'if [[ "$2" == "ls" ]]; then echo "${3%/}/"; exit 0; fi\n'  # a prefix listing: the prefix itself
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    fake_gcloud.chmod(0o755)
+    dst = tmp_path / "state" / "stage"
+    dst.mkdir(parents=True)
+    completed = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$1" && export GCS_PY="$(command -v python3)" GCS_TOOLS_DIR="$2" '
+            'GCS_HELPER_PY="$3" GCS_WHEELHOUSE="" && gcs_cp "$4" "$5/" dir',
+            "bash",
+            str(GCS_SH),
+            str(tmp_path / "gcs-tools"),
+            str(GCS_PY),
+            "gs://YOUR-BUCKET/rc0",
+            str(dst),
+        ],
+        capture_output=True,
+        text=True,
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path)},
+    )
+    assert completed.returncode == 0, completed.stderr
+    calls = log.read_text(encoding="utf-8")
+    assert "storage cp -r" in calls  # the remote directory went through the recursive contents form
+    assert "gs://YOUR-BUCKET/rc0/*" in calls  # the contents wildcard, expanded by the service
+
+
+def test_gcs_cp_remote_single_object_takes_the_file_branch(tmp_path: Path) -> None:
+    """A gs:// source that lists as exactly one object copies as a file (no -r, no wildcard)."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log = tmp_path / "gcloud-file.log"
+    fake_gcloud = bin_dir / "gcloud"
+    fake_gcloud.write_text(
+        "#!/usr/bin/env bash\n"
+        f'printf "%s\\n" "$*" >>"{log}"\n'
+        'if [[ "$2" == "ls" ]]; then echo "${3%/}"; exit 0; fi\n'  # the object itself, no trailing slash
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    fake_gcloud.chmod(0o755)
+    completed = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$1" && export GCS_PY="$(command -v python3)" GCS_TOOLS_DIR="$2" '
+            'GCS_HELPER_PY="$3" GCS_WHEELHOUSE="" && gcs_cp "$4" "$5" file',
+            "bash",
+            str(GCS_SH),
+            str(tmp_path / "gcs-tools"),
+            str(GCS_PY),
+            "gs://YOUR-BUCKET/rc0/manifest.json",
+            str(tmp_path / "out" / "manifest.json"),
+        ],
+        capture_output=True,
+        text=True,
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path)},
+    )
+    assert completed.returncode == 0, completed.stderr
+    calls = log.read_text(encoding="utf-8")
+    assert "storage cp -r" not in calls  # the file branch, no -r
+    assert "storage cp " in calls
+
+
 def _fake_tools(tmp_path: Path) -> dict[str, Path]:
     """A bin dir whose python3 logs its argv (the simulated python transfer path)."""
     bin_dir = tmp_path / "bin"

@@ -12,10 +12,9 @@ dictionaries for the report (every number with its referent).
 - Stage 2 sends through the product's role clients
   (:class:`~rcp_ndcg.inference.clients.EmbeddingClient`, ``PoolingClient``, ``RerankClient``) built from
   :func:`~rcp_ndcg_vllm.recipe.client_config`, and compares against the reference subprocess's ``score``/
-  ``embed`` output.  The product's clients on this branch refuse a budget (the wiring lands in
-  ``clients-final``), so the harness pre-fits with the product's ``fit`` and sends the fitted contents through
-  a client whose budget fields are cleared — the wire path, the adapter and the interpretation are the
-  product's.
+  ``embed`` output.  Every input is fitted first with the product's ``fit`` (the wired role clients
+  make the same call inside their ``encode``) and the fitted contents go through the product's adapter
+  and transport — the wire path, the adapter and the interpretation are the product's.
 """
 
 from __future__ import annotations
@@ -454,11 +453,11 @@ def stage2_scores(
     The engine is talked to through the product's transport and adapter (the product's wire path): the
     adapter builds the :class:`~rcp_ndcg.inference.types.Call` objects, the product's
     :class:`~rcp_ndcg.inference.transport.Transport` sends them, and the adapter interprets the replies.
-    The product's clients on this branch refuse a budget (the wiring lands in ``clients-final``), so the
-    harness pre-fits every input with the product's ``fit`` and sends the fitted contents through the product's
-    adapter and transport directly; when the wiring lands, stage 2 uses the product's role clients with the
-    config's own budget.  The reference runs as a subprocess in its own environment (``--reference-python``,
-    required); the harness process imports no torch.
+    Every input is fitted first with the product's ``fit`` (the wired role clients make the same call
+    inside their ``encode``).
+    Every input is fitted first with the product's ``fit`` (the wired role clients make the same call
+    inside their ``encode``).  The reference runs as a subprocess in its own environment
+    (``--reference-python``); the harness process imports no torch.
     """
     rows = load_pairs(pairs_path)
     reference = _reference_outputs(recipe, reference_python, rows, device=device)

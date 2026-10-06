@@ -179,7 +179,7 @@ fetch_stage() { # fetch_stage SRC_URI DST: copy the staged RC's contents into DS
   local src="${1%/}" dst="$2"
   [[ ! -e "$dst" ]] || { echo "bootstrap: $dst already exists" >&2; return 1; }
   mkdir -p "$dst"
-  gcs_cp "$src" "$dst/"
+  gcs_cp "$src" "$dst/" dir
 }
 
 STAGE="${STAGE_URI#gs://}"

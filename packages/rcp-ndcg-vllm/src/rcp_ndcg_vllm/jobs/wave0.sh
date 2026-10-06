@@ -172,9 +172,10 @@ upload() { # upload LOCAL REMOTE: one copy through the transfer dispatch; a fail
 }
 
 upload_artifacts() {
+  # The logs go up first; their attempt records are merged into the report BEFORE the report itself is
+  # uploaded, so the durable artifact carries every failed upload except the artifact's own final copy
+  # (the stdout emit always carries the complete record).
   : >"$WORK/uploads.jsonl"
-  upload "$REPORT" "${OUT_URI%/}/wave0-report.json"
-  upload "$REPORT" "${RC_STAGE_URI%/}/reports/wave0-report-$STAMP.json"
   if [[ -d "$WORK/logs" ]]; then
     upload "$WORK/logs" "${OUT_URI%/}/logs/"
   fi
@@ -183,6 +184,8 @@ upload_artifacts() {
 entries = [json.loads(line) for line in open(sys.argv[1], encoding="utf-8") if line.strip()]
 print(json.dumps(entries, indent=2))' "$WORK/uploads.jsonl"
   ) >/dev/null
+  upload "$REPORT" "${OUT_URI%/}/wave0-report.json"
+  upload "$REPORT" "${RC_STAGE_URI%/}/reports/wave0-report-$STAMP.json"
 }
 
 stop_engines() { # the bash fallback the EXIT trap runs; the probe's engines-stop is the real one
