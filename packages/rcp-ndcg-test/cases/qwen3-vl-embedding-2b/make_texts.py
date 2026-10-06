@@ -321,10 +321,11 @@ def main() -> None:
                 *expected_block(),
                 *notes_block(
                     f"Generated long_over cell in the mixed modality: a 1700x2200 page image plus a long "
-                    f"text. Text content = {count - fixed} content tokens (prompt text span {count} "
-                    f"with the frame); the image adds ~1776 image-pad tokens at the recipe's pixel budget "
-                    f"(research-measured for 1700x2200 with images_kwargs max_pixels 1843200; 1240 at the "
-                    f"checkpoint default - both totals exceed {MAX_TOKENS}). The text span must cut "
+                    f"text. Seeded generator (random.Random({SEED + 20}), same construction as "
+                    f"text-long-under). Text content = {count - fixed} content tokens (prompt text span "
+                    f"{count} with the frame); the image adds ~1776 image-pad tokens at the recipe's pixel "
+                    f"budget (research-measured for 1700x2200 with images_kwargs max_pixels 1843200; 1240 "
+                    f"at the checkpoint default - both totals exceed {MAX_TOKENS}). The text span must cut "
                     f"around the intact image pads and the anchor: last must survive. Media: synthetic "
                     f"(media/make_media.py), no third-party material. Wave: send the image through the "
                     f"chat-messages shape (image_url part); request_shape text covers text-only frames."

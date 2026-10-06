@@ -56,6 +56,7 @@ notes: >-
   LLM.embed route with trust_remote_code=true (inert: config.json has no auto_map) and no
   images_kwargs pixel override (immaterial here: the demo image is far below the 1.31 Mpx default
   cap). No ranking is derived from the card's other matrices: the printed d2/d3 gaps go down to
-  2e-4 and the stand-in media changes the image-doc scores wholesale. The GPU wave may run the
-  inputs through the served engine as a cross-runtime sanity check (chat-messages shape for the
-  image doc; research report section 3).
+  2e-4 and the stand-in media changes the image-doc scores wholesale. CPU reproduction declined:
+  2B parameters exceeds the 1B CPU cap (brief rule 3). The GPU wave may run the inputs through the
+  served engine as a cross-runtime sanity check (chat-messages shape for the image doc; research
+  report section 3).
