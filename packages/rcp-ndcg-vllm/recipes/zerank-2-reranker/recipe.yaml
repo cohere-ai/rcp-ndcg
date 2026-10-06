@@ -91,7 +91,9 @@ sources:
     entrypoints/pooling/scoring/{protocol,io_processor,serving,api_router}.py;
     renderers/params.py get_encode_kwargs: add_special_tokens=True; registry.py:1286-1312
     architecture normalization; the score path's five v0.31.0-relevant files are byte-identical to
-    the d0d6e5f ref checkout, four differ by unrelated additions - research report r-zerank2 section 1)"
+    the d0d6e5f ref checkout, four differ by unrelated additions - research report r-zerank2
+    section 1 as corrected by audit-synth's corrections.md r-zerank2 row, which supersedes the
+    report's own section-1 wording for this count)"
   - "rcp-ndcg: src/rcp_ndcg/retrieval/external_rerankers.py:231,260-262 (logit/5, expit), :188 (right
     padding), :210,211 (strip); experiments/paper/rerankers/reference/zerank.py (the paper-exact
     reference); experiments/paper/rerankers/zerank_2.yaml (the served-path config: budgets and
