@@ -306,19 +306,24 @@ The local runner runs the coordinator in this host's environment and installs no
 refused); on SLURM the option applies with a container runtime — with `container_runtime: none` the node's own
 environment provides the release, and a wheelhouse is refused.
 
-Build the wheelhouse from the RC's checkout, with the same commands the release workflow runs, then download the
-locked dependencies beside the release wheels (for the node's platform; the coordinator installs with `--no-index`,
-so the wheelhouse must carry every package, the CPU torch build included):
+`jobs/rc_build.sh` in `rcp-ndcg-vllm` does all of this in one command (build, checks, wheelhouse, stage,
+manifest) — see [Release candidates and the GPU waves](../how-to/release-candidates.md). Built by hand, the
+same commands are:
 
 ```bash
 # the release wheels, as release.yml builds them (--all-packages builds every workspace member:
 # rcp-ndcg and the rcp-ndcg-core it pins exactly; the pyproject.toml versions must match)
 uv build --all-packages --out-dir /shared/wheelhouse/0.0.1rc1
+# rcp-ndcg-vllm is outside the workspace, and every plugin wheel beside it
+uv build --out-dir /shared/wheelhouse/0.0.1rc1 packages/rcp-ndcg-vllm packages/rcp-ndcg-vllm/plugins/*
 # the locked dependencies, pinned exactly (the command the committed requirements-constraints.txt records)
 uv export --frozen --no-hashes --no-emit-workspace --no-dev --extra calibrate --extra hf --extra s3 --extra azure \
   -o /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt
 pip download -r /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
-  --dest /shared/wheelhouse/0.0.1rc1 --only-binary :all: \
+  -c /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
+  'rcp-ndcg-vllm[test]==<version>' 'rcp-ndcg[hf]==<version>' \
+  -r packages/rcp-ndcg-vllm/requirements-reference.txt \
+  --dest /shared/wheelhouse/0.0.1rc1 --find-links /shared/wheelhouse/0.0.1rc1 --only-binary :all: \
   --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
 ```
 
