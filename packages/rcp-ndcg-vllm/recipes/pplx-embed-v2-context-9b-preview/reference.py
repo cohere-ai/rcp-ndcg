@@ -34,7 +34,8 @@ Modes and outputs (written to ``--out``):
   declared shape. No cut and no limit check here: the recipe's client applies the
   declared cut policy before this reference is consulted, and the model's own
   over-limit raise (``:128-133``) fires inside its own ``prepare_inputs`` in embed
-  mode. Runs on the stdlib only, in any interpreter.
+  mode. Runs on the stdlib plus PyYAML (the recipe's declared shapes), so it runs
+  in any interpreter that has both.
 - ``embed``: ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors":
   [[...]]}]}`` -- the query's vectors and the FIRST document's vectors as flat
   lists of per-chunk (2048-d) rows, the shape the harness's stage-2 comparison

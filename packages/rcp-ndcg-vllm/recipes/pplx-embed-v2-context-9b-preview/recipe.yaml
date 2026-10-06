@@ -140,7 +140,11 @@ notes: |
   nothing). The model-side count of a document render is the engine-side count
   plus one - the [D] prefix crosses as two literal ids where the engine-side
   count keeps one special id (measured) - so the client budget is 262143: the
-  largest budget whose renders never hit the model's own raise. The client's
+  largest budget whose document renders never hit the model's own raise (the
+  delta is the document prefix's; a query render carries the same tokens on
+  both sides, and a query whose text embeds an added token splits differently
+  model-side - a pathological corpus that fails loudly at the engine, never
+  silently). The client's
   cut therefore never removes content the model itself would accept, and
   on_overflow: cut is the declared, census-recorded policy. max_model_len
   262144 reserves whole-sequence prefill (bidirectional pooling disables

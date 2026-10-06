@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -35,12 +36,16 @@ N_PAIRS = 20
 RECIPES = Path(__file__).resolve().parents[2] / "recipes" / RECIPE_ID
 
 # The lane's scratch directory (outside the checkout): the tokenizer files are
-# downloaded here once and reused. When the pinned snapshot is already cached the
-# load runs offline; a fresh machine downloads on the first run and skips cleanly
-# with no network.
-SCRATCH = Path(
-    os.environ.get("RCP_NDCG_LANE_SCRATCH", "/root/repos/rcp-ndcg-lanes/rec-pplx-embed-v2-context-9b-preview/scratch")
+# downloaded here once and reused. On this workspace the lane scratch is the
+# default; elsewhere (or via RCP_NDCG_LANE_SCRATCH) the system temp directory
+# holds the cache instead, so no machine-specific path is created. When the
+# pinned snapshot is already cached the load runs offline; a fresh machine
+# downloads on the first run and skips cleanly with no network.
+LANE_SCRATCH = Path("/root/repos/rcp-ndcg-lanes/rec-pplx-embed-v2-context-9b-preview/scratch")
+DEFAULT_SCRATCH = (
+    LANE_SCRATCH if LANE_SCRATCH.parent.is_dir() else Path(tempfile.gettempdir()) / "rcp-ndcg-pplx-recipe-scratch"
 )
+SCRATCH = Path(os.environ.get("RCP_NDCG_LANE_SCRATCH", str(DEFAULT_SCRATCH)))
 HF_CACHE = SCRATCH / "hf-cache"
 _CACHED_SNAPSHOT = HF_CACHE / f"models--perplexity-ai--{RECIPE_ID}" / "snapshots" / REVISION / "tokenizer.json"
 

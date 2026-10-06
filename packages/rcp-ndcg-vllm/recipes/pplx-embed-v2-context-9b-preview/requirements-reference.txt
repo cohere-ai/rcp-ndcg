@@ -3,7 +3,8 @@
 #   pip install -r requirements-reference.txt
 # The wave runner points --reference-python at this environment; the reference
 # subprocess runs while the engine on that slot is up and releases its memory when
-# it exits. `render` mode needs only the stdlib and runs in any interpreter.
+# it exits. `render` mode needs only the stdlib and PyYAML and runs in any
+# interpreter that has both.
 #
 # transformers >= 5.4 is the floor the remote code needs: modeling_pplx_contextual.py
 # bases PplxContextualModel on transformers.Qwen3_5Model (verified on 5.18.0).
