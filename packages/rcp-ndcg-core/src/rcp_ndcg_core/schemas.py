@@ -24,7 +24,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import datetime
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from rcp_ndcg_core._hashing import hash_payload, short
 
@@ -110,6 +110,15 @@ class QueryParams(BaseModel):
     tau: float = Field(gt=0)
     alpha: float
 
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if not (math.isfinite(self.tau) and math.isfinite(self.alpha)):
+            raise ValueError(
+                f"tau and alpha must be finite numbers (tau > 0), got tau={self.tau}, alpha={self.alpha}: "
+                "a non-finite one calibrates every ability to NaN"
+            )
+        return self
+
     def calibrated(self, theta_bt: float) -> float:
         """A Bradley-Terry ability of this query on the calibrated scale (logits)."""
         return self.tau * theta_bt + self.alpha
@@ -156,6 +165,13 @@ class DocumentEstimate(BaseModel):
     information: float
     flags: EstimateFlags = EstimateFlags()
 
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        bad = [name for name in ("theta", "se", "information") if not math.isfinite(getattr(self, name))]
+        if bad:
+            raise ValueError(f"estimate {bad[0]} must be a finite number, got {getattr(self, bad[0])!r}")
+        return self
+
 
 class Placement(BaseModel):
     """One document shown in one judged window.
@@ -176,6 +192,16 @@ class Placement(BaseModel):
     chunk_id: str | None = None
     score: float | None = None
     criteria: dict[str, int] | None = None
+
+    @field_validator("score")
+    @classmethod
+    def _finite_score(cls, value: float | None) -> float | None:
+        if value is not None and not math.isfinite(value):
+            raise ValueError(
+                f"score must be a finite number (the judge's stated scale, -5 to 5), got {value!r}: "
+                "a NaN score would flow into the fits as a valid window and NaN them"
+            )
+        return value
 
     @property
     def unit_id(self) -> str:
@@ -343,6 +369,11 @@ class Judgement(BaseModel):
 
     @model_validator(mode="after")
     def _check(self) -> Self:
+        if self.recorded_at.tzinfo is None or self.recorded_at.tzinfo.utcoffset(self.recorded_at) is None:
+            raise ValueError(
+                "recorded_at must be timezone-aware (the store and supersedes order windows by it "
+                "across hosts; a naive datetime cannot be compared with an aware one)"
+            )
         if not self.valid:
             if not self.invalid_reason or self.invalid_category is None:
                 raise ValueError("an invalid judgement must say why (invalid_reason and invalid_category)")
