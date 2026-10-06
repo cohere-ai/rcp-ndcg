@@ -17,7 +17,7 @@ from rcp_ndcg.runs.config import RunConfig
 from rcp_ndcg.runs.pipeline import Pipeline
 
 READ_ONLY = {
-    "describe", "schema_show", "data_inspect", "eval_score", "eval_compare", "eval_explain", "calibration_show",
+    "describe", "schema_show", "data_inspect", "eval_compare", "eval_explain", "calibration_show",
     "run_list", "run_show", "run_status",
 }  # fmt: skip
 
@@ -55,16 +55,27 @@ def test_the_read_only_tools_mirror_their_commands() -> None:
     tools = {tool["name"]: tool for tool in manifest["tools"]}
     specs = command_specs()
 
-    assert set(tools) == READ_ONLY | {"run_cancel", "estimate", "run_start"}
+    assert set(tools) == READ_ONLY | {"eval_score", "run_cancel", "estimate", "run_start"}
     for tool in tools.values():
         spec = specs[tool["_meta"]["x-cli-command"]]
         assert set(tool["inputSchema"]["properties"]) <= set(spec.request.model_fields)
     assert all(tools[name]["annotations"] == {"readOnlyHint": True, "destructiveHint": False} for name in READ_ONLY)
+    assert tools["eval_score"]["annotations"] == {"readOnlyHint": False, "destructiveHint": False}
     assert tools["run_cancel"]["annotations"] == {"readOnlyHint": False, "destructiveHint": True}
     assert tools["estimate"]["inputSchema"]["required"] == ["config"]
     assert tools["describe"]["inputSchema"]["properties"] == {}
     assert tools["run_show"]["inputSchema"]["required"] == ["run"]
     assert tools["run_list"]["outputSchema"]["x-rcp-ndcg-schema"] == "rcp-ndcg.run-list.v1"
+
+
+def test_eval_score_writes_out_so_it_is_not_read_only() -> None:
+    """`eval_score` takes `out` and overwrites it with the full report: its readOnlyHint is false, so an agent
+    client knows the call leaves an artifact behind."""
+    manifest = mcp.tool_manifest().model_dump(mode="json", by_alias=True)["tools"]
+    (score,) = [tool for tool in manifest if tool["name"] == "eval_score"]
+
+    assert score["annotations"] == {"readOnlyHint": False, "destructiveHint": False}
+    assert "out" in score["inputSchema"]["properties"]
 
 
 def test_a_call_returns_structured_content(run_dir: Path) -> None:
@@ -143,7 +154,7 @@ def test_the_builtin_loop_speaks_json_rpc(run_dir: Path, monkeypatch: pytest.Mon
     responses = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
     assert [response["id"] for response in responses] == [1, 2, 3, 4]
     assert responses[0]["result"]["serverInfo"]["name"] == "rcp-ndcg"
-    assert len(responses[1]["result"]["tools"]) == len(READ_ONLY) + 3
+    assert len(responses[1]["result"]["tools"]) == len(READ_ONLY) + 4
     assert responses[2]["result"]["isError"] is True
     assert responses[2]["result"]["structuredContent"]["code"] == "MISSING_INPUT"
     assert responses[3]["error"]["code"] == -32601

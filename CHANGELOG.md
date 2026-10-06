@@ -434,6 +434,17 @@ released together.
 
 ### Fixed
 
+- The `eval_score` MCP tool no longer claims `readOnlyHint: true`: it takes `out` and overwrites that path with
+  the full report, so the machine-readable contract now says the call leaves an artifact behind
+  (`readOnlyHint: false`). The false claim was pinned by the test suite, the skill text and the release notes;
+  all three follow the annotation.
+- `rcp-ndcg mcp serve` survives a malformed `tools/call`: arguments that are not a JSON object (a string, a
+  list, a number — the falsy ones included, which were silently coerced to `{}`) are answered as JSON-RPC
+  invalid params (`-32602`) or a typed `USAGE` tool error instead of killing the stdio loop, a request body
+  that is not an object is answered as `-32600`, and a failure raised inside the server is answered as
+  `-32603` — the next request is answered either way. `call_tool()` refuses non-object arguments the same way
+  for its direct (Python and SDK) callers.
+
 - `run status`, `run list` and `run show` no longer fail when they read a running job's judgement store while
   the job claims or reports a stage: the store's `identity.json` is written through a temp file and renamed (as
   the run manifest's save is) instead of rewritten in place, so a concurrent reader sees the old or the new

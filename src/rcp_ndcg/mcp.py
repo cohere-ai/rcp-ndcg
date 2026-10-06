@@ -66,6 +66,7 @@ TOOLS: tuple[Tool, ...] = (
     Tool(
         "eval_score",
         "eval score",
+        read_only=False,  # it overwrites `out` with the full report when given
         inputs=(
             "rankings",
             "suite",
