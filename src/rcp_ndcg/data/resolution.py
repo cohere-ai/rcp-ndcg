@@ -372,7 +372,8 @@ class ImagePolicy(BaseModel):
             raise ConfigError(
                 f"the image policy names the {self.processor} processor, but the judge's image_processor is "
                 f"{processor}",
-                hint="leave preprocessing.image.processor unset: the judge config decides it",
+                hint="leave the policy's own processor unset: the judge's image_processor (the role configs' "
+                "image_processor field) decides it",
             )
         chosen = self.processor or processor
         if chosen is not None and self.min_px is not None and self.max_px is not None:
@@ -381,8 +382,9 @@ class ImagePolicy(BaseModel):
                 geometry = PROCESSORS[chosen]
                 raise ConfigError(
                     problem,
-                    hint=f"e.g. preprocessing.image: {{min_px: {geometry.min_pixels}, max_px: "
-                    f"{min(geometry.max_pixels, 1280 * geometry.factor**2)}}}",
+                    hint=f"e.g. the image policy's pixel budget: {{min_px: {geometry.min_pixels}, max_px: "
+                    f"{min(geometry.max_pixels, 1280 * geometry.factor**2)}}} (the judge declares it under "
+                    "preprocessing.image, a role config as image_policy)",
                 )
         return self.model_copy(update={"processor": chosen})
 
@@ -432,13 +434,14 @@ class ImagePolicy(BaseModel):
         if self.is_native:
             raise ConfigError(
                 f"Cannot {what} for a native-size image policy: the processor decides the geometry.",
-                hint="declare a pixel budget (preprocessing.image: {min_px, max_px}) to get an estimate",
+                hint="declare a pixel budget -- the judge's preprocessing.image or a role config's "
+                "image_policy: {min_px, max_px} -- to get an estimate",
             )
         if self.processor is None:
             raise ConfigError(
-                f"Cannot {what}: the judge declares no image_processor, so images are sent unchanged and the "
+                f"Cannot {what}: the config declares no image_processor, so images are sent unchanged and the "
                 "engine's processor decides their geometry.",
-                hint=f"set image_processor in the judge config (one of {', '.join(PROCESSORS)})",
+                hint=f"set image_processor on the config (one of {', '.join(PROCESSORS)})",
             )
         return PROCESSORS[self.processor].factor
 

@@ -1114,25 +1114,18 @@ class _ChunkScoreSender(RecordingSender):
 class TestVideoContainerFit:
     """A ``wire: video_url`` container is one prepared item: the media fit decides it whole (shrink does
     not apply to a container), and ``apply_media_fit`` consumes its decision -- a drop removes the part,
-    a keep rides as prepared."""
+    a keep rides as prepared.
+
+    The fit machinery is policy-independent, so these tests build the policies directly: the retrieval
+    role configs refuse ``wire: video_url`` (only a chat judge inlines a container), and the judge's
+    ``preprocessing.video`` is what still carries it."""
 
     @staticmethod
-    def _rerank_client(sender: Any, *, max_tokens: int) -> RerankClient:
-        return RerankClient(
-            RerankEndpoint(
-                base_url="http://127.0.0.1:9000/v1",
-                model="m",
-                tokenizer=str(SESSION_TOKENIZER),
-                max_tokens=max_tokens,
-                on_overflow="cut",
-                use_activation=False,
-                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
-                image_processor="qwen2_vl",
-                max_images=2,
-                video_policy={"num_frames": 4, "wire": "video_url", "engine_video_pinning": True},
-                max_videos=2,
-            ),
-            sender=sender,
+    def _policies() -> tuple[ImagePolicy, Any]:
+        from rcp_ndcg.data.resolution import VideoPolicy
+
+        return ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl"), VideoPolicy(
+            num_frames=4, wire="video_url", engine_video_pinning=True
         )
 
     @staticmethod
@@ -1165,8 +1158,7 @@ class TestVideoContainerFit:
 
         from rcp_ndcg.data.prepare import fit_media_to_budget, prepare_request
 
-        client = self._rerank_client(RecordingSender(), max_tokens=60)
-        image, video = client._media_policies()
+        image, video = self._policies()
         big = tmp_path / "page.png"
         PILImage.new("RGB", (900, 900), (10, 10, 200)).save(big, format="PNG")
         request = prepare_request([self._container_content(tmp_path), Content.from_image(big.as_uri())], image, video)
@@ -1178,8 +1170,7 @@ class TestVideoContainerFit:
         """A container cannot shrink: under ``cut`` the fit drops it whole, recorded under its doc_id."""
         from rcp_ndcg.data.prepare import fit_media_to_budget, prepare_request
 
-        client = self._rerank_client(RecordingSender(), max_tokens=5)
-        image, video = client._media_policies()
+        image, video = self._policies()
         request = prepare_request([self._container_content(tmp_path)], image, video)
         fit = fit_media_to_budget(request.media, image=image, video=video, text_budget_tokens=5)
         assert fit.dropped_positions == (0,) and fit.decisions == (None,)

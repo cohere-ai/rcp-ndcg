@@ -280,8 +280,10 @@ class TestRoleConfigs:
         assert identity_payload(config)["instruction"] == "fold"
 
     def test_a_listwise_reranker_refuses_a_batch_size(self) -> None:
+        from rcp_ndcg.errors import ConfigError
+
         budget = {"tokenizer": "t", "max_tokens": 8192, "use_activation": False}
-        with pytest.raises(ValidationError, match="listwise"):
+        with pytest.raises(ConfigError, match="listwise"):
             RerankEndpoint(base_url="http://a:8000/v1", model="jina-reranker-v3", listwise=True, batch_size=8, **budget)
         assert (
             RerankEndpoint(base_url="http://a:8000/v1", model="qwen3-reranker-8b", batch_size=8, **budget).batch_size
@@ -704,3 +706,110 @@ class TestDeclarations:
         assert Endpoint.IDENTITY_ROLES["api"] is FieldRole.CONTENT
         assert Endpoint.IDENTITY_ROLES["headers_env"] is FieldRole.RUNTIME
         assert Endpoint.IDENTITY_ROLES["wait_on_outage_s"] is FieldRole.RUNTIME
+
+
+class TestConfigFamilyRefusals:
+    """One error shape per config family: every policy refusal is a :class:`ConfigError` with a hint naming
+    the field to change -- never a bare ``ValueError`` pydantic wraps into a hintless ``ValidationError``
+    -- and every declared mode the wire cannot carry is refused at the config, never ignored."""
+
+    def test_instruction_system_is_refused_at_the_config(self) -> None:
+        from rcp_ndcg.errors import ConfigError
+
+        budget = {"tokenizer": "t", "max_tokens": 8192, "use_activation": False}
+        with pytest.raises(ConfigError, match="system") as caught:
+            RerankEndpoint(base_url="http://a:8000/v1", model="m", instruction="system", **budget)
+        assert "fold" in (caught.value.hint or ""), "the hint names the modes a rerank wire can carry"
+
+    def test_a_pooling_config_refuses_an_inert_dimensions(self) -> None:
+        from rcp_ndcg.errors import ConfigError
+
+        with pytest.raises(ConfigError, match="dimensions") as caught:
+            PoolingEndpoint(
+                base_url="http://a:8000/v1", model="colqwen", dim=128, dimensions=32, tokenizer="t", max_tokens=8192
+            )
+        assert "drop dimensions" in (caught.value.hint or "")
+
+    def test_a_video_url_policy_is_refused_on_a_retrieval_role(self) -> None:
+        """``wire: video_url`` on a retrieval role is a request that can never be sent (the lowerings send
+        sampled frames only); the refusal is at the config, not after the fetch and the fit."""
+        from rcp_ndcg.errors import ConfigError
+
+        with pytest.raises(ConfigError, match="video_url") as caught:
+            RerankEndpoint(
+                base_url="http://a:8000/v1",
+                model="m",
+                tokenizer="t",
+                max_tokens=8192,
+                use_activation=False,
+                video_policy={"num_frames": 4, "wire": "video_url", "engine_video_pinning": True},
+                max_videos=2,
+            )
+        assert "wire: frames" in (caught.value.hint or "")
+
+    def test_a_frames_video_policy_constructs(self) -> None:
+        config = RerankEndpoint(
+            base_url="http://a:8000/v1",
+            model="m",
+            tokenizer="t",
+            max_tokens=8192,
+            use_activation=False,
+            video_policy={"num_frames": 4, "wire": "frames"},
+            max_videos=2,
+        )
+        assert config.video_policy is not None and config.video_policy.wire == "frames"
+
+    @pytest.mark.parametrize(
+        ("kwargs", "message"),
+        [
+            ({"tokenizer": "t", "max_tokens": 1024, "on_overflow": "chunk"}, "chunk geometry"),
+            ({"tokenizer": "t", "max_tokens": 1024, "empty_doc_text": "NULL"}, "send_text"),
+        ],
+    )
+    def test_the_policy_refusals_carry_hints(self, kwargs: dict[str, Any], message: str) -> None:
+        from rcp_ndcg.errors import ConfigError
+
+        with pytest.raises(ConfigError, match=message) as caught:
+            EmbeddingEndpoint(api="cohere", model="m", **kwargs)
+        assert caught.value.hint, "a policy refusal names the next step"
+
+    def test_the_query_share_refusal_names_both_fields(self) -> None:
+        from rcp_ndcg.errors import ConfigError
+
+        with pytest.raises(ConfigError, match="query_max_tokens") as caught:
+            RerankEndpoint(
+                base_url="http://a:8000/v1",
+                model="m",
+                tokenizer="t",
+                max_tokens=100,
+                query_max_tokens=100,
+                use_activation=False,
+            )
+        assert "below max_tokens" in (caught.value.hint or "")
+
+    def test_an_unimplemented_request_shape_is_refused_at_the_config(self) -> None:
+        """One home for the refusal (the config): a declared shape no shipped wire sends would be silently
+        ignored by one of the three clients and refused by the other two."""
+        from rcp_ndcg.errors import ConfigError
+
+        for build in (
+            lambda: EmbeddingEndpoint(api="cohere", model="m", max_tokens=1024, request_shape="messages"),
+            lambda: PoolingEndpoint(
+                base_url="http://a:8000/v1",
+                model="colqwen",
+                dim=128,
+                tokenizer="t",
+                max_tokens=8192,
+                request_shape="token_ids",
+            ),
+            lambda: RerankEndpoint(
+                base_url="http://a:8000/v1",
+                model="m",
+                tokenizer="t",
+                max_tokens=8192,
+                use_activation=False,
+                request_shape="messages",
+            ),
+        ):
+            with pytest.raises(ConfigError, match="request_shape"):
+                build()

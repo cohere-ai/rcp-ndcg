@@ -64,8 +64,8 @@ class PoolingClient(RoleClient):
     Raises:
         ConfigError: ``dim`` is not set (the base64 frame of ``/pooling`` is flat and carries no shape; a
             refusal at construction keeps the GPU idle-time free, R13), ``on_overflow: chunk`` is declared
-            (vector roles do not pool chunks), ``request_shape`` is declared but the wire sends text,
-            ``batch_size < 1``, or ``api`` names no adapter of the multi_vector role.
+            (vector roles do not pool chunks), ``batch_size < 1``, or ``api`` names no adapter of the
+            multi_vector role.
     """
 
     ROLE = "multi_vector"
@@ -92,12 +92,6 @@ class PoolingClient(RoleClient):
                 "aggregation would be reinterpreted, so it is refused instead",
                 hint="use on_overflow: cut (the content is cut to the budget), or chunk the corpus at load "
                 "(the retrieval index keeps one slice per chunk)",
-            )
-        if config.request_shape != "text":
-            raise ConfigError(
-                f"request_shape {config.request_shape!r} is declared, but this wire sends rendered text",
-                hint="the adapters implement text today; drop request_shape (the default) until the "
-                "messages and token_ids routes land",
             )
         super().__init__(config, sender=sender, census=census, media_census=media_census)
         self._adapter: Adapter[PoolRequest, Embeddings] = self._adapter_cls()

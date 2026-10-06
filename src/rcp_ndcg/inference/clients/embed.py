@@ -77,8 +77,7 @@ class EmbeddingClient(RoleClient):
     Raises:
         ConfigError: ``api`` names no registered adapter of the embed role (the hint lists that role's
             names), ``batch_size`` exceeds the profile's cap, ``dimensions`` is set on a profile that takes
-            none, ``request_shape`` is declared but the wire sends text, or ``on_overflow: chunk`` is
-            declared (vector roles do not pool chunks).
+            none, or ``on_overflow: chunk`` is declared (vector roles do not pool chunks).
     """
 
     ROLE = "embed"
@@ -108,19 +107,8 @@ class EmbeddingClient(RoleClient):
                 hint="use on_overflow: cut (the content is cut to the budget), or chunk the corpus at load "
                 "(the retrieval index keeps one slice per chunk)",
             )
-        self._refuse_an_unimplemented_request_shape(config)
         super().__init__(config, sender=sender, census=census, media_census=media_census)
         self._adapter: Any = self._adapter_cls()
-
-    @staticmethod
-    def _refuse_an_unimplemented_request_shape(config: EmbeddingEndpoint) -> None:
-        """A declared request shape the wire does not implement would be silently ignored; refused instead."""
-        if config.request_shape != "text":
-            raise ConfigError(
-                f"request_shape {config.request_shape!r} is declared, but this wire sends rendered text",
-                hint="the adapters implement text today; drop request_shape (the default) until the "
-                "messages and token_ids routes land",
-            )
 
     # -- the public calls ---------------------------------------------------
     def encode(self, contents: Sequence[Content], role: EncodeRole, *, batch_size: int | None = None) -> Embeddings:
