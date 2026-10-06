@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pytest
 import torch
@@ -277,6 +279,28 @@ class TestEdgeCases:
 # ============================================================================
 # Test 5: Constraint Verification
 # ============================================================================
+
+
+class TestGaussianPriorStrength:
+    """The Gaussian priors enter the regulariser as squared deviations scaled by 1/(2 sigma^2) times
+    the observations' per-query share -- the exponent and the strength are pinned numerically."""
+
+    def test_the_gaussian_priors_enter_the_regulariser_squared(self) -> None:
+        cal = Tournament2PLCalibrator(num_criteria=2)  # N = 4 observations, K = 2 criteria
+        for query in ("q1", "q2"):
+            for doc, row in (("d0", {"C1": 1, "C2": 0}), ("d1", {"C1": 0, "C2": 1})):
+                cal.add_observation(query, doc, 0.5, row)
+        cal.finalize()
+        with torch.no_grad():
+            cal.tau_raw.zero_()  # tau = softplus(0) = ln 2, both queries
+            cal.alpha_param.copy_(torch.tensor([0.5, -0.5]))
+            cal.gamma_raw.zero_()  # the item priors contribute nothing
+            cal.beta_raw.zero_()
+        # Hand-computed against the shipped formula, with query_scale = 1/(N*K) = 1/8:
+        #   tau term    (1/8) * 1/(2 * 1^2) * 2 * (ln 2 - 1)^2 = 0.011769831599788852
+        #   alpha term  (1/8) * 1/(2 * 2^2) * (0.5^2 + 0.5^2) = 1/128       = 0.0078125
+        expected = (math.log(2.0) - 1.0) ** 2 / 8 + 0.5 / 64
+        assert cal.regularization_loss().item() == pytest.approx(expected, rel=1e-4)
 
 
 class TestConstraintVerification:

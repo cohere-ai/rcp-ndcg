@@ -57,8 +57,19 @@ def test_the_answer_is_json_and_the_usage_is_counted() -> None:
     assert judge.usage.requests == 1 and judge.usage.input_tokens > 0
 
 
-def test_the_fake_judge_of_a_config_keeps_every_field_of_it() -> None:
+def test_the_offline_judge_of_a_config_is_a_real_client_over_the_fake_route() -> None:
     from rcp_ndcg.llm import JudgeClient, JudgeConfig
+
+    client = JudgeClient.from_config(JudgeConfig.fake(seed=3))
+    assert type(client) is JudgeClient and client.model == "fake"
+    prompt = '<documents>\n<doc id="doc_1">\ntiny document a\n</doc>\n</documents>'
+    completion = asyncio.run(client.complete(CompletionInput(user_prompt=prompt)))
+    assert json.loads(completion.response)["scores"] == {"1": -1.1676}
+    assert completion.finish_reason == "stop" and client.usage.requests == 1
+
+
+def test_the_fake_judge_of_a_config_keeps_every_field_of_it() -> None:
+    from rcp_ndcg.llm import JudgeConfig
 
     config = JudgeConfig.fake(3).model_copy(
         update={
@@ -70,6 +81,6 @@ def test_the_fake_judge_of_a_config_keeps_every_field_of_it() -> None:
             "concurrency": 2,
         }  # fmt: skip
     )
-    client = JudgeClient.from_config(config)
-    assert isinstance(client, FakeJudge) and client.seed == 3 and client.model == "fake-b"
+    client = FakeJudge.from_config(config)
+    assert client.seed == 3 and client.model == "fake-b"
     assert client.config == config

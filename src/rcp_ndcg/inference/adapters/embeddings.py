@@ -171,6 +171,11 @@ class _EmbedAdapter:
     #: The ``encoding_format`` request field; ``None`` leaves it out (the routes that have no such field).
     ENCODING_FORMAT: ClassVar[str | None] = None
 
+    #: Whether this profile is a hosted vendor API (its public root is its default ``base_url``, its key is
+    #: required): declared (R8), never inferred from the default URL. The served engines' wire shape is not
+    #: hosted, whatever default URL it also carries for the vendor's own API.
+    HOSTED: ClassVar[bool] = False
+
     #: Whether this route takes a ``dimensions`` parameter: the OpenAI shape does (a Matryoshka cut), the
     #: hosted profiles fix the output dimension server-side and have no such field.
     SUPPORTS_DIMENSIONS: ClassVar[bool] = True
@@ -325,7 +330,10 @@ class OpenAIEmbeddings(_EmbedAdapter):
     #: HTTP 413 and is mapped like any other.
     MAX_BATCH: ClassVar[int | None] = 128
     DEFAULT_BASE_URL: ClassVar[str | None] = "https://api.openai.com/v1"
+    HOSTED: ClassVar[bool] = False  # the served engines speak this shape; the key stays optional
     API_KEY_ENV: ClassVar[tuple[str, ...]] = ("OPENAI_API_KEY",)
+    KEY_REQUIRED: ClassVar[bool] = False
+    AUTH_HEADER: ClassVar[str | None] = None
     ENCODING_FORMAT: ClassVar[str | None] = "float"
 
     def _path(self, model: str) -> str:
@@ -355,8 +363,10 @@ class CohereEmbeddings(_EmbedAdapter):
 
     MAX_BATCH: ClassVar[int | None] = 96
     DEFAULT_BASE_URL: ClassVar[str | None] = "https://api.cohere.com/v2"
+    HOSTED: ClassVar[bool] = True
     API_KEY_ENV: ClassVar[tuple[str, ...]] = ("CO_API_KEY", "COHERE_API_KEY")
     KEY_REQUIRED: ClassVar[bool] = True
+    AUTH_HEADER: ClassVar[str | None] = None
     SUPPORTS_DIMENSIONS: ClassVar[bool] = False
 
     def _path(self, model: str) -> str:
@@ -408,8 +418,10 @@ class VoyageEmbeddings(_EmbedAdapter):
 
     MAX_BATCH: ClassVar[int | None] = 128
     DEFAULT_BASE_URL: ClassVar[str | None] = "https://api.voyageai.com/v1"
+    HOSTED: ClassVar[bool] = True
     API_KEY_ENV: ClassVar[tuple[str, ...]] = ("VOYAGE_API_KEY",)
     KEY_REQUIRED: ClassVar[bool] = True
+    AUTH_HEADER: ClassVar[str | None] = None
     SUPPORTS_DIMENSIONS: ClassVar[bool] = False
 
     def _path(self, model: str) -> str:
@@ -439,6 +451,7 @@ class GeminiEmbeddings(_EmbedAdapter):
 
     MAX_BATCH: ClassVar[int | None] = 100
     DEFAULT_BASE_URL: ClassVar[str | None] = "https://generativelanguage.googleapis.com/v1beta"
+    HOSTED: ClassVar[bool] = True
     API_KEY_ENV: ClassVar[tuple[str, ...]] = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
     KEY_REQUIRED: ClassVar[bool] = True
     AUTH_HEADER: ClassVar[str | None] = "x-goog-api-key"

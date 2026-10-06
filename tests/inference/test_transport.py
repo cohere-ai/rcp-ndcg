@@ -9,6 +9,7 @@ outage-clock tests' 0.15 s mock answers, which queue a request longer than its `
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 import httpx
@@ -22,7 +23,7 @@ from rcp_ndcg.errors import (
     ProviderError,
     RequestRejectedError,
 )
-from rcp_ndcg.inference import Call, Endpoint, TokenCount, Transport
+from rcp_ndcg.inference import Call, EncodeRole, Endpoint, TokenCount, Transport
 from rcp_ndcg.inference.types import Reply
 
 #: A minimal JSON answer, for the 200s the scripts serve.
@@ -229,6 +230,72 @@ class TestOutageClock:
         assert 0.2 <= seconds < 0.3  # the outage it saw, not the 0.3 s it also spent queued
 
 
+class _Clock:
+    """A scripted ``time.monotonic``: frozen except when the faked ``_sleep`` advances it (the tests
+    below need the exact wake instant, which wall clocks cannot aim at)."""
+
+    def __init__(self, now: float = 1000.0) -> None:
+        self.now = now
+        self.sleeps: list[float] = []
+
+    def monotonic(self) -> float:
+        return self.now
+
+    async def sleep(self, seconds: float) -> None:
+        """The transport's ``_sleep``, replaced: no wall time passes, the clock advances by the sleep."""
+        self.sleeps.append(seconds)
+        self.now += seconds
+        await asyncio.sleep(0)  # a real yield point, so a deadline around the send can fire
+
+
+class TestOutageBoundaries:
+    """The outage windows at their exact boundaries: a replica is live again at the wake instant
+    (``down_until <= now``), parking gives up after exactly ``wait_on_outage_s`` (``waited >= limit``),
+    and the pick tie-breaks on the requests a replica has already sent. The first two need a scripted
+    clock: the wake instant is a float equality wall clocks cannot aim at."""
+
+    BACKOFF = 0.0625  # 2^-4: every window boundary is exact in binary floating point
+
+    def _clocked(
+        self, monkeypatch: pytest.MonkeyPatch, script: ReplicaScript, **config: Any
+    ) -> tuple[Transport, _Clock]:
+        clock = _Clock()
+        monkeypatch.setattr(transport_module, "time", clock)
+        monkeypatch.setattr(transport_module, "_sleep", clock.sleep)
+        monkeypatch.setattr(Transport, "BACKOFF_S", self.BACKOFF)
+        monkeypatch.setattr(Transport, "MAX_BACKOFF_S", 1.0)
+        # the boundary dances park in a tight loop when the code is wrong: keep the warnings off the log
+        monkeypatch.setattr(logging.getLogger("rcp_ndcg"), "disabled", True)
+        return _transport(script, wait_on_outage_s=self.BACKOFF, **config), clock
+
+    def test_a_replica_wakes_at_exactly_the_end_of_its_outage_window(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """At ``now == down_until`` the replica is live again (``<=``), so the request goes through; a
+        replica considered live only *after* the window (``<``) would keep parking until
+        ``wait_on_outage_s`` is spent and fail the request."""
+        transport, clock = self._clocked(monkeypatch, ReplicaScript(503, 200))
+        replies = asyncio.run(asyncio.wait_for(transport.send([Call("POST", "/x", {})]), timeout=5.0))
+        assert replies[0].status == 200
+        assert clock.sleeps == [self.BACKOFF]  # one park, then the replica wakes at the exact instant
+
+    def test_the_request_gives_up_after_exactly_wait_on_outage_s(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The second park sits exactly at ``waited == wait_on_outage_s``: that is the give-up boundary
+        (``>=``). A ``>`` rule would want more outage than the limit allows, and the clock cannot get
+        there (the wake it computes is 0), so the request would never finish: the 5 s cap fails it."""
+        transport, clock = self._clocked(monkeypatch, ReplicaScript(*([503] * 100)))
+        with pytest.raises(BackendUnavailableError, match="wait_on_outage_s"):
+            asyncio.run(asyncio.wait_for(transport.send([Call("POST", "/x", {})]), timeout=5.0))
+        assert clock.sleeps == [self.BACKOFF]  # the outage clock is exactly the limit when it gives up
+
+    def test_the_next_request_goes_to_the_replica_that_has_sent_the_fewest(self) -> None:
+        """The least-in-flight pick tie-breaks on the requests the replica has sent: sequential sends
+        with everything else equal must alternate across the replicas."""
+        replicas = Replicas({"a": [], "b": []})
+        transport = replicas.transport(concurrency=1)
+        for _ in range(3):
+            _send(transport)
+        assert replicas.requests == {"a": 2, "b": 1}  # after a tie, the replica with fewer sent goes next
+
+
 class TestStatusMap:
     @pytest.mark.parametrize(
         ("status", "error"), [(401, CredentialsError), (403, CredentialsError), (404, ProviderError)]
@@ -277,12 +344,12 @@ class TestStatusMap:
         replies = _send(_transport(script, max_retries=1))
         assert replies[0].status == 200 and sleeps[-1] == 60.0  # capped at RETRY_MAX_BACKOFF_S
 
-    def test_usage_counts_calls_failed_calls_and_tokens(self) -> None:
+    def test_usage_counts_requests_failed_requests_and_tokens(self) -> None:
         transport = _transport(ReplicaScript(503, 200, 401), max_retries=1)
         assert _send(transport)[0].status == 200
         with pytest.raises(CredentialsError):
             _send(transport)
-        assert (transport.usage.calls, transport.usage.failed_calls) == (1, 1)
+        assert (transport.usage.requests, transport.usage.failed_requests) == (1, 1)
         transport.add_usage(TokenCount(input_tokens=10, output_tokens=2))
         transport.add_usage(None)  # a reply the API reports no tokens for adds nothing
         assert (transport.usage.input_tokens, transport.usage.output_tokens) == (10, 2)
@@ -291,7 +358,7 @@ class TestStatusMap:
         script = ReplicaScript(200, 200)
         transport = _transport(script)
         asyncio.run(transport.send([Call("POST", "/a", {}), Call("POST", "/b", {})]))
-        assert transport.usage.calls == 2
+        assert transport.usage.requests == 2
 
     def test_send_without_calls_is_refused(self) -> None:
         with pytest.raises(ValueError, match="at least one call"):
@@ -328,7 +395,7 @@ class TestHeaders:
         with pytest.raises(CredentialsError, match="RCP_NDCG_TEST_GATEWAY"):
             _send(transport)
         assert script.requests == []  # refused before anything was queued
-        assert (transport.usage.calls, transport.usage.failed_calls) == (0, 1)  # the request failed
+        assert (transport.usage.requests, transport.usage.failed_requests) == (0, 1)  # the request failed
 
     def test_a_missing_api_key_names_the_variable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("RCP_NDCG_TEST_KEY", raising=False)
@@ -336,7 +403,7 @@ class TestHeaders:
         with pytest.raises(CredentialsError, match="RCP_NDCG_TEST_KEY") as caught:
             _send(transport)
         assert caught.value.details == {"variable": "RCP_NDCG_TEST_KEY"}
-        assert transport.usage.failed_calls == 1  # the request failed, nothing was queued
+        assert transport.usage.failed_requests == 1  # the request failed, nothing was queued
 
     def test_the_calls_own_headers_are_sent(self) -> None:
         script = ReplicaScript()
@@ -409,9 +476,20 @@ class TestSyncBridge:
         transport = _transport(script)
         transport.run(transport.send([Call("POST", "/a", {})]))
         assert transport._pool is not None
-        transport.aclose()
+        asyncio.run(transport.aclose())  # the true async close (R15)
         assert transport._pool is None
         assert transport.run(transport.send([Call("POST", "/b", {})]))[0].status == 200
+
+    def test_aclose_after_its_loop_closed_drops_the_pool_without_raising(self) -> None:
+        """The judge client replaces its config after a pass's `asyncio.run` closed the loop the pool rode on;
+        closing the wire then must drop the dead pool, not raise `Event loop is closed` (R15: `close()` is
+        the synchronous twin; an async caller awaits `aclose()`)."""
+        script = ReplicaScript(200, 200)
+        transport = _transport(script)
+        asyncio.run(transport.send([Call("POST", "/a", {})]))  # builds the pool on a loop that then closes
+        transport.close()
+        assert transport._pool is None
+        assert asyncio.run(transport.send([Call("POST", "/b", {})]))[0].status == 200
 
     def test_close_and_the_context_manager_are_the_same_close(self) -> None:
         script = ReplicaScript(200)
@@ -441,3 +519,190 @@ class TestEndpointUrls:
     def test_an_endpoint_without_a_url_sends_nowhere(self) -> None:
         with pytest.raises(ConfigError, match="base_url"):
             Transport(Endpoint(model="m"))
+
+
+class TestAdapterAuth:
+    """Auth in the transport (R6): the adapter profile's credential facts are the transport's input, and the
+    key is resolved and sent there -- never in a client, and never in a log or an error message."""
+
+    @staticmethod
+    def _role_answer(path: str) -> dict[str, Any]:
+        """One 2xx body per wire path, so the adapters read the auth tests' replies."""
+        if path.endswith("/embeddings"):
+            return {"data": [{"index": 0, "embedding": [0.0, 0.0]}]}
+        if path.endswith("/embed"):
+            return {"embeddings": {"float": [[0.0, 0.0]]}}
+        if "batchEmbedContents" in path:
+            return {"embeddings": [{"values": [0.0, 0.0]}]}
+        return {"results": [{"index": 0, "relevance_score": 0.5}]}
+
+    @classmethod
+    def _client(cls, api: str, tokenizer_json: str, **config: Any) -> tuple[Any, ReplicaScript]:
+        """A role client sending through a real transport over a recording mock endpoint."""
+        script = ReplicaScript()
+        from rcp_ndcg.inference import EmbeddingClient, RerankClient
+        from rcp_ndcg.inference.config import EmbeddingEndpoint, RerankEndpoint
+
+        def answer(request: httpx.Request) -> httpx.Response:
+            script.requests.append(request)  # the recording mock answers each role's shape
+            return httpx.Response(200, json=cls._role_answer(request.url.path))
+
+        if api.endswith("_rerank"):
+            endpoint: Any = RerankEndpoint(
+                api=api[: -len("_rerank")],
+                model="m",
+                base_url="http://judge.test/v1",
+                use_activation=None,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                **config,
+            )
+            client: Any = RerankClient(
+                endpoint, sender=Transport(endpoint, httpx_transport=httpx.MockTransport(answer))
+            )
+        else:
+            endpoint = EmbeddingEndpoint(
+                api=api, model="m", base_url="http://judge.test/v1", tokenizer=tokenizer_json, max_tokens=8192, **config
+            )
+            client = EmbeddingClient(endpoint, sender=Transport(endpoint, httpx_transport=httpx.MockTransport(answer)))
+        return client, script
+
+    @staticmethod
+    def _send(client: Any) -> None:
+        from rcp_ndcg_core.content import Content
+
+        from rcp_ndcg.inference import RerankClient
+
+        if isinstance(client, RerankClient):
+            client.rerank("q", ["a"])
+        else:
+            client.encode([Content.from_text("x")], EncodeRole.DOCUMENT)
+
+    @pytest.mark.parametrize(
+        ("api", "variable", "header", "value"),
+        [
+            ("openai_embeddings", "OPENAI_API_KEY", "Authorization", "Bearer fake-openai"),
+            ("cohere", "CO_API_KEY", "Authorization", "Bearer fake-cohere"),
+            ("voyage", "VOYAGE_API_KEY", "Authorization", "Bearer fake-voyage"),
+            ("gemini", "GEMINI_API_KEY", "x-goog-api-key", "fake-gemini"),
+            ("cohere_rerank", "CO_API_KEY", "Authorization", "Bearer fake-cohere"),
+            ("voyage_rerank", "VOYAGE_API_KEY", "Authorization", "Bearer fake-voyage"),
+        ],
+        # the variable's value is the key; the header carries `Bearer <key>` where the profile declares no
+        # AUTH_HEADER (Gemini's is its own header, value verbatim).
+    )
+    def test_a_profile_header_is_sent_from_its_default_variable(
+        self,
+        api: str,
+        variable: str,
+        header: str,
+        value: str,
+        tokenizer_json: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(variable, value.removeprefix("Bearer "))
+        client, script = self._client(api, tokenizer_json)
+        self._send(client)
+        assert script.requests[0].headers[header] == value
+
+    def test_the_second_profile_variable_is_tried_in_order(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # noqa: E501 -> None:
+        monkeypatch.delenv("CO_API_KEY", raising=False)
+        monkeypatch.setenv("COHERE_API_KEY", "fake-cohere-second")
+        client, script = self._client("cohere", tokenizer_json)
+        self._send(client)
+        assert script.requests[0].headers["Authorization"] == "Bearer fake-cohere-second"
+
+    def test_the_config_api_key_env_is_resolved_first(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # noqa: E501 -> None:
+        monkeypatch.setenv("RCP_NDCG_TEST_KEY", "fake-from-config")
+        client, script = self._client("cohere", tokenizer_json, api_key_env="RCP_NDCG_TEST_KEY")
+        self._send(client)
+        assert script.requests[0].headers["Authorization"] == "Bearer fake-from-config"
+
+    def test_an_unset_config_api_key_env_is_a_credentials_error(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("RCP_NDCG_TEST_KEY", raising=False)
+        monkeypatch.setenv("CO_API_KEY", "fake-fallback")  # the profile's variable must NOT paper over it
+        client, script = self._client("cohere", tokenizer_json, api_key_env="RCP_NDCG_TEST_KEY")
+        with pytest.raises(CredentialsError, match="RCP_NDCG_TEST_KEY"):
+            self._send(client)
+        assert script.requests == []
+
+    def test_a_required_key_missing_names_the_profile_variables(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("CO_API_KEY", raising=False)
+        monkeypatch.delenv("COHERE_API_KEY", raising=False)
+        client, _ = self._client("cohere", tokenizer_json)
+        with pytest.raises(CredentialsError) as caught:
+            self._send(client)
+        assert "CO_API_KEY" in (caught.value.hint or "")
+        assert "COHERE_API_KEY" in (caught.value.hint or "")
+
+    def test_a_served_wire_sends_no_key_without_a_variable(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        client, script = self._client("openai_embeddings", tokenizer_json)
+        self._send(client)
+        assert "Authorization" not in script.requests[0].headers
+
+    def test_no_key_value_reaches_logs_or_errors(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setenv("CO_API_KEY", "fake-sekrit-value")
+        client, script = self._client("cohere", tokenizer_json, wait_on_outage_s=0)  # a set-aside logs; no outage wait
+        with caplog.at_level("WARNING", logger="rcp_ndcg"):
+            self._send(client)
+        assert all("fake-sekrit-value" not in record.getMessage() for record in caplog.records)
+        monkeypatch.delenv("CO_API_KEY", raising=False)
+        monkeypatch.delenv("COHERE_API_KEY", raising=False)  # the profile's second variable must not paper over it
+        with pytest.raises(CredentialsError) as caught:
+            self._send(client)
+        assert "fake-sekrit-value" not in str(caught.value)
+        assert "fake-sekrit-value" not in str(caught.value.hint)
+
+
+class TestSyncBridgeLoop:
+    """The sync bridge's private loop is part of the transport's lifecycle: closed with the transport
+    (never leaked as an un-closed event loop), rebuilt by a later run."""
+
+    def test_close_closes_the_own_loop_and_a_later_run_builds_a_fresh_one(self) -> None:
+        script = ReplicaScript(200, 200)
+        transport = _transport(script)
+        transport.run(transport.send([Call("POST", "/a", {})]))
+        own = transport._own_loop
+        assert own is not None and not own.is_closed()
+        transport.close()
+        assert transport._own_loop is None and own.is_closed()
+        assert transport.run(transport.send([Call("POST", "/b", {})]))[0].status == 200
+        rebuilt = transport._own_loop
+        assert rebuilt is not None and rebuilt is not own
+        transport.close()
+        assert rebuilt.is_closed() and transport._own_loop is None
+
+
+class TestCloseInsideTheBridgeCall:
+    """A close requested from inside the bridge's own call drains: the scheduled pool close completes and
+    the loop closes when the call returns (no destroyed-pending task, no abandoned pool)."""
+
+    def test_close_from_within_the_bridged_coroutine(self) -> None:
+        script = ReplicaScript()
+        transport = _transport(script)
+
+        async def caller() -> None:
+            transport.run(transport.send([Call("POST", "/a", {})])) if False else None
+            transport.close()  # from inside the coroutine the bridge serves
+
+        async def run() -> None:
+            await caller()
+
+        asyncio.run(run())
+        transport._close_own_loop()  # the next close (or the caller's cleanup) finishes the close
+        own = transport._own_loop
+        assert own is None or own.is_closed()
+        assert transport._pool is None

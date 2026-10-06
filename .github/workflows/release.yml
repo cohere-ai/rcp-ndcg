@@ -28,8 +28,8 @@ jobs:
     name: build and check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
       - name: build rcp-ndcg, rcp-ndcg-core and rcp-ndcg-vllm
         run: |
           # The three published packages, one --package per invocation (uv refuses a repeated flag), so
@@ -50,7 +50,35 @@ jobs:
           for file in "${expected[@]}"; do test -f "$file" || { echo "missing $file: the tag is not the version"; exit 1; }; done
           test "$(find dist -type f -not -name '.*' | wc -l)" -eq "${#expected[@]}" || { echo "dist/ holds other versions"; exit 1; }
           grep -qx "  \"rcp-ndcg-core==${version}\"," pyproject.toml || { echo "rcp-ndcg does not pin rcp-ndcg-core==${version}"; exit 1; }
-          grep -qx "  \"rcp-ndcg==${version}\"," packages/rcp-ndcg-vllm/pyproject.toml || { echo "rcp-ndcg-vllm does not pin rcp-ndcg==${version}"; exit 1; }
+      - name: rcp-ndcg-vllm pins rcp-ndcg exactly, when it depends on it
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          python3 - "$version" <<'PY'
+          import re, sys, tomllib
+          from pathlib import Path
+
+          version = sys.argv[1]
+          manifest = Path("packages/rcp-ndcg-vllm/pyproject.toml")
+          if not manifest.is_file():
+              print(f"{manifest} is not in this tree; nothing to check")
+              raise SystemExit(0)
+          project = tomllib.loads(manifest.read_text(encoding="utf-8"))["project"]
+          requirements = list(project.get("dependencies", []))
+          for extra in project.get("optional-dependencies", {}).values():
+              requirements += extra
+          # name, optional [extras], then the specifier: "rcp-ndcg[calibrate]==0.0.1" -> ("rcp-ndcg", "==0.0.1")
+          requirement_re = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[[^\]]*\])?\s*(.*)$")
+          pins = [
+              re.sub(r"[\s()]", "", m.group(2))  # "( == 0.0.1 )" and "== 0.0.1" are the exact pin "==0.0.1"
+              for requirement in requirements
+              if (m := requirement_re.match(requirement.split(";", 1)[0]))
+              and re.sub(r"[-_.]+", "-", m.group(1).lower()) == "rcp-ndcg"  # PEP 503 normalisation
+          ]
+          expected = f"=={version}"
+          if any(pin != expected for pin in pins):
+              raise SystemExit(f"rcp-ndcg-vllm must pin rcp-ndcg{expected} exactly; found {pins}")
+          print(f"rcp-ndcg-vllm pins rcp-ndcg{expected}" if pins else "rcp-ndcg-vllm does not depend on rcp-ndcg")
+          PY
       - name: the constraints file is the lock's export
         run: |
           command=$(sed -n '2s/^#    //p' requirements-constraints.txt)
@@ -58,15 +86,15 @@ jobs:
           diff <(grep -v '^#' requirements-constraints.txt) <(grep -v '^#' "$RUNNER_TEMP/exported.txt")
       - name: twine check every file
         run: uvx twine check dist/*
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist-rcp-ndcg-core
           path: dist/rcp_ndcg_core-*
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist-rcp-ndcg
           path: dist/rcp_ndcg-*
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist-rcp-ndcg-vllm
           path: dist/rcp_ndcg_vllm-*
@@ -81,11 +109,11 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: dist-rcp-ndcg-core
           path: dist/rcp-ndcg-core
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2 (release/v1)
         with:
           packages-dir: dist/rcp-ndcg-core
 
@@ -98,11 +126,11 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: dist-rcp-ndcg
           path: dist/rcp-ndcg
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2 (release/v1)
         with:
           packages-dir: dist/rcp-ndcg
 
@@ -114,11 +142,11 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: dist-rcp-ndcg-vllm
           path: dist/rcp-ndcg-vllm
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2 (release/v1)
         with:
           packages-dir: dist/rcp-ndcg-vllm
 
@@ -129,16 +157,16 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: dist-rcp-ndcg
           path: dist/rcp-ndcg
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: dist-rcp-ndcg-core
           path: dist/rcp-ndcg-core
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: dist-rcp-ndcg-vllm
           path: dist/rcp-ndcg-vllm

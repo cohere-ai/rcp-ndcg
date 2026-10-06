@@ -14,8 +14,8 @@ A role client holds one transport per endpoint, next to its wire adapter
         transport.add_usage(adapter.usage(reply))
     result = adapter.interpret(request, replies)
 
-The transport counts the calls and the failed calls itself; the tokens cross the adapter, which is where the
-API's field names are known, and come back through :meth:`Transport.add_usage`.
+The transport counts the requests and the failed requests itself; the tokens cross the adapter, which is where
+the API's field names are known, and come back through :meth:`Transport.add_usage`.
 """
 
 from __future__ import annotations
@@ -25,6 +25,8 @@ import os
 import threading
 import time
 from collections.abc import Coroutine, Mapping, Sequence
+from concurrent.futures import Future
+from dataclasses import dataclass
 from types import TracebackType
 from typing import Any, ClassVar, Protocol, Self, TypeVar, runtime_checkable
 
@@ -48,6 +50,33 @@ logger = get_logger(__name__)
 
 T = TypeVar("T")
 """The result type of a coroutine the sync bridge runs."""
+
+
+@dataclass(frozen=True)
+class AuthProfile:
+    """The credential facts a wire adapter declares: where its key may live, whether it is required, and the
+    header it travels in.
+
+    A role client builds one from its adapter's ``API_KEY_ENV`` / ``KEY_REQUIRED`` / ``AUTH_HEADER`` class
+    attributes (R6) and hands it to the transport, which owns the whole key decision: the endpoint config's
+    ``api_key_env`` names the variable when it is set (an unset named variable is a
+    :class:`~rcp_ndcg.errors.CredentialsError`), else the profile's variables are tried in order, and a
+    required key that is missing is a ``CredentialsError`` naming them. The key value is read from the
+    environment at send time and never logged or put into an error message.
+
+    A transport built without a profile (the judge's, or any sender without an adapter) resolves only the
+    config's ``api_key_env``, into ``Authorization: Bearer`` -- the behaviour the judge client relies on.
+    """
+
+    variables: tuple[str, ...] = ()
+    """The environment variables that may hold the key, most preferred first (empty: the endpoint takes no
+    key beyond the config's own ``api_key_env``)."""
+
+    required: bool = False
+    """Whether the API refuses to answer without a key (a hosted profile) or takes none (a served engine)."""
+
+    header: str | None = None
+    """The header the key goes in; ``None`` is the OpenAI-standard ``Authorization: Bearer <key>``."""
 
 
 @runtime_checkable
@@ -77,7 +106,7 @@ class Sender(Protocol):
 
     @property
     def usage(self) -> Usage:
-        """Calls and tokens accumulated so far (calls, failed calls, input and output tokens)."""
+        """Requests and tokens accumulated so far (requests, failed requests, input and output tokens)."""
         ...
 
 
@@ -131,9 +160,9 @@ def _body_text(response: httpx.Response) -> str:
     return response.text[:500]
 
 
-def _reply(response: httpx.Response) -> Reply:
+def _reply(response: httpx.Response, *, url: str | None = None) -> Reply:
     """The :class:`~rcp_ndcg.inference.types.Reply` of one response: JSON decoded, ``application/octet-stream``
-    (and anything that does not parse) kept as bytes."""
+    (and anything that does not parse) kept as bytes; ``url`` names the replica that answered."""
     content_type = response.headers.get("content-type", "")
     if "octet-stream" in content_type:
         body: Any = response.content
@@ -142,7 +171,7 @@ def _reply(response: httpx.Response) -> Reply:
             body = response.json()
         except ValueError:
             body = response.content
-    return Reply(status=response.status_code, body=body, headers=dict(response.headers))
+    return Reply(status=response.status_code, body=body, headers=dict(response.headers), url=url)
 
 
 class Transport:
@@ -158,9 +187,10 @@ class Transport:
       transport, then the fewest sent;
     * **bounded concurrency** -- at most the endpoint's ``concurrency`` requests in flight over all replicas,
       and an httpx pool sized to it;
-    * **credentials** -- ``Authorization: Bearer`` from ``api_key_env`` when the endpoint names one, plus one
-      header per :attr:`~rcp_ndcg.inference.endpoint.Endpoint.headers_env` entry, every value read from the
-      environment at send time and never logged;
+    * **credentials** -- the API key resolved from the endpoint's ``api_key_env``, or the adapter profile's own
+      variables when the config names none, sent in the profile's header (``Authorization: Bearer`` where the
+      adapter declares none), plus one header per :attr:`~rcp_ndcg.inference.endpoint.Endpoint.headers_env`
+      entry, every value read from the environment at send time and never logged;
     * **the shared status map** -- a connection error or timeout, or an HTTP 408, 429 or 5xx reply, is
       *unavailable*: retried up to ``max_retries`` with an exponential backoff (1 s doubling, capped at 60 s,
       the retrieval clients' policy) or the server's ``Retry-After``, then the replica is set aside. 401 and
@@ -185,24 +215,35 @@ class Transport:
     RETRY_BACKOFF_S: ClassVar[float] = 1.0
     RETRY_MAX_BACKOFF_S: ClassVar[float] = 60.0
 
-    def __init__(self, endpoint: Endpoint, *, httpx_transport: httpx.AsyncBaseTransport | None = None) -> None:
+    def __init__(
+        self,
+        endpoint: Endpoint,
+        *,
+        auth: AuthProfile | None = None,
+        httpx_transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
         """A transport for ``endpoint``'s replicas.
 
         Args:
             endpoint: The endpoint whose replicas are routed; ``base_url`` is one URL or a replica list, and a
                 ``fake://`` URL sends through the offline fakes (:mod:`rcp_ndcg.inference.fake`) unless
                 ``httpx_transport`` is supplied, which answers instead of them.
+            auth: The adapter profile's credential facts (R6): the variables that may hold the key, whether
+                one is required, and the header it travels in. The endpoint config's ``api_key_env``, when it
+                names one, overrides the variables and must then be set. ``None`` (a sender with no adapter
+                behind it) resolves only the config's ``api_key_env``.
             httpx_transport: A caller-supplied ``httpx.AsyncBaseTransport`` (a mock in tests), wrapped in the
                 transport's own ``httpx.AsyncClient`` with the endpoint's timeouts and pool limits -- never
-                replacing them, unlike the judge client of today, where a supplied client replaced both. The
-                pool limits size the transport's own pool (the default httpx transport); a supplied transport
-                pools as it pleases.
+                replacing them, unlike the judge client this transport replaced, where a supplied client
+                replaced both. The pool limits size the transport's own pool (the default httpx transport); a
+                supplied transport pools as it pleases.
         """
         if not endpoint.urls:
             raise ConfigError(
                 f"the endpoint {endpoint.model!r} has no base_url to send to: give one URL, or a list of replica URLs"
             )
         self.endpoint = endpoint
+        self._auth = auth if auth is not None else AuthProfile()
         self._replicas = [_Replica(url) for url in endpoint.urls]
         self._httpx_transport: httpx.AsyncBaseTransport | None = httpx_transport
         if httpx_transport is None and any(url.startswith(FAKE_SCHEME) for url in endpoint.urls):
@@ -213,6 +254,9 @@ class Transport:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._own_loop: asyncio.AbstractEventLoop | None = None
         """The sync bridge's private loop (:meth:`run`); the pool of its calls is bound to it."""
+        self._bridge_close: Future[None] | None = None
+        """A pool close scheduled on the bridge's own loop (a :meth:`close` from inside its call); drained
+        by the next :meth:`close` before the loop closes."""
         self._background_loop: asyncio.AbstractEventLoop | None = None
         self._background_thread: threading.Thread | None = None
         self._last_error: BaseException | None = None
@@ -243,7 +287,9 @@ class Transport:
         try:
             headers = self._base_headers()
         except CredentialsError:
-            self._usage = self._usage + Usage(failed_calls=len(calls))  # the request failed before it was queued
+            self._usage = self._usage.merged_with(  # the request failed before it was queued
+                Usage(failed_requests=len(calls))
+            )
             raise
         #: Per replica: its successes when this request first failed there.
         failed_at: dict[int, int] = {}
@@ -273,13 +319,13 @@ class Transport:
                     self._set_aside(replica, exc)
                     continue
                 except Exception:
-                    self._usage = self._usage + Usage(failed_calls=len(calls))
+                    self._usage = self._usage.merged_with(Usage(failed_requests=len(calls)))
                     raise
                 finally:
                     replica.in_flight -= 1
                 replica.successes += 1
                 replica.down_until, replica.backoff = 0.0, None
-                self._usage = self._usage + Usage(calls=len(calls))
+                self._usage = self._usage.merged_with(Usage(requests=len(calls)))
                 return replies
 
     async def _send_on(self, replica: _Replica, calls: Sequence[Call], headers: Mapping[str, str]) -> list[Reply]:
@@ -319,7 +365,7 @@ class Transport:
         error = status_error(status, url=replica.url, path=path, model=self.endpoint.model, body=_body_text(response))
         if error is not None:
             raise error
-        return _reply(response)
+        return _reply(response, url=replica.url)
 
     def _url(self, replica: _Replica, path: str) -> str:
         """The request URL: the replica's base URL then the call's path; their queries, if any, joined."""
@@ -332,18 +378,42 @@ class Transport:
 
     def _base_headers(self) -> dict[str, str]:
         """The endpoint's credentials and gateway headers of one send; every value is read from the environment
-        only, at send time, and never logged."""
+        only, at send time, and never logged.
+
+        The key is resolved here (R6): the config's ``api_key_env`` names the variable when it is set -- an
+        unset named variable is an error, whatever the adapter profile's own rule is -- else the adapter
+        profile's variables are tried in order, and a required key that is missing names them. The header is
+        the profile's ``AUTH_HEADER``, or ``Authorization: Bearer`` where the adapter declares none.
+
+        Raises:
+            CredentialsError: the key variable this endpoint resolved to is not set (an explicitly named one,
+                or every variable of a profile that requires a key).
+        """
         headers: dict[str, str] = {}
         api_key_env = self.endpoint.api_key_env
         if api_key_env is not None:
-            value = os.environ.get(api_key_env)
-            if not value:
+            variables, required = (api_key_env,), True
+        else:
+            variables, required = self._auth.variables, self._auth.required
+        value = next((os.environ[name] for name in variables if os.environ.get(name)), None)
+        if value is None and (required or api_key_env is not None):
+            if api_key_env is not None:
                 raise CredentialsError(
                     f"the endpoint needs an API key in ${api_key_env}, which is not set",
                     hint=f"export {api_key_env}=...  (keys are read from the environment, never from configs)",
                     details={"variable": api_key_env},
                 )
-            headers["Authorization"] = f"Bearer {value}"
+            names = " or ".join(variables)
+            raise CredentialsError(
+                f"the endpoint needs an API key ({names} is not set)",
+                hint=f"export {names}=...  (keys are read from the environment, never from configs)",
+                details={"variables": list(variables)},
+            )
+        if value:
+            if self._auth.header is not None:
+                headers[self._auth.header] = value
+            else:
+                headers["Authorization"] = f"Bearer {value}"
         for header, variable in self.endpoint.headers_env.items():
             value = os.environ.get(variable)
             if not value:
@@ -492,13 +562,13 @@ class Transport:
 
     @property
     def usage(self) -> Usage:
-        """Calls and tokens accumulated so far (calls, failed calls, input and output tokens).
+        """Requests and tokens accumulated so far (the run manifest's :class:`Usage` shape).
 
-        :meth:`send` counts the calls and the failed calls itself: a request the transport raises on is a failed
-        call, whether before it was queued (a missing credentials variable) or after it was sent (the status
-        map's typed errors); a request the rejection rule refuses, one parked out by ``wait_on_outage_s``, and a
-        reply the status map returns (even one the adapter refuses) are not. The tokens arrive through
-        :meth:`add_usage`.
+        :meth:`send` counts the requests and the failed requests itself: a request the transport raises on is a
+        failed request, whether before it was queued (a missing credentials variable) or after it was sent (the
+        status map's typed errors); a request the rejection rule refuses, one parked out by
+        ``wait_on_outage_s``, and a reply the status map returns (even one the adapter refuses) are not. The
+        tokens arrive through :meth:`add_usage`.
         """
         return self._usage
 
@@ -507,11 +577,11 @@ class Transport:
         ``usage(reply)`` (``None`` when the API reports no tokens, which adds nothing)."""
         if tokens is None:
             return
-        self._usage = Usage(
-            calls=self._usage.calls,
-            failed_calls=self._usage.failed_calls,
-            input_tokens=self._usage.input_tokens + (tokens.input_tokens or 0),
-            output_tokens=self._usage.output_tokens + (tokens.output_tokens or 0),
+        self._usage = self._usage.model_copy(
+            update={
+                "input_tokens": self._usage.input_tokens + (tokens.input_tokens or 0),
+                "output_tokens": self._usage.output_tokens + (tokens.output_tokens or 0),
+            }
         )
 
     # ------------------------------------------------------------------
@@ -555,13 +625,51 @@ class Transport:
             self._background_thread.start()
         return self._background_loop
 
-    def aclose(self) -> None:
-        """Close the underlying client and its connection pool; safe to call more than once.
+    def set_auth(self, auth: AuthProfile) -> None:
+        """Point the transport at an adapter profile's credential facts.
 
-        Synchronous, so a caller of :meth:`run` can clean up without an event loop of its own: the async close
-        runs on the pool's own loop. Called from the loop the pool serves (an async caller), the close is
-        scheduled instead of blocking that loop on itself. A later :meth:`run` builds a fresh pool.
+        A role client does this when it is handed an existing transport (instead of building its own), so
+        the key resolution follows the adapter whichever way the transport was built (R6). Safe to call
+        again; the next send resolves the key from the new profile.
         """
+        self._auth = auth
+
+    async def aclose(self) -> None:
+        """Close the underlying client and its connection pool, and the sync bridge's private loop; safe to
+        call more than once.
+
+        Asynchronous: an async caller awaits it directly, on the loop the pool serves. A synchronous caller
+        uses :meth:`close`. A later :meth:`run` builds both afresh.
+        """
+        try:
+            pool, loop = self._pool, self._loop
+            self._pool = None
+            self._semaphore = None
+            self._loop = None
+            if pool is None:
+                return
+            if loop is not None and loop.is_closed():
+                return  # the pool's connections died with its loop; there is nothing left to await
+            await pool.aclose()
+        finally:
+            self._bridge_close = None
+            self._close_own_loop()
+
+    def close(self) -> None:
+        """The synchronous twin of :meth:`aclose`: closes the pool on the loop it serves and the sync
+        bridge's private loop; safe to call twice. A later :meth:`run` builds both afresh.
+
+        Called from the loop the pool serves (an async caller closing without an ``await``), the close is
+        scheduled instead of blocking that loop on itself. A pool whose loop has since closed is dropped, not
+        closed: its connections died with the loop.
+        """
+        try:
+            self._close_pool()
+        finally:
+            self._close_own_loop()
+
+    def _close_pool(self) -> None:
+        """The pool's close, on the loop it serves (see :meth:`close`)."""
         pool, loop = self._pool, self._loop
         self._pool = None
         self._semaphore = None
@@ -573,16 +681,32 @@ class Transport:
         except RuntimeError:
             running = None
         if loop is running:
-            asyncio.run_coroutine_threadsafe(pool.aclose(), loop)  # blocking here would deadlock this loop
-            return
+            self._bridge_close = asyncio.run_coroutine_threadsafe(pool.aclose(), loop)
+            return  # a close requested from the bridge's own call; _close_own_loop drains it later
         if loop.is_running():
             asyncio.run_coroutine_threadsafe(pool.aclose(), loop).result()
             return
+        if loop.is_closed():
+            return  # the pool's connections died with its loop; there is nothing left to await
         loop.run_until_complete(pool.aclose())
 
-    def close(self) -> None:
-        """The sync twin of :meth:`aclose` (which is synchronous too): closes the pool; safe to call twice."""
-        self.aclose()
+    def _close_own_loop(self) -> None:
+        """The sync bridge's private loop (:meth:`run`), closed once it is not running; a later ``run``
+        builds a fresh one. A close requested from the bridge's own call (the pool close scheduled on it) is
+        drained here: the next ``close()`` runs the scheduled close to completion and then closes the loop.
+        The background thread's loop (a notebook's bridge) serves the process and is left to it.
+        """
+        own = self._own_loop
+        if own is None or own.is_closed():
+            return
+        if own.is_running():
+            return  # still serving a call: the next close() finishes this one
+        pending = self._bridge_close
+        self._bridge_close = None
+        if pending is not None and not pending.done():
+            own.run_until_complete(asyncio.wrap_future(pending))
+        own.close()
+        self._own_loop = None
 
     def __enter__(self) -> Self:
         return self
@@ -596,4 +720,4 @@ class Transport:
         self.close()
 
 
-__all__ = ["Sender", "Transport"]
+__all__ = ["AuthProfile", "Sender", "Transport"]

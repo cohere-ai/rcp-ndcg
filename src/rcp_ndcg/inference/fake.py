@@ -269,7 +269,7 @@ def _pooling(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
         data.append(
             {
                 "index": index,
-                "embedding": embedding,
+                "data": embedding,
                 "prompt_token_ids": [
                     int(fake_uniform(endpoint.seed, "token_id", text, token) * 100_000) for token in range(count)
                 ],

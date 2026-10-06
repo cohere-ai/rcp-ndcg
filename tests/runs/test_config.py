@@ -12,6 +12,10 @@ from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.llm import JudgeConfig, TournamentSchedule
 from rcp_ndcg.runs import RunConfig
 from rcp_ndcg.support.config import apply_overrides, load_config
+from tests.conftest import SESSION_TOKENIZER
+
+_SERVED_BUDGET = {"tokenizer": str(SESSION_TOKENIZER), "max_tokens": 8192}
+
 
 DATASET = "jsonl:rows.jsonl"
 
@@ -86,7 +90,7 @@ class TestServe:
 
     SERVED = {
         "from": "retrieval",
-        "retrieval": {"kind": "dense", "encoder": {"provider": "openai_compatible", "model": "e"}},
+        "retrieval": {"kind": "dense", "encoder": {"api": "openai_embeddings", "model": "e", **_SERVED_BUDGET}},
     }
     ENGINE = {"command": ["vllm", "serve", "e", "--host", "0.0.0.0", "--port", "8000"]}
 
@@ -113,7 +117,12 @@ class TestServe:
             "from": "retrieval",
             "retrieval": {
                 "kind": "dense",
-                "encoder": {"provider": "openai_compatible", "model": "e", "base_url": "http://elsewhere/v1"},
+                "encoder": {
+                    "api": "openai_embeddings",
+                    "model": "e",
+                    "base_url": "http://elsewhere/v1",
+                    **_SERVED_BUDGET,
+                },
             },
         }
         with pytest.raises(ConfigError, match="sets base_url") as refused:
@@ -130,7 +139,7 @@ class TestServe:
                 "judge": "fake",
                 "candidates": {
                     "from": "retrieval",
-                    "retrieval": {"kind": "dense", "encoder": {"provider": "cohere", "model": "embed-v4.0"}},
+                    "retrieval": {"kind": "dense", "encoder": {"api": "cohere", "model": "embed-v4.0"}},
                 },
                 "steps": ["retrieve"],
             }

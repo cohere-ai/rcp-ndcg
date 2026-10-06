@@ -16,6 +16,7 @@ from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError, Request
 from rcp_ndcg.inference.adapters.rerank import CohereRerankAdapter, RerankAdapter, VoyageRerankAdapter
 from rcp_ndcg.inference.config import RerankEndpoint
 from rcp_ndcg.inference.types import Reply, RerankRequest, RerankResult, TokenCount
+from tests.inference import _budget
 
 # ---------------------------------------------------------------------------------------------------------------
 # Helpers
@@ -37,9 +38,14 @@ def _request(
 
 
 def _config(**kwargs: Any) -> RerankEndpoint:
-    """A served config; hosted profiles pass ``api`` and drop ``base_url``."""
+    """A served config; hosted profiles pass ``api`` and drop ``base_url``. A served one declares its
+    explicit budget (tokenizer + max_tokens) and ``use_activation`` (F10)."""
     kwargs.setdefault("base_url", "http://engine:8000/v1")
     kwargs.setdefault("model", "qwen3-reranker-8b")
+    if kwargs.get("api", "rerank") == "rerank":
+        kwargs.setdefault("tokenizer", _budget.DEFAULT_TOKENIZER or "test/tokenizer")
+        kwargs.setdefault("max_tokens", 8192)
+        kwargs.setdefault("use_activation", False)
     return RerankEndpoint(**kwargs)
 
 
@@ -69,15 +75,17 @@ class TestServedBody:
             "query": "q",
             "documents": ["first", "second", "third"],
             "top_n": 3,
+            "use_activation": False,  # F10: a served config sets it explicitly, and it travels
         }
 
     def test_the_engine_extensions_are_absent_until_the_config_sets_them(self) -> None:
-        """A plain Cohere-shaped server never receives an unknown field."""
+        """A plain Cohere-shaped server receives only the fields the config and request set: the
+        instruction field waits for ``instruction: field``, and no engine-side truncation field is ever sent."""
         adapter = RerankAdapter(_config())
         call = adapter.calls(_request("a", "b"), model="m")[0]
 
-        assert set(call.json) == {"model", "query", "documents", "top_n"}
-        assert not {"instruction", "use_activation", "max_tokens_per_doc", "truncate_prompt_tokens"} & set(call.json)
+        assert set(call.json) == {"model", "query", "documents", "top_n", "use_activation"}
+        assert not {"instruction", "max_tokens_per_doc", "truncate_prompt_tokens"} & set(call.json)
 
     def test_the_instruction_field_travels_only_when_the_request_carries_one(self) -> None:
         adapter = RerankAdapter(_config(instruction="field"))
@@ -170,6 +178,26 @@ class TestHostedProfiles:
         assert len(result.scores) == 1001
         assert result.scores[999] == (999 * 37 % 97) / 97  # chunk one's last document, realigned by index
         assert result.scores[1000] == (0 * 37 % 97) / 97  # chunk two's only document
+
+    @pytest.mark.parametrize("adapter_cls", [CohereRerankAdapter, VoyageRerankAdapter])
+    def test_the_declared_request_cap_is_1000_documents(self, adapter_cls: type[RerankAdapter]) -> None:
+        """The hosted profiles' declared cap is a boundary: 1000 documents make one request, 1001 split
+        into [1000, 1]. Both profiles declare the same cap; the test pins each profile's own attribute."""
+        adapter = adapter_cls(_config(api=adapter_cls.name, base_url=adapter_cls.DEFAULT_BASE_URL))
+        at_cap = adapter.calls(_request(*[f"doc-{index}" for index in range(1000)]), model="m")
+        assert [len(call.json["documents"]) for call in at_cap] == [1000]
+        over = adapter.calls(_request(*[f"doc-{index}" for index in range(1001)]), model="m")
+        assert [len(call.json["documents"]) for call in over] == [1000, 1]
+
+    def test_an_unreadable_body_is_truncated_at_300_characters(self) -> None:
+        """``_short`` keeps 300 characters of a body it cannot read and marks the cut: the 301st
+        character (the repr's closing quote, after 299 s) must not surface."""
+        adapter = VoyageRerankAdapter(_config(api="voyage", base_url="https://api.voyageai.com/v1"))
+        with pytest.raises(RequestRejectedError) as caught:
+            adapter.interpret(_request("doc"), [_reply(503, "s" * 299)])  # repr: quote + 299 s + quote
+        message = str(caught.value)
+        assert "'" + "s" * 299 in message  # the repr's first 300 characters
+        assert message.endswith("...")  # the 301st character (the closing quote) is gone
 
     def test_the_voyage_body_is_todays_shape(self) -> None:
         """``model``, ``query``, ``documents`` -- no ``top_n``: Voyage's return-limit field is ``top_k``, and

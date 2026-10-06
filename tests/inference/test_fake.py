@@ -20,7 +20,8 @@ from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference import Call, Endpoint, Transport, register_fake_route
 from rcp_ndcg.inference.fake import FakeEndpoint, _fake_endpoint, fake_uniform, hidden_ability
 
-CHAT = ("POST", "/chat/completions")
+CHAT = ("POST", "/custom/route")
+"""A third-party route for the registry tests; `/chat/completions` is the judge's shipped fake."""
 
 
 @pytest.fixture(autouse=True)
@@ -32,8 +33,8 @@ def _fast_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture()
-def _chat_route():
-    """A chat-completions fake (the judge's role route arrives with the judge port), registered and removed."""
+def _custom_route():
+    """A third-party fake route, registered and removed (the shipped routes are never torn down)."""
 
     def chat(request: httpx.Request, endpoint: FakeEndpoint) -> httpx.Response:
         body = json.loads(request.content)
@@ -47,7 +48,7 @@ def _chat_route():
             },
         )
 
-    register_fake_route("POST", "/chat/completions", chat)
+    register_fake_route(*CHAT, chat)
     yield chat
     with fake_module._ROUTES_LOCK:
         fake_module._ROUTES.pop(CHAT, None)
@@ -122,20 +123,20 @@ class TestPooling:
             transport.send([Call("POST", "/pooling", {"input": ["one two", "a b c d"], "task": "token_embed"})])
         )
         data = replies[0].body["data"]
-        assert [len(entry["embedding"]) for entry in data] == [2, 4]  # ragged: 2 tokens, then 4
-        assert all(len(row) == 4 for entry in data for row in entry["embedding"])
+        assert [len(entry["data"]) for entry in data] == [2, 4]  # ragged: 2 tokens, then 4
+        assert all(len(row) == 4 for entry in data for row in entry["data"])
         assert [len(entry["prompt_token_ids"]) for entry in data] == [2, 4]
 
     def test_base64_honours_embed_dtype(self) -> None:
         transport = _transport("fake://seed/2?dim=4", "mv")
         request = {"input": ["one two"], "encoding_format": "base64", "embed_dtype": "float16"}
         replies = transport.run(transport.send([Call("POST", "/pooling", request)]))
-        raw = base64.b64decode(replies[0].body["data"][0]["embedding"])
+        raw = base64.b64decode(replies[0].body["data"][0]["data"])
         matrix = np.frombuffer(raw, dtype=np.float16).reshape(2, 4)
         assert abs(float(np.linalg.norm(matrix[0])) - 1.0) < 0.01  # float16 rounding keeps the unit norm
         request = {"input": ["one two"], "encoding_format": "base64", "embed_dtype": "float32"}
         replies = transport.run(transport.send([Call("POST", "/pooling", request)]))
-        raw = base64.b64decode(replies[0].body["data"][0]["embedding"])
+        raw = base64.b64decode(replies[0].body["data"][0]["data"])
         assert np.frombuffer(raw, dtype=np.float32).reshape(2, 4).shape == (2, 4)
 
     def test_float_vectors_match_the_base64_ones(self) -> None:
@@ -144,9 +145,9 @@ class TestPooling:
         float_replies = transport.run(transport.send([Call("POST", "/pooling", request)]))
         request = {"input": ["one two"], "encoding_format": "base64", "embed_dtype": "float32"}
         b64_replies = transport.run(transport.send([Call("POST", "/pooling", request)]))
-        raw = base64.b64decode(b64_replies[0].body["data"][0]["embedding"])
+        raw = base64.b64decode(b64_replies[0].body["data"][0]["data"])
         matrix = np.frombuffer(raw, dtype=np.float32).reshape(2, 4)
-        assert np.allclose(np.asarray(float_replies[0].body["data"][0]["embedding"]), matrix)
+        assert np.allclose(np.asarray(float_replies[0].body["data"][0]["data"]), matrix)
 
 
 class TestRerank:
@@ -194,15 +195,15 @@ class TestModelsAndRoutes:
         (engine,) = transport.run(transport.probe())
         assert (engine.model, engine.error) == ("enc", None)
 
-    def test_a_registered_route_answers(self, _chat_route: object) -> None:
+    def test_a_registered_route_answers(self, _custom_route: object) -> None:
         transport = _transport("fake://seed/0", "fake")
-        replies = transport.run(transport.send([Call("POST", "/chat/completions", {"prompt": "hi"})]))
+        replies = transport.run(transport.send([Call("POST", "/custom/route", {"prompt": "hi"})]))
         assert replies[0].body["choices"][0]["message"]["content"] == "echo:hi"
 
-    def test_a_registered_route_refuses_a_conflicting_second(self, _chat_route: object) -> None:
+    def test_a_registered_route_refuses_a_conflicting_second(self, _custom_route: object) -> None:
         with pytest.raises(ConfigError, match="already registered"):
-            register_fake_route("POST", "/chat/completions", lambda request, endpoint: httpx.Response(200))
-        register_fake_route(*CHAT, _chat_route)  # type: ignore[arg-type]  # the same handler again: fine
+            register_fake_route(*CHAT, lambda request, endpoint: httpx.Response(200))
+        register_fake_route(*CHAT, _custom_route)  # type: ignore[arg-type]  # the same handler again: fine
 
     def test_an_unknown_route_is_a_404(self) -> None:
         from rcp_ndcg.errors import ProviderError

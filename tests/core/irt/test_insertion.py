@@ -299,3 +299,14 @@ class TestConnectivityAndSelection:
         ranks = {d: i + 1 for i, d in enumerate(candidates)}
         picked = select_opponents("d_new", 0.0, thetas, ranks, k=5)
         assert "d_new" not in picked
+
+    def test_select_opponents_returns_best_first_by_kernel_score(self) -> None:
+        """The returned order is best-first by the kernel (information x exposure), which the insertion
+        consumes: here it is neither the theta order nor the rank order."""
+        # p(1-p) at provisional theta 1.0 times 1/log2(rank + 1):
+        # near_above 0.124048, far_below 0.104994, way_above 0.022588
+        # (the theta order and the rank order are both far_below, near_above, way_above)
+        thetas = {"far_below": -1.0, "near_above": 2.0, "way_above": 4.0}
+        ranks = {"far_below": 1, "near_above": 2, "way_above": 3}
+        picked = select_opponents("new", 1.0, thetas, ranks, k=3)
+        assert picked == ["near_above", "far_below", "way_above"]

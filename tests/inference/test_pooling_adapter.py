@@ -384,6 +384,40 @@ class TestRefusals:
         with pytest.raises(RequestRejectedError, match="Unsupported task"):
             adapter.interpret(request([Content.from_text("a")], dim=2), [reply])
 
+    def test_a_refusal_message_keeps_300_characters_and_drops_the_301st(self) -> None:
+        """The declared message cap: the server's words are quoted up to 300 characters -- the 301st
+        character must never surface in the error."""
+        adapter = VllmPooling()
+        reply = Reply(500, {"error": {"message": "a" * 300 + "!" + "b" * 20}}, {})
+        with pytest.raises(RequestRejectedError) as caught:
+            adapter.interpret(request([Content.from_text("a")], dim=2), [reply])
+        assert "a" * 300 in str(caught.value) and "!" not in str(caught.value)
+
+
+class TestDecodedTokenCounting:
+    """The usage cross-check counts one vector per token: a 1-D item is one pooled vector, a 2-D item
+    one vector per row -- the count that decides whether the reply's own usage is believed."""
+
+    @pytest.mark.parametrize(
+        ("data", "prompt_tokens", "multi", "offsets"),
+        [
+            pytest.param([[1.0, 2.0], [3.0, 4.0]], 2, False, None, id="one_vector_items_count_one_each"),
+            pytest.param([[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0]]], 3, True, [0, 2, 3], id="per_token_count_per_row"),
+        ],
+    )
+    def test_the_usage_cross_check_counts_one_vector_per_token(
+        self, data: list[Any], prompt_tokens: int, multi: bool, offsets: list[int] | None
+    ) -> None:
+        adapter = VllmPooling()
+        items = [{"index": index, "data": item} for index, item in enumerate(data)]
+        reply = Reply(200, {"data": items, "usage": {"prompt_tokens": prompt_tokens}}, {})
+        embeddings = adapter.interpret(request([Content.from_text("a"), Content.from_text("b")], dim=2), [reply])
+        assert embeddings.num_items == 2 and embeddings.is_multi_vector is multi
+        if offsets is None:
+            np.testing.assert_array_equal(embeddings.vectors, data)
+        else:
+            assert embeddings.offsets.tolist() == offsets
+
 
 class TestBytesFraming:
     @staticmethod

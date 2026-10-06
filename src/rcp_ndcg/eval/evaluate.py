@@ -18,7 +18,8 @@ scores 0 and is reported in :attr:`EvalReport.warnings`. qrel-nDCG is undefined 
 positive grade and drops out of the means. A system whose rankings match nothing of the dataset — no row names
 any of its subsets, or not one ranked id is in its pools or labels — is refused with a
 :class:`~rcp_ndcg.errors.DataError`: every score would be 0, which reads as a weak system where the input is
-broken.
+broken. ``systems=`` (``--system`` on the command line) scores only the named systems, so one broken system of
+a multi-system file no longer stops the others; an unknown name is refused, listing the systems the file holds.
 
 **Aggregation** follows the paper: the mean over queries per dataset, then the unweighted mean over datasets. The
 summary interval is a percentile bootstrap that resamples queries within each dataset (query-clustered,
@@ -239,6 +240,7 @@ def evaluate(
     k: int | Sequence[int] = 10,
     metrics: Sequence[MetricName] = ("rcp_ndcg", "qrel_ndcg"),
     count_gains: Mapping[str, Mapping[str, float]] | None = None,
+    systems: Sequence[str] | None = None,
     bootstrap: int = 1000,
     seed: int = 0,
 ) -> EvalReport:
@@ -258,6 +260,9 @@ def evaluate(
         metrics: Which of ``"rcp_ndcg"``, ``"qrel_ndcg"``, ``"count_ndcg"`` to compute.
         count_gains: The Count-nDCG gains (:func:`rcp_ndcg_core.count_gain` per document), required for
             ``"count_ndcg"``.
+        systems: The systems to score, in the rankings' order in the report (``None``: every system the rankings
+            hold). Use it to score the healthy systems of a file one of whose systems matches nothing of the
+            dataset (``--system`` on the command line, repeatable).
         bootstrap: Bootstrap resamples for the summary interval (0: no interval).
         seed: The bootstrap seed.
 
@@ -265,7 +270,8 @@ def evaluate(
         The :class:`EvalReport`.
 
     Raises:
-        ConfigError: Conflicting or unknown arguments.
+        ConfigError: Conflicting or unknown arguments, or a ``systems`` name the rankings do not hold (the error
+            lists the systems they do).
         DataError: No gains for RCP-nDCG, gains outside ``[0, 1]``, a protocol that needs pools the dataset
             lacks, rankings (or gains) keyed by bare query ids over subsets that share query ids, or a system's
             rankings that match nothing of the scored dataset (no row names any of its subsets, or not one
@@ -285,6 +291,7 @@ def evaluate(
         raise ConfigError("evaluate needs the data to score against: suite= or dataset=")
     rules = _protocol(protocol if protocol is not None else dataset.protocol or "plain")
     _refuse_undivided(rankings, dataset)
+    selected = _selected_systems(rankings, systems)
 
     rcp_gains, source = _resolve_gains(gains, dataset) if "rcp_ndcg" in metrics else (None, "none")
     if "count_ndcg" in metrics and count_gains is None:
@@ -302,7 +309,7 @@ def evaluate(
     dataset_pools, dataset_labels = _dataset_targets(dataset)
     per_query: list[QueryValue] = []
     unranked: dict[str, set[tuple[str, str]]] = {}
-    for system in rankings.systems:
+    for system in selected:
         scores = {part.name: _system_queries(rankings, system, part.name) for part in dataset.parts}
         _refuse_unmatched(rankings, dataset, system, scores, dataset_pools, dataset_labels)
         for part in dataset.parts:
@@ -358,6 +365,27 @@ def evaluate(
     )
     report._inputs.update(rankings=rankings, dataset=dataset, labels=labels)
     return report
+
+
+def _selected_systems(rankings: Rankings, systems: Sequence[str] | None) -> list[str]:
+    """The systems to score: the named ones in the rankings' order, or every system of the rankings.
+
+    Raises:
+        ConfigError: A name the rankings do not hold (the error lists the systems they do), or an empty sequence.
+    """
+    if systems is None:
+        return rankings.systems
+    held = rankings.systems
+    unknown = sorted(set(systems) - set(held))
+    if unknown:
+        raise ConfigError(
+            f"systems {unknown} are not in the rankings; systems: {held}",
+            hint="score one of the systems the rankings hold (--system, repeatable)",
+            details={"unknown": unknown, "systems": held},
+        )
+    if not systems:
+        raise ConfigError("systems names no system; pass the systems to score, or None (the default) for all")
+    return [name for name in held if name in set(systems)]
 
 
 def _protocol(protocol: str | Protocol) -> Protocol:
@@ -480,11 +508,29 @@ def _refuse_unmatched(
         DataError: Naming the system and the datasets its rows do name, or one ranked id next to one dataset id.
     """
     if not any(scores.values()):
-        raise no_rankings_error(dataset.name, rankings.datasets, system=system, hint=_dataset_column_hint(dataset))
+        error = no_rankings_error(dataset.name, rankings.datasets, system=system, hint=_dataset_column_hint(dataset))
+        raise _way_out_for_the_others(error, rankings)
     ranked = {doc_id for part_scores in scores.values() for docs in part_scores.values() for doc_id in docs}
     targets = pools | label_ids
     if targets and not ranked & targets:
-        raise _no_overlap_error(system, dataset, ranked, pools, label_ids)
+        raise _way_out_for_the_others(_no_overlap_error(system, dataset, ranked, pools, label_ids), rankings)
+
+
+def _way_out_for_the_others(error: DataError, rankings: Rankings) -> DataError:
+    """A system's refusal, with the way out for the other systems of a multi-system file appended.
+
+    One broken system would fail the scoring of every system in the file; the hint names the way out: drop the
+    broken system's rows, or score the others (``systems=`` in Python, ``--system`` on the command line). A
+    single-system file keeps its own hint: neither way out has anything left to score.
+    """
+    if len(rankings.systems) <= 1:
+        return error
+    python = "drop this system's rows, or score the others with systems=[...]"
+    cli = "drop this system's rows, or score the others with --system (repeatable)"
+    base = error.hint
+    error.hint = f"{base}; {python}" if base else python
+    error.cli_hint = f"{base}; {cli}" if base else cli
+    return error
 
 
 def _dataset_targets(dataset: Dataset) -> tuple[set[str], set[str]]:

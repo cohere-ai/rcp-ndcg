@@ -1,0 +1,120 @@
+"""Every migrated paper config validates as a config (and none may build a client).
+
+The in-process paper models are served now: their configs name the recipe that serves them, the
+checkpoint's tokenizer, and the paper's budgets, and their ``base_url`` is the placeholder the
+runner's engines overlay replaces. The clients still refuse ``max_tokens`` until the text-budget
+mechanism wires the cut, so a config that declares it is validated as a config and never run here.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import pytest
+import yaml
+
+from rcp_ndcg.retrieval import validate_reranker, validate_retriever
+from rcp_ndcg.retrieval.config import (
+    BM25Config,
+    CohereReranker,
+    DenseConfig,
+    LateInteractionConfig,
+    ServedEmbedding,
+    ServedReranker,
+    VoyageReranker,
+)
+from tests import REPO_ROOT
+
+PAPER = REPO_ROOT / "experiments" / "paper"
+
+
+def _configs(directory: Path) -> list[tuple[Path, dict[str, Any]]]:
+    paths = sorted(directory.glob("*.yaml"))
+    assert paths, directory
+    return [(path, yaml.safe_load(path.read_text(encoding="utf-8"))) for path in paths]
+
+
+def test_every_paper_retrieval_config_validates() -> None:
+    for path, data in _configs(PAPER / "retrieval"):
+        assert isinstance(validate_retriever(data), BM25Config | DenseConfig | LateInteractionConfig), path
+
+
+def test_every_paper_reranker_config_validates() -> None:
+    for path, data in _configs(PAPER / "rerankers"):
+        assert isinstance(validate_reranker(data), ServedReranker | CohereReranker | VoyageReranker), path
+
+
+@pytest.mark.parametrize(
+    "path",
+    sorted((PAPER / "rerankers").glob("*.yaml")),
+    ids=lambda path: path.name,
+)
+def test_each_served_paper_reranker_names_its_recipe_tokenizer_and_budgets(path: Path) -> None:
+    """Every in-process paper model is served: recipe, tokenizer and the paper's budgets, per the brief."""
+    config = validate_reranker(yaml.safe_load(path.read_text(encoding="utf-8")))
+    if not isinstance(config, ServedReranker):
+        return
+    assert config.recipe and "@" in (config.tokenizer or ""), f"{path.name}: recipe and tokenizer declared"
+    assert config.max_tokens == 8192 and config.query_max_tokens == 4096
+    assert config.instruction == "none", "the release's in-process path passed the bare query"
+
+
+def test_every_recipe_id_is_the_lowercased_hub_repo_name_of_its_tokenizer() -> None:
+    """One recipe-id rule (the recipe package's canonical list): the id is the checkpoint's lowercased Hub repo
+    name, never a short Hub redirect (``zerank-1-reranker``, not ``zerank-1``)."""
+    checked = 0
+    for directory in ("retrieval", "rerankers"):
+        for path, data in _configs(PAPER / directory):
+            recipe = data.get("recipe")
+            tokenizer = data.get("tokenizer") or data.get("encoder", {}).get("tokenizer")
+            if recipe is None:
+                recipe = data.get("encoder", {}).get("recipe")
+            if recipe is None:
+                continue
+            tokenizer = str(tokenizer)
+            assert "@" in tokenizer, path
+            repo = tokenizer.rsplit("@", 1)[0].split("/")[-1]
+            expected = repo.lower()
+            assert recipe == expected, f"{path}: recipe {recipe!r} != the tokenizer's lowercased repo {expected!r}"
+            checked += 1
+    assert checked == 11, f"every paper config with a recipe names its checkpoint (checked {checked})"
+
+
+def test_the_jina_paper_config_is_listwise_and_the_octen_one_carries_its_prefix() -> None:
+    jina = validate_reranker(yaml.safe_load((PAPER / "rerankers" / "jina_v3.yaml").read_text(encoding="utf-8")))
+    assert jina.listwise is True
+
+    octen = validate_retriever(yaml.safe_load((PAPER / "retrieval" / "octen.yaml").read_text(encoding="utf-8")))
+    assert isinstance(octen.encoder, ServedEmbedding)
+    assert octen.encoder.doc_prompt == "- " and octen.encoder.max_tokens == 8192
+    assert octen.encoder.query_prompt == "", "the paper encodes queries as they are"
+
+
+def test_the_hosted_paper_configs_omit_base_url() -> None:
+    for path in ("rerankers/cohere_rerank_v4_fast.yaml", "rerankers/voyage_rerank_2_5.yaml"):  # noqa: PTH118
+        config = validate_reranker(yaml.safe_load((PAPER / path).read_text(encoding="utf-8")))
+        assert config.base_url is None, path
+    cohere = validate_retriever(
+        yaml.safe_load((PAPER / "retrieval" / "cohere_embed_v4.yaml").read_text(encoding="utf-8"))
+    )
+    assert cohere.encoder.base_url is None
+
+
+def test_every_served_paper_config_builds_its_client(tokenizer_json: str) -> None:
+    """The budget is wired: every served paper config builds its client.
+
+    The configs carry their real Hub tokenizers (the recipe serves the checkpoint); the client only loads
+    the tokenizer *file* to count the budget, so the build test runs against the saved offline test
+    tokenizer -- same field, different file, the paper config itself untouched."""
+    from rcp_ndcg.inference.clients import RerankClient
+    from tests.retrieval.test_api import _recording_sender
+
+    for data_path, data in _configs(PAPER / "rerankers"):
+        config = validate_reranker(data)
+        if not isinstance(config, ServedReranker):
+            continue
+        assert data_path.name, "the paper config is a file"
+        built = RerankClient(config.model_copy(update={"tokenizer": tokenizer_json}), sender=_recording_sender())
+        assert built.config.max_tokens == 8192 and built.config.query_max_tokens == 4096
+        built.close()

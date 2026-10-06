@@ -3,14 +3,17 @@
 * ``score`` -- RCP-nDCG and qrel-nDCG of a rankings file under the suite's scoring protocol (``plain`` for a
   dataset that is no suite), against a public suite (``--suite nanobeir``) or a dataset (``--dataset URI``); the
   gains are a calibration's (``--calibration``), else the dataset's released gains. Count-nDCG needs count gains:
-  :func:`rcp_ndcg.eval.evaluate` takes them (``count_gains=``). ``--json`` prints the summary, the per-dataset
-  means and the warnings; ``--per-query`` adds every per-query value, ``--fields`` picks top-level fields, and
-  ``--out`` writes the full report (what ``compare --report`` and ``explain --report`` read).
+  :func:`rcp_ndcg.eval.evaluate` takes them (``count_gains=``). ``--system NAME`` (repeatable) scores only those
+  systems of the file, so one system whose rankings match nothing does not stop the others; ``--json`` prints the
+  summary, the per-dataset means and the warnings; ``--per-query`` adds every per-query value, ``--fields`` picks
+  top-level fields, and ``--out`` writes the full report (what ``compare --report`` and ``explain --report`` read).
 * ``compare`` -- the paired t-test and a query-clustered bootstrap interval between the systems of a report
   (``--report``) or of a run (``--run``; without its reference systems ``candidates`` and ``judge`` unless
   ``--include-reference``).
 * ``explain`` -- one query side by side: each system's top k with theta, gain and per-criterion probabilities, from
-  a run (``--run``) or a report (``--report``); ``--include-text`` adds the query and document texts.
+  a run (``--run``) or a report (``--report``; re-scored by default for the systems the report scored, and
+  ``--system NAME`` re-scores only the named ones of the saved rankings); ``--include-text`` adds the query and
+  document texts.
 """
 
 from __future__ import annotations
@@ -61,6 +64,11 @@ class EvalScoreRequest(BaseModel):
     k: list[int] = Field(default_factory=lambda: [10], description="Cutoffs (repeatable).")
     metrics: list[ScoreMetric] = Field(
         default_factory=lambda: ["rcp_ndcg", "qrel_ndcg"], description="Metrics to compute (repeatable)."
+    )
+    system: list[str] = Field(
+        default_factory=list,
+        description="Score only these systems (repeatable; default every system the rankings hold). Use it to "
+        "score the healthy systems of a file one of whose systems matches nothing of the dataset.",
     )
     bootstrap: int = Field(default=1000, ge=0, description="Bootstrap resamples of the summary interval.")
     seed: int = Field(default=0, description="The bootstrap seed.")
@@ -201,6 +209,7 @@ def eval_score(request: EvalScoreRequest) -> EvalScoreResult:
         protocol=request.protocol,
         k=request.k,
         metrics=request.metrics,
+        systems=request.system or None,
         bootstrap=request.bootstrap,
         seed=request.seed,
     )
@@ -303,6 +312,11 @@ class EvalExplainRequest(BaseModel):
     )
     query_id: str = Field(description="The query to explain.")
     subset: str | None = Field(default=None, description="The query's dataset, when a suite's report has it twice.")
+    system: list[str] = Field(
+        default_factory=list,
+        description="With --report, re-score only these systems of the saved rankings (repeatable; default the "
+        "systems the report scored).",
+    )
     k: int = Field(default=10, ge=1, description="Documents shown per system (and the cutoff of the deltas).")
     include_text: bool = Field(default=False, description="Add the query and document texts.")
 
@@ -355,6 +369,7 @@ def _explain_report(request: EvalExplainRequest) -> tuple[QueryExplanation, Any]
         protocol=saved.protocol,
         k=saved.k,
         metrics=saved.metrics,
+        systems=request.system or saved.systems or None,  # the report's own systems, unless narrowed or none
         bootstrap=0,
     )
     calibration = _calibration(inputs.calibration)
@@ -385,6 +400,11 @@ def eval_explain(request: EvalExplainRequest) -> ExplainedQuery:
     if (request.report is None) == (request.run is None):
         raise UsageError("pass exactly one of --run and --report")
     if request.run is not None:
+        if request.system:
+            raise UsageError(
+                "--system re-scores the rankings of a saved report and has no effect with --run",
+                hint="drop --system, or explain a report written by `eval score --out` (--report)",
+            )
         from rcp_ndcg.runs.inspect import explain_query
 
         explained, dataset = explain_query(request.run, request.query_id, k=request.k)
