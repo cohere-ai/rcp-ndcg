@@ -25,6 +25,9 @@ from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.support.identity import FieldRole
 
+MediaSide = Literal["query", "document"]
+"""A side of the retrieval pair that may or may not carry media."""
+
 SELF_HOSTED_APIS = frozenset({"openai_embeddings", "vllm_pooling", "rerank"})
 """The wire adapters a self-hosted engine speaks. A role config with one of these ``api`` values must declare
 its text budget explicitly -- ``tokenizer`` and ``max_tokens`` -- because the package does the cutting itself;
@@ -79,6 +82,30 @@ def _empty_doc_pairing(config: EmbeddingEndpoint | RerankEndpoint) -> None:
         raise ValueError(f"empty_doc_text applies to empty_doc 'send_text' only, not {config.empty_doc!r}")
 
 
+def _one_home_for_a_prompt_prefix(config: EmbeddingEndpoint) -> None:
+    """A prompt prefix has one home (2d, rec-qwen3-embedding-0.6b): the client prepends ``query_prompt``/
+    ``doc_prompt`` before the template renders, so declaring both doubles the prefix. Refused, naming the
+    template segment to use instead; the fields stay for template-less configs (hosted profiles)."""
+    if config.template is None:
+        return
+    declared: list[str] = []
+    if config.query_prompt:
+        declared.append("query_prompt")
+    if config.doc_prompt:
+        declared.append("doc_prompt")
+    if not declared:
+        return
+    shapes = {"query_prompt": "query", "doc_prompt": "document"}
+    segment = "/".join(shapes[name] for name in declared)
+    raise ConfigError(
+        f"{type(config).__name__} declares {' and '.join(declared)} beside a template: the client prepends the "
+        "prefix before the template renders, so declaring both doubles the prefix",
+        hint=f"write the prefix as a fixed segment of the template's {segment!r} shape instead "
+        "(Segment(fixed=...)), and drop " + " and ".join(declared) + " (the fields stay for template-less "
+        "configs, e.g. hosted profiles)",
+    )
+
+
 def _no_inert_overflow_policies(config: EmbeddingEndpoint | RerankEndpoint) -> None:
     """Without a tokenizer the content is sent uncut (a hosted vendor profile): an overflow policy that needs
     one would be silently inert, so it is refused instead of ignored."""
@@ -89,6 +116,8 @@ def _no_inert_overflow_policies(config: EmbeddingEndpoint | RerankEndpoint) -> N
         inert.append("on_overflow")
     if getattr(config, "query_max_tokens", None) is not None:
         inert.append("query_max_tokens")
+    if getattr(config, "document_skip_token_ids", ()):
+        inert.append("document_skip_token_ids")
     if config.chunk is not None:
         inert.append("chunk")
     if config.template is not None:
@@ -117,6 +146,22 @@ def _use_activation_is_explicit_on_a_served_wire(config: RerankEndpoint) -> None
         )
 
 
+def _media_sides_and_the_media_fields(config: _MediaEndpoint) -> None:
+    """Media declared where no side may carry it would be silently inert (2b); refused, never ignored."""
+    media_declared = (
+        config.image_policy is not None
+        or config.video_policy is not None
+        or bool(config.max_images)
+        or bool(config.max_videos)
+    )
+    if media_declared and not config.media_sides:
+        raise ValueError(
+            "media_sides is empty, so no side may carry media, and the declared media fields "
+            "(image_policy, video_policy, max_images, max_videos) would be inert: declare a side in "
+            "media_sides, or drop the media fields"
+        )
+
+
 class _MediaEndpoint(Endpoint):
     """The media fields every retrieval role shares: what it declares about the media it sends.
 
@@ -130,6 +175,7 @@ class _MediaEndpoint(Endpoint):
         "image_processor": FieldRole.CONTENT,
         "image_policy": FieldRole.CONTENT,
         "video_policy": FieldRole.CONTENT,
+        "media_sides": FieldRole.CONTENT,
         "max_images": FieldRole.RUNTIME,
         "max_videos": FieldRole.RUNTIME,
     }
@@ -160,6 +206,12 @@ class _MediaEndpoint(Endpoint):
     max_videos: int = Field(default=0, ge=0)
     """Video containers one request may carry; 0 (the default) means the model reads none. There is no
     "unlimited". Runtime: like :attr:`max_images`."""
+
+    media_sides: tuple[MediaSide, ...] = ("query", "document")
+    """Which sides of the retrieval pair may carry media (2b, G3: the topk reference rejects image
+    queries -- images and video are documents-only there). The clients refuse media on a side this field
+    does not name, with a typed error naming the field, before the media is fetched or counted. The
+    default allows both sides, today's behaviour. Content: it decides what the model reads."""
 
 
 class EmbeddingEndpoint(_MediaEndpoint):
@@ -193,7 +245,17 @@ class EmbeddingEndpoint(_MediaEndpoint):
             anchors always survive. The cut is never left to the engine: an engine-side truncation of the
             rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which
             a self-hosted role config refuses (declare the budget); a hosted vendor profile with no
-            tokenizer sends content uncut. Content.
+            tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document
+            side); the ``query`` shape is capped by :attr:`query_max_tokens` when that is declared, by this
+            budget when it is not.
+        query_max_tokens: The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape
+            budgets: a late-interaction or asymmetric embedder caps queries and documents differently --
+            topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's
+            WHOLE budget there: the fixed frame is reserved out of it exactly as :attr:`max_tokens`
+            reserves the document shape's. Must not exceed :attr:`max_tokens` -- the model's whole input
+            budget, which no shape's render can be sent over. ``None`` (the default): both shapes are
+            capped by :attr:`max_tokens`. On a :class:`RerankEndpoint` the field keeps its pair-share
+            meaning instead. Content.
         template: The request template as data
             (:class:`~rcp_ndcg.data.templates.TemplateSpec`): per request shape (``query``, ``document``,
             ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens
@@ -229,6 +291,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
         "recipe": FieldRole.CONTENT,
         "tokenizer": FieldRole.RUNTIME,
         "max_tokens": FieldRole.CONTENT,
+        "query_max_tokens": FieldRole.CONTENT,
         "template": FieldRole.CONTENT,
         "on_overflow": FieldRole.CONTENT,
         "chunk": FieldRole.CONTENT,
@@ -247,6 +310,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
     recipe: str | None = Field(default=None, min_length=1)
     tokenizer: str | None = Field(default=None, min_length=1)
     max_tokens: int | None = Field(default=None, ge=1)
+    query_max_tokens: int | None = Field(default=None, ge=1)
     template: TemplateSpec | None = None
     on_overflow: Literal["cut", "chunk", "fail"] = "cut"
     chunk: ChunkPolicy | None = None
@@ -263,11 +327,23 @@ class EmbeddingEndpoint(_MediaEndpoint):
     @model_validator(mode="after")
     def _explicit_budget_and_empty_documents(self) -> EmbeddingEndpoint:
         """A self-hosted role declares its budget (tokenizer and max_tokens); ``send_text`` names its text; a
-        chunk geometry belongs to ``on_overflow: chunk`` only."""
+        chunk geometry belongs to ``on_overflow: chunk`` only; a query budget above the model's whole input
+        budget cannot fit the served context."""
         _require_explicit_budget(self)
         _no_inert_overflow_policies(self)
         _chunk_geometry_matches_overflow(self)
         _empty_doc_pairing(self)
+        _media_sides_and_the_media_fields(self)
+        _one_home_for_a_prompt_prefix(self)
+        if (
+            self.query_max_tokens is not None
+            and self.max_tokens is not None
+            and self.query_max_tokens > self.max_tokens
+        ):
+            raise ValueError(
+                f"query_max_tokens ({self.query_max_tokens}) must not exceed max_tokens ({self.max_tokens}): "
+                "the query shape's budget would be over the model's whole input budget"
+            )
         return self
 
 
@@ -291,16 +367,50 @@ class PoolingEndpoint(EmbeddingEndpoint):
             checked against it, so a mistyped width fails loudly instead of silently mis-shaping every
             vector. The self-describing float and bytes frames decode without it, and the ``bytes`` encoding
             makes it unnecessary (its metadata carries each item's ``shape``).
+        document_skip_token_ids: The token ids whose DOCUMENT vectors the model scores nothing by (2, the
+            topk hand-off): the client drops the vector at every position whose token id is listed, before
+            MaxSim (topk-embed-v1-small drops 41 ids -- standalone punctuation and specials; queries keep
+            all their vectors). The positions are the ids the client sent: it tokenises the fitted document
+            text with the declared tokenizer, checks the returned vector count against them (a mismatch is
+            a typed error, never a silent misalignment), and refuses a batch that carries media -- a media
+            request's positions are the server's chat-template render, which the client cannot tokenise.
+            Needs the declared tokenizer; a hosted profile without one cannot apply it (refused as inert).
+            Content.
+        mrl_dim: The Matryoshka output size served (2g, plug-pplx), below :attr:`dim` when set: applied
+            CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then
+            L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the
+            default) serves the checkpoint's own :attr:`dim`. Content.
+        outputs: What one input yields (2g, plug-pplx): ``"per_token"`` (the default) is the token_embed
+            contract -- one vector per prompt token, which the reply's ``usage`` cross-checks;
+            ``"per_chunk"`` is a per-chunk multi-output model -- several outputs per input, one slice of
+            chunk vectors per input, so the usage cross-check cannot apply and is skipped. Content.
     """
 
     IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {
         "embed_dtype": FieldRole.CONTENT,
         "dim": FieldRole.CONTENT,
+        "document_skip_token_ids": FieldRole.CONTENT,
+        "mrl_dim": FieldRole.CONTENT,
+        "outputs": FieldRole.CONTENT,
     }
 
     api: str = "vllm_pooling"  # type: ignore[assignment]  # this role's wire adapter, defaulted
     embed_dtype: Literal["float16", "float32"] = "float16"
     dim: int | None = Field(default=None, ge=1)
+    document_skip_token_ids: tuple[int, ...] = ()
+    mrl_dim: int | None = Field(default=None, ge=1)
+    outputs: Literal["per_token", "per_chunk"] = "per_token"
+
+    @model_validator(mode="after")
+    def _mrl_dim_below_the_checkpoint_width(self) -> PoolingEndpoint:
+        """An MRL cut at or above the checkpoint's own width would cut nothing -- a mistyped knob that
+        silently changes nothing."""
+        if self.mrl_dim is not None and self.dim is not None and self.mrl_dim >= self.dim:
+            raise ValueError(
+                f"mrl_dim ({self.mrl_dim}) must be below dim ({self.dim}): the MRL output size cuts the "
+                "checkpoint's token vectors, so declaring it at or over the width cuts nothing",
+            )
+        return self
 
 
 class RerankEndpoint(_MediaEndpoint):
@@ -349,8 +459,13 @@ class RerankEndpoint(_MediaEndpoint):
             ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder,
             :attr:`empty_doc_text`). Content.
         empty_doc_text: The placeholder text ``empty_doc: send_text`` sends. Content.
-        request_shape: How a request crosses the wire: ``text`` (the default), ``messages`` or ``token_ids``;
-            the adapters implement it. Content.
+        empty_query: What an empty query does (2f, qwen3-vl-reranker): ``refuse`` (the default) refuses the
+            request with a typed :class:`~rcp_ndcg.errors.DataError` naming the query id -- the reference
+            wrapper refuses an empty query, and silently scoring one against every candidate would rank by
+            nothing; ``send`` sends the empty string, today's behaviour. Content.
+        request_shape: How a request crosses the wire: ``text`` (the default and the only shape the rerank
+            wires implement today -- any other value is refused, the field exists so a rerank config stays
+            shape-shaped with its siblings). Content.
         instruction: How the reranker's instruction reaches the model: ``"fold"`` folds it into the query text
             (``Task: ...\\nQuery: ...``, today's served behaviour), ``"field"`` sends the engine's own
             ``instruction`` request field (vLLM), ``"system"`` sends it as a system message (the shape some
@@ -377,6 +492,7 @@ class RerankEndpoint(_MediaEndpoint):
         "aggregation": FieldRole.CONTENT,
         "empty_doc": FieldRole.CONTENT,
         "empty_doc_text": FieldRole.CONTENT,
+        "empty_query": FieldRole.CONTENT,
         "request_shape": FieldRole.CONTENT,
         "listwise": FieldRole.CONTENT,
         "batch_size": FieldRole.RUNTIME,
@@ -395,6 +511,7 @@ class RerankEndpoint(_MediaEndpoint):
     aggregation: Literal["max"] = "max"
     empty_doc: Literal["omit_zero", "send", "send_text"] = "send"
     empty_doc_text: str | None = None
+    empty_query: Literal["refuse", "send"] = "refuse"
     request_shape: Literal["text", "messages", "token_ids"] = "text"
     listwise: bool = False
     batch_size: int | None = Field(default=None, ge=1)
@@ -408,6 +525,13 @@ class RerankEndpoint(_MediaEndpoint):
         _no_inert_overflow_policies(self)
         _use_activation_is_explicit_on_a_served_wire(self)
         _chunk_geometry_matches_overflow(self)
+        _media_sides_and_the_media_fields(self)
+        if self.request_shape != "text":
+            raise ValueError(
+                f"request_shape {self.request_shape!r} is declared, but the rerank wires send rendered text "
+                "(only the embedding and pooling roles implement the messages and token_ids routes): drop "
+                "request_shape (the default) until the rerank wires land those routes",
+            )
         if (
             self.query_max_tokens is not None
             and self.max_tokens is not None

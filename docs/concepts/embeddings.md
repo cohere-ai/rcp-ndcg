@@ -19,12 +19,12 @@ An embedding endpoint is an `EmbeddingEndpoint` (`rcp_ndcg.inference.config`): t
 | `api` | The wire adapter, from the embed role's registry: `openai_embeddings` (default), `cohere`, `voyage`, `gemini`, or a third party's from the `rcp_ndcg.adapters` entry-point group (entries named `embed.<name>`) |
 | `base_url` | The endpoint; `null` for a hosted API, which then uses the profile's public URL |
 | `api_key_env` | The variable holding the key, resolved by the transport; when unset, the wire adapter profile's own variables are tried (a hosted profile's `CO_API_KEY` or `VOYAGE_API_KEY`, the OpenAI route's `OPENAI_API_KEY`), in the profile's header |
-| `query_prompt`, `doc_prompt` | Text prepended to every query / document (an asymmetric embedder's instruction prefix) |
+| `query_prompt`, `doc_prompt` | Text prepended to every query / document (an asymmetric embedder's instruction prefix); refused beside a `template` -- the prefix then goes in as the template's fixed segment, so declaring both would double it |
 | `normalize` | L2-normalise the vectors (the default); normalising twice is harmless |
 | `dimensions` | The Matryoshka cut, sent only when set |
 | `batch_size` | Texts per request, refused above the profile's published cap (Cohere 96, Voyage 128, Gemini 100, the OpenAI route 128) |
 | `concurrency` | Batch requests in flight at once |
-| `recipe`, `tokenizer`, `max_tokens` | Declared for the served engine's settings and the client-side text budget (below): a self-hosted config must declare both `tokenizer` and `max_tokens`, and the client cuts the content spans itself (`on_overflow: cut`, the default; `chunk` pools scores by max, and an embedding has none to pool, so it is refused). The hosted profiles take no `dimensions` (their APIs fix the output dimension); a config that sets `dimensions` on one is refused |
+| `recipe`, `tokenizer`, `max_tokens`, `query_max_tokens` | Declared for the served engine's settings and the client-side text budget (below): a self-hosted config must declare both `tokenizer` and `max_tokens`, and the client cuts the content spans itself (`on_overflow: cut`, the default; `chunk` pools scores by max, and an embedding has none to pool, so it is refused). The hosted profiles take no `dimensions` (their APIs fix the output dimension); a config that sets `dimensions` on one is refused. `max_tokens` caps the document shape; `query_max_tokens` (per-shape budgets) caps the query shape whole -- an asymmetric or late-interaction embedder caps queries and documents differently -- and must not exceed `max_tokens` |
 
 Two hosted shortcuts: a config with no `base_url` points at the profile's public URL
 (`https://api.cohere.com/v2` for Cohere, and so on), and a profile that requires a key raises a
@@ -38,6 +38,10 @@ are registered under their names and are stateless:
 
 * `openai_embeddings` sends `{"model", "input": [texts], "encoding_format": "float"}` plus `dimensions` when
   the config sets one, and reads `data[].embedding` in `data[].index` order (float lists or base64 float32).
+  `request_shape: messages` sends the chat-style embeddings input instead -- one user message per item,
+  lowered with image parts and video parts (sampled frames as image parts, a `video_url` container per the
+  role's `video_policy`) for the vision-language embedders -- and `request_shape: token_ids` sends the ids
+  the client fitted; the hosted profiles implement text only.
 * `cohere` sends `{"model", "texts", "input_type", "embedding_types": ["float"]}` to `POST {base_url}/embed`,
   with `input_type` `search_query` / `search_document`, and reads `embeddings.float`.
 * `voyage` sends the OpenAI body with an `input_type` of `query` / `document`, and reads the OpenAI
@@ -46,8 +50,8 @@ are registered under their names and are stateless:
   (`models/<model>`, `taskType` `RETRIEVAL_QUERY` / `RETRIEVAL_DOCUMENT`), puts the key in `x-goog-api-key`,
   and reads `embeddings[].values`.
 
-Every adapter refuses media with a `CapabilityError` naming the media type (these endpoints are text-only for
-now), maps an over-length HTTP 400 ("maximum context length") onto a `CapabilityError` whose hint names
+Every adapter refuses media on the text and token-ids routes with a `CapabilityError` naming the media type
+(the `messages` route carries it), maps an over-length HTTP 400 ("maximum context length") onto a `CapabilityError` whose hint names
 `max_tokens` and `batch_size`, and a batch-cap HTTP 413 onto a `CapabilityError` naming `batch_size`. Any other
 HTTP 400 or 422 is a `RequestRejectedError` for that one request.
 
@@ -130,7 +134,10 @@ carries the digest under this one key, from the one helper in `rcp_ndcg.data.tok
 A self-hosted role config declares its budget explicitly (`tokenizer` + `max_tokens`; a config with one and
 not the other is refused): the client fits every request through the one text-budget mechanism
 (`rcp_ndcg.data.preprocess.fit`), cutting each text at token boundaries of the declared `tokenizer`, with the
-template re-attached around the cut so every anchor survives, and every cut recorded. Never engine-side:
+template re-attached around the cut so every anchor survives, and every cut recorded -- each census row
+naming its shape's budget (`budget_tokens`: the query rows a declared `query_max_tokens`, the document rows
+`max_tokens`). The template can also declare a per-shape content normalisation (`normalize`:
+`"strip"`, `"lowercase"` -- the reference and the engine see the same text). Never engine-side:
 no request asks for truncation, and an over-length HTTP 400 from an engine maps to a `CapabilityError` whose
 hint names `max_tokens` and `batch_size`. A hosted profile may declare only `max_tokens` (its documented
 limit): the content is sent uncut and the limit is recorded as the effective budget (`budget_source:

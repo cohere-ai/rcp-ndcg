@@ -214,18 +214,31 @@ The `pair` shape orders query and document per model -- the reranker above reads
 reranker whose template puts the document first makes the query block an anchor, and the segments say so. A
 special token is written by name (`{special:end_turn}`) and resolved at render time from the tokenizer's added
 tokens; specials are never typed literally, so a template outlives tokenizer rewrites. The template also declares
-`anchor` (`last`, `first`, `mean` or `marker`, with `anchor_markers` naming the specials) -- the position the
-model reads its output from -- and `add_special_tokens` per shape: what the engine does to the rendered string
-for that route (vLLM's pooling and scoring routes append the tokenizer's post-processor tokens; the chat-embed
-form does not). The budget reserves those tokens too: they are part of the measured overhead.
+`anchor` (`last`, `first`, `last_content`, `mean` or `marker`, with `anchor_markers` naming the specials) --
+the position the model reads its output from. `last_content` is for a model that pools the last real token of raw
+text (jina-embeddings-v5): no fixed tail exists and the shape may end on a content span -- which `last` refuses --
+while the fixed segments (a head marker) are still reserved by the budget, and the prefix a cut keeps always
+carries the last content token. It also declares `add_special_tokens` per shape: what the engine does to the
+rendered string for that route (vLLM's pooling and scoring routes append the tokenizer's post-processor tokens;
+the chat-embed form does not). The budget reserves those tokens too: they are part of the measured overhead.
+
+The template can also declare, per shape, a content **normalisation** (`normalize`: `"strip"`, `"lowercase"`,
+in the declared order): `fit` applies it to the shape's content spans before measuring, so the reference and the
+engine see the same text -- the topk wrapper strips the query text and the whole document, Cobble checkpoints
+lowercase their input. The census rows keep the input as given on their original side: normalisation is declared
+policy, not a cut.
 
 ### The budget and the fit
 
 The budget names the tokenizer, the `max_tokens` (the model's whole input sequence, in that tokenizer's tokens),
-optionally `query_max_tokens` (the query's share of a pair budget: when a pair overflows, the query is cut to it
-first and the document gets the rest -- an input under budget goes out unchanged, so within `fit` the share
-binds on overflow), `on_overflow` (`cut` by default, `chunk` or `fail` opt-in), the chunk geometry, and
-`aggregation: max`. `fit` then, per input:
+optionally `query_max_tokens`, `on_overflow` (`cut` by default, `chunk` or `fail` opt-in), the chunk geometry, and
+`aggregation: max`. `query_max_tokens` has a meaning per role: on a reranker's `pair` budget it is the query's
+share (when a pair overflows, the query is cut to it first and the document gets the rest -- an input under budget
+goes out unchanged, so within `fit` the share binds on overflow); on an embedder's or a late-interaction encoder's
+`query` shape it is that shape's WHOLE budget -- per-shape budgets, for the asymmetric and late-interaction
+embedders that cap queries and documents differently (topk-embed-v1-small reads 1024 tokens of query, 8192 of
+document) -- while `max_tokens` keeps capping the `document` shape. A query budget above `max_tokens` is refused
+(on a reranker, one at or over it is refused: the document would keep nothing). `fit` then, per input:
 
 1. measures the fixed overhead once per (template, shape): the template rendered with every content span empty,
    counted as the engine reads it (the shape's `add_special_tokens` flag included);
@@ -234,7 +247,8 @@ binds on overflow), `on_overflow` (`cut` by default, `chunk` or `fail` opt-in), 
 3. on `chunk`, splits the document into verbatim chunks and renders **every chunk with the full template** --
    engine-side chunking of a framed render keeps the frame only on the first and last chunk, so chunking is
    always client-side here;
-4. records every cut in the census under the `text_budget` mechanism.
+4. records every cut in the census under the `text_budget` mechanism, each row naming the shape's own budget
+   (`budget_tokens`: the query rows a declared `query_max_tokens`, the document rows `max_tokens`).
 
 An input under budget comes back byte-identical to the uncut render -- within `fit`, which settles a pair's
 query span per pair. The rerank wire carries one query per request, so the rerank client settles the shared
@@ -294,8 +308,17 @@ tokenizer, a vendor profile follows the same rule as self-hosted.
 The role configs also declare `template` (the `TemplateSpec` above), `empty_doc` (`send`, `omit_zero` --
 never sent and scored `0.0` -- or `send_text` with its `empty_doc_text` placeholder; every role client
 consumes it, for an empty text document and for one whose every media item the budget dropped),
-`request_shape` (`text`, `messages` or `token_ids`; the adapters implement it), and the reranker's
-`instruction` gains a `system` value (the instruction as a system message).
+`request_shape` (`text`, `messages` or `token_ids`; the served embedding and pooling wires -- the
+`openai_embeddings` and `vllm_pooling` adapters -- implement all three, the messages route being the
+chat-style embeddings input and `token_ids` the ids the fit tokenised, while the hosted embed profiles speak
+text only, and a rerank config that declares anything but `text` is refused -- the rerank wires send
+rendered text today),
+and the reranker's
+`instruction` gains a `system` value (the instruction as a system message). The reranker also declares
+`empty_query` (`refuse` by default -- an empty query is refused with a typed error naming the query id,
+instead of being scored against every candidate; `send` keeps the empty string), and every role config
+declares `media_sides`, which names the sides that may carry media (both by default; media on a side it
+does not name is refused with the error naming the field).
 
 Media are never cut. Every served request goes through one preparation call
 (`rcp_ndcg.data.prepare.prepare_request`) -- the same path the judge's images take -- which sizes every image

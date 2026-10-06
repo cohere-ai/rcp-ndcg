@@ -347,11 +347,18 @@ class EmbedRequest:
         contents: The queries or documents as content parts, in order.
         role: Which side of the retrieval pair this batch is; an asymmetric embedder needs it.
         dimensions: The Matryoshka cut the endpoint serves, when the config sets one.
+        request_shape: How the batch crosses the wire, copied from the endpoint config (2e, 3):
+            ``"text"`` (the default) sends the rendered strings, ``"messages"`` the chat-style embeddings
+            input (content parts, image and video parts included), ``"token_ids"`` the pre-tokenised ids.
+        token_ids: For ``request_shape: token_ids``, each item's token ids as the client fitted it -- the
+            payload the adapter sends. Empty otherwise.
     """
 
     contents: tuple[Content, ...]
     role: EncodeRole
     dimensions: int | None = None
+    request_shape: Literal["text", "messages", "token_ids"] = "text"
+    token_ids: tuple[tuple[int, ...], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -370,12 +377,25 @@ class PoolRequest:
             no shape) can be reshaped to ``(tokens, dim)``; ``None`` when undeclared, which only the
             self-describing float frames can decode. Filled from the endpoint config; the reply's token
             counts cross-check it.
+        outputs: What one input yields, copied from the endpoint config (2g): ``"per_token"`` (the default)
+            is the token_embed contract -- one vector per prompt token, which the reply's own ``usage``
+            cross-checks; ``"per_chunk"`` is a per-chunk multi-output model -- several outputs per input, so
+            the usage cross-check cannot apply and the adapter skips it.
+        request_shape: How the batch crosses the wire, copied from the endpoint config (3): ``"text"`` (the
+            default) sends the rendered strings; ``"token_ids"`` sends the pre-tokenised ids (vLLM's
+            ``/pooling`` accepts token-id prompts); a media item always travels as ``messages`` (the only
+            shape the server's chat template applies to the placeholders).
+        token_ids: For ``request_shape: token_ids``, each text item's ids as the client fitted it. Empty
+            otherwise.
     """
 
     contents: tuple[Content, ...]
     role: EncodeRole
     embed_dtype: Literal["float16", "float32"] = "float16"
     dim: int | None = None
+    outputs: Literal["per_token", "per_chunk"] = "per_token"
+    request_shape: Literal["text", "messages", "token_ids"] = "text"
+    token_ids: tuple[tuple[int, ...], ...] = ()
 
 
 # ---------------------------------------------------------------------------

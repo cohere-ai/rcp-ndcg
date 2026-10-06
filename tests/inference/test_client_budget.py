@@ -205,6 +205,87 @@ class TestEmbedBudget:
         with pytest.raises(CapabilityError, match="image"):
             client.encode([page], EncodeRole.DOCUMENT)
 
+    def test_query_max_tokens_above_max_tokens_is_refused(self) -> None:
+        """On the embedding roles ``max_tokens`` is the document shape's budget and the model's whole input
+        budget; a query budget above it cannot fit the served context."""
+        with pytest.raises(ValueError, match="whole input budget"):
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer="test/word-level",
+                max_tokens=1024,
+                query_max_tokens=1025,
+            )
+
+    def test_a_prompt_prefix_beside_a_template_is_refused(self) -> None:
+        """One home for a prompt prefix (rec-qwen3-embedding-0.6b): the client prepends query_prompt before
+        the template renders, so declaring both doubles the prefix. Refused, naming the template segment to
+        use instead; the fields stay for template-less configs (hosted profiles)."""
+        template = TemplateSpec(query=(Segment(fixed="Instruct: task\\nQuery:"), Segment(content="query")))
+        with pytest.raises(ConfigError, match="doubles the prefix") as caught:
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer="test/word-level",
+                max_tokens=64,
+                template=template,
+                query_prompt="Instruct: task\\nQuery:",
+            )
+        assert "fixed segment" in caught.value.hint and "query" in caught.value.hint
+        with pytest.raises(ConfigError, match="doubles the prefix") as caught:
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer="test/word-level",
+                max_tokens=64,
+                template=TemplateSpec(document=(Segment(fixed="D: "), Segment(content="document"))),
+                doc_prompt="D: ",
+            )
+        assert "fixed segment" in caught.value.hint and "document" in caught.value.hint
+        # Template-less configs (hosted profiles) keep the fields.
+        EmbeddingEndpoint(
+            api="cohere", base_url="http://127.0.0.1:9000/v1", model="m", max_tokens=64, query_prompt="Q: "
+        )
+
+    def test_the_query_shape_budget_caps_the_query_not_the_document(self, tokenizer_json: str) -> None:
+        """The per-shape budget (the topk hand-off: query 1024, document 8192): ``query_max_tokens`` caps
+        the query shape whole; ``max_tokens`` keeps capping the document shape; the census rows name the
+        shape's budget."""
+        sender = RecordingSender()
+        census = TextTruncationCensus()
+        config = EmbeddingEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=8,
+            query_max_tokens=3,
+        )
+        client = EmbeddingClient(config, sender=sender, census=census)
+        long_text = " ".join(["evidence"] * 30)
+        client.encode(texts(long_text), EncodeRole.QUERY)
+        query_sent = sender.bodies[-1]["input"][0]
+        assert word_tokenizer().count(query_sent) <= 3
+        client.encode(texts(long_text), EncodeRole.DOCUMENT)
+        document_sent = sender.bodies[-1]["input"][0]
+        assert 3 < word_tokenizer().count(document_sent) <= 8
+        rows = [cut.as_row() for cut in census.cuts(mechanism=TextTruncationCensus.TEXT_BUDGET)]
+        assert [(row["shape"], row["budget_tokens"]) for row in rows] == [("query", 3), ("document", 8)]
+
+    def test_query_max_tokens_equal_to_max_tokens_is_a_legal_per_shape_budget(self, tokenizer_json: str) -> None:
+        """The == boundary: both shapes capped the same is a legal per-shape budget -- the client constructs
+        (the budget layer refuses only a share ABOVE the whole budget) and the query shape honours it."""
+        sender = RecordingSender()
+        config = EmbeddingEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=6,
+            query_max_tokens=6,
+        )
+        client = EmbeddingClient(config, sender=sender)
+        client.encode(texts(" ".join(["evidence"] * 30)), EncodeRole.QUERY)
+        assert word_tokenizer().count(sender.bodies[-1]["input"][0]) <= 6
+
 
 class TestPoolBudget:
     def test_a_pool_config_cuts_its_text(self, tokenizer_json: str) -> None:
@@ -262,6 +343,41 @@ class TestPoolBudget:
                 sender=RecordingSender(),
             )
 
+    def test_the_pool_config_refuses_a_declared_messages_shape(self, tokenizer_json: str) -> None:
+        """The pooling wire lowers chat parts for its media items itself; a config-declared messages shape
+        would leave every text batch on the rendered-string route while the identity declared the chat
+        form -- refused, never silently inert."""
+        with pytest.raises(ConfigError, match="messages"):
+            PoolingClient(
+                PoolingEndpoint(
+                    base_url="http://127.0.0.1:9000/v1",
+                    model="m",
+                    dim=2,
+                    tokenizer=tokenizer_json,
+                    max_tokens=64,
+                    request_shape="messages",
+                ),
+                sender=RecordingSender(),
+            )
+
+    def test_the_pooling_config_honours_the_per_shape_budget_too(self, tokenizer_json: str) -> None:
+        """``query_max_tokens`` on a :class:`PoolingEndpoint` caps the query shape (its whole budget there)."""
+        sender = RecordingSender()
+        census = TextTruncationCensus()
+        config = PoolingEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=64,
+            query_max_tokens=4,
+            dim=2,
+        )
+        client = PoolingClient(config, sender=sender, census=census)
+        client.encode(texts(" ".join(["evidence"] * 30)), EncodeRole.QUERY)
+        assert word_tokenizer().count(sender.bodies[0]["input"][0]) <= 4
+        client.encode(texts(" ".join(["evidence"] * 30)), EncodeRole.DOCUMENT)
+        assert 4 < word_tokenizer().count(sender.bodies[-1]["input"][0]) <= 64
+
 
 class TestRerankBudget:
     def _config(self, **overrides: Any) -> RerankEndpoint:
@@ -274,6 +390,15 @@ class TestRerankBudget:
         }
         settings.update(overrides)
         return RerankEndpoint(**settings)
+
+    def test_request_shape_other_than_text_is_refused(self, tokenizer_json: str) -> None:
+        """The rerank wires implement text only; a declared messages/token_ids shape would be silently inert
+        (the field is CONTENT, so two configs would hash differently and behave identically) -- refused,
+        naming where the other routes do land."""
+        with pytest.raises(ValueError, match="request_shape"):
+            self._config(tokenizer=tokenizer_json, request_shape="token_ids")
+        with pytest.raises(ValueError, match="rerank wires"):
+            self._config(tokenizer=tokenizer_json, request_shape="messages")
 
     def test_a_budget_cuts_the_pair_spans_and_records_the_census(self, tokenizer_json: str) -> None:
         sender = RecordingSender()
@@ -638,6 +763,150 @@ class TestEmbedEmptyDocuments:
         assert list(result.offsets) == [0, 0, 1]
         assert len(sender.bodies[-1]["input"]) == 1, "only the text item was sent"
         assert client.media_census._seen, "the drop is recorded"
+
+
+class TestPerSideMedia:
+    """Per-side media (2b, G3): ``media_sides`` names which sides of the retrieval pair may carry media
+    (the topk reference rejects image queries); a client refuses media on a side that may not, with a
+    typed error naming the field."""
+
+    @staticmethod
+    def _pool_client(tokenizer_json: str, **overrides: Any) -> PoolingClient:
+        settings: dict[str, Any] = {
+            "base_url": "http://127.0.0.1:9000/v1",
+            "model": "colqwen",
+            "dim": 2,
+            "tokenizer": tokenizer_json,
+            "max_tokens": 8192,
+            "image_policy": {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            "max_images": 2,
+        }
+        settings.update(overrides)
+        return PoolingClient(PoolingEndpoint(**settings), sender=RecordingSender())
+
+    def test_media_on_a_forbidden_side_is_refused_naming_the_field(self, tokenizer_json: str, tmp_path: Any) -> None:
+        from rcp_ndcg.errors import CapabilityError
+
+        client = self._pool_client(tokenizer_json, media_sides=["document"])
+        with pytest.raises(CapabilityError, match="media_sides"):
+            asyncio.run(client.aencode([_png_content(tmp_path, 0)], EncodeRole.QUERY))
+        # The allowed side goes out whole.
+        result = asyncio.run(client.aencode([_png_content(tmp_path, 0)], EncodeRole.DOCUMENT))
+        assert result.num_items == 1
+
+    def test_media_on_the_rerank_query_is_refused_naming_the_field(self, tokenizer_json: str, tmp_path: Any) -> None:
+        from rcp_ndcg.errors import CapabilityError
+
+        config = RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=8192,
+            use_activation=False,
+            image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            max_images=2,
+            media_sides=["document"],
+        )
+        client = RerankClient(config, sender=RecordingSender())
+        with pytest.raises(CapabilityError, match="media_sides"):
+            client.rerank(_png_content(tmp_path, 0), ["the document"])
+        # The same config, media on the document side: refused by nothing (the fake answers it).
+        scores = client.rerank("the query", [_png_content(tmp_path, 1)])
+        assert len(scores.scores) == 1
+
+    def test_media_sides_default_to_both_sides(self, tokenizer_json: str) -> None:
+        config = RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=8192,
+            use_activation=False,
+        )
+        assert config.media_sides == ("query", "document")
+
+    def test_an_explicitly_empty_media_sides_allows_no_side(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """The empty field is a real declaration (a config without media fields may carry it): media on ANY
+        side is refused naming the field, not silently widened back to both sides."""
+        from rcp_ndcg.errors import CapabilityError
+
+        config = RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=8192,
+            use_activation=False,
+            media_sides=[],
+        )
+        client = RerankClient(config, sender=RecordingSender())
+        assert client.media_sides() == frozenset()
+        with pytest.raises(CapabilityError, match="media_sides"):
+            client.rerank(_png_content(tmp_path, 0), ["the document"])
+        with pytest.raises(CapabilityError, match="no side"):
+            client.rerank("the query", [_png_content(tmp_path, 1)])
+
+    def test_declaring_media_fields_with_no_allowed_side_is_refused(self, tokenizer_json: str) -> None:
+        with pytest.raises(ValueError, match="media_sides"):
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                use_activation=False,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                media_sides=[],
+            )
+
+
+class TestEmptyQuery:
+    """``empty_query`` (2f, qwen3-vl-reranker): an empty QUERY has a policy, like ``empty_doc`` --
+    ``refuse`` (the default) raises a typed error naming the query id, ``send`` sends the empty string."""
+
+    @staticmethod
+    def _client(tokenizer_json: str, *, empty_query: str) -> RerankClient:
+        return RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                use_activation=False,
+                empty_query=empty_query,  # type: ignore[arg-type]
+            ),
+            sender=RecordingSender(),
+        )
+
+    def test_the_default_refuses_an_empty_query_naming_the_id(self, tokenizer_json: str) -> None:
+        from rcp_ndcg.errors import DataError
+
+        client = RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                use_activation=False,
+            ),
+            sender=RecordingSender(),
+        )
+        with pytest.raises(DataError, match="q42"):
+            asyncio.run(client.arerank("", ["the document"], query_id="q42"))
+        # The default is the field's value, and the refusal names the field.
+        assert client.config.empty_query == "refuse"
+        with pytest.raises(DataError, match="empty_query"):
+            asyncio.run(client.arerank("", ["the document"]))
+        # The synchronous path names the id too, through its own query_id argument.
+        with pytest.raises(DataError, match="q42"):
+            client.rerank("", ["the document"], query_id="q42")
+
+    def test_send_keeps_todays_empty_string(self, tokenizer_json: str) -> None:
+        client = self._client(tokenizer_json, empty_query="send")
+        result = client.rerank("", ["the document"])
+        assert len(result.scores) == 1
+
+    def test_a_non_empty_query_is_never_refused(self, tokenizer_json: str) -> None:
+        client = self._client(tokenizer_json, empty_query="refuse")
+        result = client.rerank("the query", ["the document"])
+        assert len(result.scores) == 1
 
 
 class TestMediaGates:

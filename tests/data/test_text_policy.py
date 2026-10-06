@@ -93,6 +93,14 @@ class TestTokenPrefix:
         assert text.startswith(escaped) and len(escaped) < len(plain)
         assert WORDS.count(escaped.replace("&", "&amp;")) <= 5
 
+    def test_a_cut_that_fits_nothing_is_empty(self) -> None:
+        """The zero boundary (the QA survivor 1): when no prefix fits the budget -- the search lands on the
+        empty prefix -- the cut is empty, never the whole text. One token whose text re-tokenizes longer
+        alone (a multi-byte character split across byte tokens), capped at 1 token, is exactly that case."""
+        assert BPE.count("日") > 1  # the single token re-tokenizes longer on its own
+        assert token_prefix("日", 1, BPE) == ""
+        assert token_prefix(TEXT, 0, WORDS, rendered=lambda piece: piece) == ""
+
 
 class TestApplyTextPolicy:
     def test_truncate_caps_at_the_declared_limit(self) -> None:

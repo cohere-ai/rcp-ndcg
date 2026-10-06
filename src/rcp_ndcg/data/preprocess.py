@@ -360,6 +360,7 @@ class TextCutRecord:
     __slots__ = (
         "aggregation",
         "budget_source",
+        "budget_tokens",
         "corpus",
         "doc_id",
         "kept_chars",
@@ -385,6 +386,7 @@ class TextCutRecord:
         budget_source: str | None = None,
         aggregation: str | None = None,
         shape: str | None = None,
+        budget_tokens: int | None = None,
     ) -> None:
         self.corpus = corpus
         self.doc_id = doc_id
@@ -397,6 +399,7 @@ class TextCutRecord:
         self.budget_source = budget_source
         self.aggregation = aggregation
         self.shape = shape
+        self.budget_tokens = budget_tokens
 
     def as_row(self) -> dict[str, Any]:
         row: dict[str, Any] = {
@@ -414,6 +417,8 @@ class TextCutRecord:
         # The text_budget rows carry the budget's own facts; the judge's rows stay byte-for-byte as they were.
         if self.budget_source is not None:
             row["budget_source"] = self.budget_source
+        if self.budget_tokens is not None:
+            row["budget_tokens"] = self.budget_tokens
         if self.aggregation is not None:
             row["aggregation"] = self.aggregation
         if self.shape is not None:
@@ -487,6 +492,7 @@ class TextTruncationCensus:
         budget_source: str | None = None,
         aggregation: str | None = None,
         shape: str | None = None,
+        budget_tokens: int | None = None,
     ) -> TextCutRecord:
         if mechanism not in self.MECHANISMS:
             raise ValueError(f"mechanism must be one of {self.MECHANISMS}, got {mechanism!r}")
@@ -502,6 +508,7 @@ class TextTruncationCensus:
             budget_source=budget_source,
             aggregation=aggregation,
             shape=shape,
+            budget_tokens=budget_tokens,
         )
         self._cuts.append(cut)
         self._append(cut.as_row())
@@ -777,12 +784,16 @@ class TextBudget(BaseModel):
             SHA-256 is content (:meth:`identity`).
         max_tokens: The budget: the largest total input sequence, in the declared tokenizer's tokens
             (``_tokens``). Required: a budget without a number is not a budget.
-        query_max_tokens: The query's share of a ``pair`` budget: when the pair overflows, the query is cut
-            to it first and the document gets what remains (an input under budget is sent byte-identical to
-            the uncut render, so the share binds on overflow only). ``None`` (the default) declares no split:
-            a query that does not fit the budget is then refused rather than cut undeclared (declare the
-            split instead). Must be smaller than ``max_tokens`` -- the check the contracts follow-up left
-            open, refused here where the budget is resolved.
+        query_max_tokens: The query's budget. On a ``pair`` budget it is the query's share: when a pair
+            overflows, the query is cut to it first and the document gets what remains (an input under
+            budget is sent byte-identical to the uncut render, so the share binds on overflow only). On the
+            ``query`` shape (an embedding role's per-shape budget) it is that shape's WHOLE budget --
+            ``max_tokens`` then caps the document shape only. ``None`` (the default) declares no split: on
+            a pair, a query that does not fit the budget is then refused rather than cut undeclared (declare
+            the split instead). A share above ``max_tokens`` is refused here; EQUALITY is legal (both shapes
+            capped the same) -- a pair share at or over the budget is refused one layer up, by the rerank
+            config, and ``fit``'s pair cut refuses a query whose settled render would leave the document
+            nothing.
         template: The request template (:class:`~rcp_ndcg.data.templates.TemplateSpec`), whose fixed
             segments are measured once per (template, shape) and whose specials are resolved from the
             tokenizer. ``None`` fits raw text: the overhead is then the tokenizer post-processor's tokens
@@ -834,12 +845,16 @@ class TextBudget(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _the_split_must_leave_a_document_budget(self) -> TextBudget:
-        """A query share at or over the budget would leave the document nothing to read."""
-        if self.query_max_tokens is not None and self.query_max_tokens >= self.max_tokens:
+    def _a_share_above_the_budget_is_meaningless(self) -> TextBudget:
+        """A query share above the whole budget leaves the document nothing and the query over the served
+        context. Equal is legal: on the embedding roles ``query_max_tokens`` is the query shape's WHOLE
+        budget, and both shapes may be capped the same; on a pair budget an equal share is refused one layer
+        up (the rerank config), and ``fit``'s pair cut refuses a query that would leave the document nothing
+        at runtime."""
+        if self.query_max_tokens is not None and self.query_max_tokens > self.max_tokens:
             raise ValueError(
-                f"query_max_tokens ({self.query_max_tokens}) must be smaller than max_tokens ({self.max_tokens}): "
-                "the document's share of the pair budget would be zero or negative"
+                f"query_max_tokens ({self.query_max_tokens}) must not exceed max_tokens ({self.max_tokens}): "
+                "the query budget would be over the model's whole input budget"
             )
         return self
 
@@ -916,6 +931,7 @@ def _fit_vendor(
             mechanism=TextTruncationCensus.TEXT_BUDGET,
             budget_source="vendor",
             shape=shape,
+            budget_tokens=budget.max_tokens,
         )
     contents: list[ContentParts] = [item if shape != "pair" else (item[0], item[1]) for item in items]
     texts: tuple[str, ...] = () if shape == "pair" else tuple(part for part in contents if isinstance(part, str))
@@ -1025,12 +1041,14 @@ def fit(
             cli_hint="set the same tokenizer the budget declares (judge-style: --set <role>.tokenizer=...), or "
             "drop the tokenizer field for a hosted profile",
         )
-    if budget.query_max_tokens is not None and shape != "pair":
-        # The share splits a pair budget; on a query or document shape it would be silently inert.
-        raise ConfigError(
-            f"query_max_tokens splits a 'pair' budget, and fit was called with the {shape!r} shape",
-            hint="drop query_max_tokens, or fit the 'pair' shape",
-        )
+    # The shape's budget: on the embedding roles ``query_max_tokens`` caps the query shape whole (its whole
+    # budget there; ``max_tokens`` caps the document shape), on a pair it stays the query's share of the
+    # budget, and on the document shape (and without a declared share) ``max_tokens`` caps. Every cap and
+    # every message below counts against the shape's own budget.
+    if budget.query_max_tokens is not None and shape == "query":
+        shape_budget = budget.query_max_tokens
+    else:
+        shape_budget = budget.max_tokens
     if tokenizer is None:
         if media_tokens is not None and any(media):
             raise ConfigError(
@@ -1042,6 +1060,23 @@ def fit(
 
     template = budget.template
     instr = instruction or ""
+    # The declared content normalisation: the template's per-shape strip/lowercase (the one call,
+    # :meth:`TemplateSpec.normalize_text`), applied to the content spans before anything is measured (the
+    # reference and the engine see the same text). Without a template there is no declaration, so nothing
+    # is normalised.
+    if template is not None and template.normalisers(shape):
+        raw_items = list(items)  # the inputs as given, for the census rows' original side
+        if shape == "pair":
+            pairs = [(query, document) for query, document in items]
+            items = [
+                (template.normalize_text(shape, query), template.normalize_text(shape, document))
+                for query, document in pairs
+            ]
+        else:
+            assert all(isinstance(item, str) for item in items)  # validated at the top, for the type
+            items = [template.normalize_text(shape, str(item)) for item in items]
+    else:
+        raw_items = items
     # The engine's behaviour for the route: declared on the template; a raw-text request gets the pooling
     # routes' default (the post-processor's tokens are appended), so its anchor is reserved either way.
     flag = template.adds_special_tokens(shape) if template is not None else True
@@ -1049,10 +1084,17 @@ def fit(
         overhead = template.overhead(shape, tokenizer, instruction=instr)
     else:
         overhead = tokenizer.count("", add_special_tokens=True)
-    if overhead > budget.max_tokens:
+
+    def _budget_hint(verb: str, rest: str) -> str:
+        """The raise hint that names the knob that binds: on a query shape budgeted by a declared
+        ``query_max_tokens`` raising ``max_tokens`` moves nothing."""
+        knob = "query_max_tokens" if shape == "query" and budget.query_max_tokens is not None else "max_tokens"
+        return f"{verb} {knob}" + (f", {rest}" if rest else "")
+
+    if overhead > shape_budget:
         raise ConfigError(
-            f"the template's fixed overhead alone is {overhead} tokens, over the budget of {budget.max_tokens}",
-            hint="raise max_tokens, or simplify the template (every fixed segment is reserved)",
+            f"the template's fixed overhead alone is {overhead} tokens, over the budget of {shape_budget}",
+            hint=_budget_hint("raise", "or simplify the template"),
         )
 
     def assemble(query: str, document: str) -> str:
@@ -1085,9 +1127,15 @@ def fit(
         original: ContentParts,
         kept: ContentParts,
         aggregation: str | None,
+        raw: ContentParts | None = None,
     ) -> None:
-        """One cut row (also appended to the census when the caller passed one)."""
-        original_text = original if isinstance(original, str) else original[0] + original[1]
+        """One cut row (also appended to the census when the caller passed one).
+
+        ``raw`` is the input as given, when a declared normalisation changed the spans before the cut: the
+        row's original side is then the raw text (the input), never the normalised one (declared policy).
+        """
+        source = original if raw is None else raw
+        original_text = source if isinstance(source, str) else source[0] + source[1]
         kept_text = kept if isinstance(kept, str) else kept[0] + kept[1]
         assert tokenizer is not None
         cut = TextCutRecord(
@@ -1101,6 +1149,7 @@ def fit(
             budget_source="tokenizer",
             aggregation=aggregation,
             shape=shape,
+            budget_tokens=shape_budget,
         )
         if census is not None:
             census.record(
@@ -1114,6 +1163,7 @@ def fit(
                 budget_source=cut.budget_source,
                 aggregation=cut.aggregation,
                 shape=cut.shape,
+                budget_tokens=cut.budget_tokens,
             )
         cuts.append(cut)
 
@@ -1124,7 +1174,7 @@ def fit(
         if budget.chunk.max_tokens > room:
             raise ConfigError(
                 f"chunk.max_tokens ({budget.chunk.max_tokens} tokens of content) cannot fit the {room} tokens "
-                f"left under the budget of {budget.max_tokens}: every chunk carries the full template",
+                f"left under the budget of {shape_budget}: every chunk carries the full template",
                 hint="lower chunk.max_tokens, raise max_tokens, or (for a pair) set query_max_tokens",
             )
         pieces = split_into_chunks(content, budget.chunk, tokenizer)
@@ -1140,19 +1190,23 @@ def fit(
         input_id = names[index]
         spent = media[index]
         # The item's total: the budget minus the media, which ride beside the rendered string and are never cut.
-        cap = budget.max_tokens - spent
-        if overhead + spent > budget.max_tokens:
+        cap = shape_budget - spent
+        if overhead + spent > shape_budget:
             raise ConfigError(
                 f"the fixed template overhead ({overhead} tokens) plus the declared media ({spent}) already "
-                f"fill the budget of {budget.max_tokens}; the media are never cut",
-                hint="raise max_tokens, or shrink the declared media (a media block is indivisible)",
+                f"fill the budget of {shape_budget}; the media are never cut",
+                hint=_budget_hint("raise", "or shrink the declared media (a media block is indivisible)"),
             )
+        # The census rows compare the input AS GIVEN with what ships: normalisation is declared policy,
+        # not a cut, so the row's original side stays the raw text even when the spans were normalised.
+        raw = raw_items[index]
         if shape == "pair":
             assert isinstance(item, (tuple, list))
+            assert isinstance(raw, (tuple, list))
             query, document = item
             original: ContentParts = (query, document)
         else:
-            assert isinstance(item, str)
+            assert isinstance(item, str) and isinstance(raw, str)
             query, document = (item, "") if shape == "query" else ("", item)
             original = item
         if tokenizer.count(assemble(query, document), add_special_tokens=flag) <= cap:
@@ -1166,15 +1220,15 @@ def fit(
             media_note = f", the declared media {spent}" if spent else ""
             raise TextBudgetExceededError(
                 f"input {input_id!r} is {tokenizer.count(query + document)} tokens of content, over the "
-                f"declared text budget of {budget.max_tokens} (the fixed template takes {overhead}{media_note})",
-                hint="set on_overflow: 'cut' (or 'chunk' for documents) to shorten it, or raise max_tokens",
+                f"declared text budget of {shape_budget} (the fixed template takes {overhead}{media_note})",
+                hint="set on_overflow: 'cut' (or 'chunk' for documents) to shorten it, or " + _budget_hint("raise", ""),
             )
         if shape == "pair":
             # The query's span is settled first: to its declared share, else only when it fits the budget whole.
             if budget.query_max_tokens is None:
                 if tokenizer.count(query) > cap - overhead:
                     raise TextBudgetExceededError(
-                        f"the query of input {input_id!r} does not fit the pair budget of {budget.max_tokens} "
+                        f"the query of input {input_id!r} does not fit the pair budget of {shape_budget} "
                         "tokens, and no split is declared (query_max_tokens): cutting it undeclared would "
                         "silently eat the document's share",
                         hint="set query_max_tokens to the query's share, so the document keeps the rest",
@@ -1188,7 +1242,7 @@ def fit(
             q_min = tokenizer.count(assemble(q_final, ""), add_special_tokens=flag)
             if q_min >= cap and tokenizer.count(document) > 0:
                 raise TextBudgetExceededError(
-                    f"the query of input {input_id!r} fills the pair budget of {budget.max_tokens} tokens and "
+                    f"the query of input {input_id!r} fills the pair budget of {shape_budget} tokens and "
                     "leaves the document nothing",
                     hint="lower query_max_tokens (or raise max_tokens), so the document keeps a share",
                 )
@@ -1199,7 +1253,7 @@ def fit(
                     tokenizer.count(assemble(q_final, d_final), add_special_tokens=flag) > cap
                 ):  # pragma: no cover - guarded by construction
                     raise DataError(
-                        f"the assembled render of input {input_id!r} exceeds the budget of {budget.max_tokens} "
+                        f"the assembled render of input {input_id!r} exceeds the budget of {shape_budget} "
                         "tokens after both spans were verified: an internal invariant broke; report this",
                         hint="this is a bug in the text-budget mechanism: report it with the inputs",
                     )
@@ -1207,7 +1261,7 @@ def fit(
                     texts.append(assemble(q_final, d_final))
                 contents.append((q_final, d_final))
                 entries.append((input_id, input_id))
-                _record(doc_id=input_id, original=original, kept=(q_final, d_final), aggregation=None)
+                _record(doc_id=input_id, original=original, kept=(q_final, d_final), aggregation=None, raw=raw)
             else:
                 pieces = _chunks(document, room, q_final, cap)
                 if len(pieces) == 1:
@@ -1217,7 +1271,7 @@ def fit(
                         texts.append(assemble(q_final, pieces[0]))
                     contents.append((q_final, pieces[0]))
                     entries.append((input_id, input_id))
-                    _record(doc_id=input_id, original=original, kept=(q_final, pieces[0]), aggregation=None)
+                    _record(doc_id=input_id, original=original, kept=(q_final, pieces[0]), aggregation=None, raw=raw)
                     continue
                 for k, piece in enumerate(pieces):
                     chunk_id = f"{input_id}{CHUNK_ID_SEPARATOR}{k}"
@@ -1225,14 +1279,20 @@ def fit(
                         texts.append(assemble(q_final, piece))
                     contents.append((q_final, piece))
                     entries.append((chunk_id, input_id))
-                    _record(doc_id=chunk_id, original=original, kept=(q_final, piece), aggregation=budget.aggregation)
+                    _record(
+                        doc_id=chunk_id,
+                        original=original,
+                        kept=(q_final, piece),
+                        aggregation=budget.aggregation,
+                        raw=raw,
+                    )
                 chunked_any = True
         elif budget.on_overflow == "chunk":
             if shape == "query":
                 raise TextBudgetExceededError(
-                    f"input {input_id!r} does not fit the budget of {budget.max_tokens} tokens, and a query is "
+                    f"input {input_id!r} does not fit the budget of {shape_budget} tokens, and a query is "
                     "never chunked: queries are cut or refused, never split",
-                    hint="raise max_tokens, or shorten the query",
+                    hint=_budget_hint("raise", "or shorten the query"),
                 )
             assert isinstance(item, str)  # a pair chunked above; this branch is single-text only
             pieces = _chunks(item, cap - overhead, "", cap)
@@ -1241,21 +1301,21 @@ def fit(
                     tokenizer.count(assemble("", pieces[0]), add_special_tokens=flag) > cap
                 ):  # pragma: no cover - guarded by construction
                     raise DataError(
-                        f"the assembled render of input {input_id!r} exceeds the budget of {budget.max_tokens} "
+                        f"the assembled render of input {input_id!r} exceeds the budget of {shape_budget} "
                         "tokens after the span was verified: an internal invariant broke; report this",
                         hint="this is a bug in the text-budget mechanism: report it with the inputs",
                     )
                 texts.append(assemble("", pieces[0]))
                 contents.append(pieces[0])
                 entries.append((input_id, input_id))
-                _record(doc_id=input_id, original=item, kept=pieces[0], aggregation=None)
+                _record(doc_id=input_id, original=item, kept=pieces[0], aggregation=None, raw=raw)
                 continue
             for k, piece in enumerate(pieces):
                 chunk_id = f"{input_id}{CHUNK_ID_SEPARATOR}{k}"
                 texts.append(assemble("", piece))
                 contents.append(piece)
                 entries.append((chunk_id, input_id))
-                _record(doc_id=chunk_id, original=item, kept=piece, aggregation=budget.aggregation)
+                _record(doc_id=chunk_id, original=item, kept=piece, aggregation=budget.aggregation, raw=raw)
             chunked_any = True
         else:  # cut
             assert isinstance(item, str)  # the pair's cut is handled above
@@ -1266,14 +1326,14 @@ def fit(
                     tokenizer.count(rendered, add_special_tokens=flag) > cap
                 ):  # pragma: no cover - guarded by construction
                     raise DataError(
-                        f"the assembled render of input {input_id!r} exceeds the budget of {budget.max_tokens} "
+                        f"the assembled render of input {input_id!r} exceeds the budget of {shape_budget} "
                         "tokens after the span was verified: an internal invariant broke; report this",
                         hint="this is a bug in the text-budget mechanism: report it with the inputs",
                     )
                 texts.append(rendered)
             contents.append(kept)
             entries.append((input_id, input_id))
-            _record(doc_id=input_id, original=item, kept=kept, aggregation=None)
+            _record(doc_id=input_id, original=item, kept=kept, aggregation=None, raw=raw)
 
     out = [entry[0] for entry in entries]
     if len(set(out)) != len(out):

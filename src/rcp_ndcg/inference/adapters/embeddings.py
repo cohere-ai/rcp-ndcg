@@ -38,27 +38,36 @@ from rcp_ndcg.inference.types import Call, Embeddings, EmbedRequest, Reply, Toke
 _OVERLENGTH_MARKER = "maximum context length"
 
 
-def _texts(contents: Sequence[Content], *, adapter: str) -> list[str]:
-    """The text of ``contents``, refusing media: these adapters are text-only for now.
+def _refuse_media(contents: Sequence[Content], *, adapter: str) -> None:
+    """Refuse media on a route that carries no media parts (the text and token-ids routes, 2e).
 
     Raises:
         CapabilityError: An item carries an image or video part; the message names the media type. Media
-            embedding is wired later, through the media-preparation mechanism.
+            travels on the ``messages`` route (the chat-embed form) only.
     """
     for index, content in enumerate(contents):
         for part in content.parts:
             if isinstance(part, ImagePart):
                 raise CapabilityError(
-                    f"the {adapter} adapter takes text only, but item {index} carries an image part",
-                    hint="embed a text rendering of the media; image embedding is wired with the "
-                    "media-preparation mechanism",
+                    f"the {adapter} adapter takes text only on this route, but item {index} carries an image part",
+                    hint="declare request_shape: messages on the role config (the chat-embed form carries "
+                    "image parts), or embed a text rendering of the media",
                 )
             if isinstance(part, VideoPart):
                 raise CapabilityError(
-                    f"the {adapter} adapter takes text only, but item {index} carries a video part",
-                    hint="embed a text rendering of the media; video embedding is wired with the "
-                    "media-preparation mechanism",
+                    f"the {adapter} adapter takes text only on this route, but item {index} carries a video part",
+                    hint="declare request_shape: messages on the role config (the chat-embed form lowers "
+                    "sampled frames and video_url containers), or embed a text rendering of the media",
                 )
+
+
+def _texts(contents: Sequence[Content], *, adapter: str) -> list[str]:
+    """The text of ``contents``, after refusing media: the text and token-ids routes carry no media parts.
+
+    Raises:
+        CapabilityError: An item carries an image or video part (see :func:`_refuse_media`).
+    """
+    _refuse_media(contents, adapter=adapter)
     return [content.text for content in contents]
 
 
@@ -180,29 +189,42 @@ class _EmbedAdapter:
     #: hosted profiles fix the output dimension server-side and have no such field.
     SUPPORTS_DIMENSIONS: ClassVar[bool] = True
 
+    #: The request shapes this wire implements (2e, 3): ``text`` (the rendered string) for every adapter;
+    #: the served OpenAI shape adds ``messages`` (the chat-style embeddings input, image and video parts
+    #: included) and ``token_ids`` (pre-tokenised ids). The client refuses a declared shape outside this
+    #: set at construction, instead of silently sending text.
+    REQUEST_SHAPES: ClassVar[frozenset[str]] = frozenset({"text"})
+
     # -- the wire -----------------------------------------------------------
     def calls(self, request: Any, *, model: str) -> list[Call]:
-        """The one ``POST`` ``request`` becomes: its texts as ``input``, the model, the cut dimension.
+        """The one ``POST`` ``request`` becomes: its items as the declared request shape.
 
         Args:
             request: The embedding request: the items (already prompt-prefixed by the client), their side of
-                the retrieval pair, and the ``dimensions`` cut when the config sets one.
+                the retrieval pair, the ``dimensions`` cut when the config sets one, and the declared
+                ``request_shape``.
             model: The served model name, sent as the request's ``model`` (and inside the Gemini path).
 
         Returns:
             One call: this adapter sends a whole request's items in one HTTP request.
 
         Raises:
-            CapabilityError: An item carries an image or a video part (these adapters are text-only), or the
-                request names a ``dimensions`` cut this route has no parameter for.
+            CapabilityError: An item carries an image or a video part on a text or token-ids route, the
+                request names a ``dimensions`` cut this route has no parameter for, or it declares a
+                ``request_shape`` this wire does not implement.
         """
         if request.dimensions is not None and not self.SUPPORTS_DIMENSIONS:
             raise CapabilityError(
                 f"the {self.name} embedding API takes no dimensions parameter; the cut would be silently ignored",
                 hint="drop dimensions, or use api: openai_embeddings for a Matryoshka cut",
             )
-        texts = _texts(request.contents, adapter=self.name)
-        return [Call("POST", self._path(model), self._body(texts, request, model))]
+        if request.request_shape not in self.REQUEST_SHAPES:
+            raise CapabilityError(
+                f"the {self.name} wire implements the request shapes {sorted(self.REQUEST_SHAPES)}, not "
+                f"{request.request_shape!r}",
+                hint="declare a request_shape the wire implements (the default is text)",
+            )
+        return [Call("POST", self._path(model), self._body(request, model))]
 
     def interpret(self, request: Any, replies: Sequence[Reply]) -> Embeddings:
         """The request's vectors, one per item in the request's order, stacked as float32.
@@ -270,8 +292,8 @@ class _EmbedAdapter:
         """The request path, appended to the endpoint's base URL."""
         raise NotImplementedError
 
-    def _body(self, texts: list[str], request: EmbedRequest, model: str) -> dict[str, Any]:
-        """The JSON request body for ``texts``."""
+    def _body(self, request: EmbedRequest, model: str) -> dict[str, Any]:
+        """The JSON request body for ``request`` (its items and declared request shape)."""
         raise NotImplementedError
 
     def _parse(self, body: dict[str, Any]) -> list[Any]:
@@ -335,12 +357,29 @@ class OpenAIEmbeddings(_EmbedAdapter):
     KEY_REQUIRED: ClassVar[bool] = False
     AUTH_HEADER: ClassVar[str | None] = None
     ENCODING_FORMAT: ClassVar[str | None] = "float"
+    REQUEST_SHAPES: ClassVar[frozenset[str]] = frozenset({"text", "messages", "token_ids"})
 
     def _path(self, model: str) -> str:
         return "/embeddings"
 
-    def _body(self, texts: list[str], request: EmbedRequest, model: str) -> dict[str, Any]:
-        body: dict[str, Any] = {"model": model, "input": texts}
+    def _body(self, request: EmbedRequest, model: str) -> dict[str, Any]:
+        body: dict[str, Any]
+        if request.request_shape == "messages":
+            from rcp_ndcg.data.media import content_parts_payload
+
+            # The chat-style embeddings input (2e): vLLM's chat-shaped ``/embeddings`` applies the model's
+            # chat template to the placeholders, so a vision-language embedder reads image and video parts.
+            body = {
+                "model": model,
+                "messages": [
+                    {"role": "user", "content": content_parts_payload(content)} for content in request.contents
+                ],
+            }
+        elif request.request_shape == "token_ids":
+            _refuse_media(request.contents, adapter=self.name)
+            body = {"model": model, "input": [list(ids) for ids in request.token_ids]}
+        else:
+            body = {"model": model, "input": _texts(request.contents, adapter=self.name)}
         if self.ENCODING_FORMAT is not None:
             body["encoding_format"] = self.ENCODING_FORMAT
         if request.dimensions is not None:
@@ -372,10 +411,10 @@ class CohereEmbeddings(_EmbedAdapter):
     def _path(self, model: str) -> str:
         return "/embed"
 
-    def _body(self, texts: list[str], request: EmbedRequest, model: str) -> dict[str, Any]:
+    def _body(self, request: EmbedRequest, model: str) -> dict[str, Any]:
         return {
             "model": model,
-            "texts": texts,
+            "texts": _texts(request.contents, adapter=self.name),
             "input_type": "search_query" if request.role.value == "query" else "search_document",
             "embedding_types": ["float"],
         }
@@ -427,10 +466,10 @@ class VoyageEmbeddings(_EmbedAdapter):
     def _path(self, model: str) -> str:
         return "/embeddings"
 
-    def _body(self, texts: list[str], request: EmbedRequest, model: str) -> dict[str, Any]:
+    def _body(self, request: EmbedRequest, model: str) -> dict[str, Any]:
         return {
             "model": model,
-            "input": texts,
+            "input": _texts(request.contents, adapter=self.name),
             "input_type": request.role.value,
         }
 
@@ -460,11 +499,12 @@ class GeminiEmbeddings(_EmbedAdapter):
     def _path(self, model: str) -> str:
         return f"/models/{model}:batchEmbedContents"
 
-    def _body(self, texts: list[str], request: EmbedRequest, model: str) -> dict[str, Any]:
+    def _body(self, request: EmbedRequest, model: str) -> dict[str, Any]:
         task = "RETRIEVAL_QUERY" if request.role.value == "query" else "RETRIEVAL_DOCUMENT"
         return {
             "requests": [
-                {"model": f"models/{model}", "content": {"parts": [{"text": text}]}, "taskType": task} for text in texts
+                {"model": f"models/{model}", "content": {"parts": [{"text": text}]}, "taskType": task}
+                for text in _texts(request.contents, adapter=self.name)
             ]
         }
 

@@ -50,7 +50,9 @@ lifecycle: `close()` synchronous, `await aclose()` asynchronous, both context ma
 
 - `rerank(query, documents, *, instruction=None) -> RerankResult` -- one query's scores (and `arerank`, the
   async half). Empty documents are sent as given and score whatever the server returns; an empty candidate
-  set makes no request and scores nothing.
+  set makes no request and scores nothing. An empty QUERY is refused by default (`empty_query: refuse`, a
+  typed error naming the query id; `send` keeps the empty string), and media on a side the config's
+  `media_sides` does not name is refused naming the field.
 - `rerank_many(examples, *, checkpoint=None) -> list[RerankResult]` -- every example, `concurrency` queries
   in flight, results in input order. The `checkpoint` callable is called once per query as it lands, with the
   query id and its (pooled) scores aligned to the example's `doc_ids`: write the record and flush there, and a

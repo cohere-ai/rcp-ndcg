@@ -25,17 +25,19 @@ below are verified against the vLLM entrypoints (`vllm/entrypoints/pooling/` and
 | Field | Sent | Why |
 | --- | --- | --- |
 | `model` | the config's `model` | the served model name |
-| `input` | the batch's texts | one list per request |
+| `input` | the batch's texts (or, under `request_shape: token_ids`, the fitted id lists) | one list per request |
 | `task` | `"token_embed"` | one vector per token, the late-interaction task |
 | `encoding_format` | `"base64"` | JSON floats are what made corpus indexing expensive |
 | `embed_dtype` | the config's `embed_dtype` | the transfer precision (below) |
 | `endianness` | `"little"` | explicit, so the frame decodes on any server platform |
 
-Two request shapes exist, and only one of them runs the server's chat template:
-a text-only batch travels as one `input` list (tokenised raw), while a media
-item (a page image, for the ColPali and ColQwen3 checkpoints) travels as its own
-`messages` request — the only shape in which the template reaches the image
-placeholders. `dimensions` is never sent:
+Two wire forms exist, and only one of them runs the server's chat template:
+a text-only batch travels as one `input` list (the rendered strings, or the
+client-fitted id lists under `request_shape: token_ids`), while a media item (a
+page image, for the ColPali and ColQwen3 checkpoints) always travels as its own
+`messages` request — the only form in which the template reaches the image
+placeholders, which is why the pooling wire lowers it itself and a config
+declaring `request_shape: messages` is refused. `dimensions` is never sent:
 `/pooling` refuses it.
 
 A media batch of one page and one caption therefore becomes two requests, and the
@@ -111,13 +113,24 @@ sync bridge, `close()`/`await aclose()`, and the fan-out under one `asyncio.Task
 * the role's prompt (`query_prompt`/`doc_prompt`) is prepended by `_prepare`, and then -- when the config
   declares a budget (`tokenizer` + `max_tokens`, explicit for a self-hosted role) -- every item's text is
   fitted through the one text-budget mechanism: only the content span is cut, the template re-attached with
-  its anchor, every cut recorded in the census. A config without `max_tokens` sends every item whole. Media
+  its anchor, every cut recorded in the census. A config without `max_tokens` sends every item whole. Per-shape
+  budgets: `query_max_tokens` caps the query shape whole (a late-interaction embedder caps its two sides
+  differently), `max_tokens` caps the document shape, and a query budget above `max_tokens` is refused. Media
   items keep their parts beside the fitted text; a config with `dim` unset is refused at construction (the
   base64 frame needs the width -- a refusal at construction keeps the GPU idle-time free), and so is
   `on_overflow: chunk` (chunks pool scores by max, and token vectors have none to pool -- a
   late-interaction document is chunked at the corpus layer, one slice per chunk in the index);
 * `normalize` (the default) L2-normalises every token vector, in float32,
   stored back in the transfer dtype;
+* `document_skip_token_ids` drops document vectors at the positions whose token
+  id is listed (the topk reference scores nothing by 41 punctuation/special
+  ids; queries keep all their vectors) -- the positions are the ids the client
+  sent, a count mismatch is a typed error, and a media batch is refused (its
+  positions are the server's chat-template render);
+* `mrl_dim` applies the Matryoshka cut client-side as cut-then-renormalise
+  (the card's order; `/pooling` refuses per-request `dimensions`), and
+  `outputs: per_chunk` accepts a per-chunk multi-output model -- several
+  outputs per input -- where the per-token usage cross-check cannot apply;
 * `batch_size` items per request, at most `concurrency` requests in flight,
   reassembled in input order.
 

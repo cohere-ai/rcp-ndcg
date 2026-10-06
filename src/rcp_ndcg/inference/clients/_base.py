@@ -87,11 +87,16 @@ class PreparedItems(NamedTuple):
             from); every input not in :attr:`omitted` appears exactly once.
         omitted: The input indices ``empty_doc: omit_zero`` never sends -- ascending; the caller places the
             missing result (a zero vector, an empty slice, a 0.0 score) at each.
+        token_ids: For each item, the token ids of its sent text as the engine reads it (the client's
+            tokenisation of the fitted render under the shape's ``add_special_tokens`` flag), when the role
+            tracks them -- the pooling role's ``document_skip_token_ids`` needs the positions. Empty when
+            not tracked.
     """
 
     items: tuple[Content, ...]
     positions: tuple[int, ...]
     omitted: tuple[int, ...]
+    token_ids: tuple[tuple[int, ...], ...] = ()
 
 
 class RoleClient[C: Endpoint]:
@@ -281,6 +286,35 @@ class RoleClient[C: Endpoint]:
         """The effective media policies of this client's config (the one shared rule, no per-client code)."""
         return media_policies_for(self.config)
 
+    def media_sides(self) -> frozenset[str]:
+        """The sides this config allows media on: the config's ``media_sides`` field (the default: both).
+        An explicitly EMPTY field allows NO side -- the default applies only when the config has no such
+        field at all, so ``media_sides: []`` refuses every side exactly as the config documents."""
+        sides = getattr(self.config, "media_sides", None)
+        if sides is None:
+            sides = ("query", "document")
+        return frozenset(sides)
+
+    def _refuse_media_off_its_side(self, side: str, contents: Sequence[Content]) -> None:
+        """Media on a side the config does not allow (2b, G3) is refused naming the ``media_sides`` field,
+        before the media is fetched, sized or counted.
+
+        Raises:
+            CapabilityError: an item of ``contents`` carries media and ``side`` is not in the config's
+                ``media_sides``.
+        """
+        allowed = self.media_sides()
+        if side in allowed:
+            return
+        sides = f"the {' and '.join(sorted(allowed))} side(s)" if allowed else "no side"
+        for index, content in enumerate(contents):
+            if content.has_media:
+                raise CapabilityError(
+                    f"item {index} of this request's {side} side carries media, but {self.config.model} takes "
+                    f"media on {sides} only (media_sides)",
+                    hint=f"declare {side!r} in media_sides on the role config, or drop the media from the {side}",
+                )
+
     def _gate_media_calls(self, calls: Sequence[Call]) -> None:
         """The per-request media gates, as the judge's: each wire CALL's image and video parts against the
         config's ``max_images``/``max_videos``, refused before the call is sent. The gate runs over the
@@ -339,10 +373,15 @@ class RoleClient[C: Endpoint]:
 
         The media gates are each wire call's (see :meth:`_gate_media_calls`), not this call's.
         """
-        if not self.MEDIA_ON_WIRE and any(content.has_media for content in contents):
+        if not self._media_is_on_wire() and any(content.has_media for content in contents):
             self._refuse_media_before_preparation(contents)
         image, video = self._media_policies()
         return prepare_request(contents, image, video)
+
+    def _media_is_on_wire(self) -> bool:
+        """Whether this client's wire carries media: the class flag (the pool and rerank wires lower media
+        parts on every shape). The embed role overrides it -- its ``messages`` route only."""
+        return self.MEDIA_ON_WIRE
 
     def _refuse_media_before_preparation(self, contents: Sequence[Content]) -> None:
         """Refuse media for a text-only role before the media is fetched, sized or counted.

@@ -43,13 +43,21 @@ RequestShape = Literal["query", "document", "pair"]
 
 #: How the model reads its output: the pooled/scored position, as data. ``last`` -- the trailing fixed
 #: segment (or, when ``add_special_tokens`` declares it, the post-processor's appended token);
-#: ``first`` -- the leading fixed segment; ``mean`` -- over the content, with every fixed token still
-#: reserved; ``marker`` -- at a named special token (``anchor_markers``).
-AnchorKind = Literal["last", "first", "mean", "marker"]
+#: ``first`` -- the leading fixed segment; ``last_content`` -- the last kept *content* token (a model that
+#: pools the last real token of raw text: no fixed tail exists, but fixed segments such as head markers are
+#: still reserved and audited, and a cut keeps a content prefix, so the last kept content token survives);
+#: ``mean`` -- over the content, with every fixed token still reserved; ``marker`` -- at a named special
+#: token (``anchor_markers``).
+AnchorKind = Literal["last", "first", "last_content", "mean", "marker"]
 
 #: What a content span carries: one of the request's roles. ``instruction`` is the run-level task text
 #: (declared once per run, never cut).
 ContentSpan = Literal["query", "document", "instruction"]
+
+#: The declared content normalisers: ``strip`` removes leading/trailing whitespace, ``lowercase`` lowers.
+#: Applied by :func:`rcp_ndcg.data.preprocess.fit` to a shape's content spans before measuring, so the
+#: reference and the engine see the same text.
+ContentNormalizer = Literal["strip", "lowercase"]
 
 SHAPES: tuple[RequestShape, ...] = ("query", "document", "pair")
 """The request shapes a :class:`TemplateSpec` declares, in canonical order."""
@@ -112,7 +120,10 @@ class TemplateSpec(BaseModel):
         document: The ``document`` shape's segments (an embedder's document side).
         pair: The ``pair`` shape's segments (a reranker's request; its order is the model's).
         anchor: The position the model reads its output from (``last`` by default: the last-token
-            poolers, the pointwise rerankers scored at the last position). Declared so the budget
+            poolers, the pointwise rerankers scored at the last position). ``last_content`` declares a model
+            that pools the last real token of raw text (jina-embeddings-v5): no fixed tail exists, the shape
+            may end on a content span, and every fixed segment (a head marker) is still reserved by the
+            budget -- the prefix a cut keeps always carries the last content token. Declared so the budget
             knows what must survive and the golden-render tests what to assert.
         anchor_markers: For ``anchor: marker``: the special tokens' *names* (resolved like
             ``{special:...}``), e.g. a listwise reranker's per-passage markers.
@@ -121,6 +132,13 @@ class TemplateSpec(BaseModel):
             scoring routes), ``False`` where it adds none (the chat-embed form). A bool for every
             shape, or a mapping shape -> bool naming every declared shape. The budget reserves those
             tokens: measured on the empty render, they are part of the fixed overhead.
+        normalize: The declared content normalisation, applied by :func:`rcp_ndcg.data.preprocess.fit`
+            to a shape's content spans before measuring -- so the reference and the engine see the same
+            text. ``("strip",)`` strips the spans (the topk wrapper strips the query text and the whole
+            document); ``("strip", "lowercase")`` strips then lowers them (Cobble's
+            ``lower_case_text`` checkpoints); the ops run in the declared order. A tuple for every
+            declared shape, or a mapping shape -> tuple naming every declared shape. Empty (the
+            default): the text goes in as it is.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -132,6 +150,7 @@ class TemplateSpec(BaseModel):
         "anchor": "content",
         "anchor_markers": "content",
         "add_special_tokens": "content",
+        "normalize": "content",
     }
 
     query: tuple[Segment, ...] | None = None
@@ -140,6 +159,7 @@ class TemplateSpec(BaseModel):
     anchor: AnchorKind = "last"
     anchor_markers: tuple[str, ...] = ()
     add_special_tokens: bool | dict[str, bool] = True
+    normalize: tuple[ContentNormalizer, ...] | dict[str, tuple[ContentNormalizer, ...]] = ()
 
     @model_validator(mode="after")
     def _shapes_are_complete(self) -> TemplateSpec:
@@ -152,6 +172,15 @@ class TemplateSpec(BaseModel):
             if stale or missing:
                 raise ValueError(
                     f"add_special_tokens must name every declared shape {declared}: "
+                    + (f"unknown {stale}; " if stale else "")
+                    + (f"missing {missing}" if missing else "")
+                )
+        if isinstance(self.normalize, dict):
+            stale = sorted(set(self.normalize) - set(declared))
+            missing = sorted(set(declared) - set(self.normalize))
+            if stale or missing:
+                raise ValueError(
+                    f"normalize must name every declared shape {declared}: "
                     + (f"unknown {stale}; " if stale else "")
                     + (f"missing {missing}" if missing else "")
                 )
@@ -171,6 +200,9 @@ class TemplateSpec(BaseModel):
                         f"an 'anchor: last' shape must end with a fixed segment (the anchor the model reads) or "
                         f"declare add_special_tokens for {shape!r}, so the tokenizer's post-processor appends it"
                     )
+            # ``last_content`` has no positional requirement: the model reads the last kept content token,
+            # and a cut of a content span keeps its prefix, so that token always survives. The fixed
+            # segments (a head marker) are reserved by the budget either way.
             if self.anchor == "first" and segments[0].fixed is None and not self.adds_special_tokens(shape):
                 raise ValueError(
                     f"an 'anchor: first' shape must open with a fixed segment or declare add_special_tokens "
@@ -219,6 +251,30 @@ class TemplateSpec(BaseModel):
                 ) from None
         return self.add_special_tokens
 
+    def normalisers(self, shape: RequestShape) -> tuple[ContentNormalizer, ...]:
+        """The declared content normalisers of ``shape``, in the order ``fit`` applies them.
+
+        Raises:
+            ConfigError: the template does not declare that shape (the same typed error :meth:`segments`
+                raises, so a caller that reads the normalisers before the segments sees it too).
+        """
+        if isinstance(self.normalize, dict):
+            try:
+                return self.normalize[shape]
+            except KeyError:
+                raise ConfigError(
+                    f"the template declares no {shape!r} shape (it declares {list(self.shapes())})",
+                    hint="declare the shape's segments in the template, or fit a shape the template declares",
+                ) from None
+        return self.normalize
+
+    def normalize_text(self, shape: RequestShape, text: str) -> str:
+        """``text`` under ``shape``'s declared normalisers, in the declared order -- the one normalisation
+        call, so the reference and the engine see the same text (the same ops :func:`fit` applies)."""
+        for op in self.normalisers(shape):
+            text = text.strip() if op == "strip" else text.lower()
+        return text
+
     # -- rendering --------------------------------------------------------------------------------------------
 
     def render(
@@ -265,12 +321,24 @@ instruction): one measurement per (template, shape) per process."""
 
 
 def _resolve_specials(text: str, tokenizer: TextTokenizer) -> str:
-    """Replace every ``{special:<name>}`` in *text* with the tokenizer's literal form of that added token."""
+    """Replace every ``{special:<name>}`` in *text* with the tokenizer's literal form of that added token.
+
+    The name is resolved exactly as written, whitespace included: an added token may be named ``"[Q] "``
+    (significant whitespace), and stripping the captured name would make it unwritable.
+    """
 
     def substitute(match: re.Match[str]) -> str:
-        return tokenizer.special_text(match.group(1).strip())
+        return tokenizer.special_text(match.group(1))
 
     return _SPECIAL.sub(substitute, text)
 
 
-__all__ = ["AnchorKind", "ContentSpan", "RequestShape", "SHAPES", "Segment", "TemplateSpec"]
+__all__ = [
+    "AnchorKind",
+    "ContentNormalizer",
+    "ContentSpan",
+    "RequestShape",
+    "SHAPES",
+    "Segment",
+    "TemplateSpec",
+]

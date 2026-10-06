@@ -164,7 +164,10 @@ all derived from `rcp_ndcg.inference.clients.RoleClient`, which owns the shared 
   the role's `image_policy`/`image_processor` would -- with the tokens counted and reserved whole (never
   cut), the budget's fit applied per wire request (a vision block is atomic -- shrink to the policy minimum,
   drop whole items with `dropped=True` in `client.media_census`, or refuse under `fail`/`chunk`), and the
-  `max_images`/`max_videos` gates over what one wire request carries. A role with an `image_processor` exposes `probe()` and `check_engine_media()`: one prepared
+  `max_images`/`max_videos` gates over what one wire request carries. Which SIDES may carry media is the
+  config's `media_sides` (both by default): media on a side it does not name is refused before preparation,
+  with the error naming the field (the topk reference rejects image queries -- media is documents-only
+  there). A role with an `image_processor` exposes `probe()` and `check_engine_media()`: one prepared
   probe image, the engine's prompt-token report compared with the counted ones -- a mismatch is refused, a
   reply without usage recorded `not_checked`, never silent.
 

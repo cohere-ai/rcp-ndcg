@@ -94,6 +94,19 @@ class TestSplitIntoChunks:
     def test_short_text_is_one_chunk(self) -> None:
         assert split_into_chunks("short", GEOMETRY, WORDS) == ["short"]
 
+    def test_a_one_token_chunk_may_sit_over_the_cap(self) -> None:
+        """The one-token boundary (the QA survivor 15): a chunk is at least one document token, so one
+        token whose text re-tokenizes longer alone (a multi-byte character split across byte tokens) makes
+        a chunk over the cap -- the resolver breaks there instead of shrinking past it (and a multi-byte
+        edge character may repeat, the declared duplication-only caveat)."""
+        bpe = byte_bpe_tokenizer()
+        text = "日 本"
+        assert bpe.count("日") > 1  # the single token re-tokenizes longer on its own
+        chunks = split_into_chunks(text, ChunkPolicy(max_tokens=1, overlap_tokens=0), bpe)
+        assert chunks[0] == "日"  # the first chunk is the single token, whole, over the cap -- declared
+        assert bpe.count(chunks[0]) > 1
+        assert "".join(chunks) == "日日 本本本"  # coverage with the multi-byte edge repeat, nothing lost
+
 
 class TestChunkRankingExample:
     def _example(self) -> RankingExample:
