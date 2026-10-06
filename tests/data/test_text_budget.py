@@ -220,6 +220,22 @@ class TestTemplateSpec:
         with pytest.raises(ConfigError, match="pair"):
             query_template().render("pair", FRAMED, query="q")
 
+    def test_a_last_content_anchor_needs_no_fixed_tail(self) -> None:
+        """``anchor: last_content`` (jina-embeddings-v5): the model pools the last real token of raw text, so
+        the shape may end on a content span -- which ``anchor: last`` refuses, because there the model reads
+        a fixed position. Fixed segments (the head marker) are still reserved and audited; the cut keeps a
+        content prefix, so the last kept content token always survives."""
+        shape = (Segment(fixed="Query: "), Segment(content="query"))
+        with pytest.raises(ValueError, match="anchor: last"):
+            TemplateSpec(query=shape, anchor="last", add_special_tokens=False)
+        spec = TemplateSpec(query=shape, anchor="last_content", add_special_tokens=False)
+        assert spec.shapes() == ("query",)
+        # The fixed head marker is still part of the frame: rendered whole, and reserved by the budget.
+        assert spec.render("query", FRAMED, query="the query") == "Query: the query"
+        result = fit(["the query " * 30], shape="query", budget=budget(spec, max_tokens=12), tokenizer=FRAMED)
+        assert result.texts[0].startswith("Query: ")  # the head marker survived the cut
+        assert result.texts[0].endswith(result.contents[0])  # and the shape ends on the (kept) content
+
 
 # ---------------------------------------------------------------------------------------------------------------
 # Anchors: every declared anchor survives a cut at its declared position

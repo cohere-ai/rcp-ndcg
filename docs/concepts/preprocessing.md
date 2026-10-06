@@ -214,10 +214,13 @@ The `pair` shape orders query and document per model -- the reranker above reads
 reranker whose template puts the document first makes the query block an anchor, and the segments say so. A
 special token is written by name (`{special:end_turn}`) and resolved at render time from the tokenizer's added
 tokens; specials are never typed literally, so a template outlives tokenizer rewrites. The template also declares
-`anchor` (`last`, `first`, `mean` or `marker`, with `anchor_markers` naming the specials) -- the position the
-model reads its output from -- and `add_special_tokens` per shape: what the engine does to the rendered string
-for that route (vLLM's pooling and scoring routes append the tokenizer's post-processor tokens; the chat-embed
-form does not). The budget reserves those tokens too: they are part of the measured overhead.
+`anchor` (`last`, `first`, `last_content`, `mean` or `marker`, with `anchor_markers` naming the specials) --
+the position the model reads its output from. `last_content` is for a model that pools the last real token of raw
+text (jina-embeddings-v5): no fixed tail exists and the shape may end on a content span -- which `last` refuses --
+while the fixed segments (a head marker) are still reserved by the budget, and the prefix a cut keeps always
+carries the last content token. It also declares `add_special_tokens` per shape: what the engine does to the
+rendered string for that route (vLLM's pooling and scoring routes append the tokenizer's post-processor tokens;
+the chat-embed form does not). The budget reserves those tokens too: they are part of the measured overhead.
 
 ### The budget and the fit
 

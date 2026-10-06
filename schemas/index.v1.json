@@ -2258,10 +2258,11 @@
         },
         "anchor": {
           "default": "last",
-          "description": "The position the model reads its output from (``last`` by default: the last-token poolers, the pointwise rerankers scored at the last position). Declared so the budget knows what must survive and the golden-render tests what to assert.",
+          "description": "The position the model reads its output from (``last`` by default: the last-token poolers, the pointwise rerankers scored at the last position). ``last_content`` declares a model that pools the last real token of raw text (jina-embeddings-v5): no fixed tail exists, the shape may end on a content span, and every fixed segment (a head marker) is still reserved by the budget -- the prefix a cut keeps always carries the last content token. Declared so the budget knows what must survive and the golden-render tests what to assert.",
           "enum": [
             "last",
             "first",
+            "last_content",
             "mean",
             "marker"
           ],

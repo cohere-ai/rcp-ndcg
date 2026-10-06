@@ -4791,7 +4791,7 @@
             "default": "last",
             "frozen": false,
             "required": false,
-            "type": "Literal['last', 'first', 'mean', 'marker']"
+            "type": "Literal['last', 'first', 'last_content', 'mean', 'marker']"
           },
           "anchor_markers": {
             "alias": null,

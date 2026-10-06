@@ -43,9 +43,12 @@ RequestShape = Literal["query", "document", "pair"]
 
 #: How the model reads its output: the pooled/scored position, as data. ``last`` -- the trailing fixed
 #: segment (or, when ``add_special_tokens`` declares it, the post-processor's appended token);
-#: ``first`` -- the leading fixed segment; ``mean`` -- over the content, with every fixed token still
-#: reserved; ``marker`` -- at a named special token (``anchor_markers``).
-AnchorKind = Literal["last", "first", "mean", "marker"]
+#: ``first`` -- the leading fixed segment; ``last_content`` -- the last kept *content* token (a model that
+#: pools the last real token of raw text: no fixed tail exists, but fixed segments such as head markers are
+#: still reserved and audited, and a cut keeps a content prefix, so the last kept content token survives);
+#: ``mean`` -- over the content, with every fixed token still reserved; ``marker`` -- at a named special
+#: token (``anchor_markers``).
+AnchorKind = Literal["last", "first", "last_content", "mean", "marker"]
 
 #: What a content span carries: one of the request's roles. ``instruction`` is the run-level task text
 #: (declared once per run, never cut).
@@ -112,7 +115,10 @@ class TemplateSpec(BaseModel):
         document: The ``document`` shape's segments (an embedder's document side).
         pair: The ``pair`` shape's segments (a reranker's request; its order is the model's).
         anchor: The position the model reads its output from (``last`` by default: the last-token
-            poolers, the pointwise rerankers scored at the last position). Declared so the budget
+            poolers, the pointwise rerankers scored at the last position). ``last_content`` declares a model
+            that pools the last real token of raw text (jina-embeddings-v5): no fixed tail exists, the shape
+            may end on a content span, and every fixed segment (a head marker) is still reserved by the
+            budget -- the prefix a cut keeps always carries the last content token. Declared so the budget
             knows what must survive and the golden-render tests what to assert.
         anchor_markers: For ``anchor: marker``: the special tokens' *names* (resolved like
             ``{special:...}``), e.g. a listwise reranker's per-passage markers.
@@ -171,6 +177,9 @@ class TemplateSpec(BaseModel):
                         f"an 'anchor: last' shape must end with a fixed segment (the anchor the model reads) or "
                         f"declare add_special_tokens for {shape!r}, so the tokenizer's post-processor appends it"
                     )
+            # ``last_content`` has no positional requirement: the model reads the last kept content token,
+            # and a cut of a content span keeps its prefix, so that token always survives. The fixed
+            # segments (a head marker) are reserved by the budget either way.
             if self.anchor == "first" and segments[0].fixed is None and not self.adds_special_tokens(shape):
                 raise ValueError(
                     f"an 'anchor: first' shape must open with a fixed segment or declare add_special_tokens "
