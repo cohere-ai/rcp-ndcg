@@ -9,6 +9,7 @@ outage-clock tests' 0.15 s mock answers, which queue a request longer than its `
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 import httpx
@@ -227,6 +228,72 @@ class TestOutageClock:
         assert isinstance(error, BackendUnavailableError), error
         seconds = float(str(error).split("was unavailable for ")[1].split("s ")[0])
         assert 0.2 <= seconds < 0.3  # the outage it saw, not the 0.3 s it also spent queued
+
+
+class _Clock:
+    """A scripted ``time.monotonic``: frozen except when the faked ``_sleep`` advances it (the tests
+    below need the exact wake instant, which wall clocks cannot aim at)."""
+
+    def __init__(self, now: float = 1000.0) -> None:
+        self.now = now
+        self.sleeps: list[float] = []
+
+    def monotonic(self) -> float:
+        return self.now
+
+    async def sleep(self, seconds: float) -> None:
+        """The transport's ``_sleep``, replaced: no wall time passes, the clock advances by the sleep."""
+        self.sleeps.append(seconds)
+        self.now += seconds
+        await asyncio.sleep(0)  # a real yield point, so a deadline around the send can fire
+
+
+class TestOutageBoundaries:
+    """The outage windows at their exact boundaries: a replica is live again at the wake instant
+    (``down_until <= now``), parking gives up after exactly ``wait_on_outage_s`` (``waited >= limit``),
+    and the pick tie-breaks on the requests a replica has already sent. The first two need a scripted
+    clock: the wake instant is a float equality wall clocks cannot aim at."""
+
+    BACKOFF = 0.0625  # 2^-4: every window boundary is exact in binary floating point
+
+    def _clocked(
+        self, monkeypatch: pytest.MonkeyPatch, script: ReplicaScript, **config: Any
+    ) -> tuple[Transport, _Clock]:
+        clock = _Clock()
+        monkeypatch.setattr(transport_module, "time", clock)
+        monkeypatch.setattr(transport_module, "_sleep", clock.sleep)
+        monkeypatch.setattr(Transport, "BACKOFF_S", self.BACKOFF)
+        monkeypatch.setattr(Transport, "MAX_BACKOFF_S", 1.0)
+        # the boundary dances park in a tight loop when the code is wrong: keep the warnings off the log
+        monkeypatch.setattr(logging.getLogger("rcp_ndcg"), "disabled", True)
+        return _transport(script, wait_on_outage_s=self.BACKOFF, **config), clock
+
+    def test_a_replica_wakes_at_exactly_the_end_of_its_outage_window(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """At ``now == down_until`` the replica is live again (``<=``), so the request goes through; a
+        replica considered live only *after* the window (``<``) would keep parking until
+        ``wait_on_outage_s`` is spent and fail the request."""
+        transport, clock = self._clocked(monkeypatch, ReplicaScript(503, 200))
+        replies = asyncio.run(asyncio.wait_for(transport.send([Call("POST", "/x", {})]), timeout=5.0))
+        assert replies[0].status == 200
+        assert clock.sleeps == [self.BACKOFF]  # one park, then the replica wakes at the exact instant
+
+    def test_the_request_gives_up_after_exactly_wait_on_outage_s(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The second park sits exactly at ``waited == wait_on_outage_s``: that is the give-up boundary
+        (``>=``). A ``>`` rule would want more outage than the limit allows, and the clock cannot get
+        there (the wake it computes is 0), so the request would never finish: the 5 s cap fails it."""
+        transport, clock = self._clocked(monkeypatch, ReplicaScript(*([503] * 100)))
+        with pytest.raises(BackendUnavailableError, match="wait_on_outage_s"):
+            asyncio.run(asyncio.wait_for(transport.send([Call("POST", "/x", {})]), timeout=5.0))
+        assert clock.sleeps == [self.BACKOFF]  # the outage clock is exactly the limit when it gives up
+
+    def test_the_next_request_goes_to_the_replica_that_has_sent_the_fewest(self) -> None:
+        """The least-in-flight pick tie-breaks on the requests the replica has sent: sequential sends
+        with everything else equal must alternate across the replicas."""
+        replicas = Replicas({"a": [], "b": []})
+        transport = replicas.transport(concurrency=1)
+        for _ in range(3):
+            _send(transport)
+        assert replicas.requests == {"a": 2, "b": 1}  # after a tie, the replica with fewer sent goes next
 
 
 class TestStatusMap:

@@ -275,6 +275,20 @@ class TestValidation:
         with pytest.raises(ValueError, match="positive"):
             Criteria2PL(np.array([1.0, -1.0, 1.0, 1.0, 1.0]), ORACLE_BETA)
 
+    def test_a_fit_with_exactly_two_criteria_is_accepted(self) -> None:
+        """The identifiability floor is K >= 2: exactly two criteria sit on the accepted side of the
+        boundary (one criterion cannot identify a 2PL; two can). The data is the module's own oracle
+        generator cut to two criteria, so both carry gain weight and the item guard has nothing to say."""
+        rng = np.random.default_rng(17)
+        theta = rng.normal(0, 1.5, size=100)
+        p = 1.0 / (1.0 + np.exp(-(ORACLE_GAMMA[:2][None, :] * (theta[:, None] - ORACLE_BETA[:2][None, :]))))
+        n = np.full(100, 4.0)
+        S = rng.binomial(4, p).astype(float)
+        fitted = Criteria2PL.fit(n, S)
+        assert fitted.gamma.shape == (2,) and fitted.beta.shape == (2,)
+        assert fitted.diagnostics.n_documents == 100
+        assert np.all(np.isfinite(fitted.eap(n, S)[0]))
+
     def test_diagnostics_dataclass_shape(self) -> None:
         n = np.full(100, 4.0)
         S = rng_S()
