@@ -106,7 +106,9 @@ class Wave0Stop(BaseModel):
     model_config = ConfigDict(**_no_extra())
 
     pids: list[int]
+    leaked: list[str]
     scan_found: list[str]
+    scan_all: list[str]
     all_stopped: bool
     free_disk_after_stop_bytes: int | None = None
     passed: bool

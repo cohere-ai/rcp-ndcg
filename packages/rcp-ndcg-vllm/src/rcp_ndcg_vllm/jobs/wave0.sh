@@ -235,7 +235,8 @@ run_probe reach.gcs gcs --out-uri "$OUT_URI" --report "$WORK/gcs.json"
 
 # --- (d) two engines on two slots, at the same time ----------------------------------------------------
 
-python3 - "$SPEC" <<'PYEOF'
+write_engines_spec() {
+python3 - "$SPEC" "$WORK/engines" <<'PYEOF'
 """The two slots' spec: the pinned embedding model and any small second model, isolation per slot."""
 import json
 import os
@@ -302,6 +303,11 @@ spec = {
 with open(sys.argv[1], "w", encoding="utf-8") as handle:
     handle.write(json.dumps(spec, indent=2) + "\n")
 PYEOF
+}
+
+if ! write_engines_spec; then
+  fail_step engines "the engines' spec could not be written (the heredoc failed)"
+fi
 run_probe engines engines-start --spec "$SPEC" --state "$STATE/engines.json" --report "$WORK/engines.json"
 
 # --- (e) the product's budget, client and the engine's /tokenize ---------------------------------------

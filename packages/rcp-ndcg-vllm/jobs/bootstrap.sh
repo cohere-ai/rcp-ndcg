@@ -338,8 +338,12 @@ freeze_diff_guard "$STATE/engine-freeze-before.txt" "$STATE/engine-freeze-after.
 # --- the reference environment: the image's torch, read through --system-site-packages ---------------
 
 ref_start="$(now_s)"
-uv venv --system-site-packages "$STATE/reference" >/dev/null
-uv pip install --python "$STATE/reference/bin/python" --quiet --no-index \
+# The reference reads the image's torch and CUDA through --system-site-packages and installs only what
+# is missing - pip's job, not uv's: uv ignores system site-packages during resolution and would install
+# the wheelhouse's CPU torch over the image's CUDA build; pip sees the system distributions and skips
+# them (a paper reference that needs other versions gets REFERENCE_REQUIREMENTS and its own venv).
+uv venv --system-site-packages --seed "$STATE/reference" >/dev/null
+"$STATE/reference/bin/python" -m pip install --quiet --no-index \
   --find-links "$STAGE_DIR/wheelhouse" \
   -r "${REFERENCE_REQUIREMENTS:-$STAGE_DIR/requirements-reference.txt}"
 ref_s="$(( $(now_s) - ref_start ))"

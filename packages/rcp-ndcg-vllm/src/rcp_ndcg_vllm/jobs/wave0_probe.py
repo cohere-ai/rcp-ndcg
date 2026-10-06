@@ -294,7 +294,7 @@ def _session_of(pid: int) -> int:
         return 0
     tail = stat.rpartition(")")[2].split()
     try:
-        return int(tail[2])  # the fields after the comm: state, ppid, pgrp, session
+        return int(tail[3])  # the fields after the comm: state, ppid, pgrp, session
     except (IndexError, ValueError):
         return 0
 

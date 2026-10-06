@@ -274,11 +274,25 @@
           "title": "Pids",
           "type": "array"
         },
+        "leaked": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Leaked",
+          "type": "array"
+        },
         "scan_found": {
           "items": {
             "type": "string"
           },
           "title": "Scan Found",
+          "type": "array"
+        },
+        "scan_all": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scan All",
           "type": "array"
         },
         "all_stopped": {
@@ -304,7 +318,9 @@
       },
       "required": [
         "pids",
+        "leaked",
         "scan_found",
+        "scan_all",
         "all_stopped",
         "passed"
       ],

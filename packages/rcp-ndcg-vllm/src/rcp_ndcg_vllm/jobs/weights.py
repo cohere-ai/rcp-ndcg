@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -155,7 +156,11 @@ def _remove_tree(directory: Path) -> None:
             os.chmod(path, stat.S_IWRITE | stat.S_IXUSR | stat.S_IRUSR)
         except OSError:  # pragma: no cover - nothing more can be done here
             return
-        func(path)
+        try:
+            func(path)
+        except OSError:  # pragma: no cover - a busy filesystem: one retry after a beat
+            time.sleep(0.2)
+            func(path)
 
     shutil.rmtree(directory, onerror=_writable)
 

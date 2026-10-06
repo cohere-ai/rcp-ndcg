@@ -305,7 +305,7 @@ same commands are:
 
 ```bash
 # the release wheels, as release.yml builds them (the three pyproject.toml versions must match)
-uv build --out-dir /shared/wheelhouse/0.0.1rc1
+uv build --all-packages --out-dir /shared/wheelhouse/0.0.1rc1
 uv build --out-dir /shared/wheelhouse/0.0.1rc1 packages/rcp-ndcg-vllm   # built from its own directory
 # the locked dependencies, pinned exactly (the command the committed requirements-constraints.txt records)
 uv export --frozen --no-hashes --no-emit-workspace --no-dev --extra calibrate --extra hf --extra s3 --extra azure \

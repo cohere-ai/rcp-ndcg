@@ -418,7 +418,15 @@ def _full_report(tmp_path: Path) -> Path:
             "note": None,
             "passed": True,
         },
-        "stop": {"pids": [11, 12], "scan_found": [], "all_stopped": True, "passed": True},
+        "stop": {
+            "pids": [11, 12],
+            "leaked": [],
+            "scan_found": [],
+            "scan_all": [],
+            "all_stopped": True,
+            "free_disk_after_stop_bytes": 1 << 40,
+            "passed": True,
+        },
         "finished": {"at": "2026-10-06T08:00:00Z"},
     }
     subprocess.run(
