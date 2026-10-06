@@ -1,10 +1,14 @@
 """The ctxl-rerank-v2-instruct-multilingual-6b recipe: load, CPU stage 1, the anchor mutations.
 
-Stage 1 here is CPU-only: the recipe's tokenizer files (the only Hub artifacts it needs) are
-downloaded once into the lane scratch's HF cache -- the test skips itself with a clear reason
-when the Hub is unreachable -- and the product's fit, the reference subprocess's render and the
-served-template check run on the sampled pairs. No weights, no engine: the score path belongs to
-the GPU wave (the recipe ships ``status: unverified`` until it passes there).
+Stage 1 here is CPU-only: the recipe's tokenizer.json (the only Hub artifact it needs, ~11 MB) is
+downloaded once at the recipe's pinned revision into a cache directory -- the lane's scratch dir
+when it sits beside this checkout (so the download is fetched once per machine, never into the
+checkout), else pytest's own temp dir; set ``RCP_NDCG_VLLM_TOKENIZER_CACHE`` to override the
+location. The product's tokenizer load is then pinned to the fetched snapshot, so stage 1 counts
+in the checkpoint's tokens without a second download. Tests that need the download skip themselves
+with a clear reason when the Hub is unreachable (offline CI) or ``huggingface_hub`` is not
+installed. No weights, no engine: the score path belongs to the GPU wave (the recipe ships
+``status: unverified`` until it passes there).
 
 The reference subprocess (``reference.py``, ``--mode render``) is stdlib-only, so the token-id
 (render) equality runs everywhere the package's tests run.
@@ -16,34 +20,20 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
 from rcp_ndcg_vllm import client_config, load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg_vllm.equivalence.reference import run_reference
+from rcp_ndcg_vllm.recipe import default_recipes_root
 
 from rcp_ndcg.inference.config import RerankEndpoint
 
-# The lane's scratch directory (overridable; CI without it gets a temp dir) holds the downloaded
-# tokenizer files. Set before anything imports huggingface_hub, which reads HF_HOME at import.
-_LANE_TAG = "rec-ctxl-rerank-v2-instruct-multilingual-6b"
-
-
-def _lane_scratch() -> Path:
-    override = os.environ.get("RCP_NDCG_LANE_SCRATCH")
-    if override:
-        return Path(override)
-    default = Path("/root/repos/rcp-ndcg-lanes") / _LANE_TAG / "scratch"
-    return default if default.is_dir() else Path(tempfile.mkdtemp(prefix=f"{_LANE_TAG}-scratch-"))
-
-
-os.environ.setdefault("HF_HOME", str(_lane_scratch() / "hf-cache"))
-
-_RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "ctxl-rerank-v2-instruct-multilingual-6b"
-_REVISION = "f14ca1a2fc204dc0934c84a3d2e278f8ff646b80"
-_TOKENIZER_SPEC = f"ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b@{_REVISION}"
+RECIPE_ID = "ctxl-rerank-v2-instruct-multilingual-6b"
+REPO_ID = "ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b"
+REVISION = "f14ca1a2fc204dc0934c84a3d2e278f8ff646b80"  # re-checked against the HF API on 2026-10-06
+_TOKENIZER_SPEC = f"{REPO_ID}@{REVISION}"
 
 # 20 pairs (multilingual on purpose: the checkpoint is multilingual), all under the 8192-token
 # budget so stage 1's render equality is the served-vs-reference comparison the recipe declares.
@@ -165,18 +155,36 @@ _PAIRS: list[dict] = [
 
 
 @pytest.fixture(scope="session")
-def tokenizer_available() -> None:
-    """The recipe tokenizer's files, downloaded once into the lane scratch's HF cache.
+def tokenizer_snapshot(tmp_path_factory) -> Path:
+    """The recipe's tokenizer.json downloaded at the pinned revision (tokenizer files only).
 
-    Skips with a clear reason when the Hub is unreachable (offline CI): stage 1 fits and audits
-    in the recipe tokenizer's tokens, so nothing else can stand in for the download.
+    Skips with the reason when the Hub is unreachable (offline CI) or ``huggingface_hub`` (the
+    product's ``[hf]`` extra) is not installed. Stage 1 fits and audits in the recipe tokenizer's
+    tokens, so nothing else can stand in for the download.
     """
-    from huggingface_hub import hf_hub_download
-
+    override = os.environ.get("RCP_NDCG_VLLM_TOKENIZER_CACHE")
+    if override:
+        cache = Path(override)
+        cache.mkdir(parents=True, exist_ok=True)
+    else:
+        lane_scratch = Path(__file__).resolve().parents[4].parent / RECIPE_ID / "scratch"
+        cache = lane_scratch / "hf-home" if lane_scratch.is_dir() else tmp_path_factory.mktemp("tokenizer-cache")
     try:
-        hf_hub_download(_TOKENIZER_SPEC.split("@")[0], "tokenizer.json", revision=_REVISION)
-    except Exception as error:  # noqa: BLE001 - any Hub failure is the same skip
+        import huggingface_hub
+    except ModuleNotFoundError as error:
+        pytest.skip(f"huggingface_hub is not installed (pip install 'rcp-ndcg[hf]'): {error}")
+    try:
+        path = huggingface_hub.hf_hub_download(REPO_ID, "tokenizer.json", revision=REVISION, cache_dir=str(cache))
+    except Exception as error:  # noqa: BLE001 - offline (CI), rate limit, or a Hub outage
         pytest.skip(f"the Hugging Face Hub is unreachable; stage 1 needs the recipe's tokenizer files: {error}")
+    return Path(path)
+
+
+def _pin_tokenizer(monkeypatch: pytest.MonkeyPatch, snapshot: Path) -> None:
+    """Point the product's Hub download at the already-fetched snapshot (same bytes, no re-fetch)."""
+    import huggingface_hub
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", lambda *args, **kwargs: str(snapshot))
 
 
 @pytest.fixture(scope="session")
@@ -187,17 +195,22 @@ def pairs_file(tmp_path_factory) -> Path:
     return path
 
 
+def _recipe_dir() -> Path:
+    """The recipe directory: the package's own ``recipes/<id>`` (default_recipes_root)."""
+    return default_recipes_root() / RECIPE_ID
+
+
 def test_recipe_loads_with_the_declared_serving_and_client_blocks() -> None:
     """The recipe validates through the product's endpoint config, with every binding field."""
-    recipe = load_recipe(_RECIPE_DIR)
-    assert recipe.id == _RECIPE_DIR.name == "ctxl-rerank-v2-instruct-multilingual-6b"
+    recipe = load_recipe(_recipe_dir())
+    assert recipe.id == _recipe_dir().name == "ctxl-rerank-v2-instruct-multilingual-6b"
     assert recipe.model == "ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b"
-    assert recipe.revision == _REVISION  # re-checked against the Hub API on 2026-10-06
+    assert recipe.revision == REVISION  # re-checked against the Hub API on 2026-10-06
     assert recipe.role == "rerank" and recipe.scoring == "pointwise" and recipe.input == ["text"]
     assert recipe.licence == "CC-BY-NC-SA-4.0"
     client = recipe.client
     assert isinstance(client, RerankEndpoint)
-    assert client.model == recipe.id and client.revision == _REVISION  # injected at load
+    assert client.model == recipe.id and client.revision == REVISION  # injected at load
     assert client.tokenizer == _TOKENIZER_SPEC
     assert client.max_tokens == 8192 and client.query_max_tokens == 4096
     assert client.on_overflow == "cut"
@@ -229,13 +242,13 @@ def test_recipe_loads_with_the_declared_serving_and_client_blocks() -> None:
 
 def test_serve_argv_renders_the_pinned_engine_invocation() -> None:
     """The argv pins the revision, the shipped template file and the raw-logit pooler config."""
-    recipe = load_recipe(_RECIPE_DIR)
+    recipe = load_recipe(_recipe_dir())
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
     assert argv[:3] == ["vllm", "serve", recipe.model]
-    assert argv[argv.index("--revision") + 1] == _REVISION
+    assert argv[argv.index("--revision") + 1] == REVISION
     assert argv[argv.index("--served-model-name") + 1] == recipe.id
     assert argv[argv.index("--pooler-config") + 1] == '{"use_activation": false}'
-    assert argv[argv.index("--chat-template") + 1] == str(_RECIPE_DIR / "score-template-6b.jinja")
+    assert argv[argv.index("--chat-template") + 1] == str(_recipe_dir() / "score-template-6b.jinja")
     assert argv[argv.index("--hf-overrides") + 1] == json.dumps(
         {
             "architectures": ["MistralForSequenceClassification"],
@@ -249,7 +262,7 @@ def test_serve_argv_renders_the_pinned_engine_invocation() -> None:
 
 def test_client_block_round_trips_through_the_product_loader() -> None:
     """client_config() is the product's config: its dump constructs the product model unchanged."""
-    recipe = load_recipe(_RECIPE_DIR)
+    recipe = load_recipe(_recipe_dir())
     config = client_config(recipe, base_url="http://127.0.0.1:8100/v1")
     assert config["model"] == recipe.id and config["recipe"] == recipe.id
     endpoint = RerankEndpoint(**config)
@@ -257,14 +270,17 @@ def test_client_block_round_trips_through_the_product_loader() -> None:
     assert RerankEndpoint.model_validate(config).model == recipe.id
 
 
-def test_stage1_on_cpu_passes_token_ids_anchors_and_the_served_template(tokenizer_available, pairs_file) -> None:
+def test_stage1_on_cpu_passes_token_ids_anchors_and_the_served_template(
+    tokenizer_snapshot, monkeypatch, pairs_file
+) -> None:
     """Stage 1 on CPU: the product's fit, the reference render, the anchor audit and the template.
 
     20 sampled pairs (one instruction-bearing, on purpose: the recipe declares instruction: none
     and the reference folds none) plus 5 over-length pairs the harness derives per declared shape:
     the anchor audit covers every sample, the token-id (render) equality every pairs-file row.
     """
-    recipe = load_recipe(_RECIPE_DIR)
+    recipe = load_recipe(_recipe_dir())
+    _pin_tokenizer(monkeypatch, tokenizer_snapshot)
     document = stage1_prompts(recipe, pairs_file, str(sys.executable), over_length_per_shape=5)
     assert document["sampled"] == 25  # 20 pairs + 5 over-length pair samples
     assert document["passed"] is True
@@ -283,12 +299,12 @@ def test_stage1_on_cpu_passes_token_ids_anchors_and_the_served_template(tokenize
 
 def test_reference_render_subprocess_agrees_on_the_prompt_text(tmp_path) -> None:
     """The reference subprocess (stdlib render mode) writes the paper's exact prompt per row."""
-    recipe = load_recipe(_RECIPE_DIR)
+    recipe = load_recipe(_recipe_dir())
     pairs_path = tmp_path / "pairs.jsonl"
     pairs_path.write_text("".join(json.dumps(row) + "\n" for row in _PAIRS[:4]), encoding="utf-8")
     reference = run_reference(
         sys.executable,
-        str(_RECIPE_DIR / recipe.reference.entry),
+        str(_recipe_dir() / recipe.reference.entry),
         mode="render",
         pairs_path=pairs_path,
         out_path=tmp_path / "out.json",
@@ -304,14 +320,15 @@ def test_reference_render_subprocess_agrees_on_the_prompt_text(tmp_path) -> None
 
 
 def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_red(
-    tokenizer_available, pairs_file
+    tokenizer_snapshot, monkeypatch, pairs_file
 ) -> None:
     """Dropping the declared template's trailing anchor segment (" ??") must fail the anchor audit."""
-    recipe = load_recipe(_RECIPE_DIR)
+    recipe = load_recipe(_recipe_dir())
     template = recipe.client.template
     trimmed = template.model_copy(update={"pair": template.segments("pair")[:-1]})
     mutated = recipe.model_copy(update={"client": recipe.client.model_copy(update={"template": trimmed})})
     assert mutated.client.template.segments("pair")[-1].content == "query"  # the tail is now content
+    _pin_tokenizer(monkeypatch, tokenizer_snapshot)
     document = stage1_prompts(mutated, pairs_file, str(sys.executable), over_length_per_shape=2)
     assert document["anchor_check"]["passed"] is False
     assert document["anchor_check"]["failures"], "the anchor audit must record the dropped tail"
@@ -319,18 +336,19 @@ def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_re
 
 
 def test_mutation_stripping_the_anchor_from_the_served_template_file_fails_the_template_check(
-    tokenizer_available, tmp_path, pairs_file
+    tokenizer_snapshot, monkeypatch, tmp_path, pairs_file
 ) -> None:
     """A served template file that lost the tail anchor renders different ids than the client."""
     import shutil
 
     copied = tmp_path / "ctxl-rerank-v2-instruct-multilingual-6b"
-    shutil.copytree(_RECIPE_DIR, copied)
+    shutil.copytree(_recipe_dir(), copied)
     template_file = copied / "score-template-6b.jinja"
     text = template_file.read_text(encoding="utf-8")
     assert text.endswith(" ??")
     template_file.write_text(text.removesuffix(" ??"), encoding="utf-8")
     mutated = load_recipe(copied)
+    _pin_tokenizer(monkeypatch, tokenizer_snapshot)
     document = stage1_prompts(mutated, pairs_file, str(sys.executable), over_length_per_shape=1)
     assert document["template_render_check"]["passed"] is False
     assert document["anchor_check"]["passed"] is True  # the declared shape still keeps its anchor
@@ -338,13 +356,13 @@ def test_mutation_stripping_the_anchor_from_the_served_template_file_fails_the_t
 
 def test_reference_score_mode_needs_its_own_environment(tmp_path) -> None:
     """The reference's score mode reports the missing reference environment instead of a traceback."""
-    recipe = load_recipe(_RECIPE_DIR)
+    recipe = load_recipe(_recipe_dir())
     pairs_path = tmp_path / "pairs.jsonl"
     pairs_path.write_text("".join(json.dumps(row) + "\n" for row in _PAIRS[:1]), encoding="utf-8")
     completed = subprocess.run(
         [
             sys.executable,
-            str(_RECIPE_DIR / recipe.reference.entry),
+            str(_recipe_dir() / recipe.reference.entry),
             "--mode",
             "score",
             "--pairs",

@@ -5,9 +5,10 @@ Derived with unchanged behaviour from the paper's exact in-process scorer
 ``src/rcp_ndcg/retrieval/external_rerankers.py:275-389`` until the in-process path left the
 package), with the constructor arguments the paper's factory passed for this checkpoint:
 ``max_seq_len=8192`` (the paper's ``MAX_SEQ_LENGTH``), ``batch_size=8``
-(``experiments/paper/rerankers/ctxl_rerank_6b.yaml``), bfloat16 weights and the revision the
-recipe pins. The score is the raw logit of vocabulary position 0 at the final position of the
-2-line prompt (document before query, then " ??"); no sigmoid, no softmax, no temperature.
+(``experiments/paper/rerankers/ctxl_rerank_6b.yaml`` as this worktree pins it; the migrated
+served-path config carries the budgets and ``instruction: none``), bfloat16 weights and the
+revision the recipe pins. The score is the raw logit of vocabulary position 0 at the final position
+of the 2-line prompt (document before query, then " ??"); no sigmoid, no softmax, no temperature.
 
 Deviations kept from the paper's code, declared in recipe.yaml:
 
@@ -19,8 +20,8 @@ Deviations kept from the paper's code, declared in recipe.yaml:
   and the recipe declares ``instruction: none`` -- the pairs file's per-row instruction field is
   therefore ignored here (the served path folds none).
 
-Interface (the harness's contract; the reference runs as a subprocess, never imported by the
-harness, which holds no torch):
+Interface (the brief's in-process contract; the reference runs as a subprocess, never imported by
+the harness, which holds no torch -- the equivalence harness itself drives the CLI below):
 
     load(device=None)                                            -> the model on ``device``
     render(query, doc, instruction=None) -> list[int]            -> the prompt's token ids
@@ -55,7 +56,8 @@ DEFAULT_TOKENIZER_SPEC = f"{MODEL_ID}@{REVISION}"
 MAX_SEQ_LEN = 8192
 #: The score reads this vocabulary position at the final position (the paper: logits[:, -1, 0]).
 VOCAB_POSITION = 0
-#: Docs per forward (the paper's config for this checkpoint, ctxl_rerank_6b.yaml: batch_size 8).
+#: Docs per forward (the paper's in-process config for this checkpoint, batch_size 8 at the
+#: pre-migration experiments/paper/rerankers/ctxl_rerank_6b.yaml).
 BATCH_SIZE = 8
 #: Padded-area budget (docs * max_char_len) that keeps near-max-length batches from OOMing.
 BATCH_SIZE_TOKENS = 15_000

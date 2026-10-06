@@ -34,9 +34,14 @@ serve:
   # <s>), no trailing content after the " ??" the score is read from. R10: the file ships in the
   # recipe directory -- without it vLLM only warns and concatenates the raw prompts.
   chat_template: score-template-6b.jinja
-  # The classify pooler's default activation for num_labels < 2 is sigmoid; use_activation: false
-  # makes every /rerank score the raw logit the reference reads (logits[:, -1, 0]). The served
-  # client cannot send use_activation per request, so the server-side default carries it.
+  # The score template vLLM serves: document before query, no bos line (the post-processor adds
+  # <s>), no trailing content after the " ??" the score is read from. R10: the file ships in the
+  # recipe directory -- without it vLLM only warns and concatenates the raw prompts.
+  chat_template: score-template-6b.jinja
+  # The classify pooler's default activation for num_labels < 2 is sigmoid; the raw logit the
+  # reference reads (logits[:, -1, 0]) is pinned twice: the client sends use_activation from this
+  # config on the wire (inference/adapters/rerank.py:181-182), and this server-side default keeps
+  # every other /rerank caller on the same scale.
   pooler_config: {use_activation: false}
   trust_remote_code: false
   max_model_len: 32768
@@ -47,10 +52,11 @@ client:
   api: rerank
   tokenizer: "ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b@f14ca1a2fc204dc0934c84a3d2e278f8ff646b80"
   # The paper's budgets: the 8192-token pair budget the paper code sets (MAX_SEQ_LENGTH, not the
-  # card's 32768), queries capped at 4096 -- the paper's served-path config
-  # (experiments/paper/rerankers/ctxl_rerank_6b.yaml). Measured boundary: for a ~5.4k-token query
-  # the served prompt is 4128 tokens vs the reference's 5434 (the reference has no query-side cap),
-  # so the equivalence claim is scoped to queries <= 4096 tokens.
+  # card's 32768) and the 4096-token query share of the migrated paper config
+  # (experiments/paper/rerankers/ctxl_rerank_6b.yaml, migrated served-path form). The share binds
+  # on overflow only: an under-budget pair -- even with a >4096-token query -- is sent uncut, and
+  # the current wire never sends max_tokens_per_query (inference/adapters/rerank.py:416), so the
+  # release's old 4096-query pre-truncation divergence does not occur on this path.
   max_tokens: 8192
   query_max_tokens: 4096
   # The pair shape is the model's prompt, document first (a right cut would drop the query and the
@@ -92,8 +98,8 @@ sources:
   - "https://huggingface.co/api/models/ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b (sha f14ca1a2fc204dc0934c84a3d2e278f8ff646b80; licence tag cc-by-nc-sa-4.0; safetensors 14.93 GB stored, 13.59 GB bf16-equivalent; gated false)"
   - "https://huggingface.co/ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b/blob/f14ca1a2fc204dc0934c84a3d2e278f8ff646b80/1_LogitScore/config.json (true_token_id 0; config_sentence_transformers.json activation_fn Identity -- the score is the raw vocab-position-0 logit)"
   - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0; checkout .refs/vllm d0d6e5f3a, ~6 h after the tag): model_executor/models/registry.py:177 (MistralForCausalLM registered in v0.31.0); model_executor/models/adapters.py:600-617 and :659-663 (SEQ_CLS_LOAD_METHODS: load_weights_no_post_processing lifts lm_head row of classifier_from_token); config/model.py:2279 (the ForSequenceClassification suffix defaults to runner pooling + convert classify, v0.31.0); pooling_params.py:110-128 and :193-197 (pooler config merges into requests that omit the field -- how use_activation: false reaches every /rerank score); entrypoints/pooling/scoring/io_processor.py (the /rerank render: two messages with roles query and document through --chat-template; render block ~:715-728, query pre-truncation :655); scoring/protocol.py:72 (the rendered prompt is tokenized with add_special_tokens=True); renderers/params.py:466-475 (engine-side truncation, right side -- unused here: the client cuts)"
-  - "experiments/paper/rerankers/reference/contextual.py:37-160 (the paper-exact reference: prompt at :92-97, score at :113, left padding at :73, flash_attention_2 at :52; moved unchanged in behaviour from src/rcp_ndcg/retrieval/external_rerankers.py:275-389 when the in-process path left the package)"
-  - "experiments/paper/rerankers/ctxl_rerank_6b.yaml (the paper's served-path config: batch_size 8, max_tokens 8192, query_max_tokens 4096, instruction none, tokenizer pinned at the revision above)"
+  - "experiments/paper/rerankers/reference/contextual.py:37-151 (the paper-exact reference: prompt at :92-97, score at :113, left padding at :73, flash_attention_2 at :52; moved unchanged in behaviour from src/rcp_ndcg/retrieval/external_rerankers.py:275-389 when the in-process path left the package)"
+  - "experiments/paper/rerankers/ctxl_rerank_6b.yaml (batch_size 8 in the in-process form this worktree pins; the migrated served-path form carries max_tokens 8192, query_max_tokens 4096, instruction none, tokenizer pinned at the revision above)"
   - "research r-ctxl: /root/repos/rcp-ndcg-lanes/research/r-ctxl/out/ (report.md sections 1-8, check_prompt_equivalence.py 15/15 prompt-token equivalence + 4 mutations, recipe-ctxl-rerank-v2-instruct-multilingual-6b.yaml, reference-draft-6b.py), corrected by research/audit-synth/out/corrections.md table r-ctxl"
 notes: >-
   Pointwise reranker; one raw logit (vocabulary position 0 at the final position) per document,
@@ -101,16 +107,20 @@ notes: >-
   and the trailing " ??" sit at the tail: the anchor is last, and the client's cut reserves every
   fixed token and re-attaches the frame -- the paper's in-process path instead right-truncates
   the whole prompt at 8192 (declared above as the reference's known deviation over the cap; the
-  untruncated long-document prompt is ~14.0k tokens, n_ids 14033). The template file renders in
-  the engine's context (vLLM's /rerank passes two messages, roles query and document) and in the
-  CPU harness's context (flat query/document kwargs); it honours the instruction kwarg / system
-  message the way the model card's usage does, which is dead code for this recipe: the client
-  declares instruction: none and never sends the field. Serving needs no plugin and no image
-  change: the architecture override, the template file and the pooler config suffice, and the
-  engine's tokenizer-mode stays auto. Numerics: bfloat16 weights; vLLM's pooling score head
-  defaults to fp32 while the reference computes the whole model in bf16 -- bounded by the
-  raw-logit gate, and --hf-overrides '{"head_dtype": "model"}' is the closer-to-reference
-  fallback if the GPU wave's logit gate ever fails (not measured; weights were over the research
-  lane's cap). The GPU wave must check: the raw-logit scale of the served scores (the card's
-  example logits should reproduce, not their sigmoid), the 8192 budget and the 4096 query share
-  (equivalence is scoped to queries <= 4096 tokens), and stage 1's /tokenize agreement (R29).
+  untruncated long-document prompt is ~14.0k tokens, 14,037 ids for this checkpoint at the
+  audit's seed). The template file renders in the engine's context (vLLM's /rerank passes two
+  messages, roles query and document) and in the CPU harness's context (flat query/document
+  kwargs); it honours the instruction kwarg / system message the way the model card's usage
+  does, which is dead code for this recipe: the client declares instruction: none and never
+  sends the field. One harness constraint that follows: the harness's served-template check
+  renders the FIRST pairs row with its raw instruction, which would reach this template but not
+  the client's render -- keep the wave pairs file's first row free of an instruction (later rows
+  are dropped by both sides and stay green). Serving needs no plugin and no image change: the
+  architecture override, the template file and the pooler config suffice, and the engine's
+  tokenizer-mode stays auto. Numerics: bfloat16 weights; vLLM's pooling score head defaults to
+  fp32 while the reference computes the whole model in bf16 -- bounded by the raw-logit gate,
+  and --hf-overrides '{"head_dtype": "model"}' is the closer-to-reference fallback if the GPU
+  wave's logit gate ever fails (not measured; weights were over the research lane's cap). The
+  GPU wave must check: the raw-logit scale of the served scores (the card's example logits
+  should reproduce, not their sigmoid), the 8192 budget with the 4096-token query share on
+  over-budget pairs, and stage 1's /tokenize agreement (R29).
