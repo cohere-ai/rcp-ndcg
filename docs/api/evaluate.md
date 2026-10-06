@@ -6,9 +6,11 @@
   query-clustered bootstrap interval. The gains come from `gains` (a `{query_id: {doc_id: gain}}` mapping or a
   `Calibration`), else from the dataset's released `gain` column; `count_gains` (required for `"count_ndcg"`)
   follows the same keying rule. For a suite, `gains` and `count_gains` keys may be `"<subset>/<query_id>"` -- and
+  follows the same keying rule. For a suite, `gains` and `count_gains` keys may be `"<subset>/<query_id>"` -- and
   must be when subsets share query ids, and one style only for each subset (a mix is refused, as bare ids over
   shared ids are, with the subsets named; a prefixed key for one subset and bare ids for another are each read
-  where they belong). Integer qrels are never used as RCP gains: without gains, RCP-nDCG raises
+  where they belong; a key naming no subset of the suite is refused, so a typo'd prefix cannot silently drop a
+  subset from the aggregate). Integer qrels are never used as RCP gains: without gains, RCP-nDCG raises
   `DataError`. The protocol defaults to the suite's or the dataset's, else `plain`.
   `systems` scores only the named systems (`--system` on the command line, repeatable): one system of a
   multi-system file whose rankings match nothing of the dataset is refused (every score would be 0), and this
