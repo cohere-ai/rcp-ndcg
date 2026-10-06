@@ -280,7 +280,8 @@ def evaluate(
             lists the systems they do).
         DataError: No gains for RCP-nDCG, gains outside ``[0, 1]``, a protocol that needs pools the dataset
             lacks, rankings or gains (RCP or count) keyed by bare query ids over subsets that share query ids,
-            gains that mix the ``"<subset>/<query_id>"`` and bare styles, or a system's rankings that match
+            gains that mix the ``"<subset>/<query_id>"`` and bare styles for one subset, gains or count gains
+            that match no labelled query, or a system's rankings that match
             nothing of the scored dataset (no row names any of its subsets, or not one ranked document id is in
             its pools or labels): every score would be 0.
     """
@@ -305,12 +306,19 @@ def evaluate(
         raise DataError("count_ndcg needs count_gains= (the share of passed rubric criteria per document)")
     if count_gains is not None:
         _refuse_bare_keys(count_gains, dataset)
+    if count_gains is not None:
+        _refuse_bare_keys(count_gains, dataset)
+        if not any(_gains_for(count_gains, part, dataset) for part in dataset.parts):
+            raise DataError(
+                f"the count gains match no labelled query of {dataset.name!r}",
+                hint="key them by the dataset's query ids (or '<subset>/<query_id>' for a suite)",
+            )
     labels: dict[MetricName, dict[str, Mapping[str, Mapping[str, float]]]] = {}
     for part in dataset.parts:
         if rcp_gains is not None:
-            labels.setdefault("rcp_ndcg", {})[part.name] = _gains_for(rcp_gains[part.name], part)
+            labels.setdefault("rcp_ndcg", {})[part.name] = _gains_for(rcp_gains[part.name], part, dataset)
         if count_gains is not None and "count_ndcg" in metrics:
-            labels.setdefault("count_ndcg", {})[part.name] = _gains_for(count_gains, part)
+            labels.setdefault("count_ndcg", {})[part.name] = _gains_for(count_gains, part, dataset)
         if "qrel_ndcg" in metrics:
             labels.setdefault("qrel_ndcg", {})[part.name] = part.qrels
 
@@ -440,7 +448,7 @@ def _resolve_gains(gains: Any, dataset: Dataset) -> tuple[dict[str, Mapping[str,
             _refuse_bare_keys(gains, dataset)
         else:
             raise ConfigError(f"gains must be a mapping or have a gains() method, got {type(gains).__name__}")
-        if not any(_gains_for(resolved[part.name], part) for part in parts):
+        if not any(_gains_for(resolved[part.name], part, dataset) for part in parts):
             raise DataError(
                 f"the gains match no labelled query of {dataset.name!r}",
                 hint="key the gains by the dataset's query ids (or '<subset>/<query_id>' for a suite), or pass the "
@@ -461,13 +469,16 @@ def _resolve_gains(gains: Any, dataset: Dataset) -> tuple[dict[str, Mapping[str,
     )
 
 
-def _gains_for(gains: Mapping[str, Mapping[str, float]], part: Dataset) -> dict[str, Mapping[str, float]]:
+def _gains_for(
+    gains: Mapping[str, Mapping[str, float]], part: Dataset, dataset: Dataset
+) -> dict[str, Mapping[str, float]]:
     """The gains of one dataset part: keys ``"<part>/<query_id>"``, or bare query ids for a single dataset.
 
     A part reads either the gains keyed with its own prefix, or the bare-keyed ones -- never a mix of the two
-    styles, which would quietly score the prefixed queries with their gains and the bare-keyed ones without.
-    A bare key is this part's when it labels the query: a query the part holds qrels *or* gains for (the
-    module's labelled-query definition, the one :func:`rcp_ndcg.eval.explain` reads too).
+    styles for one part, which would quietly score the prefixed queries with their gains and the bare-keyed
+    ones without. A bare key is this part's when it labels the query (qrels or released gains -- the module's
+    labelled-query definition, the one :func:`rcp_ndcg.eval.explain` reads too); a dataset scored alone has no
+    subset to disambiguate, so every bare key is its, whatever the qrels say.
 
     Raises:
         DataError: The gains mix ``"<part>/<query_id>"`` keys with bare query ids of this part, or a gain
@@ -475,8 +486,10 @@ def _gains_for(gains: Mapping[str, Mapping[str, float]], part: Dataset) -> dict[
     """
     prefix = f"{part.name}/"
     prefixed = {key[len(prefix) :]: docs for key, docs in gains.items() if key.startswith(prefix)}
-    labelled = set(part.qrels) | set(part.gains or {})
-    bare = {q: docs for q, docs in gains.items() if q in labelled and not q.startswith(prefix)}
+    if dataset.subsets:
+        bare = {q: docs for q, docs in gains.items() if q in set(part.qrels) | set(part.gains or {})}
+    else:  # one dataset, no ambiguity: every bare key is its, unlabelled queries included
+        bare = {q: docs for q, docs in gains.items() if not q.startswith(prefix)}
     if prefixed and bare:
         raise DataError(
             f"the gains of {part.name!r} mix '<subset>/<query_id>' keys with bare query ids (e.g. "

@@ -79,6 +79,17 @@ class TestTheIndexFormat:
             sparse.search_bm25(tmp_path, ["hares"], k=2)
         assert "index()" in (caught.value.hint or "")
 
+    def test_a_corrupt_stemmer_record_is_missing_input(self, tmp_path: pytest.Path) -> None:
+        """A hand-edited or partially written meta.json is refused by name (the reads were bare
+        JSONDecodeError / KeyError before), with the rebuild hint."""
+        for content in ("not json", '{"x": 1}'):
+            sparse.build_bm25_index(["hares run"], tmp_path, stemmer=None)
+            (tmp_path / "bm25s" / "meta.json").write_text(content)
+
+            with pytest.raises(MissingInputError, match="meta.json") as caught:
+                sparse.search_bm25(tmp_path, ["hares"], k=2)
+            assert "rebuild" in (caught.value.hint or "")
+
     def test_a_pickle_written_by_an_earlier_build_is_refused_with_the_fix(self, tmp_path: pytest.Path) -> None:
         (tmp_path / "bm25s").mkdir()
         (tmp_path / "bm25s" / "bm25.pkl").write_bytes(b"not really a pickle")

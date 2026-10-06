@@ -456,10 +456,11 @@ released together.
 - **The gains' keying rule holds for `count_gains` and for mixed styles** (`rcp_ndcg.eval.evaluate`):
   bare query ids over subsets that share them are refused for `count_gains` as they were for `gains` (they
   silently scored one subset's query with another subset's document gains); gains that mix
-  `"<subset>/<query_id>"` keys with bare ids are refused (the prefixed ones won and the bare-keyed queries
-  silently lost their gains and their RCP rows); and a query with gains but no qrel row now counts as labelled
-  for a suite's bare-key fallback (the module's labelled-query definition), so its RCP value is scored instead
-  of silently dropped.
+  `"<subset>/<query_id>"` keys with bare ids for one subset are refused (the prefixed ones won and the
+  bare-keyed queries silently lost their gains and their RCP rows); a query with gains but no qrel row now
+  counts as labelled for a suite's bare-key fallback (the module's labelled-query definition), so its RCP
+  value is scored instead of silently dropped; and gains -- RCP or count -- that match no labelled query are
+  refused, as they were for RCP gains.
 - **The documented tie rule decides the top-k cut as well as the order** (`rcp_ndcg.retrieval.topk.select_topk`):
   `argpartition`'s pick among the candidates tied at the k-th score was arbitrary, so a tie class straddling
   the cut could drop a lower-index document in favour of higher-index ones; the cut now resolves that tie class
@@ -486,6 +487,12 @@ released together.
 - **`mteb.get_tasks` refuses `names=[]`** (it meant "all subsets") **and a repeated subset name** (it built
   the task twice); `ndcg_float_scores` raises `DataError` for a query without gains, as its docstring always
   claimed (the code raised a bare `KeyError`).
+- **`retrieval fuse` fuses per-subset files**: one file per (system, subset), as a per-subset fan-out writes
+  them, fuses each subset from the files that name it instead of failing with "no rankings of dataset" naming
+  the wrong datasets; a ranking with no rows for a subset stays out of that subset's fusion, and no rankings
+  at all is refused before the loop. A search over an index directory written in the earlier build's pickle
+  format is refused with a rebuild hint instead of a bare file error, and so is an index whose `meta.json` is
+  missing or unreadable.
 
 - `run status`, `run list` and `run show` no longer fail when they read a running job's judgement store while
   the job claims or reports a stage: the store's `identity.json` is written through a temp file and renamed (as

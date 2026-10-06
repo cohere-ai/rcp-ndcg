@@ -260,6 +260,36 @@ def test_a_gains_only_query_is_labelled_over_a_suite() -> None:
     assert scored == ["q1", "q2"], "the gains-only query keeps its row"
 
 
+def test_one_dataset_scores_every_bare_gains_key_and_checks_its_bounds() -> None:
+    """One dataset scored alone has no subset ambiguity, so every bare key is its: a query id outside the
+    qrels keeps its row (a typo reads as a 0 score, not a silent drop), and its gains' bounds are checked."""
+    dataset = _dataset()
+    gains = {**GAINS, "qX-typo": {"d1": 5.0}}
+
+    with pytest.raises(DataError, match=r"outside \[0, 1\]"):
+        evaluate(_rankings(), dataset=dataset, gains=gains, k=1, bootstrap=0)
+
+    scored = evaluate(
+        _rankings(),
+        dataset=dataset,
+        gains={**GAINS, "qX-typo": {"d1": 0.5}},
+        metrics=["rcp_ndcg"],
+        k=1,
+        bootstrap=0,
+    )
+    assert "qX-typo" in {row.query_id for row in scored.per_query if row.metric == "rcp_ndcg"}
+
+
+def test_count_gains_matching_no_labelled_query_are_refused() -> None:
+    """Count gains that match nothing produced a report with no count rows and a refusal naming the cutoffs
+    instead of the cause; they are refused like RCP gains matching nothing."""
+    suite = _bright_like()
+    stray = {"nope": {"biology-a": 1.0}}  # bare, but not one of the shared ids: no subset's labels hold it
+
+    with pytest.raises(DataError, match="count gains match no labelled query"):
+        evaluate(_oracle(divided=True), dataset=suite, metrics=["count_ndcg"], count_gains=stray, k=1, bootstrap=0)
+
+
 def test_rcp_ndcg_never_falls_back_to_integer_qrels() -> None:
     with pytest.raises(DataError, match="integer qrels are not RCP gains"):
         evaluate(_rankings(), dataset=_dataset())

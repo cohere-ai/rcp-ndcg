@@ -2,8 +2,9 @@
 
 The per-criterion view comes from :func:`rcp_ndcg_core.pass_probabilities`: at a calibrated ability ``theta``
 criterion ``c`` passes with probability ``sigmoid(gamma_c (theta - beta_c))`` and contributes
-``gamma_c p_c / sum(gamma)`` to the gain. Between two systems the RCP-nDCG@k gap (B minus A) splits into
-**selection** (which documents reach the top k) and **ordering** (how the chosen ones are arranged).
+``gamma_c p_c / sum(gamma)`` to the gain. Between two systems the nDCG@k gap (B minus A) over the query's
+gains -- its RCP gains, or its qrel grades when it has none -- splits into **selection** (which documents
+reach the top k) and **ordering** (how the chosen ones are arranged).
 """
 
 from __future__ import annotations

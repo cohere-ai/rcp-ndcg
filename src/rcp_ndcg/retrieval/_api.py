@@ -297,7 +297,7 @@ def fuse(rankings: Sequence[Rankings], *, rrf_k: int = 60, depth: int = 150, sys
         :class:`~rcp_ndcg.data.Rankings` with one system; its scores are the RRF scores.
 
     Raises:
-        DataError: No rankings to fuse.
+        DataError: No rankings to fuse, or two rankings that share a subset ranking different queries.
     """
     from rcp_ndcg_core._records import RankingExample
 

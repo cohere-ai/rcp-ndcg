@@ -132,7 +132,14 @@ def search_bm25(dataset_dir: Path, queries: Sequence[str], *, k: int) -> list[li
             hint="build it with index() (stemming is stated, never inferred from the model)",
             cli_hint="build it with `rcp-ndcg retrieval index`",
         )
-    stemmer = stemmer_for(json.loads(meta_path.read_text(encoding="utf-8"))["stemmer"])
+    try:
+        stemmer = stemmer_for(json.loads(meta_path.read_text(encoding="utf-8"))["stemmer"])
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise MissingInputError(
+            f"the BM25 index's {meta_path} is unreadable or does not name a stemmer",
+            hint="rebuild the index with index()",
+            cli_hint="rebuild it with `rcp-ndcg retrieval index`",
+        ) from exc
     engine = _bm25s()
     model = engine.BM25.load(str(bm_dir), allow_pickle=False, load_corpus=False)
     out = []
