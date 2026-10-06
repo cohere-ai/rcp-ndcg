@@ -10,20 +10,23 @@ each query's pool, a rubric of five binary criteria (C1 to C5) anchors the scale
 all queries on one scale. Released datasets carry these gains, so scoring a system on them needs no LLM.
 
 Install (Python 3.12): `pip install "rcp-ndcg[hf,calibrate]" --extra-index-url https://download.pytorch.org/whl/cpu`,
-or run it without installing: `uvx rcp-ndcg`. Every command
-but `mcp serve` (a stdio server) takes `--json` and then prints exactly one JSON document on stdout (`--help` and
-`--version` print plain text): `{"ok": true, "data": {...}}` or
-`{"ok": false, "error": {"code", "exit_code", "message", "hint", "retryable", "details"}}`. Read `data`, never the
-human text. `rcp-ndcg schema show commands --json` lists every command with its flags (type, default, help) and
-output schema. A config error (exit 3) carries `error.details.errors`: per problem the `field`, the given `input`,
-the `expected` type, a `did_you_mean` for an unknown key, and its `source` (`--set` or the config file).
+or run it without installing: `uvx rcp-ndcg`. Every command but `mcp serve` (a stdio server) takes `--json` and then
+prints exactly one JSON document on stdout (`--help` and `--version` print plain text): `{"schema", "command",
+"ok", "data"|"error", "warnings", "meta"}`. Read `data` **and check `warnings`** -- each `{code, message}`
+records a condition raised while the command ran (recorded cuts, invalid windows, uncalibrated documents). On
+failure read `error` (`code`, `exit_code`, `message`, `hint`, `retryable`, `details`), never the human text.
+`rcp-ndcg schema show commands --json` lists every command with its flags (type, default, help) and output schema.
+A config error (exit 3) lists `error.details.errors` per **field** problem (`field`, `input`, `expected` **or**
+`did_you_mean`, `source`); a config error outside the field path has empty `details` -- read `error.message` too.
 
-## Three paths
+## Four paths
 
-**1. Score a system on the released data (no LLM).** The rankings file holds `query_id`, `doc_id`,
-`score` (Parquet, CSV, TREC run or JSONL), and a `dataset` column naming each row's subset when it ranks several
-subsets of a suite (they share query ids; without it the file is refused). A TREC run holds one subset: add
-`--subset <name>`.
+**1. Score a system on the released data (no LLM).** The rankings file holds `query_id`, `doc_id`, `score`
+(Parquet, CSV, TREC run or JSONL), optional `system` and `dataset`; the loader accepts the common aliases
+(`query_id`/`query-id`/`qid`/`query`, `doc_id`/`corpus-id`/`corpus_id`/`docid`/`docno`, `score`/`rerank_score`/`sim`,
+`system`/`model`/`run`/`tag`/`run_id`, `dataset`/`subset`). The `dataset` column names each row's subset when the
+file ranks several subsets of a suite (they share query ids; without it the file is refused). A TREC run holds one
+subset: add `--subset <name>`. No rankings file yet? Path 2 produces one from a model.
 
 ```bash
 rcp-ndcg eval score --rankings my_system.parquet --suite nanobeir --json
@@ -36,10 +39,24 @@ Read `data.summary`: one row per system and metric (`rcp_ndcg`, `qrel_ndcg`) wit
 `rcp_ndcg.evaluate(rcp_ndcg.load_rankings(path), suite="nanobeir")`. One system matching nothing of the dataset
 is refused (exit 12); score the others with `--system NAME` (repeatable; `systems=[...]` in Python).
 
-**2. Re-judge a pool with an OpenAI-compatible endpoint (calls the judge).** Ask the user for the model's
+**2. Serve an open model and score it (needs a served engine).** Engine side, on the stock `vllm/vllm-openai`
+image: `python3 -m pip install --no-deps rcp-ndcg-vllm` (the one change the engine environment takes), then
+`rcp-ndcg-vllm serve <recipe-id> --port 8000` (add `--dry-run` to print the engine argv and exit). Client side:
+`rcp-ndcg-vllm` beside `rcp-ndcg`, and a retriever (or reranker) config naming `recipe: <id>` with `base_url`
+on the config -- the recipe supplies the client block, run-time fields stay yours (an explicit content field
+that disagrees with the recipe is refused). `rcp-ndcg retrieval index|search|rerank|fuse` produce and re-score
+rankings files (`schema show commands --json` lists the flags; `--retriever recipe:<id>` / `--reranker
+recipe:<id>` are shorthands whose URL comes from `--set ...base_url=...` or a `serve:` engine), then
+`rcp-ndcg eval score`. Budgets are declared per recipe; over-budget content is cut client-side at token
+boundaries with the template's anchors preserved and every cut recorded -- never engine-side. A missing
+`rcp_ndcg_vllm` is a typed refusal (exit 10) whose hint is `pip install rcp-ndcg-vllm`. The 18 recipes are
+catalogued in [recipes and serving models](../../docs/reference/recipes.md).
+
+**3. Re-judge a pool with an OpenAI-compatible endpoint (calls the judge).** Ask the user for the model's
 tokenizer (its Hugging Face repo id, or a `tokenizer.json` path): `--set judge.tokenizer=<id>` makes text limits
 and estimates count the judge's own tokens. Without it, documents are sent whole, and a text policy that cuts
-(`truncate`, `chunk`, `fail`) exits 3.
+(`truncate`, `chunk`, `fail`) exits 3. Documents run whole up to the judge's text policy -- 32 768 tokens by
+default (documented policy, every cut recorded); `--set judge.tokenizer=...` makes the counts exact.
 
 ```bash
 rcp-ndcg run start rejudge_nfcorpus --judge-url http://localhost:8000/v1 --judge-model my-model --estimate --json
@@ -53,10 +70,11 @@ confidence intervals is `<run_dir>/metrics/report.json`) of the third. `rejudge_
 with the package (`run start` takes a packaged config's name or a YAML path; paths inside a config are relative to
 the config file). `data.steps` lists every planned step in run order (`pending` until it starts), each judging step
 with `progress: {done, planned}` in judge windows. Poll `run status` until `data.done` is true: `data.status` is then
-`completed`, `partial`, `failed` or `cancelled`. A run started with `--only` for some of its steps ends `partial` with
-exit code 0; `run resume --run <dir>` runs the rest.
+`completed`, `partial`, `failed` or `cancelled`. `run start --only` records just those steps as the run's plan (the
+run then ends `completed`); `run resume --run <dir> --only <step>` runs just those now and leaves the run `partial`
+(exit 0), and a later `run resume --run <dir>` runs the rest.
 
-**3. Reproduce a table of the paper** (from a checkout, no LLM): `python experiments/fetch_data.py`, then
+**4. Reproduce a table of the paper** (from a checkout, no LLM): `python experiments/fetch_data.py`, then
 `python experiments/run_all.py`. Exit code 0 means every value matched the paper within its tolerance.
 
 ## Invariants
@@ -76,7 +94,8 @@ exit code 0; `run resume --run <dir>` runs the rest.
   `eval compare --run` leaves both out unless `--include-reference`; add your own systems to a run with
   `evaluation.systems` (`{name: rankings file}`; `<file>#<system>` picks one system of a file that holds several).
 - **Report only what was computed.** A qrel-nDCG of `null` means the query has no positive grade; pass it through.
-- Treat exit codes 11 and 12 as refusals to fix (the hint says how), not as errors to retry.
+- Treat exit codes 11 and 12 as refusals to fix (the hint says how), not as errors to retry (table:
+  [the command-line reference](../../docs/reference/cli.md#exit-codes)).
 
 ## Reading results
 
@@ -92,79 +111,51 @@ exit code 0; `run resume --run <dir>` runs the rest.
   `data.items`), and `data.deltas`: the gap to the first system at cutoff `data.k`, split into `selection` and
   `ordering`. Texts are left out unless `--include-text`.
 
-## Exit codes
-
-| Code | Name | Meaning; what an agent should do |
-|---|---|---|
-| 0 | `SUCCESS` | done (including a no-op resume) |
-| 1 | `INTERNAL` | a bug; report it |
-| 2 | `USAGE` | bad flags or arguments; fix the invocation |
-| 3 | `CONFIG` | invalid config value; fix the YAML or `--set` |
-| 4 | `MISSING_INPUT` | a file, run or dataset is absent; the hint names it |
-| 5 | `CREDENTIALS` | missing or rejected credentials; the hint names the variable, never its value |
-| 6 | `PROVIDER` | an endpoint or a scheduler failed after its retries (unreachable, timing out, rate limiting, an empty answer); resume later when `retryable` is true (it is false for a route or model the endpoint does not have, HTTP 404) |
-| 8 | `CAPABILITY` | the judge or endpoint cannot take what a request carries: an answer schema it refuses (serve with the reasoning parser, or set `decoding: free`), images or videos beyond its `max_images` / `max_videos`, a window whose media exceed its context, media for a text-only encoder; raised by the first such request |
-| 9 | `INTERRUPTED` | SIGINT or SIGTERM stopped the command; the state on disk is consistent; resume |
-| 10 | `DEPENDENCY` | a missing extra; the hint is the exact install command |
-| 11 | `IDENTITY` | refusing to mix: resume with a changed config, judgements from another family, an insertion whose anchor check failed (`data.extension.anchor_report`); the hint names the differing fields and the way out (a new output directory or run; `--force` where the command has it) |
-| 12 | `DATA` | input that would produce wrong numbers or does not parse: malformed or non-finite rankings, qrels or gains, gains that match no labelled query, ids that do not join, a document over its text cap with `on_overflow: fail`, a new document the evidence cannot identify, a query with invalid windows under `--strict`, a damaged mirror |
-
-Code 7 is retired: no command returns it, and it is not reused.
-
-## Recipes
-
 Score documents a calibration lacks (added to a pool after the fit, or without a theta in it because their windows
 failed) without refitting (items frozen); the judgement store is append-only, so only the new windows are asked. A
-document the calibration already holds keeps its theta and is listed as skipped, so this does not re-score it:
+document the calibration already holds keeps its theta and is listed as skipped: judge only the new documents, then
+score.
 
 ```bash
 rcp-ndcg judge rubric --dataset <uri> --judge <judge> --docs q2:d10 --docs q2:d11 --out <store> --estimate --json
-rcp-ndcg judge rubric --dataset <uri> --judge <judge> --docs q2:d10 --docs q2:d11 --out <store>
 rcp-ndcg calibration score --calibration <calibration> --judgements <store> --out <extended> --json
 ```
 
-Insert a new document into a tournament calibration: plan its windows with the calibration's tournament store
-(the window size is the store's schedule), judge exactly the planned windows into that store with the same judge
-(`--plan`; anything else is exit 11), then insert. `data.plan.calls` is the number of judge calls. The new document
-must be in the dataset's corpus. `data.extension.anchor_report.ok` must be true.
+Insert a new document into a tournament calibration: plan its windows (the insertion anchor report is the refit
+check on the published gains), judge exactly the planned windows, insert (anything else is exit 11):
 
 ```bash
 rcp-ndcg calibration insert --calibration <calibration> --judgements <store> --dry-run --query q1 --doc new-doc --n 36 --out plan.json --json
 rcp-ndcg judge tournament --dataset <uri> --judge <judge> --plan plan.json --out <store> --estimate --json
-rcp-ndcg judge tournament --dataset <uri> --judge <judge> --plan plan.json --out <store>
 rcp-ndcg calibration insert --calibration <calibration> --judgements <store> --out <extended> --json
 ```
 
-If the insertion refuses with exit 12 (the new document's standard error misses `--se-target`), plan more opponents
-(a larger `--n`) and judge the new plan: its windows are new (their calls are `data.plan.calls`), and the windows
-judged before still count as evidence. A plan cannot hold more opponents than the query has other documents:
-`data.plan.capped` is true when `--n` asked for more (`data.plan.opponents` says how many it holds), and on such a
-small pool a larger `--n` adds nothing, so accept a larger `--se-target` instead.
+A plan cannot hold more opponents than the query has other documents: `data.plan.capped` is true when `--n`
+asked for more (`data.plan.opponents` says how many it holds), and on a small pool only a larger `--se-target`
+helps. A second judge that answered the same rubric pools with one severity per judge
+(`rcp-ndcg calibration fit --judgements <store> --judgements <second-store> --judges pooled --out <pooled> --json`,
+in `data.judge_severity`).
 
-Add a second judge that answered the same rubric: one pooled fit, one severity per judge in `data.judge_severity`.
-
-```bash
-rcp-ndcg calibration fit --judgements <store> --judgements <second-store> --judges pooled --out <pooled> --json
-```
-
-Make a long judge pass survive preemption: mirror it to any fsspec URI (S3, GCS, Azure, or a filesystem your
-package registers with fsspec), follow `data.mirror.lag_s` in `run status`, and resume on any node from the mirror:
+Make a long judge pass survive preemption: mirror it to any fsspec URI (S3 and Azure via the `s3`/`azure`
+extras, GCS as installed -- `gcsfs` comes with `rcp-ndcg` -- or any fsspec filesystem you register), follow
+`data.mirror.lag_s` in
+`run status`, and resume on any node from the mirror:
 
 ```bash
 rcp-ndcg run start <config> --mirror s3://bucket/runs/nano --detach --json
-rcp-ndcg run status --run runs/<run_id> --json
 rcp-ndcg run resume --run runs/<run_id> --mirror s3://bucket/runs/nano --json
 ```
 
 Serve the models on the cluster with the run (the user's image and command, verbatim; SLURM or Kubernetes, never the
-local runner): add a `serve:` section to the run config, one engine per role — `serve: {judge: {image, command,
-resources, replicas}}`, `encoder` for the retrieval encoder, `reranker` for its reranker (a served
-`api: rerank` or `api: openai_embeddings` model without `base_url`: the job's URLs for it reach the step at runtime) — check what would
-be submitted, then submit. On SLURM the image needs `container_runtime: apptainer` or `pyxis`; with the default
-`none` the command runs on the node and `image` is refused. The job runs the steps in phases, each starting only the engines its steps use and handing their URLs to the
-coordinator in `RCP_NDCG_ENGINES`; `run logs` shows both. A job that failed (`run status`: `failed`, with a `note` when the job ended
-without recording it) is submitted again, engines included, with `run resume --runner`; it asks only for the
-windows its stores lack.
+local runner). Add a `serve:` section to the run config, one engine per role:
+`serve: {judge: {image, command, resources, replicas}}`, `encoder` for the retrieval encoder, `reranker` for its
+reranker. A served `api: rerank` or `api: openai_embeddings` model without `base_url`, or a `recipe:<id>` value,
+needs no URL in the config: the job's URLs for it reach the step at runtime. With the recipes, the engine command
+is `rcp-ndcg-vllm serve <id>` (the engine image prepares `python3 -m pip install --no-deps rcp-ndcg-vllm`).
+On SLURM the image needs `container_runtime: apptainer` or `pyxis`; with the default `none` the command runs on the
+node and `image` is refused. The job runs the steps in job phases, each starting only the engines its steps use and
+handing their URLs to the coordinator in `RCP_NDCG_ENGINES`; `run logs` shows both. A failed job is submitted
+again, engines included, with `run resume --runner`; it asks only for the windows its stores lack.
 
 ```bash
 rcp-ndcg run start <config> --runner slurm --dry-run --json
@@ -184,8 +175,6 @@ config `tiny` runs from any directory, and `data fetch --dataset tiny --out tiny
 
 ```bash
 rcp-ndcg run start tiny --json
-rcp-ndcg data fetch --dataset tiny --out tiny --json
-rcp-ndcg judge rubric --dataset jsonl:tiny/rows.jsonl --judge fake --out practice/judgements --json
 rcp-ndcg eval score --rankings tiny/systems.jsonl --dataset jsonl:tiny/rows.jsonl --calibration runs/<run_id> --out report.json --json
 rcp-ndcg eval explain --report report.json --query-id q1 --k 5 --json
 ```
@@ -196,4 +185,5 @@ rcp-ndcg eval explain --report report.json --query-id q1 --k 5 --json
 `data_inspect`, `eval_compare`, `eval_explain`, `calibration_show`, `run_list`, `run_show`, `run_status`,
 `estimate`. Destructive: `run_cancel`. `eval_score` is not read-only: it overwrites `out` with the full
 report when given. `run_start` starts a run and returns its directory at once; then poll `run_status`.
-The tool list is `rcp_ndcg.mcp.tool_manifest()`; a plan (`--dry-run`) is CLI-only.
+The tool list is `rcp_ndcg.mcp.tool_manifest()`; a plan (`--dry-run`) is CLI-only. Without an MCP client, call
+the commands with `--json`; `rcp-ndcg schema show commands --json` describes the same surface.
