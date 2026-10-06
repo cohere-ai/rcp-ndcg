@@ -23,10 +23,11 @@ def test_ndcg_float_credits_tied_documents_their_group_mean(monkeypatch: pytest.
 
     ideal = 1.0 + 0.5 / LOG2_3
     assert scores == {"ndcg_float_at_2": round(((0.5 + 0.5 / LOG2_3) / ideal + 0.0) / 2, 5)}
-    with pytest.raises(ValueError, match="negative gain"):
+    with pytest.raises(DataError, match="negative gain"):
         ndcg_float_scores({"q1": {"a": -1.0}}, {"q1": {"a": 1.0}}, k_values=(2,))
-    with pytest.raises(KeyError):
+    with pytest.raises(DataError, match="q9") as caught:  # the docstring once promised ValueError, the code KeyError
         ndcg_float_scores({}, {"q9": {"a": 1.0}}, k_values=(2,))
+    assert caught.value.hint or ""
 
 
 def test_task_metadata_is_read_from_the_published_task_file_as_data() -> None:
@@ -42,6 +43,15 @@ def test_unknown_suites_and_modes_are_refused() -> None:
         get_tasks("msmarco")
     with pytest.raises(ConfigError, match="mode"):
         get_tasks("bright", mode="dense")  # type: ignore[arg-type]
+
+
+def test_empty_or_repeated_subset_names_are_refused() -> None:
+    """``names=[]`` used to mean "all subsets" and a repeated name built the task twice: both are refused."""
+    with pytest.raises(ConfigError, match="names is empty"):
+        get_tasks("bright", [])
+    with pytest.raises(ConfigError, match="twice") as caught:
+        get_tasks("bright", ["aops", "aops"])
+    assert "aops" in caught.value.message
 
 
 @pytest.mark.network

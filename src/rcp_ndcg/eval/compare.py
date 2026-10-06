@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from rcp_ndcg_core.protocol import MetricName
 
 from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.eval.evaluate import EvalReport, _aggregate_values, _one_k, bootstrap_interval
+from rcp_ndcg.eval.evaluate import EvalReport, _aggregate_values, _one_k, _refuse_missing_cutoff, bootstrap_interval
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -229,6 +229,7 @@ Values = dict[str, dict[str, dict[str, float]]]
 def _values(report: EvalReport, metric: str, k: int) -> Values:
     if metric not in report.metrics:
         raise DataError(f"the report has no {metric}; it has {report.metrics}")
+    _refuse_missing_cutoff(report, metric, k)  # without it, a wrong k read as 'share no scored query' below
     out: Values = {}
     for row in report.per_query:
         if row.metric == metric and row.k == k and row.value is not None:
