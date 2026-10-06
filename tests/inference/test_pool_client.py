@@ -343,7 +343,7 @@ class TestDocumentSkipIds:
 
         sender = _GatedSender(PoolingServer({}, default=np.ones((5, 2), dtype=np.float16)))
         client = self._client(sender)
-        with pytest.raises(ProviderError, match="5 token vector\(s\).*4 token id"):
+        with pytest.raises(ProviderError, match=r"5 token vector\(s\).*4 token id"):
             asyncio.run(client.aencode([Content.from_text("the a of to")], EncodeRole.DOCUMENT))
 
     def test_media_documents_are_refused_under_skip_ids(self, tmp_path: Any) -> None:

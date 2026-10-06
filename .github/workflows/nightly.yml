@@ -57,21 +57,31 @@ jobs:
           for case in root.iter("testcase"):
               if case.find("failure") is None and case.find("error") is None:
                   continue
+              name = case.get("name") or ""
+              dotted = case.get("classname") or ""
+              if not dotted:
+                  # A collection error: junit's name holds the dotted module (or a message) and there is no
+                  # class chain. A module that exists reruns as the file alone; anything else verbatim.
+                  path = name.replace(".", "/") + ".py" if name else ""
+                  failures.append(path if name and os.path.exists(path) else name)
+                  continue
               # junit writes the class name dotted WITH the class chain; a rerunnable node id names the file,
               # then the classes. Split the dotted name at the longest prefix that exists as a module file.
-              parts = (case.get("classname") or "").split(".")
+              parts = dotted.split(".")
               module = 0
               for length in range(len(parts), 0, -1):
                   if os.path.exists("/".join(parts[:length]) + ".py"):
                       module = length
                       break
-              node_id = (
+              # The chain is what the module prefix left over; without a module file the dotted name is
+              # already the whole head, and appending it again would double it.
+              chain = parts[module:] if module else []
+              failures.append(
                   ("/".join(parts[:module]) + ".py" if module else ".".join(parts))
-                  + "".join("::" + part for part in parts[module:])
+                  + "".join("::" + part for part in chain)
                   + "::"
-                  + (case.get("name") or "")
+                  + name
               )
-              failures.append(node_id)
           with open("failures.txt", "w", encoding="utf-8") as handle:
               handle.write("\n".join(failures) + ("\n" if failures else ""))
           print(f"{len(failures)} failing test id(s)")

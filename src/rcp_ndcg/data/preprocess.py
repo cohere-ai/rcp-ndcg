@@ -1084,14 +1084,17 @@ def fit(
         overhead = template.overhead(shape, tokenizer, instruction=instr)
     else:
         overhead = tokenizer.count("", add_special_tokens=True)
+
+    def _budget_hint(verb: str, rest: str) -> str:
+        """The raise hint that names the knob that binds: on a query shape budgeted by a declared
+        ``query_max_tokens`` raising ``max_tokens`` moves nothing."""
+        knob = "query_max_tokens" if shape == "query" and budget.query_max_tokens is not None else "max_tokens"
+        return f"{verb} {knob}" + (f", {rest}" if rest else "")
+
     if overhead > shape_budget:
         raise ConfigError(
             f"the template's fixed overhead alone is {overhead} tokens, over the budget of {shape_budget}",
-            hint=(
-                "raise query_max_tokens, or simplify the template (every fixed segment is reserved)"
-                if shape == "query" and budget.query_max_tokens is not None
-                else "raise max_tokens, or simplify the template (every fixed segment is reserved)"
-            ),
+            hint=_budget_hint("raise", "or simplify the template"),
         )
 
     def assemble(query: str, document: str) -> str:
@@ -1192,7 +1195,7 @@ def fit(
             raise ConfigError(
                 f"the fixed template overhead ({overhead} tokens) plus the declared media ({spent}) already "
                 f"fill the budget of {shape_budget}; the media are never cut",
-                hint="raise max_tokens, or shrink the declared media (a media block is indivisible)",
+                hint=_budget_hint("raise", "or shrink the declared media (a media block is indivisible)"),
             )
         # The census rows compare the input AS GIVEN with what ships: normalisation is declared policy,
         # not a cut, so the row's original side stays the raw text even when the spans were normalised.
@@ -1218,7 +1221,7 @@ def fit(
             raise TextBudgetExceededError(
                 f"input {input_id!r} is {tokenizer.count(query + document)} tokens of content, over the "
                 f"declared text budget of {shape_budget} (the fixed template takes {overhead}{media_note})",
-                hint="set on_overflow: 'cut' (or 'chunk' for documents) to shorten it, or raise max_tokens",
+                hint="set on_overflow: 'cut' (or 'chunk' for documents) to shorten it, or " + _budget_hint("raise", ""),
             )
         if shape == "pair":
             # The query's span is settled first: to its declared share, else only when it fits the budget whole.
@@ -1289,7 +1292,7 @@ def fit(
                 raise TextBudgetExceededError(
                     f"input {input_id!r} does not fit the budget of {shape_budget} tokens, and a query is "
                     "never chunked: queries are cut or refused, never split",
-                    hint="raise max_tokens, or shorten the query",
+                    hint=_budget_hint("raise", "or shorten the query"),
                 )
             assert isinstance(item, str)  # a pair chunked above; this branch is single-text only
             pieces = _chunks(item, cap - overhead, "", cap)

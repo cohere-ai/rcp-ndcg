@@ -287,8 +287,13 @@ class RoleClient[C: Endpoint]:
         return media_policies_for(self.config)
 
     def media_sides(self) -> frozenset[str]:
-        """The sides this config allows media on: the config's ``media_sides`` field (the default: both)."""
-        return frozenset(getattr(self.config, "media_sides", ()) or ("query", "document"))
+        """The sides this config allows media on: the config's ``media_sides`` field (the default: both).
+        An explicitly EMPTY field allows NO side -- the default applies only when the config has no such
+        field at all, so ``media_sides: []`` refuses every side exactly as the config documents."""
+        sides = getattr(self.config, "media_sides", None)
+        if sides is None:
+            sides = ("query", "document")
+        return frozenset(sides)
 
     def _refuse_media_off_its_side(self, side: str, contents: Sequence[Content]) -> None:
         """Media on a side the config does not allow (2b, G3) is refused naming the ``media_sides`` field,
@@ -301,12 +306,12 @@ class RoleClient[C: Endpoint]:
         allowed = self.media_sides()
         if side in allowed:
             return
-        sides = " and ".join(sorted(allowed)) if allowed else "no"
+        sides = f"the {' and '.join(sorted(allowed))} side(s)" if allowed else "no side"
         for index, content in enumerate(contents):
             if content.has_media:
                 raise CapabilityError(
                     f"item {index} of this request's {side} side carries media, but {self.config.model} takes "
-                    f"media on the {sides} side(s) only (media_sides)",
+                    f"media on {sides} only (media_sides)",
                     hint=f"declare {side!r} in media_sides on the role config, or drop the media from the {side}",
                 )
 

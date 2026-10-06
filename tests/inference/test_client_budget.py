@@ -824,6 +824,26 @@ class TestPerSideMedia:
         )
         assert config.media_sides == ("query", "document")
 
+    def test_an_explicitly_empty_media_sides_allows_no_side(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """The empty field is a real declaration (a config without media fields may carry it): media on ANY
+        side is refused naming the field, not silently widened back to both sides."""
+        from rcp_ndcg.errors import CapabilityError
+
+        config = RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=8192,
+            use_activation=False,
+            media_sides=[],
+        )
+        client = RerankClient(config, sender=RecordingSender())
+        assert client.media_sides() == frozenset()
+        with pytest.raises(CapabilityError, match="media_sides"):
+            client.rerank(_png_content(tmp_path, 0), ["the document"])
+        with pytest.raises(CapabilityError, match="no side"):
+            client.rerank("the query", [_png_content(tmp_path, 1)])
+
     def test_declaring_media_fields_with_no_allowed_side_is_refused(self, tokenizer_json: str) -> None:
         with pytest.raises(ValueError, match="media_sides"):
             RerankEndpoint(

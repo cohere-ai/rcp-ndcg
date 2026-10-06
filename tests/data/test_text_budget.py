@@ -511,6 +511,18 @@ class TestFailAndCut:
         with pytest.raises(TextBudgetExceededError):
             fit([LONG], shape="document", budget=budget_, tokenizer=FRAMED)
 
+    def test_the_fail_hint_names_the_budget_that_binds(self) -> None:
+        """On a query shape budgeted by a declared share, raising ``max_tokens`` moves nothing: the hint
+        names ``query_max_tokens``."""
+        split = TextBudget(tokenizer="test/framed-bpe", max_tokens=64, query_max_tokens=8, on_overflow="fail")
+        with pytest.raises(TextBudgetExceededError) as caught:
+            fit([LONG], shape="query", budget=split, tokenizer=FRAMED)
+        assert "raise query_max_tokens" in (caught.value.hint or "")
+        whole = TextBudget(tokenizer="test/framed-bpe", max_tokens=24, on_overflow="fail")
+        with pytest.raises(TextBudgetExceededError) as caught:
+            fit([LONG], shape="document", budget=whole, tokenizer=FRAMED)
+        assert "raise max_tokens" in (caught.value.hint or "")
+
     def test_a_cut_is_recorded_with_its_budget_source_and_shape(self) -> None:
         census = TextTruncationCensus()
         result = fit([LONG], shape="document", budget=budget(document_template()), tokenizer=FRAMED, census=census)
