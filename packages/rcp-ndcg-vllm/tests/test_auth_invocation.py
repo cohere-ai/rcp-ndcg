@@ -36,3 +36,19 @@ def test_a_failing_auth_script_reports_only_its_exit_code(tmp_path: Path) -> Non
     assert result.returncode == 1
     assert "exit code 7" in result.stderr
     assert "SECRET-VALUE" not in result.stdout + result.stderr
+
+
+MOUNTED = ("AUTH_SCRIPT", "BOOTSTRAP_SH", "GCS_SH", "GCS_HELPER_PY", "REPORT_PY", "HOST_PY")
+NODE_SCRIPTS = (BOOTSTRAP.parent / "bootstrap.sh", BOOTSTRAP.parents[1] / "src" / "rcp_ndcg_vllm" / "jobs" / "wave0.sh")
+
+
+def test_no_node_script_executes_a_mounted_file_directly() -> None:
+    """A mounted file is run through ``bash``/``python3`` or sourced, never as a program (no execute bit)."""
+    direct = re.compile(r'(^|[;&|(!]|\bthen|\bdo|\bif)\s*"\$\{?(' + "|".join(MOUNTED) + r')\}?"')
+    offenders = [
+        f"{path.name}:{number}: {line.strip()}"
+        for path in NODE_SCRIPTS
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if direct.search(line)
+    ]
+    assert not offenders, offenders

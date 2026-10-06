@@ -226,7 +226,7 @@ fi
 # --- (b) the three environments (and the untouched engine freeze) -------------------------------------
 
 BOOTSTRAP_START="$(date +%s)"
-if ! "$BOOTSTRAP_SH" envs "$RC_STAGE_URI" --state "$STATE" >"$WORK/bootstrap.log" 2>&1; then
+if ! bash "$BOOTSTRAP_SH" envs "$RC_STAGE_URI" --state "$STATE" >"$WORK/bootstrap.log" 2>&1; then
   tail -5 "$WORK/bootstrap.log" >&2 || true
   fail_step bootstrap "bootstrap.sh envs failed (the last lines of its log are above)"
 fi
