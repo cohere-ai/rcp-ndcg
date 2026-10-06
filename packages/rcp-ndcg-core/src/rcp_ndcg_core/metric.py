@@ -51,8 +51,16 @@ def _validate_scores(scores: Mapping[str, float]) -> None:
         raise ValueError(f"scores must be finite; got non-finite scores for {bad[:5]}")
 
 
+def _validate_gains(values: Iterable[float]) -> None:
+    bad = [value for value in values if not math.isfinite(value)]
+    if bad:
+        raise ValueError(f"gains must be finite; got {len(bad)} non-finite gain(s), first {bad[:5]}")
+
+
 def discount(rank: int) -> float:
     """The nDCG position discount ``1 / log2(rank + 1)``; ``rank`` counts from 1."""
+    if rank < 1:
+        raise ValueError(f"rank counts from 1, got {rank}")
     return 1.0 / math.log2(rank + 1)
 
 
@@ -149,6 +157,10 @@ def ndcg(
 
     Returns:
         nDCG@k in ``[0, 1]``; 0.0 when nothing is ranked or the ideal DCG is 0.
+
+    Raises:
+        ValueError: a score, a gain or an ``ideal`` gain is not a finite number (a non-finite gain would flow
+            through the sums and return a NaN with no error).
     """
     _validate_k(k)
     if isinstance(scores, Mapping):
@@ -162,7 +174,9 @@ def ndcg(
     else:
         _validate_ranking(scores)
         ranked_gains = [gains.get(doc_id, 0.0) for doc_id in scores[:k]]
-    normaliser = ideal_dcg(gains.values() if ideal is None else ideal, k)
+    ideal_values = list(gains.values() if ideal is None else ideal)
+    _validate_gains(ideal_values)
+    normaliser = ideal_dcg(ideal_values, k)
     if not ranked_gains or normaliser == 0.0:
         return 0.0
     return dcg(ranked_gains, k) / normaliser

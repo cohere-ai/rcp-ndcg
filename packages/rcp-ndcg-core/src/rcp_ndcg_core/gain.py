@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal, cast, overload
+from typing import Any, Literal, overload
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -99,14 +99,25 @@ def pass_probabilities(theta: float | ArrayLike, items: Any) -> NDArray[np.float
 
     Returns:
         ``sigmoid(gamma_c * (theta - beta_c))`` for each criterion ``c``, each in ``(0, 1)``: shape ``(C,)`` for a
-        scalar ``theta``, ``theta.shape + (C,)`` for an array.
+        scalar ``theta``, ``theta.shape + (C,)`` for an array. Scalars compute in float64 whatever dtype the
+        inputs arrive in.
     """
     gammas, betas = item_arrays(items, weighted=False)
     if np.ndim(theta) == 0:
-        scalar = cast("float", theta)  # a 0-d theta: a Python or numpy scalar, used as given
-        return np.array([sigmoid(g * (scalar - b)) for g, b in zip(gammas, betas, strict=True)])
+        scalar = float(theta)  # a 0-d theta: computed in float64, like the array path
+        weights = [float(g) for g in gammas]
+        return np.array([sigmoid(g * (scalar - float(b))) for g, b in zip(weights, betas, strict=True)])
     arr = np.asarray(theta, dtype=float)
     return sigmoid(np.asarray(gammas, dtype=float) * (arr[..., None] - np.asarray(betas, dtype=float)))
+
+
+def _weighted_mean(probabilities: Sequence[float], weights: Sequence[float]) -> float:
+    """``sum(w * p) / sum(w)`` without an overflowing sum: the weights are divided by their
+    largest absolute value first, which leaves the weighted mean unchanged and keeps every
+    term finite for finite inputs."""
+    scale = max(abs(w) for w in weights)
+    normalised = [w / scale for w in weights]
+    return sum(w * p for w, p in zip(normalised, probabilities, strict=True)) / sum(normalised)
 
 
 @overload
@@ -122,14 +133,24 @@ def gain(theta: float | ArrayLike, items: Any) -> float | NDArray[np.float64]:
 
     Returns:
         The gain in ``(0, 1)``: a float for a scalar ``theta``, an array of ``theta``'s shape otherwise.
+        Scalars compute in float64 whatever dtype the inputs arrive in.
     """
     gammas, betas = item_arrays(items)
     if np.ndim(theta) == 0:
-        scalar = cast("float", theta)  # a 0-d theta: a Python or numpy scalar, used as given
-        probs = [sigmoid(g * (scalar - b)) for g, b in zip(gammas, betas, strict=True)]
-        return sum(g * p for g, p in zip(gammas, probs, strict=True)) / sum(gammas)
+        scalar = float(theta)  # a 0-d theta: computed in float64, like the array path
+        weights = [float(g) for g in gammas]
+        probs = [sigmoid(g * (scalar - float(b))) for g, b in zip(weights, betas, strict=True)]
+        total = sum(weights)
+        if math.isfinite(total):
+            return sum(g * p for g, p in zip(weights, probs, strict=True)) / total
+        return _weighted_mean(probs, weights)
     weights = np.asarray(gammas, dtype=float)
-    return pass_probabilities(theta, items) @ weights / weights.sum()
+    try:
+        total = math.fsum(weights)  # raises instead of silently overflowing to inf
+    except OverflowError:
+        normalised = weights / weights.max()
+        return pass_probabilities(theta, items) @ normalised / normalised.sum()
+    return pass_probabilities(theta, items) @ weights / total
 
 
 def count_gain(passes: Sequence[int], placements: int) -> float:
@@ -144,28 +165,55 @@ def count_gain(passes: Sequence[int], placements: int) -> float:
 
     Returns:
         The gain, in ``[0, 1]``.
+
+    Raises:
+        ValueError: a pass count is not a whole number in ``[0, placements]``, or ``placements`` is not a
+            positive whole number.
     """
     if not passes:
         raise ValueError("count_gain needs one pass count per criterion")
-    if placements <= 0:
+    n = float(placements)
+    if not math.isfinite(n) or n != math.floor(n):
+        raise ValueError(f"placements must be a whole number, got {placements!r}")
+    if n < 1:
         raise ValueError(f"placements must be positive, got {placements}")
-    return sum(passes) / (len(passes) * placements)
+    bad = [
+        s for s in passes if not math.isfinite(float(s)) or float(s) != math.floor(float(s)) or not 0 <= float(s) <= n
+    ]
+    if bad:
+        raise ValueError(
+            f"every pass count must be a whole number with 0 <= s_k <= placements, got {bad[:5]} "
+            f"(placements={placements:g}); the gain is a share of passed criteria"
+        )
+    return sum(passes) / (len(passes) * n)
 
 
 def qrel_gain(grade: float, scheme: Literal["linear", "exponential"] = "linear") -> float:
     """The gain of a human grade.
 
     Args:
-        grade: The relevance grade (qrel label).
+        grade: The relevance grade (qrel label), a finite number.
         scheme: ``"linear"`` (the grade itself: the paper and trec_eval) or ``"exponential"`` (``2**grade - 1``).
 
     Returns:
         The gain.
+
+    Raises:
+        ValueError: the grade is not finite, or the exponential scheme's ``2**grade`` would overflow
+            (grades >= 1024).
     """
+    value = float(grade)
+    if not math.isfinite(value):
+        raise ValueError(f"the qrel grade must be a finite number, got {grade!r}")
     if scheme == "linear":
-        return float(grade)
+        return value
     if scheme == "exponential":
-        return float(2**grade - 1)
+        if value >= 1024.0:
+            raise ValueError(
+                f"the exponential gain 2**grade - 1 overflows for grade {value:g}; grades must stay below "
+                "1024 (the linear scheme keeps the grade itself as its gain)"
+            )
+        return float(2**value - 1)
     raise ValueError(f"Unknown qrel gain scheme {scheme!r}; expected 'linear' or 'exponential'")
 
 

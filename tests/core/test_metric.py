@@ -57,6 +57,25 @@ def test_ndcg_refuses_bad_input() -> None:
         ndcg({"a": 1.0}, {"a": 1.0}, ties="stable")  # type: ignore[arg-type]
 
 
+def test_ndcg_refuses_non_finite_gains() -> None:
+    """An inf or NaN gain flowed straight through the sums and returned a NaN nDCG with no error."""
+    for bad in (math.nan, math.inf, -math.inf):
+        with pytest.raises(ValueError, match="finite"):
+            ndcg(["a"], {"a": bad})
+        with pytest.raises(ValueError, match="finite"):
+            ndcg({"a": 1.0}, {"a": bad})
+    with pytest.raises(ValueError, match="finite"):
+        ndcg(["a"], {"a": 1.0}, ideal=[1.0, bad])
+
+
+def test_the_discount_counts_ranks_from_one() -> None:
+    """rank 0 hit a bare ZeroDivisionError; the contract belongs in the message."""
+    with pytest.raises(ValueError, match="counts from 1"):
+        discount(0)
+    with pytest.raises(ValueError, match="counts from 1"):
+        discount(-2)
+
+
 class TestTieRules:
     """``ndcg`` of a score mapping under each tie rule."""
 
@@ -150,6 +169,30 @@ def test_the_weighted_gain_needs_a_positive_gamma_sum() -> None:
     assert len(pass_probabilities(0.0, items)) == 2, "the pass probabilities need no weights"
 
 
+def test_the_weighted_gain_does_not_overflow_on_huge_finite_gammas() -> None:
+    """Two equal huge gammas pass item_arrays (finite, positive sum), but sum(gammas)
+    overflowed to inf and the scalar gain returned 0.0 -- not the mean of the probabilities."""
+    items = {"gamma": [1e308, 1e308], "beta": [0.0, 0.0]}
+    assert gain(0.0, items) == pytest.approx(0.5, abs=1e-12)
+    assert gain(np.array([0.0, 1.0]), items) == pytest.approx([0.5, _logistic(1e308)], abs=1e-12)
+
+
+def test_the_scalar_gain_computes_in_float64_whatever_the_input_dtype() -> None:
+    """The array path always computes in float64; the scalar paths kept the caller's dtype,
+    so a float32 item set answered ~6e-8 away from the same input as floats, and returned
+    an ``np.float32`` although the contract is 'a float for a scalar theta'."""
+    float32_items = {
+        "gamma": np.array(ITEMS["gamma"], dtype=np.float32),
+        "beta": np.array(ITEMS["beta"], dtype=np.float32),
+    }
+    # The values themselves are float32-rounded, so the result can only match to their precision;
+    # what must change is the arithmetic: a Python float, not an np.float32, comes back.
+    assert gain(0.5, float32_items) == pytest.approx(gain(0.5, ITEMS), abs=1e-6)
+    assert isinstance(gain(0.5, float32_items), float)
+    assert gain(np.float32(0.5), ITEMS) == pytest.approx(gain(0.5, ITEMS), abs=1e-15)
+    assert isinstance(gain(np.float32(0.5), ITEMS), float)
+
+
 def test_count_gain_is_the_share_of_passed_criteria() -> None:
     assert count_gain([2, 2, 1, 0, 0], placements=2) == pytest.approx(5 / 10)
     assert count_gain([1, 0, 0, 0, 0], placements=1) == pytest.approx(1 / 5)
@@ -159,11 +202,32 @@ def test_count_gain_is_the_share_of_passed_criteria() -> None:
         count_gain([], placements=1)
 
 
+def test_count_gain_refuses_counts_that_are_not_counts() -> None:
+    """A pass count above the placements, a fractional one and a NaN one all produced
+    gains outside [0, 1] (or a NaN) with no error; the gain is a share of passed criteria."""
+    for passes in ([9, 9], [1.5, 0.5], [-1, 0], [float("nan"), 0]):
+        with pytest.raises(ValueError, match="0 <="):
+            count_gain(passes, placements=2)
+    with pytest.raises(ValueError, match="whole number"):
+        count_gain([1, 0], placements=2.5)
+
+
 def test_qrel_gain_is_linear_unless_exponential_is_asked_for() -> None:
     assert [qrel_gain(g) for g in (2, 1, 0, 0.5)] == [2.0, 1.0, 0.0, 0.5]
     assert [qrel_gain(g, "exponential") for g in (2, 1, 0)] == [3.0, 1.0, 0.0]
     with pytest.raises(ValueError, match="scheme"):
         qrel_gain(1, "log")  # type: ignore[arg-type]
+
+
+def test_an_exponential_qrel_gain_refuses_a_grade_it_cannot_represent() -> None:
+    """2**grade overflows the float range with a bare OverflowError carrying an OS errno
+    string; the module's other failures are ValueErrors naming the contract."""
+    with pytest.raises(ValueError, match="1024"):
+        qrel_gain(1024.0, "exponential")
+    with pytest.raises(ValueError, match="finite"):
+        qrel_gain(float("nan"), "exponential")
+    with pytest.raises(ValueError, match="finite"):
+        qrel_gain(float("nan"))
 
 
 def test_tie_groups_are_the_equal_score_classes_the_group_mean_rule_credits() -> None:
