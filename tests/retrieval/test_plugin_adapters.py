@@ -24,6 +24,7 @@ from rcp_ndcg.inference.types import Call, Embeddings, Reply, RerankResult
 from rcp_ndcg.retrieval import (
     DenseConfig,
     ServedEmbedding,
+    index,
     validate_reranker,
     validate_retriever,
 )
@@ -58,6 +59,45 @@ class SlowEmbed:
 
     def usage(self, reply: Reply) -> None:
         """The fake's shape reports no tokens."""
+        return None
+
+
+@register_adapter
+class SlowPooling:
+    """A third-party multi-vector adapter: only the `/pooling` wire, so a wrong dispatch cannot answer it."""
+
+    name = "slow_pooling"
+    role = "multi_vector"
+
+    def __init__(self, config: Any = None) -> None:
+        self.config = config
+        self.paths: list[str] = []
+
+    def calls(self, request: Any, *, model: str) -> list[Call]:
+        """One `POST /pooling` per batch, the shape the offline fake's pooling route answers."""
+        self.paths.append("/pooling")
+        return [
+            Call(
+                "POST",
+                "/pooling",
+                {
+                    "model": model,
+                    "input": [content.text for content in request.contents],
+                    "task": "token_embed",
+                    "encoding_format": "base64",
+                    "embed_dtype": request.embed_dtype,
+                    "endianness": "little",
+                },
+            )
+        ]
+
+    def interpret(self, request: Any, replies: list[Reply]) -> Embeddings:
+        """The ragged rows of the base64 frames, one slice per item."""
+        from rcp_ndcg.inference.adapters.pooling import VllmPooling
+
+        return VllmPooling().interpret(request, replies)
+
+    def usage(self, reply: Reply) -> None:
         return None
 
 
@@ -146,6 +186,36 @@ def test_a_registered_rerank_adapter_runs_rerank_end_to_end(dataset, tmp_path: P
 
     assert rescored.systems == ["stub-reranker"]
     assert set(rescored.for_query("q1")) == {"d1", "d2"}
+
+
+def test_a_registered_pooling_adapter_runs_late_interaction_end_to_end(
+    dataset, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A plugin multi_vector config dispatches to PoolingClient: the adapter only ever sees `/pooling`."""
+    from rcp_ndcg.retrieval import retrieve
+    from rcp_ndcg.retrieval.config import PluginPooling
+
+    config = validate_retriever(
+        {
+            "kind": "late_interaction",
+            "encoder": {"api": "slow_pooling", "base_url": "fake://seed/3?dim=4", "model": "colqwen", "dim": 4},
+        }
+    )
+    assert isinstance(config.encoder, PluginPooling)
+
+    # The dispatch is by the pooling type: were _encode to route this config to the embedding client, the run
+    # would construct one and this bomb fires.
+    def _wrong_dispatch(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("a pooling config reached the embedding client")
+
+    monkeypatch.setattr("rcp_ndcg.retrieval._api.EmbeddingClient", _wrong_dispatch)
+
+    built = index(dataset, config, out=tmp_path / "idx")
+    rankings = retrieve(dataset, config, depth=3, out=tmp_path / "idx")
+
+    assert built.num_documents == 3
+    assert set(rankings.for_query("q1")) <= set(DOCS)
+    assert set(np.load(tmp_path / "idx" / "offsets.npy")) >= {0.0}, "the ragged layout is stored"
 
 
 def test_the_identity_keys_on_the_adapter_name(dataset) -> None:

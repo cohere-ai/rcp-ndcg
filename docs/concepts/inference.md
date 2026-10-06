@@ -105,14 +105,15 @@ Every role's registry accepts a third-party adapter, shipped in the `rcp_ndcg.ad
 entries named `<role>.<name>` (e.g. `embed.bedrock`, one entry per role; a name may repeat across roles). A
 config selects one with `api: <name>`:
 
-* the judge and every retrieval role resolve it the same way -- the shipped names (`openai_chat`,
-  `openai_embeddings`, `cohere`, `voyage`, `gemini`, `vllm_pooling`, `rerank`) select their own config classes;
-  any other `api` is resolved against the role's registry where the config is read, and builds the role's
-  generic endpoint config (`EmbeddingEndpoint` / `PoolingEndpoint` / `RerankEndpoint`, exposed from
-  `rcp_ndcg.retrieval` as `PluginEmbedding`, `PluginPooling`, `PluginReranker`). A name that is not registered
-  for that role -- unknown, or registered for another role -- is refused with the registry's hint. The adapters
-  the retrieval steps build (`EmbeddingClient`, `PoolingClient`, `RerankClient`) then run the third-party wire
-  like a shipped one.
+* the retrieval roles resolve a non-shipped `api` against the role's registry where the config is read (the
+  CLI's YAML loading, a run config, `validate_retriever`/`validate_reranker`): it builds the role's generic
+  endpoint config, exposed from `rcp_ndcg.retrieval` as `PluginEmbedding`, `PluginPooling` and
+  `PluginReranker` (the shipped names -- `openai_embeddings`, `cohere`, `voyage`, `gemini`, `vllm_pooling`,
+  `rerank` -- keep selecting their own classes). A name that is not registered for that role -- unknown, or
+  registered for another role -- is refused with the registry's hint, and the adapters the retrieval steps
+  build (`EmbeddingClient`, `PoolingClient`, `RerankClient`) then run the third-party wire like a shipped one.
+* the judge resolves its `api` lazily, at the first judging call (the refusal still precedes any wire
+  traffic); its config validates any name.
 * the adapter name is content: a step (and an index) identity keys on it, so two wires never share an index or
   a cache. Everything else about the identity (model, revision, recipe, prompts, budgets, the tokenizer's
   SHA-256) is unchanged.
