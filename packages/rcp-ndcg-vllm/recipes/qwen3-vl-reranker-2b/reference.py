@@ -304,7 +304,12 @@ class Qwen3VLRerankerReference:
         padded = self.processor.tokenizer.pad(
             {"input_ids": ids}, padding=True, return_tensors="pt", max_length=MAX_LENGTH
         )
-        return padded
+        # The card merges the padded keys back into the processor's full inputs, keeping
+        # pixel_values / image_grid_thw for image-bearing rows; returning the pad dict alone
+        # would drop them and the backbone call would score garbage or fail.
+        for key, value in padded.items():
+            inputs[key] = value
+        return inputs
 
     def score(self, query: dict[str, Any], docs: list[dict[str, Any]], instruction: str) -> list[float]:
         """Sigmoid scores for one query against its documents, on the card's scale.

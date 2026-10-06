@@ -19,12 +19,14 @@ serve:
     architectures: ["Qwen3VLForSequenceClassification"]
     classifier_from_token: ["no", "yes"]   # quoted: YAML reads a bare no as false. Order is
                                            # load-bearing: tokens[0]=no(false), tokens[1]=yes(true)
-                                           # -> score head W[yes]-W[no] (adapters.py:595-603)
+                                           # -> score head W[yes]-W[no] (adapters.py:532-539)
     is_original_qwen3_reranker: true       # sets method from_2_way_softmax, num_labels=1
-                                           # (config/model.py:784-815)
+                                           # (model_executor/models/config.py:784-815;
+                                           # adapters.py:389-396)
   chat_template: template.jinja
-  pooler_config: {}        # defaults are correct: LAST-token pooling, sigmoid (num_labels=1),
-                           # fp32 head. Do not pass --pooler-config.
+  pooler_config: {}        # leave every pooler field unset: an empty PoolerConfig is the
+                           # engine's defaults (LAST-token pooling, sigmoid with num_labels=1,
+                           # fp32 head); the runner renders --pooler-config {} and changes nothing
   trust_remote_code: false # no auto_map, no model .py in the repo; the card sets it defensively
   max_model_len: 32768     # model card context length; config.json allows 262144
   dtype: bfloat16          # config.json dtype
@@ -45,8 +47,12 @@ client:
                            # instruction, query and document together), cut client-side BEFORE
                            # sending: the engine's truncate_prompt_tokens right-cuts the composed
                            # prompt and loses the assistant tail (research case 12)
-  query_max_tokens: 4096   # the query's share of the pair budget; the card's served client caps
-                           # the query at 4096 (max_tokens_per_query); the document gets the rest
+  query_max_tokens: 4096   # the query's share of the pair budget; the product's own served
+                           # reranker caps the query at 4096 (cross_encoder.py:46
+                           # MAX_QUERY_LENGTH, sent as max_tokens_per_query); the document gets
+                           # the rest. The reference caps the whole pair, not the query alone,
+                           # but a declared share is required so an over-long query never eats
+                           # the document's budget
   template:
     pair:
       - {fixed: "{special:im_start}system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \"yes\" or \"no\".{special:im_end}\n{special:im_start}user\n<Instruct>: Given a search query, retrieve relevant candidates that answer the query.<Query>:"}
@@ -107,10 +113,11 @@ sources:
      get_score_prompt, :1139-1169 the chat-template render and the ChatTemplateResolutionError
      fallback (checkout a5bd0b085; the rerank-path files were verified tag-identical or
      diffed-unrelated by research/r-qwen3vl-rer)"
-  - "vllm model_executor/models/config.py:784-815 (is_original_qwen3_reranker ->
-     from_2_way_softmax, num_labels=1) and :1950 (the ForSequenceClassification suffix ->
-     pooling/classify); adapters.py:595-603 (score head from lm_head rows in the
-     classifier_from_token order); model_executor/layers/pooler/activations.py:118-141
+  - "vllm model_executor/models/config.py:784-815 (is_original_qwen3_reranker -> method
+     from_2_way_softmax + classifier_from_token); model_executor/models/adapters.py:389-396
+     (num_labels=1) and :473-552 load_weights_using_from_2_way_softmax with the fp32 head
+     W[true] - W[false] at :532-539; vllm/config/model.py:1950 (the ForSequenceClassification
+     suffix -> pooling/classify); model_executor/layers/pooler/activations.py:118-141
      (PoolerClassify, num_labels<2 -> sigmoid); interfaces_base.py:160 (default LAST pooling)"
   - "research/r-qwen3vl-rer/out/{report.md,digest.md,check_template.py,reference-draft.py,
      recipe-draft.yaml}: the 12-case CPU template-equivalence check (28/28), the served-vs-card
@@ -161,12 +168,15 @@ notes: |
   the engine hoists placeholders to the front of the side and joins the texts with a newline,
   which the reference cannot express; keep one media item per side.
 
-  Empty documents: empty_doc send_text sends the card's own "NULL" placeholder, so the served
-  render of an empty document matches the reference (research case 8, where the served empty
-  side diverged). The card sends "NULL" for an empty side on BOTH sides of the pair, while the
-  product's empty_doc policy covers documents only: an empty QUERY renders '<Query>:' served but
-  '<Query>:NULL' in the reference. Avoid empty queries (a data error upstream); if one reaches
-  the stage-1 render check it fails loudly, never silently.
+  Empty sides: the recipe pins empty_doc send_text with the card's own "NULL" placeholder
+  (empty_doc_text "NULL") as the declared policy. Declared product gap: nothing consumes
+  empty_doc on this branch (the consumer lands with the clients lane), so the rerank client
+  sends an empty document as-is today, and the served render of an empty side ('<Query>:' or
+  '<Document>:' with nothing) diverges from the reference, which sends "NULL" on an empty side
+  (research case 8 measured exactly this for documents). The stage-1 render check goes red
+  loudly on any empty-side pair -- the wave's gate data carries none -- and the policy binds
+  once the client wiring lands. An empty QUERY has no product field at all: avoid empty queries
+  (a data error upstream), never a silent default.
 
   Stage 1 on CPU proves: the declared pair shape renders byte-identically to the served
   template file (and hence to the card's reference prompt), the anchors survive every
