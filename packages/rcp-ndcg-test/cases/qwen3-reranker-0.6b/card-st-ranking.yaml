@@ -1,0 +1,47 @@
+id: qwen3-reranker-0.6b/card-st-ranking
+recipe: qwen3-reranker-0.6b
+role: rerank
+strata:
+  modality: text
+  length: short
+  batch: mixed_length
+inputs:
+  instruction: Given a web search query, retrieve relevant passages that answer the query
+  queries:
+  - id: q1
+    text: What is the capital of China?
+  documents:
+  - id: d1
+    text: The capital of China is Beijing.
+  - id: d2
+    text: Gravity is a force that attracts two bodies towards each other. It gives weight to physical objects and is responsible for the movement of planets around the sun.
+source:
+  kind: model_card
+  url: https://huggingface.co/Qwen/Qwen3-Reranker-0.6B
+  revision: e61197ed45024b0ed8a2d74b80b4d909f1255473
+  section: Using Sentence Transformers
+  quote: |-
+    query = "What is the capital of China?"
+    documents = [
+        "The capital of China is Beijing.",
+        "Gravity is a force that attracts two bodies towards each other. It gives weight to physical objects and is responsible for the movement of planets around the sun.",
+    ]
+
+    pairs = [(query, doc) for doc in documents]
+    scores = model.predict(pairs)
+    print(scores)
+    # [ 7.625 -11.375]
+
+    rankings = model.rank(query, documents)
+    print(rankings)
+    # [{'corpus_id': 0, 'score': 7.625}, {'corpus_id': 1, 'score': -11.375}]
+expected:
+  kind: ranking
+  values:
+  - - d1
+    - d2
+  tolerance:
+    rank_exact: true
+  origin: published
+  status: published_unverified
+notes: 'The same example''s printed ranking (corpus_id 0 then 1, i.e. d1 before d2): expected.kind ranking with the ranked document ids derived from the card''s own printed order (the card''s printed scores are the card-st-logits case''s expected values). The logit gap between the two documents is at least 19 units on every card of the family, far beyond the bf16 margin, so the exact rank order is the robust check. The card prints raw logit differences (CrossEncoder without an activation, rounded to 3 decimals: abs 5e-4 from rounding); the family''s checkpoints are bf16, whose ULP at |logit| ~ 14 is 0.0625; the declared tolerance abs 1.0 covers the rounding, the bf16 ULP, and the measured sensitivity of the extreme-negative logit tail across devices (see the reproduction note below): the robust comparisons are the probability scale and the exact rank order (the card-st-ranking case), not 3-decimal logit equality. The served head scores a probability (use_activation true, sigmoid of x.(W_yes - W_no)); convert a probability p to the comparable logit difference with ln(p/(1-p)) before comparing. CPU fp32 reproduction (the card''s own transformers path at last position, torch 2.9.1+cpu, transformers 4.57.6, fp32, CPU): raw logit differences [7.596951, -12.192464] vs the card''s printed [7.625, -11.375] (absolute deviations [0.028049, 0.817464]: the relevant pair reproduces to 0.03; the extreme-negative tail pair, where p_yes ~ 1e-5, deviates by 0.82 raw logits while both values mean ''no'', and on the served probability scale the deviation is at most 2.2e-05); probabilities [0.9994982481002808, 5.068484824732877e-06]. These numbers are the lane''s, recorded here and in the report only: they are never copied into expected, which stays the card''s.'
