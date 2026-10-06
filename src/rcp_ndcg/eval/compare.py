@@ -24,7 +24,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from rcp_ndcg_core.protocol import MetricName
 
 from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.eval.evaluate import EvalReport, _aggregate_values, _one_k, _refuse_missing_cutoff, bootstrap_interval
+from rcp_ndcg.eval.evaluate import (
+    EvalReport,
+    _aggregate_values,
+    _has_cutoff,
+    _one_k,
+    _refuse_missing_cutoff,
+    bootstrap_interval,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -163,7 +170,9 @@ def compare(
         else list(itertools.combinations(compared, 2))
     )
     other = "qrel_ndcg" if metric == "rcp_ndcg" else "rcp_ndcg" if metric == "qrel_ndcg" else None
-    other_values = _values(report, other, k) if other in report.metrics else None
+    # The sign flips are a bonus: a metric the report lists that has no values at this cutoff (it matched no
+    # labelled query) drops out of them, where the requested metric above is refused.
+    other_values = _values(report, other, k) if other is not None and _has_cutoff(report, other, k) else None
     return Comparison(
         metric=metric,
         k=k,

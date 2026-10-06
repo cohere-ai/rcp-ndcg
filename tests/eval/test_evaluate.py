@@ -648,6 +648,19 @@ def test_a_cutoff_the_report_never_computed_is_refused_everywhere(report: EvalRe
             call()
 
 
+def test_compare_ignores_a_sign_flip_metric_with_no_values_at_the_cutoff() -> None:
+    """A metric the report lists but that matched no labelled query (a gains-only dataset's qrel_ndcg) drops
+    out of the sign flips, as it did before the cutoff refusal; the requested metric is still refused."""
+    report = evaluate(_rankings(), dataset=_dataset(qrels={}, gains=GAINS), gains=GAINS, k=[2], bootstrap=0)
+    assert "qrel_ndcg" in report.metrics and not any(row.metric == "qrel_ndcg" for row in report.summary)
+
+    comparison = compare(report, bootstrap=0)
+
+    assert all(pair.sign_flips == [] for pair in comparison.pairs)
+    with pytest.raises(DataError, match="no qrel_ndcg@2"):
+        compare(report, metric="qrel_ndcg", k=2)
+
+
 def test_sensitivity_is_the_share_of_pairs_a_paired_t_test_separates(report: EvalReport) -> None:
     values = {
         s: [r.value for r in report.per_query if (r.system, r.metric, r.k) == (s, "qrel_ndcg", 4)]

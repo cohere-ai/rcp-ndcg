@@ -125,7 +125,14 @@ def search_bm25(dataset_dir: Path, queries: Sequence[str], *, k: int) -> list[li
             hint=hint,
             cli_hint="build it with `rcp-ndcg retrieval index`",
         )
-    stemmer = stemmer_for(json.loads((bm_dir / "meta.json").read_text(encoding="utf-8"))["stemmer"])
+    meta_path = bm_dir / "meta.json"
+    if not meta_path.is_file():
+        raise MissingInputError(
+            f"the BM25 index at {bm_dir} has no meta.json naming its stemmer",
+            hint="build it with index() (stemming is stated, never inferred from the model)",
+            cli_hint="build it with `rcp-ndcg retrieval index`",
+        )
+    stemmer = stemmer_for(json.loads(meta_path.read_text(encoding="utf-8"))["stemmer"])
     engine = _bm25s()
     model = engine.BM25.load(str(bm_dir), allow_pickle=False, load_corpus=False)
     out = []

@@ -69,6 +69,16 @@ class TestTheIndexFormat:
         with pytest.raises(MissingInputError, match="BM25 index not found"):
             sparse.search_bm25(tmp_path, ["hares"], k=2)
 
+    def test_an_index_without_its_stemmer_record_is_missing_input(self, tmp_path: pytest.Path) -> None:
+        """Stemming is stated, never inferred: a bare bm25s model without the meta.json that names its stemmer
+        is refused instead of searched unstemmed (the read was a bare FileNotFoundError before)."""
+        sparse.build_bm25_index(["hares run"], tmp_path, stemmer="english")
+        (tmp_path / "bm25s" / "meta.json").unlink()
+
+        with pytest.raises(MissingInputError, match="meta.json") as caught:
+            sparse.search_bm25(tmp_path, ["hares"], k=2)
+        assert "index()" in (caught.value.hint or "")
+
     def test_a_pickle_written_by_an_earlier_build_is_refused_with_the_fix(self, tmp_path: pytest.Path) -> None:
         (tmp_path / "bm25s").mkdir()
         (tmp_path / "bm25s" / "bm25.pkl").write_bytes(b"not really a pickle")

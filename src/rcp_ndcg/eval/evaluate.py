@@ -695,6 +695,11 @@ def _score(
     )
 
 
+def _has_cutoff(report: EvalReport, metric: MetricName, k: int) -> bool:
+    """Whether the report computed ``(metric, k)`` for at least one system."""
+    return any((row.metric, row.k) == (metric, k) for row in report.summary)
+
+
 def _refuse_missing_cutoff(report: EvalReport, metric: MetricName, k: int) -> None:
     """Refuse a ``(metric, k)`` the report never computed, before a reader gets an empty table from it.
 
@@ -705,7 +710,7 @@ def _refuse_missing_cutoff(report: EvalReport, metric: MetricName, k: int) -> No
     Raises:
         DataError: Naming the metric, the cutoff and the cutoffs the report has.
     """
-    if not any((row.metric, row.k) == (metric, k) for row in report.summary):
+    if not _has_cutoff(report, metric, k):
         raise DataError(f"the report has no {metric}@{k} for any system; it has cutoffs {report.k}")
 
 
