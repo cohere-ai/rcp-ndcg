@@ -30,4 +30,4 @@ expected:
     abs: 0.002
   origin: reference
   status: pending_gpu
-notes: 'Uniform short batch, 2 queries x 4 documents; rendered documents 28-58 tokens, queries 19-21 (recipe tokenizer zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a). Tolerance: bf16 serve (recipe dtype) vs bf16 sentence-transformers reference; expected cosine deviation ~1e-3 (research r-zembed1), headroom to 2e-3. Values are filled by the GPU wave (reference + engine recorded).'
+notes: 'Uniform short batch, 2 queries x 4 documents; rendered documents 27-29 tokens (28/27/28/29), queries 19-21 (recipe tokenizer zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a). Tolerance: bf16 serve (recipe dtype) vs bf16 sentence-transformers reference; expected cosine deviation ~1e-3 (research r-zembed1), headroom to 2e-3. Values are filled by the GPU wave (reference + engine recorded).'
