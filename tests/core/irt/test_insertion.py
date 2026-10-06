@@ -304,9 +304,9 @@ class TestConnectivityAndSelection:
         """The returned order is best-first by the kernel (information x exposure), which the insertion
         consumes: here it is neither the theta order nor the rank order."""
         # p(1-p) at provisional theta 1.0 times 1/log2(rank + 1):
-        # near 0.157339, mid 0.052497, far 0.017663 -> near, mid, far
-        # (the theta order near, mid, far; the rank order far, near, mid)
-        thetas = {"near": 0.9, "mid": 3.0, "far": 5.0}
-        ranks = {"near": 2, "mid": 3, "far": 1}
+        # near_above 0.124048, far_below 0.104994, way_above 0.022588
+        # (the theta order and the rank order are both far_below, near_above, way_above)
+        thetas = {"far_below": -1.0, "near_above": 2.0, "way_above": 4.0}
+        ranks = {"far_below": 1, "near_above": 2, "way_above": 3}
         picked = select_opponents("new", 1.0, thetas, ranks, k=3)
-        assert picked == ["near", "mid", "far"]
+        assert picked == ["near_above", "far_below", "way_above"]

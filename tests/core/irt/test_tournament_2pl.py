@@ -300,7 +300,7 @@ class TestGaussianPriorStrength:
         #   tau term    (1/8) * 1/(2 * 1^2) * 2 * (ln 2 - 1)^2 = 0.011769831599788852
         #   alpha term  (1/8) * 1/(2 * 2^2) * (0.5^2 + 0.5^2) = 1/128       = 0.0078125
         expected = (math.log(2.0) - 1.0) ** 2 / 8 + 0.5 / 64
-        assert float(cal.regularization_loss()) == pytest.approx(expected, rel=1e-4)
+        assert cal.regularization_loss().item() == pytest.approx(expected, rel=1e-4)
 
 
 class TestConstraintVerification:
