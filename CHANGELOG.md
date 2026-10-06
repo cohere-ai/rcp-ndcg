@@ -877,7 +877,7 @@ that exports it.
 **Command line (`rcp-ndcg`).** `data` (fetch, inspect, validate, convert into a layout `load_dataset` reads, formats),
 `retrieval` (index, search, rerank, fuse), `judge` (tournament, rubric, reparse), `calibration` (fit, score, insert,
 show), `eval` (score, compare, explain), `run` (start, resume, status, logs, cancel, list, show), `schema` (list, show,
-export), `mcp` (serve, tools) and `doctor`. Every command except `mcp serve` takes `--json` and prints one
+export), `mcp` (serve) and `doctor`. Every command except `mcp serve` takes `--json` and prints one
 `rcp-ndcg.cli.v1` document; judging and runs take `--estimate` and `--dry-run`; `run start` takes
 `--runner` and `--detach`, and its `--dry-run` prints what a runner would submit; `run resume` takes
 `--judge-urls` (`RCP_NDCG_JUDGE_URLS`), the replica URLs a runner hands its job, and `--runner` to submit a failed

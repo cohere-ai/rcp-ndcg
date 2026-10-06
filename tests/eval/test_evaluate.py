@@ -714,3 +714,14 @@ def test_explain_refuses_a_report_that_scored_no_systems() -> None:
     assert empty.systems == []
     with pytest.raises(DataError, match="scored no systems"):
         explain(empty, "q0")
+
+
+def test_explain_names_the_known_queries_when_it_refuses_one(report: EvalReport) -> None:
+    """An unknown `--query-id` names the next step (one of the report's query ids), on both explain paths."""
+    from rcp_ndcg.eval import explain
+
+    with pytest.raises(DataError) as caught:
+        explain(report, "nosuch")
+
+    assert caught.value.hint and caught.value.cli_hint
+    assert caught.value.details["known"][:1]
