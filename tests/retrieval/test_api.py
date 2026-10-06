@@ -17,8 +17,8 @@ import pytest
 import yaml
 from pydantic import TypeAdapter, ValidationError
 
-from rcp_ndcg.data import Rankings, load_dataset
-from rcp_ndcg.errors import ConfigError, CredentialsError
+from rcp_ndcg.data import Rankings
+from rcp_ndcg.errors import ConfigError, CredentialsError, DataError
 from rcp_ndcg.retrieval import (
     BM25Config,
     CohereEmbedding,
@@ -44,30 +44,10 @@ from rcp_ndcg.retrieval import (
 )
 from rcp_ndcg.retrieval import _api as retrieval_api
 from rcp_ndcg.retrieval.config import _OLD_SHAPE_HINT
-
-DOCS = {
-    "d1": "tortoises move slowly across the sand",
-    "d2": "hares run fast in open fields",
-    "d3": "the sand dunes of the desert",
-}
+from tests.retrieval.conftest import DOCS
 
 _ENCODER = TypeAdapter(DenseConfig.model_fields["encoder"].annotation)
 _RERANKER = TypeAdapter(RerankerConfig)
-
-
-@pytest.fixture
-def dataset(tmp_path: Path):
-    root = tmp_path / "beir"
-    (root / "qrels").mkdir(parents=True)
-    (root / "corpus.jsonl").write_text("".join(json.dumps({"_id": d, "text": t}) + "\n" for d, t in DOCS.items()))
-    (root / "queries.jsonl").write_text(
-        json.dumps({"_id": "q1", "text": "slow tortoises"})
-        + "\n"
-        + json.dumps({"_id": "q2", "text": "fast hares"})
-        + "\n"
-    )
-    (root / "qrels" / "test.tsv").write_text("query-id\tcorpus-id\tscore\nq1\td1\t1\nq2\td2\t1\n")
-    return load_dataset(f"beir:{root}")
 
 
 @pytest.fixture
@@ -342,6 +322,31 @@ def test_an_index_from_the_previous_release_is_a_config_error_with_the_hint(data
     assert "api: openai_embeddings" in (caught.value.hint or "")
 
 
+def test_retrieve_rebuilds_an_index_of_an_unreadable_shape(dataset, tmp_path: Path) -> None:
+    """``retrieve(out=...)`` rebuilds over an index.json it cannot read (the IdentityError hint sends users
+    there to rebuild); refusing them left a stale directory the call could never get past."""
+    root = tmp_path / "idx"
+    root.mkdir()
+    (root / "index.json").write_text(
+        json.dumps(
+            {
+                "schema": "rcp-ndcg.index.v1",
+                "path": str(root),
+                "dataset": "beir",
+                "retriever": {"kind": "dense", "encoder": {"provider": "local", "model": "m", "pooling": "last"}},
+                "identity": "0" * 64,
+                "num_documents": 3,
+            }
+        )
+    )
+    config = DenseConfig(encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub"))
+
+    rankings = retrieve(dataset, config, depth=3, out=root)
+
+    assert rankings.systems == ["stub"], "the old shape was rebuilt over, not refused"
+    assert isinstance(load_index(root).retriever, DenseConfig), "the index was rewritten in the current shape"
+
+
 def test_the_index_identity_carries_the_tokenizer_digest(dataset, tmp_path: Path) -> None:
     """The encoder's tokenizer digest enters the index identity (as it enters the step identities): the same
     bytes under another path share it, different bytes do not, and a URL change never does."""
@@ -456,6 +461,46 @@ def test_a_hosted_reranker_runs_through_its_public_profile(dataset, tmp_path: Pa
     assert cohere_calls and json.loads(cohere_calls[0].content)["top_n"] == 3
 
 
+def test_rerank_refuses_a_depth_like_search_does(dataset) -> None:
+    """``depth`` is validated in ``rerank`` like in ``search``: zero collapses the candidates to nothing (and
+    raised the unrelated 'rankings hold 0 systems'), and a negative one silently cut by pandas' ``head(-n)``."""
+    candidates = Rankings.from_scores({"q1": {"d1": 3.0, "d2": 2.0, "d3": 1.0}}, system="bm25")
+    config = ServedReranker(base_url="fake://seed/1", model="stub-reranker")
+
+    for depth in (0, -1):
+        with pytest.raises(ConfigError, match="depth must be positive"):
+            rerank(dataset, candidates, config, depth=depth)
+
+
+def test_tied_candidates_reach_the_reranker_in_the_rankings_order(dataset, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The candidates go over the wire in the first-stage ranking's order (``top()``'s: score descending,
+    then document id descending): a listwise model's scores depend on the batch composition, so it is pinned.
+    The sweep's M14 mutation reversed the order and nothing failed."""
+    sent: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        sent.append(body)
+        documents = body["documents"]
+        return httpx.Response(
+            200, json={"results": [{"index": i, "relevance_score": float(i)} for i in range(len(documents))]}
+        )
+
+    from rcp_ndcg.inference import transport as transport_module
+
+    real = transport_module.Transport
+
+    def patched(endpoint: Any, **kwargs: Any) -> Any:
+        return real(endpoint, httpx_transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr("rcp_ndcg.inference.clients.rerank.Transport", patched)
+    tied = Rankings.from_scores({"q1": {"d1": 1.0, "d2": 1.0, "d3": 1.0}}, system="bm25")
+
+    rerank(dataset, tied, ServedReranker(base_url="http://rerank.test/v1", model="stub-reranker"), depth=3)
+
+    assert sent[0]["documents"] == [DOCS["d3"], DOCS["d2"], DOCS["d1"]], "ties: document id descending"
+
+
 def test_fuse_sums_reciprocal_ranks() -> None:
     one = Rankings.from_scores({"q1": {"d1": 1.0, "d2": 2.0}}, system="a")
     two = Rankings.from_scores({"q1": {"d2": 1.0, "d1": 2.0}}, system="b")
@@ -484,3 +529,19 @@ def test_fuse_keeps_the_datasets_of_a_suite_apart() -> None:
     fused = fuse([one, two])
 
     assert sorted(fused.datasets) == ["one", "two"]
+
+
+def test_fuse_fuses_per_subset_files_and_refuses_nothing_at_all_first() -> None:
+    """One file per (system, subset), as a per-subset fan-out writes them: a ranking with no rows for a
+    subset does not enter that subset's fusion (the old path raised 'no rankings of dataset' naming the wrong
+    datasets), and no rankings at all is refused before the loop."""
+    one = Rankings.from_records([{"system": "a", "dataset": "one", "query_id": "q1", "doc_id": "d1", "score": 1.0}])
+    two = Rankings.from_records([{"system": "a", "dataset": "two", "query_id": "q1", "doc_id": "d2", "score": 1.0}])
+
+    fused = fuse([one, two])
+
+    assert sorted(fused.datasets) == ["one", "two"], "each subset fused from the files that name it"
+    assert fused.for_query("q1", system="rrf", dataset="one")["d1"] == pytest.approx(1 / 61)
+    assert fused.for_query("q1", system="rrf", dataset="two")["d2"] == pytest.approx(1 / 61)
+    with pytest.raises(DataError, match="needs rankings"):
+        fuse([])
