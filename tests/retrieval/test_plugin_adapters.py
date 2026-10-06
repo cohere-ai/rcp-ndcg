@@ -30,6 +30,7 @@ from rcp_ndcg.retrieval import (
 )
 from rcp_ndcg.retrieval import _api as retrieval_api
 from rcp_ndcg.retrieval.config import PluginEmbedding, PluginReranker
+from tests.conftest import SESSION_TOKENIZER
 
 DOCS = {
     "d1": "tortoises move slowly across the sand",
@@ -172,7 +173,15 @@ def test_a_registered_rerank_adapter_runs_rerank_end_to_end(dataset, tmp_path: P
     from rcp_ndcg.retrieval import rerank
 
     config = validate_reranker(
-        {"api": "slow_rerank", "base_url": "fake://seed/1", "model": "stub-reranker", "instruction": "none"}
+        {
+            "api": "slow_rerank",
+            "base_url": "fake://seed/1",
+            "model": "stub-reranker",
+            "instruction": "none",
+            "use_activation": False,
+            "tokenizer": str(SESSION_TOKENIZER),
+            "max_tokens": 8192,
+        }
     )
     assert isinstance(config, PluginReranker), "the generic rerank config carries the third-party api"
 
@@ -221,11 +230,16 @@ def test_a_registered_pooling_adapter_runs_late_interaction_end_to_end(
 def test_the_identity_keys_on_the_adapter_name(dataset) -> None:
     """The adapter name is content: the config payload carries it, so two plugins never share a key."""
     from rcp_ndcg.support.identity import identity_payload
+    from tests.conftest import SESSION_TOKENIZER
 
+    budget = {"tokenizer": str(SESSION_TOKENIZER), "max_tokens": 8192}
     plugin = validate_retriever(
-        {"kind": "dense", "encoder": {"api": "slow_embed", "base_url": "fake://seed/7?dim=8", "model": "stub"}}
+        {
+            "kind": "dense",
+            "encoder": {"api": "slow_embed", "base_url": "fake://seed/7?dim=8", "model": "stub", **budget},
+        }
     )
-    shipped = DenseConfig(encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub"))
+    shipped = DenseConfig(encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub", **budget))
 
     doc_ids, contents = retrieval_api._corpus(dataset)
 

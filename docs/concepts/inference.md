@@ -10,7 +10,7 @@ the transport does everything around that; a *role client* ties the two together
 
 `rcp_ndcg.inference.Endpoint` is the one home of the fields every role shares; a role's config subclasses it and
 adds only the fields its wire protocol needs (the judge: `temperature`, `decoding`, the media limits; the
-encoders: the prompts, `max_tokens`; [serving](serving.md) describes the judge's fields). Which model, which
+encoders: the prompts, the text budget; [serving](serving.md) describes the judge's fields). Which model, which
 checkpoint and which wire adapter decide what is computed, and do; where and how fast a model is asked are
 runtime fields that never enter an identity.
 
@@ -20,7 +20,7 @@ runtime fields that never enter an identity.
 | `base_url` | the endpoint (`.../v1`), one URL or a list of replica URLs of the same served model; `None` for a hosted API whose URL its profile resolves |
 | `model` | the served model name, sent as the request's `model` |
 | `revision` | the checkpoint commit the served weights resolved to; recorded in identities |
-| `api_key_env` | the environment variable that holds the API key, sent as `Authorization: Bearer`; `None` sends no key. A missing variable is a `CredentialsError` naming it |
+| `api_key_env` | the environment variable that holds the API key; `None` (the default) and the adapter profile's own variables are tried (a hosted profile's `CO_API_KEY` or `VOYAGE_API_KEY`); an unset variable a config named is a `CredentialsError` naming it |
 | `headers_env` | extra headers (e.g. `{"X-Gateway-Key": "GATEWAY_KEY"}`), each value read from its environment variable at send time, never from a config, and never logged |
 | `concurrency` | requests in flight at once, over all replicas; the HTTP pool is sized to it |
 | `timeout_s`, `connect_timeout_s` | the per-request and connect timeouts, seconds |
@@ -38,6 +38,10 @@ replica is down, and counts the calls. The shipped adapters register per role at
 multi-vector role's `vllm_pooling`. A role client sends one request like this:
 
 ```python
+from pathlib import Path
+
+from tokenizers import Tokenizer, models, pre_tokenizers
+
 from rcp_ndcg.inference import Call, TokenCount, Transport, register_adapter
 from rcp_ndcg.inference.adapters.base import get_adapter
 from rcp_ndcg.inference.config import EmbeddingEndpoint
@@ -61,7 +65,14 @@ class DemoAdapter:
         return TokenCount(input_tokens=tokens.get("prompt_tokens")) if tokens else None
 
 
-endpoint = EmbeddingEndpoint(base_url="fake://embed?dim=8", model="demo-encoder")
+# A self-hosted role config declares its text budget: the tokenizer the budget counts in, and the cap
+# (the role clients cut the content spans themselves -- see the text budgets on the preprocessing page).
+backend = Tokenizer(models.WordLevel({"[UNK]": 0}, unk_token="[UNK]"))
+backend.pre_tokenizer = pre_tokenizers.Whitespace()
+Path("tok").mkdir()
+(Path("tok") / "tokenizer.json").write_text(backend.to_str())
+
+endpoint = EmbeddingEndpoint(base_url="fake://embed?dim=8", model="demo-encoder", tokenizer="tok", max_tokens=8192)
 transport = Transport(endpoint)
 adapter = get_adapter("demo", role="embed")()
 replies = transport.run(transport.send(adapter.calls(None, model=endpoint.model)))
@@ -69,7 +80,7 @@ for reply in replies:
     transport.add_usage(adapter.usage(reply))
 vectors = adapter.interpret(None, replies)
 assert len(vectors[0]) == 8 and transport.usage.requests == 1
-transport.aclose()
+transport.close()  # a sync caller; an async one awaits transport.aclose()
 ```
 
 The snippet sends through the [offline fakes](#the-offline-fakes) (`fake://`), so it runs with no server.
@@ -122,8 +133,46 @@ config selects one with `api: <name>`:
 
 The retrieval API is synchronous. `Transport.run(coroutine)` runs a coroutine to completion on a private event
 loop the transport owns, reusing one event loop and one HTTP pool across calls; called while another loop is
-running in the thread (a notebook), it runs on a private background thread instead of failing. `aclose()` (and
-its `close()` twin, and the `with` block) closes the pool; a later `run` builds a fresh one.
+running in the thread (a notebook), it runs on a private background thread instead of failing. `aclose()` is the
+awaitable close; `close()` (and the `with` block) runs the same close synchronously, and a later `run` builds a
+fresh pool.
+
+## The role clients
+
+One client per role (the embedder, the reranker, the multi-vector pooler; the judge ports onto it later),
+all derived from `rcp_ndcg.inference.clients.RoleClient`, which owns the shared ground once:
+
+- **the adapter lookup within the client's role** -- `get_adapter(config.api, role=...)`, so a config whose
+  `api` names another role's adapter is refused at construction;
+- **the hosted profile's default base URL** -- the config's `base_url`, else the adapter's `DEFAULT_BASE_URL`
+  (a hosted profile's public root); a config with neither is refused;
+- **the transport** -- built from the resolved config unless the caller passes a `Sender` (the test fakes, a
+  recording one, a third party's); an injected `Transport` is pointed at the adapter profile's credential
+  facts, so the key resolution follows the adapter either way;
+- **the sync bridge, one rule** -- the sender's `run`: a `Transport` always has it, and any other sender must
+  provide `run`, or the constructor raises `ConfigError` (no `asyncio.run` fallback: a fresh loop per call
+  would give a non-transport sender no pool reuse and would fail inside a running loop);
+- **the lifecycle** -- `close()` synchronous, `await aclose()` asynchronous, and both context managers
+  (`with` and `async with`); safe to call twice;
+- **the fan-out, one rule** -- every client's requests run in one `asyncio.TaskGroup`: a failing request
+  cancels its siblings, no callback (a rerank `checkpoint`) lands after the failure, and no task is left
+  pending; a group carrying exactly one failure is raised as that failure, so the typed errors surface;
+- **the text budget and the media** -- the `TextBudget` resolved once from the role config's fields, the
+  tokenizer it names loaded once, and the shared `rcp_ndcg.data.preprocess.fit` called from each client's
+  `_prepare` (see [preprocessing](preprocessing.md#text-budgets-for-served-roles)); a census of every cut is
+  at `client.census`. Media preparation runs through the judge's own path (`prepare_request`) -- sized exactly as
+  the role's `image_policy`/`image_processor` would -- with the tokens counted and reserved whole (never
+  cut), the budget's fit applied per wire request (a vision block is atomic -- shrink to the policy minimum,
+  drop whole items with `dropped=True` in `client.media_census`, or refuse under `fail`/`chunk`), and the
+  `max_images`/`max_videos` gates over what one wire request carries. A role with an `image_processor` exposes `probe()` and `check_engine_media()`: one prepared
+  probe image, the engine's prompt-token report compared with the counted ones -- a mismatch is refused, a
+  reply without usage recorded `not_checked`, never silent.
+
+The two role vocabularies meet in one written mapping, `ENGINE_ADAPTER_ROLES`
+(`rcp_ndcg.inference.adapters.base`): a `judge` engine speaks `judge` adapters, an `encoder` engine `embed` or
+`multi_vector` ones, a `reranker` engine `rerank` ones. Where the runners resolve an engine onto a config (the
+engine overlay), `check_engine_api` refuses a config whose `api` selects an adapter of a different engine
+role.
 
 ## Usage
 

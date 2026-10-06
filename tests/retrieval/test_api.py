@@ -44,6 +44,11 @@ from rcp_ndcg.retrieval import (
 )
 from rcp_ndcg.retrieval import _api as retrieval_api
 from rcp_ndcg.retrieval.config import _OLD_SHAPE_HINT
+from tests.conftest import SESSION_TOKENIZER
+
+_SERVED_BUDGET: dict[str, Any] = {"tokenizer": str(SESSION_TOKENIZER), "max_tokens": 8192}
+_SERVED_RERANK_BUDGET: dict[str, Any] = {**_SERVED_BUDGET, "use_activation": False}
+
 
 DOCS = {
     "d1": "tortoises move slowly across the sand",
@@ -103,11 +108,16 @@ def hosted_wire(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
 
     real = transport_module.Transport
 
-    def patched(endpoint: Any, *, httpx_transport: httpx.AsyncBaseTransport | None = None) -> Any:
-        return real(endpoint, httpx_transport=httpx.MockTransport(handler))
+    def patched(
+        endpoint: Any,
+        *,
+        auth: Any = None,
+        httpx_transport: httpx.AsyncBaseTransport | None = None,
+    ) -> Any:
+        return real(endpoint, auth=auth, httpx_transport=httpx.MockTransport(handler))
 
-    monkeypatch.setattr("rcp_ndcg.inference.clients.embed.Transport", patched)
-    monkeypatch.setattr("rcp_ndcg.inference.clients.rerank.Transport", patched)
+    # the role clients read Transport from the client base (which builds it for a config)
+    monkeypatch.setattr("rcp_ndcg.inference.clients._base.Transport", patched)
     monkeypatch.setenv("CO_API_KEY", "test-key")
     monkeypatch.setenv("VOYAGE_API_KEY", "test-key")
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
@@ -145,7 +155,10 @@ def test_the_retriever_config_is_a_union_discriminated_on_kind() -> None:
 @pytest.mark.parametrize(
     ("encoder", "api_type"),
     [
-        ({"api": "openai_embeddings", "model": "m", "base_url": "http://h:8000/v1"}, ServedEmbedding),
+        (
+            {"api": "openai_embeddings", "model": "m", "base_url": "http://h:8000/v1", **_SERVED_BUDGET},
+            ServedEmbedding,
+        ),
         ({"api": "cohere", "model": "m"}, CohereEmbedding),
         ({"api": "voyage", "model": "m"}, VoyageEmbedding),
         ({"api": "gemini", "model": "m"}, GeminiEmbedding),
@@ -158,7 +171,10 @@ def test_an_encoder_config_is_its_role_endpoint(encoder: dict, api_type: type) -
 @pytest.mark.parametrize(
     ("reranker", "api_type"),
     [
-        ({"api": "rerank", "model": "m", "base_url": "http://h:8000/v1"}, ServedReranker),
+        (
+            {"api": "rerank", "model": "m", "base_url": "http://h:8000/v1", **_SERVED_RERANK_BUDGET},
+            ServedReranker,
+        ),
         ({"api": "cohere", "model": "rerank-v4.0-pro"}, CohereReranker),
         ({"api": "voyage", "model": "rerank-2.5", "batch_size": 50}, VoyageReranker),
     ],
@@ -218,8 +234,18 @@ def test_the_old_shapes_load_through_the_cli_as_a_config_error(tmp_path: Path) -
 
 def test_single_and_multi_vector_retrievers_are_different_kinds() -> None:
     adapter = TypeAdapter(RetrieverConfig)
-    pooling = {"api": "vllm_pooling", "model": "colqwen", "base_url": "http://h:8000/v1"}
-    served = {"api": "openai_embeddings", "model": "colqwen", "base_url": "http://h:8000/v1"}
+    pooling = {
+        "api": "vllm_pooling",
+        "model": "colqwen",
+        "base_url": "http://h:8000/v1",
+        **_SERVED_BUDGET,
+    }
+    served = {
+        "api": "openai_embeddings",
+        "model": "colqwen",
+        "base_url": "http://h:8000/v1",
+        **_SERVED_BUDGET,
+    }
 
     # A cross-role api is refused where the config is read, with the registry's own message.
     with pytest.raises(ConfigError, match="unknown embed adapter 'vllm_pooling'") as caught:
@@ -244,20 +270,61 @@ def test_where_an_encoder_runs_is_not_part_of_what_an_index_is() -> None:
 
 def test_a_listwise_reranker_takes_no_batch_size_and_a_hosted_one_no_engine_fields() -> None:
     with pytest.raises(ValidationError, match="listwise"):
-        _RERANKER.validate_python({"api": "rerank", "model": "jina-reranker-v3", "listwise": True, "batch_size": 4})
+        _RERANKER.validate_python(
+            {
+                "api": "rerank",
+                "model": "jina-reranker-v3",
+                "listwise": True,
+                "batch_size": 4,
+                **_SERVED_RERANK_BUDGET,
+            }
+        )
     with pytest.raises(ValidationError, match="hosted"):
         _RERANKER.validate_python({"api": "voyage", "model": "rerank-2.5", "use_activation": True})
     with pytest.raises(ValidationError, match="hosted"):
         _RERANKER.validate_python({"api": "cohere", "model": "rerank-v4.0-pro", "instruction": "field"})
 
 
-def test_a_reranker_refuses_max_tokens_where_its_client_is_built(dataset) -> None:
-    """A budget is never silently ignored: the clients refuse it until the text-budget mechanism wires the cut."""
+def test_a_served_reranker_config_builds_its_client(dataset) -> None:
+    """The budget is wired: a served paper-style config (budget declared) builds its client, and the config
+    that omits it is refused at the config (never silently ignored)."""
     from rcp_ndcg.inference.clients import RerankClient
 
-    config = validate_reranker({"api": "rerank", "model": "m", "base_url": "http://h:8000/v1", "max_tokens": 8192})
-    with pytest.raises(ConfigError, match="max_tokens"):
-        RerankClient(config)
+    config = validate_reranker({"api": "rerank", "model": "m", "base_url": "http://h:8000/v1", **_SERVED_RERANK_BUDGET})
+    client = RerankClient(config, sender=_recording_sender())
+    try:
+        assert client.config.max_tokens == 8192
+    finally:
+        client.close()
+    with pytest.raises(ConfigError, match="tokenizer"):
+        validate_reranker({"api": "rerank", "model": "m", "base_url": "http://h:8000/v1", "max_tokens": 8192})
+
+
+def _recording_sender() -> Any:
+    """A sender with the sync bridge, answering one score per document."""
+    from rcp_ndcg.inference.types import Reply
+
+    class _Recording:
+        async def send(self, calls: list[Any]) -> list[Reply]:
+            documents = calls[0].json["documents"]
+            rows = [{"index": i, "relevance_score": float(i)} for i in range(len(documents))]
+            return [Reply(200, {"results": rows}, {}) for _ in calls]
+
+        async def probe(self) -> list[Any]:
+            return []
+
+        @property
+        def usage(self) -> Any:
+            from rcp_ndcg.inference.types import Usage
+
+            return Usage()
+
+        def run(self, coroutine: Any) -> Any:
+            import asyncio
+
+            return asyncio.run(coroutine)
+
+    return _Recording()
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +346,7 @@ def test_bm25_indexes_and_searches_a_dataset(dataset, tmp_path: Path) -> None:
 
 def test_dense_retrieval_ranks_by_inner_product_and_reuses_an_index(dataset, tmp_path: Path) -> None:
     """A fake served encoder, the real client and transport; the same identity reuses the index."""
-    config = DenseConfig(encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub"))
+    config = DenseConfig(encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub", **_SERVED_BUDGET))
 
     first = retrieve(dataset, config, depth=3, out=tmp_path / "idx")
     stamp = (tmp_path / "idx" / "index.json").stat().st_mtime_ns
@@ -295,7 +362,9 @@ def test_dense_retrieval_ranks_by_inner_product_and_reuses_an_index(dataset, tmp
 
 def test_late_interaction_indexes_and_searches_a_ragged_index(dataset, tmp_path: Path) -> None:
     """A pooling endpoint builds the ragged index (vectors + offsets) and searches it by MaxSim."""
-    config = LateInteractionConfig(encoder=ServedPooling(base_url="fake://seed/3?dim=4", model="colqwen", dim=4))
+    config = LateInteractionConfig(
+        encoder=ServedPooling(base_url="fake://seed/3?dim=4", model="colqwen", dim=4, **_SERVED_BUDGET)
+    )
 
     built = index(dataset, config, out=tmp_path / "idx")
     rankings = search(built, dataset, depth=3)
@@ -309,10 +378,12 @@ def test_late_interaction_indexes_and_searches_a_ragged_index(dataset, tmp_path:
 
 def test_a_served_encoder_without_a_url_is_refused_where_its_client_is_built(dataset, tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="no base_url") as caught:
-        retrieve(dataset, DenseConfig(encoder=ServedEmbedding(model="m")), out=tmp_path / "idx")
+        retrieve(dataset, DenseConfig(encoder=ServedEmbedding(model="m", **_SERVED_BUDGET)), out=tmp_path / "idx")
     assert "serve.encoder" in (caught.value.hint or "")
     with pytest.raises(ConfigError, match="no base_url"):
-        retrieve(dataset, LateInteractionConfig(encoder=ServedPooling(model="m")), out=tmp_path / "idx")
+        retrieve(
+            dataset, LateInteractionConfig(encoder=ServedPooling(model="m", **_SERVED_BUDGET)), out=tmp_path / "idx"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -354,16 +425,21 @@ def test_the_index_identity_carries_the_tokenizer_digest(dataset, tmp_path: Path
     other = save(byte_bpe_tokenizer(), tmp_path / "other")
 
     def identity(encoder: dict) -> str:
-        config = DenseConfig(encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub", **encoder))
+        config = DenseConfig(
+            encoder=ServedEmbedding(model="stub", **{**_SERVED_BUDGET, "base_url": "fake://seed/7?dim=8", **encoder})
+        )
         doc_ids, contents = retrieval_api._corpus(dataset)
         return retrieval_api._identity(config, doc_ids, contents)
 
-    plain = identity({})
-    with_digest = identity({"tokenizer": str(first)})
-
-    assert "tokenizer" not in plain and plain != with_digest
-    assert identity({"tokenizer": str(second)}) == with_digest, "the same bytes (any path) share the identity"
-    assert identity({"tokenizer": str(other)}) != with_digest, "different tokenizer bytes re-key"
+    # The served role always declares a tokenizer (the explicit budget), so the digest is content: the
+    # same bytes under any path share the identity, different bytes re-key, and the URL never does.
+    base = identity({})
+    assert identity({"tokenizer": str(first)}) == base, "the same bytes (any path) share the identity"
+    assert identity({"tokenizer": str(second)}) == base, "the same bytes (any path) share the identity"
+    assert identity({"tokenizer": str(other)}) != base, "different tokenizer bytes re-key"
+    assert identity({"base_url": "http://elsewhere.test:8000/v1"}) == identity({"base_url": "fake://seed/7?dim=8"}), (
+        "a URL is runtime, never identity"
+    )
 
 
 def test_a_hosted_encoder_embeds_through_its_public_profile(dataset, tmp_path: Path, hosted_wire) -> None:
@@ -399,7 +475,9 @@ def test_a_hosted_encoder_key_is_read_from_its_profile_variables(
 
 def test_rerank_rescores_the_top_candidates_through_the_fake_endpoint(dataset, tmp_path: Path) -> None:
     """Scores align to the candidates, and the checkpoint records each scored query."""
-    config = ServedReranker(base_url="fake://seed/1", model="stub-reranker", instruction="fold")
+    config = ServedReranker(
+        base_url="fake://seed/1", model="stub-reranker", instruction="fold", **_SERVED_RERANK_BUDGET
+    )
     candidates = Rankings.from_scores({"q1": {"d1": 3.0, "d2": 2.0, "d3": 1.0}}, system="bm25")
 
     rescored = rerank(dataset, candidates, config, depth=2, out=tmp_path / "rerank")
@@ -431,7 +509,12 @@ def test_the_rerank_client_receives_the_raw_query_and_folds_it_once(dataset) -> 
                 replies.append(Reply(200, {"results": rows}, {}))
             return replies
 
-    config = ServedReranker(base_url="http://rerank.test/v1", model="stub-reranker")
+        def run(self, coroutine: Any) -> Any:
+            import asyncio
+
+            return asyncio.run(coroutine)
+
+    config = ServedReranker(base_url="http://rerank.test/v1", model="stub-reranker", **_SERVED_RERANK_BUDGET)
     client = RerankClient(config, sender=RecordingSender())
     example = RankingExample(
         query_id="q1", query="base query", instruction="Find relevant passages", doc_ids=["d1"], docs=["a document"]

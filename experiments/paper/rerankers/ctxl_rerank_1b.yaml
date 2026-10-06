@@ -16,3 +16,4 @@ tokenizer: ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b@8fd1edf6a98564cb
 max_tokens: 8192
 query_max_tokens: 4096
 instruction: none
+use_activation: false  # the raw logit is stored -- the paper reference (reference/contextual.py) reads it as is
