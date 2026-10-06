@@ -50,6 +50,15 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
   `chunk` and `fail` are the alternatives) and `aggregation: max` is the only chunk aggregation. The engine's
   `max_model_len` must fit the client's budget. `serve.pooler_config` keys are validated against the pinned
   engine's `PoolerConfig` fields, because the engine rejects unknown keys.
+- **The engine is the tokenization truth (R29).** With an engine URL, stage 1 sends `fit`'s rendered prompts
+  to the engine's `/tokenize` (same `add_special_tokens` as the route) and requires the ids and counts to
+  equal `fit`'s; mismatches are reported per shape in `equivalence.json` (`engine_tokenize_check`) and fail
+  the stage. Without an engine (CPU), the check is reported as `not_run`, never as passed.
+- **The reference runs as a subprocess.** Stage 2 runs the recipe's `reference.py` as a subprocess
+  (`--reference-python <path>`, required when stage 2 runs; no default) that reads the pairs file and writes
+  scores or vectors to a file the harness compares. The harness process imports no torch or transformers; the
+  reference environment is documented in `packages/rcp-ndcg-vllm/requirements-reference.txt`. On the node, the
+  reference must finish and release its GPU before the engine starts on that GPU.
 
 Recipe YAML at a glance (abridged; the schema's docstrings define every field):
 
