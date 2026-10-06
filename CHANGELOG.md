@@ -683,6 +683,10 @@ released together.
   an overlaid config passes every validator a configured one does (a URL is normalised as a configured one is);
   an invalid overlay (e.g. a `fake://` replica list) is refused with the typed `ConfigError` where it is applied,
   never half-applied.
+- `tests/contract/snapshots/python_api.json` regenerated for `__version__`: the committed version is 0.0.1
+  (the root `pyproject.toml`), but the snapshot still pinned the pre-bump install (0.1.0), so every
+  environment whose venv postdates the bump failed `test_surface_matches_snapshot[python_api]`. No product
+  change: the value now records the version that ships.
 
 - `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/judge-config.v1.json`,
   `schemas/run-config.v1.json`) regenerated for the moved and new fields; `tests/test_errors.py` now requires
