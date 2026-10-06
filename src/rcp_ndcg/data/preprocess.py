@@ -31,7 +31,7 @@ refuses to run without a tokenizer.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
@@ -427,6 +427,48 @@ class TextCutRecord:
         return f"TextCutRecord({self.as_row()!r})"
 
 
+def read_census_rows(path: str | Path) -> Iterator[dict[str, Any]]:
+    """The JSON rows of a census file (``preprocessing.jsonl``), in order.
+
+    A torn last line -- the writer died mid-append, exactly what the judgement records tolerate -- is skipped
+    with a warning, so a killed pass does not poison every resumed one; a malformed row further in is a
+    :class:`~rcp_ndcg.errors.DataError` naming the line (the file is not a census, and skipping silently would
+    misattribute provenance). The one reader of the file's rows: :class:`TextTruncationCensus`'s and
+    :class:`~rcp_ndcg.data.prepare.MediaCensus`'s resumptions both read through it.
+
+    Yields:
+        Each row, in file order.
+
+    Raises:
+        DataError: a complete line that is not a JSON object.
+    """
+    path = Path(path)
+    if not path.is_file():
+        return
+    with path.open(encoding="utf-8") as handle:
+        lines = handle.readlines()
+    for number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError as exc:
+            if number == len(lines) and not line.endswith("\n"):
+                logger.warning("%s:%d: ignoring a torn last census row (%d bytes)", path, number, len(line))
+                continue
+            raise DataError(
+                f"{path}:{number}: not a census row: {exc}",
+                hint="the shared census record of the judging passes is corrupt; repair the line or remove the "
+                "file (the cuts are provenance, never read as numbers)",
+            ) from exc
+        if not isinstance(row, dict):
+            raise DataError(
+                f"{path}:{number}: not a census row (a JSON object, got {type(row).__name__})",
+                hint="the shared census record of the judging passes is corrupt; repair the line or remove the file",
+            )
+        yield row
+
+
 class TextTruncationCensus:
     """Where a truncation becomes observable.
 
@@ -471,7 +513,9 @@ class TextTruncationCensus:
             with open(self.sink, "a", encoding="utf-8") as handle:
                 handle.write(json.dumps(row, sort_keys=True) + "\n")
         except OSError:
-            logger.debug("text census sink %s is not writable; cuts stay in memory only", self.sink, exc_info=True)
+            # A provenance guarantee that degrades silently is worth a warning a person can see: a resumed pass
+            # reads this file to decide which cuts are already on record.
+            logger.warning("text census sink %s is not writable; cuts stay in memory only", self.sink, exc_info=True)
 
     def record(
         self,

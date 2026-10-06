@@ -419,11 +419,11 @@ def _store_census(root: Path, loaded: TextTruncationCensus) -> TextTruncationCen
     """
     sink = root / PREPROCESSING_RECORD
     on_record: set[tuple[Any, ...]] = set()
-    if sink.is_file():
-        for line in sink.read_text(encoding="utf-8").splitlines():
-            row = json.loads(line)
-            if row["mechanism"] == TextTruncationCensus.DOC_POLICY:
-                on_record.add((row["corpus"], row["doc_id"], row.get("kept_tokens"), row["kept_chars"]))
+    from rcp_ndcg.data.preprocess import read_census_rows
+
+    for row in read_census_rows(sink):
+        if row["mechanism"] == TextTruncationCensus.DOC_POLICY:
+            on_record.add((row["corpus"], row["doc_id"], row.get("kept_tokens"), row["kept_chars"]))
     census = TextTruncationCensus(sink=sink)
     for cut in loaded.cuts(mechanism=TextTruncationCensus.DOC_POLICY):
         cut_key = (cut.corpus, cut.doc_id, cut.kept_tokens, cut.kept_chars)

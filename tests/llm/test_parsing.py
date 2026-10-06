@@ -64,6 +64,8 @@ RECOVERED = {
     "stray-quote-after-a-number": OBJECT.replace("-2.0}", '-2.0"}'),
     "think-block-with-numbered-prose": "<think>1. doc_3\n2. doc_1\n3. doc_2 {draft}</think>\n" + OBJECT,
     "orphaned-think-end-with-numbered-prose": "Ranking: 3, 1, 2.\n1. doc_3 is best\n</think>\n\n" + OBJECT,
+    "orphaned-think-end-after-the-object": OBJECT + "\n</think>",  # a stray tag never erases the object
+    "orphaned-think-end-after-the-object-with-prose": OBJECT + "\n</think>\n(its reasoning was cut)",
     "code-fence": "```json\n" + OBJECT + "\n```",
     "code-fence-inside-prose": "Here is the ranking:\n```json\n" + OBJECT + "\n```\nI ranked 3 documents.",
     "prose-before-the-json": "Sure. Of documents 1, 2 and 3, doc_3 is weakest:\n" + OBJECT,
@@ -187,8 +189,9 @@ class TestTournament:
 # ---------------------------------------------------------------------------
 
 _PROSE = ["Ranking:", "1.", "2)", "doc_3", "doc_1 >", "best", "3, 1, 2", "\n", "- doc_2", "score 4.5", "#"]
-#: What may follow the object. Not ``</think>``: everything before an orphaned ``</think>`` is reasoning.
-_TAIL = ["}", "}}", "]", "{", '{"ranking": [1]}', "doc_1", "4 3 2 1", "```", "\n", "<think>", '"', "..."]
+#: What may follow the object, an orphaned ``</think>`` included: only what sits before the
+#: object is reasoning, so a tag after it must never erase the object.
+_TAIL = ["}", "}}", "]", "{", '{"ranking": [1]}', "doc_1", "4 3 2 1", "```", "\n", "<think>", "</think>", '"', "..."]
 
 
 def _junk(rng: random.Random, words: list[str], n: int) -> str:

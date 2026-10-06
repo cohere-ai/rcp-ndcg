@@ -497,6 +497,30 @@ def test_the_load_time_cuts_are_recorded_once_per_store(tmp_path: Path, word_tok
     assert kept == {(doc, 2) for doc in shown} | {(doc, 3) for doc in shown}
 
 
+def test_a_torn_last_census_line_does_not_poison_the_store(
+    tmp_path: Path, word_tokenizer_file: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A pass killed mid-append leaves a torn last line of ``preprocessing.jsonl``; the documented recovery
+    story (re-run over the same store) must survive it: the torn line is skipped with a warning, and a row
+    that is not merely torn but malformed is a typed error naming the line."""
+    policy = Preprocessing(text=TextPolicy(on_overflow="truncate", max_tokens=2))
+    store = tmp_path / "store"
+    _rubric(store, _tokenized(FakeJudge(lambda text: 0.0), word_tokenizer_file), preprocessing=policy)
+    record = store / "preprocessing.jsonl"
+    record.write_text(record.read_text(encoding="utf-8") + '{"mechanism": "doc_pol', encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger="rcp_ndcg"):
+        _rubric(store, _tokenized(FakeJudge(lambda text: 0.0), word_tokenizer_file), preprocessing=policy)
+    assert any("torn" in message for message in caplog.messages)
+
+    record.write_text(
+        "".join(record.read_text(encoding="utf-8").splitlines(keepends=True)[:-1]) + "not json at all\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(DataError, match="preprocessing.jsonl"):
+        _rubric(store, _tokenized(FakeJudge(lambda text: 0.0), word_tokenizer_file), preprocessing=policy)
+
+
 def test_the_window_text_budget_follows_the_context() -> None:
     judge_cfg = JudgeConfig(base_url="http://h/v1", model="m", context_tokens=10_000, max_output_tokens=1_000)
     assert window_tokens(judge_cfg.model_copy(update={"context_tokens": None}), 10, overhead_tokens=500) is None

@@ -504,9 +504,10 @@ class MediaCensus:
     def __init__(self, *, sink: str | Path | None = None) -> None:
         self.sink = Path(sink) if sink is not None else None
         self._seen: set[tuple[str, str, str]] = set()
-        if self.sink is not None and self.sink.is_file():
-            for line in self.sink.read_text(encoding="utf-8").splitlines():
-                row = json.loads(line)
+        if self.sink is not None:
+            from rcp_ndcg.data.preprocess import read_census_rows
+
+            for row in read_census_rows(self.sink):
                 if row.get("mechanism") == MEDIA_MECHANISM:
                     self._seen.add((row["corpus"], row["doc_id"], row["uri"]))
 
