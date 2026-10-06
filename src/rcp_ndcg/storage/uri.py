@@ -68,11 +68,27 @@ def join(base: str | Path, *parts: str) -> str:
     return text
 
 
+def local_path(uri: str | Path) -> Path | None:
+    """*uri* as a local path when it names one (a plain path or a ``file://`` URL), else ``None``.
+
+    The local fast paths route through this, so a ``file://`` spelling gets the same answer as the
+    plain path (``Path('file:///x')`` is a relative directory literally named ``file:``) and a remote
+    URI never reaches a ``Path``.
+    """
+    protocol, rest = split_protocol(uri)
+    if protocol is None:
+        return Path(str(uri))
+    if protocol == "file":
+        return Path(rest if rest.startswith("/") else f"/{rest}")
+    return None
+
+
 def parent(uri: str | Path) -> str:
     """Return *uri* without its final segment."""
     text = str(uri).rstrip("/")
-    if not is_remote(text):
-        return str(Path(text).parent)
+    file_local = local_path(text)
+    if file_local is not None:
+        return str(file_local.parent)
     protocol, rest = split_protocol(text)
     rest = rest.lstrip("/")
     if "/" not in rest:
@@ -86,6 +102,7 @@ __all__ = [
     "is_remote",
     "join",
     "local_dir",
+    "local_path",
     "parent",
     "protocol_of",
     "split_protocol",

@@ -9,14 +9,17 @@ not installed raises a message naming the extra to install rather than an
 
 from __future__ import annotations
 
+import os
+import posixpath
 import shutil
-from collections.abc import Iterator
+import tempfile
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import IO, Any
 
-from rcp_ndcg.errors import DataError, DependencyError, dependency_error
-from rcp_ndcg.storage.uri import is_remote, protocol_of, split_protocol
+from rcp_ndcg.errors import ConfigError, DataError, DependencyError, dependency_error
+from rcp_ndcg.storage.uri import is_remote, local_path, protocol_of, split_protocol
 
 #: Protocol -> the module that serves it, so a missing backend names the install command
 #: (:func:`rcp_ndcg.errors.dependency_error` knows which extra provides which module).
@@ -101,8 +104,9 @@ def parent_of(uri: str | Path) -> str:
 
 def exists(uri: str | Path) -> bool:
     """Return ``True`` if *uri* exists."""
-    if not is_remote(uri):
-        return Path(uri).exists()
+    local = local_path(uri)
+    if local is not None:
+        return local.exists()
     return bool(filesystem(uri).exists(_strip(uri)))
 
 
@@ -112,8 +116,9 @@ def makedirs(uri: str | Path) -> None:
     Object stores have no directories; the call is a no-op there, which is why
     writers can call this unconditionally.
     """
-    if not is_remote(uri):
-        Path(uri).mkdir(parents=True, exist_ok=True)
+    local = local_path(uri)
+    if local is not None:
+        local.mkdir(parents=True, exist_ok=True)
         return
     fs = filesystem(uri)
     try:
@@ -146,18 +151,33 @@ def ls(uri: str | Path, *, recursive: bool = False) -> list[str]:
     return out
 
 
+def _normalised(fs: Any, text: str) -> str:
+    """*text* with dot segments resolved and a trailing slash dropped, in the filesystem's own
+    spelling. Local paths go through ``os.path.normpath``; a remote URI keeps its scheme and
+    bucket and normalises only the path below them, so a surviving ``..`` can never cross the
+    bucket boundary silently."""
+    protocol, _ = split_protocol(text)
+    stripped = str(fs._strip_protocol(text)).rstrip("/")
+    if protocol is None or protocol == "file":
+        return os.path.normpath(stripped)
+    scheme, _, tail = stripped.partition("://")
+    return f"{scheme}://{posixpath.normpath(tail)}" if tail else stripped
+
+
 def relative(uri: str | Path, root: str | Path) -> str:
     """The ``/``-separated path of *uri* below the directory *root*, however either is spelled.
 
-    Both are normalised as their filesystem normalises paths (a relative local path becomes absolute, a
-    ``file://`` or ``gs://`` prefix is dropped), so an entry of :func:`ls` and the root it was listed from agree.
+    Both are normalised as their filesystem normalises paths (dot segments resolved, a ``file://``
+    or ``gs://`` prefix dropped), so an entry of :func:`ls` and the root it was listed from agree,
+    and a ``..`` cannot escape the root: ``relative('/base/root/../../etc/passwd', '/base/root')``
+    is refused, not returned.
 
     Raises:
         DataError: *uri* is not below *root*.
     """
     fs = filesystem(root)
-    base = str(fs._strip_protocol(str(root))).rstrip("/")
-    path = str(fs._strip_protocol(str(uri)))
+    base = _normalised(fs, str(root))
+    path = _normalised(fs, str(uri))
     if not path.startswith(f"{base}/"):
         raise DataError(f"{uri} is not below {root}")
     return path[len(base) + 1 :]
@@ -189,8 +209,8 @@ def get(remote: str | Path, local: str | Path) -> Path:
     """Download *remote* to *local* and return the local path."""
     target = Path(local)
     target.parent.mkdir(parents=True, exist_ok=True)
-    if not is_remote(remote):
-        source = Path(remote)
+    source = local_path(remote)
+    if source is not None:
         if source.resolve() != target.resolve():
             shutil.copyfile(source, target)
         return target
@@ -200,10 +220,54 @@ def get(remote: str | Path, local: str | Path) -> Path:
 
 def info(uri: str | Path) -> dict[str, Any]:
     """Return the backend's metadata for *uri* (size, mtime, etag/generation)."""
-    if not is_remote(uri):
-        stat = Path(uri).stat()
+    local = local_path(uri)
+    if local is not None:
+        stat = local.stat()
         return {"size": stat.st_size, "mtime": stat.st_mtime}
     return dict(filesystem(uri).info(_strip(uri)))
+
+
+def publish(target: str | Path, write: Callable[[Path], Any]) -> None:
+    """Materialise *target* atomically: *write* fills a temp file beside it, then one rename puts it in place.
+
+    A reader of *target* sees either the previous file or the complete new one, never a half-written one
+    -- which is what concurrent readers of a media cache, a rendered page or a downloaded corpus would
+    otherwise see. The one home of the discipline: writers elsewhere call this instead of growing their
+    own temp-file copies.
+
+    Only a local path can publish by rename; a remote target raises, because object stores make each
+    object visible whole anyway -- their writers use :func:`publish_bytes` or :func:`write_bytes`.
+
+    Raises:
+        ConfigError: *target* is a remote URI.
+    """
+    path = local_path(target)
+    if path is None:
+        raise ConfigError(
+            f"publish needs a local target, got {target}",
+            hint="object stores make each object visible whole: write_bytes them directly",
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.{os.getpid()}.", dir=path.parent)
+    os.close(fd)
+    tmp = Path(tmp_name)
+    try:
+        write(tmp)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def publish_bytes(target: str | Path, payload: bytes) -> None:
+    """Write *payload* to *target*, atomically on a local filesystem (:func:`publish`).
+
+    A remote URI takes the payload directly: an object store publishes per object, so there is no
+    half-written file a concurrent reader could see.
+    """
+    if is_remote(target):
+        write_bytes(target, payload)
+        return
+    publish(target, lambda tmp: tmp.write_bytes(payload))
 
 
 __all__ = [
@@ -215,6 +279,8 @@ __all__ = [
     "makedirs",
     "open_path",
     "parent_of",
+    "publish",
+    "publish_bytes",
     "read_bytes",
     "read_text",
     "relative",

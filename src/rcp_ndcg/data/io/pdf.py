@@ -122,7 +122,7 @@ class PdfReader(SourceReader):
                 # float, which is the whole point of rendering at a chosen DPI.
                 image = document[index].render(scale=scale).to_pil()  # type: ignore[arg-type]
                 payload = _encode(image, self.image_format)
-                storage.write_bytes(target, payload)
+                storage.publish_bytes(target, payload)
                 refs.append(
                     MediaRef(
                         uri=target,
