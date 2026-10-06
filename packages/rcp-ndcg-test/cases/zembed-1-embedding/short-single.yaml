@@ -1,0 +1,25 @@
+id: zembed-1-embedding/short-single
+recipe: zembed-1-embedding
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: short
+  batch: single
+inputs:
+  instruction: null
+  queries:
+  - id: q1
+    text: What arrived at the harbour in June?
+  documents:
+  - id: d1
+    text: The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance:
+    abs: 0.002
+  origin: reference
+  status: pending_gpu
+notes: 'Minimal n=1 pair: rendered query 19 tokens, document 28 (recipe tokenizer zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a; prefix 9 + content + suffix 2). Tolerance: bf16 serve (recipe dtype) vs bf16 sentence-transformers reference; expected cosine deviation ~1e-3 (research r-zembed1), headroom to 2e-3. Values are filled by the GPU wave (reference + engine recorded).'

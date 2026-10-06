@@ -1,0 +1,33 @@
+id: zembed-1-embedding/short-uniform
+recipe: zembed-1-embedding
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: short
+  batch: uniform
+inputs:
+  instruction: null
+  queries:
+  - id: q1
+    text: What arrived at the harbour in June?
+  - id: q2
+    text: What did the surveyors do after the rain?
+  documents:
+  - id: d1
+    text: The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
+  - id: d2
+    text: Rain swept the valley overnight, and the surveyors delayed their climb until noon.
+  - id: d3
+    text: A quiet canal crossed the market district, carrying barges loaded with timber and slate.
+  - id: d4
+    text: The letter described a bridge of stone and timber spanning the river at its narrowest point.
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance:
+    abs: 0.002
+  origin: reference
+  status: pending_gpu
+notes: 'Uniform short batch, 2 queries x 4 documents; rendered documents 27-29 tokens (28/27/28/29), queries 19-21 (recipe tokenizer zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a). Tolerance: bf16 serve (recipe dtype) vs bf16 sentence-transformers reference; expected cosine deviation ~1e-3 (research r-zembed1), headroom to 2e-3. Values are filled by the GPU wave (reference + engine recorded).'
