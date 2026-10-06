@@ -3,8 +3,9 @@
 The recipe's ``client`` block is the product's endpoint config
 (:class:`rcp_ndcg.inference.config.EmbeddingEndpoint`, ``PoolingEndpoint`` or ``RerankEndpoint``): one schema,
 the product's. Stage 1 fits every sampled prompt with the product's
-:func:`rcp_ndcg.data.preprocess.fit`; stage 2 sends through the product's role clients
-(:mod:`rcp_ndcg.inference.clients`); the reference runs as a subprocess in its own environment.
+:func:`rcp_ndcg.data.preprocess.fit`; stage 2 sends through the product's wire path (the endpoint
+config's adapter and transport, the inputs pre-fitted — the wired role clients make the same fit call
+inside their ``encode``); the reference runs as a subprocess in its own environment.
 """
 
 from __future__ import annotations

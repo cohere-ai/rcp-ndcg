@@ -148,19 +148,17 @@ def test_gcs_cli_fails_with_one_line(
 def test_gcs_cp_remote_directory_download_through_the_real_dispatch(tmp_path: Path) -> None:
     """A gs:// prefix source takes the contents form on the CLI path (the stage download's shape).
 
-    The dispatch probes the listing: a prefix with children goes to `cp -r SRC/* DST` (contents), a
-    single object to `cp SRC DST`. The fake gcloud records the argv, so the regression this test pins
-    (a gs:// source silently losing the recursive form, which broke the stage download) cannot return.
+    The caller declares the kind (`dir`), and the dispatch runs exactly one recursive contents copy
+    (`storage cp -r SRC/* DST`, the wildcard expanded by the service). The fake gcloud records the
+    argv, so the regression this test pins — a gs:// source silently losing the recursive form, which
+    broke the stage download — cannot return.
     """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     log = tmp_path / "gcloud-dir.log"
     fake_gcloud = bin_dir / "gcloud"
     fake_gcloud.write_text(
-        "#!/usr/bin/env bash\n"
-        f'printf "%s\\n" "$*" >>"{log}"\n'
-        'if [[ "$2" == "ls" ]]; then echo "${3%/}/"; exit 0; fi\n'  # a prefix listing: the prefix itself
-        "exit 0\n",
+        f'#!/usr/bin/env bash\nprintf "%s\\n" "$*" >>"{log}"\nexit 0\n',
         encoding="utf-8",
     )
     fake_gcloud.chmod(0o755)
@@ -190,16 +188,13 @@ def test_gcs_cp_remote_directory_download_through_the_real_dispatch(tmp_path: Pa
 
 
 def test_gcs_cp_remote_single_object_takes_the_file_branch(tmp_path: Path) -> None:
-    """A gs:// source that lists as exactly one object copies as a file (no -r, no wildcard)."""
+    """A gs:// source the caller declares as a file takes the plain form (no -r, no wildcard)."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     log = tmp_path / "gcloud-file.log"
     fake_gcloud = bin_dir / "gcloud"
     fake_gcloud.write_text(
-        "#!/usr/bin/env bash\n"
-        f'printf "%s\\n" "$*" >>"{log}"\n'
-        'if [[ "$2" == "ls" ]]; then echo "${3%/}"; exit 0; fi\n'  # the object itself, no trailing slash
-        "exit 0\n",
+        f'#!/usr/bin/env bash\nprintf "%s\\n" "$*" >>"{log}"\nexit 0\n',
         encoding="utf-8",
     )
     fake_gcloud.chmod(0o755)

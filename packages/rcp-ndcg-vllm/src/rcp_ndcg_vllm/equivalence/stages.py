@@ -9,12 +9,12 @@ dictionaries for the report (every number with its referent).
   served ``chat_template`` renders to the declared shapes' ids, and — with an engine URL — requires the
   engine's ``/tokenize`` to agree with ``fit``'s ids and counts (R29: the engine is the tokenization truth;
   without an engine the check is reported ``not_run``, never passed).
-- Stage 2 sends through the product's role clients
-  (:class:`~rcp_ndcg.inference.clients.EmbeddingClient`, ``PoolingClient``, ``RerankClient``) built from
-  :func:`~rcp_ndcg_vllm.recipe.client_config`, and compares against the reference subprocess's ``score``/
-  ``embed`` output.  Every input is fitted first with the product's ``fit`` (the wired role clients
-  make the same call inside their ``encode``) and the fitted contents go through the product's adapter
-  and transport — the wire path, the adapter and the interpretation are the product's.
+- Stage 2 sends through the product's wire path (the role config from
+  :func:`~rcp_ndcg_vllm.recipe.client_config` drives the adapter and the
+  :class:`~rcp_ndcg.inference.transport.Transport`; the wired role clients are wave 0's embed path), and
+  compares against the reference subprocess's ``score``/``embed`` output.  Every input is fitted first
+  with the product's ``fit`` and the fitted contents go out through the product's adapter and
+  transport — the wire path, the adapter and the interpretation are the product's.
 """
 
 from __future__ import annotations
@@ -434,7 +434,7 @@ def _engine_tokenize(recipe: Recipe, base_url: str, text: str, *, add_special_to
 
 
 # ---------------------------------------------------------------------------
-# Stage 2: the product's role clients, the reference subprocess's outputs, the gates.
+# Stage 2: the product's wire path, the reference subprocess's outputs, the gates.
 # ---------------------------------------------------------------------------
 
 
@@ -454,10 +454,8 @@ def stage2_scores(
     adapter builds the :class:`~rcp_ndcg.inference.types.Call` objects, the product's
     :class:`~rcp_ndcg.inference.transport.Transport` sends them, and the adapter interprets the replies.
     Every input is fitted first with the product's ``fit`` (the wired role clients make the same call
-    inside their ``encode``).
-    Every input is fitted first with the product's ``fit`` (the wired role clients make the same call
     inside their ``encode``).  The reference runs as a subprocess in its own environment
-    (``--reference-python``); the harness process imports no torch.
+    (``--reference-python``, required); the harness process imports no torch.
     """
     rows = load_pairs(pairs_path)
     reference = _reference_outputs(recipe, reference_python, rows, device=device)
@@ -808,12 +806,12 @@ def _vector_stage2(
     served_model_name: str | None,
     recorder: Any | None,
 ) -> dict[str, Any]:
-    """Vectors from the served engine through the product's role client, against the reference's vectors.
+    """Vectors from the served engine through the product's adapter and transport, against the reference's.
 
     A dense embedder's vectors compare with a cosine floor per vector; a late-interaction model's ragged
     token vectors compare per token (in the transfer precision the product's client applied on the wire).
-    The inputs are fitted first (the product's ``fit``, the row's shape), and the fitted strings are what the
-    client sends.
+    The inputs are fitted first (the product's ``fit``, the row's shape), and the fitted strings are what
+    the adapter sends.
     """
     per_vector: list[dict[str, Any]] = []
     budget = _fitting().budget_of(recipe).model_copy(update={"tokenizer": _fitting().tokenizer_of(recipe).name})

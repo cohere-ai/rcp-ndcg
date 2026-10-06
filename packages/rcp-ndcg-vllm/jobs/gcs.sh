@@ -6,7 +6,8 @@
 # then the transfer path is chosen once and recorded for the report:
 #
 #   gcs_transfer_detect     -> prints gcloud | gsutil | python
-#   gcs_cp SRC DST          -> copy a file or directory, either side gs://
+#   gcs_cp SRC DST [dir|file|auto] -> copy a file or directory, either side gs://; for a gs:// source
+#                              the kind is required (auto is for local sources)
 #   gcs_ls URI              -> list a gs:// prefix
 #   gcs_rm URI              -> delete one gs:// object
 #
@@ -91,9 +92,13 @@ _gcs_cp_once() { # the transfer itself, once
             gsutil -m cp -r "${src%/}"/* "$dst"
           fi
         else
+          local had_dotglob had_nullglob
+          had_dotglob=$(shopt -p dotglob || true)
+          had_nullglob=$(shopt -p nullglob || true)
           shopt -s dotglob nullglob  # dotfiles copy like gcs.py's rglob; an empty dir copies nothing
           local files=("$src"/*)
-          shopt -u dotglob nullglob
+          [[ -n "$had_dotglob" ]] && eval "$had_dotglob"
+          [[ -n "$had_nullglob" ]] && eval "$had_nullglob"
           if ((${#files[@]} == 0)); then
             return 0  # an empty local directory: nothing to copy (the python branch behaves the same)
           fi
@@ -111,7 +116,7 @@ _gcs_cp_once() { # the transfer itself, once
         fi
       fi
       ;;
-    *) gcs_ensure_tools; gcs_run cp "$src" "$dst" ;;
+    *) gcs_ensure_tools; gcs_run cp "$src" "$dst" "$kind" ;;
   esac
 }
 

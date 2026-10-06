@@ -42,17 +42,22 @@ def _split(uri: str) -> str:
     return uri[len("gs://") :] if _is_gcs(uri) else uri
 
 
-def gcs_copy(src: str, dst: str, *, fs: Any = None) -> list[str]:
+def gcs_copy(src: str, dst: str, *, fs: Any = None, kind: str = "auto") -> list[str]:
     """Copy one file or directory between gs:// and the local filesystem (either side either way).
 
-    A directory source copies recursively (every file under it, same relative layout); the recursion is
-    decided by the source's kind, never by a flag the caller can get wrong. Returns the written target
-    paths (for tests and the caller's summary).
+    A directory source copies recursively (every file under it, same relative layout). The kind comes
+    from the caller when it declares one (``dir``/``file`` — the shell dispatch's contract, honoured
+    before any inference); ``auto`` decides by the source's kind on disk/service.
     """
     fs = fs or make_filesystem()
     src_remote = _is_gcs(src)
     src_path, dst_path = _split(src), _split(dst)
-    src_is_directory = bool(fs.isdir(src_path.rstrip("/"))) if src_remote else Path(src_path).is_dir()
+    if kind == "auto":
+        src_is_directory = bool(fs.isdir(src_path.rstrip("/"))) if src_remote else Path(src_path).is_dir()
+    elif kind == "dir":
+        src_is_directory = True
+    else:
+        src_is_directory = False
 
     written: list[str] = []
     if not src_is_directory:
@@ -119,6 +124,13 @@ def main(argv: list[str] | None = None) -> int:
     p_cp = sub.add_parser("cp", help="copy a file or directory, either side gs://")
     p_cp.add_argument("src")
     p_cp.add_argument("dst")
+    p_cp.add_argument(
+        "kind",
+        nargs="?",
+        default="auto",
+        choices=["dir", "file", "auto"],
+        help="the source's kind; auto decides by the source itself",
+    )
     p_ls = sub.add_parser("ls", help="list a gs:// prefix")
     p_ls.add_argument("uri")
     p_rm = sub.add_parser("rm", help="delete one gs:// object")
@@ -126,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "cp":
-            for target in gcs_copy(args.src, args.dst):
+            for target in gcs_copy(args.src, args.dst, kind=args.kind):
                 print(target)
         elif args.command == "ls":
             for entry in gcs_list(args.uri):

@@ -149,8 +149,10 @@ fail_step() { # fail_step STEP REASON: one line, the report, the engines stopped
   exit 1
 }
 
-# Every upload attempt is recorded (uploads.jsonl) and lands in the report's "uploads" section: a
-# failed upload is never silent - the report names the source, the destination and the error.
+# Every upload attempt is recorded (uploads.jsonl) and merged into the report's "uploads" section: a
+# failed upload is named with its source, destination and captured error. The only attempt that cannot
+# appear in an uploaded artifact is the artifact's own last copy; the stdout emit carries the complete
+# record (upload_artifacts merges after its last copy).
 record_upload() { # record_upload SRC DST OK ERROR
   python3 - "$1" "$2" "$3" "$4" >>"$WORK/uploads.jsonl" <<'PYEOF'
 import json
@@ -172,20 +174,27 @@ upload() { # upload LOCAL REMOTE: one copy through the transfer dispatch; a fail
 }
 
 upload_artifacts() {
-  # The logs go up first; their attempt records are merged into the report BEFORE the report itself is
-  # uploaded, so the durable artifact carries every failed upload except the artifact's own final copy
-  # (the stdout emit always carries the complete record).
+  # The engine logs upload first; their attempt records merge into the report, then the two report
+  # copies go up, each attempt re-merges before the next copy — so the second durable copy carries
+  # every record except its own, and a final merge before the stdout emit makes the emitted report
+  # complete. Only the very last upload attempt cannot appear in an artifact (a report cannot contain
+  # its own copy record); that one is a one-line stderr note.
+  merge_uploads() {
+    python3 "$REPORT_PY" merge --file "$REPORT" --key uploads --fragment <(
+      python3 -c 'import json, sys
+entries = [json.loads(line) for line in open(sys.argv[1], encoding="utf-8") if line.strip()]
+print(json.dumps(entries, indent=2))' "$WORK/uploads.jsonl"
+    ) >/dev/null
+  }
   : >"$WORK/uploads.jsonl"
   if [[ -d "$WORK/logs" ]]; then
     upload "$WORK/logs" "${OUT_URI%/}/logs/"
   fi
-  python3 "$REPORT_PY" merge --file "$REPORT" --key uploads --fragment <(
-    python3 -c 'import json, sys
-entries = [json.loads(line) for line in open(sys.argv[1], encoding="utf-8") if line.strip()]
-print(json.dumps(entries, indent=2))' "$WORK/uploads.jsonl"
-  ) >/dev/null
+  merge_uploads
   upload "$REPORT" "${OUT_URI%/}/wave0-report.json"
+  merge_uploads
   upload "$REPORT" "${RC_STAGE_URI%/}/reports/wave0-report-$STAMP.json"
+  merge_uploads
 }
 
 stop_engines() { # the bash fallback the EXIT trap runs; the probe's engines-stop is the real one

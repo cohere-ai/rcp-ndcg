@@ -135,6 +135,8 @@ which prints, in dry run, the submission the operator runs (`secret.HF_TOKEN` is
 # the from_file paths are absolute where submit.sh runs (its own checkout); shown shortened here
 kjobs-go submit -f "$RCP_KJOBS_CONFIG" \
   app=rcp-wave0 priority_class=dev-high worker.shared_memory=128Gi \
+  env.RCP_IMAGE=vllm/vllm-openai:v0.31.0 \
+  env.RCP_IMAGE_DIGEST=sha256:0123...abcd \
   worker.command='/bin/bash /etc/rcp/files/wave0/wave0.sh '"$RCP_STAGE_PREFIX"'/rc0 gs://YOUR-BUCKET/waves/wave0' \
   files.wave0.from_file=packages/rcp-ndcg-vllm/src/rcp_ndcg_vllm/jobs/wave0.sh \
   files.wave0.mount_path=/etc/rcp/files/wave0/wave0.sh \
