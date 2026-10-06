@@ -1186,3 +1186,36 @@ def test_a_retrieval_sourced_rerank_run_without_a_retrieve_step_is_refused(data:
             },
             steps=["rerank"],
         )
+
+
+def test_a_rankings_run_without_retrieve_pins_the_rankings_file_on_resume(
+    data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A `from: rankings` run without a retrieve step reads its pools straight from the rankings file: the
+    file is the rerank and judging steps' input, so a resume after editing it re-runs the steps (a stale
+    candidates file would otherwise be kept silently -- the inputs were empty and the identity unchanged)."""
+    from rcp_ndcg.llm import JudgeClient
+    from tests.llm.test_judging import _SchemaEndpoint
+
+    rankings = tmp_path / "rankings.jsonl"
+    rows, _ = tiny_rows()
+    rankings.write_text(
+        "".join(json.dumps({"query_id": row.id, "system": "bm25", "doc_ids": row.doc_ids[:6]}) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(JudgeClient, "from_config", staticmethod(lambda config: _SchemaEndpoint("3.1").client()))
+    config = tiny_config(data, candidates={"from": "rankings", "rankings": str(rankings)}, steps=["tournament"])
+    pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+    pipeline.run()
+    record = RunManifest.load(pipeline.layout.root).step("tournament")
+    assert [ref.path for ref in record.inputs] == [str(rankings)], "the rankings file is pinned as the input"
+
+    rankings.write_text(
+        "".join(
+            json.dumps({"query_id": row.id, "system": "bm25", "doc_ids": list(reversed(row.doc_ids[:6]))}) + "\n"
+            for row in rows
+        ),
+        encoding="utf-8",
+    )
+    plan = {row["step"]: row["status"] for row in Pipeline.resume(pipeline.layout.root).plan()}
+    assert plan["tournament"] == "would run", "the edited rankings file makes the step stale"

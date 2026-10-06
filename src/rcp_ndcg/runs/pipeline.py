@@ -456,7 +456,17 @@ class Pipeline:
     def _inputs(self, step: str) -> list[ArtifactRef]:
         layout = self.layout
         paths: list[str] = []
-        if step == "retrieve" and self.config.candidates.source == "rankings":
+        supplied = (
+            self.config.candidates.source == "rankings"
+            and "retrieve" not in self.config.steps
+            and step in ("rerank", "tournament", "rubric")
+        )
+        if supplied:
+            # A `from: rankings` run without a retrieve step reads its pools straight from the rankings file:
+            # it is the step's input, so a resume notices the file changed (nothing else pins it -- the
+            # first-stage file is never written on this shape).
+            paths.append(str(self.config.candidates.rankings))
+        elif step == "retrieve" and self.config.candidates.source == "rankings":
             paths = [str(self.config.candidates.rankings)]
         elif step == "rerank":
             paths = [self._first_stage]
