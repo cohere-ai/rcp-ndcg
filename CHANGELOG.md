@@ -327,6 +327,19 @@ released together.
   instruction fold the served client applies. Status `unverified` until the GPU waves run the harness's
   stages 2–3.
 
+- The first served recipe in `packages/rcp-ndcg-vllm/recipes/`: `qwen3-reranker-0.6b`
+  (Qwen/Qwen3-Reranker-0.6B @ e61197ed45024b0ed8a2d74b80b4d909f1255473, pointwise rerank,
+  paper-exact): `--runner pooling` with the `Qwen3ForSequenceClassification` conversion overrides
+  (`classifier_from_token` no/yes, `is_original_qwen3_reranker`) on the stock
+  `vllm/vllm-openai:v0.31.0` image, the shipped chat template (dual-mode: the harness's check
+  variables and the engine's `messages` render both produce the paper prompt; the stock example
+  template alone loses one trailing newline at the scored position), the paper budgets
+  (`max_tokens` 8192 = `MAX_SEQ_LENGTH`, `query_max_tokens` 4096 = `MAX_QUERY_LENGTH`,
+  `on_overflow: cut`), `use_activation: true` on the probability scale, and a reference subprocess
+  derived from `experiments/paper/rerankers/reference/qwen3.py` (on branch lane/l5-packaging at this
+  HEAD; probability =
+  `softmax([no, yes])[yes]`, bfloat16, batch 16, no anchor ever dropped). Status `unverified`
+  until the GPU waves run the harness's stages 2–3.
 - `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
   larger than `adaptive_window` runs one batch, not one per batch: every adaptive window of such a pool holds
   the whole pool, so a further batch asks the same documents again (in the refit order) and covers only what
