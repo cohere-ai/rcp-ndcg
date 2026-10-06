@@ -1,0 +1,98 @@
+# Recipe: Qwen/Qwen3-VL-Embedding-2B served with stock vLLM (vllm/vllm-openai:v0.31.0).
+# Research lane r-qwen3vl-emb (report.md, digest.md), corrected by audit-synth's r-qwen3vl-emb rows;
+# REVIEW-LOG R10 (the template file ships) and R20 (the media pixel budget is pinned on both sides) applied.
+# The CPU stage-1 numbers come from the research's check_tokens.py (6 cases, A==B==D identical ids).
+id: qwen3-vl-embedding-2b
+model: Qwen/Qwen3-VL-Embedding-2B
+revision: "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"   # the HF api/models sha, re-checked 2026-10-06; quote: 40 hex reads as a number otherwise
+role: embed
+input: [text, image, video]     # the model's capability (card); video is model-level only: rcp-ndcg's lowering never emits video_url (notes)
+licence: apache-2.0
+engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0", startup_timeout_s: 1800}
+resources: {gpus: 1}            # 2B bf16 (~4.0 GiB weights) fits one GPU; the card states no multi-GPU requirement
+serve:
+  runner: pooling
+  convert: embed                # a generative VLM as an embedder; auto would resolve to embed, explicit silences the log (v0.31.0 config/model.py:113)
+  hf_overrides: {}              # none needed: Qwen3VLForConditionalGeneration is natively registered (v0.31.0 registry.py:591)
+  chat_template: template.jinja # R10: the frame ships with the recipe; see notes for the route's template behaviour
+  pooler_config: {seq_pooling_type: LAST}   # the default seq pooler, pinned explicitly; the head is the default PoolerNormalize (L2, v0.31.0 seqwise/poolers.py:97-110)
+  trust_remote_code: false      # no auto_map in config.json; the native class needs none (the card's script passes true, inert there too)
+  max_model_len: 8192           # == the reference's MAX_LENGTH; an over-length prompt is an HTTP 400, never a silent engine cut
+  dtype: bfloat16               # the checkpoint's dtype
+  plugin: null                  # no out-of-tree model class: stock vLLM serves it
+  mm_processor_kwargs: {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1843200}}   # R20: the reference's qwen_vl_utils budget (card script MIN/MAX_PIXELS, 4*32^2 / 1800*32^2); load-bearing: at the checkpoint default max_pixels=1310720 a 1700x2200 page renders 1240 image-pad tokens vs the reference's 1776 (research check_tokens pixel_budgets)
+  limit_mm_per_prompt: {"image": 1, "video": 1}   # declared policy: one media item per prompt; rcp-ndcg's lowering never emits video_url and turns frame directories into N image parts, which this limit refuses loudly for N>1
+  extra_args: []
+client:
+  api: openai_embeddings
+  request_shape: text           # the client sends fit's rendered frame as the completion-style input; the chat-messages shape is the equivalent alternative the research validated (identical ids), for when the product's client grows it
+  tokenizer: "Qwen/Qwen3-VL-Embedding-2B@9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"
+  max_tokens: 8192              # the declared budget: the frame's fixed tokens (including the instruction and the post-processor anchor) are reserved, only the content span is cut (on_overflow: cut)
+  template:
+    document:
+      - {fixed: "{special:im_start}system\nRepresent the user's input.{special:im_end}\n{special:im_start}user\n"}   # the model's default instruction (the card's and config_sentence_transformers.json prompts.default), part of the fixed frame
+      - {content: document}
+      - {fixed: "{special:im_end}\n{special:im_start}assistant\n"}   # the trailing fixed segment + the post-processor's endoftext are the anchor the model pools from
+    anchor: last
+    add_special_tokens: true    # the completion-style /v1/embeddings route adds the tokenizer's post-processor tokens (default true, v0.31.0 base/protocol.py CompletionRequestMixin): the appended endoftext (id 151643) is the pooled last token
+  on_overflow: cut
+  empty_doc: send_text
+  empty_doc_text: "NULL"        # the card's empty-input rule: format_model_input renders the text "NULL" when text, image and video are all empty
+  normalize: true               # the server L2-normalises (PoolerNormalize); the client normalising again is harmless
+  recipe: "vLLM 0.31.0 pooling runner (--convert embed), seq_pooling_type LAST with the default PoolerNormalize head; media: images_kwargs min_pixels=4096 max_pixels=1843200, limit_mm_per_prompt image=1 video=1 (the same numbers serve.mm_processor_kwargs and serve.limit_mm_per_prompt pin); request_shape text: fit's rendered frame goes out as the input string and the engine's post-processor appends the end anchor"
+reference:
+  kind: transformers            # the model card's scripts/qwen3_vl_embedding.py (Qwen3VLEmbedder, transformers), vendored verbatim beside reference.py
+  score_scale: cosine
+  entry: reference.py
+  known_deviations: [anchor_drop_over_cap]   # the card's processor truncation (truncation=True at MAX_LENGTH=8192) right-cuts the whole prompt and drops the trailing anchor on over-cap inputs; reference.py's render mode implements the anchor-preserving cut instead, and stage 2 gates under-cap pairs only
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources:
+  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B (card README, revision 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda)"
+  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/config.json (architectures, no auto_map)"
+  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/chat_template.jinja (the frame this recipe declares and template.jinja pins)"
+  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/scripts/qwen3_vl_embedding.py (the reference path; MAX_LENGTH 8192, MIN/MAX_PIXELS 4096/1843200, fps 1, max_frames 64)"
+  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/preprocessor_config.json (checkpoint defaults min 4096 / max 1310720, overridden above)"
+  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/config_sentence_transformers.json (prompts.default, similarity cosine)"
+  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/modules.json (no Dense projector; Transformer + Pooling + Normalize)"
+  - "vllm v0.31.0 (= db9527a46873454610df6dbedf79a36d6bf1a7f6) vllm/model_executor/models/registry.py:591 (native Qwen3VL entry)"
+  - "vllm v0.31.0 vllm/config/model.py:113 (_RUNNER_CONVERTS pooling -> embed/classify)"
+  - "vllm v0.31.0 vllm/model_executor/layers/pooler/seqwise/poolers.py:97-110 (embed head LAST + PoolerNormalize)"
+  - "vllm v0.31.0 vllm/entrypoints/pooling/base/protocol.py CompletionRequestMixin (completion-style add_special_tokens defaults true; the chat mixins default false)"
+  - "vllm v0.31.0 vllm/entrypoints/pooling/base/io_processor.py get_request_factory_online (completion-style input never applies a chat template; chat input does)"
+  - "vllm v0.31.0 vllm/multimodal/processing/context.py get_merged_mm_kwargs and vllm/model_executor/models/qwen3_vl.py:964-967 (the scoped images_kwargs overlay this recipe's mm pin relies on)"
+  - "vllm v0.31.0 examples/pooling/embed/vision_embedding_online.py (run_qwen3_vl: the request shape the research reproduced)"
+  - "research/r-qwen3vl-emb/out/report.md (sections 3-5: the request shape, the CPU token-id checks, the mutation guards)"
+  - "research/audit-synth/out/corrections.md, table r-qwen3vl-emb (the client.max_tokens enforcement framing; the reference provenance requirements)"
+  - "research/ANCHOR-FINDING.md (the cut reserves fixed tokens and re-attaches the frame)"
+  - "REVIEW-LOG.md R10 (the template file ships; the engine only warns without it) and R20 (the pixel budget is pinned on serve and mirrored client-side)"
+notes: >-
+  Frame: the model reads every input through its chat template - a system turn carrying the
+  instruction, a user turn carrying the content, then the assistant header; the pooled token is the
+  tokenizer post-processor's endoftext (id 151643) appended after it. Query and document use the SAME
+  frame (the card encodes both sides identically; the report's section 4 shows identical ids), so the
+  template declares the document shape and the client fills it with the item's text whichever side it
+  is; the recipe's test proves the query text renders byte-identically through the declared shape.
+  Stage 1 proves the declared shape against template.jinja (the file the engine is started with, R10)
+  and against the reference's render. The engine applies a chat template only to chat-shaped requests;
+  this recipe's client speaks completion-style text (request_shape: text), whose add_special_tokens
+  default on that route is true - the appended anchor the template declares. The template pins the
+  model's default instruction, "Represent the user's input.", as fixed frame text: the card applies it
+  whenever an input carries none (and appends '.' to any instruction whose last character is not
+  Unicode punctuation), and the product's embed role has no instruction plumbing, so this recipe's
+  served form is the default-instruction one; a custom instruction is a different serving mode - a
+  new template and judgement family, not this recipe (the stage-1 pairs file carries no instruction
+  field, and the reference refuses rows that carry one). The card's empty-input rule renders the text
+  NULL, hence empty_doc: send_text. Budgets: client.max_tokens is the declared policy, reserved
+  frame-first with the content span cut (on_overflow: cut); the reference's own truncation (processor
+  truncation=True) right-cuts the whole prompt on over-cap inputs, the declared anchor_drop_over_cap
+  deviation - stage-1 pairs must sit under the budget, and stage 2 gates under-cap pairs only. Until
+  the text-budget wiring lands in the embed client (clients-final), the client refuses this config and
+  the guard is the engine's loud HTTP 400 at max_model_len. Video is a model-level capability:
+  rcp-ndcg's lowering never emits video_url today, and the served video sampling (checkpoint fps 2 /
+  max_frames 768) was never reconciled with the reference (qwen_vl_utils fps 1 / max_frames 64) - out
+  of scope until both are measured. Media equivalence is token-level only (research check_tokens:
+  identical ids for text, image, image+text, video template, page image); the pairs file carries text,
+  so the GPU wave must additionally run the R20 probe-image engine check (the served prompt-token count
+  for one probe image at the pinned pixel budget) and the resize-divergence caveat holds only for
+  inputs with one dimension <= 16 px (check_resize_grid_out.json).
