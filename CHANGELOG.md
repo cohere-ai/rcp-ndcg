@@ -43,6 +43,21 @@ released together.
   are public with package tests covering each; `metrics.py` shells out to `rcp-ndcg eval score` (the product is
   a dependency, so no extra is needed for stage 3).
 
+- The first served recipe: `packages/rcp-ndcg-vllm/recipes/zerank-1-reranker/` (id `zerank-1-reranker`,
+  `zeroentropy/zerank-1-reranker@d03c467e29e29c0a16a130a86ce3b62d30116a2c`, role `rerank`, scoring `pointwise`,
+  Apache-2.0) with its `template.jinja` chat template, its paper-exact `reference.py` and its
+  `requirements-reference.txt`. Served on the stock `vllm/vllm-openai:v0.31.0` image with no plugin and
+  `trust_remote_code: false`: `--runner pooling --convert classify`, the `no_post_processing` weight surgery on
+  the "Yes" row (token 9454) of the tied LM head and `pooler_config {logit_sigma: 5}` reproduce the paper's
+  `sigmoid(yes_logit / 5)` at the last prompt position. The template file is required (R10: the rerank path
+  silently pair-encodes without it) and maps vLLM's query/document message roles to the paper's system/user
+  ChatML turns, trimming content the way the paper strips it. The paper's whole-prompt 8192 right cut drops
+  the trailing assistant header (the last-token anchor) over cap; the recipe declares
+  `reference.known_deviations: [anchor_drop_over_cap]` and the served path cuts the content spans only. Its
+  stage 1 passes on CPU (tokenizer files only; the paper-prompt fidelity against the real reference
+  environment is in `packages/rcp-ndcg-vllm/tests/recipes/test_zerank_1_reranker.py`), status `unverified`
+  until the GPU waves run.
+
 - `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
   larger than `adaptive_window` runs one batch, not one per batch: every adaptive window of such a pool holds
   the whole pool, so a further batch asks the same documents again (in the refit order) and covers only what
