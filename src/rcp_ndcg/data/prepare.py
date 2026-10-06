@@ -504,6 +504,7 @@ class MediaCensus:
     def __init__(self, *, sink: str | Path | None = None) -> None:
         self.sink = Path(sink) if sink is not None else None
         self._seen: set[tuple[str, str, str]] = set()
+        self._tail_checked = False
         if self.sink is not None:
             from rcp_ndcg.data.preprocess import read_census_rows
 
@@ -525,6 +526,13 @@ class MediaCensus:
             self._seen.add(key)
             fresh.append(item.as_row(corpus=corpus, doc_id=doc_id, dropped=dropped))
         if fresh and self.sink is not None:
+            if not self._tail_checked:
+                # A killed writer's torn last row must be cut before this append, or the row merges into the
+                # fragment and every later read refuses the merged line.
+                from rcp_ndcg.data.preprocess import drop_torn_last_line
+
+                drop_torn_last_line(self.sink)
+                self._tail_checked = True
             with open(self.sink, "a", encoding="utf-8") as handle:
                 handle.writelines(json.dumps(row, sort_keys=True) + "\n" for row in fresh)
 

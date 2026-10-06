@@ -804,3 +804,23 @@ def test_a_long_invalid_reason_is_cut_with_a_marker_not_silently(tmp_path: Path)
     assert result.judgements and not any(j.valid for j in result.judgements)
     (reason,) = {j.invalid_reason for j in result.judgements}
     assert len(reason) == 2000 and reason.endswith("(cut)")
+
+
+def test_a_census_append_cuts_the_torn_tail_first(tmp_path: Path, word_tokenizer_file: Path) -> None:
+    """A pass killed mid-append leaves a torn last census row; the NEXT pass's first append must cut it, not
+    merge into it -- a merged line is refused by every later read (the fix's own promise)."""
+    policy = Preprocessing(text=TextPolicy(on_overflow="truncate", max_tokens=2))
+    store = tmp_path / "store"
+    _rubric(store, _tokenized(FakeJudge(lambda text: 0.0), word_tokenizer_file), preprocessing=policy)
+    record = store / "preprocessing.jsonl"
+    good = record.read_text(encoding="utf-8")
+    record.write_text(good + '{"mechanism": "doc_pol', encoding="utf-8")  # the killed pass's torn row
+
+    # The resumed pass cuts differently (so it appends: its first append must cut the torn tail) and a third
+    # pass reads the file clean.
+    longer = Preprocessing(text=TextPolicy(on_overflow="truncate", max_tokens=3))
+    _rubric(store, _tokenized(FakeJudge(lambda text: 0.0), word_tokenizer_file), preprocessing=longer, force=True)
+    _rubric(store, _tokenized(FakeJudge(lambda text: 0.0), word_tokenizer_file), preprocessing=longer)
+    assert record.read_text(encoding="utf-8").endswith("\n"), "the append started on a fresh line"
+    rows = [json.loads(line) for line in record.read_text(encoding="utf-8").splitlines()]
+    assert all(isinstance(row.get("mechanism"), str) for row in rows), "no merged fragment survived"

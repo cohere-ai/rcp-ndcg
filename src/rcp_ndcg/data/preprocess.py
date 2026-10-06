@@ -427,6 +427,38 @@ class TextCutRecord:
         return f"TextCutRecord({self.as_row()!r})"
 
 
+def drop_torn_last_line(path: Path) -> None:
+    """Cut a last line the writer did not finish (a process killed mid-append), so appends start on a fresh line.
+
+    The one torn-tail repair: the judgement records' append, the text census and the media census share the
+    discipline -- a census file whose torn row is left in place would merge the next appended row into the
+    fragment, and the merged line would be refused as corrupt on every later read.
+    """
+    if not path.exists():
+        return
+    size = path.stat().st_size
+    with path.open("r+b") as handle:
+        if not size:
+            return
+        handle.seek(size - 1)
+        if handle.read(1) == b"\n":
+            return
+        end = size
+        while end > 0:
+            start = max(0, end - (1 << 20))
+            handle.seek(start)
+            block = handle.read(end - start)
+            cut = block.rfind(b"\n")
+            if cut >= 0:
+                keep = start + cut + 1
+                break
+            end = start
+        else:
+            keep = 0
+        logger.warning("%s: dropping a torn last line (%d bytes)", path, size - keep)
+        handle.truncate(keep)
+
+
 def read_census_rows(path: str | Path) -> Iterator[dict[str, Any]]:
     """The JSON rows of a census file (``preprocessing.jsonl``), in order.
 
@@ -505,11 +537,17 @@ class TextTruncationCensus:
         self._cuts: list[TextCutRecord] = []
         self._budget_rows: set[tuple[str, int]] = set()
         self.sink = sink
+        self._tail_checked = False
 
     def _append(self, row: dict[str, Any]) -> None:
         if self.sink is None:
             return
         try:
+            if not self._tail_checked:
+                # A killed writer's torn last row must be cut before this append, or the row merges into the
+                # fragment and every later read refuses the merged line.
+                drop_torn_last_line(Path(self.sink))
+                self._tail_checked = True
             with open(self.sink, "a", encoding="utf-8") as handle:
                 handle.write(json.dumps(row, sort_keys=True) + "\n")
         except OSError:
@@ -1398,6 +1436,7 @@ __all__ = [
     "chunk_ranking_example",
     "document_id_for_chunk",
     "document_ids_from_chunks",
+    "drop_torn_last_line",
     "fit",
     "max_pool_rubric_window_by_document",
     "max_pool_scores_by_document",

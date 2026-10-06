@@ -381,30 +381,22 @@ def records_stored(path: str | Path) -> int:
 
 
 def _drop_torn_tail(path: Path) -> None:
-    """Cut a last line the writer did not finish (a process killed mid-write), so appends start on a fresh line."""
+    """Cut a last line the writer did not finish (a process killed mid-write), so appends start on a fresh line.
+
+    The discipline's one home is :func:`rcp_ndcg.data.preprocess.drop_torn_last_line`; this wrapper keeps the
+    store's message and only logs when there is something to cut.
+    """
+    from rcp_ndcg.data.preprocess import drop_torn_last_line
+
     if not path.exists():
         return
     size = path.stat().st_size
     with path.open("r+b") as handle:
-        if not size:
-            return
         handle.seek(size - 1)
         if handle.read(1) == b"\n":
             return
-        end = size
-        while end > 0:
-            start = max(0, end - (1 << 20))
-            handle.seek(start)
-            block = handle.read(end - start)
-            cut = block.rfind(b"\n")
-            if cut >= 0:
-                keep = start + cut + 1
-                break
-            end = start
-        else:
-            keep = 0
-        logger.warning("%s: dropping a torn last record (%d bytes)", path, size - keep)
-        handle.truncate(keep)
+    drop_torn_last_line(path)
+    logger.warning("%s: dropping a torn last record (%d bytes)", path, size)
 
 
 __all__ = [
