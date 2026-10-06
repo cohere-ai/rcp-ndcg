@@ -1,0 +1,37 @@
+id: qwen3-embedding-0.6b/gen-short-mixed-batch
+recipe: qwen3-embedding-0.6b
+role: embed
+source:
+  kind: generated
+  revision: 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3
+strata:
+  modality: text
+  length: short
+  batch: mixed_length
+inputs:
+  instruction: Given a web search query, retrieve relevant passages that answer the query
+  queries:
+  - id: q1
+    text: Who wrote the play Hamlet?
+  - id: q2
+    text: Which element has the chemical symbol Fe and is the most common element on Earth by mass?
+  documents:
+  - id: d1
+    text: The play Hamlet was written by William Shakespeare.
+  - id: d2
+    text: Iron has the chemical symbol Fe, from the Latin word ferrum.
+  - id: d3
+    text: |-
+      Mizzen tide harbour vessel keelballast leeward bowsprit topsail anchorage. Longitude anchorage soundings mizzen cartographer latitude almanac astrolabe sextant nautical harbour chronometer nautical. Cargo azimuth current astrolabe provisioning observatory current fathom provisioning bowsprit keelballast vessel. Isthmus tide fathom expedition astrolabe windward cargo cartographer compass sextant latitude astrolabe cartographer topsail. Azimuth merchant observatory soundings sextant vessel cartographer keelballast observatory anchorage expedition azimuth astrolabe. Anchorage longitude anchorage isthmus harbour compass keelballast astrolabe almanac fathom topsail leeward provisioning keelballast. Soundings keelballast fathom observatory provisioning compass harbour mizzen vessel provisioning. Tide vessel cargo merchant lantern astrolabe tide astrolabe. Harbour chronometer sextant provisioning compass tide latitude isthmus monsoon expedition harbour latitude almanac topsail. Astrolabe reef vessel cartographer leeward soundings harbour chronometer lantern latitude cartographer topsail. Chronometer provisioning vessel anchorage compass anchorage latitude azimuth cartographer provisioning windward longitude soundings. Chronometer expedition nautical nautical latitude harbour expedition lantern provisioning tide topsail nautical soundings reef. Topsail astrolabe isthmus observatory lantern bowsprit cargo reef provisioning topsail provisioning. Astrolabe latitude almanac observatory
+  - id: d4
+    text: |-
+      Mizzen tide harbour vessel keelballast leeward bowsprit topsail anchorage. Longitude anchorage soundings mizzen cartographer latitude almanac astrolabe sextant nautical harbour chronometer nautical. Cargo azimuth current astrolabe provisioning observatory current fathom provisioning bowsprit keelballast vessel. Isthmus tide fathom expedition astrolabe windward cargo cartographer compass sextant latitude astrolabe cartographer topsail. Azimuth merchant observatory soundings sextant vessel cartographer keelballast observatory anchorage expedition azimuth astrolabe. Anchorage longitude anchorage isthmus harbour compass keelballast astrolabe almanac fathom topsail leeward provisioning keelballast. Soundings keelballast fathom observatory provisioning compass harbour mizzen vessel provisioning. Tide vessel cargo merchant lantern astrolabe tide astrolabe. Harbour chronometer sextant provisioning compass tide latitude isthmus monsoon expedition harbour latitude almanac topsail. Astrolabe reef vessel cartographer leeward soundings harbour chronometer lantern latitude cartographer topsail. Chronometer provisioning vessel anchorage compass anchorage latitude azimuth cartographer provisioning windward longitude soundings. Chronometer expedition nautical nautical latitude harbour expedition lantern provisioning tide topsail nautical soundings reef. Topsail astrolabe isthmus observatory lantern bowsprit cargo reef provisioning topsail provisioning. Astrolabe latitude almanac observatory anchorage leeward anchorage leeward. Fathom almanac expedition compass chronometer reef isthmus latitude latitude merchant tide. Topsail vessel vessel current soundings topsail bowsprit chronometer. Cargo cargo lantern astrolabe azimuth tide monsoon reef merchant latitude isthmus vessel cartographer. Sextant current nautical cargo cargo chronometer cartographer topsail observatory nautical. Windward nautical merchant monsoon longitude lantern mizzen compass leeward. Monsoon azimuth latitude almanac compass astrolabe windward tide expedition. Tide almanac almanac latitude astrolabe almanac lantern longitude tide current longitude. Topsail harbour topsail fathom cartographer mizzen sextant azimuth nautical monsoon compass almanac chronometer nautical. Compass expedition almanac soundings longitude tide tide windward monsoon merchant longitude leeward lantern observatory. Anchorage azimuth chronometer longitude cargo tide reef isthmus soundings windward. Observatory sextant
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance:
+    abs: 0.02
+  origin: reference
+  status: pending_gpu
+notes: |-
+  A short batch whose rows differ in length (queries 8-20 tokens, documents 11 to 500 rendered ids), all far under the 8192 budget: exercises per-row pooling with non-uniform padding. Generated long/medium inputs were built once by a seeded generator (never generated at test time; the exact texts are embedded verbatim in this file): Python random.Random(20251006) (Mersenne Twister, stable across CPython versions) over a fixed 32-word vocabulary (sailing and observation terms: harbour lantern merchant anchorage tide current compass latitude longitude cargo expedition cartographer isthmus monsoon vessel provisioning reef soundings azimuth sextant astrolabe keel ballast bowsprit mizzen topsail windward leeward fathom nautical almanac observatory chronometer), sentences of 8-14 words; each generated input is a word-prefix of that single stream, trimmed to its target token count. Short inputs are hand-written topical sentences. Inputs are embedded verbatim in this file (never generated at test time). Rendered lengths measured with the recipe's tokenizer (client.tokenizer: Qwen/Qwen3-Embedding-0.6B @ 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3); the rendered query shape is 19 frame ids + query content + the post-processor anchor (id 151643); the rendered document shape is content + anchor. Measured: q1 = 8 rendered ids, q2 = 19 rendered ids, d1 = 11 rendered ids, d2 = 15 rendered ids, d3 = 299 rendered ids, d4 = 500 rendered ids.
