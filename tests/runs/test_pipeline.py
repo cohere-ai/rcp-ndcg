@@ -1219,3 +1219,18 @@ def test_a_rankings_run_without_retrieve_pins_the_rankings_file_on_resume(
     )
     plan = {row["step"]: row["status"] for row in Pipeline.resume(pipeline.layout.root).plan()}
     assert plan["tournament"] == "would run", "the edited rankings file makes the step stale"
+
+
+def test_naming_the_judges_default_wire_does_not_rekey_the_judge_step(data: Path, tmp_path: Path) -> None:
+    """`api: openai_chat` names the default wire: the same instrument, so the judge STEP identity is the unset
+    case's (the family and the store gate already normalize; the pipeline does too)."""
+    from tests.llm.test_judging import _SchemaEndpoint  # noqa: F401  (import keeps the fake route registered)
+
+    def identity(**judge: Any) -> dict[str, Any]:
+        return Pipeline(
+            tiny_config(data, judge={"base_url": "http://judge.test/v1", "model": "m", **judge}, steps=["rubric"]),
+            runs_dir=str(tmp_path / "runs"),
+        )._identity("rubric")
+
+    assert identity() == identity(api="openai_chat"), "a spelling of the default wire is the same instrument"
+    assert identity(api="other") != identity(), "another wire is a different instrument"

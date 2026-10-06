@@ -1055,15 +1055,10 @@ def _plan(
     dataset_key = short(hash_payload(dataset_identity), 16)
     # Content only: the prompt and the tokenizer enter by their SHA-256 (the family's prompt_hash, and the
     # tokenizer's below), never by the name or path they were given, which is recorded beside it (sources).
-    judge_identity = client.config.identity()
-    if judge_identity.get("api") == "openai_chat":
-        # Naming the default wire is a spelling of the default, not a different instrument (the family drops
-        # it too); the identity carries the adapter only when it is another wire.
-        del judge_identity["api"]
     identity = {
         "stage": stage,
         "family": family.model_dump(mode="json"),
-        "judge": judge_identity,
+        "judge": client.config.identity(),
         "schedule": schedule.model_dump(mode="json", exclude={"prompt"}),
         # The penalty of the tournament's live Bradley-Terry fit, which chose its adaptive windows.
         **({"bt_l2": Priors().bt_l2} if stage == "tournament" else {}),

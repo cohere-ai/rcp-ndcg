@@ -199,8 +199,15 @@ class JudgeConfig(Endpoint):
         return cls.model_validate(load_config(judge_config_path(path)))
 
     def identity(self) -> dict[str, Any]:
-        """The CONTENT fields: who judges, and how they are asked to answer."""
-        return identity_payload(self)
+        """The CONTENT fields: who judges, and how they are asked to answer.
+
+        Naming the default wire (``api: openai_chat``) is a spelling of the default, not a different
+        instrument: the payload leaves it out exactly as an unset one (the store identity and the step
+        identities then key the same whatever the spelling; another wire's name stays in)."""
+        payload = identity_payload(self)
+        if payload.get("api") == "openai_chat":
+            del payload["api"]
+        return payload
 
     def api_key(self) -> str:
         """The API key from :attr:`api_key_env`, or ``"EMPTY"`` when none is configured.
