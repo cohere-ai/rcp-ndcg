@@ -30,8 +30,11 @@ refuses to run without a tokenizer.
 
 from __future__ import annotations
 
+import fcntl
 import json
+import os
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
@@ -427,22 +430,23 @@ class TextCutRecord:
         return f"TextCutRecord({self.as_row()!r})"
 
 
-def drop_torn_last_line(path: Path) -> None:
-    """Cut a last line the writer did not finish (a process killed mid-append), so appends start on a fresh line.
+def drop_torn_last_line(path: Path) -> int:
+    """Cut a last line the writer did not finish (a process killed mid-append); return the bytes dropped.
 
     The one torn-tail repair: the judgement records' append, the text census and the media census share the
     discipline -- a census file whose torn row is left in place would merge the next appended row into the
-    fragment, and the merged line would be refused as corrupt on every later read.
+    fragment, and the merged line would be refused as corrupt on every later read. Call it under
+    :func:`census_sink_lock` (or the store's writer lock): a peer's cut must not truncate an in-flight line.
     """
     if not path.exists():
-        return
+        return 0
     size = path.stat().st_size
     with path.open("r+b") as handle:
         if not size:
-            return
+            return 0
         handle.seek(size - 1)
         if handle.read(1) == b"\n":
-            return
+            return 0
         end = size
         while end > 0:
             start = max(0, end - (1 << 20))
@@ -457,6 +461,41 @@ def drop_torn_last_line(path: Path) -> None:
             keep = 0
         logger.warning("%s: dropping a torn last line (%d bytes)", path, size - keep)
         handle.truncate(keep)
+        return size - keep
+
+
+@contextmanager
+def census_sink_lock(sink: Path) -> Iterator[None]:
+    """Serialize the writers of one census file: an advisory flock on its directory.
+
+    The judgement store's records append under the same lock (their store directory *is* the census's
+    parent), so a store's record append and a pass's census appends never interleave; a killed process
+    releases it by closing.
+    """
+    sink = Path(sink)
+    sink.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(sink.parent, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
+def append_census_rows(sink: str | Path, rows: Sequence[Mapping[str, Any]]) -> None:
+    """Append ``rows`` to a census file (``preprocessing.jsonl``), one JSON line each.
+
+    Under the sink's writer lock, and cutting a killed writer's torn tail first -- on every append, not only
+    the writer's first: a peer killed mid-write after this writer started leaves a tail only its next append
+    would merge into.
+    """
+    sink = Path(sink)
+    if not rows:
+        return
+    with census_sink_lock(sink):
+        drop_torn_last_line(sink)
+        with sink.open("a", encoding="utf-8") as handle:
+            handle.writelines(json.dumps(row, sort_keys=True) + "\n" for row in rows)
 
 
 def read_census_rows(path: str | Path) -> Iterator[dict[str, Any]]:
@@ -537,19 +576,14 @@ class TextTruncationCensus:
         self._cuts: list[TextCutRecord] = []
         self._budget_rows: set[tuple[str, int]] = set()
         self.sink = sink
-        self._tail_checked = False
 
     def _append(self, row: dict[str, Any]) -> None:
         if self.sink is None:
             return
         try:
-            if not self._tail_checked:
-                # A killed writer's torn last row must be cut before this append, or the row merges into the
-                # fragment and every later read refuses the merged line.
-                drop_torn_last_line(Path(self.sink))
-                self._tail_checked = True
-            with open(self.sink, "a", encoding="utf-8") as handle:
-                handle.write(json.dumps(row, sort_keys=True) + "\n")
+            # The one census append: the torn tail cut and the line written under the sink's writer lock, so a
+            # peer's cut never truncates this writer's in-flight line.
+            append_census_rows(self.sink, [row])
         except OSError:
             # A provenance guarantee that degrades silently is worth a warning a person can see: a resumed pass
             # reads this file to decide which cuts are already on record.
@@ -1434,12 +1468,14 @@ __all__ = [
     "TextPolicy",
     "apply_text_policy",
     "chunk_ranking_example",
+    "append_census_rows",
     "document_id_for_chunk",
     "document_ids_from_chunks",
     "drop_torn_last_line",
     "fit",
     "max_pool_rubric_window_by_document",
     "max_pool_scores_by_document",
+    "read_census_rows",
     "split_into_chunks",
     "token_prefix",
 ]
