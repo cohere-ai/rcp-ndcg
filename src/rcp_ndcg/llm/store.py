@@ -362,6 +362,19 @@ class JudgementStore:
         return JudgementSet(judgements=tuple(judgements), families=families)
 
 
+def records_stored(path: str | Path) -> int:
+    """The records a stage file holds (its non-empty lines): the progress an estimate and ``run status`` report.
+
+    The one count of a store file's lines: an estimate's note and a run's progress used to count twice, and one
+    copy drifting (skipping comments, say) would report different progress for the same file.
+    """
+    path = Path(path)
+    if not path.is_file():
+        return 0
+    with path.open(encoding="utf-8") as handle:
+        return sum(1 for line in handle if line.strip())
+
+
 def _drop_torn_tail(path: Path) -> None:
     """Cut a last line the writer did not finish (a process killed mid-write), so appends start on a fresh line."""
     if not path.exists():
@@ -397,4 +410,5 @@ __all__ = [
     "JudgementStore",
     "StageEntry",
     "StoreIdentity",
+    "records_stored",
 ]

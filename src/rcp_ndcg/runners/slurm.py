@@ -302,7 +302,9 @@ class SlurmRunner:
             engines_env = shlex.quote(
                 engines_env_value(
                     phase.engines,
-                    {role: [f"http://127.0.0.1:{phase.engines[role].port}/v1"] for role in roles},
+                    # The shape is the ServeConfig's (the one home of http://host:port/v1); the run-time
+                    # builder below is a bare-python script that cannot import it, and names the same shape.
+                    {role: [phase.engines[role].url("127.0.0.1")] for role in roles},
                 )
             )
         else:
@@ -348,8 +350,7 @@ class SlurmRunner:
         # for the maximum of that over the phases (SLURM's --gres is per node).
         gpus = max(
             [
-                (res.gpus if phase.engines else res.gpus)
-                + max((e.resources.gpus for e in phase.engines.values()), default=0)
+                res.gpus + max((e.resources.gpus for e in phase.engines.values()), default=0)
                 for phase in phases
             ],
             default=res.gpus,

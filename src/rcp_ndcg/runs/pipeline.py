@@ -367,6 +367,8 @@ class Pipeline:
             return False
         logger.info("[run] %s: starting", step)
         self._judge_usage = None  # a judging step sets it, also when it fails
+        if step == "evaluate":
+            self.manifest.metrics = {}  # a failed re-run keeps no metrics of the attempt it did not finish
         self.manifest.start_step(step, identity=self._identity(step))
         self.manifest.save(self.layout)
         inputs = self._inputs(step)
@@ -845,10 +847,9 @@ def _run_identity_hint(layout: RunLayout, step: str) -> Iterator[None]:
 
 def _windows_stored(store: Path) -> int:
     """The judged windows a judgement store file holds (its non-empty lines)."""
-    if not store.is_file():
-        return 0
-    with store.open(encoding="utf-8") as handle:
-        return sum(1 for line in handle if line.strip())
+    from rcp_ndcg.llm.store import records_stored
+
+    return records_stored(store)
 
 
 #: The system name of a run's candidate pools in its rankings files.

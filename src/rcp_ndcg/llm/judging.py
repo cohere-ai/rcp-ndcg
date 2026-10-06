@@ -484,6 +484,10 @@ def parse_window(
     return WindowAnswer(criteria=parse_rubric_criteria(query_id, completion, list(units), num_criteria))
 
 
+#: The declared cap of the schema's ``invalid_reason``: a longer diagnostic is cut with a marker, never silently.
+_MAX_INVALID_REASON = 2000
+
+
 def window_record(
     *,
     record_id: str,
@@ -515,6 +519,9 @@ def window_record(
             )
         )
     reason, category = failure if answer is None and failure is not None else ("no answer", "refused")
+    if answer is None:
+        # The declared cap of the schema's field: a cut is marked, never silent (the reason is diagnostic).
+        reason = reason if len(reason) <= _MAX_INVALID_REASON else reason[: _MAX_INVALID_REASON - 6] + "…(cut)"
     return Judgement(
         record_id=record_id,
         dataset=dataset,
@@ -528,7 +535,7 @@ def window_record(
         response=completion.response if completion is not None else None,
         finish_reason=completion.finish_reason if completion is not None else None,
         valid=answer is not None,
-        invalid_reason=None if answer is not None else reason[:2000],
+        invalid_reason=None if answer is not None else reason,
         invalid_category=None if answer is not None else category,
         input_tokens=completion.input_tokens if completion is not None else None,
         output_tokens=completion.output_tokens if completion is not None else None,

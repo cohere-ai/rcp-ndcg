@@ -752,3 +752,55 @@ class TestIdentities:
         (entry,) = JudgementStore(tmp_path).identities().values()
         assert entry["identity"]["dataset"]["name"] == "dataset"
         assert len(entry["identity"]["dataset"]["rows_sha256"]) == 64
+
+
+class _GarbledThenWell(_Garbled):
+    """An endpoint that garbles its first two answers, then answers well."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.well_after = 2
+
+    def _answer(self, request: httpx.Request) -> httpx.Response:
+        if self.usage.requests < self.well_after:
+            return super()._answer(request)
+        return FakeJudge._answer(self, request)
+
+
+def test_a_garbled_answer_is_retried_up_to_three_attempts_then_well(tmp_path: Path) -> None:
+    """The retry loop's contract, pinned: up to MAX_ATTEMPTS (the docs' 'three attempts in total') requests
+    per window, and an answer that turns well on a later attempt is a valid record, not a retry-count
+    fiction: one window spends two garbled attempts, the rest one each."""
+    assert MAX_ATTEMPTS == 3
+    flaky = _GarbledThenWell()
+    result = judge(ROWS[:1], {"q1": ["q1-d00", "q1-d01"]}, flaky, stage="rubric", out=tmp_path)
+    assert result.judgements and all(j.valid for j in result.judgements)
+    assert flaky.usage.requests == len(result.judgements) + 2
+
+
+def test_the_completion_reserve_is_capped_at_half_of_what_is_left() -> None:
+    """``max_output_tokens`` reserves at most half of the usable context (a huge declared completion budget
+    must not starve the window's text to nothing); a small one reserves itself exactly."""
+    judge_cfg = JudgeConfig(base_url="http://h/v1", model="m", context_tokens=10_000)
+    small = judge_cfg.model_copy(update={"max_output_tokens": 1_000})
+    assert window_tokens(small, 10, overhead_tokens=500) == (10_000 - 500 - 1_000) // 10
+    huge = judge_cfg.model_copy(update={"max_output_tokens": 9_000})
+    # usable = 9500; the reserve is min(9000, 9500/2) = 4750: the text keeps half of what is left.
+    assert window_tokens(huge, 10, overhead_tokens=500) == (9_500 - 9_500 // 2) // 10
+
+
+def test_a_long_invalid_reason_is_cut_with_a_marker_not_silently(tmp_path: Path) -> None:
+    """The declared cap of the schema's ``invalid_reason`` (2000): a longer diagnostic carries the cut marker,
+    so a truncation is declared, recorded policy."""
+    pool = {"q1": ["q1-d00", "q1-d01"]}
+
+    class _ProlixRefusal(_Refuses):
+        """Refuses with a very long message."""
+
+        def _answer(self, request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, json={"error": {"message": "x" * 5000}})
+
+    result = judge(ROWS[:1], pool, _ProlixRefusal(), stage="rubric", out=tmp_path)
+    assert result.judgements and not any(j.valid for j in result.judgements)
+    (reason,) = {j.invalid_reason for j in result.judgements}
+    assert len(reason) == 2000 and reason.endswith("(cut)")

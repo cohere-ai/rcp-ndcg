@@ -36,6 +36,18 @@ PROMPT_FILES: dict[str, str] = {
 
 _CRITERION = re.compile(r"\bC([1-9][0-9]?)\b")
 
+
+def criterion_labels_in(text: str) -> tuple[str, ...]:
+    """The criterion labels ``C1..Cn`` ``text`` names, when they form a contiguous ladder; empty otherwise.
+
+    The one derivation of "which criteria does this prompt ask for" (it is what the judge answers):
+    :attr:`Prompt.criteria` and the fake judge's rubric answers read it.
+    """
+    labels = {int(match) for match in _CRITERION.findall(text)}
+    if not labels or labels != set(range(1, max(labels) + 1)):
+        return ()
+    return tuple(f"C{k}" for k in range(1, max(labels) + 1))
+
 #: The slots every judging prompt must have: the query, and the window's documents.
 REQUIRED_PLACEHOLDERS: tuple[str, ...] = ("query_placeholder", "passages_placeholder")
 
@@ -58,14 +70,10 @@ class Prompt:
     def criteria(self) -> tuple[str, ...]:
         """The criterion labels the prompt asks for (``("C1", ..., "C5")`` for the shipped rubric).
 
-        Derived from the text, which is what the judge answers: the labels ``C1..Cn``
-        it mentions, when they form a contiguous ladder; empty otherwise (the
-        tournament prompts).
+        Derived from the text, which is what the judge answers (see :func:`criterion_labels_in`): empty for
+        the tournament prompts.
         """
-        labels = {int(match) for match in _CRITERION.findall(self.text)}
-        if not labels or labels != set(range(1, max(labels) + 1)):
-            return ()
-        return tuple(f"C{k}" for k in range(1, max(labels) + 1))
+        return criterion_labels_in(self.text)
 
     def template(self, *, with_num_documents: bool) -> Template:
         """The prompt as a :class:`~rcp_ndcg.llm._templates.Template` over the query and the documents.
@@ -142,6 +150,7 @@ __all__ = [
     "REQUIRED_PLACEHOLDERS",
     "Prompt",
     "PromptName",
+    "criterion_labels_in",
     "load_prompt",
     "prompt_path",
     "shipped_prompt_name",

@@ -177,8 +177,9 @@ reproducible from the store after its file moves or changes.
 - **Reparse.** Every record keeps the judge's raw answer. `rcp_ndcg.llm.reparse(store, out)`, or
   `rcp-ndcg judge reparse --judgements DIR --out DIR`, reads the stored answers again with the current parser and
   writes a new store under the current parse version, with its own family key and record ids. It never calls the
-  judge and never writes into the source store, and it reports per stage how many windows were recovered, stayed
-  invalid (by category), were unchanged or changed.
+  judge and never writes into the source store. The command reports per stage how many windows were recovered,
+  stayed invalid (by category), were unchanged or changed (`rcp_ndcg.llm.reparse` itself returns the new store's
+  :class:`~rcp_ndcg_core.schemas.JudgementSet`).
 
 ## Estimating a pass
 

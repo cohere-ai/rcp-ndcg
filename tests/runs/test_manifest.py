@@ -137,3 +137,23 @@ class TestPersistence:
         Path(layout.manifest).write_text(json.dumps(payload), encoding="utf-8")
         with pytest.raises(DataError, match="rcp-ndcg.run-manifest.v1"):
             RunManifest.load(layout)
+
+
+class TestAFailedRerun:
+    def test_a_failed_rerun_leaves_no_outputs_of_the_attempt_it_did_not_run(self) -> None:
+        """A step re-run that fails records what THAT attempt did: the previous attempt's inputs, outputs,
+        usage and engines describe work this attempt did not do (a record saying ``failed`` while listing
+        outputs it never wrote is a lie a reader cannot tell from the truth)."""
+        from rcp_ndcg.storage.artifacts import artifact_ref
+
+        manifest = _manifest()
+        manifest.start_step("evaluate", identity={"a": 1})
+        manifest.finish_step("evaluate", inputs=["in"], outputs=["y.parquet"])
+        record = manifest.step("evaluate")
+        assert record.outputs == ["y.parquet"] and record.inputs == ["in"]
+
+        manifest.start_step("evaluate", identity={"a": 2})
+        manifest.finish_step("evaluate", status=StepStatus.FAILED, error="boom")
+        record = manifest.step("evaluate")
+        assert record.status is StepStatus.FAILED and record.error == "boom"
+        assert record.outputs == [] and record.inputs == [], "the failed attempt wrote nothing"

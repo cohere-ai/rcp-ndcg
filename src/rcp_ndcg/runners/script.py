@@ -61,7 +61,9 @@ def install_argv(
         wheelhouse: A directory, a ``file://`` URL, or an ``http(s)://`` URL of staged wheels, readable where
             the command runs: rendered as ``--find-links <wheelhouse> --no-index`` (a pre-release, or an
             air-gapped node -- the wheelhouse stages every wheel, the CPU torch build included, so no index
-            is asked).
+            is asked). On an air-gapped node set ``constraints`` too: the default constraints file is the
+            release's network URL, fetched even under ``--no-index`` (or stage it in the wheelhouse and
+            default it there).
         constraints: A constraints file (path or URL) replacing the release's
             (:data:`CONSTRAINTS_URL`).
 
@@ -244,6 +246,8 @@ _ENGINES_SPEC = """import json, sys
 out = {}
 for spec in sys.argv[1:]:
     role, port, wait, hosts = spec.split(":", 3)
+    # The one URL shape, ServeConfig.url's (support/serve.py) -- this builder is a bare python3 -c script
+    # that runs before the coordinator and cannot import it.
     out[role] = {"urls": [f"http://{h}:{port}/v1" for h in hosts.split(",")], "wait_on_outage_s": int(wait)}
 print(json.dumps(out))
 """
