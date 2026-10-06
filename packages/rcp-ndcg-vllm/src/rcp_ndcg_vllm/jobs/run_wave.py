@@ -15,7 +15,8 @@ Test mode: ``--vllm-cmd "python tests/stub_engine.py"`` replaces the ``vllm serv
 ``--port-base 0`` gives every engine ``--port 0``; such an engine must announce its bound port by printing
 ``RCPS_STUB_PORT=<n>`` on stdout, which the runner reads instead of guessing a port.
 
-Run it on the node with ``python -m rcp_ndcg_vllm.jobs.run_wave`` (``bootstrap.sh`` does).
+Run it on the node with ``python -m rcp_ndcg_vllm.jobs.run_wave`` (the node's rc-build bootstrap does; the
+tracked ``bootstrap.sh`` is a superseded stub).
 """
 
 from __future__ import annotations
@@ -34,7 +35,6 @@ from pathlib import Path
 from typing import Any
 
 from ..equivalence import run as run_equivalence
-from ..equivalence.client import EngineClient
 from ..errors import HarnessError, RecipeError
 from ..recipe import Recipe, default_recipes_root, iter_recipes, load_recipe, serve_argv
 from ..record import record as record_exchanges
@@ -209,12 +209,13 @@ class _EngineRun:
         return self._announced_port
 
     def _models_ok(self, port: int) -> bool:
+        import httpx
+
         try:
-            with EngineClient(self.recipe, f"http://127.0.0.1:{port}", served_model_name=self.recipe.id) as client:
-                client.models()
-        except Exception:  # noqa: BLE001 - a not-yet-ready engine is not an error
+            response = httpx.get(f"http://127.0.0.1:{port}/v1/models", timeout=10.0)
+            return response.status_code == 200
+        except httpx.HTTPError:
             return False
-        return True
 
     def stop(self) -> None:
         """Stop the engine's whole process group: SIGTERM, then SIGKILL after a grace period."""
@@ -500,7 +501,7 @@ def main(argv: list[str] | None = None) -> int:
         "--reference-python",
         required=True,
         help="the python that runs the recipe's references (its environment carries torch/transformers); "
-        "the wave runs each reference first, before the engine starts on that GPU",
+        "the reference subprocess runs after that recipe's smoke pass, while the engine is up",
     )
     parser.add_argument("--vllm-cmd", default=None, help="replace the 'vllm serve' launcher (tests: a stub engine)")
     parser.add_argument("--port-base", type=int, default=8100, help="first engine port (0: engines announce theirs)")

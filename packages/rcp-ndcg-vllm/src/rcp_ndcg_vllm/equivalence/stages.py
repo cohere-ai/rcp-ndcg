@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import numpy as np
@@ -32,10 +33,17 @@ from rcp_ndcg.data.preprocess import TextTruncationCensus, fit
 
 from ..errors import HarnessError
 from ..recipe import Recipe, client_config
-from . import fitting
 from .fitting import load_pairs
 from .gates import kendall_tau_b, resolve_gates
 from .reference import run_reference
+
+
+def _fitting() -> ModuleType:
+    """The fitting module, imported lazily (stage 1 runs long before stage 2 needs it)."""
+    from . import fitting
+
+    return fitting
+
 
 __all__ = ["load_pairs", "stage1_prompts", "stage2_scores"]
 
@@ -68,12 +76,12 @@ def stage1_prompts(
     - ``engine_tokenize_check`` — with an engine URL: the engine's ``/tokenize`` of every sampled prompt must
       equal ``fit``'s ids and counts; reported ``not_run`` without an engine, never as passed.
     """
-    tokenizer = fitting.tokenizer_of(recipe)
+    tokenizer = _fitting().tokenizer_of(recipe)
     rows = load_pairs(pairs_path)
     shown = rows if limit is None else rows[:limit]
     sampled = _sampled_rows(recipe, shown, tokenizer, over_length_per_shape)
     census = TextTruncationCensus()
-    fitted = fitting.fit_rows(recipe, sampled, tokenizer, census=census)
+    fitted = _fitting().fit_rows(recipe, sampled, tokenizer, census=census)
     document: dict[str, Any] = {
         "pairs": len(rows),
         "sampled": len(sampled),
@@ -117,13 +125,17 @@ def _sampled_rows(
     so the reference subprocess renders the same inputs.
     """
     sampled: list[dict[str, Any]] = [dict(row) for row in rows]
-    seed = rows[0] if rows else {"query": "anchor check", "documents": ["anchor check document"], "instruction": None}
+    seed: dict[str, Any] = (
+        rows[0] if rows else {"query": "anchor check", "documents": ["anchor check document"], "instruction": None}
+    )
+    seed_query = str(seed["query"])
+    seed_document = str(seed["documents"][0])
     template = recipe.client.template
-    shapes = [str(shape) for shape in template.shapes()] if template is not None else [fitting.default_shape(recipe)]
+    shapes = [str(shape) for shape in template.shapes()] if template is not None else [_fitting().default_shape(recipe)]
     for shape in shapes:
         for index in range(max(over_length_per_shape, 1)):
-            padded_query = _over_length(seed["query"], recipe.client.max_tokens, tokenizer, index)
-            padded_document = _over_length(seed["documents"][0], recipe.client.max_tokens, tokenizer, index)
+            padded_query = _over_length(seed_query, recipe.client.max_tokens, tokenizer, index)
+            padded_document = _over_length(seed_document, recipe.client.max_tokens, tokenizer, index)
             sampled.append(
                 {
                     "query": padded_query if shape in ("query", "pair") else seed["query"],
@@ -275,12 +287,12 @@ def _render_check(
 
 def _fit_ids_by_row(recipe: Recipe, sampled: list[dict[str, Any]], tokenizer: Any) -> dict[tuple[int, str], list[int]]:
     """``fit``'s rendered ids per sampled row, keyed by (row index, shape) — the served render the engine sees."""
-    budget = fitting.budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    budget = _fitting().budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
     out: dict[tuple[int, str], list[int]] = {}
     for index, row in enumerate(sampled):
-        shape = str(row.get("shape") or fitting.default_shape(recipe))
+        shape = str(row.get("shape") or _fitting().default_shape(recipe))
         instruction = row.get("instruction")
-        query = fitting.fold_query(recipe, row["query"], instruction)
+        query = _fitting().fold_query(recipe, row["query"], instruction)
         inputs: list[Any] = (
             [(query, row["documents"][0])] if shape == "pair" else [query if shape == "query" else row["documents"][0]]
         )
@@ -289,9 +301,9 @@ def _fit_ids_by_row(recipe: Recipe, sampled: list[dict[str, Any]], tokenizer: An
     return out
     out: dict[tuple[int, str], list[int]] = {}
     for index, row in enumerate(sampled):
-        shape = str(row.get("shape") or fitting.default_shape(recipe))
+        shape = str(row.get("shape") or _fitting().default_shape(recipe))
         instruction = row.get("instruction")
-        query = fitting.fold_query(recipe, row["query"], instruction)
+        query = _fitting().fold_query(recipe, row["query"], instruction)
         inputs: list[Any] = (
             [(query, row["documents"][0])] if shape == "pair" else [query if shape == "query" else row["documents"][0]]
         )
@@ -314,7 +326,7 @@ def _template_check(recipe: Recipe, fitted: dict[str, Any], rows: list[dict[str,
     template_text = (directory / recipe.serve.chat_template).read_text(encoding="utf-8")
     row = rows[0]
     # The jinja file receives the same texts fit received: the query pre-folded by the client (fold mode).
-    folded_query = fitting.fold_query(recipe, row["query"], row.get("instruction"))
+    folded_query = _fitting().fold_query(recipe, row["query"], row.get("instruction"))
     jinja_text = (
         _jinja_environment()
         .from_string(template_text)
@@ -448,12 +460,8 @@ def stage2_scores(
     config's own budget.  The reference runs as a subprocess in its own environment (``--reference-python``,
     required); the harness process imports no torch.
     """
-    print(f"DEBUG stage2_scores: recipe={recipe.id}, reference_python={reference_python!r}")
     rows = load_pairs(pairs_path)
-    print(f"DEBUG stage2_scores: loaded {len(rows)} rows")
     reference = _reference_outputs(recipe, reference_python, rows, device=device)
-    print(f"DEBUG stage2_scores: reference rows={len(reference.get('rows', []))}")
-    print(f"DEBUG stage2_scores: dispatching to role={recipe.role}")
     gates = resolve_gates(recipe)
     if recipe.role == "rerank":
         return _rerank_stage2(recipe, rows, reference, base_url, gates, served_model_name, recorder)
@@ -602,7 +610,7 @@ def _rerank_stage2(
     Kendall tau covers the under-cap subset of every gated query.
     """
     deviation = "anchor_drop_over_cap" in recipe.reference.known_deviations
-    tokenizer = fitting.tokenizer_of(recipe)
+    tokenizer = _fitting().tokenizer_of(recipe)
     max_tokens = recipe.client.max_tokens or 1
     per_document: list[dict[str, Any]] = []
     per_query: list[dict[str, Any]] = []
@@ -672,7 +680,7 @@ def _fit_pair(recipe: Recipe, row: dict[str, Any], tokenizer: Any) -> tuple[str,
     """
     instruction = row.get("instruction")
     folded = _fold(recipe, row["query"], instruction)
-    budget = fitting.budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    budget = _fitting().budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
     inputs = [(folded, document) for document in row["documents"]]
     result = fit(inputs, "pair", budget, tokenizer, ids=[str(index) for index in range(len(inputs))])
     contents = [list(content) for content in result.contents]
@@ -809,7 +817,7 @@ def _vector_stage2(
     client sends.
     """
     per_vector: list[dict[str, Any]] = []
-    budget = fitting.budget_of(recipe).model_copy(update={"tokenizer": fitting.tokenizer_of(recipe).name})
+    budget = _fitting().budget_of(recipe).model_copy(update={"tokenizer": _fitting().tokenizer_of(recipe).name})
     for row_index, row in enumerate(rows):
         if row_index >= len(reference["rows"]):
             break
@@ -827,7 +835,7 @@ def _vector_stage2(
                 inputs,
                 cast_shape(shape),
                 budget,
-                fitting.tokenizer_of(recipe),
+                _fitting().tokenizer_of(recipe),
                 ids=[str(i) for i in range(len(inputs))],
             )
             texts_list: list[str] = list(result.texts)
@@ -870,7 +878,6 @@ def _compare_shape(
 
 
 def _vector_summary(recipe: Recipe, per_vector: list[dict[str, Any]], gates: Any) -> dict[str, Any]:
-    print(f"DEBUG _vector_summary: n_per_vector={len(per_vector)}, entries={per_vector[:2]}")
     """Aggregate the per-vector cosines into the gate row; every non-within row fails the stage."""
     cosines = [entry["cosine"] for entry in per_vector if entry["cosine"] is not None]
     worst = min(cosines) if cosines else None
@@ -903,11 +910,11 @@ def _cosine(a: np.ndarray, b: np.ndarray) -> float:
 
 def _fit_texts_by_row(recipe: Recipe, sampled: list[dict[str, Any]], tokenizer: Any) -> dict[tuple[int, str], str]:
     """``fit``'s rendered texts per sampled row, keyed by (row index, shape) — the engine's prompt."""
-    budget = fitting.budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    budget = _fitting().budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
     out: dict[tuple[int, str], str] = {}
     for index, row in enumerate(sampled):
-        shape = str(row.get("shape") or fitting.default_shape(recipe))
-        query = fitting.fold_query(recipe, row["query"], row.get("instruction"))
+        shape = str(row.get("shape") or _fitting().default_shape(recipe))
+        query = _fitting().fold_query(recipe, row["query"], row.get("instruction"))
         inputs: list[Any] = (
             [(query, row["documents"][0])] if shape == "pair" else [query if shape == "query" else row["documents"][0]]
         )

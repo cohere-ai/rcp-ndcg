@@ -13,7 +13,7 @@ One directory per model, `packages/rcp-ndcg-vllm/recipes/<id>/`, with three file
 recipes/<id>/
   recipe.yaml      # the recipe (the Recipe schema; every field is listed in schema/recipe.schema.json)
   template.jinja   # the chat template given to vllm serve --chat-template (only when the model needs one)
-  reference.py     # the in-process reference implementation the equivalence harness compares against
+  reference.py     # the reference implementation, run as a subprocess (see the reference interface)
 ```
 
 The `id` equals the directory name, matches `^[a-z0-9][a-z0-9.-]*$`, and is also the `--served-model-name` the
@@ -38,13 +38,14 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
   pairs separately, outside the gates. The declared shape's `anchor` is `last`, `first`, `mean` or `marker`
   (with `anchor_markers`), and stage 1 samples over-length inputs (at least 20 per shape) and asserts every
   anchor survived — reported as `anchor_check`, separately from token-id mismatches.
-- **Special tokens by name.** Template segments never contain special-token literals: `{"special": "im_end"}`
-  is resolved through the recipe tokenizer's added tokens at run time, `{"text": ...}` is ordinary template
-  text, `{"ids": [...]}` is a measured sequence, and `{"content": query | document}` marks the cuttable span.
-  Every declared shape needs at least one content span; an `anchor: last` shape must end with a fixed segment
-  (or pin `add_special_tokens: true`, declaring the tokenizer's end token as the anchor). When
-  `serve.chat_template` is set, stage 1 also proves the declared shapes render to the same token ids as the
-  template file.
+- **Segments: `fixed` and `content`, nothing else.** A shape is an ordered list of segments with exactly two
+  kinds: `fixed` — ordinary template text, which may name special tokens as `{special:<name>}` placeholders
+  that the recipe tokenizer's added tokens resolve at run time — and `content`, the cuttable span
+  (`query` or `document`). The schema is closed, so `{"special": ...}`, `{"text": ...}` or `{"ids": ...}`
+  segments are refused. Every declared shape needs at least one content span; an `anchor: last` shape must end
+  with a fixed segment (or pin `add_special_tokens: true`, declaring the tokenizer's end token as the anchor).
+  When `serve.chat_template` is set, stage 1 also proves the declared shapes render to the same token ids as
+  the template file.
 - **Explicit budgets.** Every recipe declares `client.tokenizer` and `client.max_tokens` — there is no implicit
   default. `on_overflow` is `cut` by default (content spans only, at token boundaries, anchors reserved;
   `chunk` and `fail` are the alternatives) and `aggregation: max` is the only chunk aggregation. The engine's
@@ -57,8 +58,9 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
 - **The reference runs as a subprocess.** Stage 2 runs the recipe's `reference.py` as a subprocess
   (`--reference-python <path>`, required when stage 2 runs; no default) that reads the pairs file and writes
   scores or vectors to a file the harness compares. The harness process imports no torch or transformers; the
-  reference environment is documented in `packages/rcp-ndcg-vllm/requirements-reference.txt`. On the node, the
-  reference must finish and release its GPU before the engine starts on that GPU.
+  reference environment is documented in `packages/rcp-ndcg-vllm/requirements-reference.txt`. The engine comes
+  up on the slot's GPUs first; the reference subprocess runs against the pairs file while the engine is up and
+  releases its memory when it exits.
 
 Recipe YAML at a glance (abridged; the schema's docstrings define every field):
 
@@ -120,34 +122,25 @@ booleans (`"no"`, `"yes"`, `"on"`), and always quote the 40-hex revision.
 
 ## The reference interface
 
-`reference.py` is loaded straight from the recipe directory; it may import torch, transformers or the checkpoint's
-remote code. It defines exactly:
+`reference.py` runs as a subprocess CLI, not an import: stage 2 launches it with the recipe's
+`--reference-python` and a mode, and reads back a JSON file. It may import torch, transformers or the
+checkpoint's remote code — the harness process never does. The contract (enforced by
+`equivalence/reference.py`'s runner, which all fixture references implement):
 
-```python
-def load(device: str) -> object:
-    """Load the model once onto device ("cpu" or "cuda:0"); keep it module-global."""
-
-def score(query: str, documents: list[str], instruction: str | None) -> list[float]:
-    """Rerank: one score per document, on reference.score_scale (probability | logit | cosine)."""
-
-def embed(texts: list[str], role: str) -> "list[numpy.ndarray]":
-    """Embedding roles: one array per text, (dim,) for dense, (n_tokens, dim) for late interaction.
-    role is "query" or "document"; the reference composes its own prompts."""
-
-def render(query: str, document: str, instruction: str | None) -> list[int]:
-    """Stage 1, default shape: the token ids of the exact prompt the engine must see for that pair.
-    The default shape is the pair shape for a rerank recipe and the document shape for an embedding recipe
-    (the recipe's declared shapes assembled with the anchor-preserving cuts, or the prompted text when no
-    template block is declared)."""
-
-def render_shape(shape: str, query: str, document: str, instruction: str | None) -> list[int]:
-    """Optional: the same for the other declared shapes, so the anchor audit checks the reference's render
-    of every shape; without the hook, only the default shape's reference-side audit is possible."""
+```text
+reference.py --mode <render|score|embed> --pairs <file> --out <file> \
+             --tokenizer "<repo>@<revision>|path/to/tokenizer.json" --device <cpu|cuda:0>
 ```
 
-Optionally `tokenizer()`, an object with `encode(text) -> list[int]` and `id_to_token(id) -> str`, so stage 1 can
-run on CPU without a Hub download (tests and CI); production references omit it and stage 1 loads the recipe's
-`client.tokenizer` with transformers.
+- `--mode render` — stage 1's reference side: `{"rows": [{"index", "shape", "text": str}]}`, the exact prompt
+  text the reference expects the engine to see for that pair's declared shape (the anchor-preserving render:
+  fixed segments reserved, content cut, template re-attached).
+- `--mode score` — rerank: `{"rows": [{"index", "scores": [float, ...]}]}` on the recipe's
+  `reference.score_scale` (probability | logit | cosine).
+- `--mode embed` — embedding roles: `{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[...]]}]}`
+  (dense: one vector per side; late interaction: one per token).
+- `requirements-reference.txt` in the recipe directory pins the reference environment (torch, transformers,
+  sentence-transformers as needed); it is documented, not installed, by the harness.
 
 ## Choosing how vLLM serves a model
 
@@ -161,8 +154,8 @@ no flag can express the model's scoring.
 A last-token-pooling embedder's anchor is its trailing end token: the wrapper renders `prefix + text + suffix`
 and the naive fix — truncating the whole string on the right — drops the token the model was trained to read
 out of. The correct cut reserves the suffix, cuts only the text, and re-attaches the template. The mechanism in
-ten dependency-free lines (the real implementation is the harness's `assemble_shape_text`, checked against your
-reference in stage 1):
+ten dependency-free lines (the real implementation is the product's `fit` in `rcp_ndcg.data.preprocess`, checked
+against your reference in stage 1):
 
 ```python
 # The template block of a last-token-pooling embedder, as segments:
@@ -180,8 +173,8 @@ assert prompt_ids[-len(suffix_ids):] == suffix_ids  # the anchor survived the cu
 assert len(prompt_ids) == max_tokens
 ```
 
-The same assertion in code lives in the tests (`test_zembed`-shaped): for an over-length input, every declared
-anchor id sits at its declared position in the assembled ids.
+The same assertion in code lives in the package's tests (`test_stage1_passes_for_every_anchor_kind...`): for an
+over-length input, every declared anchor id sits at its declared position in the assembled ids.
 
 ## The three equivalence stages
 
@@ -204,8 +197,8 @@ float16 cast); median per-query Kendall τ ≥ 0.98. A recipe's `gates` section 
 `reference.known_deviations: [anchor_drop_over_cap]`, pairs whose uncut prompt exceeds `client.max_tokens` are
 reported in a separate, non-gating table and the gates run on the under-cap pairs only.
 
-Stage 3 (optional, needs the `metrics` extra) scores rankings per subset with `rcp-ndcg eval score` as a
-subprocess and requires the mean |Δ nDCG@10| over subsets ≤ 2e-3.
+Stage 3 (optional) scores rankings per subset with `rcp-ndcg eval score` as a subprocess (the package depends
+on `rcp-ndcg`, so the command is always available) and requires the mean |Δ nDCG@10| over subsets ≤ 2e-3.
 
 ```bash
 python -m rcp_ndcg_vllm.equivalence --recipe recipes/<id> --base-url http://127.0.0.1:8100 \
@@ -228,9 +221,11 @@ tracked file may name a machine's paths. `EXTRA_DIRS` (space-separated directori
 `KJOBS=echo` (print the commands instead of running them) are optional.
 
 The script stages a tarball of the current commit (plus any directories in `EXTRA_DIRS`, and the recipes file),
-uploads it to `<stage-prefix>/<wave-name>/code.tar.gz`, and submits the job `rcp-<wave-name>`; on the node,
-`bootstrap.sh` authenticates, installs the packages from the tarball into the image's Python (`--no-deps`, so the
-image's vLLM and torch are never touched), and runs `run_wave.py` with `--record` and `--upload`. The wave packs
+uploads it to `<stage-prefix>/<wave-name>/code.tar.gz`, and submits the job `rcp-<wave-name>`. The tracked
+`bootstrap.sh` is a superseded stub (it exits with an error naming its replacement): the node bootstrap —
+authenticate, install the packages from the tarball into the image's Python with `--no-deps` so the image's
+vLLM and torch are never touched, run `run_wave.py` with `--record` and `--upload` — ships with the rc-build
+image, not this repository. The wave packs
 recipes onto the node's GPUs, serves one engine per slot, runs smoke, equivalence and the recorder, and writes
 `<out>/<id>/{serve.log, equivalence.json, status.json}` plus a summary. `KJOBS=echo` prints the commands instead
 of running them.

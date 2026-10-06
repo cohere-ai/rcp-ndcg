@@ -21,13 +21,18 @@ classifiers = [
   "Topic :: Scientific/Engineering",
 ]
 # Deliberately without vllm: the engine image carries it, and a torch pin here
-# would fight every vLLM release.  This package talks to the engine over HTTP
-# (rcp-ndcg and rcp-ndcg-vllm never import each other; they meet at the URL).
+# would fight every vLLM release.  rcp-ndcg IS a hard dependency (one schema: the
+# recipe's client block IS the product's endpoint config; stage 1 runs the
+# product's fit).  The reference environment (torch, transformers) is NOT a
+# dependency of this package: the reference runs as a subprocess
+# (requirements-reference.txt).
 dependencies = [
+  "rcp-ndcg==0.0.1",
   "pydantic>=2.0",
   "PyYAML>=6.0",
   "httpx>=0.27",
   "numpy>=1.26",
+  "tokenizers>=0.21",
 ]
 
 [project.optional-dependencies]
@@ -36,7 +41,6 @@ dependencies = [
 test = [
   "pytest>=8.0",
   "jinja2>=3.1",
-  "tokenizers>=0.21",
 ]
 
 [project.urls]

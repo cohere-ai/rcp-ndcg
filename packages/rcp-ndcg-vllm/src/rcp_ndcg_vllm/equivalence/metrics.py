@@ -1,7 +1,7 @@
 """Stage 3: nDCG@10 per subset from rankings, scored by calling ``rcp-ndcg eval score`` as a subprocess.
 
-The harness never imports ``rcp-ndcg``'s internals (the two packages meet over HTTP and at the command line, not
-in the import graph).  The input is a rankings directory with, per subset:
+The scoring command is the product's CLI (``rcp-ndcg`` is a hard dependency of this package, so it is on the
+PATH wherever the harness is installed).  The input is a rankings directory with, per subset:
 
 - ``<subset>.served.jsonl`` — the served system's rankings, in rcp-ndcg's rankings format;
 - ``<subset>.reference.jsonl`` — the reference (or stored) system's rankings, same format;
@@ -77,8 +77,8 @@ def _score_one(command: str, rankings_dir: str | Path, subset: str, system: str)
         completed = subprocess.run(argv, capture_output=True, text=True, check=True)
     except FileNotFoundError as error:
         raise HarnessError(
-            f"the rcp-ndcg command is not installed ({command}); install the metrics extra: "
-            "pip install rcp-ndcg-vllm[metrics]"
+            f"the rcp-ndcg command is not installed ({command}); it is a dependency of this package — "
+            "reinstall with: pip install rcp-ndcg-vllm"
         ) from error
     except subprocess.CalledProcessError as error:
         raise HarnessError(

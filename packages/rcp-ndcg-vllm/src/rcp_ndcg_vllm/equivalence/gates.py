@@ -1,6 +1,6 @@
 """The stage-2 gates and their per-``score_scale`` defaults, and the tie-robust rank agreement they use.
 
-The defaults are the published tolerances for checking a served engine against an in-process reference:
+The defaults are the published tolerances for checking a served engine against the reference subprocess:
 probability-scale scores allow |delta| of 0.02 for 99% of documents and 0.05 for all, raw-logit scores allow
 |delta| of 0.05 * (1 + |reference score|), cosine-scale rerank scores allow |delta| of 0.01, vectors must agree
 with a cosine of at least 1 - 1e-3 per vector (per token for a late-interaction model, after the same float16

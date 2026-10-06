@@ -5,7 +5,8 @@ A recipe lives in one directory, ``recipes/<id>/``, with:
 
 - ``recipe.yaml`` — the recipe itself (the :class:`Recipe` schema below);
 - ``template.jinja`` — the chat template given to ``vllm serve --chat-template``, when the model needs one;
-- ``reference.py`` — the in-process reference implementation the equivalence harness runs as a subprocess.
+- ``reference.py`` — the reference implementation, run as a subprocess (its own python via
+  ``--reference-python``; the harness imports no torch).
 
 The recipe's ``client`` block **is** the product's endpoint config for the role
 (:class:`~rcp_ndcg.inference.config.EmbeddingEndpoint`, :class:`~rcp_ndcg.inference.config.PoolingEndpoint` or
@@ -34,7 +35,7 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-import yaml
+import yaml  # pyright: ignore[reportMissingModuleSource]
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
@@ -87,7 +88,7 @@ _REVISION_PATTERN = r"^[0-9a-f]{40}$"
 Role = Literal["embed", "multi_vector", "rerank"]
 ScoreScale = Literal["probability", "logit", "cosine"]
 
-ClientEndpoint = EmbeddingEndpoint | PoolingEndpoint | RerankEndpoint
+type ClientEndpoint = EmbeddingEndpoint | PoolingEndpoint | RerankEndpoint
 """The product endpoint config a recipe's ``client`` block constructs, by the recipe's role."""
 
 
@@ -371,7 +372,7 @@ def _build_client(role: str, client_data: dict[str, Any], recipe_id: str, revisi
                 "from the recipe's id and revision"
             )
     client_data = {**client_data, "model": recipe_id, "revision": revision}
-    classes: dict[str, type[ClientEndpoint]] = {
+    classes: dict[str, type] = {
         "embed": EmbeddingEndpoint,
         "multi_vector": PoolingEndpoint,
         "rerank": RerankEndpoint,

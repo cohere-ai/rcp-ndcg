@@ -24,10 +24,10 @@ from typing import Any
 
 import httpx
 
-from ..errors import HarnessError
-from ..recipe import Recipe, client_config
+from .errors import HarnessError
+from .recipe import Recipe
 
-__all__ = ["RecordingTransport", "record"]
+__all__ = ["record"]
 
 _PLACEHOLDER = "http://engine"
 _TIMEOUT_S = 120.0
@@ -35,56 +35,10 @@ _SNIPPET_TEXT = "What is the capital of France?"
 _SNIPPET_DOCUMENTS = ["Paris is the capital of France.", "Berlin is the capital of Germany."]
 
 
-class RecordingTransport(httpx.AsyncBaseTransport):
-    """An ``httpx`` transport that records every exchange and delegates to the real one.
-
-    The observation seam: the product's :class:`~rcp_ndcg.inference.transport.Transport` accepts it as its
-    ``httpx_transport``, so every request the product's clients send crosses here once — the product's wire
-    path, not a second one.
-    """
-
-    def __init__(self, exchanges: list[dict[str, Any]], real: httpx.AsyncBaseTransport | None = None) -> None:
-        super().__init__()
-        self.exchanges = exchanges
-        self._real = real or httpx.AsyncHTTPTransport()
-
-    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        """Send through the real transport and record the exchange."""
-        raw = request.read()
-        try:
-            body: Any = json.loads(raw)
-        except (ValueError, UnicodeDecodeError):
-            body = {"base64": base64.b64encode(raw).decode("ascii")}
-        response = await self._real.handle_async_request(request)
-        await response.aread()
-        self.exchanges.append(
-            {
-                "url": _placeholder(str(request.url)),
-                "method": request.method,
-                "request_body": body,
-                "status": response.status_code,
-                "headers": {key: response.headers.get(key, "") for key in ("content-type", "server")},
-                "response_bytes": base64.b64encode(response.content).decode("ascii"),
-                "response_json": _response_json(response),
-            }
-        )
-        return response
-
-
 def _placeholder(url: str) -> str:
     """The engine URL with the placeholder host and no version segment (no hostname is ever recorded)."""
     marker = url.find("/v1")
     return f"{_PLACEHOLDER}{url[marker:]}" if marker != -1 else _PLACEHOLDER
-
-
-def _response_json(response: httpx.Response) -> Any:
-    """The response body as decoded JSON, or ``None`` when the body is not JSON."""
-    if "json" not in response.headers.get("content-type", ""):
-        return None
-    try:
-        return response.json()
-    except ValueError:
-        return None
 
 
 def record(
@@ -113,7 +67,7 @@ def record(
             bare.post("/score", json={"model": recipe.id, "queries": [_SNIPPET_TEXT], "documents": _SNIPPET_DOCUMENTS})
         _record_role_requests(recipe, base_url, exchanges, timeout_s=timeout_s)
         with httpx.Client(base_url=root, timeout=timeout_s) as bare:
-            _record_errors(bare, recipe, recipe.id)
+            _record_errors(bare, recipe, recipe.id, exchanges)
     except httpx.HTTPError as error:
         raise HarnessError(f"recording against {root} failed: {error}") from error
     return [
@@ -123,60 +77,89 @@ def record(
 
 
 def _record_role_requests(recipe: Recipe, base_url: str, exchanges: list[dict[str, Any]], *, timeout_s: float) -> None:
-    """The role routes, through the product's clients over a recording transport."""
-    from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
-    from rcp_ndcg.inference.transport import Transport
+    """The role routes, through a bare httpx client against the engine's un-prefixed paths.
 
-    exchanges.clear()
-    hook = RecordingTransport(exchanges)
-    classes: dict[str, type] = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
-    config = dict(client_config(recipe, base_url=base_url))
-    config["max_tokens"] = None
-    if recipe.client.template is not None:
-        config["query_prompt"] = ""
-        config["doc_prompt"] = ""
-    endpoint = classes[recipe.role](**config)
-    from rcp_ndcg_core.content import Content as WireContent
+    The product's role clients on stage-budget refuse a budget (the client-side budget wiring lands in
+    ``clients-final``), so the recorder sends the fixed request set directly through the same wire paths the
+    product's adapter builds.  When the wiring lands, the recorder drives the product's role clients over a
+    recording transport instead.
+    """
+    model = recipe.id
+    role_routes = {
+        "embed": [
+            (
+                "/embeddings",
+                {
+                    "model": model,
+                    "input": [
+                        getattr(recipe.client, "query_prompt", "") + _SNIPPET_TEXT,
+                        getattr(recipe.client, "doc_prompt", "") + _SNIPPET_DOCUMENTS[0],
+                    ],
+                    "encoding_format": "float",
+                },
+            )
+        ],
+        "multi_vector": [
+            ("/pooling", {"model": model, "input": [_SNIPPET_TEXT], "task": "token_embed", "encoding_format": "float"})
+        ],
+        "rerank": [
+            (
+                "/rerank",
+                {
+                    "model": model,
+                    "query": _SNIPPET_TEXT,
+                    "documents": _SNIPPET_DOCUMENTS,
+                    "top_n": len(_SNIPPET_DOCUMENTS),
+                },
+            )
+        ],
+    }
+    root = base_url.rstrip("/")
+    if root.endswith(("/v1", "/v2")):
+        root = root.rsplit("/", 1)[0]
+    with httpx.Client(base_url=root, timeout=timeout_s) as http:
+        for route, body in role_routes.get(recipe.role, []):
+            try:
+                response = http.post(route, json=body)
+            except httpx.HTTPError as error:
+                raise HarnessError(f"recording {route} against {root} failed: {error}") from error
+            exchanges.append(_exchange(f"http://engine{route}", "POST", body, response))
 
-    from rcp_ndcg.inference.types import EncodeRole
 
-    if recipe.role == "rerank":
-        from rcp_ndcg.inference.clients import RerankClient
-
-        client = RerankClient(endpoint, sender=Transport(endpoint, httpx_transport=hook))
-        try:
-            client.rerank(_SNIPPET_TEXT, _SNIPPET_DOCUMENTS)
-        finally:
-            client.close()
-        return
-    if recipe.role == "multi_vector":
-        from rcp_ndcg.inference.clients import PoolingClient
-
-        client = PoolingClient(endpoint, sender=Transport(endpoint, httpx_transport=hook))
-        client.encode([WireContent.from_text(_SNIPPET_TEXT)], EncodeRole.DOCUMENT)
-        return
-    from rcp_ndcg.inference.clients import EmbeddingClient
-
-    client = EmbeddingClient(endpoint, sender=Transport(endpoint, httpx_transport=hook))
-    client.encode([WireContent.from_text(_SNIPPET_TEXT)], EncodeRole.DOCUMENT)
+def _exchange(url: str, method: str, request_body: Any, response: httpx.Response) -> dict[str, Any]:
+    """One recorded exchange from the raw httpx response."""
+    response.read()
+    raw = response.content
+    try:
+        response_json: Any = response.json()
+    except ValueError:
+        response_json = None
+    return {
+        "url": _placeholder(url),
+        "method": method,
+        "request_body": request_body,
+        "status": response.status_code,
+        "headers": {key: response.headers.get(key, "") for key in ("content-type", "server")},
+        "response_bytes": base64.b64encode(raw).decode("ascii"),
+        "response_json": response_json,
+    }
 
 
-def _record_errors(http: httpx.Client, recipe: Recipe, model: str) -> None:
+def _record_errors(http: httpx.Client, recipe: Recipe, model: str, exchanges: list[dict[str, Any]]) -> None:
     """The error bodies the adapters map: an over-length prompt and an unknown request field."""
     over_length = "a " * ((recipe.client.max_tokens or 8192) * 2)
-    http.post(
-        "/v1/embeddings",
-        json={"model": model, "input": [over_length], "encoding_format": "float"},
-    )
-    http.post(
-        "/v1/embeddings",
-        json={
-            "model": model,
-            "input": [_SNIPPET_TEXT],
-            "encoding_format": "float",
-            "unknown_field": "map-the-error",
-        },
-    )
+    for route, body in (
+        ("/v1/embeddings", {"model": model, "input": [over_length], "encoding_format": "float"}),
+        (
+            "/v1/embeddings",
+            {"model": model, "input": [_SNIPPET_TEXT], "encoding_format": "float", "unknown_field": "map-the-error"},
+        ),
+    ):
+        try:
+            response = http.post(route, json=body)
+        except httpx.HTTPError as error:
+            raise HarnessError(f"recording {route} failed: {error}") from error
+        exchanges.append(_exchange(f"http://engine{route}", "POST", body, response))
 
 
 def _version(image: str) -> str:

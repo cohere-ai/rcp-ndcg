@@ -18,7 +18,11 @@ def main(argv: list[str] | None = None) -> int:
         description="Check a served recipe against its reference implementation (stages 1, 2, 3).",
     )
     parser.add_argument("--recipe", required=True, help="recipe directory (with recipe.yaml)")
-    parser.add_argument("--base-url", default=None, help="engine root URL, e.g. http://127.0.0.1:8100 (stage 2)")
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        help="engine root URL (stage 1's /tokenize check and stage 2)",
+    )
     parser.add_argument("--pairs", default=None, help='JSONL pairs file: {"query", "documents"} per line')
     parser.add_argument("--out", required=True, help="output directory for equivalence.json and EQUIVALENCE.md")
     parser.add_argument("--stages", default="1,2", help="stages to run, comma-separated (default: 1,2)")

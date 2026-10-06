@@ -26,7 +26,8 @@ released together.
 ### Public surface
 
 - New package `rcp-ndcg-vllm` (`packages/rcp-ndcg-vllm/`, outside the root uv workspace and lock; version
-  0.0.1, depends on `rcp-ndcg==0.0.1`): serving recipes for vLLM as data. The recipe's `client` block **is**
+  0.0.1, depends on `rcp-ndcg==0.0.1` — a hard dependency, and pinned by the release workflow's version
+  check): serving recipes for vLLM as data. The recipe's `client` block **is**
   the product's endpoint config (`EmbeddingEndpoint`, `PoolingEndpoint` or `RerankEndpoint`); the harness
   declares no parallel schema. Stage 1 runs the product's `fit()`; the anchor audit reads `fit`'s output; the
   engine's `/tokenize` is the tokenization truth (R29); the reference runs as a subprocess in its own
@@ -37,7 +38,10 @@ released together.
   Public names: `Recipe`, `ClientEndpoint`, `EngineSpec`, `Gates`, `ReferenceSpec`, `Resources`, `ServeConfig`,
   `StatusSpec`, `RecipeError`, `HarnessError`, `load_recipe`, `iter_recipes`, `serve_argv`, `client_config`,
   `recipe_json_schema`, `default_recipes_root`, `PINNED_POOLER_CONFIG_FIELDS`; the JSON Schema of `Recipe` is
-  exported at `packages/rcp-ndcg-vllm/schema/recipe.schema.json`.
+  exported at `packages/rcp-ndcg-vllm/schema/recipe.schema.json`. The recorder (`record`),
+  stage 3 (`stage3_metrics`), the wave runner (`run_wave`) and the subprocess reference runner (`run_reference`)
+  are public with package tests covering each; `metrics.py` shells out to `rcp-ndcg eval score` (the product is
+  a dependency, so no extra is needed for stage 3).
 
 - `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
   larger than `adaptive_window` runs one batch, not one per batch: every adaptive window of such a pool holds

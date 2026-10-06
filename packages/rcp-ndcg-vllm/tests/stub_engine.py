@@ -99,8 +99,6 @@ class _Handler(BaseHTTPRequestHandler):
         route = self.path.split("?")[0]
         if route in ("/v1/models", "/models"):
             self._send_json({"object": "list", "data": [{"id": _ARGS.served_model_name, "object": "model"}]})
-            return
-            self._send_json({"object": "list", "data": [{"id": _ARGS.served_model_name, "object": "model"}]})
         else:
             self._send_json({"error": {"message": "unknown route"}}, status=404)
 

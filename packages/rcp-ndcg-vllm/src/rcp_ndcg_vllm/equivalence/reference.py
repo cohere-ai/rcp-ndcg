@@ -8,9 +8,9 @@ asserts that). :func:`run_reference` invokes it as a subprocess, with a declared
 
 The modes, and the JSON each writes to ``--out``:
 
-- ``render`` — stage 1's reference side: for each pairs-file row, the token ids of the reference's own rendered
-  prompt for that row's ``shape`` (the anchor-preserving cut the reference implements: fixed segments reserved,
-  content cut, template re-attached).  ``{"rows": [{"index", "shape", "ids": [...]}]}``.
+- ``render`` — stage 1's reference side: for each pairs-file row, the rendered prompt text for that row's
+  ``shape`` (the anchor-preserving render the reference implements: fixed segments reserved, content cut,
+  template re-attached).  ``{"rows": [{"index", "shape", "text": str}]}``.
 - ``score`` — stage 2 for a rerank recipe: one score per document per row, on the recipe's
   ``reference.score_scale``.  ``{"rows": [{"index", "scores": [...]}]}``.
 - ``embed`` — stage 2 for the embedding roles: one vector per text for the row's query (role ``query``) and
@@ -18,9 +18,10 @@ The modes, and the JSON each writes to ``--out``:
   ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[[...]]]}]}``.
 
 The instruction travels in the pairs file (per row); the reference folds it in the product's
-``Task: <instruction>\\nQuery: <text>`` format for ``instruction: fold``.  On the node the reference runs first
-and finishes (releasing its GPU) before the engine starts on the same GPU (GPU-VALIDATION.md, node runtime
-item 5); the wave runner sequences it.
+``Task: <instruction>\nQuery: <text>`` format for ``instruction: fold``.  On the node the
+engine comes up on the slot's GPUs first; the reference subprocess runs against the pairs file while
+the engine is up and releases its memory when it exits (the wave runner sequences it after that recipe's
+smoke pass).
 """
 
 from __future__ import annotations
