@@ -1,8 +1,9 @@
 """The reference implementation of recipe ``ctxl-rerank-v2-instruct-multilingual-1b``.
 
 Derived from ``experiments/paper/rerankers/reference/contextual.py`` (the paper's in-process
-``ContextualRerank``, moved unchanged in behaviour out of the deleted
-``src/rcp_ndcg/retrieval/external_rerankers.py``), exposed through the harness's subprocess CLI:
+``ContextualRerank``: ``src/rcp_ndcg/retrieval/external_rerankers.py:275-389`` as this branch
+carries it, and its paper-exact copy beside the paper configs on the clients-final lineage),
+exposed through the harness's subprocess CLI:
 
     reference.py --mode <render|score> --pairs <file> --out <file> --tokenizer <repo@rev|path> \
                  [--device <cpu|cuda:0>]
@@ -19,9 +20,10 @@ Three declared adaptations, none of which touches a score the paper measured:
 1. The harness's CLI shell wraps the scorer; ``load`` is idempotent and ``render`` is
    tokenizer-free, so stage 1 runs without the weights (stored ~3.28 GB; bf16-equivalent ~2.65 GB).
 2. The pairs row's instruction is folded into the query in the product's fold format
-   (``Task: <instruction>\\nQuery: <text>``, what ``instruction: fold`` sends on the wire). The
-   paper's in-process path never sends an instruction (its ``instruction`` attribute stays ``None``),
-   so this affects only instruction-bearing rows, and only to match the served prompt.
+   (``Task: <instruction>\\nQuery: <text>``, both fields stripped — ``rcp_ndcg_core``
+   ``Query.format_query``, what ``instruction: fold`` sends on the wire). The paper's in-process
+   path never sends an instruction (its ``instruction`` attribute stays ``None``), so this affects
+   only instruction-bearing rows, and only to match the served prompt.
 3. ``score`` keeps the paper's whole-prompt right truncation at 8192 tokens, which for a pair whose
    document alone pushes the prompt over the cap drops the query block and the trailing `` ??``
    anchor the last-position score reads. The recipe's served path never drops an anchor (the
@@ -49,7 +51,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-__all__ = ["CtxlRerankReference", "load", "main", "prompt_text", "render"]
+__all__ = ["CtxlRerankReference", "fold", "load", "main", "prompt_text", "render"]
 
 MODEL_ID = "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b"
 REVISION = "8fd1edf6a98564cb712064f884b8ef7df5c1b876"
@@ -70,11 +72,16 @@ _loaded: CtxlRerankReference | None = None
 def fold(query: str, instruction: str | None) -> str:
     """The product's fold render for ``instruction: fold``: ``Task: <instruction>\\nQuery: <text>``.
 
-    The served client folds the run's instruction into the query text exactly like this (the recipe's
-    ``client.instruction: fold``, rendered by ``rcp_ndcg.data.dataset`` ``Query.format_query``); the
-    reference folds the pairs row's instruction the same way, so the compared prompts match.
+    The served client folds the run's instruction into the query text exactly like this
+    (``rcp_ndcg_core`` ``Query.format_query``: both fields stripped, the bare text when no
+    instruction); the reference folds the pairs row's instruction the same way, so the compared
+    prompts match byte for byte.
     """
-    return f"Task: {instruction}\nQuery: {query}" if instruction else query
+    text = query.strip()
+    task = (instruction or "").strip()
+    if task:
+        return f"Task: {task}\nQuery: {text}"
+    return text
 
 
 def prompt_text(query: str, doc: str) -> str:

@@ -106,8 +106,9 @@ status: {state: unverified, image: null, date: null, report: null}
 sources:
   - "https://huggingface.co/ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b/tree/8fd1edf6a98564cb712064f884b8ef7df5c1b876 — config.json (Qwen3ForCausalLM, id2label {0: LABEL_0}, bfloat16, max_position_embeddings 40960), tokenizer.json (token id 0 \"!\", ByteLevel post-processor), 1_LogitScore/config.json (true_token_id 0), config_sentence_transformers.json (Identity activation), README (prompt, licence, 32K context)"
   - "experiments/paper/rerankers/ctxl_rerank_1b.yaml — the paper's config (provider local, batch_size 32)"
-  - "experiments/paper/rerankers/reference/contextual.py — the paper-exact in-process scorer reference.py derives from"
-  - "experiments/paper/rerankers/reference/requirements.txt — the reference environment"
+  - "src/rcp_ndcg/retrieval/external_rerankers.py:275-389 — ContextualRerank, the paper's in-process scorer as this branch carries it (prompt, padding, truncation, logits[:, -1, 0], OOM halving); :582-589 load_external_model builds it with max_seq_len=MAX_SEQ_LENGTH (8192) and the checkpoint revision"
+  - "experiments/paper/rerankers/reference/contextual.py (+ README.md, requirements.txt) — the paper-exact copy of that scorer beside the paper configs (its move out of the package; present on the clients-final lineage, not yet on this branch's base)"
+  - "experiments/paper/rerankers/reference/requirements.txt — the reference environment (torch 2.9.1, transformers 4.57.6, flash-attn 2.8.3)"
   - "src/rcp_ndcg/retrieval/cross_encoder.py:42 — MAX_SEQ_LENGTH = 8192, the paper's pair budget (client.max_tokens)"
   - "src/rcp_ndcg/data/templates.py:103 — TemplateSpec: the pair frame, the anchor, add_special_tokens"
   - "src/rcp_ndcg/data/preprocess.py:933 — fit(): the content-only cut that reserves the frame (the anchors)"
