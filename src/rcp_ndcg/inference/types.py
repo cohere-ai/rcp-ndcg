@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 import numpy as np
 from numpy.typing import DTypeLike
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from rcp_ndcg_core.content import Content
 
 _EMPTY_HEADERS: Mapping[str, str] = MappingProxyType({})
@@ -114,6 +114,24 @@ class Usage(BaseModel):
         )
 
 
+def safe_url(url: str) -> str:
+    """The form of *url* that may reach a log, an error or a record: userinfo and query stripped.
+
+    A user may embed credentials in a URL (a documented httpx idiom, ``http://user:key@host``) -- and a
+    query string can carry a key too. Those two never reach a log line, an exception message or a run
+    manifest, beside the code's "keys are never logged" claim; the request itself still uses the full URL.
+    """
+    scheme, separator, rest = url.partition("://")
+    if not separator:
+        return url  # not an authority-bearing URL: nothing to strip
+    authority, _, path_and_query = rest.partition("/")
+    at = authority.rfind("@")
+    if at >= 0:
+        authority = authority[at + 1 :]
+    path, _, _query = path_and_query.partition("?")
+    return f"{scheme}://{authority}/{path}" if path else f"{scheme}://{authority}"
+
+
 class EngineInfo(BaseModel):
     """What one replica says about itself, read best effort: runtime information, never part of an identity.
 
@@ -121,7 +139,8 @@ class EngineInfo(BaseModel):
     and from the ``system_fingerprint`` of the replica's first completion; nothing engine-specific is asked.
 
     Attributes:
-        url: The replica's base URL.
+        url: The replica's base URL, with any userinfo and query stripped (a key in a URL never reaches the
+            record beside the code's never-logged claim).
         model: The served model id the endpoint lists (the judge's ``model`` when listed, else the first).
         owned_by: The entry's ``owned_by``; open-source engines put their own name there.
         max_model_len: The served context in tokens, when the endpoint reports it.
@@ -140,6 +159,12 @@ class EngineInfo(BaseModel):
     headers: dict[str, str] = Field(default_factory=dict)
     system_fingerprint: str | None = None
     error: str | None = None
+
+    @field_validator("url")
+    @classmethod
+    def _no_userinfo_in_the_record(cls, value: str) -> str:
+        """The record never carries userinfo or a query: a key embedded in the URL must not be persisted."""
+        return safe_url(value)
 
 
 # ---------------------------------------------------------------------------
@@ -447,4 +472,5 @@ __all__ = [
     "TokenCount",
     "Usage",
     "l2_normalize",
+    "safe_url",
 ]

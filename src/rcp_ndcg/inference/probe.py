@@ -12,7 +12,7 @@ from collections.abc import Mapping
 
 import httpx
 
-from rcp_ndcg.inference.types import EngineInfo
+from rcp_ndcg.inference.types import EngineInfo, safe_url
 from rcp_ndcg.support.logging import get_logger
 
 logger = get_logger(__name__)
@@ -57,7 +57,7 @@ async def read_replica(
         logger.warning(
             "%s serves %s, not the endpoint's model %r: start the server with --served-model-name %s, or set the "
             "config's model to the served name",
-            url,
+            safe_url(url),
             [candidate.get("id") for candidate in entries],
             model,
             model,

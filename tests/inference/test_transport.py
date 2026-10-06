@@ -725,3 +725,116 @@ class TestCloseInsideTheBridgeCall:
         own = transport._own_loop
         assert own is None or own.is_closed()
         assert transport._pool is None
+
+
+class TestRetryAfterGarbage:
+    """A server ``Retry-After`` the transport cannot honestly sleep on falls back to the doubling backoff:
+    ``nan`` would never return and wedge the request inside the retry loop, and a negative one would hammer
+    a rate-limited server with instant retries."""
+
+    @pytest.mark.parametrize("header", ["nan", "-5", "1e999", "soon", ""])
+    def test_garbage_never_becomes_a_sleep(self, monkeypatch: pytest.MonkeyPatch, header: str) -> None:
+        sleeps: list[float] = []
+
+        async def sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+
+        monkeypatch.setattr(transport_module, "_sleep", sleep)
+        script = ReplicaScript((429, {"Retry-After": header}), 200)
+        replies = _send(_transport(script, max_retries=1))
+
+        assert replies[0].status == 200
+        assert sleeps and sleeps[-1] == Transport.RETRY_BACKOFF_S, "the doubling backoff, never the garbage"
+
+    def test_a_usable_retry_after_is_still_capped(self) -> None:
+        from rcp_ndcg.inference.transport import _retry_after
+
+        assert _retry_after({"retry-after": "0.0005"}) == 0.0005  # below the cap: honoured
+        assert _retry_after({"retry-after": "120"}) == Transport.RETRY_MAX_BACKOFF_S  # capped, whatever it says
+        assert _retry_after({}) is None
+
+
+class TestUserInfoNeverLeaks:
+    """A user who embeds credentials in a URL (a documented httpx idiom) never sees them in a log line, an
+    error message or an engine record -- beside the code's keys-are-never-logged claim. The request itself
+    still uses the full URL (that is where the credentials live)."""
+
+    def test_set_aside_and_outage_never_name_the_secret(self, caplog: pytest.LogCaptureFixture) -> None:
+        script = ReplicaScript(503)
+        transport = _transport(script, base_url="http://user:sekrit-value@judge.test/v1", wait_on_outage_s=0)
+        with caplog.at_level(logging.WARNING, logger="rcp_ndcg"):
+            with pytest.raises(BackendUnavailableError) as caught:
+                asyncio.run(transport.send([Call("POST", "/a", {})]))
+
+        assert "sekrit-value" not in str(caught.value)
+        assert all("sekrit-value" not in record.getMessage() for record in caplog.records)
+
+    def test_the_engine_record_strips_userinfo_and_query(self, tokenizer_json: str) -> None:
+        from rcp_ndcg.inference.types import EngineInfo, safe_url
+
+        assert safe_url("http://user:sekrit-value@judge.test/v1") == "http://judge.test/v1"
+        assert (
+            safe_url("http://user:sekrit-value@judge.test/v1/models?api-key=sekrit-value")
+            == "http://judge.test/v1/models"
+        )
+        assert safe_url("fake://seed/1") == "fake://seed/1"
+        record = EngineInfo(url="http://user:sekrit-value@judge.test/v1")
+        assert record.url == "http://judge.test/v1", "the run manifest never carries userinfo"
+
+    def test_the_probe_record_of_a_userinfo_replica_is_clean(self) -> None:
+        script = ReplicaScript()
+        transport = _transport(script, base_url="http://user:sekrit-value@judge.test/v1")
+        engines = asyncio.run(transport.probe())
+        transport.close()
+        assert engines and all("sekrit-value" not in (engine.url or "") for engine in engines)
+
+
+class TestConcurrentSyncBridges:
+    """The sync bridge is one loop, one caller at a time: concurrent ``run()``s from OS threads queue on the
+    bridge lock instead of racing two ``run_until_complete`` passes on the shared loop (the second used to
+    die with ``This event loop is already running`` and its batch aborted)."""
+
+    def test_run_from_many_threads_serves_every_call(self) -> None:
+        import threading
+
+        script = ReplicaScript()
+        transport = _transport(script)
+        results: list[Reply] = []
+        errors: list[BaseException] = []
+        barrier = threading.Barrier(8)
+
+        def work(index: int) -> None:
+            try:
+                barrier.wait()
+                for _ in range(3):
+                    replies = transport.run(transport.send([Call("POST", f"/{index}", {})]))
+                    results.append(replies[0])
+            except BaseException as exc:  # noqa: BLE001 - the thread's failure is the test's result
+                errors.append(exc)
+
+        threads = [threading.Thread(target=work, args=(index,)) for index in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(60)
+        assert not any(thread.is_alive() for thread in threads), "every call finished"
+        assert not errors, f"no call was lost: {errors!r}"
+        assert len(results) == 24 and all(reply.status == 200 for reply in results)
+
+    def test_close_from_another_thread_while_run_is_mid_flight_waits_then_closes(self) -> None:
+        import threading
+
+        script = ReplicaScript(200)
+        transport = _transport(script)
+        done = threading.Event()
+
+        def work() -> None:
+            transport.run(transport.send([Call("POST", "/a", {})]))
+            done.set()
+
+        thread = threading.Thread(target=work)
+        thread.start()
+        transport.close()  # waits for the in-flight run (the bridge lock), then closes; never raises
+        thread.join(30)
+        assert done.is_set(), "the in-flight call completed"
+        assert transport._pool is None

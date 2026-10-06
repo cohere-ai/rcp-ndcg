@@ -21,6 +21,7 @@ the API's field names are known, and come back through :meth:`Transport.add_usag
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 import threading
 import time
@@ -43,7 +44,7 @@ from rcp_ndcg.errors import (
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.fake import FAKE_SCHEME, fake_transport
 from rcp_ndcg.inference.probe import read_replica
-from rcp_ndcg.inference.types import Call, EngineInfo, Reply, TokenCount, Usage
+from rcp_ndcg.inference.types import Call, EngineInfo, Reply, TokenCount, Usage, safe_url
 from rcp_ndcg.support.logging import get_logger
 
 logger = get_logger(__name__)
@@ -147,12 +148,24 @@ async def _sleep(seconds: float) -> None:
 
 
 def _retry_after(headers: Mapping[str, str]) -> float | None:
-    """The server's ``Retry-After`` in seconds, when it gives one as a number (the retrieval clients' policy)."""
+    """The server's ``Retry-After`` in seconds, when it gives one as a usable number (the retrieval
+    clients' policy).
+
+    Only a finite, non-negative number is honoured: a garbage header (or one a proxy echoes wrongly) is
+    never a sleep -- ``nan`` would never return and wedge the request inside the retry loop beyond every
+    timeout, and a negative one would hammer a rate-limited server with instant retries. Anything else
+    falls through to the doubling backoff, and the value is clamped to the retry cap.
+    """
     raw = headers.get("retry-after")
+    if not raw:
+        return None
     try:
-        return float(raw) if raw else None
+        value = float(raw)
     except (TypeError, ValueError):
         return None
+    if not math.isfinite(value) or value < 0:
+        return None
+    return min(value, Transport.RETRY_MAX_BACKOFF_S)
 
 
 def _body_text(response: httpx.Response) -> str:
@@ -257,9 +270,15 @@ class Transport:
         self._bridge_close: Future[None] | None = None
         """A pool close scheduled on the bridge's own loop (a :meth:`close` from inside its call); drained
         by the next :meth:`close` before the loop closes."""
+        self._bridge_lock = threading.Lock()
+        """Serialises :meth:`run` (and a foreign-thread :meth:`close`) on the bridge loop: two threads'
+        ``run_until_complete`` on one loop is a ``RuntimeError`` that would abort one caller's batch."""
         self._background_loop: asyncio.AbstractEventLoop | None = None
         self._background_thread: threading.Thread | None = None
         self._last_error: BaseException | None = None
+        self._last_describe: str | None = None
+        """The last failure's own words (a describe, never a URL or a header value): the outage message
+        names what happened without echoing the exception -- whose text carries the request's full URL."""
 
     # ------------------------------------------------------------------
     # Sending
@@ -339,7 +358,7 @@ class Transport:
                 delay = min(self.RETRY_BACKOFF_S * 2**attempt, self.RETRY_MAX_BACKOFF_S)
                 if exc.retry_after is not None:
                     delay = min(exc.retry_after, self.RETRY_MAX_BACKOFF_S)
-                logger.warning("%s unavailable (%s); retrying in %.1fs", replica.url, exc.describe, delay)
+                logger.warning("%s unavailable (%s); retrying in %.1fs", safe_url(replica.url), exc.describe, delay)
                 await _sleep(delay)
         raise AssertionError("unreachable")
 
@@ -362,7 +381,9 @@ class Transport:
                     f"HTTP {status}: {text}", cause=exc, retry_after=_retry_after(response.headers)
                 ) from exc
             raise AssertionError(f"unreachable: HTTP {status} is an error status")
-        error = status_error(status, url=replica.url, path=path, model=self.endpoint.model, body=_body_text(response))
+        error = status_error(
+            status, url=safe_url(replica.url), path=path, model=self.endpoint.model, body=_body_text(response)
+        )
         if error is not None:
             raise error
         return _reply(response, url=replica.url)
@@ -431,12 +452,22 @@ class Transport:
 
     def _gate(self) -> asyncio.Semaphore:
         """The concurrency semaphore of the running loop; a new loop (a new pass, the sync bridge's own) gets a
-        new one and a new pool, which are bound to the loop they first ran on."""
+        new one and a new pool, which are bound to the loop they first ran on. The previous loop's pool is
+        closed best-effort on its own loop while that loop still lives -- a live loop keeps serving it until
+        then, and a dead one took its sockets with it."""
         loop = asyncio.get_running_loop()
         if self._semaphore is None or self._loop is not loop:
+            old_pool, old_loop = self._pool, self._loop
             self._semaphore = asyncio.Semaphore(self.endpoint.concurrency)
             self._loop = loop
             self._pool = None  # an HTTP client is bound to the loop it was first used on
+            if old_pool is not None and old_loop is not None and not old_loop.is_closed() and old_loop.is_running():
+                try:
+                    asyncio.run_coroutine_threadsafe(old_pool.aclose(), old_loop)
+                except RuntimeError:
+                    pass  # the old loop died in between; its sockets die with it
+                # A live but idle old loop gets its pool dropped by the next close()/aclose(); spinning it
+                # up from here would block this loop for no gain.
         return self._semaphore
 
     def _pick(self) -> _Replica | None:
@@ -448,6 +479,7 @@ class Transport:
     def _set_aside(self, replica: _Replica, exc: _Unavailable) -> None:
         """Take ``replica`` out of rotation after it failed, for a backoff that doubles while it keeps failing."""
         self._last_error = exc.cause or exc
+        self._last_describe = exc.describe
         now = time.monotonic()
         if replica.down_until > now:
             return  # already set aside, by a request sent before it went down
@@ -457,7 +489,7 @@ class Transport:
         others = sum(other.down_until <= now for other in self._replicas)
         logger.warning(
             "%s unavailable (%s); not sending to it for %.0fs%s",
-            replica.url,
+            safe_url(replica.url),
             exc.describe,
             wait,
             f", {others} other replica(s) live" if len(self._replicas) > 1 else "",
@@ -476,12 +508,14 @@ class Transport:
         now = time.monotonic()
         waited = now - outage_since
         limit = self.endpoint.wait_on_outage_s
-        where = ", ".join(replica.url for replica in self._replicas)
+        where = ", ".join(safe_url(replica.url) for replica in self._replicas)
         last = self._last_error
         if limit is not None and waited >= limit:
+            # The message carries the describe (what happened), never the exception's own text: a URL with
+            # userinfo can ride in an httpx exception's message, and keys are never logged.
+            last_text = self._last_describe or f"{type(last).__name__}: {last}" if last is not None else "unknown"
             raise BackendUnavailableError(
-                f"{where} was unavailable for {waited:.1f}s (wait_on_outage_s={limit}); "
-                f"last error: {type(last).__name__}: {last}"
+                f"{where} was unavailable for {waited:.1f}s (wait_on_outage_s={limit}); last error: {last_text}"
             ) from last
         wake = min(replica.down_until for replica in self._replicas) - now
         if limit is not None:
@@ -610,10 +644,14 @@ class Transport:
             # A loop is already running in this thread (a notebook): run on the transport's own background
             # thread instead of failing, as run_until_complete here would.
             return asyncio.run_coroutine_threadsafe(coroutine, self._background()).result()
-        loop = self._own_loop
-        if loop is None:
-            loop = self._own_loop = asyncio.new_event_loop()
-        return loop.run_until_complete(coroutine)
+        # One bridge loop, one caller at a time: concurrent synchronous callers queue on the lock instead of
+        # racing two run_until_complete passes on the shared loop (the second dies with "This event loop is
+        # already running" and its batch aborts).
+        with self._bridge_lock:
+            loop = self._own_loop
+            if loop is None:
+                loop = self._own_loop = asyncio.new_event_loop()
+            return loop.run_until_complete(coroutine)
 
     def _background(self) -> asyncio.AbstractEventLoop:
         """The transport's private background loop, started once, for :meth:`run` inside a running loop."""
@@ -660,13 +698,18 @@ class Transport:
         bridge's private loop; safe to call twice. A later :meth:`run` builds both afresh.
 
         Called from the loop the pool serves (an async caller closing without an ``await``), the close is
-        scheduled instead of blocking that loop on itself. A pool whose loop has since closed is dropped, not
-        closed: its connections died with the loop.
+        scheduled instead of blocking that loop on itself. Called from another thread while a ``run()`` is
+        mid-flight, it waits for that call to finish (the bridge lock), then closes -- never raising into
+        the caller, and never pulling the in-flight call's feet out from under it.
         """
         try:
-            self._close_pool()
-        finally:
-            self._close_own_loop()
+            asyncio.get_running_loop()
+        except RuntimeError:
+            with self._bridge_lock:  # a foreign thread: serialise against the bridge's own run
+                self._close_pool()
+        else:
+            self._close_pool()  # inside the pool's loop: the close is scheduled, not blocking
+        self._close_own_loop()
 
     def _close_pool(self) -> None:
         """The pool's close, on the loop it serves (see :meth:`close`)."""
