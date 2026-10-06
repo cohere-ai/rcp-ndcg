@@ -13,7 +13,8 @@
 
 The guard around the whole tree keeps the output contract on every exit path: with ``--json`` a usage error
 or an unexpected failure still prints exactly one ``rcp-ndcg.cli.v1`` document, and no path prints a
-traceback unless ``-vv`` is given.
+traceback unless ``-vv`` is given. ``--help`` and ``--version`` are the exception: they print plain text and
+exit 0, envelope or not.
 """
 
 from __future__ import annotations
@@ -132,15 +133,29 @@ def _interrupt_on_sigterm() -> Any:
 
 
 def _command_of(ctx: click.Context | None, argv: list[str]) -> str:
-    """The command path for the envelope: from the failing context, else the leading words of argv."""
+    """The command path for the envelope: from the failing context, else the leading words of argv.
+
+    A global option's value (``--env-file f.env``) is not a command word: the root group's value-taking options
+    are skipped together with their values, so the envelope's ``command`` names the command."""
     if ctx is not None:
         _, _, path = ctx.command_path.partition(" ")  # without the program name
         return path or "rcp-ndcg"
+    takes_value = {
+        option
+        for param in cli.params
+        if isinstance(param, click.Option) and not param.is_flag and not param.count
+        for option in param.opts
+    }
     words = []
+    skip_next = False
     for token in argv:
+        if skip_next:
+            skip_next = False
+            continue
         if token.startswith("-"):
             if words:
                 break
+            skip_next = token in takes_value
             continue
         words.append(token)
     return " ".join(words[:2]) or "rcp-ndcg"

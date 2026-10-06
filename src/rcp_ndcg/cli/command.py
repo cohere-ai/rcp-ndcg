@@ -98,12 +98,13 @@ def schema_name(model: type[BaseModel]) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "-", model.__name__).lower()
 
 
-def _validation_error(exc: ValidationError) -> UsageError:
-    problems = [
-        {"field": ".".join(str(part) for part in err["loc"]) or "<input>", "message": err["msg"]}
-        for err in exc.errors(include_url=False)
-    ]
-    listed = "; ".join(f"{problem['field']}: {problem['message']}" for problem in problems)
+def _validation_error(exc: ValidationError, model: type[BaseModel]) -> UsageError:
+    """The request model's refusal, in the one shape of ``details.errors`` (see
+    :func:`rcp_ndcg.support.config.validation_problems`)."""
+    from rcp_ndcg.support.config import validation_problems
+
+    problems = validation_problems(exc, model=model, source="the arguments")
+    listed = "; ".join(f"{problem['field']}: {problem['problem']}" for problem in problems)
     return UsageError(
         f"invalid arguments: {listed}", hint="see --help for the expected values", details={"errors": problems}
     )
@@ -138,7 +139,7 @@ def execute(spec: CommandSpec, arguments: Mapping[str, Any]) -> Outcome:
             try:
                 request = spec.request.model_validate(dict(arguments))
             except ValidationError as exc:
-                raise _validation_error(exc) from exc
+                raise _validation_error(exc, spec.request) from exc
             outcome.result = spec.handler(request)
             outcome.data = _data(spec, outcome.result)
         except Exception as exc:  # noqa: BLE001 -- every failure is reported as a typed error

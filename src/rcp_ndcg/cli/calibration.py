@@ -20,7 +20,10 @@ from typing import Any, Literal
 import click
 from pydantic import BaseModel, Field
 from rcp_ndcg_core.irt import DEFAULT_SE_TARGET, MIN_OPPONENTS
+from rcp_ndcg_core.schemas import Family
 
+from rcp_ndcg.calibration.coverage import CalibrationCoverage
+from rcp_ndcg.calibration.diagnostics import Diagnostics
 from rcp_ndcg.calibration.extend import MAX_GAIN_SHIFT, Extension
 from rcp_ndcg.cli.command import command
 from rcp_ndcg.errors import MissingInputError, UsageError
@@ -71,10 +74,10 @@ class CalibrationSummary(BaseModel):
     documents: int = Field(description="Documents with an ability, from the fit and from extensions.")
     sources: dict[str, int] = Field(description="Abilities per source: fit, scored, inserted.")
     items: ItemSummary
-    families: dict[str, dict[str, Any]] = Field(description="The judgement families fitted, by family key.")
+    families: dict[str, Family] = Field(description="The judgement families fitted, by family key.")
     judge_severity: dict[str, float] = Field(description="Per-judge logit offsets of a pooled fit.")
-    coverage: dict[str, Any]
-    diagnostics: dict[str, Any]
+    coverage: CalibrationCoverage
+    diagnostics: Diagnostics
     warnings: list[dict[str, str]] = Field(
         default_factory=list, description="The fit's typed warnings (code, message), e.g. INVALID_WINDOWS."
     )

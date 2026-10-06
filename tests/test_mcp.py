@@ -261,3 +261,12 @@ def test_eval_score_takes_the_system_argument(tmp_path: Path) -> None:
 
     assert result["isError"] is False, result
     assert [row["system"] for row in result["structuredContent"]["summary"]] == ["good"]
+
+
+def test_a_call_refuses_an_argument_the_tool_does_not_take() -> None:
+    """An argument the tool's input schema does not list is refused (isError, USAGE), never passed through."""
+    result = mcp.call_tool("run_list", {"nope": 1})
+
+    assert result["isError"] is True
+    assert result["structuredContent"]["code"] == "USAGE"
+    assert "nope" in result["structuredContent"]["message"]

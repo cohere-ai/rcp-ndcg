@@ -398,3 +398,46 @@ def test_explain_report_of_an_empty_summary_refuses_like_before(dataset: str, tm
 
     assert explained["exit_code"] == 12, explained
     assert "not in the report" in explained["error"]["message"]
+
+
+def test_explain_run_refuses_the_subset_option(scored: dict) -> None:
+    """`--subset` disambiguates a suite report's datasets; a run explanation has no such input, so it is
+    refused like `--system` instead of silently ignored."""
+    document = _invoke(
+        "explain", "--run", str(scored["report"].parent / "no-run"), "--query-id", "q1", "--subset", "hr__english"
+    )
+
+    assert document["exit_code"] == 2, document
+    assert document["error"]["code"] == "USAGE"
+    assert "--subset" in document["error"]["message"]
+
+
+def test_score_text_prints_the_per_query_values(dataset: str, tmp_path: Path, capsys) -> None:
+    """`--per-query` promises every per-query value: the text renderer prints them too, not only --json."""
+    from click.testing import CliRunner
+
+    from rcp_ndcg.cli.main import cli
+
+    rankings = tmp_path / "run.parquet"
+    Rankings.from_orders({"q1": ["b", "a", "c"]}, system="mine").save(rankings)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "eval",
+            "score",
+            "--rankings",
+            str(rankings),
+            "--dataset",
+            dataset,
+            "--metrics",
+            "qrel_ndcg",
+            "--per-query",
+            "--k",
+            "2",
+        ],  # fmt: skip
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "per query" in result.output
+    assert "q1" in result.output and "mine" in result.output

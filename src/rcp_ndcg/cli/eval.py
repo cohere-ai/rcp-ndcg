@@ -198,6 +198,11 @@ def _score_text(report: EvalScoreResult) -> str:
             f"[{row.ci_low:.4f}, {row.ci_high:.4f}]" if row.ci_low is not None and row.ci_high is not None else ""
         )
         lines.append(f"  {row.system:<28} {row.metric:<11} {row.k:>3}  {value:>7}  {interval}")
+    if report.per_query:
+        lines += ["", "  per query"]
+        for row in report.per_query:
+            value = f"{row.value:.4f}" if row.value is not None else "   -   "
+            lines.append(f"  {row.system:<28} {row.metric:<11} {row.k:>3}  {value:>7}  {row.dataset} {row.query_id}")
     for warning in report.warnings or []:
         lines.append(f"  warning [{warning.code}]: {warning.message}")
     if report.out is not None:
@@ -437,6 +442,11 @@ def eval_explain(request: EvalExplainRequest) -> ExplainedQuery:
             raise UsageError(
                 "--system re-scores the rankings of a saved report and has no effect with --run",
                 hint="drop --system, or explain a report written by `eval score --out` (--report)",
+            )
+        if request.subset:
+            raise UsageError(
+                "--subset names the dataset of a saved report's query and has no effect with --run",
+                hint="drop --subset, or explain a report written by `eval score --out` (--report)",
             )
         from rcp_ndcg.runs.inspect import explain_query
 

@@ -25,6 +25,14 @@ released together.
 
 ### Public surface
 
+- **The exported schemas carry the types they describe**: `run-summary.v1`'s `manifest` is the
+  `run-manifest.v1` model (it was `"type": "object"`), `run-list.v1`'s rows are a typed `RunListRow`, and
+  `calibration-summary.v1`'s `families`, `coverage` and `diagnostics` are the `Family`, `CalibrationCoverage`
+  and `Diagnostics` models instead of untyped dicts. `conversion.v1` gains `limit` (`int | null`): a
+  `data convert --limit` smoke conversion records the cap, so its record is not mistaken for a complete
+  small corpus. No payload changes shape except `run list`'s unreadable rows, which now carry the row's null
+  fields explicitly; the payloads validate against the regenerated schemas.
+
 - **`JobSpec` takes exactly one of `argv` and `phases`** (`rcp_ndcg.runners`): a job without phases runs its
   `argv`; a phased job's commands are its phases' `argv`, and it carries no `argv` of its own — both or neither
   are refused with a message naming which. `JobSpec.argv` is optional (`tuple[str, ...] | None`); phased jobs

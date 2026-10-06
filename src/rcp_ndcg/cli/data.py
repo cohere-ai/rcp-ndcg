@@ -282,6 +282,10 @@ class Conversion(BaseModel):
     writer: str
     shape: Literal["corpus", "ranking"]
     written: int | None = Field(description="Records written; null for a dry run.")
+    limit: int | None = Field(
+        default=None,
+        description="The --limit cap the conversion ran under (a smoke conversion); null without it.",
+    )
     dry_run: bool
 
 
@@ -404,6 +408,7 @@ def data_convert(request: DataConvertRequest) -> Conversion:
         writer=writer.name,
         shape="ranking" if shape is DataShape.RANKING else "corpus",
         written=written,
+        limit=request.limit,
         dry_run=request.dry_run,
     )
 

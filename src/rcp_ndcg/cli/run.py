@@ -21,7 +21,7 @@ from rcp_ndcg.cli.command import command
 from rcp_ndcg.errors import RcpNdcgWarning, UsageError
 from rcp_ndcg.llm.cost import CostEstimate
 from rcp_ndcg.llm.judges import judge_names
-from rcp_ndcg.runs.manifest import RunStatus
+from rcp_ndcg.runs.manifest import RunManifest, RunStatus
 from rcp_ndcg.runs.run import RunState
 from rcp_ndcg.support.paths import RUNS_DIR_ENV, runs_dir
 from rcp_ndcg.support.serve import EngineRole, EngineURLs
@@ -64,7 +64,7 @@ class RunSummary(BaseModel):
     """One run: its manifest and which artifacts exist."""
 
     run_dir: str
-    manifest: dict[str, Any]
+    manifest: RunManifest
     artifacts: dict[str, bool]
 
 
@@ -83,25 +83,24 @@ def _list_text(result: RunList) -> str:
 
 def _show_text(result: RunSummary) -> str:
     manifest = result.manifest
-    code = manifest["code"]
     lines = [
-        f"Run {manifest['run_id']} ({manifest['status']})",
+        f"Run {manifest.run_id} ({manifest.status})",
         f"  directory   {result.run_dir}",
-        f"  created     {manifest['created_at']}",
-        f"  code        {code['package_version']} @ {code.get('git_commit') or 'unknown'}"
-        + (" (dirty)" if code.get("git_dirty") else ""),
-        f"  requests    {manifest['usage']['requests']:,} judge requests",
+        f"  created     {manifest.created_at}",
+        f"  code        {manifest.code.package_version} @ {manifest.code.git_commit or 'unknown'}"
+        + (" (dirty)" if manifest.code.git_dirty else ""),
+        f"  requests    {manifest.usage.requests:,} judge requests",
         "  steps",
     ]
-    for record in manifest["steps"]:
-        duration = record.get("duration_s")
+    for record in manifest.steps:
+        duration = record.duration_s
         lines.append(
-            f"    {record['name']:<12} {record['status']:<10} "
-            f"{f'{duration:.1f}s' if duration else '':>8}" + (f"  {record['error']}" if record.get("error") else "")
+            f"    {record.name:<12} {str(record.status):<10} "
+            f"{f'{duration:.1f}s' if duration else '':>8}" + (f"  {record.error}" if record.error else "")
         )
     present = [name for name, exists in result.artifacts.items() if exists]
     lines.append(f"  artifacts   {', '.join(present) or 'none'}")
-    for key, value in (manifest.get("metrics") or {}).items():
+    for key, value in manifest.metrics.items():
         lines.append(f"    {key:<24} {value:.4f}")
     return "\n".join(lines)
 

@@ -7,6 +7,19 @@
       "title": "Dry Run",
       "type": "boolean"
     },
+    "limit": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The --limit cap the conversion ran under (a smoke conversion); null without it.",
+      "title": "Limit"
+    },
     "out": {
       "title": "Out",
       "type": "string"

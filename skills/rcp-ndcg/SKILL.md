@@ -11,7 +11,8 @@ all queries on one scale. Released datasets carry these gains, so scoring a syst
 
 Install (Python 3.12): `pip install "rcp-ndcg[hf,calibrate]" --extra-index-url https://download.pytorch.org/whl/cpu`,
 or run it without installing: `uvx rcp-ndcg`. Every command
-but `mcp serve` (a stdio server) takes `--json` and then prints exactly one JSON document on stdout: `{"ok": true, "data": {...}}` or
+but `mcp serve` (a stdio server) takes `--json` and then prints exactly one JSON document on stdout (`--help` and
+`--version` print plain text): `{"ok": true, "data": {...}}` or
 `{"ok": false, "error": {"code", "exit_code", "message", "hint", "retryable", "details"}}`. Read `data`, never the
 human text. `rcp-ndcg schema show commands --json` lists every command with its flags (type, default, help) and
 output schema. A config error (exit 3) carries `error.details.errors`: per problem the `field`, the given `input`,
@@ -105,7 +106,7 @@ exit code 0; `run resume --run <dir>` runs the rest.
 | 8 | `CAPABILITY` | the judge or endpoint cannot take what a request carries: an answer schema it refuses (serve with the reasoning parser, or set `decoding: free`), images or videos beyond its `max_images` / `max_videos`, a window whose media exceed its context, media for a text-only encoder; raised by the first such request |
 | 9 | `INTERRUPTED` | SIGINT or SIGTERM stopped the command; the state on disk is consistent; resume |
 | 10 | `DEPENDENCY` | a missing extra; the hint is the exact install command |
-| 11 | `IDENTITY` | refusing to mix: resume with a changed config, judgements from another family, a scale check failed on insertion; the hint names the differing fields and the way out (a new output directory or run; `--force` where the command has it) |
+| 11 | `IDENTITY` | refusing to mix: resume with a changed config, judgements from another family, an insertion whose anchor check failed (`data.extension.anchor_report`); the hint names the differing fields and the way out (a new output directory or run; `--force` where the command has it) |
 | 12 | `DATA` | input that would produce wrong numbers or does not parse: malformed or non-finite rankings, qrels or gains, gains that match no labelled query, ids that do not join, a document over its text cap with `on_overflow: fail`, a new document the evidence cannot identify, a query with invalid windows under `--strict`, a damaged mirror |
 
 Code 7 is retired: no command returns it, and it is not reused.
@@ -192,9 +193,7 @@ rcp-ndcg eval explain --report report.json --query-id q1 --k 5 --json
 ## MCP
 
 `rcp-ndcg mcp serve` exposes the commands as MCP tools over stdio. Read-only: `describe`, `schema_show`,
-`data_inspect`, `eval_compare`,
-`eval_explain`, `calibration_show`, `run_list`, `run_show`, `run_status`, `estimate`. `eval_score` is not
-read-only: it overwrites `out` with the full report when given (`out`, `per_query` and `fields` as on the
-command line). Destructive: `run_cancel`.
-`run_start` starts a run and returns its directory at once; then poll `run_status`. The tool list is
-`rcp_ndcg.mcp.tool_manifest()`; a plan (`--dry-run`) is CLI-only.
+`data_inspect`, `eval_compare`, `eval_explain`, `calibration_show`, `run_list`, `run_show`, `run_status`,
+`estimate`. Destructive: `run_cancel`. `eval_score` is not read-only: it overwrites `out` with the full
+report when given. `run_start` starts a run and returns its directory at once; then poll `run_status`.
+The tool list is `rcp_ndcg.mcp.tool_manifest()`; a plan (`--dry-run`) is CLI-only.
