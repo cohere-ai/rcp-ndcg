@@ -7,7 +7,9 @@ workspace; it is installed into the engine image, which carries its own vLLM and
 
 ## The recipe directory
 
-One directory per model, `packages/rcp-ndcg-vllm/recipes/<id>/`, with four files:
+One directory per model, `packages/rcp-ndcg-vllm/recipes/<id>/`, with these four files (a recipe may also ship
+a vendored card script that its reference runs verbatim, byte-identical to the Hub file and hash-pinned by the
+recipe's test):
 
 ```text
 recipes/<id>/
