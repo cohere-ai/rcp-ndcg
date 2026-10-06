@@ -587,12 +587,35 @@ def test_all_pairs_follow_the_report_order_and_list_sign_flips() -> None:
 
 
 def test_compare_refuses_what_it_cannot_do(report: EvalReport) -> None:
-    with pytest.raises(DataError, match="pass k="):
+    with pytest.raises(DataError, match="pass k=") as caught:
         compare(report)
-    with pytest.raises(ConfigError, match="baseline"):
+    assert caught.value.hint and caught.value.cli_hint
+    with pytest.raises(ConfigError, match="baseline") as caught:
         compare(report, baseline="nobody", k=2)
-    with pytest.raises(DataError, match="count_ndcg"):
+    assert caught.value.hint
+    with pytest.raises(DataError, match="count_ndcg") as caught:
         compare(report, metric="count_ndcg", k=2)
+    assert caught.value.hint
+
+
+def test_every_argument_refusal_names_the_next_step() -> None:
+    """The evaluation layer's argument refusals carry their ``hint`` (the CLI and the MCP server show it as
+    ``error.hint``); the ones the command line words differently carry a ``cli_hint`` too."""
+    with pytest.raises(ConfigError) as caught:
+        evaluate(_rankings(), dataset=_dataset(), k=0)
+    assert caught.value.hint and caught.value.cli_hint
+    with pytest.raises(ConfigError) as caught:
+        evaluate(_rankings(), dataset=_dataset(), metrics=["nope"])
+    assert caught.value.hint
+    with pytest.raises(ConfigError) as caught:
+        evaluate(_rankings(), suite="nanobeir", dataset=_dataset())
+    assert caught.value.hint and caught.value.cli_hint
+    with pytest.raises(ConfigError) as caught:
+        evaluate(_rankings())
+    assert caught.value.hint and caught.value.cli_hint
+    with pytest.raises(ConfigError) as caught:
+        evaluate(_rankings(), dataset=_dataset(), systems=[])
+    assert caught.value.hint and caught.value.cli_hint
 
 
 def test_sensitivity_is_the_share_of_pairs_a_paired_t_test_separates(report: EvalReport) -> None:

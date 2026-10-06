@@ -30,7 +30,8 @@ released together.
   `calibration-summary.v1`'s `families`, `coverage` and `diagnostics` are the `Family`, `CalibrationCoverage`
   and `Diagnostics` models instead of untyped dicts. `conversion.v1` gains `limit` (`int | null`): a
   `data convert --limit` smoke conversion records the cap, so its record is not mistaken for a complete
-  small corpus. No payload changes shape except `run list`'s unreadable rows, which now carry the row's null
+  small corpus. The `cli.v1` envelope schema changed description-only (`data` says which commands tag their
+  data with a schema id). No payload changes shape except `run list`'s unreadable rows, which now carry the row's null
   fields explicitly; the payloads validate against the regenerated schemas.
 
 - **`JobSpec` takes exactly one of `argv` and `phases`** (`rcp_ndcg.runners`): a job without phases runs its
@@ -903,16 +904,17 @@ expected, did-you-mean, and whether `--set` or the file set it).
 the credentials (HTTP 401, 403) stops a pass with exit 5, and one without the route or model (HTTP 404) with exit 6.
 
 **MCP tools** (`rcp-ndcg mcp serve`). Read-only: `describe` (the command index), `schema_show`, `data_inspect`,
-`eval_score` (with `out`, `per_query`, `fields`), `eval_compare`, `eval_explain`, `calibration_show`, `run_list`,
-`run_show`, `run_status`, `estimate`. Destructive: `run_cancel`. `run_start` starts a run and returns its directory
-at once. The tool list and a call are Python calls too: `rcp_ndcg.mcp.tool_manifest()` and `rcp_ndcg.mcp.call_tool()`.
+`eval_compare`, `eval_explain`, `calibration_show`, `run_list`,
+`run_show`, `run_status`, `estimate`. `eval_score` is not read-only: it overwrites `out` with the full report when
+given (its `out`, `per_query`, `fields` are as on the command line). Destructive: `run_cancel`. `run_start` starts a
+run and returns its directory at once. The tool list and a call are Python calls too: `rcp_ndcg.mcp.tool_manifest()` and `rcp_ndcg.mcp.call_tool()`.
 
 **JSON Schemas** (`schemas/`, `rcp-ndcg schema export`): the configs `run-config` and `judge-config`; the artifacts
 `judgement`, `judgement-store` (a store's `identity.json`), `calibration` (a calibration's `items.json`),
 `calibration-coverage`, `calibration-identity`, `extension-record` (a line of a calibration's `extensions.jsonl`),
 `index`, `run-manifest`, `eval-report` and `comparison`; the output
 of every `--json` command (among them `cost-estimate` and `extension`), the `cli` envelope, the `commands` tree and
-the `command-index`; and the `mcp-manifest`. Every artifact names its schema in its `schema` field, and every
+the `command-index`. Every artifact names its schema in its `schema` field, and every
 property carries a description (a config field's is its model's documentation).
 
 ### Fixed: tournament answers the paper's code could not parse

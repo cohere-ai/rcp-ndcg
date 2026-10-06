@@ -441,3 +441,12 @@ def test_score_text_prints_the_per_query_values(dataset: str, tmp_path: Path, ca
     assert result.exit_code == 0, result.output
     assert "per query" in result.output
     assert "q1" in result.output and "mine" in result.output
+
+
+def test_explain_report_refuses_an_unknown_system(scored: dict) -> None:
+    """An unknown `--system` value is a usage error on the report branch too, like on `eval score`."""
+    document = _invoke("explain", "--report", str(scored["report"]), "--query-id", "q1", "--system", "nobody")
+
+    assert document["exit_code"] == 2, document
+    assert document["error"]["code"] == "USAGE"
+    assert "nobody" in document["error"]["message"] and "forward" in document["error"]["message"]

@@ -397,8 +397,11 @@ def _explain_report(request: EvalExplainRequest) -> tuple[QueryExplanation, Any]
             hint="write the report with `rcp-ndcg eval score --out` (which records its rankings, data and calibration)",
         )
     inputs = saved.inputs
+    rankings = load_rankings(inputs.rankings)
+    if request.system:
+        _systems_are_known(rankings.systems, request.system, what="systems")
     report = evaluate(
-        load_rankings(inputs.rankings),
+        rankings,
         **_data(inputs),
         gains=_gains(inputs.calibration),
         protocol=saved.protocol,
