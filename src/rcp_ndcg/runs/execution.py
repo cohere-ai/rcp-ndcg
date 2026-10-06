@@ -140,12 +140,13 @@ def _phased_job(
     fields: dict[str, Any],
 ) -> JobSpec:
     """The :class:`~rcp_ndcg.runners.JobSpec` of the run's phase plan: one :class:`~rcp_ndcg.runners.JobPhase`
-    per planned phase, with the engines it starts and its coordinator argv; ``argv`` is the whole-run command a
-    runner that does not render phases executes (which is also every engine-free phase, in order).
+    per planned phase, with the engines it starts and its coordinator argv. A runner that renders phases takes
+    the phases (the job's commands are their ``argv``); one that does not takes the whole-run command as the
+    job's ``argv`` (which is also every engine-free phase, in order).
 
     Raises:
         ConfigError: the job's fields do not validate, or ``runner`` cannot render a job that starts engines
-            (only the local runner runs phases without rendering them, and it refuses the ones with engines).
+            (only a runner that renders phases runs a phase that starts engines).
     """
     from pydantic import ValidationError
 
@@ -156,19 +157,20 @@ def _phased_job(
             f"the {runner} runner does not start a phase's engines (it renders no phases)",
             hint="start the engines yourself (docs/concepts/serving.md) and resume with --engine <role>=<url>[,<url>]",
         )
-    try:
-        return JobSpec(
-            name=name,
-            argv=run_argv(run_dir, mirror),
-            phases=tuple(
+    if phases and getattr(backend, "renders_phases", False):
+        commands: dict[str, Any] = {
+            "phases": tuple(
                 JobPhase(
                     engines={role: getattr(serve, role) for role in phase.engines},
                     argv=run_argv(run_dir, mirror, only=list(phase.steps)),
                 )
                 for phase in phases
-            ),
-            **fields,
-        )
+            )
+        }
+    else:  # no phases planned, or a runner that runs the whole-run command and renders no phases
+        commands = {"argv": run_argv(run_dir, mirror)}
+    try:
+        return JobSpec(name=name, **fields, **commands)
     except ValidationError as exc:
         raise ConfigError(f"runner.options: {exc}", hint=f"the job's keys are {', '.join(JOB_OPTIONS)}") from exc
 

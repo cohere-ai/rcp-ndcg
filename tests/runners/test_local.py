@@ -119,7 +119,7 @@ def test_render_is_the_script_that_runs(tmp_path: Path) -> None:
 
 
 def test_a_phase_that_starts_an_engine_is_refused() -> None:
-    """The local runner runs engine-free phases (its argv covers them) and refuses the ones with engines."""
+    """The local runner runs a phased job's phases (its commands) and refuses the ones with engines."""
     from rcp_ndcg.runners import JobPhase
 
     engine = ServeConfig(command=["vllm", "serve", "m"])
@@ -128,20 +128,21 @@ def test_a_phase_that_starts_an_engine_is_refused() -> None:
         JobPhase(argv=("echo", "rest")),
     )
     with pytest.raises(ConfigError, match=r"role\(s\) encoder") as caught:
-        LocalRunner().render([JobSpec(name="j", argv=("echo", "all"), phases=phases)])
+        LocalRunner().render([JobSpec(name="j", phases=phases)])
     assert "--engine" in (caught.value.hint or "")
 
 
-def test_engine_free_phases_run(tmp_path: Path) -> None:
-    """A job whose plan has no engines runs its whole argv: the engine-free phases cover exactly those steps."""
+def test_engine_free_phases_run_in_order(tmp_path: Path) -> None:
+    """A phased job's commands are its phases' argv: the local runner runs each in order (its plan has no
+    engines: the engine-free phases cover exactly the run's steps)."""
     from rcp_ndcg.runners import JobPhase
 
     phases = (JobPhase(argv=_py("print('one')")), JobPhase(argv=_py("print('two')")))
-    job = JobSpec(name="phased", argv=_py("print('whole')"), phases=phases)
+    job = JobSpec(name="phased", phases=phases)
     runner = LocalRunner(log_dir=str(tmp_path))
     runner.submit([job])
     assert runner.status("phased") is JobStatus.SUCCEEDED
-    assert runner.logs("phased") == "whole\n"
+    assert runner.logs("phased") == "one\ntwo\n"
 
 
 def test_options_are_config_errors() -> None:

@@ -27,7 +27,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Self
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 
 from rcp_ndcg.errors import ConfigError, ExitCode, RcpNdcgError, error_class
 from rcp_ndcg.runners.base import JobHandle, JobOptions, JobSpec, JobStatus, RunnerError, tail_lines
@@ -50,11 +50,30 @@ class LocalOptions(JobOptions):
     cwd: str | None = None
     log_dir: str | None = None
     detach: bool = False
+    # The install source is inherited but never accepted: the local runner installs nothing, so its schema
+    # carries the refusal instead of advertising the fields (a schema-driven client would emit configs that
+    # always fail).
+    wheelhouse: str | None = Field(
+        default=None,
+        min_length=1,
+        description="not taken: the local runner installs nothing (it runs the coordinator in this host's environment)",
+    )
+    constraints: str | None = Field(
+        default=None,
+        min_length=1,
+        description="not taken: the local runner installs nothing (it runs the coordinator in this host's environment)",
+    )
 
     @model_validator(mode="after")
     def _detached_jobs_are_followed_through_files(self) -> Self:
         if self.detach and not self.log_dir:
             raise ValueError("a detached local runner needs `log_dir`: its jobs are followed through their files")
+        if self.wheelhouse or self.constraints:
+            raise ValueError(
+                "the local runner installs nothing (it runs the coordinator in this host's environment): "
+                "drop wheelhouse and constraints, or hand the run to a runner that installs it "
+                "(kubernetes, or slurm with a container runtime)"
+            )
         return self
 
 
@@ -79,7 +98,8 @@ class LocalRunner:
         self._statuses: dict[str, JobStatus] = {}
 
     def render(self, jobs: Sequence[JobSpec]) -> dict[str, str]:
-        """The worker script each job runs. Submits nothing.
+        """The worker script each job runs: a phased job's phases in order (their commands are the job's
+        commands), a plain job its ``argv``. Submits nothing.
 
         Raises:
             ConfigError: a job has a phase that starts an engine, which the local runner does not start.

@@ -516,15 +516,24 @@ class Pipeline:
         """``endpoint`` with the role's engine URLs (and outage wait) applied, when the overlay names the role.
 
         The overlay is runtime only: it is never written into ``run.yaml`` and never reaches an identity, since
-        ``base_url`` and ``wait_on_outage_s`` are RUNTIME fields.
+        ``base_url`` and ``wait_on_outage_s`` are RUNTIME fields. The config is rebuilt through its model, so the
+        overlaid config passes every validator a configured one does (a URL is normalised, a fake:// replica
+        list is refused), with the typed error for what a configured config would refuse.
         """
+        from pydantic import ValidationError
+
+        from rcp_ndcg.support.config import config_error
+
         engines = self._engines.get(role)
         if engines is None:
             return endpoint
         update: dict[str, Any] = {"base_url": engines.urls[0] if len(engines.urls) == 1 else list(engines.urls)}
         if engines.wait_on_outage_s is not None:
             update["wait_on_outage_s"] = engines.wait_on_outage_s
-        return endpoint.model_copy(update=update)
+        try:
+            return type(endpoint).model_validate({**endpoint.model_dump(), **update})
+        except ValidationError as exc:
+            raise config_error(exc, model=type(endpoint), source=f"the {ENGINES_ENV} overlay") from exc
 
     def _judge_client_config(self) -> Any:
         """The judge config the client is built from: the engines overlay applied (runtime only)."""

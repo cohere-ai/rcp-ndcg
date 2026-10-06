@@ -198,7 +198,6 @@ class TestPhases:
         )
         job = JobSpec(
             name="run",
-            argv=("rcp-ndcg", "run", "resume", "--run", "/shared/runs/x"),
             resources=Resources(cpus=8, time_limit_s=86400),
             phases=(phase,),
         )
@@ -251,7 +250,7 @@ class TestPhases:
             JobPhase(argv=("d",)),
         )
         script = SlurmRunner(container_runtime="pyxis", container_mounts=["/shared:/shared"]).render(
-            [JobSpec(name="paper", argv=("x",), phases=phases)]
+            [JobSpec(name="paper", phases=phases)]
         )["paper"]
         assert "#SBATCH --nodes=2\n#SBATCH --ntasks-per-node=1\n" in script  # the largest phase's replicas
         assert "#SBATCH --gres=gpu:8\n" in script  # the largest per-node sum over the phases
@@ -281,7 +280,7 @@ class TestPhases:
             JobPhase(argv=("b",)),
             JobPhase(engines={"judge": SERVE.model_copy(update={"image": None})}, argv=("c",)),
         )
-        script = SlurmRunner().render([JobSpec(name="j", argv=("x",), phases=phases)])["j"]
+        script = SlurmRunner().render([JobSpec(name="j", phases=phases)])["j"]
         blocks = [
             line
             for line in script.splitlines()
@@ -316,7 +315,7 @@ class TestPhases:
     )
     def test_the_rendered_script_is_valid_bash(self, runtime: str, phases: tuple[JobPhase, ...]) -> None:
         rendered = _on_node(phases) if runtime == "none" else phases
-        script = SlurmRunner(container_runtime=runtime).render([JobSpec(name="j", argv=("x",), phases=rendered)])["j"]
+        script = SlurmRunner(container_runtime=runtime).render([JobSpec(name="j", phases=rendered)])["j"]
         assert subprocess.run(["bash", "-n", "-c", script], capture_output=True).returncode == 0
         assert_shellcheck_clean(script)
 
@@ -324,10 +323,10 @@ class TestPhases:
         """With container_runtime none the image was silently ignored: the command ran on the node."""
         phases = (JobPhase(engines={"judge": SERVE}, argv=("a",)),)
         with pytest.raises(ConfigError, match="image would be ignored") as refused:
-            SlurmRunner().render([JobSpec(name="j", argv=("x",), phases=phases)])
+            SlurmRunner().render([JobSpec(name="j", phases=phases)])
         assert "container_runtime: apptainer | pyxis" in (refused.value.hint or "")
         with pytest.raises(ConfigError, match="judge engine.*names no image"):
-            SlurmRunner(container_runtime="apptainer").render([JobSpec(name="j", argv=("x",), phases=_on_node(phases))])
+            SlurmRunner(container_runtime="apptainer").render([JobSpec(name="j", phases=_on_node(phases))])
 
 
 def test_the_runners_resources_and_env_are_every_jobs_defaults() -> None:

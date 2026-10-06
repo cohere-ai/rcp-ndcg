@@ -233,6 +233,40 @@ class TestRunnersAndServe:
         assert "mirror" in error["message"] and "--mirror" in error["hint"]
         assert not (tmp_path / "runs").exists()
 
+    def test_the_install_source_option_is_taken_from_the_config_and_the_cli(self, data: Path, tmp_path: Path) -> None:
+        """`runner.options.wheelhouse`/`constraints` (a pre-release or air-gapped install) reach the rendered
+        coordinator scripts; the generic --set override sets them from the command line."""
+        config = tmp_path / "run.yaml"
+        config.write_text(
+            yaml.safe_dump(
+                tiny_config(
+                    data,
+                    runner={
+                        "name": "slurm",
+                        "options": {
+                            "container_runtime": "pyxis",
+                            "wheelhouse": "/shared/wheels",
+                            "constraints": "/shared/wheels/constraints.txt",
+                        },
+                    },
+                ).resolved()
+            ),
+            encoding="utf-8",
+        )
+        (script,) = _start(str(config), "--runs-dir", str(tmp_path / "runs"), "--dry-run")["rendered"].values()
+        assert "--constraints /shared/wheels/constraints.txt" in script
+        assert "--find-links /shared/wheels --no-index" in script
+        overriden = _start(
+            str(config),
+            "--runs-dir", str(tmp_path / "set-runs"),
+            "--dry-run",
+            "--set", "runner.options.wheelhouse=https://storage.example/wheels",
+            "--set", "runner.options.constraints=https://storage.example/wheels/c.txt",
+        )  # fmt: skip
+        (script,) = overriden["rendered"].values()
+        assert "--find-links https://storage.example/wheels --no-index" in script
+        assert not (tmp_path / "runs").exists()
+
     def test_a_dry_run_on_a_runner_prints_what_it_would_submit(self, data: Path, tmp_path: Path) -> None:
         config = tmp_path / "run.yaml"
         config.write_text(yaml.safe_dump(tiny_config(data, runner=SLURM_PYXIS).resolved()), encoding="utf-8")

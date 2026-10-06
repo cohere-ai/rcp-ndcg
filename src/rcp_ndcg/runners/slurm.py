@@ -40,9 +40,9 @@ from __future__ import annotations
 import shlex
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.runners._cli import run_cli
@@ -133,7 +133,7 @@ class SlurmOptions(JobOptions):
         sbatch_args: Further ``#SBATCH`` arguments, verbatim (e.g. ``--constraint=a100``).
     """
 
-    PATHS = ("log_dir", "workdir")
+    PATHS = ("log_dir", "workdir", "wheelhouse", "constraints")
 
     image: str | None = None
     partition: str | None = None
@@ -145,6 +145,17 @@ class SlurmOptions(JobOptions):
     container_runtime: Literal["none", "apptainer", "pyxis"] = "none"
     container_mounts: list[str] = Field(default_factory=list)
     sbatch_args: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _an_install_source_needs_a_container(self) -> Self:
+        """The coordinator installs itself only in a container; on the node the environment has the release."""
+        if (self.wheelhouse or self.constraints) and self.container_runtime == "none":
+            raise ValueError(
+                f"container_runtime is {self.container_runtime!r}, and the coordinator runs on the node, which "
+                "already provides the release: a wheelhouse or constraints file applies when the job runs it "
+                "in a container (container_runtime: apptainer | pyxis)"
+            )
+        return self
 
 
 class SlurmRunner:
@@ -235,7 +246,12 @@ class SlurmRunner:
         if cuda is not None:
             env = {**(env or {}), "CUDA_VISIBLE_DEVICES": cuda}
         return worker_script(
-            job.model_copy(update={"argv": tuple(argv)}), install=install, workdir=self.options.workdir, env=env
+            job.with_argv(argv),
+            install=install,
+            workdir=self.options.workdir,
+            env=env,
+            wheelhouse=self.options.wheelhouse,
+            constraints=self.options.constraints,
         )
 
     def _phase_lines(
@@ -371,7 +387,16 @@ class SlurmRunner:
         lines = ["#!/usr/bin/env bash", *(f"#SBATCH {d}" for d in directives), "set -euo pipefail"]
         lines += self.options.setup
         if not phases:
-            lines += heredoc("WORKER", worker_script(job, install=container, workdir=self.options.workdir))
+            lines += heredoc(
+                "WORKER",
+                worker_script(
+                    job,
+                    install=container,
+                    workdir=self.options.workdir,
+                    wheelhouse=self.options.wheelhouse,
+                    constraints=self.options.constraints,
+                ),
+            )
             lines.append(self._in_container(image, "WORKER", srun=[]) if container else 'bash -c "$WORKER"')
             return "\n".join(lines) + "\n"
         if nodes > 1:  # every role's replicas are pinned to their slice of the allocation's nodes

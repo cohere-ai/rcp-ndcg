@@ -258,7 +258,10 @@ runner:
 
 ### The coordinator installs itself
 
-The coordinator, the process that runs `rcp-ndcg run resume`, needs no GPU and no image of its own. In a container
+The coordinator, the process that runs `rcp-ndcg run resume`, needs no GPU and no image of its own by default:
+the job's `resources.gpus` is 0 unless a config declares some, and the runners then reserve exactly what the
+config declares (on SLURM a `--gres` on the phase's first node, on Kubernetes a container request —
+[partitioned](#gpus-are-partitioned-per-node-not-shared) ahead of the engines' slices). In a container
 it runs a stock image with uv and Python 3.12 (`ghcr.io/astral-sh/uv:python3.12-trixie-slim` unless the runner's
 `image` names another), which installs the same release as the submitting host when the job starts:
 
@@ -275,6 +278,53 @@ every package, so torch resolves to its CPU build at the locked version; without
 has a package and fails. On Kubernetes uv's cache lives on the scratch volume. Without PyPI, install from the
 repository instead: `--from 'rcp-ndcg[calibrate,hf,s3,azure] @ git+https://github.com/cohere-ai/rcp-ndcg@v<version>'`
 in the larger `ghcr.io/astral-sh/uv:python3.12-trixie` image, which has git.
+
+**Before the release is on PyPI** (a release candidate, an RC wave on a cluster), and on a node without any network
+access, the coordinator installs from a **wheelhouse** instead of PyPI: set the runner's `wheelhouse` and
+`constraints` options (`runner.options.wheelhouse`, `runner.options.constraints`; the generic `--set
+runner.options.wheelhouse=...` overrides them from the command line) — on a node without any network access, name
+`constraints` too, since `uvx` fetches the default release URL at job start even under `--no-index`. The wheelhouse
+is a directory of staged wheels, readable on the node, or an `http(s)://` URL of one: uv's `--find-links` and
+`--constraints` read local paths (or `file://` URLs) and http(s) URLs with a host, and no bucket scheme — a
+GCS-staged wheelhouse is exposed through its `https://` URL, or mounted where the job runs; a `gs://`/`s3://` value
+is refused when the config is read, not at job start. On Kubernetes a directory must reach the pod another way —
+bake it into the coordinator's `image:` or name the `https://` URL (the Kubernetes runner takes no volume mounts);
+on SLURM, `container_mounts` mounts a shared one. The rendered
+`uvx` then takes everything from the wheelhouse and asks no index, and the constraints file you name replaces the
+release's:
+
+```yaml
+runner:
+  name: kubernetes
+  options:
+    wheelhouse: https://storage.googleapis.com/my-bucket/wheelhouse/0.0.1rc1
+    constraints: https://storage.googleapis.com/my-bucket/wheelhouse/0.0.1rc1/requirements-constraints.txt
+```
+
+The local runner runs the coordinator in this host's environment and installs nothing (a wheelhouse there is
+refused); on SLURM the option applies with a container runtime — with `container_runtime: none` the node's own
+environment provides the release, and a wheelhouse is refused.
+
+Build the wheelhouse from the RC's checkout, with the same commands the release workflow runs, then download the
+locked dependencies beside the release wheels (for the node's platform; the coordinator installs with `--no-index`,
+so the wheelhouse must carry every package, the CPU torch build included):
+
+```bash
+# the release wheels, as release.yml builds them (--all-packages builds every workspace member:
+# rcp-ndcg and the rcp-ndcg-core it pins exactly; the pyproject.toml versions must match)
+uv build --all-packages --out-dir /shared/wheelhouse/0.0.1rc1
+# the locked dependencies, pinned exactly (the command the committed requirements-constraints.txt records)
+uv export --frozen --no-hashes --no-emit-workspace --no-dev --extra calibrate --extra hf --extra s3 --extra azure \
+  -o /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt
+pip download -r /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
+  --dest /shared/wheelhouse/0.0.1rc1 --only-binary :all: \
+  --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+```
+
+`uv export --frozen ...` writes the same file the release attaches (the command in its header); `pip download`
+resolves it for the node's platform and pulls torch from the cpu index first. Stage the directory to the URL the
+nodes read (and mount it for containers), and the job installs exactly the release, whatever PyPI serves that
+night.
 
 ### Starting the engines with the run
 
@@ -438,8 +488,11 @@ judge (both paper judges are): its expert layers then synchronise every forward 
 
 `rcp_ndcg.runners.get_runner(name, **options)` returns the `local`, `slurm` or `kubernetes` runner, or a runner
 that another installed package registers under the `rcp_ndcg.runners` entry-point group. A job is one command line
-with its image, resources, environment and optional engine (`JobSpec`). `render` shows what would be submitted
-without submitting anything:
+with its image, resources and environment (`JobSpec.argv`), or the phases to run in order (`JobSpec.phases`) —
+exactly one of the two: a job without phases runs `argv`, a phased job's commands are its phases' `argv`.
+A plugin runner that renders a job's phases declares `renders_phases = True` and takes the phased job (a runner
+without it is handed the whole-run command as the job's `argv`, and a job whose phases start engines is refused).
+`render` shows what would be submitted without submitting anything:
 
 ```python
 from rcp_ndcg.runners import JobPhase, JobSpec, Resources, ServeConfig, get_runner
@@ -452,10 +505,9 @@ engine = ServeConfig(
 resume = ("rcp-ndcg", "run", "resume", "--run", "/shared/runs/nano-nfcorpus")
 job = JobSpec(
     name="nano-nfcorpus",
-    argv=resume,
     resources=Resources(cpus=8, memory_gb=32, time_limit_s=86400),
     env={"HF_HOME": "/shared/hf"},
-    phases=(
+    phases=(  # a phased job takes no argv: its commands are its phases' argv
         JobPhase(engines={"judge": engine}, argv=(*resume, "--only", "tournament", "--only", "rubric")),
         JobPhase(argv=(*resume, "--only", "calibrate", "--only", "evaluate")),
     ),

@@ -1232,6 +1232,19 @@
           "title": "Backoff Limit",
           "type": "integer"
         },
+        "constraints": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Constraints"
+        },
         "context": {
           "anyOf": [
             {
@@ -1330,6 +1343,19 @@
           "default": null,
           "description": "When a finished Job (and the engines it owns) is deleted.",
           "title": "Ttl Seconds After Finished"
+        },
+        "wheelhouse": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wheelhouse"
         }
       },
       "title": "KubernetesOptions",
@@ -1348,6 +1374,7 @@
           "$ref": "#/$defs/KubernetesOptions",
           "default": {
             "backoff_limit": 0,
+            "constraints": null,
             "context": null,
             "engine_node_selector": {},
             "env": {},
@@ -1362,7 +1389,8 @@
             },
             "secrets": [],
             "service_account": null,
-            "ttl_seconds_after_finished": null
+            "ttl_seconds_after_finished": null,
+            "wheelhouse": null
           }
         }
       },
@@ -1404,6 +1432,20 @@
       "additionalProperties": false,
       "description": "The ``local`` runner's options.",
       "properties": {
+        "constraints": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "not taken: the local runner installs nothing (it runs the coordinator in this host's environment)",
+          "title": "Constraints"
+        },
         "cwd": {
           "anyOf": [
             {
@@ -1451,6 +1493,20 @@
             "memory_gb": null,
             "time_limit_s": null
           }
+        },
+        "wheelhouse": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "not taken: the local runner installs nothing (it runs the coordinator in this host's environment)",
+          "title": "Wheelhouse"
         }
       },
       "title": "LocalOptions",
@@ -1469,6 +1525,7 @@
         "options": {
           "$ref": "#/$defs/LocalOptions",
           "default": {
+            "constraints": null,
             "cwd": null,
             "detach": false,
             "env": {},
@@ -1478,7 +1535,8 @@
               "gpus": 0,
               "memory_gb": null,
               "time_limit_s": null
-            }
+            },
+            "wheelhouse": null
           }
         }
       },
@@ -3161,6 +3219,19 @@
           "description": "``--account``.",
           "title": "Account"
         },
+        "constraints": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Constraints"
+        },
         "container_mounts": {
           "description": "``host:container`` bind mounts (the run directory, an HF cache).",
           "items": {
@@ -3257,6 +3328,19 @@
           "title": "Setup",
           "type": "array"
         },
+        "wheelhouse": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wheelhouse"
+        },
         "workdir": {
           "anyOf": [
             {
@@ -3287,6 +3371,7 @@
           "$ref": "#/$defs/SlurmOptions",
           "default": {
             "account": null,
+            "constraints": null,
             "container_mounts": [],
             "container_runtime": "none",
             "env": {},
@@ -3302,6 +3387,7 @@
             },
             "sbatch_args": [],
             "setup": [],
+            "wheelhouse": null,
             "workdir": null
           }
         }
@@ -4044,6 +4130,7 @@
       "default": {
         "name": "local",
         "options": {
+          "constraints": null,
           "cwd": null,
           "detach": false,
           "env": {},
@@ -4053,7 +4140,8 @@
             "gpus": 0,
             "memory_gb": null,
             "time_limit_s": null
-          }
+          },
+          "wheelhouse": null
         }
       },
       "description": "Where the steps run.",

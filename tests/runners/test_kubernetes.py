@@ -202,7 +202,7 @@ class TestPhases:
     def test_one_phase_is_one_container_in_the_engines_image_running_the_supervision_script(self) -> None:
         """Any launcher that takes an image and a command runs it: no init container, no sidecar, no probes."""
         phase = JobPhase(engines={"judge": SERVE}, argv=("rcp-ndcg", "run", "resume", "--run", "/scratch/runs/x"))
-        job = JobSpec(name="run", argv=("rcp-ndcg", "run", "resume"), phases=(phase,))
+        job = JobSpec(name="run", phases=(phase,))
         (job_obj,) = yaml.safe_load_all(KubernetesRunner(namespace="eval", secrets=["hf-token"]).render([job])["run"])
         pod = job_obj["spec"]["template"]["spec"]
         assert "initContainers" not in pod and pod["restartPolicy"] == "Never"
@@ -256,7 +256,7 @@ class TestPhases:
             JobPhase(engines={"judge": SERVE}, argv=("tournament",)),
             JobPhase(argv=("calibrate", "evaluate")),
         )
-        job = JobSpec(name="paper", argv=("rcp-ndcg", "run", "resume"), phases=phases)
+        job = JobSpec(name="paper", phases=phases)
         (job_obj,) = yaml.safe_load_all(KubernetesRunner(namespace="eval").render([job])["paper"])
         pod = job_obj["spec"]["template"]["spec"]
         assert [c["name"] for c in pod["initContainers"]] == ["phase-1", "phase-2"]
@@ -290,7 +290,7 @@ class TestPhases:
             JobPhase(engines={"reranker": RERANKER}, argv=("b",)),
             JobPhase(argv=("c",)),
         )
-        job = JobSpec(name="run", argv=("rcp-ndcg", "run", "resume"), phases=phases)
+        job = JobSpec(name="run", phases=phases)
         job_obj, stateful_set, service = yaml.safe_load_all(KubernetesRunner(namespace="eval").render([job])["run"])
         assert stateful_set["spec"]["replicas"] == 2 and stateful_set["spec"]["podManagementPolicy"] == "Parallel"
         assert stateful_set["spec"]["serviceName"] == service["metadata"]["name"] == "run-engine-reranker"
@@ -314,13 +314,13 @@ class TestPhases:
     def test_the_phases_container_asks_for_what_the_engines_and_the_coordinator_need_together(self) -> None:
         engine = SERVE.model_copy(update={"resources": Resources(gpus=8, cpus=32, memory_gb=400)})
         phases = (JobPhase(engines={"judge": engine}, argv=("a",)),)
-        job = JobSpec(name="run", argv=("x",), resources=Resources(cpus=4, memory_gb=16), phases=phases)
+        job = JobSpec(name="run", resources=Resources(cpus=4, memory_gb=16), phases=phases)
         container = KubernetesRunner().manifest(job)["spec"]["template"]["spec"]["containers"][0]
         limits = {"nvidia.com/gpu": 8, "cpu": 36, "memory": "416Gi"}
         assert container["resources"] == {"requests": {"cpu": 36, "memory": "416Gi"}, "limits": limits}
         # An engine of unstated CPUs or memory is not capped by the coordinator's share.
         phases = (JobPhase(engines={"judge": SERVE}, argv=("a",)),)
-        job = JobSpec(name="run", argv=("x",), resources=Resources(cpus=4, memory_gb=16), phases=phases)
+        job = JobSpec(name="run", resources=Resources(cpus=4, memory_gb=16), phases=phases)
         container = KubernetesRunner().manifest(job)["spec"]["template"]["spec"]["containers"][0]
         assert container["resources"] == {"limits": {"nvidia.com/gpu": 8}}
 
@@ -328,13 +328,13 @@ class TestPhases:
         """One init container runs the phase's engines together: they cannot have two images."""
         phases = (JobPhase(engines={"judge": SERVE, "encoder": ENCODER}, argv=("a",)),)
         with pytest.raises(ConfigError, match="images differ"):
-            KubernetesRunner().manifest(JobSpec(name="run", argv=("x",), phases=phases))
+            KubernetesRunner().manifest(JobSpec(name="run", phases=phases))
 
     def test_a_phase_with_several_engines_on_one_port_is_refused(self) -> None:
         """Two engines in one container can only listen on different ports."""
         phases = (JobPhase(engines={"judge": SERVE, "encoder": SERVE}, argv=("a",)),)
         with pytest.raises(ConfigError, match="one port"):
-            KubernetesRunner().manifest(JobSpec(name="run", argv=("x",), phases=phases))
+            KubernetesRunner().manifest(JobSpec(name="run", phases=phases))
 
     def test_a_role_with_differing_engines_across_phases_is_refused(self) -> None:
         """One StatefulSet serves every phase that uses the role, so it cannot differ between them."""
@@ -343,13 +343,13 @@ class TestPhases:
             JobPhase(engines={"reranker": RERANKER.model_copy(update={"port": 8009})}, argv=("b",)),
         )
         with pytest.raises(ConfigError, match="different configurations"):
-            KubernetesRunner().manifest(JobSpec(name="run", argv=("x",), phases=phases))
+            KubernetesRunner().manifest(JobSpec(name="run", phases=phases))
 
     def test_submit_owns_the_engines_by_the_applied_jobs_uid(self, monkeypatch) -> None:
         fake = _FakeKubectl()
         monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
         phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
-        job = JobSpec(name="run", argv=("x",), phases=phases)
+        job = JobSpec(name="run", phases=phases)
         assert KubernetesRunner(namespace="eval").submit([job]) == ["eval/run"]
         (_, job_yaml), (_, engines_yaml) = [(argv, text) for argv, text in fake.calls if "apply" in argv]
         assert yaml.safe_load(job_yaml)["kind"] == "Job"
@@ -377,15 +377,13 @@ class TestPhases:
     def test_the_rendered_script_is_valid_bash(self, phases: tuple[JobPhase, ...]) -> None:
         import subprocess
 
-        (job_obj, *_) = yaml.safe_load_all(
-            KubernetesRunner().render([JobSpec(name="j", argv=("x",), phases=phases)])["j"]
-        )
+        (job_obj, *_) = yaml.safe_load_all(KubernetesRunner().render([JobSpec(name="j", phases=phases)])["j"])
         pod = job_obj["spec"]["template"]["spec"]
         for container in pod.get("initContainers", []) + pod["containers"]:
             script = container["command"][2]
             assert subprocess.run(["bash", "-n", "-c", script], capture_output=True).returncode == 0
             assert_shellcheck_clean(script)
-        check_objects([job_obj, *KubernetesRunner().engine_objects(JobSpec(name="j", argv=("x",), phases=phases))])
+        check_objects([job_obj, *KubernetesRunner().engine_objects(JobSpec(name="j", phases=phases))])
 
 
 def test_the_runners_resources_and_env_are_every_jobs_defaults() -> None:
@@ -401,7 +399,7 @@ def test_the_engine_statefulset_of_a_long_run_label_leaves_room_for_its_pod_name
 
     run_id = new_run_id("nano-nfcorpus-gpt-oss-120b-with-a-very-long-label")
     phases = (JobPhase(engines={"judge": SERVE.model_copy(update={"replicas": 3})}, argv=("tournament",)),)
-    job = JobSpec(name=slugify(f"rcp-{run_id}", max_length=60), argv=("rcp-ndcg", "run", "resume"), phases=phases)
+    job = JobSpec(name=slugify(f"rcp-{run_id}", max_length=60), phases=phases)
     runner = KubernetesRunner(namespace="eval")
     stateful_set, service = runner.engine_objects(job)
     name = stateful_set["metadata"]["name"]

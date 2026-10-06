@@ -3,7 +3,9 @@
 A :class:`JobSpec` is *what* to run: one command line (argv) with its image,
 environment and resource request, or the phases to run in order
 (:class:`JobPhase`, each with the engine replicas to start by role and the
-command to run while they serve). A :class:`JobRunner` decides
+command to run while they serve) -- exactly one of the two: a job without phases
+runs its ``argv``, a phased job's commands are its phases' ``argv``. A
+:class:`JobRunner` decides
 *where*: the calling host (:class:`~rcp_ndcg.runners.local.LocalRunner`), a SLURM
 cluster (:class:`~rcp_ndcg.runners.slurm.SlurmRunner`) or Kubernetes
 (:class:`~rcp_ndcg.runners.kubernetes.KubernetesRunner`). Further runners are
@@ -18,11 +20,12 @@ the runner's own fields), which a run config's ``runner.options`` is typed by.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from typing import Any, ClassVar, Protocol, Self
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from rcp_ndcg.errors import ConfigError, ProviderError
 from rcp_ndcg.support.resources import Environment, EnvName, Resources
@@ -70,22 +73,28 @@ class JobPhase(BaseModel):
 
 
 class JobSpec(BaseModel):
-    """One unit of work for a runner: a named command."""
+    """One unit of work for a runner: one command line, or the phases to run in order.
+
+    Exactly one of ``argv`` and ``phases``: a job without phases runs ``argv``; a phased job's commands are
+    its phases' ``argv``, and it carries no ``argv`` of its own.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str = Field(pattern=r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
     """Lowercase alphanumerics and ``-``: the job's name on the scheduler (a runner whose scheduler
     limits the length, like Kubernetes' 63, shortens it deterministically)."""
-    argv: tuple[str, ...]
-    """The command each task runs, never pre-quoted (the runner quotes it exactly once)."""
+    argv: tuple[str, ...] | None = None
+    """The command each task runs, never pre-quoted (the runner quotes it exactly once); the command of a job
+    without phases. A phased job takes none: its commands are its phases' ``argv``."""
     image: str | None = None
     """Container image; ``None`` uses the runner's configured image (or none, for host execution)."""
     resources: Resources = Resources()
     env: Mapping[EnvName, str] = Field(default_factory=dict)
     """Environment for the command; each name a shell identifier."""
     phases: tuple[JobPhase, ...] = ()
-    """The job's phases, run in order in one allocation; when set, they replace ``argv``.
+    """The job's phases, run in order in one allocation; when set, ``argv`` must be left unset (a phased
+    job's commands are its phases' ``argv``).
 
     Each phase starts its engines, waits until each role has a replica answering its readiness path, exports
     their URLs to the phase's command in ``RCP_NDCG_ENGINES`` (:data:`~rcp_ndcg.support.serve.ENGINES_ENV`), runs
@@ -94,10 +103,32 @@ class JobSpec(BaseModel):
 
     @field_validator("argv")
     @classmethod
-    def _non_empty(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        if not value:
+    def _non_empty(cls, value: tuple[str, ...] | None) -> tuple[str, ...] | None:
+        if value is not None and not value:
             raise ValueError("argv must not be empty")
         return value
+
+    @model_validator(mode="after")
+    def _argv_xor_phases(self) -> Self:
+        if self.phases and self.argv is not None:
+            raise ValueError("a phased job takes no argv: its commands are its phases' argv")
+        if not self.phases and self.argv is None:
+            raise ValueError("a job takes argv, or phases")
+        return self
+
+    def with_argv(self, argv: Sequence[str]) -> JobSpec:
+        """The same job running ``argv``: the spec a runner renders for one phase of this job (its image,
+        resources and environment; no phases -- a phase's command lives in the job's ``phases``).
+
+        Raises:
+            ValueError: ``argv`` is empty, or a string (``model_copy`` would skip the model's own check: an
+                empty command would crash the rendered script, and a string would be char-split into words).
+        """
+        if isinstance(argv, str):
+            raise ValueError("argv must be a sequence of words, not a string")
+        if not argv:
+            raise ValueError("argv must not be empty")
+        return self.model_copy(update={"argv": tuple(argv), "phases": ()})
 
 
 class JobOptions(BaseModel):
@@ -115,16 +146,56 @@ class JobOptions(BaseModel):
 
     resources: Resources = Resources()
     env: Environment = Field(default_factory=dict)
+    wheelhouse: str | None = Field(default=None, min_length=1)
+    """Where the coordinator installs the release from instead of PyPI: a directory of staged wheels, or an
+    ``http(s)://`` URL of one, readable on the node; rendered as ``uvx --find-links <wheelhouse> --no-index``
+    -- every package comes from the wheelhouse (a pre-release, or an air-gapped node). A relative local path is
+    recorded absolute by the runners whose job records read paths on the submitting host (slurm); the value is
+    always rendered verbatim, so it must be readable where the job runs (a container: mounted in). On an
+    air-gapped node set ``constraints`` too: the default release constraints URL is fetched at job start even
+    under ``--no-index``. Only runners that install the release take one (a container on SLURM, Kubernetes);
+    where the coordinator runs in an environment that already has it, setting one is refused. The wheels are
+    built and staged as ``docs/concepts/serving.md`` ("The coordinator installs itself") describes.
+    """
+    constraints: str | None = Field(default=None, min_length=1)
+    """A constraints file (path or URL) replacing the release's, which pins every dependency to the version
+    the release was tested with; default the release's own, attached to its GitHub release."""
+
+    @field_validator("wheelhouse", "constraints")
+    @classmethod
+    def _readable_by_uv(cls, value: str | None) -> str | None:
+        """Refuse what ``uv`` cannot read: ``--find-links`` and ``--constraints`` take a local path, a
+        ``file://`` URL or an ``http(s)://`` URL with a host -- a bucket scheme (``gs://``, ``s3://``, also
+        single-slashed like ``gs:/x``) is treated as a filesystem path and fails at job start, so the config
+        refuses it and names the fix."""
+        if value is None:
+            return value
+        if value != value.strip() or not value.strip():
+            raise ValueError(f"{value!r} is empty or has surrounding whitespace")
+        if re.match(r"[A-Za-z][A-Za-z0-9+.\-]*:/", value) and not value.lower().startswith(
+            ("http://", "https://", "file://")
+        ):
+            raise ValueError(
+                f"{value!r} names a scheme uv cannot read: --find-links and --constraints take a local path, a "
+                "file:// URL or an http(s):// URL; stage the wheelhouse as an https URL, or mount it on the node",
+            )
+        if value.lower().startswith(("http://", "https://")) and not re.match(r"^https?://[^/]+", value, re.IGNORECASE):
+            raise ValueError(
+                f"{value!r} names no host: --find-links and --constraints take a local path, a file:// URL or an "
+                "http(s):// URL of one"
+            )
+        return value
 
     def resolved(self) -> dict[str, Any]:
-        """The options set away from their defaults, every path among them absolute (:data:`PATHS`).
+        """The options set away from their defaults, every local path among them absolute (:data:`PATHS`).
 
-        What a job record keeps: the runner re-created from it finds the job's files from any working directory.
+        A PATHS value that is a URL (it names its location with ``://``) is kept as it is. What a job record
+        keeps: the runner re-created from it finds the job's files from any working directory.
         """
         data = self.model_dump(mode="json", exclude_defaults=True)
         for name in self.PATHS:
             value = getattr(self, name)
-            if value is not None:
+            if value is not None and "://" not in value:
                 data[name] = os.path.abspath(os.path.expanduser(value))
         return data
 
