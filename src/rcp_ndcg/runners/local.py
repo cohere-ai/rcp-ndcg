@@ -79,7 +79,8 @@ class LocalRunner:
         self._statuses: dict[str, JobStatus] = {}
 
     def render(self, jobs: Sequence[JobSpec]) -> dict[str, str]:
-        """The worker script each job runs. Submits nothing.
+        """The worker script each job runs: a phased job's phases in order (their commands are the job's
+        commands), a plain job its ``argv``. Submits nothing.
 
         Raises:
             ConfigError: a job has a phase that starts an engine, which the local runner does not start.

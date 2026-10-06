@@ -363,7 +363,7 @@ class KubernetesRunner:
             script += [
                 *heredoc(
                     worker_var,
-                    worker_script(job.model_copy(update={"argv": phase.argv}), install=True, workdir=None, env=env),
+                    worker_script(job.with_argv(phase.argv), install=True, workdir=None, env=env),
                 ),
                 *(
                     line
@@ -386,7 +386,7 @@ class KubernetesRunner:
             # No engine of this phase runs in this container: it is the coordinator, waiting for the replicas
             # (wait_for_replicas) and carrying their URLs in RCP_NDCG_ENGINES, exec'd so SIGTERM reaches it.
             script = worker_script(
-                job.model_copy(update={"argv": phase.argv}),
+                job.with_argv(phase.argv),
                 install=True,
                 workdir=None,
                 env={**env, ENGINES_ENV: engines_env_value(phase.engines, urls)},
@@ -404,7 +404,7 @@ class KubernetesRunner:
         # A phase without engines runs its command directly, with an empty RCP_NDCG_ENGINES, so no engine of an
         # earlier phase reaches it.
         script = worker_script(
-            job.model_copy(update={"argv": phase.argv}), install=True, workdir=None, env={**env, ENGINES_ENV: "{}"}
+            job.with_argv(phase.argv), install=True, workdir=None, env={**env, ENGINES_ENV: "{}"}
         )
         return self._container(
             name, job.image or self.options.image or COORDINATOR_IMAGE, script, mounts, job.resources

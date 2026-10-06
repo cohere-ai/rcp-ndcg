@@ -29,7 +29,7 @@ SERVE = ServeConfig(
     startup_timeout_s=2,
 )
 PHASE = JobPhase(engines={"judge": SERVE}, argv=("rcp-ndcg", "run", "resume", "--run", "/runs/x"))
-JOB = JobSpec(name="run", argv=("rcp-ndcg", "run", "resume", "--run", "/runs/x"), phases=(PHASE,))
+JOB = JobSpec(name="run", phases=(PHASE,))
 
 #: The engine stub: records its pid and that it started, then behaves as $ENGINE_MODE says ($ENGINE_MODE_OVERRIDE
 #: wins, so a test can fail one phase only); $PHASE tells the phases apart, and phase 2 records whether phase 1's
@@ -113,7 +113,7 @@ def _two_phase_text(phase_two_env: dict[str, str] | None = None) -> str:
             }
         ),
     )
-    job = JobSpec(name="run", argv=("rcp-ndcg", "run", "resume"), phases=phases)
+    job = JobSpec(name="run", phases=phases)
     return SlurmRunner().render([job])["run"]
 
 

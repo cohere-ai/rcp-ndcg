@@ -234,9 +234,7 @@ class SlurmRunner:
         env = {ENGINES_ENV: engines_env} if engines_env is not None else None
         if cuda is not None:
             env = {**(env or {}), "CUDA_VISIBLE_DEVICES": cuda}
-        return worker_script(
-            job.model_copy(update={"argv": tuple(argv)}), install=install, workdir=self.options.workdir, env=env
-        )
+        return worker_script(job.with_argv(argv), install=install, workdir=self.options.workdir, env=env)
 
     def _phase_lines(
         self, job: JobSpec, index: int, phase: JobPhase, *, image: str, container: bool, one_node: bool

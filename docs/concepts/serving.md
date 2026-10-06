@@ -438,8 +438,9 @@ judge (both paper judges are): its expert layers then synchronise every forward 
 
 `rcp_ndcg.runners.get_runner(name, **options)` returns the `local`, `slurm` or `kubernetes` runner, or a runner
 that another installed package registers under the `rcp_ndcg.runners` entry-point group. A job is one command line
-with its image, resources, environment and optional engine (`JobSpec`). `render` shows what would be submitted
-without submitting anything:
+with its image, resources and environment (`JobSpec.argv`), or the phases to run in order (`JobSpec.phases`) —
+exactly one of the two: a job without phases runs `argv`, a phased job's commands are its phases' `argv`.
+`render` shows what would be submitted without submitting anything:
 
 ```python
 from rcp_ndcg.runners import JobPhase, JobSpec, Resources, ServeConfig, get_runner
@@ -452,10 +453,9 @@ engine = ServeConfig(
 resume = ("rcp-ndcg", "run", "resume", "--run", "/shared/runs/nano-nfcorpus")
 job = JobSpec(
     name="nano-nfcorpus",
-    argv=resume,
     resources=Resources(cpus=8, memory_gb=32, time_limit_s=86400),
     env={"HF_HOME": "/shared/hf"},
-    phases=(
+    phases=(  # a phased job takes no argv: its commands are its phases' argv
         JobPhase(engines={"judge": engine}, argv=(*resume, "--only", "tournament", "--only", "rubric")),
         JobPhase(argv=(*resume, "--only", "calibrate", "--only", "evaluate")),
     ),

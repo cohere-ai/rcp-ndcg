@@ -53,7 +53,7 @@ ENCODER_1 = ServeConfig(
 
 
 def _phased_job(*phases: JobPhase) -> JobSpec:
-    return JobSpec(name="j", argv=("rcp-ndcg", "run", "resume"), phases=phases)
+    return JobSpec(name="j", phases=phases)
 
 
 def test_the_partitioning_function_slices_replicas_in_order() -> None:
@@ -76,7 +76,7 @@ def test_kubernetes_partitions_its_container_among_co_located_engines() -> None:
 
 def test_the_coordinators_gpus_are_reserved_ahead_of_the_engines() -> None:
     phases = (JobPhase(engines={"judge": JUDGE_4, "encoder": ENCODER_1}, argv=("a",)),)
-    job = JobSpec(name="j", argv=("x",), resources=_resources(2), phases=phases)
+    job = JobSpec(name="j", resources=_resources(2), phases=phases)
     (job_obj,) = list(yaml.safe_load_all(KubernetesRunner().render([job])["j"]))
     (container,) = job_obj["spec"]["template"]["spec"]["containers"]
     assert container["resources"]["limits"]["nvidia.com/gpu"] == 7  # the coordinator's 2 + 4 + 1
@@ -134,7 +134,7 @@ def test_the_coordinators_gpus_are_reserved_on_slurm_too() -> None:
     (gres.html), so the disjoint remainder of the coordinator's node is its reservation -- the co-located
     engine's step, launched with its own --gres, cannot take them."""
     phases = (JobPhase(engines={"judge": JUDGE_4, "encoder": ENCODER_1}, argv=("a",)),)
-    job = JobSpec(name="j", argv=("x",), resources=_resources(2), phases=phases)
+    job = JobSpec(name="j", resources=_resources(2), phases=phases)
     script = SlurmRunner(container_runtime="pyxis").render([job])["j"]
     assert "#SBATCH --gres=gpu:6" in script  # the maximum over the nodes
     assert "srun --overlap --nodes=1 --ntasks=1 --nodelist=${RCP_NDCG_HOSTS[0]} --gres=gpu:2 " in script
@@ -163,7 +163,7 @@ def test_an_engine_free_phase_still_carries_the_coordinators_gpus() -> None:
     from rcp_ndcg.runners import Resources
 
     phases = (JobPhase(argv=("a",)),)
-    job = JobSpec(name="j", argv=("x",), resources=Resources(gpus=2), phases=phases)
+    job = JobSpec(name="j", resources=Resources(gpus=2), phases=phases)
     script = SlurmRunner().render([job])["j"]
     assert "#SBATCH --ntasks=1\n" in script and "#SBATCH --gres=gpu:2\n" in script
 

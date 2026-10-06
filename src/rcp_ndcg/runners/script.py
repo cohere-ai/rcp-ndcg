@@ -102,7 +102,9 @@ def worker_script(
     """The bash script one task of ``spec`` runs.
 
     Args:
-        spec: The job, or one of its phases (the same job with the phase's ``argv``).
+        spec: The job, or one of its phases (the job with the phase's ``argv``,
+            :meth:`JobSpec.with_argv`); a phased job (whose commands are its phases' ``argv``) renders its
+            phases in order, each run to completion before the next starts (a phase's failure ends the script).
         install: Run an ``rcp-ndcg`` command through ``uvx`` (:func:`install_argv`), for a stock image.
         workdir: Directory to ``cd`` into first; ``None`` keeps the start directory.
         env: Environment the runner adds before the job's own (e.g. an empty ``RCP_NDCG_ENGINES`` for a phase
@@ -114,10 +116,14 @@ def worker_script(
         lines.append(f"cd {shlex.quote(workdir)}")
     lines += export_lines({**(env or {}), **spec.env})
     lines += prologue
-    argv = install_argv(spec.argv) if install else spec.argv
-    if argv[0] == "uvx" and argv != spec.argv:
+    commands = [phase.argv for phase in spec.phases] if spec.phases else [spec.argv or ()]
+    rendered = [install_argv(cmd) if install else tuple(cmd) for cmd in commands]
+    if any(cmd[0] == "uvx" and cmd != orig for cmd, orig in zip(rendered, commands, strict=True)):
         lines += bootstrap_uv()
-    lines.append(f"exec {quote_argv(argv)}")
+    *head, last = rendered
+    for cmd in head:
+        lines.append(quote_argv(cmd))
+    lines.append(f"exec {quote_argv(last)}")
     return "\n".join(lines) + "\n"
 
 

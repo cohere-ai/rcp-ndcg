@@ -13612,10 +13612,10 @@
         "fields": {
           "argv": {
             "alias": null,
-            "default": "<required>",
+            "default": null,
             "frozen": false,
-            "required": true,
-            "type": "tuple[str, Ellipsis]"
+            "required": false,
+            "type": "tuple[str, Ellipsis] | None"
           },
           "env": {
             "alias": null,
@@ -13654,7 +13654,29 @@
           }
         },
         "frozen": true,
-        "kind": "pydantic_model"
+        "kind": "pydantic_model",
+        "members": {
+          "with_argv": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Sequence[str]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "argv"
+              },
+              {
+                "returns": "JobSpec"
+              }
+            ]
+          }
+        }
       },
       "JobStatus": {
         "bases": [
