@@ -311,9 +311,11 @@ RENDER_NOTE = (
     + " (sha256 "
     + TOKENIZER_SHA256
     + "), the embedded 1024-token truncation reset before "
-    'counting (recipe gap G5). Text prompts are raw, not chat: "Query: " + text.strip() '
-    '(3-token head) and "Document: " + text, whole render stripped (3-token head); queries '
-    "keep every token, documents drop scoring_skip_ids positions (32 standalone-punctuation ids "
+    'counting (recipe gap G5). Text prompts are raw, not chat: "Query: " + text.strip() and '
+    '"Document: " + text, whole render stripped. The fixed head encodes to 3 tokens '
+    "standalone (with its trailing space); in a rendered prompt the space merges into the first "
+    "content token, so the head contributes 2 there. Queries keep every token, documents drop "
+    "scoring_skip_ids positions (32 standalone-punctuation ids "
     "+ 9 specials at the revision)."
 )
 TOLERANCE_NOTE = (
