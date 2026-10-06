@@ -34,30 +34,32 @@ from __future__ import annotations
 
 __all__ = ["PplxContextualForPooling"]
 
-from collections.abc import Iterable
+# The guard's second import moment, hoisted above every vllm import: the registry
+# imports this module lazily through the "module:Class" string, and the guard (which
+# itself imports no vllm) must refuse an out-of-range engine before that engine's
+# diverging surface can raise a raw ImportError instead of the guard's RuntimeError.
+from rcp_vllm_pplx.version_guard import require_vllm_version
 
-import torch
-from vllm.config import VllmConfig
-from vllm.model_executor.layers.logits_processor import LogitsProcessor
-from vllm.model_executor.layers.vocab_parallel_embedding import ParallelLMHead
-from vllm.model_executor.model_loader.weight_utils import default_weight_loader
-from vllm.model_executor.models.interfaces_base import default_pooling_type
-from vllm.model_executor.models.qwen3_5 import Qwen3_5ForCausalLMBase
-from vllm.model_executor.models.utils import (
+require_vllm_version()
+
+from collections.abc import Iterable  # noqa: E402
+
+import torch  # noqa: E402
+from vllm.config import VllmConfig  # noqa: E402
+from vllm.model_executor.layers.logits_processor import LogitsProcessor  # noqa: E402
+from vllm.model_executor.layers.vocab_parallel_embedding import ParallelLMHead  # noqa: E402
+from vllm.model_executor.model_loader.weight_utils import default_weight_loader  # noqa: E402
+from vllm.model_executor.models.interfaces_base import default_pooling_type  # noqa: E402
+from vllm.model_executor.models.qwen3_5 import Qwen3_5ForCausalLMBase  # noqa: E402
+from vllm.model_executor.models.utils import (  # noqa: E402
     AutoWeightsLoader,
     StageMissingLayer,
     WeightsMapper,
     no_init_weights,
 )
 
-from rcp_vllm_pplx.pooler import build_pooler
-from rcp_vllm_pplx.pooling_core import PplxInt8Projection
-from rcp_vllm_pplx.version_guard import require_vllm_version
-
-# The guard's second import moment: the registry imports this module lazily through the
-# "module:Class" string, so a vLLM outside the validated range is refused even on the
-# path that bypasses register() (the first moment).
-require_vllm_version()
+from rcp_vllm_pplx.pooler import build_pooler  # noqa: E402
+from rcp_vllm_pplx.pooling_core import PplxInt8Projection  # noqa: E402
 
 
 @default_pooling_type(seq_pooling_type="CLS", tok_pooling_type="ALL")
