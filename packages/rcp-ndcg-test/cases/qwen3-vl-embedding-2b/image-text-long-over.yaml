@@ -437,7 +437,7 @@ expected:
   status: pending_gpu
 notes: >-
   Generated long_over cell in the mixed modality: a 1700x2200 page image plus a long text. Text
-  content = 7010 content tokens (prompt text span 7050 with the frame); the image adds ~1776
+  content = 7030 content tokens (prompt text span 7050 with the frame); the image adds ~1776
   image-pad tokens at the recipe's pixel budget (research-measured for 1700x2200 with
   images_kwargs max_pixels 1843200; 1240 at the checkpoint default - both totals exceed 8192). The
   text span must cut around the intact image pads and the anchor: last must survive. Media:

@@ -70,13 +70,13 @@ expected:
   status: published_unverified
 notes: >-
   model_card case, Sentence Transformers example. Inputs and printed outputs are copied verbatim
-  (source.quote); the card prints the similarity matrix to 4 decimals. tolerance abs 6e-3 = 5e-4
-  rounding half-ulp + 1.5e-3 declared bf16 margin + 3.2e-3 measured cross-runtime spread: the
-  card's own two printed matrices (this example and the transformers Basic Usage Example,
-  identical inputs) differ by up to 3.2e-3 on the text-only cells, which bounds the runtime noise
-  floor. Image columns (d2, d3): the card's demo image lives on a third-party bucket with no
-  stated licence, so it is not redistributed; media/stand_in.png (synthetic, media/make_media.py)
-  stands in and the image-column expected cells do NOT transfer to the stand-in - the GPU wave
-  must recompute them from the recipe's reference and record both numbers. CPU reproduction
-  declined: 2B parameters exceeds the 1B CPU cap (brief rule 3). Printed shapes (4, 2048) and (3,
-  2048) pin the embedding dimension.
+  (source.quote); the card prints the similarity matrix to 4 decimals. tolerance abs 6e-3 >= the
+  format's rounding term for a 4-decimal print (5e-4) + 1.5e-3 declared bf16 margin + 3.2e-3
+  measured cross-runtime spread: the card's own two printed matrices (this example and the
+  transformers Basic Usage Example, identical inputs) differ by up to 3.2e-3 on the text-only
+  cells, which bounds the runtime noise floor. Image columns (d2, d3): the card's demo image lives
+  on a third-party bucket with no stated licence, so it is not redistributed; media/stand_in.png
+  (synthetic, media/make_media.py) stands in and the image-column expected cells do NOT transfer
+  to the stand-in - the GPU wave must recompute them from the recipe's reference and record both
+  numbers. CPU reproduction declined: 2B parameters exceeds the 1B CPU cap (brief rule 3). Printed
+  shapes (4, 2048) and (3, 2048) pin the embedding dimension.

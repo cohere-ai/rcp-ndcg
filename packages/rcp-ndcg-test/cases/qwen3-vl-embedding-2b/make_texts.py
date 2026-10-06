@@ -321,7 +321,7 @@ def main() -> None:
                 *expected_block(),
                 *notes_block(
                     f"Generated long_over cell in the mixed modality: a 1700x2200 page image plus a long "
-                    f"text. Text content = {count - 2 * fixed} content tokens (prompt text span {count} "
+                    f"text. Text content = {count - fixed} content tokens (prompt text span {count} "
                     f"with the frame); the image adds ~1776 image-pad tokens at the recipe's pixel budget "
                     f"(research-measured for 1700x2200 with images_kwargs max_pixels 1843200; 1240 at the "
                     f"checkpoint default - both totals exceed {MAX_TOKENS}). The text span must cut "
