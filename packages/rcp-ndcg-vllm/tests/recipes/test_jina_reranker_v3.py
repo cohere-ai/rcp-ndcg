@@ -30,7 +30,9 @@ def _tokenizer_file(tmp: Path) -> Path:
     """``tokenizer.json`` at the pinned revision, downloaded into ``tmp``; skips offline."""
     try:
         from huggingface_hub import hf_hub_download
-    except ModuleNotFoundError as error:  # pragma: no cover - the product's install carries it
+    except ModuleNotFoundError as error:  # huggingface_hub is rcp-ndcg's optional [hf] extra, not a
+        # dependency of this package: in an env without it (e.g. a bare `rcp-ndcg-vllm[test]` install)
+        # every tokenizer-backed test here skips, and stage 1 never runs in that env.
         pytest.skip(f"huggingface_hub is not installed: {error}")
     try:
         return Path(hf_hub_download(REPO, "tokenizer.json", revision=REVISION, cache_dir=str(tmp / "hf")))
@@ -51,8 +53,8 @@ def _recipe_copy_with_local_tokenizer(tmp_path: Path, tokenizer_file: Path) -> P
 
 def _pairs(count_short: int = 15, count_long: int = 5) -> list[dict]:
     """Pairs rows: short pairs plus documents near the checkpoint's 2048-token cap (all under budget)."""
-    unit = "retrieval models rank passages by relevance to a query. "  # ~9.5 tokens
-    long_doc = unit * 195  # ~1900 tokens: long, under the 2048 per-text cap, render-compared
+    unit = "retrieval models rank passages by relevance to a query. "  # 13 tokens with the pinned tokenizer
+    long_doc = unit * 195  # ~1950 tokens: long, under the 2048 per-text cap, render-compared
     rows = [
         {
             "query": f"what ranks passages for query {index}",

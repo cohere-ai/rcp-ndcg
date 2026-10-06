@@ -73,7 +73,7 @@ sources:
   - "experiments/paper/rerankers/reference/jina.py (the paper-exact in-process reference this reference.py derives from)"
   - "src/rcp_ndcg/retrieval/external_rerankers.py:397-455 (the paper's JinaRerank harness: empty docs score 0.0, index re-alignment; predict() at :427-455)"
   - "src/rcp_ndcg/retrieval/_api.py:205 and src/rcp_ndcg/cli/retrieval.py:133 (the paper reranks depth-150 pools)"
-  - "research: /root/repos/rcp-ndcg-lanes/research/r-jina3/out/ (report.md, digest.md, recipe-draft.yaml, reference-draft.py); corrections r-jina3 rows in research/audit-synth/out/corrections.md; record audit research/r-jina3/out/review/guard.md; ANCHOR-FINDING.md; REVIEW-LOG.md R10/R20"
+  - "research record: research/r-jina3/out/ (report.md, digest.md, recipe-draft.yaml, reference-draft.py, review/guard.md); corrections r-jina3 rows in research/audit-synth/out/corrections.md; ANCHOR-FINDING.md; REVIEW-LOG.md R10/R20"
 notes: >-
   Score: raw cosine similarity in [-1, 1] (float32) of the projector-transformed states at the two
   marker tokens (embed_token 151670 per document, rerank_token 151671 for the query); no sigmoid,
@@ -125,10 +125,11 @@ notes: >-
   final float32 cosines.  That loop is not expressible in the recipe schema (a product gap: no
   block-loop field, no per-document budget next to the pair budget) -- reported, not worked around.
   HEADROOM for that client (record-audit-corrected numbers): rerank()'s capacity loop counts only
-  document bodies, but each passage costs 13 wrapper+joiner prompt tokens at passage ids 0-9 (14 at
-  ids 10-99, 15 at ids 100+) on top of its body, plus 151 fixed tokens for the zero-document render
-  (the digest's earlier "13/doc + 132 fixed" double-subtracted one document body; 13/doc itself
-  holds only for 1-digit passage ids).  A client flush rule must keep
+  document bodies, but each passage costs 13 wrapper+joiner prompt tokens at passage ids 0-8 (14 at
+  ids 9-99, 15 at ids 100+ -- the step lands at the 10th document because the intro's passage count
+  grows "9" -> "10") on top of its body, plus 151 fixed tokens for the zero-document render (the
+  digest's earlier "13/doc + 132 fixed" double-subtracted one document body; 13/doc itself holds
+  only for single-digit passage ids).  A client flush rule must keep
   125*15 + 151 + 2*q_len + 2048 under the spare capacity, or vLLM refuses blocks the paper scored.
   Reference: the checkpoint's remote code (transformers AutoModel, auto_map, trust_remote_code=true,
   revision pinned) -- kind: remote_code; its environment is documented in requirements-reference.txt

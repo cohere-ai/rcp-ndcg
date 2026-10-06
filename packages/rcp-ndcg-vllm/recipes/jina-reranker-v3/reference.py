@@ -206,7 +206,8 @@ class JinaRerankerV3:
         The model is listwise: *docs* may be one document (the 1-vs-1 prompt) or a list (one block's
         listwise prompt).  Applies the remote code's pre-templating truncation exactly as ``rerank()``
         does, then formats and tokenizes.  For the paper's multi-block calls the per-block prompts are
-        ``render(query, block_docs)`` for each block of the blocking loop documented at :mod:`__main__`.
+        ``render(query, block_docs)`` for each block of the blocking loop documented in the module
+        docstring.
         """
         doc_list = [docs] if isinstance(docs, str) else list(docs)
         backend = self.tokenizer.backend_tokenizer
