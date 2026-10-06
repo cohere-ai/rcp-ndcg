@@ -158,6 +158,24 @@ def _selected(fields: list[str], *, per_query: bool) -> set[str]:
     return {*_DEFAULT_FIELDS, *(("per_query",) if per_query else ())}
 
 
+def _systems_are_known(held: list[str], requested: list[str], *, what: str) -> None:
+    """Refuse an unknown ``--system``/``--baseline`` value as the command-line mistake it is (exit 2).
+
+    The library keeps its own ``ConfigError`` for its Python callers (``systems=`` is a config value there);
+    on the command line an unknown name is a usage error, like an unknown ``--fields`` or ``--metrics`` one.
+    The message and the systems list are the library's.
+    """
+    unknown = sorted(set(requested) - set(held))
+    if unknown:
+        if what == "systems":
+            message = f"systems {unknown} are not in the rankings; systems: {held}"
+            hint = "score one of the systems the rankings hold (--system, repeatable)"
+        else:
+            message = f"baseline {unknown[0]!r} is not a compared system; systems: {held}"
+            hint = "pass one of the compared systems (--baseline), or drop --baseline to compare every pair"
+        raise UsageError(message, hint=hint, details={"unknown": unknown, "systems": held})
+
+
 def _gains(calibration: str | None) -> Any:
     if calibration is None:
         return None
@@ -202,8 +220,11 @@ def eval_score(request: EvalScoreRequest) -> EvalScoreResult:
 
     selected = _selected(request.fields, per_query=request.per_query)
     data = _data(request)
+    rankings = load_rankings(request.rankings)
+    if request.system:
+        _systems_are_known(rankings.systems, request.system, what="systems")
     report = evaluate(
-        load_rankings(request.rankings),
+        rankings,
         **data,
         gains=_gains(request.calibration),
         protocol=request.protocol,
@@ -292,6 +313,9 @@ def eval_compare(request: EvalCompareRequest) -> Comparison:
     else:
         assert request.report is not None
         report = _load_report(request.report)
+    if request.baseline is not None:
+        compared = systems if systems is not None else report.systems
+        _systems_are_known(list(compared), [request.baseline], what="baseline")
     return compare(
         report,
         baseline=request.baseline,

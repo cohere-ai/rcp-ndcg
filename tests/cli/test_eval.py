@@ -257,7 +257,9 @@ def test_a_broken_system_no_longer_stops_the_others_with_system(dataset: str, tm
     assert "--system" in everything["error"]["hint"]
 
 
-def test_an_unknown_system_is_a_config_error_listing_the_systems(dataset: str, tmp_path: Path) -> None:
+def test_an_unknown_system_is_a_usage_error_listing_the_systems(dataset: str, tmp_path: Path) -> None:
+    """An unknown `--system` value is a command-line mistake (exit 2), like an unknown `--fields` name — not a
+    config one: there is no YAML here. The message keeps the systems the file names."""
     rankings = tmp_path / "run.parquet"
     Rankings.from_orders({"q1": ["b", "a", "c"]}, system="mine").save(rankings)
 
@@ -265,9 +267,17 @@ def test_an_unknown_system_is_a_config_error_listing_the_systems(dataset: str, t
         "score", "--rankings", str(rankings), "--dataset", dataset, "--metrics", "qrel_ndcg", "--system", "nobody"
     )
 
-    assert document["exit_code"] == 3, document
-    assert document["error"]["code"] == "CONFIG"
+    assert document["exit_code"] == 2, document
+    assert document["error"]["code"] == "USAGE"
     assert "nobody" in document["error"]["message"] and "mine" in document["error"]["message"]
+
+
+def test_an_unknown_baseline_is_a_usage_error(scored: dict) -> None:
+    document = _invoke("compare", "--report", str(scored["report"]), "--baseline", "nobody")
+
+    assert document["exit_code"] == 2, document
+    assert document["error"]["code"] == "USAGE"
+    assert "nobody" in document["error"]["message"] and "forward" in document["error"]["message"]
 
 
 def test_explain_report_re_scores_the_systems_the_report_scored(scored: dict) -> None:

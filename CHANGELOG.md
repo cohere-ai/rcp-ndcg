@@ -86,8 +86,10 @@ released together.
   the scored dataset is still refused (exit 12; every score would be 0), but it no longer stops the healthy
   systems of a multi-system file: score them with `--system NAME`. The refusal's hint names the way out (drop
   the system's rows, or score the others) with `systems=` for Python callers and `--system` on the command
-  line, whenever the file holds several systems. An unknown name is a `ConfigError` (exit 3) listing the
-  systems the file names; `eval explain --report` re-scores the saved rankings for the systems the report
+  line, whenever the file holds several systems. An unknown name is refused with the systems the file names —
+  a `ConfigError` (exit 3) from the library call, a `UsageError` (exit 2) on the command line, where it is a
+  command-line mistake like an unknown `--fields` or `--metrics` name; `eval explain --report` re-scores the
+  saved rankings for the systems the report
   scored (its own, by default; `--system` narrows them further), so one broken system of the file does not
   kill the explanation, and `--system` with `--run` there is a `UsageError` (it has no effect on a run).
 
@@ -444,6 +446,10 @@ released together.
   that is not an object is answered as `-32600`, and a failure raised inside the server is answered as
   `-32603` — the next request is answered either way. `call_tool()` refuses non-object arguments the same way
   for its direct (Python and SDK) callers.
+- An unknown `--system` (`eval score`, `eval explain --report`) or `--baseline` (`eval compare`) value is a
+  `UsageError` (exit 2), the class of every other unknown command-line value on these commands (`--fields`,
+  `--metrics`), not a `ConfigError` (exit 3): there is no config file to fix. The message and the systems
+  list are unchanged; the library keeps its own `ConfigError` for `systems=`/`baseline=` Python callers.
 
 - `run status`, `run list` and `run show` no longer fail when they read a running job's judgement store while
   the job claims or reports a stage: the store's `identity.json` is written through a temp file and renamed (as
