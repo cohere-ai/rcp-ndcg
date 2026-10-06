@@ -43,7 +43,7 @@
     },
     "EmbeddingEndpoint": {
       "additionalProperties": false,
-      "description": "A dense-embedding endpoint speaking OpenAI ``POST {base_url}/embeddings``.\n\nThe package owns every content decision itself: it applies the prompts in the text, sends ``dimensions``\nonly when set, and L2-normalises the result. Cutting text to ``max_tokens`` at token boundaries of the\ndeclared ``tokenizer`` is the text-budget mechanism's job; until that mechanism is wired into the client,\na config that sets ``max_tokens`` is refused, never silently ignored.\n\nAttributes:\n    api: The wire adapter; ``\"openai_embeddings\"`` by default (a hosted profile overrides it in its own\n        config).\n    recipe: The server-side settings the package cannot read (the pooling, the template, the overrides), as\n        a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never\n        share a cache.\n    tokenizer: The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository\n        id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name;\n        the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already\n        does.\n    max_tokens: What the budget counts is the model's whole input sequence as the engine sees it -- the\n        rendered template, its special tokens, the instruction (the prompts) and the content together,\n        in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after\n        reserving every fixed template token (the anchors a model reads its output from: for a last-token\n        pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the\n        anchors always survive. The cut is never left to the engine: an engine-side truncation of the\n        rendered prompt drops anchors from one end or the other. ``None`` sends every item whole.\n        Content. Refused by the client until the text-budget mechanism is wired into it\n        (:class:`~rcp_ndcg.inference.clients.EmbeddingClient` raises a ``ConfigError``).\n    template: The request template as data\n        (:class:`~rcp_ndcg.data.templates.TemplateSpec`): per request shape (``query``, ``document``,\n        ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens\n        written by name and resolved from the tokenizer, the anchor the model reads its output from, and\n        the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits\n        raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling\n        routes' default). Content.\n    on_overflow: What an input over the budget does: ``cut`` (the default: the content is cut to the\n        budget the template's fixed tokens leave, every cut recorded in the census under\n        ``text_budget``), ``chunk`` (the document is split into :attr:`chunk` pieces, each carrying the\n        full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.\n    chunk: The chunk geometry for ``on_overflow: chunk`` (a :class:`~rcp_ndcg.data.preprocess.ChunkPolicy`\n        reused, not copied). Content.\n    aggregation: How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same\n        rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.\n    empty_doc: What an empty document becomes: ``send`` (the default: the empty string goes out, as\n        today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or\n        ``send_text`` (a literal placeholder goes out, :attr:`empty_doc_text` names it). Content.\n    empty_doc_text: The placeholder text ``empty_doc: send_text`` sends. Content.\n    request_shape: How a request crosses the wire: ``text`` (the default: the rendered string),\n        ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the\n        routes that take them). Declares what the adapter sends; the adapters implement it. Content.\n    query_prompt: Text prepended to every query (an asymmetric embedder's instruction prefix). Content.\n    doc_prompt: Text prepended to every document. Content.\n    normalize: Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising\n        twice is harmless, so a server that already normalised is unaffected).\n    dimensions: The Matryoshka cut served, when the config sets one. Content.\n    batch_size: Items per request. Runtime: how fast, never what.",
+      "description": "A dense-embedding endpoint speaking OpenAI ``POST {base_url}/embeddings``.\n\nThe package owns every content decision itself: it applies the prompts in the text, sends ``dimensions``\nonly when set, and L2-normalises the result. A config that sets ``max_tokens`` (required, with the\n``tokenizer``, on a self-hosted role) is fitted by the client through the one text-budget mechanism:\nonly content spans cut at token boundaries of the declared ``tokenizer``, the template re-attached,\nevery cut recorded, the media tokens reserved whole and never cut. The media fields declare what the\nrole sends; the client prepares every request through\n:func:`~rcp_ndcg.data.prepare.prepare_request` -- the same preparation path the judge uses, and the\nrole's startup probe runs the engine media check when an ``image_processor`` is declared.\n\n\nAttributes:\n    api: The wire adapter; ``\"openai_embeddings\"`` by default (a hosted profile overrides it in its own\n        config).\n    recipe: The server-side settings the package cannot read (the pooling, the template, the overrides), as\n        a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never\n        share a cache.\n    tokenizer: The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository\n        id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name;\n        the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already\n        does.\n    max_tokens: What the budget counts is the model's whole input sequence as the engine sees it -- the\n        rendered template, its special tokens, the instruction (the prompts) and the content together,\n        in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after\n        reserving every fixed template token (the anchors a model reads its output from: for a last-token\n        pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the\n        anchors always survive. The cut is never left to the engine: an engine-side truncation of the\n        rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which\n        a self-hosted role config refuses (declare the budget); a hosted vendor profile with no\n        tokenizer sends content uncut. Content.\n    template: The request template as data\n        (:class:`~rcp_ndcg.data.templates.TemplateSpec`): per request shape (``query``, ``document``,\n        ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens\n        written by name and resolved from the tokenizer, the anchor the model reads its output from, and\n        the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits\n        raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling\n        routes' default). Content.\n    on_overflow: What an input over the budget does: ``cut`` (the default: the content is cut to the\n        budget the template's fixed tokens leave, every cut recorded in the census under\n        ``text_budget``), ``chunk`` (the document is split into :attr:`chunk` pieces, each carrying the\n        full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.\n    chunk: The chunk geometry for ``on_overflow: chunk`` (a :class:`~rcp_ndcg.data.preprocess.ChunkPolicy`\n        reused, not copied). Content.\n    aggregation: How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same\n        rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.\n    empty_doc: What an empty document becomes: ``send`` (the default: the empty string goes out, as\n        today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or\n        ``send_text`` (a literal placeholder goes out, :attr:`empty_doc_text` names it). Content.\n    empty_doc_text: The placeholder text ``empty_doc: send_text`` sends. Content.\n    request_shape: How a request crosses the wire: ``text`` (the default: the rendered string),\n        ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the\n        routes that take them). Declares what the adapter sends; the adapters implement it. Content.\n    query_prompt: Text prepended to every query (an asymmetric embedder's instruction prefix). Content.\n    doc_prompt: Text prepended to every document. Content.\n    normalize: Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising\n        twice is harmless, so a server that already normalised is unaffected).\n    dimensions: The Matryoshka cut served, when the config sets one. Content.\n    batch_size: Items per request. Runtime: how fast, never what.",
       "properties": {
         "api": {
           "default": "openai_embeddings",
@@ -141,6 +141,57 @@
           ],
           "default": null,
           "title": "Wait On Outage S"
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "recipe": {
           "anyOf": [
@@ -433,9 +484,60 @@
       "title": "Gates",
       "type": "object"
     },
+    "ImagePolicy": {
+      "additionalProperties": false,
+      "description": "The pixel budget every page image and video frame is resized to, and the processor whose resize is used.\n\nAttributes:\n    min_px: The fewest pixels an image is scaled up to.\n    max_px: The most pixels an image is scaled down to.\n    processor: The judge's image processor family (:data:`ImageProcessor`). Left unset in a declared policy:\n        the judging pass takes it from the judge config's ``image_processor`` (:meth:`for_processor`), so the\n        recorded policy names it. ``None`` in an effective policy means the family is unknown, and images are\n        sent unchanged.\n\nBudget both or neither: without one, images go at their stored size and the engine's processor decides\n(:meth:`native`), so their token cost cannot be counted. With a known processor the budget must lie within\nthe engines' default budget for it (:data:`PROCESSORS`), so the engine keeps the prepared size.",
+      "properties": {
+        "min_px": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Px"
+        },
+        "max_px": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Px"
+        },
+        "processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Processor"
+        }
+      },
+      "title": "ImagePolicy",
+      "type": "object"
+    },
     "PoolingEndpoint": {
       "additionalProperties": false,
-      "description": "A multi-vector (late interaction) endpoint speaking vLLM ``POST {base_url}/pooling`` (task ``token_embed``).\n\nThe result is ragged: one slice of vectors per item, not one vector. Everything else works as\n:class:`EmbeddingEndpoint` (the prompts, the batch size) -- except that ``max_tokens`` is refused until the\ntext-budget mechanism is wired (the pooling client raises :class:`~rcp_ndcg.errors.ConfigError`), and\n``dimensions`` is never sent: vLLM's ``/pooling`` refuses it (\"dimensions is currently not supported\").\n\nAttributes:\n    api: The wire adapter; ``\"vllm_pooling\"`` by default.\n    embed_dtype: The precision the vectors cross the wire in; ``\"float16\"`` (the owner's Q11 decision)\n        halves the bytes of a ragged buffer, ``\"float32\"`` is the lossless opt-in. Content: it changes the\n        vectors. MaxSim computes in float32 either way.\n    dim: The width of one token vector -- the checkpoint's late-interaction dimension (ColBERT-style\n        checkpoints project to a fixed width, e.g. 128). Content: it is the served checkpoint's own\n        output width. Needed to decode the base64 frame of ``/pooling``, which is flat and carries no\n        shape (``vllm/utils/serial_utils.py::tensor2binary`` flattens); the response's token counts are\n        checked against it, so a mistyped width fails loudly instead of silently mis-shaping every\n        vector. The self-describing float and bytes frames decode without it, and the ``bytes`` encoding\n        makes it unnecessary (its metadata carries each item's ``shape``).",
+      "description": "A multi-vector (late interaction) endpoint speaking vLLM ``POST {base_url}/pooling`` (task ``token_embed``).\n\nThe result is ragged: one slice of vectors per item, not one vector. Everything else works as\n:class:`EmbeddingEndpoint` (the prompts, the declared text budget, the client's fit of every item) --\nexcept that ``dimensions`` is never sent: vLLM's ``/pooling`` refuses it (\"dimensions is currently not\nsupported\"), and the client refuses an unset ``dim`` at construction (the base64 frame carries no shape).\n\nAttributes:\n    api: The wire adapter; ``\"vllm_pooling\"`` by default.\n    embed_dtype: The precision the vectors cross the wire in; ``\"float16\"`` (the owner's Q11 decision)\n        halves the bytes of a ragged buffer, ``\"float32\"`` is the lossless opt-in. Content: it changes the\n        vectors. MaxSim computes in float32 either way.\n    dim: The width of one token vector -- the checkpoint's late-interaction dimension (ColBERT-style\n        checkpoints project to a fixed width, e.g. 128). Content: it is the served checkpoint's own\n        output width. Needed to decode the base64 frame of ``/pooling``, which is flat and carries no\n        shape (``vllm/utils/serial_utils.py::tensor2binary`` flattens); the response's token counts are\n        checked against it, so a mistyped width fails loudly instead of silently mis-shaping every\n        vector. The self-describing float and bytes frames decode without it, and the ``bytes`` encoding\n        makes it unnecessary (its metadata carries each item's ``shape``).",
       "properties": {
         "api": {
           "default": "vllm_pooling",
@@ -533,6 +635,57 @@
           ],
           "default": null,
           "title": "Wait On Outage S"
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "recipe": {
           "anyOf": [
@@ -753,7 +906,7 @@
     },
     "RerankEndpoint": {
       "additionalProperties": false,
-      "description": "A reranking endpoint speaking the Cohere-shaped ``POST {base_url}/rerank``.\n\nOne query's whole candidate set goes per request (the engine reuses the query prefix, and a listwise model\nneeds them together).\n\nAttributes:\n    api: The wire adapter; ``\"rerank\"`` by default.\n    recipe: As on :class:`EmbeddingEndpoint`: the server-side settings the package cannot read (the\n        ``hf_overrides``, the score template), as a free string. Content.\n    tokenizer: The model's tokenizer, in whose tokens ``max_tokens`` and ``query_max_tokens`` are counted.\n        Runtime by name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the\n        judge's already does.\n    max_tokens: What the budget counts is the model's whole input sequence as the engine sees it -- the\n        rendered template, its special tokens, the instruction and the query-and-document content\n        together, in the declared tokenizer's tokens. The content is cut on the client, in a budget\n        computed after reserving every fixed template token (the anchors: a pointwise reranker reads its\n        score from the last position, so the generation prompt or \"yes-no\" suffix always survives; when\n        the template puts the document first, so does the query), and the template is re-attached after\n        the cut. The cut is never left to the engine: an engine-side truncation of the rendered prompt\n        drops anchors from one end or the other. The query is cut first, to ``query_max_tokens``; the\n        document gets the rest of the budget. ``None`` sends every pair whole. Content. Refused until\n        the text-budget mechanism wires the client-side cut, rather than silently ignoring a budget.\n    query_max_tokens: The query's share of the pair budget (``max_tokens``), in the declared tokenizer's\n        tokens; the document gets what remains. It binds when a pair overflows -- an input under budget is\n        sent byte-identical to the uncut render. ``None`` (the default) declares no split, and the\n        adapter's recipe decides. Content.\n    template: The pair template as data (:class:`~rcp_ndcg.data.templates.TemplateSpec`), which orders\n        query and document per model (document first for some rerankers, and then the query block is an\n        anchor), names the specials, and declares the anchor and the per-shape ``add_special_tokens``.\n        Content.\n    on_overflow: What a pair over the budget does: ``cut`` (the default), ``chunk`` (the document side is\n        split into :attr:`chunk` pieces, each carrying the full template; scores pool back by ``max``)\n        or ``fail``. A query is never chunked. Content.\n    chunk: The chunk geometry for ``on_overflow: chunk`` (the judge's\n        :class:`~rcp_ndcg.data.preprocess.ChunkPolicy` reused, not copied). Content.\n    aggregation: How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same\n        rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.\n    empty_doc: What an empty document becomes: ``send`` (the default: the empty string goes out),\n        ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder,\n        :attr:`empty_doc_text`). Content.\n    empty_doc_text: The placeholder text ``empty_doc: send_text`` sends. Content.\n    request_shape: How a request crosses the wire: ``text`` (the default), ``messages`` or ``token_ids``;\n        the adapters implement it. Content.\n    instruction: How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text\n        (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own\n        ``instruction`` request field (vLLM), ``\"system\"`` sends it as a system message (the shape some\n        models take), ``\"none\"`` sends none. Content.\n    use_activation: ``True`` sends through the engine's activation (a probability), ``False`` asks for the\n        raw logit, ``None`` sends nothing and the engine's default applies. Content: raw logit or\n        probability is a different stored score.\n    listwise: Whether the model scores the whole candidate set in one prompt (listwise) rather than point\n        per pair. Content.\n    batch_size: Documents per request for a pointwise model; refused for a listwise one, which always gets\n        the whole candidate set. Runtime.",
+      "description": "A reranking endpoint speaking the Cohere-shaped ``POST {base_url}/rerank``.\n\nOne query's whole candidate set goes per request (the engine reuses the query prefix, and a listwise model\nneeds them together).\n\nAttributes:\n    api: The wire adapter; ``\"rerank\"`` by default.\n    recipe: As on :class:`EmbeddingEndpoint`: the server-side settings the package cannot read (the\n        ``hf_overrides``, the score template), as a free string. Content.\n    tokenizer: The model's tokenizer, in whose tokens ``max_tokens`` and ``query_max_tokens`` are counted.\n        Runtime by name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the\n        judge's already does.\n    max_tokens: What the budget counts is the model's whole input sequence as the engine sees it -- the\n        rendered template, its special tokens, the instruction and the query-and-document content\n        together, in the declared tokenizer's tokens. The content is cut on the client, in a budget\n        computed after reserving every fixed template token (the anchors: a pointwise reranker reads its\n        score from the last position, so the generation prompt or \"yes-no\" suffix always survives; when\n        the template puts the document first, so does the query), and the template is re-attached after\n        the cut. The cut is never left to the engine: an engine-side truncation of the rendered prompt\n        drops anchors from one end or the other. The query is cut first, to ``query_max_tokens``; the\n        document gets the rest of the budget. ``None`` sends every pair whole -- which a self-hosted role\n        config refuses (declare the budget); a hosted vendor profile with no tokenizer sends pairs uncut.\n        Content.\n    query_max_tokens: The query's share of the pair budget (``max_tokens``), in the declared tokenizer's\n        tokens; the document gets what remains. On the served rerank wire one query rides per request, so\n        the client settles the shared query span once per call: whenever the query exceeds its share it\n        ships at it (recorded once in the census under the doc id ``<query>``), and every document span\n        is verified against the span that ships -- so a pair is never shipped over the budget. ``None``\n        (the default) declares no split, and the adapter's recipe decides; a query that alone fills the\n        budget is then refused rather than cut undeclared. Content.\n    template: The pair template as data (:class:`~rcp_ndcg.data.templates.TemplateSpec`), which orders\n        query and document per model (document first for some rerankers, and then the query block is an\n        anchor), names the specials, and declares the anchor and the per-shape ``add_special_tokens``.\n        Content.\n    on_overflow: What a pair over the budget does: ``cut`` (the default), ``chunk`` (the document side is\n        split into :attr:`chunk` pieces, each carrying the full template; scores pool back by ``max``)\n        or ``fail``. A query is never chunked. Content.\n    chunk: The chunk geometry for ``on_overflow: chunk`` (the judge's\n        :class:`~rcp_ndcg.data.preprocess.ChunkPolicy` reused, not copied). Content.\n    aggregation: How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same\n        rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.\n    empty_doc: What an empty document becomes: ``send`` (the default: the empty string goes out),\n        ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder,\n        :attr:`empty_doc_text`). Content.\n    empty_doc_text: The placeholder text ``empty_doc: send_text`` sends. Content.\n    request_shape: How a request crosses the wire: ``text`` (the default), ``messages`` or ``token_ids``;\n        the adapters implement it. Content.\n    instruction: How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text\n        (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own\n        ``instruction`` request field (vLLM), ``\"system\"`` sends it as a system message (the shape some\n        models take), ``\"none\"`` sends none. Content.\n    use_activation: ``True`` sends through the engine's activation (a probability), ``False`` asks for the\n        raw logit, ``None`` sends nothing and the engine's default applies. Content: raw logit or\n        probability is a different stored score.\n    listwise: Whether the model scores the whole candidate set in one prompt (listwise) rather than point\n        per pair. Content.\n    batch_size: Documents per request for a pointwise model; refused for a listwise one, which always gets\n        the whole candidate set. Runtime.",
       "properties": {
         "api": {
           "default": "rerank",
@@ -851,6 +1004,57 @@
           ],
           "default": null,
           "title": "Wait On Outage S"
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "recipe": {
           "anyOf": [
@@ -1359,6 +1563,49 @@
         }
       },
       "title": "TemplateSpec",
+      "type": "object"
+    },
+    "VideoPolicy": {
+      "additionalProperties": false,
+      "description": "Which frames of a video the judge is shown, and which videos it may be shown at all.\n\nOne sampling rule: ``num_frames`` frames at uniformly spaced indices over the\nwhole clip (:func:`uniform_frame_indices`), the rule both serving engines apply\nto a decoded container. It is the only rule whose realised frame count is fixed\nby the policy -- a frames-per-second rule shows a 10-second clip 20 frames and a\n10-minute clip 1200, so two runs \"at 2 fps\" would share a judgement family while\nshowing the judge different amounts of video.\n\nA clip with fewer frames than ``num_frames`` is refused, not shown whole: the\nengines disagree about it (SGLang rejects the request, vLLM resamples at its\nprocessor's own rate), so no single number of frames could be recorded for it.\nA container's frame count must therefore be recorded at ingest\n(``hash_media=True``) before it can be judged over ``video_url``.\n\n``wire`` is how the judge receives the frames, and it is part of the\ninstrument. ``frames`` (client-sampled, the default and the exact one): the\nclient picks the frames from the corpus's pre-extracted frames and sends each,\nsized by the image policy, as its own image, which any OpenAI-compatible\nendpoint accepts -- so the frames counted are the frames sent.\n``video_url`` (engine-sampled, an opt-in for models with a native video encoder):\nthe container is sent unchanged and the engine decodes and samples it (Qwen-VL\ntowers then merge frame pairs in time and see timestamps). A stock engine samples\nits own default number of frames (32 on vLLM), so ``video_url`` is refused unless\n:attr:`engine_video_pinning` declares the engine pinned to ``num_frames`` -- and\nthe same clips judged both ways are different measurements, so the wire is part\nof the policy and a corpus whose videos do not match it is refused.\n\n``max_duration_s`` is a refusal, not a cut: uniform sampling of a long clip\nspreads the same frame budget ever thinner, so a corpus that declares it refuses\nany video whose recorded duration exceeds it -- or whose duration was never\nrecorded -- rather than judging it at a density nobody chose.",
+      "properties": {
+        "num_frames": {
+          "exclusiveMinimum": 0,
+          "title": "Num Frames",
+          "type": "integer"
+        },
+        "wire": {
+          "enum": [
+            "frames",
+            "video_url"
+          ],
+          "title": "Wire",
+          "type": "string"
+        },
+        "engine_video_pinning": {
+          "default": false,
+          "title": "Engine Video Pinning",
+          "type": "boolean"
+        },
+        "max_duration_s": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Duration S"
+        }
+      },
+      "required": [
+        "num_frames",
+        "wire"
+      ],
+      "title": "VideoPolicy",
       "type": "object"
     }
   },
