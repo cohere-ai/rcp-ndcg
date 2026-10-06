@@ -924,7 +924,7 @@ def _plan(
             raise ConfigError(
                 f"each window needs at least {least} distinct documents, got {bad[:3] or 'no window'}",
                 hint="plan the windows with select_opponents(..., window=)",
-                cli_hint="plan the windows with `rcp-ndcg calibration insert --plan`",
+                cli_hint="plan the windows with `rcp-ndcg calibration insert --dry-run`",
             )
         docs = {query: list(dict.fromkeys(doc for window in rows for doc in window)) for query, rows in windows.items()}
     client = judge_cfg if isinstance(judge_cfg, JudgeClient) else JudgeClient.from_config(judge_cfg)
