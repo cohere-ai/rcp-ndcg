@@ -475,7 +475,8 @@ The pod of one replica needs nothing from the cluster but an image and a command
 two runs it, and no Kubernetes feature beyond a plain Job is used. The engine image needs `bash` 4.3 or later,
 `python3` and `pip`; the stock vLLM and SGLang images have them. The readiness probe uses Python's standard library,
 and the coordinator runs in the engine image through `uvx`: an image without uv gets it first with
-`python3 -m pip install --target`, which needs `pip` and access to PyPI (an image that has uv needs no `pip`). The
+`python3 -m pip install --target` -- from the job's staged wheelhouse (`--no-index --find-links`) when one is
+given, else from PyPI (an image that has uv needs no `pip`). The
 job checks these before it starts the engine. An image without `bash` fails to start the container; one without a
 recent enough `bash`, without `python3`, or without both uv and `pip` stops the job at once with a message naming
 what is missing. On SLURM, the node that runs the batch script is checked for `bash` 4.3 and `python3` the same way.

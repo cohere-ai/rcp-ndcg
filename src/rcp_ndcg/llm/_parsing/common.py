@@ -39,7 +39,7 @@ from rcp_ndcg_core.schemas import InvalidCategory
 #: observations read from identical text, including the JSON schemas that
 #: :mod:`rcp_ndcg.llm._parsing.schema` sends the endpoint. Part of the judgement
 #: family: observations parsed by different versions are never pooled.
-PARSE_VERSION = 2
+PARSE_VERSION = 3
 
 _THINK_BLOCK = re.compile(r"<think>[\s\S]*?</think>")
 _ORPHANED_THINK_END = re.compile(r"^[\s\S]*?</think>")

@@ -18,7 +18,7 @@ import pytest
 from pydantic import ValidationError
 from rcp_ndcg_core.schemas import Judgement, Placement
 
-from rcp_ndcg.llm._parsing.common import MAX_ESCAPE_REPAIRS, UnparseableAnswer, decode_answer
+from rcp_ndcg.llm._parsing.common import PARSE_VERSION, MAX_ESCAPE_REPAIRS, UnparseableAnswer, decode_answer
 from rcp_ndcg.llm._parsing.listwise import judgement_comparisons, parse_calibrated_listwise, window_comparisons
 from rcp_ndcg.llm._parsing.rubric import parse_rubric_criteria
 from rcp_ndcg.llm._parsing.schema import answer_schema, response_format
@@ -466,3 +466,10 @@ def test_the_response_format_is_the_openai_standard_json_schema_form() -> None:
     assert fmt["type"] == "json_schema"
     assert set(fmt["json_schema"]) == {"name", "schema", "strict"} and fmt["json_schema"]["strict"] is True
     assert fmt["json_schema"]["schema"] == answer_schema("rubric", 4, ("C1", "C2", "C3", "C4", "C5"))
+
+
+def test_the_parse_version_is_pinned() -> None:
+    """The parse version is part of the judgement family: a change that can alter what identical text parses
+    to must bump it (M5's trailing-orphan fix did -- pre-fix answers and post-fix ones never pool), and the
+    bump is deliberate policy, pinned as a literal."""
+    assert PARSE_VERSION == 3

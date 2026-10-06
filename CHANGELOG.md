@@ -47,7 +47,8 @@ released together.
   config unless a `Sender` is given), the sync bridge -- one rule: a non-transport sender must provide
   `run`, or the constructor raises `ConfigError` (no `asyncio.run` fallback) -- and the lifecycle:
   `close()` synchronous, `async aclose()` awaited, both context managers. `EmbeddingClient`,
-  `RerankClient` and `PoolingClient` derive from it; the judge client adopts it later.
+  `RerankClient`, `PoolingClient` and `JudgeClient` derive from it (the judge's adoption is this release's;
+  see Unreleased/Changed).
 - **Auth in the transport** (R6): every adapter profile declares `API_KEY_ENV`, `KEY_REQUIRED` and
   `AUTH_HEADER` (the rerank profiles gain them: `cohere` `CO_API_KEY`/`COHERE_API_KEY`, `voyage`
   `VOYAGE_API_KEY`; the served wires and pooling take none), and the transport resolves the key -- the

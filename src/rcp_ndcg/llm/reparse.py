@@ -135,7 +135,7 @@ def reparse(store: str | Path, out: str | Path) -> JudgementSet:
                 f"{source.identity_path} has no schedule for {stage}; the store's records cannot be re-keyed",
                 hint="the store's identity entry is incomplete; judge the stage again into a new store",
             )
-        from rcp_ndcg_core._hashing import hash_payload, short
+        from rcp_ndcg.support.identity import hash_payload, short
 
         dataset_key = short(hash_payload(entry["identity"]["dataset"]), 16)
         records = source.records(stage)

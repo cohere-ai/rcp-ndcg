@@ -140,7 +140,7 @@ def shipped_prompts_digest(stage: Literal["tournament", "rubric"]) -> str:
     naming one: any edited shipped prompt re-keys the step (the judgement family still carries the exact
     prompt's hash, and the names are runtime).
     """
-    from rcp_ndcg_core._hashing import hash_payload
+    from rcp_ndcg.support.identity import hash_payload
 
     names = sorted(name for name in PROMPT_FILES if name.startswith(stage))
     return hash_payload({name: load_prompt(name).text for name in names})

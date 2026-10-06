@@ -212,8 +212,9 @@ class Family(BaseModel):
         context_tokens: The judge's prompt-plus-completion budget (the window text budget's basis), when
             declared.
         extra_body: The judge's extra request fields, when any are declared.
-        api: The judge's wire adapter name, when the config named one (the default wire is left out, so
-            families judged on it keep their key).
+        api: The judge's wire adapter name, when the pass was given one other than its default wire (the
+            judging pass normalizes the default wire's own name away, so families judged on the default keep
+            their key whatever its spelling).
     """
 
     model_config = _FROZEN

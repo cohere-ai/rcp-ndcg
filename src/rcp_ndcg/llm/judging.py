@@ -25,7 +25,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from rcp_ndcg_core._hashing import hash_payload, short
 from rcp_ndcg_core._records import RankingExample
 from rcp_ndcg_core.content import Content, ImagePart, VideoPart
 from rcp_ndcg_core.irt import Priors
@@ -72,6 +71,7 @@ from rcp_ndcg.llm.schedule import (
 )
 from rcp_ndcg.llm.store import JudgementStore
 from rcp_ndcg.storage import local_dir
+from rcp_ndcg.support.identity import hash_payload, short
 from rcp_ndcg.support.logging import get_logger
 
 if TYPE_CHECKING:
