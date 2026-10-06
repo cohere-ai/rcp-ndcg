@@ -472,7 +472,7 @@ released together.
   names `provider:` variants) must be rebuilt. The paper's in-process implementations move unchanged to
   `experiments/paper/rerankers/reference/` (one module per family, plus `octen.py`), importable on their own
   with a pinned `requirements.txt`; nothing in the package imports them. The `[local]` and `[vllm]` extras
-  themselves leave `pyproject.toml` in a later lane; nothing under `src/` imports from them any more
+  themselves left `pyproject.toml` in this release (below); nothing under `src/` imports from them any more
   (`tests/test_no_inprocess_models.py` pins it).
 - **The judge's retry delays are the transport's** (the one visible change of the port): within-request
   retries back off 1 s doubling capped at 60 s, or the server's `Retry-After`, where the OpenAI SDK used its
@@ -485,8 +485,6 @@ released together.
   `schemas/run-config.v1.json`) regenerated for the judge port: `OpenAIChat` exported from
   `rcp_ndcg.inference`, `Reply.url`, `JudgeClient`'s `httpx_transport` keyword and its `config`/`usage`
   properties, and the `api`/`extra_body` field descriptions.
-
-### Removed
 
 - **The OpenAI SDK dependency** (`openai` left `pyproject.toml`'s dependencies; the accepted design of the
   unified inference layer): the judge's chat completions go over `httpx` through the shared transport and the
