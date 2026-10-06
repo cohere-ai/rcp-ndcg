@@ -52,3 +52,28 @@ def test_no_node_script_executes_a_mounted_file_directly() -> None:
         if direct.search(line)
     ]
     assert not offenders, offenders
+
+
+def _function(name: str) -> str:
+    text = BOOTSTRAP.read_text(encoding="utf-8")
+    match = re.search(rf"^{name}\(\) \{{.*?^\}}\n", text, flags=re.S | re.M)
+    assert match, f"bootstrap.sh defines {name}()"
+    return match.group(0)
+
+
+def test_the_stage_lands_at_parent_slash_name_not_nested(tmp_path: Path) -> None:
+    """A recursive copy into an existing directory nests the source; fetch_stage copies into the parent."""
+    remote = tmp_path / "bucket" / "rc0"
+    remote.mkdir(parents=True)
+    (remote / "manifest.json").write_text("{}", encoding="utf-8")
+    state = tmp_path / "state"
+    program = (
+        'gcs_cp() { cp -r "$1" "$2"; }\n'  # local cp -r nests exactly like gcloud/gsutil/fsspec
+        f"{_function('fetch_stage')}\n"
+        f'fetch_stage "{remote}" "{state}"\n'
+    )
+    result = subprocess.run(["bash", "-c", program], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
+    landed = Path(result.stdout.strip())
+    assert landed == state / "rc0"
+    assert (landed / "manifest.json").is_file()

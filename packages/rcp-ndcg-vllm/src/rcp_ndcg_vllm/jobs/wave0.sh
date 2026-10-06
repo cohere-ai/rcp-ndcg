@@ -158,7 +158,7 @@ upload_artifacts() {
   upload "$REPORT" "${OUT_URI%/}/wave0-report.json"
   upload "$REPORT" "${RC_STAGE_URI%/}/reports/wave0-report-$STAMP.json"
   if [[ -d "$WORK/logs" ]]; then
-    gcs_cp "$WORK/logs" "${OUT_URI%/}/logs/" 2>/dev/null \
+    gcs_cp "$WORK/logs" "${OUT_URI%/}/" 2>/dev/null \
       || echo "wave0: the engine logs' upload failed; continuing" >&2
   fi
 }
