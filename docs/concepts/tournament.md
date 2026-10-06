@@ -27,7 +27,7 @@ counts. Nothing is completed or filled in.
 ## Parsing an answer
 
 The judge's JSON object is read from the answer with a tolerant decoder, which the rubric shares. The decoder removes
-`<think>...</think>` blocks and an orphaned leading `...</think>`, removes one code fence around the answer, and decodes
+`<think>...</think>` blocks and an orphaned `</think>` that sits before the object (one that trails it is merely what surrounds it), removes one code fence around the answer, and decodes
 the first complete JSON object from the first `{`, ignoring any text after it (prose, a stray `}`, a second object).
 When a string of that object holds an invalid escape, such as LaTeX (`\pi`, `\{`) in the reasoning, it doubles that
 backslash, so the string keeps the backslash as text, and decodes again (at most 1000 times per answer). This changes

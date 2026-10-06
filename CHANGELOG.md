@@ -552,6 +552,64 @@ released together.
 
 ### Fixed
 
+- **A corpus is named in every judgement record id and store identity (sweep-llm B1):** `judgement_record_id`
+  carries the dataset's identity key (the digest of the store identity's dataset entry: its name, URI and
+  resolved revision; a row-sequence input's rows by their SHA-256), and a row-sequence input's store identity
+  names its rows by that digest instead of the constant `{"name": "dataset"}`. Two corpora that share query and
+  document ids no longer fuse — a second pass into the same store is refused by the gate, and across stores
+  their record ids differ, so a merge keeps both corpora's windows (it used to reuse the first corpus's answers
+  for the second and drop one corpus's window in a merge). Record ids deliberately moved; stores written before
+  the change refuse a resumed pass until forced.
+- **The family key carries the judge's declared settings (sweep-llm B2):** `Family` gains `temperature`,
+  `max_output_tokens`, `context_tokens`, `extra_body` and `api`, and its digest carries each only when it
+  differs from the default (the tokenizer pattern), so every family judged under the defaults keeps its key
+  (the pinned `Family.key` digests are unchanged) and one judged under a declared value never pools with it,
+  cross-store included. The store identity carries the fields with the family, so an old store refuses a
+  resumed pass until forced.
+- **A judge step's identity is keyed by what its judgements answer for (sweep-x-arch N1, sweep-runs 1):**
+  `prompt_sha256` — the named prompt's content hash (the schedule's prompt name or path is runtime; when the
+  schedule leaves the prompt unset, the stage's shipped prompt set by content, so an edited shipped prompt
+  re-keys the step without a resume check ever reading a corpus) — and the judge's `identity_extra()` (its
+  tokenizer's SHA-256, as the encoder and reranker steps splice) enter the judge-step identity; a resume after
+  a prompt edit or a tokenizer swap re-judges instead of skipping with stale judgements.
+- **An orphaned think-end never erases a complete answer (sweep-llm M5):** the orphaned-think-end strip applies
+  only to the text before the object, so an answer followed by a stray think-end tag parses instead of being
+  recorded `no_json` after every retry and dropped from every fit.
+- **One torn last line of the shared `preprocessing.jsonl` no longer poisons a store (sweep-llm M6):** the
+  census file's rows are read through one helper (`rcp_ndcg.data.preprocess.read_census_rows`) that skips a
+  torn last row with a warning — the tolerance the judgement records have — and raises the typed `DataError`
+  with a hint for a complete line that is not a census row; a killed pass's half-written census row no longer
+  crashes every resumed pass, and reparse no longer copies the poison unexamined.
+- **The judgement store's identity read-modify-write is serialized between processes (sweep-llm M1):** two
+  passes claiming the two stages of one fresh store at the same time used to lose one stage's entry (the last
+  full-file write clobbered the other, and the losing pass crashed on `read()`); `claim` and `note_engines`
+  hold an advisory `flock` on the store directory around their read and their write. The multi-process stress
+  test (`tests/llm/test_store_multiprocess.py`) reproduces the loss without the lock; the append-side torn-tail
+  race did not reproduce and stays covered by the same test.
+- **One atomic-write helper** (`rcp_ndcg.storage.atomic_write`): the store's identity file and prompts, the run
+  manifest (whose temp name was pid-only) and the remote cache publish through it; the store's prompt texts are
+  verified against their hash and rewritten when a torn write left a file whose content contradicted its
+  filename (sweep-llm m14).
+- `run status` (and `run cancel`, `run resume`) no longer fail for a job that has left the queue: a non-zero
+  `squeue` — what standard Slurm answers for a finished job (`Invalid job id specified`) — means "not in queue"
+  and the `sacct` fallback runs; it used to raise (sweep-runs 2).
+- The uv bootstrap installs uv from the wheelhouse when one is given (`--no-index --find-links`), so an
+  air-gapped node — the wheelhouse option's whole point — can start a job whose engine image has no uv
+  (sweep-runs 3).
+- A resume whose identity check raises before a step starts (a judge config file gone) fails with the typed
+  `MissingInputError` instead of the failure handler's `AttributeError` on the not-yet-set usage, which masked
+  it (sweep-runs 4).
+- A rerank step without the retrieve step over `candidates.from: rankings` or `retrieval` is refused in the
+  config validator (nothing writes the first-stage pools it rescores); it used to validate and fail mid-run on
+  an internal scratch path (sweep-runs 5).
+- `JudgeConfig`'s copied base-URL validator and `urls` are gone: the copy had drifted to accept
+  `base_url: ""` — a config that validated and could never be sent to. The `Endpoint` rule and property are the
+  only ones (sweep-x-arch F1).
+- An empty planned-window list (`{"q": []}`) is refused with a `ConfigError` and a hint before anything is
+  asked, where it used to crash the pass mid-flight with a bare `max()` `ValueError` after other queries had
+  stored answers (sweep-llm M4).
+- A judging step re-run that fails keeps no outputs, inputs, usage or engines of the attempt it did not run,
+  and a failed re-run of `evaluate` keeps no metrics of it (sweep-runs 7).
 - `run status`, `run list` and `run show` no longer fail when they read a running job's judgement store while
   the job claims or reports a stage: the store's `identity.json` is written through a temp file and renamed (as
   the run manifest's save is) instead of rewritten in place, so a concurrent reader sees the old or the new
@@ -628,6 +686,24 @@ released together.
 
 ### Changed
 
+- **The judge's document text policy defaults to 32,768 tokens (2^15) for `truncate` and `fail` without a
+  declared cap** (owner decision; was 20,000). A store judged under the earlier default keeps its recorded
+  policy: an unset cap that re-judges after this change resolves differently and the store refuses the mixed
+  instrument, so pin `max_tokens: 20000` explicitly when a config must keep the old cap's identity. No shipped
+  preset or paper config relies on the old default.
+- **`JudgeClient` derives from the shared `RoleClient`** (`rcp_ndcg.inference.clients`): the role-scoped
+  adapter lookup (refused at construction like every other role's; an unset `api` still means the
+  `openai_chat` wire and stays out of the identity), the resolved base URL, the transport/Sender bridge, the
+  auth profile (R6) and the close/`aclose`/`gather` lifecycle are the shared base's. `JudgeConfig.urls` is the
+  base's property; `probe()` runs the shared engine media check when the pass's effective preprocessing
+  declares an image policy. Judgement identities are unchanged.
+- One criterion-label derivation (`rcp_ndcg.llm.prompts.criterion_labels_in`), read by `Prompt.criteria` and
+  the fake judge; a step re-run clears its record's previous attempt (inputs, outputs, usage, engines, and a
+  failed `evaluate`'s metrics); `records_stored` (`rcp_ndcg.llm.store`) is the one count of a stage file's
+  lines; a plugin whose constructor rejects the options raises the typed `ConfigError` the built-ins raise.
+- `tests/contract` snapshots and the exported schemas regenerated: the `Family` fields (in
+  `calibration.v1.json`, `judgement-store.v1.json`, `run-manifest.v1.json`), `JudgeConfig.urls` gone from the
+  collected surface (`JudgeClient` carries its `RoleClient` base), and the text-policy default's literal.
 - **One lock for a served-only package**: with the `[local]` and `[vllm]` extras gone, `uv.lock` holds one torch
   (2.14.0, the version the coordinator's extras already resolved, CPU-index compatible) instead of the
   conflict-fork pair 2.9.1/2.14.0, and drops 114 packages only the in-process stack needed (`vllm` and its engine

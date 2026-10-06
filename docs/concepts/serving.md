@@ -158,14 +158,18 @@ every prompt the store was judged with under the hash its judgement family recor
 reproducible from the store after its file moves or changes.
 
 - **Record ids.** Every window has a stable `record_id`, a hash of the judgement family, the query, the stage, the
-  window's sequence number and its placements. Calling `judge` again over the same store asks only for the missing
-  windows. Resuming and re-judging a subset of documents (`docs=`) are therefore the same call.
+  dataset's identity key (the digest of the store identity's dataset entry below, so two corpora that share query
+  and document ids never share a record id) the window's sequence number and its placements. Calling `judge` again
+  over the same store asks only for the missing windows. Resuming and re-judging a subset of documents (`docs=`)
+  are therefore the same call.
 - **Identity.** `identity.json` records what produced the store: the judgement family (judge model and revision,
-  prompt hash, criteria, parse version, decoding, preprocessing, tokenizer hash), the judge's content fields, the
-  schedule and the dataset. It holds content only: the prompt and the tokenizer enter by their SHA-256, and a local
-  dataset by its absolute path, so the same file under another name or path is the same identity; the names the pass
-  was given are kept beside it (`sources`). Judging into a store of another identity raises `IdentityError` and names
-  the differing fields.
+  prompt hash, criteria, parse version, decoding, preprocessing, tokenizer hash, and the judge's declared
+  temperature, output and context budgets, extra body and wire adapter when it declared any), the judge's content
+  fields, the schedule and the dataset. It holds content only: the prompt and the tokenizer enter by their
+  SHA-256, and a local dataset by its absolute path, so the same file under another name or path is the same
+  identity; the names the pass was given are kept beside it (`sources`). A row-sequence input (no dataset
+  object) names its rows by their digest. Judging into a store of another identity raises `IdentityError` and
+  names the differing fields.
   `force=True` moves the old records aside instead. Beside the identity, each stage's entry lists what the judge's
   endpoints said they serve (`engines`: the served model id, `max_model_len`, `owned_by`, the `server` and any
   version header, and the first answer's `system_fingerprint`). This is runtime information: it never enters the
@@ -174,6 +178,11 @@ reproducible from the store after its file moves or changes.
   upstream is refused. Local files have no such pin: editing the documents of a local dataset after judging it is
   your responsibility, since the stored answers would then be paired with texts the judge never saw. Adding
   documents is fine: only windows that show them are new.
+- **Concurrent writers.** The store is reader-safe by design and safe to overlap: two passes claiming two
+  stages, or appending records of the same stage, serialize on an advisory lock on the store directory, and the
+  identity file and each prompt's text are published through one atomic temp-file-and-rename helper
+  (`rcp_ndcg.storage.atomic_write`), so a killed writer leaves no torn file a later pass cannot read (a torn
+  last record or census row is skipped with a warning and asked or recorded again).
 - **Reparse.** Every record keeps the judge's raw answer. `rcp_ndcg.llm.reparse(store, out)`, or
   `rcp-ndcg judge reparse --judgements DIR --out DIR`, reads the stored answers again with the current parser and
   writes a new store under the current parse version, with its own family key and record ids. It never calls the
