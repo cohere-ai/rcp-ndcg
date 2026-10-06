@@ -497,7 +497,8 @@ class RoleClient[C: Endpoint]:
         recorded in the media census as ``not_checked`` -- the check never passes silently.
 
         Raises:
-            CapabilityError: the engine refused the probe request.
+            CapabilityError: the engine refused the probe request, or the config's own media gate refused
+                the probe (the request's media against ``max_images``/``max_videos``).
             ProviderError: the engine's prompt-token count disagrees with the counted one.
         """
         image_policy, video_policy = self._media_policies()
