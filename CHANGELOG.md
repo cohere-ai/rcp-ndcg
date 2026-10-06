@@ -52,12 +52,14 @@ released together.
   sized exactly as the declared `image_processor` would under the role's `image_policy`, its tokens counted
   and reserved whole out of `max_tokens`, never cut; when media alone fill the budget the declared
   `on_overflow` decides (`cut` shrinks to the policy minimum then drops whole items, every drop recorded
-  with `dropped=True` in `client.media_census`; `fail` refuses; `chunk` is refused -- a vision block is
-  atomic); a document whose every media item was dropped is empty and follows `empty_doc` (which every role
-  client consumes, for an empty text document too). `max_images`/`max_videos` gate per wire call (the pooling wire's one
-  media item per call; the rerank call's query plus that chunk's documents) before anything is sent; a role with an `image_processor` exposes `probe()`/`check_engine_media()` -- one
-  prepared probe image, the engine's reported prompt tokens compared with the counted ones, a mismatch
-  refused and a reply without usage recorded `not_checked` (never silent).
+  with `dropped=True` in `client.media_census` under its input's doc id; `fail` refuses; `chunk` is
+  refused -- a vision block is atomic); a document whose every media item was dropped is empty and follows
+  `empty_doc` (which every role client consumes, for an empty text document too). `max_images`/
+  `max_videos` gate per wire call (the pooling wire's one media item per call; the rerank call's query
+  plus that chunk's documents) before anything is sent; a role with an `image_processor` exposes
+  `probe()`/`check_engine_media()` -- one prepared probe image, the engine's reported prompt tokens
+  compared with the counted ones (the media block plus the probe's text tokens), a mismatch refused and a
+  reply without usage recorded `not_checked` (never silent).
 - **Explicit budgets for the role clients**: a self-hosted role config must declare `tokenizer` +
   `max_tokens` (already enforced at the config); a hosted profile may declare only the vendor's documented
   limit (`budget_source: vendor`, content uncut). `on_overflow: chunk` is refused for the embed and pooling
