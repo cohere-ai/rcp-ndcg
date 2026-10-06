@@ -58,6 +58,7 @@ from rcp_ndcg.runners.script import (
     COORDINATOR_IMAGE,
     REMOTE_ENGINE_PID,
     EngineStep,
+    device_slices,
     engine_script,
     engines_env_value,
     heredoc,
@@ -155,15 +156,17 @@ def _engine_image(serve: ServeConfig) -> str:
 def _together(job: Resources, engines: Sequence[Resources]) -> Resources:
     """What one container running the coordinator and several engines asks for.
 
-    The GPUs are the largest request; CPUs and memory add up, and one an engine leaves unstated stays unlimited
-    (a coordinator's share must not cap the engine).
+    The GPUs are the **sum** of the co-located engines' requests plus the coordinator's own: the engines partition
+    the container's devices (`device_slices`), they do not share them -- a vLLM-class engine pre-allocates most of
+    each device it sees, so two engines on the same devices fail with out-of-memory. CPUs and memory add up, and
+    one an engine leaves unstated stays unlimited (a coordinator's share must not cap the engine).
     """
     if not engines:
         return job
     cpus = [engine.cpus for engine in engines]
     memory = [engine.memory_gb for engine in engines]
     return Resources(
-        gpus=max(job.gpus, max(engine.gpus for engine in engines)),
+        gpus=job.gpus + sum(engine.gpus for engine in engines),
         cpus=(job.cpus or 0) + sum(value for value in cpus if value is not None)
         if all(value is not None for value in cpus)
         else None,
@@ -309,8 +312,12 @@ class KubernetesRunner:
         """
         worker_var = f"WORKER_{index}"
         name = f"phase-{index}"
+        # The placement order: engines by descending GPU count, then role name — the largest engine gets the
+        # container's first device slice, after the coordinator's own reservation.
         local: dict[EngineRole, ServeConfig] = {
-            role: serve for role, serve in sorted(phase.engines.items()) if serve.replicas == 1
+            role: serve
+            for role, serve in sorted(phase.engines.items(), key=lambda item: (-item[1].resources.gpus, item[0]))
+            if serve.replicas == 1
         }
         remote: dict[EngineRole, ServeConfig] = {
             role: serve for role, serve in sorted(phase.engines.items()) if serve.replicas > 1
@@ -339,6 +346,15 @@ class KubernetesRunner:
                 )
             image = _engine_image(next(iter(local.values())))
             script = ["#!/usr/bin/env bash", "set -euo pipefail"]
+            # The engines partition the container's devices: the coordinator's own GPU request is reserved first
+            # (device_slices), then one disjoint slice per engine, roles sorted.
+            slices = dict(
+                zip(
+                    local,
+                    device_slices([serve.resources.gpus for serve in local.values()], reserved=job.resources.gpus),
+                    strict=True,
+                )
+            )
             for role, serve in local.items():
                 steps.append(
                     EngineStep(serve=serve, role=role, start=f'bash -c "$ENGINE_{role.upper()}"', hosts="127.0.0.1")
@@ -352,7 +368,7 @@ class KubernetesRunner:
                 *(
                     line
                     for role, serve in local.items()
-                    for line in heredoc(f"ENGINE_{role.upper()}", engine_script(serve))
+                    for line in heredoc(f"ENGINE_{role.upper()}", engine_script(serve, cuda=slices[role]))
                 ),
                 *supervise(
                     steps,

@@ -345,6 +345,29 @@ resumed by hand is byte-identical with or without the variable. `run resume --en
 is the same overlay on the command line, for engines you started yourself. A job that starts an encoder or reranker
 engine starts one replica for it (this release's retrieval clients address one replica URL, and more is refused).
 
+#### GPUs are partitioned per node, not shared
+
+A vLLM-class engine pre-allocates most of each GPU it sees (`--gpu-memory-utilization`), so two co-located engines
+that both see every GPU fail with out-of-memory. The runner therefore treats a phase's GPUs as a fixed pool that
+the engines **partition**, per node:
+
+- **The request.** A node's GPU request is the **sum** of what runs on it: the coordinator's own `resources.gpus`
+  (the coordinator runs on the phase's first node, or in the phase's container) plus each engine's `resources.gpus`
+  times its replicas there. The job asks for the maximum of that over the phases (SLURM's `--gres` is per node;
+  Kubernetes' limit is the container's).
+- **The devices.** Every co-located engine process gets a disjoint `CUDA_VISIBLE_DEVICES` slice: with a 4-GPU
+  judge and a 1-GPU encoder in one phase container, the container asks for 5 and the judge runs with
+  `0,1,2,3`, the encoder with `4`. Two replicas of a 2-GPU engine on one node run with `0,1` and `2,3`, and (they
+  serve on different ports). An engine that declares no GPUs gets the empty slice — it sees no device, never all
+  of them.
+- **SLURM.** Each role's replicas are pinned to a disjoint slice of the allocation's nodes (one replica per node),
+  so no two engine processes share a node; a step's `--gres` is its own engine's count, and SLURM's per-step
+  `CUDA_VISIBLE_DEVICES` — set per step with unique devices (gres.html, "GPU Management") — could still overlap
+  across steps, because the engine steps run under `srun --overlap`, which srun(1) documents as allowing steps to
+  "share all resources (CPUs, memory, and GRES) with all other steps" (SLURM 26.05). The per-node `--gres` therefore
+  carries the sum, and the node pinning keeps the engine steps apart; a cluster that constrains devices per step
+  (`ConstrainDevices=yes`) should be checked against these slices.
+
 What the runners submit:
 
 | | One replica per engine | Several replicas of an engine |

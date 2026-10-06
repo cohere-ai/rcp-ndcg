@@ -359,6 +359,12 @@ released together.
     the message says an engine exited.
   - The single-engine `serve:` rendering (the `RCP_NDCG_JUDGE_URLS` export) is gone, with the deprecated
     `support.serve.JUDGE_URLS_ENV` alias; a run's `serve:` reaches the job only as phases.
+  - Co-located engines partition a node's or container's GPUs (RFC review R31): a node's request is the **sum** of
+    what runs on it — the coordinator's own `resources.gpus` plus each engine's, per replica — and the job asks for
+    the maximum of that over the phases; every co-located engine process gets a disjoint `CUDA_VISIBLE_DEVICES`
+    slice (`device_slices`), the coordinator's devices reserved first, and an engine without GPUs gets the empty
+    slice. On SLURM the engine steps are pinned to disjoint node slices (one replica per node), so SLURM's per-step
+    device assignment — which `srun --overlap` may let overlap — never co-locates two engines.
 - **`RCP_NDCG_ENGINES` is the runtime overlay that carries the engines' URLs to the steps.** The coordinator
   applies each role's `urls` and `wait_on_outage_s` to the role config in memory — never written into `run.yaml`,
   never in a step identity, so a run is byte-identical with and without the variable; the

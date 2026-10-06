@@ -142,9 +142,44 @@ def heredoc(var: str, script: str) -> list[str]:
     return [f"read -r -d '' {var} <<'{tag}' || true", script.rstrip("\n"), tag]
 
 
-def engine_script(serve: ServeConfig) -> str:
-    """The script one engine replica runs: its environment, then its command, exec'd so a stop signal reaches it."""
-    return "\n".join([*export_lines(serve.env), f"exec {quote_argv(serve.command)}"]) + "\n"
+def device_slices(placed: Sequence[int], reserved: int = 0) -> list[str]:
+    """Disjoint ``CUDA_VISIBLE_DEVICES`` values for the engines placed on one node, in placement order.
+
+    Engines that share a GPU set (one Kubernetes phase container; several replicas of one engine) must not all
+    see every device: a vLLM-class engine pre-allocates most of each device it sees, so two engines on the same
+    devices fail with out-of-memory. The engines' slices partition the node's devices: the coordinator's own GPU
+    request is reserved first, then ``0..g1-1`` to the first engine, ``g1..g1+g2-1`` to the next, and so on. An
+    engine that declares no GPUs gets the empty value -- it sees no device, never all of them.
+
+    Args:
+        placed: Per engine replica, in placement order (roles sorted, replicas in order), the GPU count it
+            declares.
+        reserved: The devices the coordinator reserves ahead of them (the job's own GPU request).
+
+    Returns:
+        One ``CUDA_VISIBLE_DEVICES`` value per replica.
+    """
+    slices, offset = [], reserved
+    for gpus in placed:
+        slices.append(",".join(str(offset + device) for device in range(gpus)))
+        offset += gpus
+    return slices
+
+
+def engine_script(serve: ServeConfig, cuda: str | None = None) -> str:
+    """The script one engine replica runs: its environment, its GPU slice, then its command, exec'd so a stop
+    signal reaches it.
+
+    Args:
+        serve: The replica's configuration.
+        cuda: The replica's ``CUDA_VISIBLE_DEVICES`` (the partition of the node's or container's devices the
+            engine gets); ``None`` leaves the scheduler's or container's own value -- a co-located engine must
+            not be left with it, since a scheduler may grant several co-located engines the same devices.
+    """
+    exports = [*export_lines(serve.env)]
+    if cuda is not None:
+        exports.append(f"export CUDA_VISIBLE_DEVICES={shlex.quote(cuda)}")
+    return "\n".join([*exports, f"exec {quote_argv(serve.command)}"]) + "\n"
 
 
 def engines_env_value[R: str](engines: Mapping[R, ServeConfig], urls: Mapping[R, Sequence[str]]) -> str:
@@ -485,6 +520,7 @@ __all__ = [
     "TORCH_CPU_INDEX",
     "UV_BOOTSTRAP_DIR",
     "bootstrap_uv",
+    "device_slices",
     "engine_script",
     "engines_env_command",
     "engines_env_spec",

@@ -254,11 +254,16 @@ class TestPhases:
             [JobSpec(name="paper", argv=("x",), phases=phases)]
         )["paper"]
         assert "#SBATCH --nodes=2\n#SBATCH --ntasks-per-node=1\n" in script  # the largest phase's replicas
-        assert "#SBATCH --gres=gpu:8\n" in script  # the largest single-replica request over the phases
-        # Each role's replicas are pinned to their slice of the allocation's nodes.
+        assert "#SBATCH --gres=gpu:8\n" in script  # the largest per-node sum over the phases
+        # Each role's replicas are pinned to their slice of the allocation's nodes — per phase (the phases run
+        # one after another, so each partitions the whole allocation), engines by descending GPU count: the
+        # judge shares the coordinator's node, whose own request is reserved first in the device slices.
         assert 'mapfile -t RCP_NDCG_HOSTS < <(scontrol show hostnames "$SLURM_JOB_NODELIST")\n' in script
+        assert 'HOSTS_ENCODER=("${RCP_NDCG_HOSTS[@]:0:1}")\n' in script
         assert 'HOSTS_RERANKER=("${RCP_NDCG_HOSTS[@]:0:2}")\n' in script
+        assert 'HOSTS_JUDGE=("${RCP_NDCG_HOSTS[@]:0:1}")\n' in script
         assert '--nodelist="$(IFS=,; echo "${HOSTS_RERANKER[*]}")"' in script
+        assert "srun --overlap --nodes=1 --ntasks=1 --nodelist=${RCP_NDCG_HOSTS[0]} " in script  # the coordinator
         # The RCP_NDCG_ENGINES of a multi-node phase is built when the job starts, from the pinned nodes.
         assert "RCP_NDCG_ENGINES_SPEC" in script
         assert (

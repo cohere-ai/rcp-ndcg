@@ -243,12 +243,18 @@ class SlurmRunner:
             worker = self._phase_worker(job, phase.argv, install=container, engines_env="{}")
             command = self._in_container(image, worker_var, srun=[]) if container else f'bash -c "${worker_var}"'
             return [*heredoc(worker_var, worker), command]
-        roles = sorted(phase.engines)
+        # The placement order: engines by descending GPU count, then role name — the largest engine shares the
+        # coordinator's node, which keeps the per-node GPU sum tight; roles sorted, replicas in order.
+        roles = sorted(phase.engines, key=lambda role: (-phase.engines[role].resources.gpus, role))
         # On a one-node allocation every phase has at most one engine (the largest phase's replica total sizes the
         # allocation), so roles never share a port there; on larger ones each role gets its own node slice.
         lines = [*heredoc(worker_var, self._phase_worker(job, phase.argv, install=container))]
         steps: list[EngineStep] = []
         offset = 0
+        # The replicas are placed one per node (roles by descending GPU count), so no two engine processes share
+        # a node and SLURM's per-step CUDA_VISIBLE_DEVICES -- unique per step (gres.html, "GPU Management") --
+        # already partitions the devices; a node's --gres is the sum of what runs on it (the coordinator's own
+        # request on the first node, see render_job).
         for role in roles:
             serve = phase.engines[role]
             upper = role.upper()
@@ -258,7 +264,7 @@ class SlurmRunner:
                 lines.append(f'HOSTS_{upper}=("${{RCP_NDCG_HOSTS[@]:{offset}:{serve.replicas}}}")')
                 hosts = f'"${{HOSTS_{upper}[@]}}"'
                 nodelist = f'"$(IFS=,; echo "${{HOSTS_{upper}[*]}}")"'
-                offset += serve.replicas
+            offset += serve.replicas
             start = self._engine_start(role, serve, nodelist)
             steps.append(EngineStep(serve=serve, role=role, start=start, hosts=hosts))
             lines += heredoc(f"ENGINE_{upper}", engine_script(serve))
@@ -274,6 +280,9 @@ class SlurmRunner:
                 phase.engines, {role: f'IFS=,; echo "${{HOSTS_{role.upper()}[*]}}"' for role in roles}
             )
         srun = ["srun", "--overlap", "--nodes=1", "--ntasks=1"]  # one task beside the engine steps
+        if not one_node:
+            # The coordinator's own GPU request is part of the first node's sum: pin it there.
+            srun.append("--nodelist=${RCP_NDCG_HOSTS[0]}")
         coordinator = self._in_container(image, worker_var, srun=srun) if container else f'bash -c "${worker_var}"'
         return [*lines, *supervise(steps, coordinator=coordinator, engines_env=engines_env)]
 
@@ -297,7 +306,27 @@ class SlurmRunner:
         ):
             if value:
                 directives.append(f"--{flag}={value}")
-        gpus = max(res.gpus, max((e.resources.gpus for e in engines), default=0))
+        # The GPUs of one node are the sum of the engines placed on it (the coordinator's own request on the
+        # first node) -- co-located engines partition the node's devices, they do not share them; the job asks
+        # for the maximum of that over the phases (SLURM's --gres is per node). Per phase the replicas are
+        # placed one per node in role order, so a node's engines are the replica at its position.
+        gpus = max(
+            [
+                max(
+                    (
+                        (res.gpus if position == 0 else 0) + e.resources.gpus
+                        for position, e in enumerate(
+                            e
+                            for role in sorted(phase.engines)
+                            for e in [phase.engines[role]] * phase.engines[role].replicas
+                        )
+                    ),
+                    default=res.gpus,
+                )
+                for phase in phases
+            ],
+            default=res.gpus,
+        )
         if gpus:
             directives.append(f"--gres=gpu:{gpus}")
         # One node holds a replica and, on the first node, the coordinator: their CPUs and memory add up, per

@@ -242,6 +242,7 @@ class TestPhases:
             "RCP_NDCG_WORKER_1\n"
             "read -r -d '' ENGINE_JUDGE <<'RCP_NDCG_ENGINE_JUDGE' || true\n"
             "export HF_HOME=/models\n"
+            "export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\n"
             "exec vllm serve org/model --served-model-name m --host 0.0.0.0 --port 8000\n"
             "RCP_NDCG_ENGINE_JUDGE\n" + "\n".join(supervision) + "\n"
         )
