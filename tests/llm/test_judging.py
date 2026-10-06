@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 import pytest
 from rcp_ndcg_core._records import RankingExample
+from rcp_ndcg_core.schemas import JudgementSet
 
 from rcp_ndcg.data.preprocess import ChunkPolicy, Preprocessing, TextPolicy, chunk_ranking_example
 from rcp_ndcg.data.tokenizer import load_tokenizer
@@ -648,6 +649,14 @@ class TestPlannedWindows:
         _tournament(tmp_path, again, windows=windows)
         assert again.usage.requests == 0  # asked once: a rerun reuses the stored windows
 
+    def test_an_empty_planned_window_list_is_refused_before_anything_is_asked(self, tmp_path: Path) -> None:
+        """A query whose window list is empty has nothing to ask; a crash after other queries stored their
+        answers (the bare ``max()`` ValueError) would break the recovery workflow mid-flight."""
+        q1 = ROWS[0].doc_ids
+        with pytest.raises(ConfigError, match="no windows"):
+            _tournament(tmp_path, windows={ROWS[0].id: [[q1[0], q1[1]]], ROWS[1].id: []})
+        assert not JudgementStore(tmp_path).identities()  # refused before the store was claimed
+
     def test_a_planned_window_is_one_record_whatever_plan_or_grouping_asks_it(self, tmp_path: Path) -> None:
         first_plan = [["q1-d00", "q1-d05", "q1-d09"]]
         second_plan = [["q1-new", "q1-d02"], ["q1-new", "q1-d07"]]
@@ -668,3 +677,54 @@ class TestPlannedWindows:
             _tournament(tmp_path, windows={ROWS[0].id: [[q1[0], q1[1]]]}, docs={ROWS[0].id: [q1[0]]})
         with pytest.raises(DataError, match="nope"):
             _tournament(tmp_path, windows={ROWS[0].id: [[q1[0], "nope"]]})
+
+
+class TestIdentities:
+    """What names a corpus and an instrument: the store identity, the family key and the record ids."""
+
+    def test_two_row_corpora_never_share_a_store_or_a_record_id(self, tmp_path: Path) -> None:
+        """Two row-sequence passes of different corpora that share query and document ids: the store gate
+        refuses the second (its rows digest differs), and across stores the record ids differ, so a merge
+        keeps both corpora's windows (it used to fuse them, pass 2 silently reusing pass 1's answers)."""
+        other = tuple(
+            row.model_copy(
+                update={"query": f"a different corpus: {row.query}", "docs": [f"other {d}" for d in row.doc_ids]}
+            )  # fmt: skip
+            for row in ROWS
+        )
+        first_store, second_store = tmp_path / "a", tmp_path / "b"
+        first = _tournament(first_store)
+        # The same rows again resume the store as before (the same rows digest).
+        again = _fake()
+        _tournament(first_store, again)
+        assert again.usage.requests == 0
+        # Another corpus (same query and document ids) is refused into the same store.
+        with pytest.raises(IdentityError, match="dataset"):
+            judge(other, None, _fake(), stage="tournament", out=first_store, schedule=TINY_TOURNAMENT)
+        # Into a new store it gets its own record ids, and a merge keeps both corpora's windows.
+        second = judge(other, None, _fake(), stage="tournament", out=second_store, schedule=TINY_TOURNAMENT)
+        assert {j.record_id for j in first.judgements} & {j.record_id for j in second.judgements} == set()
+        merged = JudgementSet.merge([first, second])
+        assert len(merged.judgements) == len(first.judgements) + len(second.judgements)
+
+    def test_the_family_gains_a_declared_judge_setting_and_the_store_refuses_a_change(self, tmp_path: Path) -> None:
+        """temperature, the output and context budgets, extra_body and the wire adapter are CONTENT: a family
+        judged under one never pools with one judged under another (cross-store there is no gate)."""
+        (family,) = _rubric(tmp_path).families.values()
+        assert family.temperature is None and family.max_output_tokens is None  # defaults stay out of the key
+        hot = _fake(config=JudgeConfig.fake(seed=0).model_copy(update={"temperature": 0.7}))
+        (hot_family,) = _rubric(tmp_path / "hot", hot).families.values()
+        assert hot_family.temperature == 0.7
+        assert hot_family.key != family.key
+        assert hot_family.rubric_key == family.rubric_key  # the instrument, not the judge
+        # A store judged under the default refuses a pass of the changed instrument (and vice versa).
+        changed = _fake()
+        changed.config = changed.config.model_copy(update={"temperature": 0.7})
+        with pytest.raises(IdentityError, match="temperature"):
+            _rubric(tmp_path, changed)
+
+    def test_a_row_input_records_its_rows_digest_in_the_store_identity(self, tmp_path: Path) -> None:
+        _tournament(tmp_path)
+        (entry,) = JudgementStore(tmp_path).identities().values()
+        assert entry["identity"]["dataset"]["name"] == "dataset"
+        assert len(entry["identity"]["dataset"]["rows_sha256"]) == 64

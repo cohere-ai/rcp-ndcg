@@ -18557,6 +18557,20 @@
         "defined_in": "rcp_ndcg_core.schemas",
         "extra": "forbid",
         "fields": {
+          "api": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "context_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "criteria": {
             "alias": null,
             "default": [],
@@ -18571,6 +18585,13 @@
             "required": false,
             "type": "Literal['json_schema', 'free']"
           },
+          "extra_body": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, Any] | None"
+          },
           "judge_model": {
             "alias": null,
             "default": "<required>",
@@ -18584,6 +18605,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "max_output_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "parse_version": {
             "alias": null,
@@ -18612,6 +18640,13 @@
             "frozen": false,
             "required": true,
             "type": "Literal['tournament', 'rubric']"
+          },
+          "temperature": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
           },
           "tokenizer": {
             "alias": null,

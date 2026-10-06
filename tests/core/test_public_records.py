@@ -26,7 +26,7 @@ def _rubric(window_seq: int = 0, **overrides) -> Judgement:
         Placement(position=2, doc_id="b", criteria={"C1": 0, "C2": 0}),
     )
     fields = {
-        "record_id": judgement_record_id(RUBRIC.key, "q", "rubric", window_seq, ["a", "b"]),
+        "record_id": judgement_record_id(RUBRIC.key, "q", "rubric", window_seq, ["a", "b"], dataset="d"),
         "dataset": "d",
         "query_id": "q",
         "stage": "rubric",
@@ -69,11 +69,48 @@ def test_family_key_covers_every_field_and_rubric_key_leaves_out_the_judge() -> 
     assert RUBRIC.num_criteria == 2
 
 
+def test_family_key_gains_a_judge_field_only_when_it_differs_from_the_default() -> None:
+    """The declared-CONTENT judge settings the Family carries (temperature, output and context budgets,
+    extra body, wire adapter) enter the digest only when set: a family judged under a default keeps its key,
+    one judged under a declared value never pools with the default's (cross-store there is no gate)."""
+    for field, value in (
+        ("temperature", 0.7),
+        ("max_output_tokens", 8192),
+        ("context_tokens", 131072),
+        ("extra_body", {"reasoning_effort": "low"}),
+        ("api", "cohere"),
+    ):
+        declared = RUBRIC.model_copy(update={field: value})
+        assert declared.key != RUBRIC.key, field
+    # A family that does not carry them digests as before, and the tokenizer pattern holds.
+    bare = Family(stage="rubric", judge_model="m", prompt_hash="p" * 64, criteria=("C1",), parse_version=1)
+    defaulted = Family(
+        stage="rubric",
+        judge_model="m",
+        prompt_hash="p" * 64,
+        criteria=("C1",),
+        parse_version=1,
+        temperature=None,
+        max_output_tokens=None,
+        context_tokens=None,
+        extra_body={},
+        api=None,
+    )
+    assert bare.key == defaulted.key
+    # rubric_key leaves the judge out, the new fields with it.
+    assert RUBRIC.model_copy(update={"temperature": 0.7}).rubric_key == RUBRIC.rubric_key
+
+
 def test_the_family_and_record_digests_are_pinned() -> None:
     """Stored judgements are keyed by these digests: a change orphans every store written before it."""
     assert RUBRIC.key == "d8a72042c3706de8"
     assert RUBRIC.rubric_key == "5f8379aca7521add"
-    assert judgement_record_id(RUBRIC.key, "q", "rubric", 0, ["a", "b"]) == "830d72371490547b10df9609e3052102"
+    # The record id gained the dataset (the store identity's dataset entry, digested): judgements of two corpora
+    # that share query and document ids no longer share a record id. Deliberate (0.0.1: the old ids conflated
+    # corpora); it orphans stores written before the change, as the docstring says.
+    assert judgement_record_id(RUBRIC.key, "q", "rubric", 0, ["a", "b"], dataset="d") == (
+        "37cedfc94161a2e813916ea5006df468"
+    )
 
 
 def test_a_valid_rubric_judgement_needs_every_verdict_binary() -> None:
@@ -98,11 +135,24 @@ def test_judgement_json_round_trip_carries_the_schema_id() -> None:
     assert Judgement.model_validate_json(payload) == judgement
 
 
-def test_record_id_depends_on_window_and_placements() -> None:
-    base = judgement_record_id("f", "q", "rubric", 0, ["a", "b"])
-    assert base != judgement_record_id("f", "q", "rubric", 1, ["a", "b"])
-    assert base != judgement_record_id("f", "q", "rubric", 0, ["b", "a"])
-    assert base == judgement_record_id("f", "q", "rubric", 0, ["a", "b"])
+def test_record_id_depends_on_window_placements_and_dataset() -> None:
+    base = judgement_record_id("f", "q", "rubric", 0, ["a", "b"], dataset="d")
+    assert base != judgement_record_id("f", "q", "rubric", 1, ["a", "b"], dataset="d")
+    assert base != judgement_record_id("f", "q", "rubric", 0, ["b", "a"], dataset="d")
+    assert base == judgement_record_id("f", "q", "rubric", 0, ["a", "b"], dataset="d")
+
+
+def test_the_record_id_names_the_dataset() -> None:
+    """Two corpora that share query ids and document ids never share a record id (cross-store, and in a merge)."""
+    base = judgement_record_id("f", "q", "rubric", 0, ["a", "b"], dataset="d")
+    assert base != judgement_record_id("f", "q", "rubric", 0, ["a", "b"], dataset="other")
+
+
+def test_a_planned_record_id_names_the_dataset_too() -> None:
+    planned = judgement_record_id("f", "q", "rubric", None, ["a"], dataset="d", schedule_key="s")
+    assert planned != judgement_record_id("f", "q", "rubric", None, ["a"], dataset="other", schedule_key="s")
+    with pytest.raises(ValueError, match="schedule_key"):
+        judgement_record_id("f", "q", "rubric", None, ["a"], dataset="d")
 
 
 def test_judgement_set_refuses_unknown_families_and_merges_by_record_id() -> None:

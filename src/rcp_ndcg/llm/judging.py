@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from rcp_ndcg_core._hashing import hash_payload, short
 from rcp_ndcg_core._records import RankingExample
 from rcp_ndcg_core.content import Content, ImagePart, VideoPart
 from rcp_ndcg_core.irt import Priors
@@ -267,15 +268,21 @@ def _dataset_rows(dataset: Any, candidates: Mapping[str, Sequence[str]] | None) 
     return rows
 
 
-def _dataset_identity(name: str, source: Any) -> dict[str, Any]:
+def _dataset_identity(name: str, source: Any, rows: Any = None) -> dict[str, Any]:
     """The dataset part of a pass's identity: its name, and for a loaded dataset its URI and resolved revision.
 
     A local URI (a reader scheme whose location is a path, not ``scheme://``) enters with its path absolute and
     normalised, so the same file named from another directory or as ``./rows.jsonl`` is the same dataset. The
     query selection is left out: judging more queries of the same corpus extends the store.
+
+    A row-sequence input (no dataset object) has no name or revision to give: it is named by the SHA-256 of
+    the rows it judges, so two passes over different row corpora never share a store identity (and, through
+    :func:`~rcp_ndcg_core.schemas.judgement_record_id`, never share record ids).
     """
     if source is None:
-        return {"name": name}
+        if rows is None:
+            return {"name": name}
+        return {"name": name, "rows_sha256": hash_payload({"rows": [row.model_dump(mode="json") for row in rows]})}
     from rcp_ndcg.data.revisions import dataset_uri_revision
 
     return {
@@ -551,6 +558,9 @@ class _Pass:
     tokenizer: TextTokenizer | None
     #: :func:`~rcp_ndcg.llm.schedule.schedule_key` of the pass's schedule: planned windows are keyed by it.
     schedule_key: str
+    #: The dataset's identity key (the digest of the store identity's ``dataset`` entry): every record id
+    #: names the corpus by it, so two corpora that share query and document ids never share a record id.
+    dataset_key: str
     asked: int = 0
     reused: int = 0
     #: ``(query, unit, budget) -> (kept text, original tokens, kept tokens)``: a document's cut, computed once.
@@ -675,7 +685,13 @@ class _Pass:
         is keyed by its documents alone.
         """
         record_id = judgement_record_id(
-            self.family.key, query.query_id, self.stage, seq, list(units), schedule_key=self.schedule_key
+            self.family.key,
+            query.query_id,
+            self.stage,
+            seq,
+            list(units),
+            dataset=self.dataset_key,
+            schedule_key=self.schedule_key,
         )
         present = self.existing.get(record_id)
         if present is not None and (present.valid or present.response is not None):
@@ -935,6 +951,8 @@ class _Plan:
     #: How the pass named its inputs (the prompt, the schedule's prompt, the tokenizer): runtime, never compared.
     sources: dict[str, Any]
     tokenizer: Any
+    #: The dataset's identity key (the digest of ``identity["dataset"]``): what a record id names the corpus by.
+    dataset_key: str
 
 
 def _plan(
@@ -959,9 +977,13 @@ def _plan(
         least = 2 if stage == "tournament" else 1
         bad = [window for rows in windows.values() for window in rows if len(set(window)) != len(window)]
         bad += [window for rows in windows.values() for window in rows if len(window) < least]
-        if bad or not any(windows.values()):
+        empty = sorted(query for query, rows in windows.items() if not rows)
+        if bad or empty or not any(windows.values()):
             raise ConfigError(
-                f"each window needs at least {least} distinct documents, got {bad[:3] or 'no window'}",
+                f"each window needs at least {least} distinct documents, got {bad[:3] or 'no window'}"
+                if bad or not any(windows.values())
+                else f"the plan names no windows for {', '.join(map(repr, empty[:3]))}: a query with an empty "
+                "window list has nothing to ask and crashes the pass mid-flight",
                 hint="plan the windows with select_opponents(..., window=)",
                 cli_hint="plan the windows with `rcp-ndcg calibration insert --plan`",
             )
@@ -1008,7 +1030,19 @@ def _plan(
         decoding=client.config.decoding,
         preprocessing=effective.key,
         tokenizer=tokenizer.sha256 if tokenizer is not None else None,
+        # The declared-CONTENT judge settings: the family digest carries each only when it differs from the
+        # default (the schema's rule), so a family judged under the defaults keeps its key and one judged under
+        # a declared value never pools with it, whatever the store gate does.
+        temperature=client.config.temperature,
+        max_output_tokens=client.config.max_output_tokens,
+        context_tokens=client.config.context_tokens,
+        extra_body=client.config.extra_body or None,
+        api=client.config.api,
     )
+    dataset_identity = _dataset_identity(name, source, rows=dataset if source is None else None)
+    # The dataset's identity key: what a record id names the corpus by, so two corpora that share query and
+    # document ids never share a record id (across stores, and in a merge).
+    dataset_key = short(hash_payload(dataset_identity), 16)
     # Content only: the prompt and the tokenizer enter by their SHA-256 (the family's prompt_hash, and the
     # tokenizer's below), never by the name or path they were given, which is recorded beside it (sources).
     identity = {
@@ -1018,7 +1052,7 @@ def _plan(
         "schedule": schedule.model_dump(mode="json", exclude={"prompt"}),
         # The penalty of the tournament's live Bradley-Terry fit, which chose its adaptive windows.
         **({"bt_l2": Priors().bt_l2} if stage == "tournament" else {}),
-        "dataset": _dataset_identity(name, source),
+        "dataset": dataset_identity,
         "preprocessing": {
             **effective.model_dump(mode="json"),
             "tokenizer": {"sha256": tokenizer.sha256} if tokenizer is not None else None,
@@ -1029,7 +1063,9 @@ def _plan(
         "schedule_prompt": schedule.prompt,
         "tokenizer": tokenizer.name if tokenizer is not None else None,
     }
-    return _Plan(client, effective, loaded, name, queries, schedule, prompt, family, identity, sources, tokenizer)
+    return _Plan(
+        client, effective, loaded, name, queries, schedule, prompt, family, identity, sources, tokenizer, dataset_key
+    )
 
 
 def preflight(
@@ -1099,6 +1135,7 @@ async def ajudge(
         media_census=MediaCensus(sink=store.root / PREPROCESSING_RECORD),
         tokenizer=plan.tokenizer,
         schedule_key=schedule_key(plan.schedule),
+        dataset_key=plan.dataset_key,
     )
     logger.info(
         "judging %d queries of %s: %s with %s (%s), store %s",
