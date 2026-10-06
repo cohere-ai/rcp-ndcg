@@ -297,6 +297,24 @@ class TestRefusals:
         with pytest.raises(ProviderError, match="HTTP 500"):
             self.adapter.interpret(request(), [reply(500, {"error": "boom"})])
 
+    @pytest.mark.parametrize(
+        ("status", "body", "prefix"),
+        [
+            (400, {"error": "maximum context length " + "x" * 277 + "!" + "y" * 20}, "x" * 277),
+            (400, {"error": "x" * 300 + "!" + "y" * 20}, "x" * 300),
+            (500, {"error": "x" * 300 + "!" + "y" * 20}, "x" * 300),
+        ],
+    )
+    def test_an_error_message_carries_at_most_300_characters(
+        self, status: int, body: dict[str, str], prefix: str
+    ) -> None:
+        """The declared message cap: a refusal quotes at most 300 characters of the body -- the 301st
+        character never surfaces (here the '!' sitting exactly 300 characters in)."""
+        with pytest.raises((CapabilityError, RequestRejectedError, ProviderError)) as caught:
+            self.adapter.interpret(request(), [reply(status, body)])
+        message = str(caught.value)
+        assert prefix in message and "!" not in message
+
     def test_vectors_must_align_to_the_request(self) -> None:
         body = embeddings_data([[1.0, 0.0], [0.0, 1.0]])
         with pytest.raises(RequestRejectedError, match=r"2 vector\(s\) for 1 item"):
