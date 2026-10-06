@@ -136,16 +136,29 @@ class JobOptions(BaseModel):
 
     resources: Resources = Resources()
     env: Environment = Field(default_factory=dict)
+    wheelhouse: str | None = Field(default=None, min_length=1)
+    """Where the coordinator installs the release from instead of PyPI: a directory of staged wheels, or an
+    ``http(s)://`` or ``gs://`` URL of one, readable on the node; rendered as ``uvx --find-links <wheelhouse>
+    --no-index`` -- every package comes from the wheelhouse (a pre-release, or an air-gapped node). A local
+    path is recorded absolute (a URL already names its location); a URL or path is also the rendered value, so
+    it must be readable where the job runs (a container: mounted in). Only runners that install the release
+    has it, setting one is refused. The wheels are built and staged as ``docs/concepts/serving.md``
+    ("The coordinator installs itself") describes.
+    """
+    constraints: str | None = Field(default=None, min_length=1)
+    """A constraints file (path or URL) replacing the release's, which pins every dependency to the version
+    the release was tested with; default the release's own, attached to its GitHub release."""
 
     def resolved(self) -> dict[str, Any]:
-        """The options set away from their defaults, every path among them absolute (:data:`PATHS`).
+        """The options set away from their defaults, every local path among them absolute (:data:`PATHS`).
 
-        What a job record keeps: the runner re-created from it finds the job's files from any working directory.
+        A PATHS value that is a URL (it names its location with ``://``) is kept as it is. What a job record
+        keeps: the runner re-created from it finds the job's files from any working directory.
         """
         data = self.model_dump(mode="json", exclude_defaults=True)
         for name in self.PATHS:
             value = getattr(self, name)
-            if value is not None:
+            if value is not None and "://" not in value:
                 data[name] = os.path.abspath(os.path.expanduser(value))
         return data
 

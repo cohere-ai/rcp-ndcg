@@ -377,9 +377,7 @@ class TestPhases:
     def test_the_rendered_script_is_valid_bash(self, phases: tuple[JobPhase, ...]) -> None:
         import subprocess
 
-        (job_obj, *_) = yaml.safe_load_all(
-            KubernetesRunner().render([JobSpec(name="j", phases=phases)])["j"]
-        )
+        (job_obj, *_) = yaml.safe_load_all(KubernetesRunner().render([JobSpec(name="j", phases=phases)])["j"])
         pod = job_obj["spec"]["template"]["spec"]
         for container in pod.get("initContainers", []) + pod["containers"]:
             script = container["command"][2]

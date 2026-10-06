@@ -1922,7 +1922,7 @@
           },
           "runner": {
             "alias": null,
-            "default": "LocalRunnerConfig(name='local', options=LocalOptions(resources=Resources(gpus=0, cpus=None, memory_gb=None, time_limit_s=None), env={}, cwd=None, log_dir=None, detach=False))",
+            "default": "LocalRunnerConfig(name='local', options=LocalOptions(resources=Resources(gpus=0, cpus=None, memory_gb=None, time_limit_s=None), env={}, wheelhouse=None, constraints=None, cwd=None, log_dir=None, detach=False))",
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.runs.config.LocalRunnerConfig | rcp_ndcg.runs.config.SlurmRunnerConfig | rcp_ndcg.runs.config.KubernetesRunnerConfig | rcp_ndcg.runs.config.PluginRunnerConfig"
@@ -13386,6 +13386,13 @@
         "defined_in": "rcp_ndcg.runners.base",
         "extra": "forbid",
         "fields": {
+          "constraints": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "env": {
             "alias": null,
             "default": "<factory dict>",
@@ -13399,6 +13406,13 @@
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.support.resources.Resources"
+          },
+          "wheelhouse": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           }
         },
         "frozen": false,
@@ -13707,6 +13721,13 @@
             "required": false,
             "type": "int"
           },
+          "constraints": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "context": {
             "alias": null,
             "default": null,
@@ -13776,6 +13797,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "wheelhouse": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           }
         },
         "frozen": false,
@@ -13958,6 +13986,13 @@
         "defined_in": "rcp_ndcg.runners.local",
         "extra": "forbid",
         "fields": {
+          "constraints": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "cwd": {
             "alias": null,
             "default": null,
@@ -13992,6 +14027,13 @@
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.support.resources.Resources"
+          },
+          "wheelhouse": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           }
         },
         "frozen": false,
@@ -14319,6 +14361,13 @@
             "required": false,
             "type": "str | None"
           },
+          "constraints": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "container_mounts": {
             "alias": null,
             "default": "<factory list>",
@@ -14388,6 +14437,13 @@
             "frozen": false,
             "required": false,
             "type": "list[str]"
+          },
+          "wheelhouse": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "workdir": {
             "alias": null,
@@ -14582,6 +14638,18 @@
             "name": "version"
           },
           {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "wheelhouse"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "constraints"
+          },
+          {
             "returns": "tuple[str, ...]"
           }
         ]
@@ -14619,6 +14687,18 @@
             "default": [],
             "kind": "keyword_only",
             "name": "prologue"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "wheelhouse"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "constraints"
           },
           {
             "returns": "str"
@@ -15083,7 +15163,7 @@
           },
           "runner": {
             "alias": null,
-            "default": "LocalRunnerConfig(name='local', options=LocalOptions(resources=Resources(gpus=0, cpus=None, memory_gb=None, time_limit_s=None), env={}, cwd=None, log_dir=None, detach=False))",
+            "default": "LocalRunnerConfig(name='local', options=LocalOptions(resources=Resources(gpus=0, cpus=None, memory_gb=None, time_limit_s=None), env={}, wheelhouse=None, constraints=None, cwd=None, log_dir=None, detach=False))",
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.runs.config.LocalRunnerConfig | rcp_ndcg.runs.config.SlurmRunnerConfig | rcp_ndcg.runs.config.KubernetesRunnerConfig | rcp_ndcg.runs.config.PluginRunnerConfig"

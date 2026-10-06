@@ -363,7 +363,14 @@ class KubernetesRunner:
             script += [
                 *heredoc(
                     worker_var,
-                    worker_script(job.with_argv(phase.argv), install=True, workdir=None, env=env),
+                    worker_script(
+                        job.with_argv(phase.argv),
+                        install=True,
+                        workdir=None,
+                        env=env,
+                        wheelhouse=self.options.wheelhouse,
+                        constraints=self.options.constraints,
+                    ),
                 ),
                 *(
                     line
@@ -390,6 +397,8 @@ class KubernetesRunner:
                 install=True,
                 workdir=None,
                 env={**env, ENGINES_ENV: engines_env_value(phase.engines, urls)},
+                wheelhouse=self.options.wheelhouse,
+                constraints=self.options.constraints,
                 prologue=[
                     line
                     for role, serve in remote.items()
@@ -404,7 +413,12 @@ class KubernetesRunner:
         # A phase without engines runs its command directly, with an empty RCP_NDCG_ENGINES, so no engine of an
         # earlier phase reaches it.
         script = worker_script(
-            job.with_argv(phase.argv), install=True, workdir=None, env={**env, ENGINES_ENV: "{}"}
+            job.with_argv(phase.argv),
+            install=True,
+            workdir=None,
+            env={**env, ENGINES_ENV: "{}"},
+            wheelhouse=self.options.wheelhouse,
+            constraints=self.options.constraints,
         )
         return self._container(
             name, job.image or self.options.image or COORDINATOR_IMAGE, script, mounts, job.resources
@@ -412,7 +426,14 @@ class KubernetesRunner:
 
     def _coordinator(self, job: JobSpec, env: dict[str, str], mounts: list[dict[str, str]]) -> dict[str, Any]:
         """The coordinator's container: the stock image (or the job's), installing the release when it starts."""
-        script = worker_script(job, install=True, workdir=None, env=env)
+        script = worker_script(
+            job,
+            install=True,
+            workdir=None,
+            env=env,
+            wheelhouse=self.options.wheelhouse,
+            constraints=self.options.constraints,
+        )
         return self._container(
             "coordinator", job.image or self.options.image or COORDINATOR_IMAGE, script, mounts, job.resources
         )

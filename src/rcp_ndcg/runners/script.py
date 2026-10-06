@@ -50,33 +50,41 @@ CONSTRAINTS_URL = "https://github.com/cohere-ai/rcp-ndcg/releases/download/v{ver
 COORDINATOR_EXTRAS = ("calibrate", "hf", "s3", "azure")
 
 
-def install_argv(argv: Sequence[str], version: str | None = None) -> tuple[str, ...]:
+def install_argv(
+    argv: Sequence[str], version: str | None = None, *, wheelhouse: str | None = None, constraints: str | None = None
+) -> tuple[str, ...]:
     """``argv`` as a stock image runs it: an ``rcp-ndcg`` command through ``uvx`` at this package's version.
 
     Args:
         argv: The command; one that is not ``rcp-ndcg ...`` is returned unchanged.
         version: The release to install; default the installed package's, so a job runs what submitted it.
+        wheelhouse: A directory or ``http(s)://``/``gs://`` URL of staged wheels, readable where the command
+            runs: rendered as ``--find-links <wheelhouse> --no-index`` (a pre-release, or an air-gapped node --
+            the wheelhouse stages every wheel, the CPU torch build included, so no index is asked).
+        constraints: A constraints file (path or URL) replacing the release's
+            (:data:`CONSTRAINTS_URL`).
 
     Returns:
-        ``uvx --from rcp-ndcg[<extras>]==<version> --constraints <release constraints> --index <CPU torch>
-        --index-strategy unsafe-best-match rcp-ndcg ...``. The CPU index is searched with PyPI for every
-        package (``unsafe-best-match``), so torch resolves to its ``+cpu`` build; the constraints file pins
-        every version to the release's lock.
+        ``uvx --from rcp-ndcg[<extras>]==<version> --constraints <constraints file> --index <CPU torch>
+        --index-strategy unsafe-best-match rcp-ndcg ...`` (from the wheelhouse instead, with ``--find-links``
+        and ``--no-index``). The CPU index is searched with PyPI for every package (``unsafe-best-match``), so
+        torch resolves to its ``+cpu`` build; the constraints file pins every version to the release's lock.
     """
     if not argv or argv[0] != "rcp-ndcg":
         return tuple(argv)
     if version is None:
         from rcp_ndcg import __version__ as version
+    if wheelhouse:
+        source = ["--find-links", wheelhouse, "--no-index"]
+    else:
+        source = ["--index", TORCH_CPU_INDEX, "--index-strategy", "unsafe-best-match"]
     return (
         "uvx",
         "--from",
         f"rcp-ndcg[{','.join(COORDINATOR_EXTRAS)}]=={version}",
         "--constraints",
-        CONSTRAINTS_URL.format(version=version),
-        "--index",
-        TORCH_CPU_INDEX,
-        "--index-strategy",
-        "unsafe-best-match",
+        constraints or CONSTRAINTS_URL.format(version=version),
+        *source,
         *argv,
     )
 
@@ -98,6 +106,8 @@ def worker_script(
     workdir: str | None,
     env: Mapping[str, str] | None = None,
     prologue: Sequence[str] = (),
+    wheelhouse: str | None = None,
+    constraints: str | None = None,
 ) -> str:
     """The bash script one task of ``spec`` runs.
 
@@ -110,6 +120,8 @@ def worker_script(
         env: Environment the runner adds before the job's own (e.g. an empty ``RCP_NDCG_ENGINES`` for a phase
             without engines).
         prologue: Shell lines run before the command.
+        wheelhouse, constraints: Where the release installs from instead of PyPI and the GitHub release
+            (the runner's options; see :func:`install_argv`); used only where ``install`` runs.
     """
     lines = ["#!/usr/bin/env bash", "set -euo pipefail"]
     if workdir:
@@ -117,7 +129,9 @@ def worker_script(
     lines += export_lines({**(env or {}), **spec.env})
     lines += prologue
     commands = [phase.argv for phase in spec.phases] if spec.phases else [spec.argv or ()]
-    rendered = [install_argv(cmd) if install else tuple(cmd) for cmd in commands]
+    rendered = [
+        install_argv(cmd, wheelhouse=wheelhouse, constraints=constraints) if install else tuple(cmd) for cmd in commands
+    ]
     if any(cmd[0] == "uvx" and cmd != orig for cmd, orig in zip(rendered, commands, strict=True)):
         lines += bootstrap_uv()
     *head, last = rendered

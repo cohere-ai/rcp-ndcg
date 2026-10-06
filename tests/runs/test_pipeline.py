@@ -733,6 +733,28 @@ class TestTheEnginesOverlay:
         for step in config.ordered_steps:
             assert Pipeline(config, runs_dir=str(tmp_path / "runs"))._identity(step) == pipeline._identity(step)
 
+    def test_the_overlay_is_validated_like_a_configured_config(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The overlay rebuilds the config through its model, so an overlaid URL is normalised as a configured
+        one is, and a value no configured endpoint accepts (a fake:// replica list) is refused with the typed
+        error where the overlay is applied."""
+        from rcp_ndcg.llm import JudgeConfig
+        from rcp_ndcg.support.serve import ENGINES_ENV
+
+        config = tiny_config(data, judge={"base_url": "http://judge.test/v1/", "model": "m"})
+        configured = JudgeConfig.model_validate({"base_url": "http://n1:8000/v1", "model": "m"})
+        monkeypatch.setenv(ENGINES_ENV, json.dumps({"judge": {"urls": ["http://n1:8000/v1/"]}}))
+        pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+        assert pipeline._judge_client_config().base_url == configured.base_url
+
+        monkeypatch.setenv(
+            ENGINES_ENV, json.dumps({"judge": {"urls": ["fake://seed/0", "fake://seed/1"], "wait_on_outage_s": 9}})
+        )
+        overlaid = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+        with pytest.raises(ConfigError, match="not a replica list"):
+            overlaid._judge_client_config()
+
     def test_run_yaml_and_identities_are_byte_identical_with_and_without_the_variable(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

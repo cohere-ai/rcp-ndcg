@@ -258,7 +258,10 @@ runner:
 
 ### The coordinator installs itself
 
-The coordinator, the process that runs `rcp-ndcg run resume`, needs no GPU and no image of its own. In a container
+The coordinator, the process that runs `rcp-ndcg run resume`, needs no GPU and no image of its own by default:
+the job's `resources.gpus` is 0 unless a config declares some, and the runners then reserve exactly what the
+config declares (on SLURM a `--gres` on the phase's first node, on Kubernetes a container request —
+[partitioned](#gpus-are-partitioned-per-node-not-shared) ahead of the engines' slices). In a container
 it runs a stock image with uv and Python 3.12 (`ghcr.io/astral-sh/uv:python3.12-trixie-slim` unless the runner's
 `image` names another), which installs the same release as the submitting host when the job starts:
 
@@ -275,6 +278,47 @@ every package, so torch resolves to its CPU build at the locked version; without
 has a package and fails. On Kubernetes uv's cache lives on the scratch volume. Without PyPI, install from the
 repository instead: `--from 'rcp-ndcg[calibrate,hf,s3,azure] @ git+https://github.com/cohere-ai/rcp-ndcg@v<version>'`
 in the larger `ghcr.io/astral-sh/uv:python3.12-trixie` image, which has git.
+
+**Before the release is on PyPI** (a release candidate, an RC wave on a cluster), and on a node without any network
+access, the coordinator installs from a **wheelhouse** instead of PyPI: set the runner's `wheelhouse` and
+`constraints` options (`runner.options.wheelhouse`, `runner.options.constraints`; the generic `--set
+runner.options.wheelhouse=...` overrides them from the command line). The wheelhouse is a directory or an
+`http(s)://`/`gs://` URL of staged wheels, readable on the node (on Kubernetes, mounted in or a URL); the rendered
+`uvx` then takes everything from the wheelhouse and asks no index, and the constraints file you name replaces the
+release's:
+
+```yaml
+runner:
+  name: kubernetes
+  options:
+    wheelhouse: gs://my-bucket/wheelhouse/0.0.1rc1    # or /shared/wheelhouse on a shared filesystem
+    constraints: gs://bucket/wheelhouse/0.0.1rc1/requirements-constraints.txt
+```
+
+The local runner runs the coordinator in this host's environment and installs nothing (a wheelhouse there is
+refused); on SLURM the option applies with a container runtime — with `container_runtime: none` the node's own
+environment provides the release, and a wheelhouse is refused.
+
+Build the wheelhouse from the RC's checkout, with the same commands the release workflow runs, then download the
+locked dependencies beside the release wheels (for the node's platform; the coordinator installs with `--no-index`,
+so the wheelhouse must carry every package, the CPU torch build included):
+
+```bash
+# the release wheels, as release.yml builds them (the three pyproject.toml versions must match)
+uv build --out-dir /shared/wheelhouse/0.0.1rc1
+uv build --out-dir /shared/wheelhouse/0.0.1rc1 packages/rcp-ndcg-vllm   # built from its own directory
+# the locked dependencies, pinned exactly (the command the committed requirements-constraints.txt records)
+uv export --frozen --no-hashes --no-emit-workspace --no-dev --extra calibrate --extra hf --extra s3 --extra azure \
+  -o /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt
+pip download -r /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
+  --dest /shared/wheelhouse/0.0.1rc1 --only-binary :all: \
+  --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+```
+
+`uv export --frozen ...` writes the same file the release attaches (the command in its header); `pip download`
+resolves it for the node's platform and pulls torch from the cpu index first. Stage the directory to the URL the
+nodes read (and mount it for containers), and the job installs exactly the release, whatever PyPI serves that
+night.
 
 ### Starting the engines with the run
 

@@ -55,6 +55,12 @@ class LocalOptions(JobOptions):
     def _detached_jobs_are_followed_through_files(self) -> Self:
         if self.detach and not self.log_dir:
             raise ValueError("a detached local runner needs `log_dir`: its jobs are followed through their files")
+        if self.wheelhouse or self.constraints:
+            raise ValueError(
+                "the local runner installs nothing (it runs the coordinator in this host's environment): "
+                "drop wheelhouse and constraints, or hand the run to a runner that installs it "
+                "(kubernetes, or slurm with a container runtime)"
+            )
         return self
 
 
