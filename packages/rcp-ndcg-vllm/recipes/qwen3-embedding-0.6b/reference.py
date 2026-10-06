@@ -12,9 +12,11 @@ Published code path, per mode:
 - ``--mode render`` — the checkpoint's own fast tokenizer (``tokenizer.json`` at the pinned revision,
   the exact file transformers' Qwen2TokenizerFast loads for this checkpoint; the render needs no
   weights and no torch, only ``tokenizers`` + ``huggingface_hub``). It emits the prompt TEXT the
-  served client must render (plus the reference's own token ids per row, for the record) — the
-  harness compares the texts byte-exactly and tokenises both sides with the same tokenizer; the GPU
-  wave's stage-1 ``/tokenize`` check is the authoritative engine-side cross-check.
+  served client must render -- the harness compares the texts byte-exactly and tokenises both sides
+  with the same tokenizer; the GPU wave's stage-1 ``/tokenize`` check is the authoritative
+  engine-side cross-check. Over-budget rows are emitted with the card's anchor-preserving truncation
+  applied to the text (see :func:`fitted_text`), so the harness's byte comparison holds on every
+  pairs row, not only the under-budget ones.
 
 The anchor: the served route (``/v1/embeddings``, string inputs) tokenizes with the tokenizer's
 default ``add_special_tokens=True`` (vllm/renderers/params.py:183 at tag v0.31.0), appending one
@@ -60,15 +62,19 @@ def get_detailed_instruct(query: str) -> str:
     return f"{QUERY_PROMPT}{query}"
 
 
-def _load_tokenizer_path(spec: str) -> tuple[str, str]:
+def _load_tokenizer_path(spec: str) -> str:
     """The tokenizer file the ``--tokenizer`` spec names, downloaded once and cached.
 
-    The spec must be the pinned repository at the pinned revision (or a local path to the same
-    ``tokenizer.json``); any drift from the pinned constants is refused loudly -- the reference
-    tokenises with the checkpoint's own file, never whatever a newer HEAD carries.
+    The spec is the pinned repository at the pinned revision (drift is refused loudly -- the
+    reference tokenises with the checkpoint's own file, never whatever a newer HEAD carries), or a
+    path to the same ``tokenizer.json`` (the harness resolves recipe-relative tokenizer specs into
+    local paths, and a recipe that ships its tokenizer file passes one).
     """
     from huggingface_hub import hf_hub_download
 
+    candidate = Path(spec).expanduser()
+    if candidate.suffix == ".json" or candidate.exists():
+        return str(candidate)  # a local tokenizer.json (a recipe-relative spec the harness resolved)
     repo, _, revision = spec.partition("@")
     if repo and repo != MODEL:
         raise SystemExit(f"the tokenizer spec names {repo!r}; this reference pins {MODEL!r}")
@@ -77,25 +83,55 @@ def _load_tokenizer_path(spec: str) -> tuple[str, str]:
     return hf_hub_download(MODEL, "tokenizer.json", revision=REVISION)
 
 
+def fitted_text(text: str, tokenizer: Any, *, max_ids: int = MAX_LENGTH) -> str:
+    """The prompt as the engine receives it for an over-budget ``text``: the card's truncation, as text.
+
+    The card's HF truncation keeps the endoftext anchor inside the budget (8191 content+frame ids,
+    then the post-processor's anchor at 8192: measured), and the served fit's cut is byte-identical
+    at the cap (measured). This reproduces that rule on the whole prompt: the longest verbatim
+    prefix whose encoding as the engine reads it (``add_special_tokens=True``) stays within
+    ``max_ids`` -- a byte-level merge at a cut boundary can re-tokenize longer, so the cut moves back
+    over token boundaries until the prefix fits, the same boundary search the product's fit applies.
+    """
+    if len(tokenizer.encode(text, add_special_tokens=True).ids) <= max_ids:
+        return text
+    offsets = tokenizer.encode(text, add_special_tokens=False).offsets
+
+    def count(piece: str) -> int:
+        return len(tokenizer.encode(piece, add_special_tokens=True).ids)
+
+    def piece(tokens: int) -> str:
+        return text[: offsets[tokens - 1][1]] if tokens > 0 else ""
+
+    over = max_ids - 1  # the post-processor's anchor takes the last slot
+    if count(piece(over)) <= max_ids:
+        return piece(over)
+    fitting, step = over - 1, 1
+    while fitting > 0 and count(piece(fitting)) > max_ids:
+        over, fitting, step = fitting, max(fitting - step, 0), step * 2
+    while over - fitting > 1:
+        middle = (over + fitting) // 2
+        fitting, over = (middle, over) if count(piece(middle)) <= max_ids else (fitting, middle)
+    return piece(fitting)
+
+
 def render_rows(pairs: list[dict[str, Any]], tokenizer_spec: str) -> dict[str, Any]:
-    """``--mode render``: the prompt text per row per declared shape, plus the reference's own ids.
+    """``--mode render``: the prompt text per row per declared shape, byte-exact with the served fit.
 
     The query shape carries the instruction frame; the document shape is the bare text (the
-    checkpoint's ``prompts.document`` is empty). Under-budget rows are byte-exact with the served
-    fit; over-budget rows are emitted uncut -- the reference's cut is the card's HF truncation,
-    applied at embed time (the harness audits over-length anchors separately, never comparing these
-    rows token for token).
+    checkpoint's ``prompts.document`` is empty). Rows over the budget are emitted with the card's
+    anchor-preserving truncation (:func:`fitted_text`), the same cut the served fit makes at the cap
+    (measured byte-identical); the derived over-length samples the harness audits for anchors are a
+    harness concern, not compared token for token.
     """
     from tokenizers import Tokenizer
 
-    # The render's output is text (tokenizer-independent), but the reference still tokenises with the
-    # pinned file: loading it proves the pin resolves and the file parses before anything is emitted.
-    Tokenizer.from_file(_load_tokenizer_path(tokenizer_spec))
+    tokenizer = Tokenizer.from_file(_load_tokenizer_path(tokenizer_spec))
     rows: list[dict[str, Any]] = []
     for index, row in enumerate(pairs):
         texts = (("query", get_detailed_instruct(str(row["query"]))), ("document", str(row["documents"][0])))
         for shape, text in texts:
-            rows.append({"index": index, "shape": shape, "text": text})
+            rows.append({"index": index, "shape": shape, "text": fitted_text(text, tokenizer)})
     return {"rows": rows}
 
 
@@ -166,7 +202,11 @@ def main() -> int:
     parser.add_argument("--mode", required=True, choices=["render", "embed"])
     parser.add_argument("--pairs", required=True)
     parser.add_argument("--out", required=True)
-    parser.add_argument("--tokenizer", required=True, help=f"{MODEL}@{REVISION}, or a path to the same tokenizer.json")
+    parser.add_argument(
+        "--tokenizer",
+        required=True,
+        help=f"{MODEL}@{REVISION}, or a local path to the same tokenizer.json",
+    )
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
 

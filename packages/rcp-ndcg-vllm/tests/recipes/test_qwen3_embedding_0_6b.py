@@ -46,14 +46,22 @@ OVER_LENGTH_PER_SHAPE = 5
 
 
 def _skip_unless_hub_reachable() -> None:
-    """The recipe tokenizer is a Hub spec: the tests need huggingface_hub and the network.
+    """The recipe tokenizer is a Hub spec: the tests need huggingface_hub and the tokenizer files.
 
     Skips carry their reason in the message; anything else (a revision gone, a corrupt cache) fails.
+    With ``HF_HUB_OFFLINE`` set, a warm cache still runs (the Hub client serves it locally); a cold
+    one skips instead of erroring.
     """
-    pytest.importorskip(
+    huggingface_hub = pytest.importorskip(
         "huggingface_hub",
         reason="huggingface_hub is not installed (the recipe tokenizer is a Hub spec; install rcp-ndcg[hf])",
     )
+    if os.environ.get("HF_HUB_OFFLINE", "") not in ("", "0"):
+        try:
+            huggingface_hub.hf_hub_download(REPO, "tokenizer.json", revision=REVISION)
+        except (huggingface_hub.errors.OfflineModeIsEnabled, huggingface_hub.errors.LocalEntryNotFoundError) as error:
+            pytest.skip(f"HF_HUB_OFFLINE is set and the pinned tokenizer files are not cached: {error}")
+        return
     try:
         socket.create_connection(("huggingface.co", 443), timeout=5).close()
     except OSError:
@@ -247,3 +255,21 @@ def test_dropping_the_trailing_anchor_segment_turns_the_anchor_check_red(tmp_pat
     document = stage1_prompts(mutated, str(pairs), None, over_length_per_shape=OVER_LENGTH_PER_SHAPE)
     assert document["anchor_check"]["passed"] is False
     assert {failure["shape"] for failure in document["anchor_check"]["failures"]} == {"query"}
+
+
+def test_stage1_survives_over_cap_pairs_rows(tmp_path: Path, hub_cache: Path) -> None:
+    """A pairs row over the budget is compared too: the reference renders the card's truncated prompt.
+
+    The harness compares every pairs row's render (only the derived over-length samples carry their
+    own shape and skip the comparison), so the reference's render mode must implement the same
+    anchor-preserving cut the served fit makes: 8191 content+frame ids, then the post-processor's
+    anchor at 8192 -- measured byte-identical to fit at the cap.
+    """
+    _skip_unless_hub_reachable()
+    recipe = load_recipe(RECIPE_DIR)
+    rows = pairs_rows()
+    rows.append({"query": CARD_QUERY, "documents": ["long document about retrieval " * 9000]})
+    pairs = write_pairs(tmp_path / "pairs.jsonl", rows)
+    document = stage1_prompts(recipe, str(pairs), sys.executable, over_length_per_shape=OVER_LENGTH_PER_SHAPE)
+    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
+    assert document["passed"] is True

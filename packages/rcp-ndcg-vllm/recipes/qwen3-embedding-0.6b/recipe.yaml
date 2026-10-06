@@ -90,7 +90,7 @@ sources:
   - "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/raw/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3/config_sentence_transformers.json (prompts.query / prompts.document, byte-pinned in the template)"
   - "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/raw/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3/modules.json and 1_Pooling/config.json (LAST pooling + Normalize)"
   - "vllm tag v0.31.0 vllm/config/model.py:2272-2293 (ForCausalLM suffix -> generate; the same table at 2301-2332 in the pinned checkout d0d6e5f3a) and :1311 (pooling runner on a non-pooling arch falls back to convert=embed; 1341-1342 in the checkout)"
-  - "vllm tag v0.31.0 vllm/registry.py:201 (Qwen3ForCausalLM registration; :194 in the checkout)"
+  - "vllm tag v0.31.0 vllm/model_executor/models/registry.py:201 (Qwen3ForCausalLM registration; :194 in the checkout)"
   - "vllm tag v0.31.0 vllm/transformers_utils/config.py:990-1076 (the checkpoint's ST metadata resolves the pooler)"
   - "vllm tag v0.31.0 vllm/renderers/params.py:183 (add_special_tokens defaults to true on the pooling routes), :342-348 (truncate_prompt_tokens with truncation_side unset reaches the tokenizer), :334-341 and :451-465 (a side-set truncation slices ids and drops the anchor)"
   - "vllm tag v0.31.0 vllm/renderers/inputs/preprocess.py:129-132 and vllm/entrypoints/pooling/base/io_processor.py:126-160 (no chat template is applied to string inputs)"
@@ -100,6 +100,7 @@ sources:
   - "src/rcp_ndcg/retrieval/api_dense.py:137 (the served encoder payload is {model, input} -- no client-side cut or dimensions consumer on this path today)"
   - "src/rcp_ndcg/inference/clients/embed.py (the wired client prepends query_prompt/doc_prompt, then the budget renders the template -- hence empty prompts here and the frame as fixed segments)"
   - "sglang docs/docs/supported-models/embedding_models.mdx:91-97 and python/sglang/srt/models/qwen3_embedding.py:41-43 (the SGLang alternative: --is-embedding, native LAST + normalize -- a different engine, never mixed into this vLLM recipe)"
+  - "packages/rcp-ndcg-vllm/recipes/qwen3-embedding-0.6b/requirements-reference.txt (the reference environment: torch, transformers>=4.51 for embed mode; render mode needs only tokenizers + huggingface_hub)"
 notes: >
   Served = the client renders the template (the query prompt for queries, bare text for documents)
   and POSTs strings to /v1/embeddings; vLLM v0.31.0 serves the checkpoint with --runner pooling only
@@ -118,7 +119,9 @@ notes: >
   re-attaching the frame, so the anchor always survives -- the card's own HF truncation keeps the
   same invariant (8191 content+frame ids + the anchor at 8192, measured at 9008 tokens), while a
   naive first-8192-token cut of the rendered ids drops it and diverges at exactly the pooled token
-  (measured). Gap, declared: rcp-ndcg's served encoder path sends {model, input} only
+  (measured); the reference's render mode implements the same truncation as a text cut, so stage 1
+  compares byte-exactly on over-cap pairs rows too. Gap, declared: rcp-ndcg's served encoder path
+  sends {model, input} only
   (api_dense.py:137), so the client-side cut is not wired yet; until it is, the budget is the
   harness's stage-1 fit and the GPU wave's /tokenize + vector gates. The engine image's transformers
   pin at the tag is >=5.10.4, <5.18.0 (requirements/common.txt); the tokenizer files are pinned by
