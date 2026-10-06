@@ -196,7 +196,11 @@ class RunManifest(BaseModel):
         try:
             return cls.model_validate_json(text)
         except ValueError as exc:
-            raise DataError(f"{path} is not a {MANIFEST_SCHEMA} manifest: {exc}") from exc
+            raise DataError(
+                f"{path} is not a {MANIFEST_SCHEMA} manifest: {exc}",
+                hint="the manifest is damaged: restore it from the run's mirror (`run resume --mirror`), or re-run "
+                "the run (`run start`/`run resume`) into a new run directory",
+            ) from exc
 
 
 __all__ = ["MANIFEST_SCHEMA", "DatasetRef", "RunManifest", "RunStatus", "StepRecord", "StepStatus"]

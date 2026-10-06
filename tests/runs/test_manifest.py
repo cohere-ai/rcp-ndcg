@@ -153,5 +153,8 @@ class TestPersistence:
         payload = json.loads(Path(layout.manifest).read_text(encoding="utf-8"))
         payload["schema"] = "rcp-ndcg.run-manifest.v99"
         Path(layout.manifest).write_text(json.dumps(payload), encoding="utf-8")
-        with pytest.raises(DataError, match="rcp-ndcg.run-manifest.v1"):
+        with pytest.raises(DataError) as caught:
             RunManifest.load(layout)
+
+        assert "rcp-ndcg.run-manifest.v1" in caught.value.message
+        assert caught.value.hint and "run" in caught.value.hint

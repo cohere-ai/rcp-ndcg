@@ -462,8 +462,25 @@ released together.
 - Every refusal the command layer raises carries its `hint` (the machine-readable next step was null at 24
   raise sites of `rcp_ndcg.cli` and the MCP `call_tool`), and so do the evaluation refusals a command can
   reach (unknown `--k`/`--metrics`/data-source combinations in `evaluate`, unknown `--metric`/`--baseline`/
-  one-system reports and shared-query checks in `compare`, the `--k` of a multi-cutoff report). The Python
-  wording keeps its `cli_hint` where the two differ.
+  one-system reports and shared-query checks in `compare`, the `--k` of a multi-cutoff report, an unknown
+  `--query-id` in `explain`) and the run manifest's refusal (`run status`/`run show`,
+  `eval compare/explain --run` with
+  a damaged run directory). The Python wording keeps its `cli_hint` where the two differ.
+- `details.errors` has one shape for every validation: the documented one (per problem the `field`, the given
+  `input`, the `problem`, the `expected` type when known, a `did_you_mean` for an unknown key, and the
+  `source`), built by one helper (`rcp_ndcg.support.config.validation_problems`) for config files and for the
+  command layer's argument refusals alike — which used to write `{field, message}`.
+- `eval explain --subset` with `--run` is refused as a `UsageError`, like `--system` there: the flag has no
+  effect on a run, and it was silently ignored.
+- `eval score --per-query` prints the per-query values in the text renderer too (one row per system, query,
+  metric and k), not only with `--json`.
+- The failure envelope's `command` field is the command path even when a global option's value precedes it
+  (`--env-file f.env data inspect` no longer reports `f.env data`): the root group's value-taking options are
+  skipped with their values on the paths that have no context (Ctrl-C, an unexpected failure).
+- The exit-code tables and `errors.py` say "an insertion whose anchor check failed" where they said "a scale
+  check" (the artifact is `data.extension.anchor_report`; no artifact named "scale check" exists).
+- The output contract's wording declares its one exception (`--help`/`--version` print plain text, no
+  envelope), and `CliEnvelope.data`'s description says which commands tag their data with a `schema` id.
 
 - `run status`, `run list` and `run show` no longer fail when they read a running job's judgement store while
   the job claims or reports a stage: the store's `identity.json` is written through a temp file and renamed (as
