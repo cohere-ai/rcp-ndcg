@@ -5888,7 +5888,6 @@
         "kind": "constant",
         "type": "dict",
         "value": {
-          "accelerate": "local",
           "adlfs": "azure",
           "aiohttp": "http",
           "datasets": "data",
@@ -5897,9 +5896,7 @@
           "pypdfium2": "data",
           "s3fs": "s3",
           "tokenizers": "hf",
-          "torch": "calibrate",
-          "transformers": "local",
-          "vllm": "vllm"
+          "torch": "calibrate"
         }
       },
       "ExitCode": {

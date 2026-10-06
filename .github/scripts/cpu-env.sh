@@ -17,7 +17,7 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   exit 0
 fi
 
-# The versions these extras lock (the lock holds another torch for the [local] extra).
+# The versions these extras lock (the lock holds one torch, shared by every extra that needs it).
 torch=()
 while read -r requirement; do torch+=("$requirement"); done < <(
   uv export --frozen --no-hashes --no-emit-workspace "${extras[@]}" | sed -n 's/^\(torch\|torchvision\)==\([^ ;]*\).*/\1==\2/p'

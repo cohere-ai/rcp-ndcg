@@ -48,14 +48,18 @@ dependencies = [
   "fsspec>=2025.3.0",
   "gcsfs>=2025.3.0",
   "PyYAML>=6.0",
-  # Pillow is core, not part of ``[local]``: the LLM-client venv -- which has no
-  # torch -- must decode and re-encode page images to send them to a vision
-  # judge, and ingest probes image dimensions to make token accounting exact.
-  # Both happen outside the local execution stack.
+  # Pillow is core: the judge-client environment -- which has no torch -- must
+  # decode and re-encode page images to send them to a vision judge, and ingest
+  # probes image dimensions to make token accounting exact.
   "Pillow>=10.0",
 ]
 
 [project.optional-dependencies]
+# A served-only package: every model is reached over HTTP (role clients over one
+# transport, `rcp_ndcg.inference`), so the package installs cleanly next to an
+# engine image without touching it. The only torch is ``[calibrate]``'s, for the
+# IRT fits on CPU.
+
 # Storage backends.  Each adds one fsspec implementation; `rcp_ndcg.storage`
 # names the missing extra when a URI arrives for a protocol that is absent.
 s3 = ["s3fs>=2025.3.0"]
@@ -63,35 +67,6 @@ azure = ["adlfs>=2024.7.0"]
 # The Hugging Face Hub: hf:// paths, and the judge's tokenizer (`judge.tokenizer`), which sets text limits in tokens.
 hf = ["huggingface-hub>=0.34", "tokenizers>=0.21"]
 http = ["aiohttp>=3.10"]
-# Local execution stack: what in-process models need on a single GPU host --
-# dense retrieval (HF dense embedders like Octen / Qwen3-class, searched with
-# the exact numpy/torch top-k; hosted embedding APIs need no local weights)
-# and in-process reranking.  One
-# torch / transformers / flash-attn pin shared across the lot; install it in
-# its own environment (``uv sync --extra local`` on a CUDA host).
-#
-# Versions:
-#   * torch 2.9.1 -- the only torch with an official Dao-AILab
-#     flash-attn 2.8.3 prebuilt wheel for cp312 + cu12 + cxx11abi=TRUE
-#     (matches PyPI torch wheels' ABI).
-#   * transformers 5.8.x -- latest stable, validated against the HF dense
-#     embedders and cross-encoders this extra ships.
-#   * flash-attn 2.8.3 -- latest release with official prebuilt wheels.
-#     Its setup.py auto-fetches the right wheel from
-#     https://github.com/Dao-AILab/flash-attention/releases (uv runs it
-#     with torch already installed via [tool.uv.extra-build-dependencies]
-#     below).
-#
-# Linux-only because of the prebuilt flash-attn wheel (no macOS / arm64 wheel).
-# On macOS / arm64 the heavy CUDA bits are
-# skipped automatically.
-local = [
-  # GPU model execution.
-  "torch==2.9.1",
-  "transformers>=5.8,<6",
-  "accelerate>=1.10",
-  "flash-attn==2.8.3 ; sys_platform == 'linux'",
-]
 
 # MTEB: the public suites as mteb tasks (rcp_ndcg.eval.mteb), plus the
 # HuggingFace ``datasets`` loader stack that reads corpus / queries / qrels
@@ -105,15 +80,10 @@ mteb = [
 
 # 2PL / Bradley-Terry / Rasch IRT calibration and the judging client's
 # estimators.  Pure-PyTorch optimisers in ``rcp_ndcg_core.irt.*``; CPU-only is
-# fine (the rendered jobs install torch from PyTorch's CPU index).
+# fine (the rendered jobs install torch from PyTorch's CPU index).  The one
+# torch requirement in this manifest: models are served, not loaded.
 calibrate = [
   "torch>=2.0",
-]
-
-# vLLM in the same environment: the in-process vLLM encoder of the retrieval
-# stack (``engine: vllm``), or a bare-metal engine.
-vllm = [
-  "vllm>=0.6",
 ]
 
 # Data ingestion: the ``rcp-ndcg data convert`` readers ``hf`` and ``pdf``
@@ -130,7 +100,7 @@ data = [
 # Development & CI.  Includes ``[calibrate]``: the IRT fits are exercised by the
 # test suite, and a dev environment that skips them would let a calibration
 # regression through.  Includes ``[hf]``: the token-limit tests build a tokenizer.
-# Tests for the heavier extras (``[local]``, ``[data]``) skip themselves when
+# Tests for the heavier extras (``[mteb]``, ``[data]``) skip themselves when
 # those are absent.
 dev = [
   "rcp-ndcg[calibrate,hf]",
@@ -173,13 +143,6 @@ where = ["src"]
 "*" = ["*.txt", "*.yaml"]
 "rcp_ndcg.examples" = ["tiny/*.jsonl", "tiny/*.json", "runs/*.yaml"]
 
-# ``[local]`` pins ``torch==2.9.1`` so the official Dao-AILab
-# ``flash-attn==2.8.3`` prebuilt wheel resolves cleanly.  ``[vllm]``
-# carries its own torch / transformers / flash-attn pins -- the two are
-# not co-installable, so each belongs in its own environment.  Telling uv
-# they conflict avoids cross-extra resolution attempts that would always
-# fail.  Judges reach any engine (vLLM, SGLang) by URL, so serving needs
-# nothing from this package.
 # The repository is a uv workspace.  ``rcp-ndcg`` (this manifest) is the
 # pipeline: storage, data, retrieval, judging, calibration, evaluation, runs and
 # the CLI.  ``packages/rcp-ndcg-core`` is the metric, the gains, the protocols,
@@ -191,28 +154,6 @@ members = ["packages/*"]
 [tool.uv.sources]
 rcp-ndcg = { workspace = true }
 rcp-ndcg-core = { workspace = true }
-
-[tool.uv]
-conflicts = [
-    [
-        { extra = "local" },
-        { extra = "vllm" },
-    ],
-]
-
-# Make ``uv`` install ``torch`` into the build env *before* running
-# ``flash-attn``'s ``setup.py``.  flash-attn imports torch at build time
-# (to read torch's CUDA version and decide which prebuilt wheel to fetch
-# from https://github.com/Dao-AILab/flash-attention/releases).  Without
-# this, uv's hermetic build env would error out on ``import torch`` and
-# fall back to a 30-60 minute source build.
-#
-# ``match-runtime = true`` ensures the build-env torch matches the
-# project's runtime torch pin (2.9.1), so flash-attn picks the
-# ``cu12torch2.9cxx11abiTRUE-cp312`` wheel that matches our project venv.
-#
-[tool.uv.extra-build-dependencies]
-flash-attn = [{ requirement = "torch", match-runtime = true }]
 
 [tool.pytest.ini_options]
 # Collect the test tree only (experiments/ and examples/ are exercised through tests/).
