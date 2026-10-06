@@ -85,7 +85,7 @@ class TopkEmbedModel(ColQwen3_5Model):
     # (`language_model.*`), so the plugin restores the mapper that
     # Qwen3_5ForConditionalGeneration itself ships for that convention
     # (qwen3_vl.py:1819-1826 via qwen3_5.py:476-479) instead of the
-    # ColQwen3_5Model override (colqwen3_5.py:141-148), and adds the trained
+    # ColQwen3_5Model override (colqwen3_5.py:135-143), and adds the trained
     # projection rename `head.` -> `custom_text_proj.` (the stock class's
     # `_PROJ_LAYER_NAMES` would never match `head.weight`, which is the first
     # reason a flags-only serve of this checkpoint cannot load).  The mapping

@@ -75,11 +75,15 @@ def wheel_requirement(wheel: Path) -> tuple[str, str]:
 
 
 def assert_pure_python(wheel: Path) -> str:
-    """The wheel is ``py3-none-any`` and carries no compiled extension.
+    """The wheel is ``py3-none-any``, carries no compiled extension and
+    declares no dependencies.
 
     Returns the wheel tag on success; raises RuntimeError otherwise.  A
     compiled artifact (or a platform-specific tag) would break the engine
-    install, which expects a pure-Python wheel built on any builder.
+    install; a declared dependency would make a ``--no-deps`` install
+    incomplete, which is exactly the regression class this check exists to
+    catch (the freeze delta alone cannot: ``--no-deps`` never installs
+    dependencies).
     """
     tag, _ = wheel_requirement(wheel)
     if tag != PY3_NONE_ANY:
@@ -88,6 +92,12 @@ def assert_pure_python(wheel: Path) -> str:
         binaries = [info.filename for info in archive.infolist() if info.filename.endswith(FORBIDDEN_SUFFIXES)]
     if binaries:
         raise RuntimeError(f"wheel contains compiled artifacts: {binaries}")
+    metadata = wheel_dist_info(wheel, "METADATA")
+    requires_dist = [line for line in metadata.splitlines() if line.startswith("Requires-Dist:")]
+    if requires_dist:
+        raise RuntimeError(
+            f"wheel declares dependencies; --no-deps would leave them uninstalled in the engine image: {requires_dist}"
+        )
     return tag
 
 

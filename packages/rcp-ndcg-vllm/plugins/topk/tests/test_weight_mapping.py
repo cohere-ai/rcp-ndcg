@@ -139,5 +139,15 @@ def test_served_class_is_a_stock_colqwen3_5_subclass() -> None:
     assert TopkEmbedModel.default_tok_pooling_type == (ColQwen3_5Model.default_tok_pooling_type)
     # The projection-name matcher is inherited untouched; the mapping puts the
     # checkpoint name into the canonical namespace the matcher already knows.
-    assert TopkEmbedModel._is_proj_weight("custom_text_proj.weight")
-    assert TopkEmbedModel._is_proj_weight("custom_text_proj.bias")
+    # (`self` only carries the class-level `_PROJ_LAYER_NAMES` lookup, so
+    # passing the class keeps the check construction-free — the instance
+    # method cannot be called unbound with just the name.)
+    assert TopkEmbedModel._PROJ_LAYER_NAMES == {
+        "custom_text_proj",
+        "embedding_proj_layer",
+    }
+    assert TopkEmbedModel._is_proj_weight(TopkEmbedModel, "custom_text_proj.weight")
+    assert TopkEmbedModel._is_proj_weight(TopkEmbedModel, "custom_text_proj.bias")
+    # The checkpoint's original projection name matches nothing (it flows to
+    # the AutoWeightsLoader, where the mapper renames it):
+    assert not TopkEmbedModel._is_proj_weight(TopkEmbedModel, "head.weight")

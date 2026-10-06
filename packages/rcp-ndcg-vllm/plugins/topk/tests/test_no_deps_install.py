@@ -3,7 +3,10 @@
 Builds the wheel the way the release does (``uv build``; skipped with a clear
 reason where no builder exists), then runs
 ``tests/check_no_deps_install.py`` — the same script the GPU wave wraps
-around the real engine-environment install.
+around the real engine-environment install.  The rejection tests forge
+broken wheels (declared dependency, compiled artifact, platform tag) into
+tmp_path and require the check to fail loudly: the freeze delta alone cannot
+catch a declared dependency, because ``--no-deps`` never installs one.
 """
 
 from __future__ import annotations
@@ -11,6 +14,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+import zipfile
 from collections.abc import Iterator
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
@@ -89,3 +93,57 @@ def test_check_script_standalone_exit_zero(built_wheel: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.startswith("OK: --no-deps install changed pip freeze by")
+
+
+def _forge_wheel(source: Path, target: Path, edits: dict[bytes, bytes], extra: tuple[str, bytes] | None = None) -> Path:
+    """Copy ``source`` to ``target`` with per-file content replacements plus
+    one appended entry (the metadata regression probes below)."""
+    with zipfile.ZipFile(source) as src, zipfile.ZipFile(target, "w") as dst:
+        for info in src.infolist():
+            data = src.read(info.filename)
+            for old, new in edits.items():
+                if old in data:
+                    data = data.replace(old, new)
+            dst.writestr(info, data)
+        if extra is not None:
+            dst.writestr(extra[0], extra[1])
+    return target
+
+
+def test_check_rejects_declared_dependencies(built_wheel: Path, tmp_path: Path) -> None:
+    """A wheel that declares a dependency must fail the check: --no-deps would
+    leave it uninstalled in the engine image (the freeze delta cannot catch
+    this, because --no-deps never installs dependencies)."""
+    check = load_check_module()
+    forged = _forge_wheel(
+        built_wheel,
+        tmp_path / "with-deps.whl",
+        {b"Requires-Python: >=3.12\n": b"Requires-Python: >=3.12\nRequires-Dist: torch>=2.0\n"},
+    )
+    with pytest.raises(RuntimeError, match="declares dependencies"):
+        check.assert_pure_python(forged)
+
+
+def test_check_rejects_compiled_artifacts(built_wheel: Path, tmp_path: Path) -> None:
+    """A .so inside the wheel fails the purity check loudly."""
+    check = load_check_module()
+    forged = _forge_wheel(
+        built_wheel,
+        tmp_path / "compiled.whl",
+        {},
+        extra=("rcp_ndcg_vllm_topk/_evil.so", b"\x7fELF"),
+    )
+    with pytest.raises(RuntimeError, match="compiled artifacts"):
+        check.assert_pure_python(forged)
+
+
+def test_check_rejects_platform_tagged_wheels(built_wheel: Path, tmp_path: Path) -> None:
+    """A non-py3-none-any wheel tag fails the purity check."""
+    check = load_check_module()
+    forged = _forge_wheel(
+        built_wheel,
+        tmp_path / "platform.whl",
+        {b"Tag: py3-none-any\n": b"Tag: cp312-cp312-linux_x86_64\n"},
+    )
+    with pytest.raises(RuntimeError, match="wheel tag"):
+        check.assert_pure_python(forged)

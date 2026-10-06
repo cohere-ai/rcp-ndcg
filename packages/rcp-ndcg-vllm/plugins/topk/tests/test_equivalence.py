@@ -6,7 +6,7 @@ pooler wiring, and the weight mapping proven in test_weight_mapping.py.  This
 suite proves the chain numerically on a tiny randomly initialised config of
 the same architecture (Linear hidden->dim, MRL slice, L2 normalise), with
 weights shared between the reference chain — the model card's
-``modeling_topk_embed.py:84-89`` (``self.head(hidden).float()``, MRL
+``modeling_topk_embed.py:76-82`` (``self.head(hidden).float()``, MRL
 ``output_dim`` slice, ``F.normalize``) — and the plugin's pure-torch chain
 (``rcp_ndcg_vllm_topk.pooling.token_embed_pool``, which mirrors vLLM's
 ``TokenEmbeddingPoolerHead``).
@@ -38,7 +38,7 @@ def reference_chain(
     output_dim: int | None = None,
     normalize: bool = True,
 ) -> torch.Tensor:
-    """The model card's vector path (modeling_topk_embed.py:84-89): project,
+    """The model card's vector path (modeling_topk_embed.py:76-82): project,
     cast the result to float32, MRL-slice, L2-normalise.
 
     The reference computes the head matmul in the model's dtype and casts the
@@ -73,7 +73,7 @@ def test_chain_matches_the_reference_exactly_fp32() -> None:
 
 def test_chain_matches_the_reference_with_mrl_slice() -> None:
     """MRL: slicing after projection, before normalisation — the reference's
-    order (modeling_topk_embed.py:86-88) — is what the served pooler does too
+    order (modeling_topk_embed.py:78-82) — is what the served pooler does too
     (heads.py:94-96), so a prefix slice of dims equals the reference."""
     generator = torch.Generator().manual_seed(7)
     hidden = torch.randn(N_TOKENS, HIDDEN, generator=generator)
