@@ -192,7 +192,9 @@ def test_reference_resolves_the_hub_tokenizer_spec_without_the_revision_suffix()
     ``AutoTokenizer.from_pretrained`` rejects 'repo@revision' (the '@' is not a repo-id
     character), so the reference must split the spec and pass the revision separately — the
     harness hands the recipe's spec to the reference subprocess verbatim, and a 'repo@revision'
-    repo id would fail every real reference run (verifier round 1, blocker).
+    repo id would fail every real reference run (verifier round 1, blocker). The reference's
+    pinned revision and model id are also pinned here: a drift from the recipe's would only
+    surface as a stage-2 score-gate failure on the GPU wave.
     """
     import importlib.util
 
@@ -205,6 +207,8 @@ def test_reference_resolves_the_hub_tokenizer_spec_without_the_revision_suffix()
         module_spec.loader.exec_module(module)
     finally:
         sys.dont_write_bytecode = bytecode
+    assert module.DEFAULT_REVISION == REVISION, "the reference's pinned revision drifted from the recipe"
+    assert module.DEFAULT_MODEL == MODEL_ID
     assert module._tokenizer_dir(f"{MODEL_ID}@{REVISION}") == MODEL_ID
     assert module._tokenizer_dir(MODEL_ID) == MODEL_ID
     assert "@" not in module._tokenizer_dir(f"{MODEL_ID}@{REVISION}")

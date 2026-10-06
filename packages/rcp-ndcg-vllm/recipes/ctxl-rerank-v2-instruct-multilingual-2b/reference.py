@@ -140,7 +140,6 @@ class PairTokenizer:
     """
 
     def __init__(self, spec: str, *, revision: str) -> None:
-        self._revision = revision
         path = Path(spec).expanduser()
         file = path / "tokenizer.json" if path.is_dir() else path
         try:
