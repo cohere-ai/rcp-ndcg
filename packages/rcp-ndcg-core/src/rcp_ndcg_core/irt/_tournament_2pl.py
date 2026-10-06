@@ -123,13 +123,15 @@ class Tournament2PLCalibrator(nn.Module):
     @property
     def tau(self) -> torch.Tensor:
         """Positive per-query scale."""
-        assert self.tau_raw is not None
+        if self.tau_raw is None:
+            raise ValueError("tau exists only after finalize()")
         return F.softplus(self.tau_raw)
 
     @property
     def alpha(self) -> torch.Tensor:
         """Per-query offset."""
-        assert self.alpha_param is not None
+        if self.alpha_param is None:
+            raise ValueError("alpha exists only after finalize()")
         return self.alpha_param
 
     def add_observation(
@@ -217,8 +219,8 @@ class Tournament2PLCalibrator(nn.Module):
 
     def _compute_logits(self) -> torch.Tensor:
         """Compute the likelihood logits ``gamma_k * (tau_j * theta_ij - beta_k + alpha_j)``."""
-        assert self._finalized
-        assert self._query_indices is not None and self._theta_bt is not None
+        if not self._finalized or self._query_indices is None or self._theta_bt is None:
+            raise ValueError("finalize() allocates the per-query parameters; call it before fitting or scoring")
         tau_obs = self.tau[self._query_indices]  # (N,)
         alpha_obs = self.alpha[self._query_indices]  # (N,)
         effective_theta = tau_obs * self._theta_bt + alpha_obs  # (N,)
@@ -235,7 +237,8 @@ class Tournament2PLCalibrator(nn.Module):
         to the observation-mass-weighted mean keeps the constraint an invariant
         of the parameterization rather than a reporting convention.
         """
-        assert self.severity_raw is not None and self._judge_counts is not None
+        if self.severity_raw is None or self._judge_counts is None:
+            raise ValueError("there is no severity to centre: the fit has fewer than two tagged judges")
         counts = self._judge_counts
         mean = (counts * self.severity_raw).sum() / counts.sum()
         return self.severity_raw - mean
@@ -295,7 +298,8 @@ class Tournament2PLCalibrator(nn.Module):
     def model_loss(self) -> torch.Tensor:
         if not self._finalized or not self._obs_rows:
             return torch.tensor(0.0)
-        assert self._Y is not None
+        if self._Y is None:  # pragma: no cover - finalize() builds it with every observation
+            raise ValueError("finalize() allocates the observation tensor; call it before fitting")
         logits = self._compute_logits()
         return F.binary_cross_entropy_with_logits(logits, self._Y, reduction="mean")
 
@@ -308,8 +312,7 @@ class Tournament2PLCalibrator(nn.Module):
         reg = reg + 0.5 * self.l2_gamma * torch.sum(self.gamma_raw**2)
         reg = reg + 0.5 * self.l2_beta * torch.sum(self.beta_raw**2)
 
-        assert isinstance(self._Y, torch.Tensor)
-        N, K = self._Y.shape
+        N, K = self._Y.shape  # type: ignore[union-attr]  # _Y exists: model_loss guards, or finalize ran
         # Per-query parameters (tau, alpha): Q values, one per query.  Scale
         # by 1/(N*K) so the per-parameter penalty is proportional to each
         # query's share of the total observations.
@@ -393,7 +396,9 @@ def calibrate_2pl_from_results(
             (e.g. ``sigma_tau``, ``sigma_alpha``, ``l2_gamma``, ``l2_beta``).
 
     Returns:
-        A fitted :class:`Tournament2PLCalibrator`.
+        A fitted :class:`Tournament2PLCalibrator`. Rows whose document has no Bradley-Terry score, and every
+        row of a query ``bt_scores`` lacks, are skipped: the caller reports them through
+        ``FitDiagnostics.skipped_observations`` / ``skipped_queries``, never silently.
 
     Raises:
         ValueError: No Stage B observation has a Bradley-Terry theta.

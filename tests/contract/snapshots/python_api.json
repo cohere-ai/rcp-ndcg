@@ -17579,6 +17579,20 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "skipped_observations": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "skipped_queries": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           }
         },
         "frozen": true,

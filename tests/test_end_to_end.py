@@ -31,7 +31,7 @@ def world(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
     data = root / "rows.jsonl"
     data.write_text(
         "".join(
-            json.dumps({"query_id": r.id, "query": r.query, "doc_ids": r.doc_ids, "docs": r.docs, "qrels": r.qrels})
+            json.dumps({"query_id": r.id, "query": r.text, "doc_ids": r.doc_ids, "docs": r.docs, "qrels": r.qrels})
             + "\n"
             for r in rows
         ),

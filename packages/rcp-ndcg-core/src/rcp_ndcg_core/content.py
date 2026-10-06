@@ -236,26 +236,32 @@ class Content(RootModel[list[Part]]):
         The budget is per document, so it is applied to the joined text rather than
         per part, and the newlines joining text parts count: the result's
         :attr:`text` is a verbatim prefix of this one's (a cut that ends on a joining
-        newline drops it).
+        newline drops it). An empty text part keeps its joining newline: the cut is
+        a prefix of the joined text, empty parts included.
+
+        Raises:
+            ValueError: ``max_chars`` is negative (a caller bug; ``0`` legitimately cuts to nothing).
         """
-        if max_chars is None or not self.has_text or max_chars >= len(self.text):
+        if max_chars is not None and max_chars < 0:
+            raise ValueError(
+                f"max_chars must be 0 or a positive number of characters (None keeps the text), got {max_chars}"
+            )
+        full = self.text
+        if max_chars is None or not self.has_text or max_chars >= len(full):
             return self
-        remaining = max_chars
+        # Walk the parts against the joined text, so the cut is a verbatim prefix of it whatever
+        # the parts look like -- an empty part's join newline included: the empty part stays when
+        # the cut reaches past it, and the newline it keeps is charged to it, not to the next part.
         parts: list[Part] = []
-        joined = False
+        start = 0  # position of the current text part's first character in the joined text
         for part in self.root:
             if not isinstance(part, TextPart):
                 parts.append(part)
                 continue
-            if joined:
-                remaining -= len(TEXT_JOIN)
-            joined = True
-            if remaining <= 0:
-                continue
-            clipped = part.text[:remaining]
-            remaining -= len(clipped)
-            if clipped:
-                parts.append(TextPart(text=clipped))
+            chunk = part.text[: max(0, max_chars - start)]
+            if chunk or start < max_chars:
+                parts.append(TextPart(text=chunk))
+            start += len(part.text) + len(TEXT_JOIN)
         return Content(root=parts)
 
     # -- sequence protocol -------------------------------------------------

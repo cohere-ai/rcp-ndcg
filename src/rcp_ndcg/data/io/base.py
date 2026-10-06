@@ -112,7 +112,7 @@ class SourceReader(abc.ABC):
             seen.add(example.id)
             yield Query(
                 query_id=example.id,
-                query=example.query or example.text,
+                query=example.text,
                 content=example.content,
                 instruction=example.instruction,
             )
