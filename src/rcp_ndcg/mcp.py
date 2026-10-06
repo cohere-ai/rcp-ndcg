@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -197,22 +198,33 @@ def tool_manifest() -> McpManifest:
     return McpManifest(tools=tools)
 
 
-def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+def call_tool(name: str, arguments: Any = None) -> dict[str, Any]:
     """Run one tool and return an MCP ``CallToolResult`` as a dict.
 
     Never raises for a failed call: the failure comes back as ``isError: true`` with the typed ``error`` object
-    as structured content, so a client reads the reason instead of a transport error.
+    as structured content, so a client reads the reason instead of a transport error. That includes arguments
+    that are not a JSON object (a string, a list, a number): they are refused as a ``USAGE`` tool error, never
+    coerced to ``{}``.
 
     Args:
         name: The tool name.
-        arguments: The tool's input.
+        arguments: The tool's input as a mapping; ``None`` for no arguments.
 
     Returns:
         ``{"content": [text], "structuredContent": ..., "isError": bool}``.
     """
     from rcp_ndcg.cli.command import execute
 
-    arguments = dict(arguments or {})
+    if arguments is None:
+        arguments = {}
+    elif not isinstance(arguments, Mapping):
+        return _error_result(
+            UsageError(
+                f"arguments must be a JSON object, got {type(arguments).__name__}",
+                hint="pass the tool's arguments as an object: {'run': 'runs/x'}",
+            )
+        )
+    arguments = dict(arguments)
     specs = _specs()
     tool = next((tool for tool in TOOLS if tool.name == name), None)
     if tool is None:
@@ -302,7 +314,10 @@ def _serve_with_sdk(server: Any) -> None:
 
 
 def _serve_stdio() -> None:
-    """Minimal JSON-RPC 2.0 loop, one message per line."""
+    """Minimal JSON-RPC 2.0 loop, one message per line.
+
+    A malformed request is answered as an error and skipped, never fatal: a client that sends one bad line
+    (or a handler that raises) must not end the session."""
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -312,13 +327,24 @@ def _serve_stdio() -> None:
         except json.JSONDecodeError:
             _write({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}})
             continue
-        response = handle(request)
+        if not isinstance(request, dict):
+            _write({"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "invalid request"}})
+            continue
+        try:
+            response = handle(request)
+        except Exception:  # noqa: BLE001 -- the loop answers and goes on; a dead server answers nothing
+            logger.exception("the request failed inside the server")
+            _write({"jsonrpc": "2.0", "id": request.get("id"), "error": {"code": -32603, "message": "internal error"}})
+            continue
         if response is not None:
             _write(response)
 
 
 def handle(request: dict[str, Any]) -> dict[str, Any] | None:
-    """Answer one JSON-RPC request of the built-in loop (``None`` for a notification)."""
+    """Answer one JSON-RPC request of the built-in loop (``None`` for a notification).
+
+    A ``tools/call`` whose ``params`` or ``arguments`` is not a JSON object is answered as invalid params
+    (``-32602``), so a malformed request never reaches the tool, let alone ends the session."""
     method = request.get("method")
     request_id = request.get("id")
     if method == "initialize":
@@ -338,9 +364,19 @@ def handle(request: dict[str, Any]) -> dict[str, Any] | None:
         manifest = tool_manifest().model_dump(mode="json", by_alias=True, exclude_none=True)
         return _result(request_id, manifest)
     if method == "tools/call":
-        params = request.get("params") or {}
-        return _result(request_id, call_tool(params.get("name", ""), params.get("arguments") or {}))
+        params = request.get("params")
+        if not isinstance(params, dict):
+            return _error(request_id, -32602, "invalid params: tools/call takes an object with a tool name")
+        arguments = params.get("arguments")
+        if arguments is not None and not isinstance(arguments, dict):
+            return _error(request_id, -32602, "invalid params: arguments must be a JSON object")
+        return _result(request_id, call_tool(params.get("name", ""), arguments))
     return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32601, "message": f"unknown method {method!r}"}}
+
+
+def _error(request_id: Any, code: int, message: str) -> dict[str, Any]:
+    """A JSON-RPC error response (``-32600``, ``-32602``, ``-32603``)."""
+    return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
 
 
 def _result(request_id: Any, result: dict[str, Any]) -> dict[str, Any]:

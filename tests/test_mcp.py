@@ -149,6 +149,69 @@ def test_the_builtin_loop_speaks_json_rpc(run_dir: Path, monkeypatch: pytest.Mon
     assert responses[3]["error"]["code"] == -32601
 
 
+def test_a_malformed_tools_call_is_answered_and_the_loop_goes_on(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    """A tools/call whose arguments are not a JSON object is an invalid-params error, and the next request is
+    still answered: the loop once died on the first malformed request, leaving a client without a server."""
+    requests = [
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "run_list", "arguments": "oops"}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "run_list", "arguments": [1, 2]}},
+        {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "run_list", "arguments": []}},
+        {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": "not an object"},
+        {"jsonrpc": "2.0", "id": 5, "method": "ping"},
+    ]
+    monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(json.dumps(request) for request in requests)))
+
+    mcp._serve_stdio()
+
+    responses = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
+    assert [response["id"] for response in responses] == [1, 2, 3, 4, 5], "every request is answered, in order"
+    assert all(response["error"]["code"] == -32602 for response in responses[:4])
+    assert responses[4] == {"jsonrpc": "2.0", "id": 5, "result": {}}
+
+
+def test_a_line_that_is_not_an_object_is_answered_not_fatal(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    requests = ["[1, 2]", {"jsonrpc": "2.0", "id": 1, "method": "ping"}]
+    monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(json.dumps(request) for request in requests)))
+
+    mcp._serve_stdio()
+
+    responses = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
+    assert [response["id"] for response in responses] == [None, 1]
+    assert responses[0]["error"]["code"] == -32600
+    assert responses[1] == {"jsonrpc": "2.0", "id": 1, "result": {}}
+
+
+def test_a_failure_inside_a_handler_is_answered_not_fatal(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    """The loop answers -32603 for whatever a handler raises, and answers the next request too."""
+
+    def explode(*_: object) -> dict:
+        raise RuntimeError("boom")
+
+    requests = [
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "run_list", "arguments": {}}},
+        {"jsonrpc": "2.0", "id": 2, "method": "ping"},
+    ]
+    monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(json.dumps(request) for request in requests)))
+    monkeypatch.setattr(mcp, "call_tool", explode)
+
+    mcp._serve_stdio()
+
+    responses = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
+    assert [response["id"] for response in responses] == [1, 2]
+    assert responses[0]["error"]["code"] == -32603
+    assert responses[1] == {"jsonrpc": "2.0", "id": 2, "result": {}}
+
+
+@pytest.mark.parametrize("arguments", ["oops", [1, 2], "", 0, 3.5])
+def test_call_tool_refuses_arguments_that_are_not_an_object(arguments: object) -> None:
+    """Non-object arguments (falsy ones included) are a typed USAGE tool error, not an exception and not `{}`."""
+    result = mcp.call_tool("run_list", arguments)  # type: ignore[arg-type]
+
+    assert result["isError"] is True
+    assert result["structuredContent"]["code"] == "USAGE"
+    assert "JSON object" in result["structuredContent"]["message"]
+
+
 def test_the_sdk_server_returns_the_same_results() -> None:
     types = pytest.importorskip("mcp.types")
     import anyio
