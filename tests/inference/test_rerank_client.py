@@ -337,7 +337,46 @@ def test_an_incomplete_rerank_wire_subclass_is_refused_at_construction() -> None
         _HalfWire(_config())
 
 
+def test_an_adapter_without_the_profile_facts_is_refused_at_registration() -> None:
+    """The registration contract: a class whose credential facts are undeclared registers nothing -- before
+    the check, a missing fact was silently duck-typed with a default that could send a key where none
+    belongs (or refuse one where it was owed)."""
+    from rcp_ndcg.errors import ConfigError
+    from rcp_ndcg.inference.adapters import register_adapter
+    from rcp_ndcg.inference.adapters.base import AdapterRole
+
+    class _FactsMissing:
+        name = "facts_missing_probe"
+        role: ClassVar[AdapterRole] = "rerank"
+
+        def calls(self, request: Any, *, model: str) -> list[Call]:
+            return []
+
+        def interpret(self, request: Any, replies: Any) -> Any:
+            return None
+
+        def usage(self, reply: Any) -> None:
+            return None
+
+    with pytest.raises(ConfigError, match="credential fact") as caught:
+        register_adapter(_FactsMissing)  # type: ignore[arg-type]
+    assert "AdapterBase" in (caught.value.hint or "")
+
+    class _MemberMissing(_FactsMissing):
+        HOSTED = False
+        API_KEY_ENV = ()
+        KEY_REQUIRED = False
+        AUTH_HEADER = None
+        DEFAULT_BASE_URL = None
+        interpret = None  # type: ignore[assignment]  # not callable: refused
+
+    with pytest.raises(ConfigError, match="interpret"):
+        register_adapter(_MemberMissing)  # type: ignore[arg-type]
+
+
 def test_an_adapter_of_another_role_is_refused_by_the_client() -> None:
+    """A registered adapter of the wrong role (a judge's, say, selected by typo) is a config error, not a
+    silent no-op: it is unknown in the rerank registry, and the error names where the name does live."""
     """A registered adapter of the wrong role (a judge's, say, selected by typo) is a config error, not a
     silent no-op: it is unknown in the rerank registry, and the error names where the name does live."""
     from rcp_ndcg.inference.adapters import register_adapter
@@ -346,6 +385,20 @@ def test_an_adapter_of_another_role_is_refused_by_the_client() -> None:
     class _JudgeShaped:
         name = "wrong_role_probe"
         role: ClassVar[AdapterRole] = "judge"
+        HOSTED = False
+        API_KEY_ENV = ()
+        KEY_REQUIRED = False
+        AUTH_HEADER = None
+        DEFAULT_BASE_URL = None
+
+        def calls(self, request: Any, *, model: str) -> list[Call]:
+            return []
+
+        def interpret(self, request: Any, replies: Any) -> Any:
+            return None
+
+        def usage(self, reply: Any) -> None:
+            return None
 
     import rcp_ndcg.inference.adapters as registry
 
@@ -369,15 +422,20 @@ def test_an_adapter_of_another_role_is_refused_by_the_client() -> None:
         registry.base._BUILTINS.update(saved)
 
 
-def test_a_client_tolerates_an_adapter_without_the_profile_facts() -> None:
-    """A third-party rerank adapter that shape-matches only the Adapter protocol still constructs: no default
-    base URL (the config must set one) and no pause."""
+def test_a_third_party_adapter_constructs_from_the_protocol_shape() -> None:
+    """A third-party rerank adapter that declares the credential facts (the registration contract) still
+    constructs and serves: no default base URL (the config sets one) and no pause."""
     from rcp_ndcg.inference.adapters import register_adapter
     from rcp_ndcg.inference.adapters.base import AdapterRole
 
     class _ThirdParty:
         name = "third_party_rerank"
         role: ClassVar[AdapterRole] = "rerank"
+        HOSTED = False
+        API_KEY_ENV = ()
+        KEY_REQUIRED = False
+        AUTH_HEADER = None
+        DEFAULT_BASE_URL = None
 
         def __init__(self, config: RerankEndpoint) -> None:
             self.config = config

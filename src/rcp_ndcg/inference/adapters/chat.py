@@ -34,7 +34,7 @@ from typing import Any, ClassVar, NamedTuple, Protocol
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 
 from rcp_ndcg.errors import CapabilityError, DataError, RequestRejectedError
-from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
+from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, register_adapter
 from rcp_ndcg.inference.types import Call, Completion, CompletionInput, Reply, TokenCount
 from rcp_ndcg.support.logging import get_logger
 
@@ -237,7 +237,7 @@ def _flatten(value: object) -> str:
 
 
 @register_adapter
-class OpenAIChat:
+class OpenAIChat(AdapterBase):
     """The judge's wire adapter: one :class:`~rcp_ndcg.inference.types.CompletionInput` in, one
     :class:`~rcp_ndcg.inference.types.Completion` out, over ``POST {base_url}/chat/completions``.
 
@@ -257,7 +257,7 @@ class OpenAIChat:
     """The role the adapter serves: one prompt in, one answer out."""
 
     def __init__(self, config: ChatSettings) -> None:
-        self.config = config
+        super().__init__(config)
         self._reasoning_checked = False
         self._answers_without_reasoning = 0
 

@@ -94,7 +94,7 @@ class PoolingClient(RoleClient):
                 "(the retrieval index keeps one slice per chunk)",
             )
         super().__init__(config, sender=sender, census=census, media_census=media_census)
-        self._adapter: Adapter[PoolRequest, Embeddings] = self._adapter_cls()
+        self._adapter: Adapter[PoolRequest, Embeddings] = self._adapter_cls(self.endpoint)
 
     # -- encoding ----------------------------------------------------------
     def encode(

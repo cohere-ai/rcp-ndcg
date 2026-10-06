@@ -153,6 +153,10 @@ class TestHostedBaseUrl:
         class _NoDefaultEmbed:
             name = "probe_nodefault"
             role: ClassVar[AdapterRole] = "embed"
+            HOSTED = False
+            API_KEY_ENV = ()
+            KEY_REQUIRED = False
+            AUTH_HEADER = None
             DEFAULT_BASE_URL = None
 
             def calls(self, request: Any, *, model: str) -> list[Call]:

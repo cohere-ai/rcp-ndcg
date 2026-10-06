@@ -6,7 +6,7 @@ and its refusal of a wrong value.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from typing import Any, ClassVar
 
 import numpy as np
@@ -14,7 +14,7 @@ import pytest
 from pydantic import ValidationError
 from rcp_ndcg_core.content import Content
 
-from rcp_ndcg.errors import ConfigError
+from rcp_ndcg.errors import ConfigError, RequestRejectedError
 from rcp_ndcg.inference import (
     ADAPTER_ENTRY_POINTS,
     SELF_HOSTED_APIS,
@@ -376,6 +376,11 @@ class _ProbeAdapter:
 
     name = "probe_adapter"
     role: ClassVar[AdapterRole] = "judge"
+    HOSTED = False
+    API_KEY_ENV = ()
+    KEY_REQUIRED = False
+    AUTH_HEADER = None
+    DEFAULT_BASE_URL = None
 
     def calls(self, request: Any, *, model: str) -> list[Call]:
         return [Call("POST", "/chat/completions", {"model": model})]
@@ -813,3 +818,74 @@ class TestConfigFamilyRefusals:
         ):
             with pytest.raises(ConfigError, match="request_shape"):
                 build()
+
+
+class TestAdapterContractKit:
+    """The RFC-promised contract kit (``rcp_ndcg.testing.adapter_contract``): one check a wire adapter's own
+    tests call, refusing a class the transport would only trip over at its first request."""
+
+    def test_a_shipped_adapter_satisfies_the_contract(self) -> None:
+        from rcp_ndcg.inference.adapters.embeddings import OpenAIEmbeddings
+        from rcp_ndcg.testing import adapter_contract
+
+        adapter_contract(OpenAIEmbeddings, role="embed")
+        adapter_contract(OpenAIEmbeddings, role="embed", config=None)
+
+    def test_a_fact_less_class_fails_with_the_list(self) -> None:
+        from rcp_ndcg.testing import adapter_contract
+
+        class _FactLess:
+            name = "factless_probe"
+            role: ClassVar[AdapterRole] = "embed"
+
+            def calls(self, request: Any, *, model: str) -> list[Call]:
+                return []
+
+            def interpret(self, request: Any, replies: list[Reply]) -> Any:
+                return None
+
+            def usage(self, reply: Reply) -> None:
+                return None
+
+        with pytest.raises(AssertionError) as caught:
+            adapter_contract(_FactLess)
+        message = str(caught.value)
+        assert "credential fact HOSTED" in message and "DEFAULT_BASE_URL" in message
+        assert "did not construct" in message, "the constructor convention is part of the contract"
+
+    def test_a_recorded_round_is_checked(self) -> None:
+        from rcp_ndcg.testing import adapter_contract
+
+        class _OkAdapter:
+            name = "ok_probe"
+            role: ClassVar[AdapterRole] = "embed"
+            HOSTED = False
+            API_KEY_ENV = ()
+            KEY_REQUIRED = False
+            AUTH_HEADER = None
+            DEFAULT_BASE_URL = None
+
+            def __init__(self, config: Any = None) -> None:
+                self.config = config  # the constructor convention: built with the role config
+
+            def calls(self, request: Any, *, model: str) -> list[Call]:
+                return [Call("POST", "/embeddings", {"model": model})]
+
+            def interpret(self, request: Any, replies: Sequence[Reply]) -> Any:
+                if len(replies) != 1:
+                    raise RequestRejectedError("one reply per call")
+                return "ok"
+
+            def usage(self, reply: Reply) -> None:
+                return None
+
+        request = object()
+        replies = [Reply(200, {"data": [{"index": 0, "embedding": [1.0, 1.0]}]}, {})]
+        adapter_contract(_OkAdapter, role="embed", request=request, replies=replies)
+
+        class _SilentAdapter(_OkAdapter):
+            interpret = _OkAdapter.calls  # type: ignore[assignment]  # never refuses anything
+
+        with pytest.raises(AssertionError) as caught:
+            adapter_contract(_SilentAdapter, role="embed", request=request, replies=replies)
+        assert "twice the replies" in str(caught.value)

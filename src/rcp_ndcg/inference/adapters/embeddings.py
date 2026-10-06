@@ -31,7 +31,7 @@ import numpy as np
 from rcp_ndcg_core.content import Content, ImagePart, VideoPart
 
 from rcp_ndcg.errors import CapabilityError, ProviderError, RequestRejectedError
-from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
+from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, register_adapter
 from rcp_ndcg.inference.types import Call, Embeddings, EmbedRequest, Reply, TokenCount
 
 #: The substring of vLLM's (and SGLang's) over-length answer: an HTTP 400 naming the model's context window.
@@ -139,46 +139,15 @@ def _data_vectors(body: dict[str, Any], *, adapter: str) -> list[Any]:
     ]
 
 
-class _EmbedAdapter:
+class _EmbedAdapter(AdapterBase):
     """Everything the four embedding adapters share: the status map, the alignment check, the stacking.
 
-    A subclass declares its wire as class constants and two hooks: ``_body``/``_path`` for the request and
-    ``_parse`` for the reply. Instances are stateless.
+    A subclass sets ``name`` and its profile's facts (the credential and capability facts are
+    :class:`~rcp_ndcg.inference.adapters.base.AdapterBase`'s declared contract) and implements two hooks:
+    ``_body``/``_path`` for the request and ``_parse`` for the reply. Instances are stateless.
     """
 
     role: ClassVar[AdapterRole] = "embed"
-
-    #: The adapter's name, the value a config's ``api`` field holds; set per concrete class.
-    name: ClassVar[str]
-
-    #: The texts-per-request cap the hosted API publishes; ``None`` lets the server decide (its over-count and
-    #: over-length refusals are mapped to :class:`~rcp_ndcg.errors.CapabilityError`).
-    MAX_BATCH: ClassVar[int | None] = None
-
-    #: The profile's public base URL, used when the config sets no ``base_url``; ``None`` needs one.
-    DEFAULT_BASE_URL: ClassVar[str | None] = None
-
-    #: Environment variable names that may hold the API key, most preferred first; the config's
-    #: ``api_key_env`` names one instead. Empty: the endpoint takes no key.
-    API_KEY_ENV: ClassVar[tuple[str, ...]] = ()
-
-    #: Whether the API refuses to answer without a key (the hosted profiles) or takes none (a served engine).
-    KEY_REQUIRED: ClassVar[bool] = False
-
-    #: The header the key goes in; ``None`` is the OpenAI-standard ``Authorization: Bearer <key>``.
-    AUTH_HEADER: ClassVar[str | None] = None
-
-    #: The ``encoding_format`` request field; ``None`` leaves it out (the routes that have no such field).
-    ENCODING_FORMAT: ClassVar[str | None] = None
-
-    #: Whether this profile is a hosted vendor API (its public root is its default ``base_url``, its key is
-    #: required): declared (R8), never inferred from the default URL. The served engines' wire shape is not
-    #: hosted, whatever default URL it also carries for the vendor's own API.
-    HOSTED: ClassVar[bool] = False
-
-    #: Whether this route takes a ``dimensions`` parameter: the OpenAI shape does (a Matryoshka cut), the
-    #: hosted profiles fix the output dimension server-side and have no such field.
-    SUPPORTS_DIMENSIONS: ClassVar[bool] = True
 
     # -- the wire -----------------------------------------------------------
     def calls(self, request: Any, *, model: str) -> list[Call]:

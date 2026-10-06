@@ -51,6 +51,68 @@ Res = TypeVar("Res", covariant=True)
 """The result type an adapter produces (a role's result type)."""
 
 
+#: The three members that make a class an adapter; a registration without them fails here, never at the
+#: first request.
+ADAPTER_MEMBERS: tuple[str, ...] = ("calls", "interpret", "usage")
+
+#: The credential facts every adapter declares -- the ones the role clients read with declared defaults,
+#: where a silent default could send a key (or refuse one) behind the author's back. An adapter that
+#: subclasses :class:`AdapterBase` inherits them; a third-party class declares them itself.
+ADAPTER_FACTS: tuple[str, ...] = ("HOSTED", "API_KEY_ENV", "KEY_REQUIRED", "AUTH_HEADER", "DEFAULT_BASE_URL")
+
+
+class AdapterBase:
+    """The base every adapter subclasses: the credential and capability facts with their declared defaults,
+    and the constructor convention.
+
+    A role client instantiates its adapter with the role config -- ``adapter_cls(config)`` -- and the base
+    stores it (an adapter whose requests depend on no config field accepts and ignores it; the rerank
+    family reads its fields). The class attributes below are the declared contract: a subclass inherits
+    them or overrides them, and :func:`register_adapter` refuses a class that declares none -- a missing
+    fact used to be silently duck-typed with a default that could be wrong (a ``KEY_REQUIRED`` default of
+    ``False`` on a wire that requires a key, an ``OPENAI_API_KEY`` sent to a stranger's host).
+
+    Attributes:
+        config: The role config the adapter was built with, when its requests depend on one.
+        name: The adapter's name within its role, the value a config's ``api`` field holds; set per concrete
+            class (empty names are refused at registration).
+        role: The role the adapter serves; it fixes which request and result types flow through it.
+        HOSTED: Whether this wire is a hosted vendor profile (its public API root is its default
+            ``base_url``, its key is required): declared, never inferred from the default URL.
+        API_KEY_ENV: The environment variables that may hold the API key, most preferred first; the config's
+            ``api_key_env`` names one instead. The transport resolves the key and sends it in
+            :attr:`AUTH_HEADER`; an adapter never touches a key. Empty: the endpoint takes no key.
+        KEY_REQUIRED: Whether the API refuses to answer without a key (the hosted profiles) or takes none.
+        AUTH_HEADER: The header the key goes in; ``None`` is the OpenAI-standard ``Authorization: Bearer``.
+        DEFAULT_BASE_URL: The hosted profile's public API root, used when the config sets no ``base_url``;
+            ``None``: ``base_url`` is required (a served endpoint has no public root). The profile's default
+            key variables apply only at this host (any other ``base_url`` carries a key only through the
+            config's ``api_key_env``).
+        MAX_BATCH: The texts/items-per-request cap the API publishes; ``None`` lets the server decide (its
+            over-count refusal is mapped to :class:`~rcp_ndcg.errors.CapabilityError`).
+        SUPPORTS_DIMENSIONS: Whether this route takes a ``dimensions`` parameter (a Matryoshka cut).
+        ENCODING_FORMAT: The ``encoding_format`` request field; ``None`` leaves it out (the routes that have
+            no such field).
+    """
+
+    name: ClassVar[str]
+    role: ClassVar[AdapterRole]
+
+    HOSTED: ClassVar[bool] = False
+    API_KEY_ENV: ClassVar[tuple[str, ...]] = ()
+    KEY_REQUIRED: ClassVar[bool] = False
+    AUTH_HEADER: ClassVar[str | None] = None
+    DEFAULT_BASE_URL: ClassVar[str | None] = None
+    MAX_BATCH: ClassVar[int | None] = None
+    SUPPORTS_DIMENSIONS: ClassVar[bool] = True
+    ENCODING_FORMAT: ClassVar[str | None] = None
+
+    def __init__(self, config: Any = None) -> None:
+        """Build the adapter for ``config`` -- the role config whose ``api`` selected it (an adapter whose
+        requests depend on no config field accepts and ignores it)."""
+        self.config = config
+
+
 @runtime_checkable
 class Adapter(Protocol[Req, Res]):
     """One wire protocol for one role: requests to calls, replies to results.
@@ -134,6 +196,29 @@ def _check_role(role: Any) -> None:
         )
 
 
+def _check_adapter_shape(cls: Any, *, entry: str | None = None) -> None:
+    """The registration-time shape of an adapter class: the three members callable, the credential facts
+    declared. A class that fails here registers nothing -- before the fix, a member missing was a first
+    request's ``AttributeError`` and a missing fact was a silent (possibly wrong) default."""
+    where = f"the adapter entry point {entry!r}" if entry else f"{cls.__name__}"
+    for member in ADAPTER_MEMBERS:
+        if not callable(getattr(cls, member, None)):
+            raise ConfigError(
+                f"{where} is not an adapter: it has no callable {member}(...)",
+                hint="an adapter implements calls, interpret and usage; subclass "
+                "rcp_ndcg.inference.adapters.base.AdapterBase for the facts and the constructor convention",
+            )
+    for fact in ADAPTER_FACTS:
+        if not hasattr(cls, fact):
+            raise ConfigError(
+                f"{where} declares no credential fact {fact}",
+                hint=f"declare {', '.join(ADAPTER_FACTS)} (or subclass "
+                "rcp_ndcg.inference.adapters.base.AdapterBase, which carries the declared defaults): a "
+                "missing fact would be silently duck-typed, and the default could send a key where none "
+                "belongs",
+            )
+
+
 def register_adapter(cls: type[Adapter[Any, Any]]) -> type[Adapter[Any, Any]]:
     """Register an adapter class under its ``(role, name)`` (a class decorator; a duplicate is refused).
 
@@ -147,9 +232,11 @@ def register_adapter(cls: type[Adapter[Any, Any]]) -> type[Adapter[Any, Any]]:
         ``cls`` unchanged, so the decorator composes.
 
     Raises:
-        ConfigError: ``cls`` has no or an empty ``name``, an unknown ``role``, or its ``(role, name)`` is
-            already registered.
+        ConfigError: ``cls`` has no or an empty ``name``, an unknown ``role``, does not implement the
+            adapter members, declares none of the credential facts, or its ``(role, name)`` is already
+            registered.
     """
+    _check_adapter_shape(cls)
     name = getattr(cls, "name", None)
     if not isinstance(name, str) or not name:
         raise ConfigError(f"{cls.__name__} needs a non-empty `name` to be registered as an adapter")
@@ -191,6 +278,7 @@ def _load_plugins() -> dict[tuple[str, str], type[Adapter[Any, Any]]]:
                     f"the adapter entry point {entry.name!r} ({entry.value}) failed to import: "
                     f"{type(exc).__name__}: {exc}"
                 ) from exc
+            _check_adapter_shape(adapter, entry=entry.name)
             role = getattr(adapter, "role", None)
             if role != prefix:
                 raise ConfigError(
@@ -336,6 +424,9 @@ def check_engine_api(api: str | None, *, engine_role: EngineRole, where: str) ->
 
 __all__ = [
     "ADAPTER_ENTRY_POINTS",
+    "ADAPTER_FACTS",
+    "ADAPTER_MEMBERS",
+    "AdapterBase",
     "ENGINE_ADAPTER_ROLES",
     "Adapter",
     "AdapterRole",

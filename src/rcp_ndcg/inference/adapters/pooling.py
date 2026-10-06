@@ -52,7 +52,7 @@ import numpy as np
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError, RequestRejectedError
-from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
+from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, register_adapter
 from rcp_ndcg.inference.types import Call, Embeddings, PoolRequest, Reply, TokenCount
 
 _TASK: Final = "token_embed"
@@ -115,7 +115,7 @@ def _as_token_count(prompt_tokens: Any) -> TokenCount | None:
 
 
 @register_adapter
-class VllmPooling:
+class VllmPooling(AdapterBase):
     """Late-interaction encoding over vLLM ``POST {base_url}/pooling`` (``task: token_embed``).
 
     One :class:`~rcp_ndcg.inference.types.PoolRequest` becomes one call per media item and, when the batch is

@@ -1,4 +1,5 @@
-"""Offline helpers for examples and tests: a deterministic judge and a tiny judged world.
+"""Offline helpers for examples and tests: a deterministic judge, a tiny judged world, the adapter
+contract kit.
 
 :class:`FakeJudge` stands in for an LLM endpoint (``JudgeConfig.fake(seed)`` builds
 one): it reads the documents out of the real rendered prompt and answers in the
@@ -6,14 +7,17 @@ JSON the real parsers read, so judging, calibration and evaluation run offline
 exactly as they do with a model. :func:`build_tiny_world` uses it to produce a
 complete small example on disk: a calibrated fit, a re-judged subset, the
 windows of an inserted document and a second, more lenient judge.
+:func:`adapter_contract` is the adapter seam's contract (RFC-0001 §4.4) as one
+check a wire adapter's own tests call.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rcp_ndcg_core._records import RankingExample
 
@@ -166,6 +170,93 @@ __all__ = [
     "TINY_TOURNAMENT",
     "FakeJudge",
     "TinyWorld",
+    "adapter_contract",
     "build_tiny_world",
     "tiny_rows",
 ]
+
+
+def adapter_contract(
+    adapter: Any,
+    *,
+    role: str | None = None,
+    config: Any = None,
+    request: Any | None = None,
+    replies: Sequence[Any] | None = None,
+) -> None:
+    """The adapter seam's contract (RFC-0001 section 4.4), as one check a wire adapter's own tests call.
+
+    Checks, collected as a list rather than a first failure:
+
+    * ``name`` is a non-empty string and ``role`` (the argument, else the class's) is a known adapter role;
+    * the three members the transport calls -- ``calls``, ``interpret``, ``usage`` -- are callable;
+    * the credential facts every adapter declares
+      (:data:`~rcp_ndcg.inference.adapters.base.ADAPTER_FACTS`) are on the class -- inherited from
+      :class:`~rcp_ndcg.inference.adapters.base.AdapterBase` or declared outright: a missing fact used to be
+      silently duck-typed with a default that could send a key where none belongs;
+    * the adapter constructs with the role config (``adapter(config)``, the constructor convention; a
+      config-less adapter accepts and ignores it);
+    * with a recorded ``request`` and its ``replies``: :meth:`interpret` answers the round without raising,
+      :meth:`usage` returns ``None`` or a :class:`~rcp_ndcg.inference.types.TokenCount` for every reply
+      (never anything else, never a raise), and twice the replies are refused rather than silently
+      interpreted.
+
+    Args:
+        adapter: The adapter class (or an instance: its class is checked, the construction check skipped).
+        role: The role the adapter is checked against; ``None`` reads the class's own.
+        config: The role config the construction check passes in; ``None`` builds it with ``None``.
+        request: A recorded request, for the alignment and usage checks.
+        replies: The recorded replies of ``request`` (one per call, in order).
+
+    Raises:
+        AssertionError: naming every failed check, so a third party's test suite fails with the list --
+            never somewhere inside the transport.
+    """
+    failures: list[str] = []
+    cls = adapter if isinstance(adapter, type) else type(adapter)
+    name = getattr(cls, "name", None)
+    if not isinstance(name, str) or not name:
+        failures.append(f"{cls.__name__}.name is not a non-empty string: {name!r}")
+    from rcp_ndcg.errors import ProviderError
+    from rcp_ndcg.inference.adapters.base import ADAPTER_FACTS, ADAPTER_MEMBERS, ROLES
+    from rcp_ndcg.inference.types import TokenCount
+
+    adapter_role = role or getattr(cls, "role", None)
+    if adapter_role not in ROLES:
+        failures.append(f"{cls.__name__}.role {adapter_role!r} is not one of {', '.join(ROLES)}")
+    for member in ADAPTER_MEMBERS:
+        if not callable(getattr(cls, member, None)):
+            failures.append(f"{cls.__name__} has no callable {member}(...)")
+    for fact in ADAPTER_FACTS:
+        if not hasattr(cls, fact):
+            failures.append(f"{cls.__name__} declares no credential fact {fact}")
+    if isinstance(adapter, type):
+        try:
+            adapter(config)
+        except Exception as exc:  # noqa: BLE001 - any construction failure is a contract failure
+            failures.append(f"adapter({type(config).__name__}) did not construct: {type(exc).__name__}: {exc}")
+    if request is not None and replies is not None and not failures:
+        instance = adapter if not isinstance(adapter, type) else adapter(config)
+        try:
+            instance.interpret(request, replies)
+        except Exception as exc:  # noqa: BLE001 - a recorded, well-formed round must interpret
+            failures.append(f"interpret(request, {len(replies)} reply/replies) raised {type(exc).__name__}: {exc}")
+        for reply in replies:
+            try:
+                tokens = instance.usage(reply)
+            except Exception as exc:  # noqa: BLE001 - usage never raises on a reply
+                failures.append(f"usage(reply) raised {type(exc).__name__}: {exc}")
+                continue
+            if tokens is not None and not isinstance(tokens, TokenCount):
+                failures.append(f"usage(reply) returned {type(tokens).__name__}, not TokenCount | None")
+        try:
+            instance.interpret(request, [*replies, *replies])
+            failures.append("interpret(request, twice the replies) was silently interpreted")
+        except Exception as exc:  # noqa: BLE001 - a typed refusal is the contract
+            if not isinstance(exc, ProviderError):
+                failures.append(
+                    f"interpret(request, twice the replies) raised {type(exc).__name__} instead of a typed "
+                    "provider error"
+                )
+    if failures:
+        raise AssertionError("the adapter contract failed:\n  - " + "\n  ".join(failures))

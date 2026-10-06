@@ -310,6 +310,11 @@ class TestConstruction:
 
             name = "probe_judge"
             role: ClassVar[AdapterRole] = "judge"
+            HOSTED = False
+            API_KEY_ENV = ()
+            KEY_REQUIRED = False
+            AUTH_HEADER = None
+            DEFAULT_BASE_URL = None
 
             def calls(self, request: Any, *, model: str) -> list[Call]:
                 return []

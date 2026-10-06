@@ -38,7 +38,7 @@ from typing import Any, ClassVar, NoReturn
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError, RequestRejectedError
-from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
+from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, register_adapter
 from rcp_ndcg.inference.config import RerankEndpoint
 from rcp_ndcg.inference.types import Call, Reply, RerankRequest, RerankResult, TokenCount
 
@@ -89,10 +89,11 @@ def _short(body: Any, limit: int = 300) -> str:
     return text if len(text) <= limit else f"{text[:limit]}..."
 
 
-class RerankWire:
+class RerankWire(AdapterBase):
     """Everything the Cohere-shaped rerank wires share: the body, the split at the profile's cap, the answer.
 
-    Subclasses are the profiles: the class attributes below are their wire facts, and a config's ``api``
+    Subclasses are the profiles: the class attributes below are their wire facts (the credential facts are
+    :class:`~rcp_ndcg.inference.adapters.base.AdapterBase`'s declared contract), and a config's ``api``
     selects one by its registered name. An adapter holds the config it serves (the config's fields decide the
     request), so it is instantiated per client, not shared. A third party's rerank adapter is selectable for
     the role by subclassing (or matching) this shape alongside :class:`Adapter`.
@@ -153,7 +154,7 @@ class RerankWire:
                 hosted API with no such field, or ``use_activation`` on a hosted API (their score scale is
                 their own and cannot be switched off).
         """
-        self.config = config
+        super().__init__(config)
         missing = [fact for fact in _WIRE_FACTS if not hasattr(type(self), fact)]
         if missing:
             raise ConfigError(

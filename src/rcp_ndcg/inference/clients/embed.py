@@ -108,7 +108,7 @@ class EmbeddingClient(RoleClient):
                 "(the retrieval index keeps one slice per chunk)",
             )
         super().__init__(config, sender=sender, census=census, media_census=media_census)
-        self._adapter: Any = self._adapter_cls()
+        self._adapter: Any = self._adapter_cls(self.endpoint)
 
     # -- the public calls ---------------------------------------------------
     def encode(self, contents: Sequence[Content], role: EncodeRole, *, batch_size: int | None = None) -> Embeddings:
