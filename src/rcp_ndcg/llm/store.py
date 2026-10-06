@@ -315,20 +315,23 @@ class JudgementStore:
         if not path.exists():
             return records
         with path.open(encoding="utf-8") as handle:
-            for number, line in enumerate(handle, start=1):
-                if not line.strip():
-                    continue
-                try:
-                    judgement = Judgement.model_validate_json(line)
-                except ValueError as exc:
-                    if not line.endswith("\n"):
-                        # A torn last line (the process died mid-write): the window is asked again.
-                        logger.warning("%s:%d: ignoring a torn last record", path, number)
-                        continue
-                    raise DataError(f"{path}:{number}: not a judgement record: {exc}") from exc
-                present = records.get(judgement.record_id)
-                if present is None or supersedes(judgement, present):
-                    records[judgement.record_id] = judgement
+            lines = handle.readlines()
+        for number, line in enumerate(lines, start=1):
+            if not line.strip():
+                continue
+            if number == len(lines) and not line.endswith("\n"):
+                # A torn last line (the process died mid-write -- its newline never landed, parseable or
+                # not): the window is asked again. The cutters' definition of unfinished governs, so a next
+                # append can never silently delete a record this read counted as reused.
+                logger.warning("%s:%d: ignoring a torn last record", path, number)
+                continue
+            try:
+                judgement = Judgement.model_validate_json(line)
+            except ValueError as exc:
+                raise DataError(f"{path}:{number}: not a judgement record: {exc}") from exc
+            present = records.get(judgement.record_id)
+            if present is None or supersedes(judgement, present):
+                records[judgement.record_id] = judgement
         return records
 
     def append(self, judgement: Judgement) -> None:

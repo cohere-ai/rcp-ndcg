@@ -521,20 +521,23 @@ def read_census_rows(path: str | Path) -> Iterator[dict[str, Any]]:
     for number, line in enumerate(lines, start=1):
         if not line.strip():
             continue
+        if number == len(lines) and not line.endswith("\n"):
+            # A torn last row (the process died mid-write -- its newline never landed, parseable or not): the
+            # row is recorded again. The cutters' definition of unfinished governs, so a next append can
+            # never silently delete a row this read counted as on record.
+            logger.warning("%s:%d: ignoring a torn last census row (%d bytes)", path, number, len(line))
+            continue
         try:
             row = json.loads(line)
         except ValueError as exc:
-            if number == len(lines) and not line.endswith("\n"):
-                logger.warning("%s:%d: ignoring a torn last census row (%d bytes)", path, number, len(line))
-                continue
             raise DataError(
                 f"{path}:{number}: not a census row: {exc}",
                 hint="the shared census record of the judging passes is corrupt; repair the line or remove the "
                 "file (the cuts are provenance, never read as numbers)",
             ) from exc
-        if not isinstance(row, dict):
+        if not isinstance(row, dict) or not isinstance(row.get("mechanism"), str):
             raise DataError(
-                f"{path}:{number}: not a census row (a JSON object, got {type(row).__name__})",
+                f"{path}:{number}: not a census row (a JSON object with a 'mechanism', got {row!r:.120})",
                 hint="the shared census record of the judging passes is corrupt; repair the line or remove the file",
             )
         yield row

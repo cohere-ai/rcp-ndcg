@@ -131,3 +131,19 @@ def test_an_empty_stage_file_appends_cleanly(tmp_path: Path) -> None:
     (tmp_path / "tournament.jsonl").write_text("", encoding="utf-8")
     store.append(_window("r1"))
     assert len(store.records("tournament")) == 1
+
+
+def test_an_unterminated_but_parseable_last_record_is_torn_not_counted(tmp_path: Path) -> None:
+    """A kill that lands after the record's JSON bytes but before its newline leaves a line `records()` can
+    parse; the cutters' definition of unfinished governs -- the reader skips it (the window is asked again),
+    so the next append can never silently delete a record the pass counted as reused."""
+    store = JudgementStore(tmp_path)
+    with (tmp_path / "tournament.jsonl").open("w", encoding="utf-8") as handle:
+        handle.write(_window("r1").model_dump_json() + "\n")
+        handle.write(_window("r2").model_dump_json())  # complete JSON, no trailing newline: a killed write
+    records = store.records("tournament")
+    assert set(records) == {"r1"}, "the unterminated record is a torn write: absent, asked again"
+    store.append(_window("r3"))
+    records = store.records("tournament")
+    assert set(records) == {"r1", "r3"}, "the cut did not resurrect the lost record, and r3 landed"
+    assert (tmp_path / "tournament.jsonl").read_text(encoding="utf-8").endswith("\n")
