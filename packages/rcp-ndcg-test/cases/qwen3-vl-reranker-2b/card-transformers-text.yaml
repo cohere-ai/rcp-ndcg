@@ -22,7 +22,7 @@ inputs:
 expected:
   kind: scores
   values:
-  - 0.8613124489784241
+  - - 0.8613124489784241
   tolerance:
     abs: 0.01
   origin: published
