@@ -60,7 +60,7 @@ sources:
   - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/modules.json"
   - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/1_Pooling/config.json"
   - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/modeling_zembed.py"
-  - "vllm/config/model.py:1273-1275 at the research checkout d0d6e5f, :1242-1245 at the v0.31.0 tag db9527a - the checkpoint's sentence-transformers modules.json resolves the pooling runner before the architecture registry (verified at both revisions)"
+  - "vllm/config/model.py:1273-1275 at the research checkout d0d6e5f, :1242-1244 at the v0.31.0 tag db9527a - the checkpoint's sentence-transformers modules.json resolves the pooling runner before the architecture registry (verified at both revisions)"
   - "vllm/config/model.py:1338-1342 at the research checkout d0d6e5f, :1307-1311 at the v0.31.0 tag db9527a - convert falls through to embed for a pooling runner on a CausalLM arch (verified at both revisions)"
   - "vllm/transformers_utils/config.py:991-1068 - the pooler settings (last-token, normalize) are read from modules.json + 1_Pooling/config.json, so pooler_config stays empty; verified at both revisions (v0.31.0 tag: get_pooling_config at :982)"
   - "vllm/model_executor/layers/pooler/seqwise/poolers.py:97-108 - last-token pooling with server-side normalize for the embed conversion (verified at both revisions)"
