@@ -1041,12 +1041,13 @@ def _plan(
         tokenizer=tokenizer.sha256 if tokenizer is not None else None,
         # The declared-CONTENT judge settings: the family digest carries each only when it differs from the
         # default (the schema's rule), so a family judged under the defaults keeps its key and one judged under
-        # a declared value never pools with it, whatever the store gate does.
+        # a declared value never pools with it, whatever the store gate does. The api field's default is the
+        # ``openai_chat`` wire: naming it is a spelling of the default, not a different instrument.
         temperature=client.config.temperature,
         max_output_tokens=client.config.max_output_tokens,
         context_tokens=client.config.context_tokens,
         extra_body=client.config.extra_body or None,
-        api=client.config.api,
+        api=client.config.api if client.config.api not in (None, "openai_chat") else None,
     )
     dataset_identity = _dataset_identity(name, source, rows=dataset if source is None else None)
     # The dataset's identity key: what a record id names the corpus by, so two corpora that share query and

@@ -824,3 +824,16 @@ def test_a_census_append_cuts_the_torn_tail_first(tmp_path: Path, word_tokenizer
     assert record.read_text(encoding="utf-8").endswith("\n"), "the append started on a fresh line"
     rows = [json.loads(line) for line in record.read_text(encoding="utf-8").splitlines()]
     assert all(isinstance(row.get("mechanism"), str) for row in rows), "no merged fragment survived"
+
+
+def test_naming_the_default_wire_leaves_the_family_key_alone(tmp_path: Path) -> None:
+    """`api: openai_chat` names the default wire: the same instrument, so the family key is the unset case's
+    (the digest carries the adapter only when it differs from the default, the operator's rule)."""
+    (default,) = _rubric(tmp_path).families.values()
+    named = _fake(config=JudgeConfig.fake(seed=0).model_copy(update={"api": "openai_chat"}))
+    (named_default,) = _rubric(tmp_path / "named", named).families.values()
+    assert named_default.key == default.key
+    # And the store resumes across the spelling: it is the same instrument.
+    again = _fake()
+    again.config = again.config.model_copy(update={"api": "openai_chat"})
+    _rubric(tmp_path, again)  # no IdentityError
