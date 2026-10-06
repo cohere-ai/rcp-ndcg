@@ -41,8 +41,8 @@ TOKENIZER_SHA256 = "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492
 # revision (ids measured 2026-10-05 from the tokenizer.json above). Pinned so a template or
 # tokenizer drift moves the test, not the served numbers. Row 0 is also the seed the harness's
 # over-length sampling repeats past the cap: both of its units overflow 32768 when joined
-# (measured 32784 and 32829 - the samples' junctions do not merge for these seeds, which the
-# pinned counts below assert).
+# (measured 32784 and 32829 tokens; the samples' junctions do not merge for these seeds, so the
+# cuts and the anchor audit below exercise genuinely over-budget renders).
 QUERY_IDS = [2859, 25, 2585, 4937, 1558, 3100, 5821, 304, 264, 28202, 30]
 DOCUMENT_IDS = [
     7524,
