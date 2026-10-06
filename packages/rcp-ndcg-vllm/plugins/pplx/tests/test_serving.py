@@ -6,15 +6,8 @@ venv carries torch only); on the GPU wave they run against the image's vLLM 0.31
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import pytest
 import torch
-
-SRC = Path(__file__).resolve().parents[1] / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 pytest.importorskip(
     "vllm",
@@ -23,7 +16,7 @@ pytest.importorskip(
     "wave, whose engine image has vLLM 0.31.0",
 )
 
-from rcp_vllm_pplx.pooler import PplxChunkPool, build_pooler  # noqa: E402
+from rcp_vllm_pplx.pooler import PplxChunkPool, build_pooler  # noqa: E402  (conftest inserts src/)
 from rcp_vllm_pplx.pooling_core import (  # noqa: E402
     BOUNDARY_TOKEN_ID,
     DOCUMENT_PREFIX_TOKEN_IDS,

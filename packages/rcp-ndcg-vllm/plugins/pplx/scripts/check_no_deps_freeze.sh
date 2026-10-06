@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# The --no-deps freeze check the GPU wave runs before any engine starts (GPU-VALIDATION.md,
-# "Node runtime" item 1): installing the plugin wheel into a venv over the engine
-# environment must change `pip freeze` by exactly this one distribution.
+# The --no-deps freeze check the GPU wave runs before any engine starts: installing the
+# plugin wheel into a venv over the engine environment must change `pip freeze` by
+# exactly this one distribution — the engine environment stays untouched except for the
+# plugin itself.
 #
 # Usage: check_no_deps_freeze.sh <wheel> [venv-python]
 #   <wheel>       the rcp_ndcg_vllm_pplx-*.whl built by `uv build packages/rcp-ndcg-vllm/plugins/pplx`

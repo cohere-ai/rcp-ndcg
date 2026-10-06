@@ -1,17 +1,18 @@
 """The simulated ``--no-deps`` freeze check.
 
-The binding rule (GPU-VALIDATION.md item 1, plugin lanes): installing the plugin wheel
-with ``--no-deps`` into an environment that has only vLLM must change ``pip freeze`` by
-exactly this one distribution. The GPU wave runs that check for real
-(``scripts/check_no_deps_freeze.sh`` against the engine environment); here it is
-simulated against whatever interpreter runs the tests: the wheel is built with
-``uv build --offline`` into ``tmp_path``, installed with ``--no-deps`` into a fresh
-``--system-site-packages`` venv, and the freeze diff must be exactly the one
-distribution — which also proves the wheel carries no ``Requires-Dist`` at all.
+The binding rule (the GPU-validation plan's environment item, held by the wave runner): installing the plugin wheel
+with ``--no-deps`` into an environment that has only vLLM must change ``pip freeze`` by exactly this one
+distribution — the engine environment stays untouched except for the plugin itself. The GPU wave runs that
+check for real (``scripts/check_no_deps_freeze.sh`` against the engine environment); here it is simulated
+against whatever interpreter runs the tests, in ``tmp_path`` only: the package tree is COPIED into ``tmp_path``
+and the wheel is built there, because setuptools leaves an ``*.egg-info`` directory in the tree it builds from
+and tests write only to ``tmp_path``. The freeze diff must be exactly the one distribution — which also proves
+the wheel carries no ``Requires-Dist`` at all.
 """
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -22,9 +23,13 @@ PLUGIN_DIR = Path(__file__).resolve().parents[1]
 WHEEL_NAME = "rcp_ndcg_vllm_pplx-0.0.1-py3-none-any.whl"
 
 
-def _build_wheel(out_dir: Path) -> Path:
+def _build_wheel(out_dir: Path, tmp_path: Path) -> Path:
+    # Build from a COPY of the package tree: setuptools leaves an ``*.egg-info`` in the
+    # tree it builds from, and tests write only to ``tmp_path``.
+    tree = tmp_path / "pkg"
+    shutil.copytree(PLUGIN_DIR, tree, ignore=shutil.ignore_patterns("*.egg-info", "__pycache__", ".venv"))
     result = subprocess.run(
-        ["uv", "build", "--offline", "-o", str(out_dir), str(PLUGIN_DIR)],
+        ["uv", "build", "--offline", "-o", str(out_dir), str(tree)],
         capture_output=True,
         text=True,
         timeout=300,
@@ -38,7 +43,7 @@ def _build_wheel(out_dir: Path) -> Path:
 
 
 def test_wheel_is_pure_python_with_no_requirements(tmp_path: Path) -> None:
-    wheel = _build_wheel(tmp_path / "wheel")
+    wheel = _build_wheel(tmp_path / "wheel", tmp_path)
     import zipfile
 
     with zipfile.ZipFile(wheel) as archive:
@@ -71,7 +76,7 @@ def _python_with_venv_support(tmp_path: Path) -> str | None:
     reason="no active virtualenv to simulate the freeze check in (a bare interpreter)",
 )
 def test_no_deps_install_changes_freeze_by_exactly_one_distribution(tmp_path: Path) -> None:
-    wheel = _build_wheel(tmp_path / "wheel")
+    wheel = _build_wheel(tmp_path / "wheel", tmp_path)
     bootstrap = _python_with_venv_support(tmp_path)
     if bootstrap is None:
         pytest.skip(

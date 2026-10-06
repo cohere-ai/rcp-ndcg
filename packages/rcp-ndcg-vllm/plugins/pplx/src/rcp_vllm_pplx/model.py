@@ -72,7 +72,7 @@ class PplxContextualForPooling(Qwen3_5ForCausalLMBase):
     hf_to_vllm_mapper = WeightsMapper(
         orig_to_new_prefix={
             # The checkpoint's text backbone (measured r-pplx: `language_model.*`); the
-            # base class's own map (qwen3_5.py:323-326) keeps the community
+            # base class's own map (qwen3_5.py:323-325) keeps the community
             # `model.language_model.*` variant first so both nestings load.
             "model.language_model.": "model.",
             "language_model.": "model.",
@@ -81,7 +81,7 @@ class PplxContextualForPooling(Qwen3_5ForCausalLMBase):
             # text-only) — dropped, saving 1.82 GB fp32.
             "visual.": None,
             "model.visual.": None,
-            # No MTP weights in the checkpoint (measured); mirrors qwen3_5.py:326.
+            # No MTP weights in the checkpoint (measured); mirrors qwen3_5.py:324.
             "mtp.": None,
         }
     )

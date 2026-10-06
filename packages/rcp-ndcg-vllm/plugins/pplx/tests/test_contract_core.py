@@ -15,16 +15,10 @@ from __future__ import annotations
 import importlib.metadata
 import sys
 import types
-from pathlib import Path
 
 import pytest
 import torch
-
-SRC = Path(__file__).resolve().parents[1] / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
-from rcp_vllm_pplx import PLUGIN_ARCHITECTURE, PLUGIN_NAME  # noqa: E402
+from rcp_vllm_pplx import PLUGIN_ARCHITECTURE, PLUGIN_NAME  # noqa: E402  (conftest inserts src/)
 from rcp_vllm_pplx.pooling_core import (  # noqa: E402
     BOUNDARY_TOKEN_ID,
     DOCUMENT_PREFIX_TOKEN_IDS,
@@ -324,7 +318,6 @@ def test_distribution_declares_the_general_plugins_entry_point() -> None:
     # wave installs the wheel), the entry point must be discoverable and named right.
     group = [ep for ep in eps.select(group="vllm.general_plugins") if ep.value == "rcp_vllm_pplx:register"]
     if not group:
-        importlib.metadata.distribution  # noqa: B018  (attribute presence check)
         pytest.skip(
             "rcp-ndcg-vllm-pplx is not installed in this environment; run the "
             "entry-point assertion against the built wheel (the freeze test installs it)"
