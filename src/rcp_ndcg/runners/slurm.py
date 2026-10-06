@@ -349,10 +349,7 @@ class SlurmRunner:
         # request is its coordinator plus its largest engine; every other node hosts one replica. The job asks
         # for the maximum of that over the phases (SLURM's --gres is per node).
         gpus = max(
-            [
-                res.gpus + max((e.resources.gpus for e in phase.engines.values()), default=0)
-                for phase in phases
-            ],
+            [res.gpus + max((e.resources.gpus for e in phase.engines.values()), default=0) for phase in phases],
             default=res.gpus,
         )
         if gpus:

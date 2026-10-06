@@ -48,6 +48,7 @@ def criterion_labels_in(text: str) -> tuple[str, ...]:
         return ()
     return tuple(f"C{k}" for k in range(1, max(labels) + 1))
 
+
 #: The slots every judging prompt must have: the query, and the window's documents.
 REQUIRED_PLACEHOLDERS: tuple[str, ...] = ("query_placeholder", "passages_placeholder")
 
