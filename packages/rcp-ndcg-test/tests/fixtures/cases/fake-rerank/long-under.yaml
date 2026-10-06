@@ -22,7 +22,7 @@ expected:
     abs: 0.005
   origin: reference
   status: pending_gpu
-notes: 'The pair renders at 216 of the 224-token budget (the recipe''s SYSTEM frame, the tokenizer''s
+notes: 'The pair renders at 220 of the 224-token budget (the recipe''s SYSTEM frame, the tokenizer''s
   specials, the bare 22-token query and the 117-token document together, >= 95%), never cut by the product''s
   fit: the long input is the rendered pair, which is what the budget bounds. values stay null until a
   real engine''s wave fills them.'

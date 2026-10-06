@@ -601,7 +601,7 @@ def _check_template_shapes(recipe: Recipe, case: Case) -> None:
         )
 
 
-def recipe_fitter(recipe: Recipe) -> tuple[Any, Any]:
+def _recipe_fitter(recipe: Recipe) -> tuple[Any, Any]:
     """The recipe's (tokenizer, budget) pair, the one bridge to the product's budget mechanism.
 
     The tokenizer comes from the recipe's ``client.tokenizer`` through the harness's loader, the
@@ -615,8 +615,10 @@ def recipe_fitter(recipe: Recipe) -> tuple[Any, Any]:
     """
     import hashlib
 
-    key = hashlib.sha256(recipe.client.model_dump_json().encode()).hexdigest()
-    cached = _FITTER_CACHE.get(key)
+    # The key carries the recipe directory: a relative tokenizer spec resolves against it, so two
+    # same-named recipes in different directories with identical client blocks still load their own files.
+    digest = hashlib.sha256((recipe.client.model_dump_json() + "\0" + str(recipe._dir or "")).encode()).hexdigest()
+    cached = _FITTER_CACHE.get(digest)
     if cached is None:
         from rcp_ndcg_vllm.equivalence.fitting import budget_of, tokenizer_of
 
@@ -629,14 +631,14 @@ def recipe_fitter(recipe: Recipe) -> tuple[Any, Any]:
                 "check_lengths=False) records the check as skipped instead)"
             ) from error
         cached = (tokenizer, budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name}))
-        _FITTER_CACHE[key] = cached
+        _FITTER_CACHE[digest] = cached
     return cached
 
 
 _FITTER_CACHE: dict[str, tuple[Any, Any]] = {}
 
 
-def pair_fold_query(recipe: Recipe, query: str, instruction: str | None) -> str:
+def _pair_fold_query(recipe: Recipe, query: str, instruction: str | None) -> str:
     """The query as the product folds it for ``instruction: fold`` (the role client's own render)."""
     from rcp_ndcg.inference.config import RerankEndpoint
 
@@ -657,22 +659,23 @@ def _fit_outcome(recipe: Recipe, case: Case) -> tuple[int, list[int]]:
     """
     from rcp_ndcg.data.preprocess import fit
 
-    tokenizer, budget = recipe_fitter(recipe)
+    tokenizer, budget = _recipe_fitter(recipe)
     cuts, renders = 0, []
     if recipe.role == "rerank":
         instruction = case.inputs.instruction
-        folded = pair_fold_query(recipe, case.inputs.queries[0].text, instruction)
-        inputs = [(folded, document.text or "") for document in case.inputs.documents]
-        result = fit(
-            inputs,
-            "pair",
-            budget,
-            tokenizer,
-            ids=[document.id for document in case.inputs.documents],
-            instruction=instruction,
-        )
-        cuts += len(result.cuts)
-        renders.extend(tokenizer.count(text, add_special_tokens=True) for text in result.texts)
+        for query in case.inputs.queries:  # the send fits one pair set per query; measure every one
+            folded = _pair_fold_query(recipe, query.text, instruction)
+            inputs = [(folded, document.text or "") for document in case.inputs.documents]
+            result = fit(
+                inputs,
+                "pair",
+                budget,
+                tokenizer,
+                ids=[f"{query.id}/{document.id}" for document in case.inputs.documents],
+                instruction=instruction,
+            )
+            cuts += len(result.cuts)
+            renders.extend(tokenizer.count(text, add_special_tokens=True) for text in result.texts)
         return cuts, renders
     for shape, texts in (
         ("query", [query.text for query in case.inputs.queries]),

@@ -34,5 +34,5 @@ expected:
   - - 0.48138377
     - 0.31906667
     - 0.61389256
-notes: 'A mixed-length batch: documents of 9, 7 and 117 raw tokens (rendered whole at 125 of the 128-token
-  budget) in one request; the batch mixes lengths and never crosses the budget.'
+notes: 'A mixed-length batch: documents measuring 43, 32 and 117 tokens (rendered whole at 125 of the
+  128-token budget) in one request; the batch mixes lengths and never crosses the budget.'

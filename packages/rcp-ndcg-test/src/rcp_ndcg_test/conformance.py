@@ -206,12 +206,27 @@ def _resolve(recipe: Recipe, target: Target, base_url: str | None, fake_engine: 
             "through the role client, which would prepend query_prompt/doc_prompt a second time; a recipe "
             "with per-side prompts needs the budget wired into the client (clients-final) first"
         )
-    if client.on_overflow != "cut":
+    if getattr(client, "on_overflow", "cut") != "cut":
         raise ConformanceError(
             f"recipe {recipe.id}: on_overflow {client.on_overflow!r} is not supported by the "
             "conformance runner yet -- chunked documents would be sent as if they were documents (their "
             "scores are never max-pooled back); declare on_overflow: cut, or run the chunk aggregation "
             "through the product's retrieval path"
+        )
+    template = getattr(client, "template", None)
+    if (
+        getattr(client, "instruction", None) == "fold"
+        and template is not None
+        and any(
+            getattr(segment, "content", None) == "instruction"
+            for shape in template.shapes()
+            for segment in template.segments(shape)
+        )
+    ):
+        raise ConformanceError(
+            f"recipe {recipe.id}: instruction: fold folds the instruction into the query span, and the "
+            "recipe's template also declares an instruction span -- the fit would render it twice, so the "
+            "length strata would measure a prompt the engine never sees; declare one of the two"
         )
     runtime = {"recipe": recipe.id, "max_retries": 0, "wait_on_outage_s": 0.0}
     if target == "engine":
@@ -401,7 +416,7 @@ def _send_rerank(resolved: _Resolved, case: Case, endpoint: Any) -> Any:
 
 def _fitter(recipe: Recipe) -> tuple[Any, Any]:
     """The recipe's (tokenizer, budget) pair -- the cases module's shared bridge (one home)."""
-    from .cases import recipe_fitter
+    from .cases import _recipe_fitter as recipe_fitter
 
     return recipe_fitter(recipe)
 
@@ -451,9 +466,9 @@ def _fit_pair(recipe: Recipe, query: str, case: Case) -> tuple[str, list[str], b
 
 def _fold_query(recipe: Recipe, query: str, instruction: str | None) -> str:
     """The query as the client folds it for ``instruction: fold`` (the cases module's shared render)."""
-    from .cases import pair_fold_query
+    from .cases import _pair_fold_query
 
-    return pair_fold_query(recipe, query, instruction)
+    return _pair_fold_query(recipe, query, instruction)
 
 
 def _budget_fields_cleared(endpoint: Any) -> Any:

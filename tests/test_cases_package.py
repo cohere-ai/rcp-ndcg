@@ -69,6 +69,6 @@ def test_the_shipped_fixture_suite_runs_the_plugin_end_to_end() -> None:
     assert {param.id for param in params} >= {"fake-embed/short-single", "fake-embed/long-over"}
     for param in params:
         result = param.values[0].run()
-        # The pending fixture case skips inside assert_passes; the run itself must pass or skip.
+        # In the plugin the pending case skips inside assert_passes; here the run itself must pass or skip.
         assert result.passed or result.skipped is not None, result.detail
         assert not result.failed

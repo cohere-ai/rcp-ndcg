@@ -18,6 +18,7 @@ from rcp_ndcg_vllm.recipe import load_recipe
 
 PACKAGED = fixture_path("cases")
 PACKAGED_RECIPES = fixture_path("recipes")
+TEST_RECIPES = Path(__file__).resolve().parent / "fixtures" / "recipes"
 FAKE_EMBED = PACKAGED_RECIPES / "fake-embed"
 DOCS_BLOCK = """      documents:
         - {id: d1, text: graded gains and a rank-sensitive metric}
@@ -435,6 +436,33 @@ def test_a_short_case_must_not_measure_over_the_budget(tmp_path: Path) -> None:
     write_length_case(tmp_path, "short-over", "short", " ".join(["budgetpad"] * 15))  # 135 tokens
     with pytest.raises(CaseError, match="short, but document"):
         load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
+
+
+def test_a_multi_query_rerank_case_measures_every_query(tmp_path: Path) -> None:
+    """The length strata measure every query's pair fit, not just the first query's."""
+    rerank = load_recipe(TEST_RECIPES / "fake-rerank")
+    body = f"""
+        id: fake-rerank/multi-query
+        recipe: fake-rerank
+        role: rerank
+        source: {{kind: generated}}
+        strata: {{modality: text, length: long_under, batch: single}}
+        inputs:
+          queries:
+            - {{id: q1, text: long document under the budget}}
+            - {{id: q2, text: '{" ".join(["overrun"] * 30)}'}}
+          documents: [{{id: d1, text: '{" ".join(["budgetpad"] * 13)}'}}]
+        expected:
+          kind: scores
+          values: null
+          tolerance: {{abs: 0.01}}
+          origin: reference
+          status: pending_gpu
+    """
+    write_case(tmp_path, "fake-rerank", "multi-query", textwrap.dedent(body))
+    # q1's pair renders near the budget whole; q2's fold is cut by the fit: the stratum promise is false
+    with pytest.raises(CaseError, match="the product's fit cuts"):
+        load_cases(tmp_path, rerank, recipes_root=PACKAGED_RECIPES)
 
 
 def test_a_long_over_input_must_render_over_the_budget(tmp_path: Path) -> None:

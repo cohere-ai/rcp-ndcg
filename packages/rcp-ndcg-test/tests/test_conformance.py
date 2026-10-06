@@ -267,6 +267,30 @@ def test_a_chunking_recipe_is_refused_with_a_named_gap() -> None:
         )
 
 
+def test_a_fold_recipe_with_an_instruction_span_is_refused() -> None:
+    """fold + a template instruction span would render the instruction twice; the same refusal class as
+    the per-side prompts, so the strata measure a render the engine never sees."""
+    from rcp_ndcg.data.templates import Segment, TemplateSpec
+
+    recipe = load_recipe(RECIPES / "fake-rerank")
+    template = TemplateSpec(
+        pair=(
+            Segment(fixed="SYSTEM: "),
+            Segment(content="instruction"),
+            Segment(fixed=" USER: Query: "),
+            Segment(content="query"),
+            Segment(fixed=" Document: "),
+            Segment(content="document"),
+            Segment(fixed=" ASSISTANT"),
+        ),
+        anchor="last",
+    )
+    spanned = recipe.model_copy(update={"client": recipe.client.model_copy(update={"template": template})})
+    cases = load_cases(CASES, spanned, recipes_root=RECIPES, check_lengths=False).cases
+    with pytest.raises(ConformanceError, match="instruction"):
+        run_suite(spanned, cases, target="fake", fake_engine=FakeRerankEngine())
+
+
 def test_a_recipe_with_side_prompts_is_refused() -> None:
     recipe = packaged_recipe()
     prompted = recipe.model_copy(update={"client": recipe.client.model_copy(update={"query_prompt": "Q: "})})

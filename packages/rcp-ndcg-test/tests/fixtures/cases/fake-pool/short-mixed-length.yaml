@@ -28,5 +28,5 @@ expected:
     abs: 0.0001
   origin: engine
   status: reproduced
-notes: A mixed-length batch over /pooling; the MaxSim matrix covers documents of 1, 9 and 54 tokens (rendered
-  whole at 57 of the 64-token budget).
+notes: A mixed-length batch over /pooling; the MaxSim matrix covers documents measuring 4, 35 and 54 tokens
+  (rendered whole at 57 of the 64-token budget).

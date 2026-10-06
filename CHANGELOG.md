@@ -25,6 +25,9 @@ released together.
 
 ### Public surface
 
+- The `python_api` contract snapshot's `__version__` constant is corrected from the pre-bump install
+  (`0.1.0`) to the committed version (`0.0.1`), which the tree has declared all along; the stale value
+  failed `test_surface_matches_snapshot[python_api]` in any venv newer than the bump. No product change.
 - New package `rcp-ndcg-test` (`packages/rcp-ndcg-test/`, a uv workspace member; version 0.0.1, depends on
   `rcp-ndcg==0.0.1` and `rcp-ndcg-vllm==0.0.1`): the reference cases and the one conformance suite for served
   recipes. **Unpublished on purpose — never on PyPI** (used by this repository's CI, the product's pytest

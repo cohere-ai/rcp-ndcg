@@ -28,5 +28,6 @@ expected:
     abs: 0.0001
   origin: engine
   status: reproduced
-notes: 'A mixed-length candidate set: documents of 3, 11 and 63 tokens in one request. Values are the
-  tests'' FakeRerankEngine answers.'
+notes: 'A mixed-length candidate set: documents measuring 13, 54 and 63 tokens (every pair rendered whole,
+  the longest at 161 of the 224-token budget) in one request. Values are the tests'' FakeRerankEngine
+  answers.'
