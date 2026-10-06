@@ -1,58 +1,94 @@
-"""Fixture reference for the late-interaction embedder: one float16 vector per whitespace token."""
+"""The fixture reference, run as a subprocess in its own environment (never imported by the harness).
+
+The reference uses the product's own :func:`rcp_ndcg.data.preprocess.fit` for the anchor-preserving render --
+the same call the served path makes -- and the embedding model's vectors with the same deterministic numbers
+as the stub engine (tests/fixtures/deterministic.py).  It reads the pairs file and writes the mode's JSON to
+--out.
+"""
 
 from __future__ import annotations
 
+import argparse
+import json
 import sys
 from pathlib import Path
-from typing import Any
 
-import numpy as np
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-from deterministic import DIM, FixtureTokenizer, token_id, token_vectors, tokens  # noqa: E402
-
-MAX_TOKENS = 512  # the recipe's client.max_tokens; the reference pins the same budget
-
-QUERY_PROMPT = "query: "
-DOC_PROMPT = "doc: "
-
-_loaded: Any = None
+MAX_TOKENS = 128
 
 
-def load(device: str) -> Any:
-    """Load the reference model (a fixture: nothing to load)."""
-    global _loaded
-    _loaded = f"fixture-multivector-reference@{device}"
-    return _loaded
+def main() -> int:
+    from rcp_ndcg.data.preprocess import TextBudget, fit
+    from rcp_ndcg.data.tokenizer import load_tokenizer
+
+    parser = argparse.ArgumentParser(description="the fixture embed reference")
+    parser.add_argument("--mode", required=True, choices=["render", "embed"])
+    parser.add_argument("--pairs", required=True)
+    parser.add_argument("--out", required=True)
+    parser.add_argument("--tokenizer", required=True)
+    parser.add_argument("--device", default="cpu")
+    args = parser.parse_args()
+
+    import yaml
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+    from deterministic import fold, vector  # noqa: F401
+
+    recipe = yaml.safe_load((Path(__file__).parent / "recipe.yaml").read_text(encoding="utf-8"))
+    client = recipe["client"]
+    tokenizer = load_tokenizer(args.tokenizer)
+    budget = TextBudget(
+        tokenizer=args.tokenizer,
+        max_tokens=client["max_tokens"],
+        template=client.get("template"),
+        on_overflow=client.get("on_overflow", "cut"),
+    )
+    pairs = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
+
+    def fit_one(shape: str, query: str, document: str, instruction: str | None) -> str:
+        """The product's fit render for one input."""
+        inputs = [(query, document)] if shape == "pair" else [query if shape == "query" else document]
+        result = fit(inputs, shape, budget, tokenizer, ids=["0"])
+        return result.texts[0]
+
+    if args.mode == "render":
+        rows = []
+        for index, row in enumerate(pairs):
+            shapes = set(
+                shape for shape in ("query", "document", "pair") if shape in (client.get("template") or {})
+            ) or {"document"}
+            for shape in shapes:
+                rendered = fit_one(shape, row["query"], row["documents"][0], row.get("instruction"))
+                rows.append({"index": index, "shape": shape, "text": rendered})
+        output_result = {"rows": rows}
+    else:
+        from deterministic import token_vectors
+
+        shapes = set(shape for shape in ("query", "document", "pair") if shape in (client.get("template") or {})) or {
+            "document"
+        }
+        rows = []
+        for index, row in enumerate(pairs):
+            row_result: dict = {"index": index}
+            for shape in shapes:
+                texts_in = (
+                    [(row["query"], document) for document in row["documents"]]
+                    if shape == "pair"
+                    else [row["query"] if shape == "query" else document for document in row["documents"]]
+                )
+                fitted = [fit([inp], shape, budget, tokenizer, ids=[str(i)]).texts[0] for i, inp in enumerate(texts_in)]
+
+                vectors = [
+                    [[float(x) for x in row] for row in token_vectors(text, "tok").astype("float32")] for text in fitted
+                ]
+                if shape == "query":
+                    row_result["query_vectors"] = vectors
+                else:
+                    row_result["document_vectors"] = vectors
+            rows.append(row_result)
+        output_result = {"rows": rows}
+    Path(args.out).write_text(json.dumps(output_result, indent=1) + "\n", encoding="utf-8")
+    return 0
 
 
-def render(query: str, document: str, instruction: str | None) -> list[int]:
-    """Stage 1 for a multi-vector recipe: the reference ids of the prompted document."""
-    del query, instruction
-    return [token_id(word) for word in tokens(DOC_PROMPT + document)]
-
-
-def embed(texts: list[str], role: str) -> list[np.ndarray]:
-    """Stage 2: one ``(n_tokens, DIM)`` float16 array per text (per-token vectors, unnormalised rows)."""
-    assert _loaded
-    prefix = QUERY_PROMPT if role == "query" else DOC_PROMPT
-    return [token_vectors(prefix + text, "tok") for text in texts]
-
-
-__all__ = ["DIM", "DOC_PROMPT", "QUERY_PROMPT", "embed", "load", "render", "tokens"]
-
-
-def tokenizer() -> FixtureTokenizer:
-    """The fixture tokenizer for stage 1 (a production reference omits this; the harness loads client.tokenizer)."""
-    return FixtureTokenizer()
-
-
-def render_shape(shape: str, query: str, document: str, instruction: str | None) -> list[int]:
-    """The per-shape hook for the audit (token vectors are compared in stage 2, ids here)."""
-    del instruction
-    from deterministic import token_id, tokens
-
-    prefix_ids = [token_id(word) for word in tokens(DOC_PROMPT)]
-    content_ids = [token_id(word) for word in tokens(query if shape == "query" else document)]
-    return prefix_ids + content_ids[: max(MAX_TOKENS - len(prefix_ids), 0)]
+if __name__ == "__main__":
+    raise SystemExit(main())

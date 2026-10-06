@@ -20,16 +20,20 @@ serve:
   extra_args: ["--enable-prefix-caching"]
 client:
   api: rerank
-  query_prompt: ""
-  doc_prompt: ""
-  instruction: field
-  default_instruction: Rank by recency.
-  tokenizer: "fixtures/ListwiseReranker@0123456789abcdef0123456789abcdef01234567"
-  max_tokens: 512
-  normalize: null
-  dimensions: null
-  use_activation: false
-  batch_size: null
+  tokenizer: ../../tokenizer.json
+  max_tokens: 160
+  template:
+    pair:
+      - {fixed: "SYSTEM: Judge whether the Document answers the Query. Answer yes or no. USER: Query: "}
+      - {content: query}
+      - {fixed: " Document: "}
+      - {content: document}
+      - {fixed: " ASSISTANT"}
+    anchor: last
+  instruction: fold
+  on_overflow: cut
+  empty_doc: send
+  listwise: true
 reference:
   kind: transformers
   score_scale: probability

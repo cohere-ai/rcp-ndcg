@@ -3,36 +3,30 @@
 Public entry points: :func:`run` (all requested stages, writes the report, returns the document) plus the stage
 functions in :mod:`.stages` and :mod:`.metrics`.  The CLI lives at :mod:`rcp_ndcg_vllm.equivalence.__main__`::
 
-    python -m rcp_ndcg_vllm.equivalence --recipe <dir> --base-url <url> --pairs <file> --out <dir>
+    python -m rcp_ndcg_vllm.equivalence --recipe <dir> --base-url <url> --pairs <file> --out <dir> \\
+        --reference-python <python>
+
+``--reference-python`` is required when stage 2 runs (the reference never imports into the harness's process);
+with it, stage 1 also compares the reference's ``render`` against the product's ``fit``.
 """
 
 from __future__ import annotations
 
-import argparse
-import sys
-from pathlib import Path
 from typing import Any
 
-from ..errors import HarnessError, RecipeError
-from ..recipe import Recipe, load_recipe
+from ..errors import HarnessError
+from ..recipe import load_recipe
 from .gates import ResolvedGates, kendall_tau_b, resolve_gates
 from .metrics import stage3_metrics
-from .prompt import TokenizerAdapter, load_tokenizer
-from .reference import Reference, load_reference
-from .report import write_report
-from .stages import load_pairs, stage1_anchor_check, stage1_prompts, stage2_scores
+from .stages import load_pairs, stage1_prompts, stage2_scores
 
 __all__ = [
-    "Reference",
     "ResolvedGates",
-    "TokenizerAdapter",
     "kendall_tau_b",
     "load_pairs",
-    "load_reference",
-    "load_tokenizer",
+    "load_recipe",
     "resolve_gates",
     "run",
-    "stage1_anchor_check",
     "stage1_prompts",
     "stage2_scores",
     "stage3_metrics",
@@ -40,52 +34,47 @@ __all__ = [
 
 
 def run(
-    recipe: Recipe,
+    recipe: Any,
     *,
     base_url: str | None,
-    pairs: list[dict[str, Any]],
-    out_dir: str | Path,
+    pairs_path: str,
+    out_dir: str,
     stages: list[int],
-    tokenizer: TokenizerAdapter | None = None,
-    reference: Reference | None = None,
-    rankings_dir: str | Path | None = None,
+    reference_python: str | None = None,
+    rankings_dir: str | None = None,
     served_model_name: str | None = None,
     limit: int | None = None,
     device: str = "cpu",
 ) -> dict[str, Any]:
     """Run the requested stages of the equivalence check for one recipe; write and return the report document.
 
-    Inputs: the recipe, the engine's base URL (only stage 2 needs it), the sampled pairs, the output directory,
-    the stage numbers to run (1 and 2 by default; 3 needs ``rankings_dir``) and optional injected
-    tokenizer/reference for tests.  ``limit`` truncates the pairs (a quick check).  Output: the report document;
-    ``passed`` is true only when every requested stage passed.  Also writes ``equivalence.json`` and
-    ``EQUIVALENCE.md`` under ``out_dir``.
+    Inputs: the recipe, the engine's base URL (only stage 2 needs it), the pairs file, the output directory,
+    the stage numbers to run (1 and 2 by default; 3 needs ``rankings_dir``), the reference interpreter
+    (``--reference-python``; required for stage 2, and used by stage 1's render comparison when given) and the
+    rankings directory for stage 3.  Output: the report document; ``passed`` is true only when every requested
+    stage passed.  Also writes ``equivalence.json`` and ``EQUIVALENCE.md`` under ``out_dir``.
     """
-    if reference is None:
-        if recipe.reference.kind == "stored_scores":
-            reference = _stored_scores_stub(recipe)
-        else:
-            reference = load_reference(_recipe_dir(recipe), recipe.reference.entry)
-    if limit is not None:
-        pairs = pairs[:limit]
+    from .report import write_report
+
     document: dict[str, Any] = {
         "recipe": recipe.id,
         "image": recipe.engine.image,
         "base_url": base_url,
-        "pairs": len(pairs),
         "stages": stages,
     }
     if 1 in stages:
-        stage1_tokenizer = tokenizer if tokenizer is not None else _tokenizer_for(recipe, reference)
-        document["stage1"] = stage1_prompts(recipe, pairs, reference, stage1_tokenizer)
+        document["stage1"] = stage1_prompts(recipe, pairs_path, reference_python, base_url=base_url, limit=limit)
     if 2 in stages:
         if base_url is None:
             raise HarnessError("stage 2 needs the engine's --base-url")
-        stage2_tokenizer = tokenizer if tokenizer is not None else _tokenizer_for(recipe, reference)
         document["stage2"] = stage2_scores(
-            recipe, base_url, pairs, reference, served_model_name=served_model_name or recipe.id, device=device,
-            tokenizer=stage2_tokenizer,
-        )  # fmt: skip
+            recipe,
+            pairs_path,
+            reference_python or "",
+            base_url=base_url,
+            served_model_name=served_model_name or recipe.id,
+            device=device,
+        )
     if 3 in stages:
         if rankings_dir is None:
             raise HarnessError("stage 3 needs --rankings-dir with <subset>.{served,reference}.jsonl rankings")
@@ -95,90 +84,3 @@ def run(
     )
     write_report(out_dir, document)
     return document
-
-
-def _tokenizer_for(recipe: Recipe, reference: Reference) -> Any:
-    """The stage-1 tokenizer: a reference-provided ``tokenizer()`` hook, else the recipe's ``client.tokenizer``.
-
-    A reference-provided tokenizer is duck-typed (``encode`` and ``id_to_token``), like the adapter protocol.
-    """
-    provided = getattr(reference._module, "tokenizer", None)
-    if callable(provided):
-        return provided()
-    return load_tokenizer(recipe)
-
-
-def _recipe_dir(recipe: Recipe) -> str:
-    directory = recipe._dir
-    if directory is None:
-        raise HarnessError(f"recipe {recipe.id} was not loaded from a directory; use load_recipe")
-    return str(directory)
-
-
-def _stored_scores_stub(recipe: Recipe) -> Reference:
-    """A reference for ``stored_scores`` recipes: no module exists, so stages that need one refuse clearly."""
-
-    def _refuse(*args: object) -> None:  # pragma: no cover - only reached on misuse
-        raise HarnessError(
-            f"recipe {recipe.id} uses reference.kind=stored_scores: no reference module exists; run stage 3, or "
-            "compare served scores against the stored scores file directly"
-        )
-
-    return Reference(_Refusing(_refuse), "<stored-scores>")
-
-
-class _Refusing:
-    """A module-like object whose every call refuses; see :func:`_stored_scores_stub`."""
-
-    def __init__(self, refuse: Any) -> None:
-        self._refuse = refuse
-
-    def __getattr__(self, name: str) -> Any:
-        return self._refuse
-
-
-def main(argv: list[str] | None = None) -> int:
-    """The CLI: ``python -m rcp_ndcg_vllm.equivalence``; exit code 0 only if every requested gate passes."""
-    parser = argparse.ArgumentParser(
-        prog="python -m rcp_ndcg_vllm.equivalence",
-        description="Check a served recipe against its reference implementation (stages 1, 2, 3).",
-    )
-    parser.add_argument("--recipe", required=True, help="recipe directory (with recipe.yaml)")
-    parser.add_argument("--base-url", default=None, help="engine root URL, e.g. http://127.0.0.1:8100 (stage 2)")
-    parser.add_argument("--pairs", default=None, help='JSONL pairs file: {"query", "documents"} per line')
-    parser.add_argument("--out", required=True, help="output directory for equivalence.json and EQUIVALENCE.md")
-    parser.add_argument("--stages", default="1,2", help="stages to run, comma-separated (default: 1,2)")
-    parser.add_argument("--rankings-dir", default=None, help="rankings directory for stage 3")
-    parser.add_argument("--limit", type=int, default=None, help="check only the first N pairs (a quick run)")
-    parser.add_argument("--device", default="cpu", help="device for the in-process reference in stage 2 (default: cpu)")
-    args = parser.parse_args(argv)
-    stages = sorted({int(stage.strip()) for stage in args.stages.split(",") if stage.strip()})
-    if not stages or any(stage not in (1, 2, 3) for stage in stages):
-        parser.error("--stages must be a comma-separated list drawn from 1, 2, 3")
-    try:
-        recipe = load_recipe(args.recipe)
-        if args.pairs is not None:
-            pairs: list[dict[str, Any]] = load_pairs(args.pairs)
-        elif 1 in stages or 2 in stages:
-            parser.error("--pairs is required for stages 1 and 2 (the same sampled pairs feed both)")
-        else:
-            pairs = []
-        document = run(
-            recipe,
-            base_url=args.base_url,
-            pairs=pairs,
-            out_dir=args.out,
-            stages=stages,
-            rankings_dir=args.rankings_dir,
-            limit=args.limit,
-            device=args.device,
-        )
-    except (HarnessError, RecipeError) as error:
-        print(f"error: {error}", file=sys.stderr)
-        return 2
-    print(f"equivalence for {document['recipe']}: {'PASS' if document['passed'] else 'FAIL'}")
-    return 0 if document["passed"] else 1
-
-
-if __name__ == "__main__":  # pragma: no cover
-    raise SystemExit(main())

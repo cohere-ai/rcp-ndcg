@@ -19,32 +19,18 @@ serve:
   extra_args: []
 client:
   api: openai_embeddings
-  request_shape: text
-  add_special_tokens: null
+  tokenizer: ../../tokenizer.json
+  max_tokens: 64
   template:
-    query:
-      - {text: "query: "}
-      - {content: query}
-      - {special: sep}
     document:
-      - {text: "doc: "}
+      - {fixed: "doc: "}
       - {content: document}
-      - {special: sep}
+      - {fixed: "{special:sep}"}
     anchor: marker
-    anchor_markers: [49998]
-  query_prompt: ""
-  doc_prompt: ""
-  instruction: null
-  default_instruction: null
-  tokenizer: "fixtures/MarkerEmbedder@0123456789abcdef0123456789abcdef01234567"
-  max_tokens: 512
+    anchor_markers: [sep]
+    add_special_tokens: false
   on_overflow: cut
-  empty_doc: omit_zero
   normalize: true
-  dimensions: null
-  embed_dtype: null
-  use_activation: null
-  batch_size: 4
 reference:
   kind: transformers
   score_scale: cosine

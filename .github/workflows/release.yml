@@ -47,6 +47,7 @@ jobs:
           for file in "${expected[@]}"; do test -f "$file" || { echo "missing $file: the tag is not the version"; exit 1; }; done
           test "$(find dist -type f -not -name '.*' | wc -l)" -eq "${#expected[@]}" || { echo "dist/ holds other versions"; exit 1; }
           grep -qx "  \"rcp-ndcg-core==${version}\"," pyproject.toml || { echo "rcp-ndcg does not pin rcp-ndcg-core==${version}"; exit 1; }
+          grep -qx "  \"rcp-ndcg==${version}\"," packages/rcp-ndcg-vllm/pyproject.toml || { echo "rcp-ndcg-vllm does not pin rcp-ndcg==${version}"; exit 1; }
       - name: the constraints file is the lock's export
         run: |
           command=$(sed -n '2s/^#    //p' requirements-constraints.txt)

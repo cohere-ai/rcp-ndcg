@@ -33,7 +33,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from ..equivalence import load_pairs
 from ..equivalence import run as run_equivalence
 from ..equivalence.client import EngineClient
 from ..errors import HarnessError, RecipeError
@@ -55,6 +54,7 @@ def run_wave(
     upload: str | None = None,
     record: bool = False,
     pairs_dir: str | Path | None = None,
+    reference_python: str | None = None,
     vllm_cmd: str | None = None,
     port_base: int = 8100,
 ) -> dict[str, Any]:
@@ -117,7 +117,10 @@ def run_wave(
             elif run.timed_out():
                 error = f"GET /v1/models not ready within {run.timeout_s:.0f}s"
             if run.exited() or run.timed_out() or run.ready():
-                _finalise(run, results, out, pairs_dir=pairs_dir, record=record, error=error)
+                _finalise(
+                    run, results, out, pairs_dir=pairs_dir, record=record, error=error,
+                    reference_python=reference_python,
+                )  # fmt: skip
                 running.remove(run)
                 used_gpus.difference_update(run.gpus)
                 progressed = True
@@ -291,6 +294,7 @@ def _finalise(
     pairs_dir: str | Path | None = None,
     record: bool = False,
     error: str | None = None,
+    reference_python: str | None = None,
 ) -> None:
     """Take one engine to its end state: run the steps, or record the failure, then stop it."""
     try:
@@ -306,7 +310,7 @@ def _finalise(
         if error is None:
             base_url = f"http://127.0.0.1:{run.port}"
             run.status["steps"]["smoke"] = _smoke(run.recipe, base_url)
-            run.status["steps"]["equivalence"] = _equivalence(run.recipe, base_url, out, pairs_dir)
+            run.status["steps"]["equivalence"] = _equivalence(run.recipe, base_url, out, pairs_dir, reference_python)
             if record:
                 run.status["steps"]["record"] = _record(run.recipe, base_url, out)
             steps = run.status["steps"]
@@ -339,35 +343,45 @@ def _write_status(run: _EngineRun) -> None:
 
 def _smoke(recipe: Recipe, base_url: str) -> dict[str, Any]:
     """One minimal request per role: the engine serves, the route answers, the body parses."""
+    import httpx
+
     try:
-        with EngineClient(recipe, base_url, served_model_name=recipe.id) as client:
+        root = base_url.rstrip("/")
+        if root.endswith(("/v1", "/v2")):
+            root = root.rsplit("/", 1)[0]
+        with httpx.Client(base_url=root, timeout=120.0) as http:
             if recipe.role == "rerank":
-                scores = client.rerank("smoke query", ["smoke document"])
-                ok = len(scores) == 1
+                reply = http.post("/rerank", json={"model": recipe.id, "query": "smoke query",
+                                                   "documents": ["smoke document"], "top_n": 1})  # fmt: skip
             elif recipe.role == "embed":
-                vectors = client.embeddings(["smoke text"])
-                ok = len(vectors) == 1 and vectors[0].size > 0
+                reply = http.post("/v1/embeddings", json={"model": recipe.id, "input": ["smoke text"]})
             else:
-                items = client.pooling(["smoke text"])
-                ok = len(items) == 1
-    except HarnessError as error:
+                reply = http.post("/pooling", json={"model": recipe.id, "input": ["smoke text"], "task": "token_embed"})
+        ok = reply.status_code == 200
+    except httpx.HTTPError as error:
         return {"state": "failed", "error": str(error)}
     return {"state": "passed" if ok else "failed"}
 
 
-def _equivalence(recipe: Recipe, base_url: str, out: Path, pairs_dir: str | Path | None) -> dict[str, Any]:
+def _equivalence(
+    recipe: Recipe,
+    base_url: str,
+    out: Path,
+    pairs_dir: str | Path | None,
+    reference_python: str | None,
+) -> dict[str, Any]:
     """Stages 1 and 2 for one recipe, written to ``<out>/<id>/equivalence.json``."""
     pairs_path = _pairs_path(recipe, pairs_dir)
     if pairs_path is None:
         return {"state": "skipped", "reason": "no pairs file; give --pairs-dir"}
     try:
-        pairs = load_pairs(pairs_path)
         document = run_equivalence(
             recipe,
             base_url=base_url,
-            pairs=pairs,
-            out_dir=Path(out) / recipe.id,
+            pairs_path=str(pairs_path),
+            out_dir=str(Path(out) / recipe.id),
             stages=[1, 2],
+            reference_python=reference_python,
             served_model_name=recipe.id,
         )
         return {"state": "passed" if document["passed"] else "failed", "passed": document["passed"], "stages": [1, 2]}
@@ -482,6 +496,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--upload", default=None, help="URI to copy <out> to after each recipe")
     parser.add_argument("--record", action="store_true", help="record the engine request/response set per recipe")
     parser.add_argument("--pairs-dir", default=None, help="directory with <id>.jsonl (or default.jsonl) pairs files")
+    parser.add_argument(
+        "--reference-python",
+        required=True,
+        help="the python that runs the recipe's references (its environment carries torch/transformers); "
+        "the wave runs each reference first, before the engine starts on that GPU",
+    )
     parser.add_argument("--vllm-cmd", default=None, help="replace the 'vllm serve' launcher (tests: a stub engine)")
     parser.add_argument("--port-base", type=int, default=8100, help="first engine port (0: engines announce theirs)")
     args = parser.parse_args(argv)
@@ -495,6 +515,7 @@ def main(argv: list[str] | None = None) -> int:
             upload=args.upload,
             record=args.record,
             pairs_dir=args.pairs_dir,
+            reference_python=args.reference_python,
             vllm_cmd=args.vllm_cmd,
             port_base=args.port_base,
         )

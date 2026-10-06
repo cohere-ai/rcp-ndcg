@@ -1,76 +1,71 @@
-"""Fixture reference for the pointwise reranker: the same deterministic numbers as the stub engine.
+"""The fixture reference, run as a subprocess in its own environment (never imported by the harness).
 
-Independent of the package and of the recipe: it builds the served prompt by hand from the documented rules
-(the template text, the fold rule ``f"{instruction}\\n{query}"``) and tokenises with the deterministic word ids,
-so stage 1 fails when the template or the rendering contract drifts.
+The reference uses the product's :func:`rcp_ndcg.data.preprocess.fit` for the anchor-preserving render -- the
+same call the served path makes -- and the model's in-process scoring with the same deterministic numbers as
+the stub engine (tests/fixtures/deterministic.py).  It reads the pairs file and writes the mode's JSON to --out.
 """
 
 from __future__ import annotations
 
+import argparse
+import json
 import sys
 from pathlib import Path
-from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-from deterministic import DIM, FixtureTokenizer, token_id, tokens, vector  # noqa: E402
-from deterministic import score as _pair_score  # noqa: E402
-
-FOLD = "Follow the task."
-_TEMPLATE_HEAD = "SYSTEM: Judge whether the Document answers the Query. Answer yes or no.\nUSER:\nQuery: "
-_TEMPLATE_TAIL = "\nDocument: {document}\nASSISTANT:"
-
-_loaded: Any = None
+MAX_TOKENS = 160
+QUERY_MAX_TOKENS = 48
+HEAD = "SYSTEM: Judge whether the Document answers the Query. Answer yes or no. USER: Query: "
+BETWEEN = " Document: "
+TAIL = " ASSISTANT"
 
 
-def load(device: str) -> Any:
-    """Load the reference model (a fixture: nothing to load)."""
-    global _loaded
-    _loaded = f"fixture-rerank-reference@{device}"
-    return _loaded
+def main() -> int:
+    from rcp_ndcg.data.preprocess import TextBudget, fit
+    from rcp_ndcg.data.tokenizer import load_tokenizer
+
+    parser = argparse.ArgumentParser(description="the fixture rerank reference")
+    parser.add_argument("--mode", required=True, choices=["render", "score"])
+    parser.add_argument("--pairs", required=True)
+    parser.add_argument("--out", required=True)
+    parser.add_argument("--tokenizer", required=True)
+    parser.add_argument("--device", default="cpu")
+    args = parser.parse_args()
+
+    import yaml
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+    from deterministic import fold, score
+
+    recipe = yaml.safe_load((Path(__file__).parent / "recipe.yaml").read_text(encoding="utf-8"))
+    client = recipe["client"]
+    tokenizer = load_tokenizer(args.tokenizer)
+    budget = TextBudget(
+        tokenizer=args.tokenizer,
+        max_tokens=client["max_tokens"],
+        query_max_tokens=client.get("query_max_tokens"),
+        template=client.get("template"),
+        on_overflow=client.get("on_overflow", "cut"),
+    )
+    pairs = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
+
+    if args.mode == "render":
+        rows = []
+        for index, row in enumerate(pairs):
+            folded_query = (
+                f"Task: {row.get('instruction')}\nQuery: {row['query']}" if row.get("instruction") else row["query"]
+            )
+            result = fit([(folded_query, row["documents"][0])], "pair", budget, tokenizer, ids=["0"])
+            rows.append({"index": index, "shape": "pair", "text": result.texts[0]})
+        output_result = {"rows": rows}
+    else:
+        rows = []
+        for index, row in enumerate(pairs):
+            folded = fold(row["query"], row.get("instruction"))
+            rows.append({"index": index, "scores": [score(folded, document) for document in row["documents"]]})
+        output_result = {"rows": rows}
+    Path(args.out).write_text(json.dumps(output_result, indent=1) + "\n", encoding="utf-8")
+    return 0
 
 
-def fold(instruction: str | None, query: str) -> str:
-    """The documented fold rule of the recipe's client.instruction: the instruction, a newline, the query."""
-    if not instruction:
-        return query
-    return f"{instruction}\n{query}"
-
-
-def prompt(query: str, document: str, instruction: str | None) -> str:
-    """The served prompt text for one (query, document) pair, built from the template by hand."""
-    return _TEMPLATE_HEAD + fold(instruction, query) + _TEMPLATE_TAIL.format(document=document)
-
-
-def render(query: str, document: str, instruction: str | None) -> list[int]:
-    """Stage 1, pair shape: every fixed segment reserved, only the document span cut.
-
-    The shape is [head text][content: query]["\nDocument: "][content: document]["\nASSISTANT:"]; the query
-    keeps its share (template.query_max_tokens) and the document span is cut to the remainder.
-    """
-    head_ids = [token_id(word) for word in tokens(_TEMPLATE_HEAD)]
-    between_ids = [token_id(word) for word in tokens("\nDocument: ")]
-    tail_ids = [token_id(word) for word in tokens("\nASSISTANT:")]
-    query_ids = [token_id(word) for word in tokens(fold(instruction, query))]
-    content_ids = [token_id(word) for word in tokens(document)]
-    doc_budget = MAX_TOKENS - len(head_ids) - len(between_ids) - len(tail_ids) - min(len(query_ids), QUERY_MAX_TOKENS)
-    body = query_ids[:QUERY_MAX_TOKENS] + between_ids + content_ids[:doc_budget] + tail_ids
-    return head_ids + body
-
-
-QUERY_MAX_TOKENS = 256  # the recipe's template.query_max_tokens
-MAX_TOKENS = 512  # the recipe's client.max_tokens
-
-
-def score(query: str, documents: list[str], instruction: str | None) -> list[float]:
-    """Stage 2: one probability score per document, on the folded query as the client sends it."""
-    folded = fold(instruction, query)
-    return [_pair_score(folded, doc) for doc in documents]
-
-
-__all__ = ["DIM", "fold", "load", "prompt", "render", "score", "tokens", "vector"]
-
-
-def tokenizer() -> FixtureTokenizer:
-    """The fixture tokenizer for stage 1 (a production reference omits this; the harness loads client.tokenizer)."""
-    return FixtureTokenizer()
+if __name__ == "__main__":
+    raise SystemExit(main())

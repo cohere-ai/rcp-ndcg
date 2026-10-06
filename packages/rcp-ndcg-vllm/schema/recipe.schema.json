@@ -1,67 +1,172 @@
 {
   "$defs": {
-    "BlockingSpec": {
+    "ChunkPolicy": {
       "additionalProperties": false,
-      "description": "The block loop of a listwise reranker (jina-v3 style): the client renders blocks, the engine scores them.\n\nAttributes:\n    block_size: Documents per block.\n    capacity_formula: How the block budget is computed, as data (e.g. ``\"max_tokens - query - separator\"``).\n    weighting: How block scores combine into document scores (e.g. ``max``).",
+      "description": "How a long document is split for judging, in tokens of the judge's tokenizer.\n\nA document longer than ``max_tokens`` is split into consecutive chunks of at\nmost ``max_tokens`` tokens, each repeating the last ``overlap_tokens``\ntokens of the previous one, so evidence straddling a boundary is seen\nwhole by one chunk. A chunk is a verbatim slice of the document between\ntoken boundaries. Chunk ``k`` of document ``d`` has the id ``d#k`` (``k``\nfrom 0). The judge sees every chunk, and a document's judgements are pooled\nby ``aggregate``: within one window, a document passes a criterion when any\nof its chunks does, and its tournament score is its best chunk's.\n\nAttributes:\n    max_tokens: The largest chunk, and the length above which a document is split (tokens).\n    overlap_tokens: Tokens shared by consecutive chunks (``< max_tokens``).\n    aggregate: How chunk judgements pool onto their document (``\"max\"``).",
       "properties": {
-        "block_size": {
-          "exclusiveMinimum": 0,
-          "title": "Block Size",
+        "max_tokens": {
+          "minimum": 1,
+          "title": "Max Tokens",
           "type": "integer"
         },
-        "capacity_formula": {
-          "minLength": 1,
-          "title": "Capacity Formula",
-          "type": "string"
+        "overlap_tokens": {
+          "minimum": 0,
+          "title": "Overlap Tokens",
+          "type": "integer"
         },
-        "weighting": {
-          "minLength": 1,
-          "title": "Weighting",
+        "aggregate": {
+          "const": "max",
+          "default": "max",
+          "title": "Aggregate",
           "type": "string"
         }
       },
       "required": [
-        "block_size",
-        "capacity_formula",
-        "weighting"
+        "max_tokens",
+        "overlap_tokens"
       ],
-      "title": "BlockingSpec",
+      "title": "ChunkPolicy",
       "type": "object"
     },
-    "ClientConfig": {
+    "EmbeddingEndpoint": {
       "additionalProperties": false,
-      "description": "The ``rcp-ndcg`` endpoint fields this recipe implies.\n\nThe fields mirror the design's configuration section for a served encoder or reranker.  Role-dependent fields\nare validated in :class:`Recipe`: ``instruction`` and ``use_activation`` exist only for a reranker,\n``normalize`` only for ``embed`` and ``multi_vector``, ``embed_dtype`` only for ``multi_vector``, and a\n``listwise`` reranker has no ``batch_size`` (the whole candidate set is one request).  Budgets are explicit:\n``tokenizer`` and ``max_tokens`` are required, and ``on_overflow`` names what happens past the budget (the\nclient owns every cut \u2014 there is no engine-side truncation field, and a recipe that needs one to reproduce its\nreference declares ``reference.known_deviations`` instead).\n\nAttributes:\n    api: Which route the client speaks: ``openai_embeddings`` (dense), ``vllm_pooling`` (late interaction,\n        ``POST /pooling`` with ``task: token_embed``) or ``rerank`` (Cohere shape).\n    request_shape: What the client sends: ``text`` (the rendered prompt string), ``messages`` (chat messages)\n        or ``token_ids`` (the client's own ids).\n    add_special_tokens: Pins the request form's special-token flag; ``None`` sends nothing and the engine's\n        per-form default applies.  ``true`` declares the tokenizer's end token as the shape's declared anchor.\n    template: The request shapes as data: ordered segments, the anchors and the pair's query budget.\n    query_prompt: Text prepended to every query client-side (embedding models with a query prefix).\n    doc_prompt: Text prepended to every document client-side (Octen-style ``\"- \"``).\n    instruction: How the client passes a reranker instruction: ``none`` (drop it), ``field`` (the endpoint's\n        ``instruction`` field), ``fold`` (appended to the query text) or ``system`` (a system message).\n    default_instruction: The instruction used when the caller passes none; required when ``instruction`` is\n        ``field``, ``fold`` or ``system``, because those move the instruction's text to the client.  An empty\n        string is refused: the engine would silently serve its template default where the reference renders\n        the empty instruction.\n    tokenizer: The tokenizer the client cuts text with, ``repo@revision`` (40-hex revision).  Required \u2014\n        there is no implicit tokenizer.\n    max_tokens: The pair (rerank) or text (embed) budget in the declared tokenizer's tokens.  Required \u2014\n        there is no implicit budget.\n    on_overflow: What the client does when content exceeds its share of the budget: ``cut`` (default, at\n        token boundaries, anchors reserved), ``chunk`` (chunks each carrying the full template) or ``fail``.\n    aggregation: How chunk scores collapse into a document score; ``max`` is the only supported\n        aggregation (the cobble/max-over-chunks families; the engine's own chunked processing is a different\n        mechanism and must never be combined with a client one).\n    empty_doc: What an empty document becomes: ``omit_zero`` (filtered, scored 0.0 without a request),\n        ``send`` (the empty string is sent) or ``send_text`` (a literal placeholder text is sent).\n    normalize: L2-normalise returned vectors (``embed`` and ``multi_vector`` only).\n    dimensions: Matryoshka cut requested through the endpoint's ``dimensions`` field.\n    embed_dtype: The transfer precision of ``/pooling`` vectors; ``multi_vector`` only, **float16 by owner\n        decision**.  The engine's own default is float32, so the client always sends this field explicitly\n        (the effective value is emitted in the client config for every multi_vector recipe).\n    use_activation: Rerank request field for raw-logit rerankers (``false``) or activated scores (``true``);\n        ``None`` sends nothing and the server's default applies.\n    batch_size: Texts per request, where a batch is meaningful; a listwise reranker must leave it unset.\n    blocking: The listwise block loop (jina-v3 style), as data; ``listwise`` only.",
+      "description": "A dense-embedding endpoint speaking OpenAI ``POST {base_url}/embeddings``.\n\nThe package owns every content decision itself: it applies the prompts in the text, sends ``dimensions``\nonly when set, and L2-normalises the result. Cutting text to ``max_tokens`` at token boundaries of the\ndeclared ``tokenizer`` is the text-budget mechanism's job; until that mechanism is wired into the client,\na config that sets ``max_tokens`` is refused, never silently ignored.\n\nAttributes:\n    api: The wire adapter; ``\"openai_embeddings\"`` by default (a hosted profile overrides it in its own\n        config).\n    recipe: The server-side settings the package cannot read (the pooling, the template, the overrides), as\n        a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never\n        share a cache.\n    tokenizer: The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository\n        id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name;\n        the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already\n        does.\n    max_tokens: What the budget counts is the model's whole input sequence as the engine sees it -- the\n        rendered template, its special tokens, the instruction (the prompts) and the content together,\n        in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after\n        reserving every fixed template token (the anchors a model reads its output from: for a last-token\n        pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the\n        anchors always survive. The cut is never left to the engine: an engine-side truncation of the\n        rendered prompt drops anchors from one end or the other. ``None`` sends every item whole.\n        Content. Refused by the client until the text-budget mechanism is wired into it\n        (:class:`~rcp_ndcg.inference.clients.EmbeddingClient` raises a ``ConfigError``).\n    template: The request template as data\n        (:class:`~rcp_ndcg.data.templates.TemplateSpec`): per request shape (``query``, ``document``,\n        ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens\n        written by name and resolved from the tokenizer, the anchor the model reads its output from, and\n        the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits\n        raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling\n        routes' default). Content.\n    on_overflow: What an input over the budget does: ``cut`` (the default: the content is cut to the\n        budget the template's fixed tokens leave, every cut recorded in the census under\n        ``text_budget``), ``chunk`` (the document is split into :attr:`chunk` pieces, each carrying the\n        full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.\n    chunk: The chunk geometry for ``on_overflow: chunk`` (a :class:`~rcp_ndcg.data.preprocess.ChunkPolicy`\n        reused, not copied). Content.\n    aggregation: How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same\n        rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.\n    empty_doc: What an empty document becomes: ``send`` (the default: the empty string goes out, as\n        today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or\n        ``send_text`` (a literal placeholder goes out, :attr:`empty_doc_text` names it). Content.\n    empty_doc_text: The placeholder text ``empty_doc: send_text`` sends. Content.\n    request_shape: How a request crosses the wire: ``text`` (the default: the rendered string),\n        ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the\n        routes that take them). Declares what the adapter sends; the adapters implement it. Content.\n    query_prompt: Text prepended to every query (an asymmetric embedder's instruction prefix). Content.\n    doc_prompt: Text prepended to every document. Content.\n    normalize: Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising\n        twice is harmless, so a server that already normalised is unaffected).\n    dimensions: The Matryoshka cut served, when the config sets one. Content.\n    batch_size: Items per request. Runtime: how fast, never what.",
       "properties": {
         "api": {
-          "enum": [
-            "openai_embeddings",
-            "vllm_pooling",
-            "rerank"
-          ],
+          "default": "openai_embeddings",
           "title": "Api",
           "type": "string"
         },
-        "request_shape": {
-          "default": "text",
-          "enum": [
-            "text",
-            "messages",
-            "token_ids"
-          ],
-          "title": "Request Shape",
-          "type": "string"
-        },
-        "add_special_tokens": {
+        "base_url": {
           "anyOf": [
             {
-              "type": "boolean"
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "title": "Add Special Tokens"
+          "title": "Base Url"
+        },
+        "model": {
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revision"
+        },
+        "api_key_env": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key Env"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Headers Env",
+          "type": "object"
+        },
+        "concurrency": {
+          "default": 64,
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "timeout_s": {
+          "default": 600.0,
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "max_retries": {
+          "default": 2,
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wait On Outage S"
+        },
+        "recipe": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recipe"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tokenizer"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Tokens"
         },
         "template": {
           "anyOf": [
@@ -74,58 +179,6 @@
           ],
           "default": null
         },
-        "query_prompt": {
-          "default": "",
-          "title": "Query Prompt",
-          "type": "string"
-        },
-        "doc_prompt": {
-          "default": "",
-          "title": "Doc Prompt",
-          "type": "string"
-        },
-        "instruction": {
-          "anyOf": [
-            {
-              "enum": [
-                "none",
-                "field",
-                "fold",
-                "system"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Instruction"
-        },
-        "default_instruction": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Default Instruction"
-        },
-        "tokenizer": {
-          "description": "repo@revision of the tokenizer the client cuts with",
-          "pattern": "^[^@\\s]+/[^@\\s]+@[0-9a-f]{40}$",
-          "title": "Tokenizer",
-          "type": "string"
-        },
-        "max_tokens": {
-          "description": "the pair (rerank) or text (embed) budget, in tokenizer tokens",
-          "exclusiveMinimum": 0,
-          "title": "Max Tokens",
-          "type": "integer"
-        },
         "on_overflow": {
           "default": "cut",
           "enum": [
@@ -136,21 +189,25 @@
           "title": "On Overflow",
           "type": "string"
         },
-        "aggregation": {
+        "chunk": {
           "anyOf": [
             {
-              "const": "max",
-              "type": "string"
+              "$ref": "#/$defs/ChunkPolicy"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Aggregation"
+          "default": null
+        },
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "title": "Aggregation",
+          "type": "string"
         },
         "empty_doc": {
-          "default": "omit_zero",
+          "default": "send",
           "enum": [
             "omit_zero",
             "send",
@@ -159,22 +216,47 @@
           "title": "Empty Doc",
           "type": "string"
         },
-        "normalize": {
+        "empty_doc_text": {
           "anyOf": [
             {
-              "type": "boolean"
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "title": "Normalize"
+          "title": "Empty Doc Text"
+        },
+        "request_shape": {
+          "default": "text",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
+        "query_prompt": {
+          "default": "",
+          "title": "Query Prompt",
+          "type": "string"
+        },
+        "doc_prompt": {
+          "default": "",
+          "title": "Doc Prompt",
+          "type": "string"
+        },
+        "normalize": {
+          "default": true,
+          "title": "Normalize",
+          "type": "boolean"
         },
         "dimensions": {
           "anyOf": [
             {
-              "exclusiveMinimum": 0,
+              "minimum": 1,
               "type": "integer"
             },
             {
@@ -184,65 +266,17 @@
           "default": null,
           "title": "Dimensions"
         },
-        "embed_dtype": {
-          "anyOf": [
-            {
-              "enum": [
-                "float16",
-                "float32"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Embed Dtype"
-        },
-        "use_activation": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Use Activation"
-        },
         "batch_size": {
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Batch Size"
-        },
-        "blocking": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/BlockingSpec"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
+          "default": 32,
+          "minimum": 1,
+          "title": "Batch Size",
+          "type": "integer"
         }
       },
       "required": [
-        "api",
-        "tokenizer",
-        "max_tokens"
+        "model"
       ],
-      "title": "ClientConfig",
+      "title": "EmbeddingEndpoint",
       "type": "object"
     },
     "EngineSpec": {
@@ -386,9 +420,282 @@
       "title": "Gates",
       "type": "object"
     },
+    "PoolingEndpoint": {
+      "additionalProperties": false,
+      "description": "A multi-vector (late interaction) endpoint speaking vLLM ``POST {base_url}/pooling`` (task ``token_embed``).\n\nThe result is ragged: one slice of vectors per item, not one vector. Everything else works as\n:class:`EmbeddingEndpoint` (the prompts, the batch size) -- except that ``max_tokens`` is refused until the\ntext-budget mechanism is wired (the pooling client raises :class:`~rcp_ndcg.errors.ConfigError`), and\n``dimensions`` is never sent: vLLM's ``/pooling`` refuses it (\"dimensions is currently not supported\").\n\nAttributes:\n    api: The wire adapter; ``\"vllm_pooling\"`` by default.\n    embed_dtype: The precision the vectors cross the wire in; ``\"float16\"`` (the owner's Q11 decision)\n        halves the bytes of a ragged buffer, ``\"float32\"`` is the lossless opt-in. Content: it changes the\n        vectors. MaxSim computes in float32 either way.\n    dim: The width of one token vector -- the checkpoint's late-interaction dimension (ColBERT-style\n        checkpoints project to a fixed width, e.g. 128). Content: it is the served checkpoint's own\n        output width. Needed to decode the base64 frame of ``/pooling``, which is flat and carries no\n        shape (``vllm/utils/serial_utils.py::tensor2binary`` flattens); the response's token counts are\n        checked against it, so a mistyped width fails loudly instead of silently mis-shaping every\n        vector. The self-describing float and bytes frames decode without it, and the ``bytes`` encoding\n        makes it unnecessary (its metadata carries each item's ``shape``).",
+      "properties": {
+        "api": {
+          "default": "vllm_pooling",
+          "title": "Api",
+          "type": "string"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Url"
+        },
+        "model": {
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revision"
+        },
+        "api_key_env": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key Env"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Headers Env",
+          "type": "object"
+        },
+        "concurrency": {
+          "default": 64,
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "timeout_s": {
+          "default": 600.0,
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "max_retries": {
+          "default": 2,
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wait On Outage S"
+        },
+        "recipe": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recipe"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tokenizer"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Tokens"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "on_overflow": {
+          "default": "cut",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
+        },
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "title": "Aggregation",
+          "type": "string"
+        },
+        "empty_doc": {
+          "default": "send",
+          "enum": [
+            "omit_zero",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
+        },
+        "empty_doc_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Empty Doc Text"
+        },
+        "request_shape": {
+          "default": "text",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
+        "query_prompt": {
+          "default": "",
+          "title": "Query Prompt",
+          "type": "string"
+        },
+        "doc_prompt": {
+          "default": "",
+          "title": "Doc Prompt",
+          "type": "string"
+        },
+        "normalize": {
+          "default": true,
+          "title": "Normalize",
+          "type": "boolean"
+        },
+        "dimensions": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dimensions"
+        },
+        "batch_size": {
+          "default": 32,
+          "minimum": 1,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "embed_dtype": {
+          "default": "float16",
+          "enum": [
+            "float16",
+            "float32"
+          ],
+          "title": "Embed Dtype",
+          "type": "string"
+        },
+        "dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dim"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "title": "PoolingEndpoint",
+      "type": "object"
+    },
     "ReferenceSpec": {
       "additionalProperties": false,
-      "description": "The in-process reference implementation the equivalence harness compares the served engine against.\n\nAttributes:\n    kind: Where the reference comes from: ``transformers`` (an HF checkpoint run in process),\n        ``sentence_transformers`` (a sentence-transformers checkpoint), ``remote_code`` (the checkpoint's\n        trusted code) or ``stored_scores`` (scores stored with the paper's runs; no ``reference.py``).\n    score_scale: The scale ``reference.score`` returns, which selects the stage-2 gates: ``probability``,\n        ``logit`` or ``cosine``.  Embedding recipes always compare vectors (cosine per vector or per token).\n    entry: The reference module file in the recipe directory; it defines ``load(device)``,\n        ``embed(texts, role)``, ``score(query, documents, instruction)`` and ``render(query, document,\n        instruction)``.  Not needed for ``stored_scores``.",
+      "description": "The reference implementation the equivalence harness runs as a subprocess.\n\nAttributes:\n    kind: Where the reference comes from: ``transformers`` (an HF checkpoint run in the reference\n        environment), ``sentence_transformers`` (a sentence-transformers checkpoint), ``remote_code`` (the\n        checkpoint's trusted code) or ``stored_scores`` (scores stored with the paper's runs).\n    score_scale: The scale the reference's scores come back on, which selects the stage-2 gates:\n        ``probability``, ``logit`` or ``cosine``.  Embedding recipes always compare vectors (cosine per\n        vector or per token).\n    entry: The reference module file in the recipe directory; the harness runs it as\n        ``<reference-python> <recipe-dir>/<entry> --mode <mode> --pairs <file> --out <file>`` (see\n        :mod:`rcp_ndcg_vllm.equivalence.reference` for the modes).  Not needed for ``stored_scores``.\n    known_deviations: Deliberate reference deviations the paper code carries (e.g. a whole-prompt right\n        cut that drops tail anchors on over-cap pairs); stage 2 gates only pairs under the cap and reports\n        the rest in a separate, non-gating table.",
       "properties": {
         "kind": {
           "enum": [
@@ -416,7 +723,6 @@
           "type": "string"
         },
         "known_deviations": {
-          "description": "deliberate reference deviations the paper code carries (e.g. a whole-prompt right cut that drops tail anchors on over-cap pairs); stage 2 gates only pairs under the cap and reports the rest in a separate, non-gating table",
           "items": {
             "const": "anchor_drop_over_cap",
             "type": "string"
@@ -430,6 +736,277 @@
         "score_scale"
       ],
       "title": "ReferenceSpec",
+      "type": "object"
+    },
+    "RerankEndpoint": {
+      "additionalProperties": false,
+      "description": "A reranking endpoint speaking the Cohere-shaped ``POST {base_url}/rerank``.\n\nOne query's whole candidate set goes per request (the engine reuses the query prefix, and a listwise model\nneeds them together).\n\nAttributes:\n    api: The wire adapter; ``\"rerank\"`` by default.\n    recipe: As on :class:`EmbeddingEndpoint`: the server-side settings the package cannot read (the\n        ``hf_overrides``, the score template), as a free string. Content.\n    tokenizer: The model's tokenizer, in whose tokens ``max_tokens`` and ``query_max_tokens`` are counted.\n        Runtime by name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the\n        judge's already does.\n    max_tokens: What the budget counts is the model's whole input sequence as the engine sees it -- the\n        rendered template, its special tokens, the instruction and the query-and-document content\n        together, in the declared tokenizer's tokens. The content is cut on the client, in a budget\n        computed after reserving every fixed template token (the anchors: a pointwise reranker reads its\n        score from the last position, so the generation prompt or \"yes-no\" suffix always survives; when\n        the template puts the document first, so does the query), and the template is re-attached after\n        the cut. The cut is never left to the engine: an engine-side truncation of the rendered prompt\n        drops anchors from one end or the other. The query is cut first, to ``query_max_tokens``; the\n        document gets the rest of the budget. ``None`` sends every pair whole. Content. Refused until\n        the text-budget mechanism wires the client-side cut, rather than silently ignoring a budget.\n    query_max_tokens: The query's share of the pair budget (``max_tokens``), in the declared tokenizer's\n        tokens; the document gets what remains. It binds when a pair overflows -- an input under budget is\n        sent byte-identical to the uncut render. ``None`` (the default) declares no split, and the\n        adapter's recipe decides. Content.\n    template: The pair template as data (:class:`~rcp_ndcg.data.templates.TemplateSpec`), which orders\n        query and document per model (document first for some rerankers, and then the query block is an\n        anchor), names the specials, and declares the anchor and the per-shape ``add_special_tokens``.\n        Content.\n    on_overflow: What a pair over the budget does: ``cut`` (the default), ``chunk`` (the document side is\n        split into :attr:`chunk` pieces, each carrying the full template; scores pool back by ``max``)\n        or ``fail``. A query is never chunked. Content.\n    chunk: The chunk geometry for ``on_overflow: chunk`` (the judge's\n        :class:`~rcp_ndcg.data.preprocess.ChunkPolicy` reused, not copied). Content.\n    aggregation: How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same\n        rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.\n    empty_doc: What an empty document becomes: ``send`` (the default: the empty string goes out),\n        ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder,\n        :attr:`empty_doc_text`). Content.\n    empty_doc_text: The placeholder text ``empty_doc: send_text`` sends. Content.\n    request_shape: How a request crosses the wire: ``text`` (the default), ``messages`` or ``token_ids``;\n        the adapters implement it. Content.\n    instruction: How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text\n        (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own\n        ``instruction`` request field (vLLM), ``\"system\"`` sends it as a system message (the shape some\n        models take), ``\"none\"`` sends none. Content.\n    use_activation: ``True`` sends through the engine's activation (a probability), ``False`` asks for the\n        raw logit, ``None`` sends nothing and the engine's default applies. Content: raw logit or\n        probability is a different stored score.\n    listwise: Whether the model scores the whole candidate set in one prompt (listwise) rather than point\n        per pair. Content.\n    batch_size: Documents per request for a pointwise model; refused for a listwise one, which always gets\n        the whole candidate set. Runtime.",
+      "properties": {
+        "api": {
+          "default": "rerank",
+          "title": "Api",
+          "type": "string"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Url"
+        },
+        "model": {
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revision"
+        },
+        "api_key_env": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key Env"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Headers Env",
+          "type": "object"
+        },
+        "concurrency": {
+          "default": 64,
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "timeout_s": {
+          "default": 600.0,
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "max_retries": {
+          "default": 2,
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wait On Outage S"
+        },
+        "recipe": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recipe"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tokenizer"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Tokens"
+        },
+        "instruction": {
+          "default": "fold",
+          "enum": [
+            "none",
+            "field",
+            "fold",
+            "system"
+          ],
+          "title": "Instruction",
+          "type": "string"
+        },
+        "use_activation": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Use Activation"
+        },
+        "query_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Max Tokens"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "on_overflow": {
+          "default": "cut",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
+        },
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "title": "Aggregation",
+          "type": "string"
+        },
+        "empty_doc": {
+          "default": "send",
+          "enum": [
+            "omit_zero",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
+        },
+        "empty_doc_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Empty Doc Text"
+        },
+        "request_shape": {
+          "default": "text",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
+        "listwise": {
+          "default": false,
+          "title": "Listwise",
+          "type": "boolean"
+        },
+        "batch_size": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Batch Size"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "title": "RerankEndpoint",
       "type": "object"
     },
     "Resources": {
@@ -448,9 +1025,46 @@
       "title": "Resources",
       "type": "object"
     },
+    "Segment": {
+      "additionalProperties": false,
+      "description": "One segment of a rendered request shape: a piece of fixed frame text or a content span.\n\nExactly one of the two is set. A fixed segment writes its special tokens by name\n(``{special:<name>}``); a content span names the role whose text fills it\n(:data:`ContentSpan`).\n\nAttributes:\n    fixed: The frame text, with specials written ``{special:<name>}``.\n    content: The role whose text fills the span.",
+      "properties": {
+        "fixed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fixed"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "enum": [
+                "query",
+                "document",
+                "instruction"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content"
+        }
+      },
+      "title": "Segment",
+      "type": "object"
+    },
     "ServeConfig": {
       "additionalProperties": false,
-      "description": "Everything rendered into the ``vllm serve`` argv \u2014 nothing implicit.\n\nSee :func:`serve_argv` for the exact argv.  ``plugin`` and ``io_processor_plugin`` never reach the argv: they\nname packages that must be installed into the image before the engine starts (a ``vllm.general_plugins``\npackage and the checkpoint's IO-processor plugin, respectively; bootstrap installs the directories a wave's\n``plugins.txt`` lists).",
+      "description": "Everything rendered into the ``vllm serve`` argv \u2014 nothing implicit.\n\nSee :func:`serve_argv` for the exact argv.  ``plugin`` and ``io_processor_plugin`` never reach the argv: they\nname packages that must be installed into the image before the engine starts (a ``vllm.general_plugins``\npackage and the checkpoint's IO-processor plugin, respectively; the node's own bootstrap \u2014 owned by the\n``rc-build`` lane \u2014 installs what a wave's ``plugins.txt`` lists).",
       "properties": {
         "runner": {
           "description": "vLLM --runner; the rcp-ndcg routes need pooling",
@@ -647,83 +1261,15 @@
       "title": "StatusSpec",
       "type": "object"
     },
-    "TemplateSegment": {
-      "additionalProperties": false,
-      "description": "One segment of a declared request shape: exactly one of ``special``, ``text``, ``ids`` or ``content``.\n\n``special`` names an added/special token of the recipe's tokenizer (resolved by the harness by name, never\ntyped literally in the recipe); ``text`` is ordinary template text; ``ids`` is a measured token-id sequence;\n``content`` names the cuttable span (``query`` or ``document``).  Fixed segments (everything but ``content``)\nare reserved in the text budget and re-attached after a cut \u2014 they carry the model's anchors.",
-      "properties": {
-        "special": {
-          "anyOf": [
-            {
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "added/special token NAME of the tokenizer",
-          "title": "Special"
-        },
-        "text": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "ordinary template text (never a special-token literal)",
-          "title": "Text"
-        },
-        "ids": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "explicit token ids of a measured fixed segment",
-          "title": "Ids"
-        },
-        "content": {
-          "anyOf": [
-            {
-              "enum": [
-                "query",
-                "document"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "the cuttable span this segment stands for",
-          "title": "Content"
-        }
-      },
-      "title": "TemplateSegment",
-      "type": "object"
-    },
     "TemplateSpec": {
       "additionalProperties": false,
-      "description": "The request shapes as data: ordered segments per shape, the anchors, and the pair's query budget.\n\nShapes are ``query`` and ``document`` (embedding roles) and ``pair`` (rerank, the full scored prompt).  Every\ndeclared shape must contain at least one content span; with ``anchor: last`` every declared shape must end\nwith a fixed segment (or the recipe pins ``add_special_tokens: true``, declaring the tokenizer's end token as\nthe anchor).  ``anchor: marker`` requires ``anchor_markers``.  ``query_max_tokens`` splits the pair budget:\nthe document span gets the rest.",
+      "description": "The frame of every request a role sends, declared as data.\n\nPer request shape, an ordered list of segments; at render time the fixed segments are joined with\nthe content spans filled from the call's texts. The template is content: two configs whose\ntemplates differ never share an identity (its canonical JSON is what the identity hashes).\n\nAttributes:\n    query: The ``query`` shape's segments (an embedder's query side).\n    document: The ``document`` shape's segments (an embedder's document side).\n    pair: The ``pair`` shape's segments (a reranker's request; its order is the model's).\n    anchor: The position the model reads its output from (``last`` by default: the last-token\n        poolers, the pointwise rerankers scored at the last position). Declared so the budget\n        knows what must survive and the golden-render tests what to assert.\n    anchor_markers: For ``anchor: marker``: the special tokens' *names* (resolved like\n        ``{special:...}``), e.g. a listwise reranker's per-passage markers.\n    add_special_tokens: What the engine does to the rendered string per shape -- ``True`` (the\n        default) when the route adds the tokenizer's post-processor tokens (vLLM's pooling and\n        scoring routes), ``False`` where it adds none (the chat-embed form). A bool for every\n        shape, or a mapping shape -> bool naming every declared shape. The budget reserves those\n        tokens: measured on the empty render, they are part of the fixed overhead.",
       "properties": {
         "query": {
           "anyOf": [
             {
               "items": {
-                "$ref": "#/$defs/TemplateSegment"
+                "$ref": "#/$defs/Segment"
               },
               "type": "array"
             },
@@ -738,7 +1284,7 @@
           "anyOf": [
             {
               "items": {
-                "$ref": "#/$defs/TemplateSegment"
+                "$ref": "#/$defs/Segment"
               },
               "type": "array"
             },
@@ -753,7 +1299,7 @@
           "anyOf": [
             {
               "items": {
-                "$ref": "#/$defs/TemplateSegment"
+                "$ref": "#/$defs/Segment"
               },
               "type": "array"
             },
@@ -765,6 +1311,7 @@
           "title": "Pair"
         },
         "anchor": {
+          "default": "last",
           "enum": [
             "last",
             "first",
@@ -775,35 +1322,35 @@
           "type": "string"
         },
         "anchor_markers": {
+          "default": [],
           "items": {
-            "type": "integer"
+            "type": "string"
           },
           "title": "Anchor Markers",
           "type": "array"
         },
-        "query_max_tokens": {
+        "add_special_tokens": {
           "anyOf": [
             {
-              "exclusiveMinimum": 0,
-              "type": "integer"
+              "type": "boolean"
             },
             {
-              "type": "null"
+              "additionalProperties": {
+                "type": "boolean"
+              },
+              "type": "object"
             }
           ],
-          "default": null,
-          "title": "Query Max Tokens"
+          "default": true,
+          "title": "Add Special Tokens"
         }
       },
-      "required": [
-        "anchor"
-      ],
       "title": "TemplateSpec",
       "type": "object"
     }
   },
   "additionalProperties": false,
-  "description": "One served model: how vLLM serves it, how ``rcp-ndcg`` reads it, and what it is checked against.\n\nConstruct it through :func:`load_recipe` (which also checks the referenced files exist and that ``id`` equals\nthe directory name); the model itself is frozen and refuses unknown fields.\n\nAttributes:\n    id: The recipe identifier, ``^[a-z0-9][a-z0-9.-]*$``, equal to the directory name; also the\n        ``--served-model-name`` the engine serves and the ``model`` field of the client config.\n    model: The Hugging Face repo id to serve.\n    revision: The exact commit of ``model`` (40 hex); serving and client cutting pin it.\n    role: What the model produces: ``embed`` (one dense vector), ``multi_vector`` (one vector per token) or\n        ``rerank`` (query-document scores).\n    input: The input modalities the model accepts, a non-empty subset of ``[text, image, video]``.\n    scoring: Rerank only: ``pointwise`` (documents scored independently) or ``listwise`` (one request carries\n        the whole candidate set).\n    licence: SPDX identifier of the model's licence, or ``see-model-card``.\n    engine: The engine image and the startup timeout.\n    resources: The GPUs the engine occupies (``--tensor-parallel-size``).\n    serve: Everything rendered into ``vllm serve`` argv.\n    client: The ``rcp-ndcg`` endpoint fields the recipe implies.\n    reference: The in-process reference the harness compares against.\n    gates: Overrides of the stage-2 gate defaults.\n    status: Where the recipe stands in the verification workflow.\n    sources: URLs and ``path:line`` references the recipe rests on.\n    notes: Free-form notes.",
+  "description": "One served model: how vLLM serves it, how ``rcp-ndcg`` reads it, and what it is checked against.\n\nConstruct it through :func:`load_recipe` (which also checks the referenced files exist, that ``id`` equals\nthe directory name, and that the ``client`` block constructs the product's endpoint model); the model itself\nis frozen and refuses unknown fields.\n\nAttributes:\n    id: The recipe identifier, ``^[a-z0-9][a-z0-9.-]*$``, equal to the directory name; also the\n        ``--served-model-name`` the engine serves and the client config's ``model``.\n    model: The Hugging Face repo id to serve.\n    revision: The exact commit of ``model`` (40 hex); serving and client cutting pin it.\n    role: What the model produces: ``embed`` (one dense vector), ``multi_vector`` (one vector per token) or\n        ``rerank`` (query-document scores).\n    input: The input modalities the model accepts, a non-empty subset of ``[text, image, video]``.\n    scoring: Rerank only: ``pointwise`` (documents scored independently) or ``listwise`` (the whole\n        candidate set in one prompt; the product endpoint's ``listwise`` flag).\n    licence: SPDX identifier of the model's licence, or ``see-model-card``.\n    engine: The engine image and the startup timeout.\n    resources: The GPUs the engine occupies (``--tensor-parallel-size``).\n    serve: Everything rendered into ``vllm serve`` argv.\n    client: The product's endpoint config for the role (validated by constructing it at load).\n    reference: The subprocess reference the harness compares against.\n    gates: Overrides of the stage-2 gate defaults.\n    status: Where the recipe stands in the verification workflow.\n    sources: URLs and ``path:line`` references the recipe rests on.\n    notes: Free-form notes.",
   "properties": {
     "id": {
       "pattern": "^[a-z0-9][a-z0-9.-]*$",
@@ -875,7 +1422,18 @@
       "$ref": "#/$defs/ServeConfig"
     },
     "client": {
-      "$ref": "#/$defs/ClientConfig"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EmbeddingEndpoint"
+        },
+        {
+          "$ref": "#/$defs/PoolingEndpoint"
+        },
+        {
+          "$ref": "#/$defs/RerankEndpoint"
+        }
+      ],
+      "title": "Client"
     },
     "reference": {
       "$ref": "#/$defs/ReferenceSpec"

@@ -1,15 +1,18 @@
-"""The recorder: one fixed request set per route, recorded for the contract fixtures.
+"""The recorder: the product's own wire path, observed through an ``httpx`` transport hook, for the contract
+fixtures.
 
-Against a served recipe it sends a small, fixed request set — ``GET /v1/models``, ``POST /v1/embeddings`` (float
-and base64), ``POST /pooling`` (float, base64, bytes), ``POST /rerank``, ``POST /score``, and the two error bodies
-the rcp-ndcg adapters map (an over-length prompt and an unknown field) — and writes one JSON file per exchange
-under ``<out>/<engine>-<version>/<recipe-id>/``::
+Against a served recipe it drives the product's role clients (:mod:`rcp_ndcg.inference.clients`) built from
+:func:`~rcp_ndcg_vllm.recipe.client_config` — the same path stage 2 sends through — over a
+:class:`RecordingTransport` (an ``httpx`` transport hook the product's transport accepts), and writes one JSON
+file per exchange under ``<out>/<engine>-<version>/<recipe-id>/``::
 
-    {"route": "/v1/embeddings", "request": {"url": "http://engine/v1/embeddings", ...},
-     "status": 200, "headers": {"content-type": ..., "server": ...}, "body": ...}
+    {"route": "http://engine/v1/embeddings", "request": {...}, "status": 200,
+     "headers": {"content-type": ..., "server": ...}, "body": ...}
 
 Bytes bodies are base64-encoded with their framing headers kept.  No secret and no hostname is written: the URL
-carries the placeholder host ``http://engine``, and nothing else in the file identifies the machine.
+carries the placeholder host ``http://engine``.  The routes no product client speaks yet (``GET /v1/models``,
+``POST /score``, and the error bodies the adapters map: an over-length prompt and an unknown field) go through
+the same recording transport as bare observations, not through a second client path.
 """
 
 from __future__ import annotations
@@ -21,15 +24,67 @@ from typing import Any
 
 import httpx
 
-from .errors import HarnessError
-from .recipe import Recipe, effective_embed_dtype
+from ..errors import HarnessError
+from ..recipe import Recipe, client_config
 
-__all__ = ["record"]
+__all__ = ["RecordingTransport", "record"]
 
 _PLACEHOLDER = "http://engine"
 _TIMEOUT_S = 120.0
 _SNIPPET_TEXT = "What is the capital of France?"
 _SNIPPET_DOCUMENTS = ["Paris is the capital of France.", "Berlin is the capital of Germany."]
+
+
+class RecordingTransport(httpx.AsyncBaseTransport):
+    """An ``httpx`` transport that records every exchange and delegates to the real one.
+
+    The observation seam: the product's :class:`~rcp_ndcg.inference.transport.Transport` accepts it as its
+    ``httpx_transport``, so every request the product's clients send crosses here once — the product's wire
+    path, not a second one.
+    """
+
+    def __init__(self, exchanges: list[dict[str, Any]], real: httpx.AsyncBaseTransport | None = None) -> None:
+        super().__init__()
+        self.exchanges = exchanges
+        self._real = real or httpx.AsyncHTTPTransport()
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        """Send through the real transport and record the exchange."""
+        raw = request.read()
+        try:
+            body: Any = json.loads(raw)
+        except (ValueError, UnicodeDecodeError):
+            body = {"base64": base64.b64encode(raw).decode("ascii")}
+        response = await self._real.handle_async_request(request)
+        await response.aread()
+        self.exchanges.append(
+            {
+                "url": _placeholder(str(request.url)),
+                "method": request.method,
+                "request_body": body,
+                "status": response.status_code,
+                "headers": {key: response.headers.get(key, "") for key in ("content-type", "server")},
+                "response_bytes": base64.b64encode(response.content).decode("ascii"),
+                "response_json": _response_json(response),
+            }
+        )
+        return response
+
+
+def _placeholder(url: str) -> str:
+    """The engine URL with the placeholder host and no version segment (no hostname is ever recorded)."""
+    marker = url.find("/v1")
+    return f"{_PLACEHOLDER}{url[marker:]}" if marker != -1 else _PLACEHOLDER
+
+
+def _response_json(response: httpx.Response) -> Any:
+    """The response body as decoded JSON, or ``None`` when the body is not JSON."""
+    if "json" not in response.headers.get("content-type", ""):
+        return None
+    try:
+        return response.json()
+    except ValueError:
+        return None
 
 
 def record(
@@ -40,90 +95,88 @@ def record(
     served_model_name: str | None = None,
     timeout_s: float = _TIMEOUT_S,
 ) -> list[Path]:
-    """Record the fixed request set against the engine serving ``recipe``; return the written file paths.
+    """Record the product's request set against the engine serving ``recipe``; return the written file paths.
 
-    Every exchange becomes ``<out>/<engine>-<version>/<recipe-id>/<method>-<route>-<variant>.json``; a failed
+    Every exchange becomes ``<out>/<engine>-<version>/<recipe-id>/<method>-<route>-<status>.json``; a failed
     exchange is recorded like any other (its status and body are the fixture), except a connection error, which
     stops the recording with :class:`HarnessError`.
     """
-    model = served_model_name or recipe.id
     root = base_url.rstrip("/")
     if root.endswith(("/v1", "/v2")):
         root = root.rsplit("/", 1)[0]
     out = Path(out_dir) / f"{recipe.engine.name}-{_version(recipe.engine.image)}" / recipe.id
     out.mkdir(parents=True, exist_ok=True)
-    written: list[Path] = []
-    with httpx.Client(base_url=root, timeout=timeout_s) as http:
-        exchanges = _exchanges(recipe, model)
-        for file_name, route, request, request_body in exchanges:
-            url = f"{_PLACEHOLDER}{route}"
-            recorded_request: dict[str, Any] = {"url": url, **request}
-            try:
-                if request_body is None:
-                    response = http.get(route)
-                else:
-                    body = {"model": model, **request_body}
-                    recorded_request["body"] = body
-                    response = http.post(route, json=body)
-            except httpx.HTTPError as error:
-                raise HarnessError(f"recording {route} against {root} failed: {error}") from error
-            written.append(_write_exchange(out / file_name, route, recorded_request, response))
-    return written
-
-
-def _exchanges(recipe: Recipe, model: str) -> list[tuple[str, str, dict[str, Any], dict[str, Any] | None]]:
-    """The fixed request set: (file name, route, url-level request fields, JSON body or None for GET)."""
-    over_length = "a " * (recipe.client.max_tokens * 2)
-    pooling: dict[str, Any] = {
-        "input": [_SNIPPET_TEXT],
-        "task": "token_embed",
-        "encoding_format": "float",
-        "embed_dtype": effective_embed_dtype(recipe),
-    }
-    pooling_b64 = {**pooling, "encoding_format": "base64"}
-    pooling_bytes = {**pooling, "encoding_format": "bytes"}
+    exchanges: list[dict[str, Any]] = []
+    try:
+        with httpx.Client(base_url=root, timeout=timeout_s) as bare:
+            bare.get("/v1/models")
+            bare.post("/score", json={"model": recipe.id, "queries": [_SNIPPET_TEXT], "documents": _SNIPPET_DOCUMENTS})
+        _record_role_requests(recipe, base_url, exchanges, timeout_s=timeout_s)
+        with httpx.Client(base_url=root, timeout=timeout_s) as bare:
+            _record_errors(bare, recipe, recipe.id)
+    except httpx.HTTPError as error:
+        raise HarnessError(f"recording against {root} failed: {error}") from error
     return [
-        ("get-v1-models.json", "/v1/models", {}, None),
-        (
-            "post-v1-embeddings-float.json",
-            "/v1/embeddings",
-            {},
-            {"input": _texts_of(recipe), "encoding_format": "float"},
-        ),  # fmt: skip
-        (
-            "post-v1-embeddings-base64.json",
-            "/v1/embeddings",
-            {},
-            {"input": _texts_of(recipe), "encoding_format": "base64"},
-        ),  # fmt: skip
-        ("post-pooling-float.json", "/pooling", {}, pooling),
-        ("post-pooling-base64.json", "/pooling", {}, pooling_b64),
-        ("post-pooling-bytes.json", "/pooling", {}, pooling_bytes),
-        (
-            "post-rerank.json",
-            "/rerank",
-            {},
-            {"query": _SNIPPET_TEXT, "documents": _SNIPPET_DOCUMENTS, "top_n": len(_SNIPPET_DOCUMENTS)},
-        ),  # fmt: skip
-        ("post-score.json", "/score", {}, {"queries": [_SNIPPET_TEXT], "documents": _SNIPPET_DOCUMENTS}),  # fmt: skip
-        (
-            "post-v1-embeddings-overlength.json",
-            "/v1/embeddings",
-            {},
-            {"input": [over_length], "encoding_format": "float"},
-        ),  # fmt: skip
-        (
-            "post-v1-embeddings-unknown-field.json",
-            "/v1/embeddings",
-            {},
-            {"input": _texts_of(recipe), "encoding_format": "float", "unknown_field": "sent-to-map-the-error"},
-        ),  # fmt: skip
+        _write_exchange(out / f"{index:02d}-{_slug(exchange)}.json", exchange)
+        for index, exchange in enumerate(exchanges)
     ]
 
 
-def _texts_of(recipe: Recipe) -> list[str]:
-    """The two recorded input texts, with the recipe's client-side prompts applied as the adapters would send."""
-    return [recipe.client.query_prompt + _SNIPPET_TEXT, recipe.client.doc_prompt + _SNIPPET_DOCUMENTS[0]]
+def _record_role_requests(recipe: Recipe, base_url: str, exchanges: list[dict[str, Any]], *, timeout_s: float) -> None:
+    """The role routes, through the product's clients over a recording transport."""
+    from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+    from rcp_ndcg.inference.transport import Transport
+
+    exchanges.clear()
+    hook = RecordingTransport(exchanges)
+    classes: dict[str, type] = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
+    config = dict(client_config(recipe, base_url=base_url))
+    config["max_tokens"] = None
+    if recipe.client.template is not None:
+        config["query_prompt"] = ""
+        config["doc_prompt"] = ""
+    endpoint = classes[recipe.role](**config)
+    from rcp_ndcg_core.content import Content as WireContent
+
+    from rcp_ndcg.inference.types import EncodeRole
+
+    if recipe.role == "rerank":
+        from rcp_ndcg.inference.clients import RerankClient
+
+        client = RerankClient(endpoint, sender=Transport(endpoint, httpx_transport=hook))
+        try:
+            client.rerank(_SNIPPET_TEXT, _SNIPPET_DOCUMENTS)
+        finally:
+            client.close()
+        return
+    if recipe.role == "multi_vector":
+        from rcp_ndcg.inference.clients import PoolingClient
+
+        client = PoolingClient(endpoint, sender=Transport(endpoint, httpx_transport=hook))
+        client.encode([WireContent.from_text(_SNIPPET_TEXT)], EncodeRole.DOCUMENT)
+        return
+    from rcp_ndcg.inference.clients import EmbeddingClient
+
+    client = EmbeddingClient(endpoint, sender=Transport(endpoint, httpx_transport=hook))
+    client.encode([WireContent.from_text(_SNIPPET_TEXT)], EncodeRole.DOCUMENT)
+
+
+def _record_errors(http: httpx.Client, recipe: Recipe, model: str) -> None:
+    """The error bodies the adapters map: an over-length prompt and an unknown request field."""
+    over_length = "a " * ((recipe.client.max_tokens or 8192) * 2)
+    http.post(
+        "/v1/embeddings",
+        json={"model": model, "input": [over_length], "encoding_format": "float"},
+    )
+    http.post(
+        "/v1/embeddings",
+        json={
+            "model": model,
+            "input": [_SNIPPET_TEXT],
+            "encoding_format": "float",
+            "unknown_field": "map-the-error",
+        },
+    )
 
 
 def _version(image: str) -> str:
@@ -132,22 +185,30 @@ def _version(image: str) -> str:
     return tag.removeprefix("v") or "unknown"
 
 
-def _write_exchange(path: Path, route: str, request: dict[str, Any], response: httpx.Response) -> Path:
+def _write_exchange(path: Path, exchange: dict[str, Any]) -> Path:
     """One exchange file; a JSON body is kept decoded, a binary body base64 with its framing headers."""
-    headers = {key: response.headers.get(key, "") for key in ("content-type", "server")}
-    content_type = response.headers.get("content-type", "")
-    if "json" in content_type or not response.content:
-        try:
-            body: Any = response.json()
-        except ValueError:
-            body = {"text": response.text}
+    body: Any
+    if exchange["response_json"] is not None:
+        body = exchange["response_json"]
     else:
         framing = {
             key: value
-            for key, value in response.headers.items()
-            if key.lower() in ("content-type", "content-length", "content-encoding")
+            for key, value in exchange["headers"].items()
+            if key.lower() in ("content-type", "content-length")
         }
-        body = {"base64": base64.b64encode(response.content).decode("ascii"), "framing_headers": framing}
-    document = {"route": route, "request": request, "status": response.status_code, "headers": headers, "body": body}
+        body = {"base64": exchange["response_bytes"], "framing_headers": framing}
+    document = {
+        "route": exchange["url"],
+        "request": {"url": exchange["url"], "body": exchange["request_body"]},
+        "status": exchange["status"],
+        "headers": exchange["headers"],
+        "body": body,
+    }
     path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
+
+
+def _slug(exchange: dict[str, Any]) -> str:
+    """The exchange's file stem: the method and the URL path (``post-v1-embeddings-400``)."""
+    route = exchange["url"].replace(_PLACEHOLDER, "").strip("/") or "models"
+    return f"{exchange['method'].lower()}-{route.replace('/', '-')}-{exchange['status']}"

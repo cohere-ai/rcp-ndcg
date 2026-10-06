@@ -19,31 +19,17 @@ serve:
   extra_args: []
 client:
   api: openai_embeddings
-  request_shape: text
-  add_special_tokens: null
+  tokenizer: ../../tokenizer.json
+  max_tokens: 128
   template:
-    query:
-      - {text: "query: "}
-      - {content: query}
-      - {text: " [END]"}
     document:
-      - {text: "doc: "}
+      - {fixed: "doc: "}
       - {content: document}
-      - {text: " [END]"}
+      - {fixed: " [END]"}
     anchor: last
-  query_prompt: ""
-  doc_prompt: ""
-  instruction: null
-  default_instruction: null
-  tokenizer: "fixtures/DenseEmbedder@0123456789abcdef0123456789abcdef01234567"
-  max_tokens: 512
   on_overflow: cut
   empty_doc: omit_zero
   normalize: true
-  dimensions: null
-  embed_dtype: null
-  use_activation: null
-  batch_size: 4
 reference:
   kind: transformers
   score_scale: cosine

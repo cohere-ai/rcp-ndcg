@@ -1,9 +1,7 @@
-"""Shared fixtures: a stub engine on an ephemeral port, pairs files and the fixture recipes."""
+"""Shared fixtures: a stub engine on an ephemeral port, the recipe roots and pairs."""
 
 from __future__ import annotations
 
-import json
-import os
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -15,6 +13,7 @@ TESTS = Path(__file__).resolve().parent
 STUB = TESTS / "stub_engine.py"
 FIXTURES = TESTS / "fixtures"
 RECIPES = FIXTURES / "recipes"
+TOKENIZER = FIXTURES / "tokenizer.json"
 
 
 class StubEngine:
@@ -42,7 +41,7 @@ def start_stub(*extra: str, env: dict[str, str] | None = None) -> StubEngine:
         [sys.executable, str(STUB), "--port", "0", *extra],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        env={**os.environ, **(env or {})},
+        env={**{key: value for key, value in __import__("os").environ.items()}, **(env or {})},
     )
     line = process.stdout.readline().decode() if process.stdout else ""
     if not line.startswith("RCPS_STUB_PORT="):
@@ -54,7 +53,7 @@ def start_stub(*extra: str, env: dict[str, str] | None = None) -> StubEngine:
 @pytest.fixture
 def stub() -> Iterator[StubEngine]:
     """One clean stub engine."""
-    engine = start_stub()
+    engine = start_stub("--tokenizer", str(TOKENIZER))
     try:
         yield engine
     finally:
@@ -63,16 +62,19 @@ def stub() -> Iterator[StubEngine]:
 
 def write_pairs(path: Path, pairs: list[dict]) -> Path:
     """One pairs JSONL file."""
+    import json
+
     path.write_text("".join(json.dumps(row) + "\n" for row in pairs), encoding="utf-8")
     return path
 
 
 def sample_pairs(documents: int = 4) -> list[dict]:
-    """Two queries with a few documents each; the same objects every call (the tests are deterministic)."""
+    """Two queries with a few short documents each (the fixture tokenizer's words)."""
     return [
         {
             "query": "capital of france",
             "documents": [f"document {index} about cities and rivers in europe {index}" for index in range(documents)],
+            "instruction": "Follow the task.",
         },
         {
             "query": "second query about retrieval models",

@@ -23,29 +23,20 @@ serve:
   extra_args: []
 client:
   api: rerank
-  request_shape: text
-  add_special_tokens: null
+  tokenizer: ../../tokenizer.json
+  max_tokens: 160
+  query_max_tokens: 48
   template:
     pair:
-      - {text: "SYSTEM: Judge whether the Document answers the Query. Answer yes or no.\nUSER:\nQuery: "}
+      - {fixed: "SYSTEM: Judge whether the Document answers the Query. Answer yes or no. USER: Query: "}
       - {content: query}
-      - {text: "\nDocument: "}
+      - {fixed: " Document: "}
       - {content: document}
-      - {text: "\nASSISTANT:"}
+      - {fixed: " ASSISTANT"}
     anchor: last
-    query_max_tokens: 256
-  query_prompt: ""
-  doc_prompt: ""
   instruction: fold
-  default_instruction: Follow the task.
-  tokenizer: "fixtures/PointwiseReranker@0123456789abcdef0123456789abcdef01234567"
-  max_tokens: 512
   on_overflow: cut
-  empty_doc: omit_zero
-  normalize: null
-  dimensions: null
-  use_activation: null
-  batch_size: null
+  empty_doc: send
 reference:
   kind: transformers
   score_scale: probability

@@ -19,22 +19,17 @@ serve:
   extra_args: []
 client:
   api: vllm_pooling
-  query_prompt: "query: "
-  doc_prompt: ""
+  tokenizer: ../../tokenizer.json
+  max_tokens: 64
   template:
     document:
-      - {text: "doc: "}
+      - {fixed: "doc: "}
       - {content: document}
     anchor: mean
-  instruction: null
-  default_instruction: null
-  tokenizer: "fixtures/LateInteractionEmbedder@0123456789abcdef0123456789abcdef01234567"
-  max_tokens: 512
-  normalize: false
-  dimensions: null
+  on_overflow: cut
+  empty_doc: omit_zero
   embed_dtype: float16
-  use_activation: null
-  batch_size: null
+  dim: 8
 reference:
   kind: transformers
   score_scale: cosine

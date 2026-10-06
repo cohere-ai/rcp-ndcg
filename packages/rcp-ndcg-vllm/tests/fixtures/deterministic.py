@@ -147,3 +147,14 @@ def reserve_and_append(
     if budget < 0:
         raise ValueError(f"the fixed segments ({len(prefix_ids) + len(suffix_ids)}) exceed the budget {max_tokens}")
     return prefix_ids + content_ids[:budget] + suffix_ids
+
+
+def fold(query: str, instruction: str | None) -> str:
+    """The product's fold render for ``instruction: fold``: ``Task: <instruction>\nQuery: <query>``.
+
+    The same render the product's :class:`rcp_ndcg.inference.clients.RerankClient` applies to the raw query,
+    so the reference subprocess and the served engine read the same folded text.
+    """
+    if not instruction:
+        return query
+    return f"Task: {instruction}\nQuery: {query}"

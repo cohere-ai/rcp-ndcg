@@ -31,24 +31,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# The in-process reference implementations stage 2 compares against: the model
-# stacks a GPU host already carries inside the engine image, plus jinja2 for
-# stage 1's prompt rendering (the same template engine the engine uses).
-reference = [
-  "torch>=2.0",
-  "transformers>=4.40",
-  "sentence-transformers>=3.0",
-  "jinja2>=3.1",
-]
-# Stage 3 (nDCG@10 per subset): the pipeline package, called as a subprocess
-# (`rcp-ndcg eval score`); never imported by this package.
-metrics = [
-  "rcp-ndcg",
-]
-# The package's own CPU test suite (pytest plus jinja2 for the stage-1 tests).
+# The package's own CPU test suite (pytest, jinja2 for the served-template check,
+# tokenizers for the fixture tokenizer).
 test = [
   "pytest>=8.0",
   "jinja2>=3.1",
+  "tokenizers>=0.21",
 ]
 
 [project.urls]

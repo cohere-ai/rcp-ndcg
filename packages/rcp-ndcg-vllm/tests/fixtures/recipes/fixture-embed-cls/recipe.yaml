@@ -19,30 +19,16 @@ serve:
   extra_args: []
 client:
   api: openai_embeddings
-  request_shape: text
-  add_special_tokens: null
+  tokenizer: ../../tokenizer.json
+  max_tokens: 64
   template:
-    query:
-      - {special: cls}
-      - {text: "query: "}
-      - {content: query}
     document:
-      - {special: cls}
+      - {fixed: "{special:cls}doc: "}
       - {content: document}
     anchor: first
-  query_prompt: ""
-  doc_prompt: ""
-  instruction: null
-  default_instruction: null
-  tokenizer: "fixtures/ClsEmbedder@0123456789abcdef0123456789abcdef01234567"
-  max_tokens: 512
+    add_special_tokens: false
   on_overflow: cut
-  empty_doc: omit_zero
   normalize: true
-  dimensions: null
-  embed_dtype: null
-  use_activation: null
-  batch_size: 4
 reference:
   kind: transformers
   score_scale: cosine

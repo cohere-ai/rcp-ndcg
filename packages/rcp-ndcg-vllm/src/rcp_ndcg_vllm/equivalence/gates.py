@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 from pydantic import BaseModel, ConfigDict
 
-from ..recipe import Recipe, effective_embed_dtype
+from ..recipe import Recipe
 
 __all__ = ["ResolvedGates", "kendall_tau_b", "resolve_gates"]
 
@@ -63,7 +63,7 @@ def resolve_gates(recipe: Recipe) -> ResolvedGates:
         vec_min_cosine=overrides.vec_min_cosine if overrides.vec_min_cosine is not None else _VECTOR_MIN_COSINE,
         tau_min=overrides.tau_min if overrides.tau_min is not None else _TAU_MIN,
         metrics_max_abs=overrides.metrics_max_abs if overrides.metrics_max_abs is not None else _METRICS_MAX_ABS,
-        embed_dtype=effective_embed_dtype(recipe),
+        embed_dtype=str(getattr(recipe.client, "embed_dtype", "float16")),
     )
 
 

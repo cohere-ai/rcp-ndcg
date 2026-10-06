@@ -29,12 +29,23 @@ from deterministic import score, token_vectors, tokens, vector  # noqa: E402
 
 _ALLOWED: dict[str, set[str]] = {
     "/v1/embeddings": {"input", "encoding_format"},
-    "/pooling": {"input", "task", "encoding_format", "embed_dtype"},
+    "/pooling": {"input", "task", "encoding_format", "embed_dtype", "endianness"},
     "/rerank": {"query", "documents", "top_n", "instruction", "use_activation"},
     "/score": {"queries", "documents", "query", "text_1", "text_2"},
 }
 
-_ARGS = argparse.Namespace(served_model_name="stub", max_model_len=512, noise=0.0)
+_ARGS = argparse.Namespace(served_model_name="stub", max_model_len=512, noise=0.0, tokenizer="")
+_TOKENIZER_BACKEND: Any = None
+
+
+def _get_tokenizer_backend() -> Any:
+    """The engine's own tokenizer (the tokenizers library, the image's transformers), loaded lazily."""
+    global _TOKENIZER_BACKEND
+    if _TOKENIZER_BACKEND is None:
+        from tokenizers import Tokenizer
+
+        _TOKENIZER_BACKEND = Tokenizer.from_file(_ARGS.tokenizer)
+    return _TOKENIZER_BACKEND
 
 
 class _BadRequest(ValueError):
@@ -85,17 +96,27 @@ class _Handler(BaseHTTPRequestHandler):
         return payload
 
     def do_GET(self) -> None:  # noqa: N802 - stdlib name
-        if self.path.split("?")[0] == "/v1/models":
+        route = self.path.split("?")[0]
+        if route in ("/v1/models", "/models"):
+            self._send_json({"object": "list", "data": [{"id": _ARGS.served_model_name, "object": "model"}]})
+            return
             self._send_json({"object": "list", "data": [{"id": _ARGS.served_model_name, "object": "model"}]})
         else:
             self._send_json({"error": {"message": "unknown route"}}, status=404)
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib name
         route = self.path.split("?")[0]
+        # The product's adapters use the un-prefixed paths (vLLM's own): normalise.
+        if route.startswith("/v1/"):
+            route = route[len("/v1") :]
+            self.path = route
         try:
             body = self._body()
+            if route == "/tokenize":
+                self._tokenize(body)
+                return
             self._reject_unknown(route, body)
-            if route == "/v1/embeddings":
+            if route == "/embeddings":
                 self._embeddings(body)
             elif route == "/pooling":
                 self._pooling(body)
@@ -107,6 +128,22 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json({"error": {"message": f"unknown route {route}"}}, status=404)
         except _BadRequest as error:
             self._send_json({"error": {"message": str(error), "type": "invalid_request_error"}}, status=400)
+        except Exception as error:  # noqa: BLE001 - the stub logs and returns 500
+            import traceback
+
+            self._send_json(
+                {"error": {"message": f"{type(error).__name__}: {error}", "traceback": traceback.format_exc()[-500:]}},
+                status=500,
+            )
+
+    def _tokenize(self, body: dict[str, Any]) -> None:
+        """The engine's tokenization (R29): the ids the engine itself reads the prompt as."""
+        text = body.get("prompt", body.get("text"))
+        if not isinstance(text, str):
+            raise _BadRequest("tokenize needs a prompt")
+        flag = bool(body.get("add_special_tokens", False))
+        ids = _get_tokenizer_backend().encode(text, add_special_tokens=flag).ids
+        self._send_json({"tokens": ids, "count": len(ids)})
 
     # -- routes --------------------------------------------------------------------------------------------------
     def _embeddings(self, body: dict[str, Any]) -> None:
@@ -211,6 +248,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--served-model-name", default="stub")
     parser.add_argument("--max-model-len", type=int, default=512)
     parser.add_argument("--noise", type=float, default=0.0)
+    parser.add_argument("--tokenizer", default="")
     args, _unknown = parser.parse_known_args(argv)
     _ARGS = args
     server = ThreadingHTTPServer((args.host, args.port), _Handler)
