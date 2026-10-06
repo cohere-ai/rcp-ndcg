@@ -509,7 +509,7 @@ released together.
   config: `serve:` now maps roles to engines (`serve: {judge: {...}}`). The doctor's `--judge-url` flag is
   `--endpoint <url>`, which probes any role's endpoint.
 - **The `[local]` and `[vllm]` extras** (RFC L5, the served-only package): with every in-process model path gone
-  (above), the extras and their machinery leave `pyproject.toml` — the `local` extra (torch 2.9.1, transformers,
+  (above), the extras and their machinery left `pyproject.toml` — the `local` extra (torch 2.9.1, transformers,
   accelerate, flash-attn 2.8.3), the `vllm` extra, the `[tool.uv] conflicts` pair that kept the two in separate
   environments, and `[tool.uv.extra-build-dependencies]` (flash-attn's build-time torch). `EXTRA_FOR_MODULE`
   (and with it `rcp-ndcg doctor`) no longer names `accelerate`, `transformers` or `vllm`; `torch` maps to

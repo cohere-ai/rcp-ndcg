@@ -20,7 +20,12 @@ protocols need numpy and pydantic only; the IRT estimators need its `irt` extra 
 | `hf` | downloading the released datasets from the Hugging Face Hub |
 | `calibrate` | torch for the calibration fit (the CPU build is enough: `--extra-index-url https://download.pytorch.org/whl/cpu` with pip) |
 | `mteb` | the MTEB tasks ([MTEB integration](tutorials/mteb-integration.md)) |
+| `s3` | the S3 storage backend (`s3://` URIs) |
+| `azure` | the Azure Blob storage backend (`az://` URIs) |
+| `http` | `http(s)://` object URLs (fsspec's aiohttp backend) |
+| `data` | the `hf` and `pdf` readers of `rcp-ndcg data convert` (the Hub dataset loader, PDF rendering) |
 | `dev` | the test and lint tools |
+| `docs` | the local documentation preview (mkdocs-material) |
 
 Every retrieval model is served now: the package talks HTTP to the engines (role clients over one transport) and
 installs cleanly next to an engine image without touching it. The old `[local]` and `[vllm]` extras are gone; the
