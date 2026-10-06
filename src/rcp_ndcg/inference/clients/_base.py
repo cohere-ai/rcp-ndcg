@@ -120,6 +120,10 @@ class RoleClient[C: Endpoint]:
     #: The role config, as it was given (a hosted profile's ``base_url`` stays ``None``).
     config: C
 
+    #: The wire adapter instance the subclass builds (an embed/pool adapter is stateless; the rerank
+    #: family's holds the config it serves).
+    _adapter: Any
+
     def __init__(
         self,
         config: C,
