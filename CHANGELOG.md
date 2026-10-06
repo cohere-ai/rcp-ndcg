@@ -300,6 +300,21 @@ released together.
   registry effects, the config-class parse and the served-class mapper cross-check need vLLM and
   transformers; the full served-vs-reference equivalence on real weights is the GPU wave's.
 
+- A served recipe in `packages/rcp-ndcg-vllm/recipes/`: `ctxl-rerank-v2-instruct-multilingual-2b`
+  (ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b @ 6ffef5dc552583b8db58dc4a87f79f7aee78d2d9, pointwise
+  rerank, paper-exact): `--runner pooling` with the `Qwen3ForSequenceClassification` conversion overrides
+  (`classifier_from_token` ["!"] = the checkpoint's token id 0, `method: no_post_processing`) on the stock
+  `vllm/vllm-openai:v0.31.0` image, the paper's two-line score template shipped as a dual-mode jinja file
+  (the harness's check variables and the engine's `messages` render both produce the paper prompt), the
+  raw-logit pooler (`use_activation: false` on the client and server side; the paper's score is the raw
+  logit of vocabulary position 0 at the final position), and the paper budgets (`max_tokens` 8192 =
+  `MAX_SEQ_LENGTH`, `query_max_tokens` 4096 = `MAX_QUERY_LENGTH`, `on_overflow: cut`). The paper's
+  whole-prompt right truncation drops the trailing " ??" anchor over the cap, so the recipe declares
+  `reference.known_deviations: [anchor_drop_over_cap]` instead of copying the drop into the served path;
+  the reference subprocess derives from `experiments/paper/rerankers/reference/contextual.py` with the
+  instruction fold the served client applies. Status `unverified` until the GPU waves run the harness's
+  stages 2–3.
+
 - `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
   larger than `adaptive_window` runs one batch, not one per batch: every adaptive window of such a pool holds
   the whole pool, so a further batch asks the same documents again (in the refit order) and covers only what
