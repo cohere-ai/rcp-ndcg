@@ -340,8 +340,8 @@ released together.
   stock `vllm/vllm-openai:v0.31.0` with `--runner pooling` (the native `JinaForRanking`; no conversion,
   no plugin, and deliberately no chat-template file — the listwise prompt is built server-side by the
   engine's Python builder, which the declared pair template mirrors byte for byte), the pair budget
-  `max_tokens` 2707 (the measured 147-token frame + `query_max_tokens` 512 + the checkpoint's
-  per-document 2048), `instruction: none`, `use_activation: false` (raw cosine), `empty_doc:
+  `max_tokens` 3219 (the measured 147-token frame + `query_max_tokens` 512 for EACH of the query's
+  two spans + the checkpoint's per-document 2048 — the checkpoint's own worst-case 1-vs-1 prompt), `instruction: none`, `use_activation: false` (raw cosine), `empty_doc:
   omit_zero`, and a reference subprocess derived from `experiments/paper/rerankers/reference/jina.py`
   (raw cosine in [-1, 1], empty documents 0.0, the checkpoint's 125-doc/2048-token blocking ported for
   the GPU waves). Stage 1 passes on CPU against the real tokenizer; the anchor mutation turns the

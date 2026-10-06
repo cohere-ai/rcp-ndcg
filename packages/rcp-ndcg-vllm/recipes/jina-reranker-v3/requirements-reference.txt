@@ -10,6 +10,10 @@
 #
 #   render mode (stage 1, CPU): tokenizers + rcp-ndcg + huggingface_hub only -- no torch.
 #   score mode (stage 2): everything below; downloads the 1.19 GB bf16 weights at the pinned revision.
+#
+# NOTE on rcp-ndcg==0.0.1: it is not yet on PyPI (the package's first release has not shipped). Until
+# it is, install rcp-ndcg from the repository's build (the same commit the recipe package is checked
+# out at); the pin records the release version the wave environment must match.
 
 rcp-ndcg==0.0.1
 torch==2.9.1

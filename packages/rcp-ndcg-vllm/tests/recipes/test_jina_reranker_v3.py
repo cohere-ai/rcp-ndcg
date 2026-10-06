@@ -102,7 +102,7 @@ def test_recipe_loads_and_declares_the_product_endpoint() -> None:
     assert recipe.role == "rerank" and recipe.scoring == "listwise"
     assert recipe.client.listwise is True
     assert recipe.client.tokenizer == f"{REPO}@{REVISION}"
-    assert recipe.client.max_tokens == 2707
+    assert recipe.client.max_tokens == 3219
     assert recipe.client.query_max_tokens == 512
     assert recipe.client.on_overflow == "cut"
     assert recipe.client.empty_doc == "omit_zero"
