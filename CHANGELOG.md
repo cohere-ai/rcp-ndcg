@@ -25,6 +25,10 @@ released together.
 
 ### Public surface
 
+- **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
+  are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric
+  placements whose document has no Bradley-Terry theta, and the queries absent from `bt_scores`, instead of
+  dropping them unrecorded.
 - **The plugin endpoint configs require `api`**: `PluginEmbedding`, `PluginPooling` and `PluginReranker`
   (constructed directly, a public name) no longer inherit their role's shipped `api` default -- a config
   without `api` does not build (a "plugin" was silently built around a shipped wire), and a shipped name stays
