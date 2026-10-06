@@ -13,7 +13,8 @@ decisions every rerank path must make the same way:
   ``pair`` shape: the (query, document) pairs are cut span by span within the declared budget (the query to
   ``query_max_tokens`` when it is set), the template's fixed segments re-attached around the cuts (the
   anchors a pointwise reranker reads its score from always survive), every cut recorded in the census under
-  ``text_budget``, and a chunked document sent as one request per chunk with the chunks' scores pooled back
+  ``text_budget``, and a chunked document sent as one candidate-set row per chunk, scored in the query's
+  request(s), with the chunks' scores pooled back
   onto the document by ``max`` (:func:`rcp_ndcg.data.preprocess.max_pool_scores_by_document`). The wire
   carries the cut spans -- the engine renders the template itself -- and no ``truncate_prompt_tokens``,
   ``max_tokens_per_query`` or ``max_tokens_per_doc`` is ever sent: the client cut already, so there is
@@ -36,7 +37,13 @@ from typing import TYPE_CHECKING, Any
 from rcp_ndcg_core._records import Query, RankingExample
 from rcp_ndcg_core.content import Content
 
-from rcp_ndcg.data.preprocess import FitResult, TextTruncationCensus, max_pool_scores_by_document
+from rcp_ndcg.data.preprocess import (
+    DataError,
+    FitResult,
+    TextTruncationCensus,
+    max_pool_scores_by_document,
+    token_prefix,
+)
 from rcp_ndcg.inference.clients._base import RoleClient
 from rcp_ndcg.inference.config import RerankEndpoint
 from rcp_ndcg.inference.transport import Sender
@@ -116,7 +123,8 @@ class RerankClient(RoleClient):
     ) -> list[RerankResult]:
         """Score every example, ``concurrency`` queries in flight, and return the results in input order.
 
-        Each query is one request (or one per chunk of a budget-split document, scores pooled by ``max``),
+        Each query is one request (or one row per chunk of a budget-split document, the chunks' scores pooled
+        by ``max``),
         as in today's served path: the engine reuses the query's prefix across the documents, and a listwise
         model needs the whole set together. An example with no documents is checkpointed with no scores and
         makes no request, exactly as the served path does. The query is sent through the config's
@@ -207,9 +215,12 @@ class RerankClient(RoleClient):
         """The query and its candidates as the wire carries them, fitted into the pair budget.
 
         With a budget declared, :meth:`RoleClient._fit` runs the shared mechanism over the ``(query,
-        document)`` pairs (shape ``pair``): the query span is settled first (to ``query_max_tokens``), each
-        document gets what remains, a chunked document comes back as one output per chunk (``<id>#<k>``)
-        with the full template around it. The wire takes the cut spans (the engine renders the template
+        document)`` pairs (shape ``pair``): the query's span is settled first -- once for the batch, through
+        fit's own settlement on a probe pair, because one query rides per request while fit settles a pair's
+        query only when that pair overflows -- each document gets what remains, and a chunked document comes
+        back as one output per chunk (``<id>#<k>``) with the full template around it. The settlement (a
+        query over its declared ``query_max_tokens``, or one that alone fills the budget) is recorded in the
+        census under the doc id ``<query>``. The wire takes the cut spans (the engine renders the template
         itself); the chunks' ``max`` pooling is the caller's, through the fit result.
 
         Returns:
@@ -227,15 +238,49 @@ class RerankClient(RoleClient):
                 FitResult(
                     shape="pair", texts=(), contents=(), ids=tuple(str(index) for index in range(len(documents)))
                 ),
-            )  # noqa: E501
-        pairs = [(query.text, document.text) for document in documents]
+            )
+        # One query rides per request: settle its span first, so every pair of the batch carries the same
+        # one. fit settles a pair's query only when that pair overflows (the share binds on overflow only),
+        # which would settle differently per document -- an under-budget pair keeps the whole query while an
+        # overflowing one cuts it to its share. So the client settles it once, exactly as fit would: to the
+        # declared share when the query exceeds it, then through fit's own probe pair (the query with an
+        # empty document) for the empty-render verification, so the shipped span is exactly the one every
+        # document span is verified against.
+        original_query = query.text
+        query_text = original_query
+        share = self._budget.query_max_tokens
+        assert self._tokenizer is not None
+        if share is not None and self._tokenizer.count(query_text) > share:
+            query_text = token_prefix(query_text, share, self._tokenizer)
+        settled = self._fit([(query_text, "")], "pair", record=False).contents[0][0]
+        if settled != original_query:
+            self.census.record(
+                corpus=self.ROLE,
+                doc_id="<query>",
+                original_chars=len(original_query),
+                kept_chars=len(settled),
+                original_tokens=self._tokenizer.count(original_query),
+                kept_tokens=self._tokenizer.count(settled),
+                mechanism=TextTruncationCensus.TEXT_BUDGET,
+                budget_source="tokenizer",
+                shape="pair",
+            )
+        pairs = [(settled, document.text) for document in documents]
         result = self._fit(pairs, "pair", media_tokens=self._media_tokens(documents))
         contents = [pair if isinstance(pair, tuple) else (pair, "") for pair in result.contents]
-        # One query's pairs share one query text, so every output's query span is the same cut. A chunked
-        # document is one wire document per chunk, each carrying its input's media parts beside the piece.
+        # The settled span is the one every output carries: an under-budget pair repeats it and an
+        # overflowing one settles to it (or to a shorter cut that the probe pair already applied).
+        if len({left for left, _ in contents}) != 1:
+            raise DataError(
+                f"the pair fit settled the shared query differently across {len(contents)} document(s); "
+                "one query rides per request, so the spans must agree",
+                hint="this is a bug in the rerank pair fit: report it with the inputs",
+            )
+        # A chunked document is one wire document per chunk, each carrying its input's media parts beside
+        # the piece.
         mapping = result.chunk_mapping or {}
         origin = [int(mapping.get(out_id, out_id)) for out_id in result.ids]
-        wire_query = self._with_text(query, contents[0][0])
+        wire_query = self._with_text(query, settled)
         wire_documents = [
             self._with_text(documents[source], document_text)
             for source, (_, document_text) in zip(origin, contents, strict=True)

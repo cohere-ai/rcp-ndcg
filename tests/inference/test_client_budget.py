@@ -337,3 +337,80 @@ class TestRerankBudget:
         assert not {"truncate_prompt_tokens", "max_tokens_per_query", "max_tokens_per_doc", "truncation_side"} & set(
             body
         )
+
+
+class TestQueryShareSettled:
+    """One query rides per request: the client settles the shared query span once, exactly as fit would
+    settle it for an overflowing pair, and every document span is verified against the span that ships."""
+
+    def test_mixed_length_documents_all_fit_the_declared_budget(self, tokenizer_json: str) -> None:
+        sender = RecordingSender()
+        census = TextTruncationCensus()
+        config = RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=10,
+            query_max_tokens=4,
+            use_activation=False,
+        )
+        client = RerankClient(config, sender=sender, census=census)
+        long_query = " ".join(["evidence"] * 5)  # over its declared share of 4
+
+        client.rerank(long_query, [" ".join(["evidence"] * 2), " ".join(["evidence"] * 12)])
+
+        sent = sender.bodies[-1]
+        query, documents = sent["query"], sent["documents"]
+        assert word_tokenizer().count(query) <= 4, "the shared query ships at its declared share"
+        for document in documents:
+            assert word_tokenizer().count(query + document) <= 10, "every shipped pair fits the budget"
+
+    def test_the_settlement_is_counted_once_per_call(self, tokenizer_json: str) -> None:
+        sender = RecordingSender()
+        config = RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=10,
+            query_max_tokens=4,
+            use_activation=False,
+        )
+        client = RerankClient(config, sender=sender)
+        client.rerank(" ".join(["evidence"] * 5), [" ".join(["evidence"] * 2)])
+
+        settlement = [
+            cut for cut in client.census.cuts(mechanism=TextTruncationCensus.TEXT_BUDGET) if cut.doc_id == "<query>"
+        ]
+        assert len(settlement) == 1 and settlement[0].kept_tokens == 4
+
+    def test_without_a_share_the_query_ships_whole(self, tokenizer_json: str) -> None:
+        """No split declared: an under-budget pair rides byte-identical (fit's own guarantee)."""
+        sender = RecordingSender()
+        config = RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            tokenizer=tokenizer_json,
+            model="m",
+            max_tokens=8192,
+            use_activation=False,
+        )
+        client = RerankClient(config, sender=sender)
+        long_query = " ".join(["evidence"] * 30)
+        client.rerank(long_query, ["a small document"])
+
+        assert sender.bodies[-1]["query"] == long_query
+
+    def test_a_query_that_alone_fills_the_budget_is_refused_without_a_split(self, tokenizer_json: str) -> None:
+        from rcp_ndcg.data.preprocess import TextBudgetExceededError
+
+        client = RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                tokenizer=tokenizer_json,
+                model="m",
+                max_tokens=6,
+                use_activation=False,
+            ),
+            sender=RecordingSender(),
+        )
+        with pytest.raises(TextBudgetExceededError):
+            client.rerank(" ".join(["evidence"] * 50), ["a document"])

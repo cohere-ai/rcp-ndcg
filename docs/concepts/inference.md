@@ -117,7 +117,7 @@ fresh pool.
 
 ## The role clients
 
-One client per role (the embedder, the reranker, the multi-vector pooler; the judge ports onto the same base),
+One client per role (the embedder, the reranker, the multi-vector pooler; the judge ports onto it later),
 all derived from `rcp_ndcg.inference.clients.RoleClient`, which owns the shared ground once:
 
 - **the adapter lookup within the client's role** -- `get_adapter(config.api, role=...)`, so a config whose

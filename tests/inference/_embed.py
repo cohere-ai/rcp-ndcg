@@ -4,9 +4,9 @@ The real transport (and the ``fake://`` fakes below it) serve the auth tests, so
 frozen ``Sender`` seam: a sender that records every call, replies from a handler, counts requests in
 flight, and bridges synchronous calls with ``asyncio.run``.
 
-``DEFAULT_TOKENIZER`` is the saved test tokenizer the ``conftest`` fixture fills in: a self-hosted role
-config must declare its budget (``tokenizer`` + ``max_tokens``), so ``endpoint`` declares the default one
-for the served wire adapters; a hosted profile needs neither.
+The saved test tokenizer lives in ``tests.inference._budget.DEFAULT_TOKENIZER`` (the ``conftest`` fixture
+fills it in): a self-hosted role config must declare its budget (``tokenizer`` + ``max_tokens``), so
+``endpoint`` declares the default one for the served wire adapters; a hosted profile needs neither.
 """
 
 from __future__ import annotations
@@ -18,10 +18,6 @@ from typing import Any
 from rcp_ndcg.inference.config import SELF_HOSTED_APIS, EmbeddingEndpoint
 from rcp_ndcg.inference.types import Call, Reply, Usage
 from tests.inference import _budget
-
-#: The default explicit budget's tokenizer, filled by the ``conftest`` fixture (a saved ``tokenizer.json``);
-#: the shared module's value, mirrored here so ``endpoint`` reads one home.
-DEFAULT_TOKENIZER = _budget.DEFAULT_TOKENIZER
 
 
 def vendor_payload(api: str, vectors: list[list[float]]) -> dict[str, Any]:

@@ -23,7 +23,6 @@ def tokenizer_json(tmp_path_factory: pytest.TempPathFactory) -> str:
 @pytest.fixture(scope="session", autouse=True)
 def _default_budget(tokenizer_json: str) -> None:
     """Give the shared endpoint helpers their default explicit budget (a served role config declares one)."""
-    from tests.inference import _budget, _embed
+    from tests.inference import _budget
 
-    _embed.DEFAULT_TOKENIZER = tokenizer_json
     _budget.DEFAULT_TOKENIZER = tokenizer_json

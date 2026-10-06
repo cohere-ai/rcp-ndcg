@@ -557,12 +557,16 @@ class _EmbedProbeAlias(_EmbedProbe):
 
 @pytest.fixture(autouse=True)
 def _clean_registry() -> Iterator[None]:
-    """Run each registry test against an empty registry, restoring whatever was there."""
+    """Run each registry test against an empty registry, restoring whatever was there.
+
+    The restore assigns the module attribute: a test may have replaced ``_BUILTINS`` wholesale (a
+    monkeypatched empty registry), and writing into the replacement would be lost when the monkeypatch's
+    own teardown restores the original -- cleared -- object.
+    """
     saved_builtins, saved_plugins = dict(_adapters.base._BUILTINS), _adapters.base._PLUGINS
     _adapters.base._BUILTINS.clear()
     yield
-    _adapters.base._BUILTINS.clear()
-    _adapters.base._BUILTINS.update(saved_builtins)
+    _adapters.base._BUILTINS = dict(saved_builtins)
     _adapters.base._PLUGINS = saved_plugins
 
 
@@ -570,10 +574,7 @@ class TestAdapterRegistry:
     def test_an_unknown_adapter_with_an_empty_registry_promises_nothing_shipped(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import rcp_ndcg.inference.adapters.base as adapter_base
-
-        monkeypatch.setattr(adapter_base, "_BUILTINS", {})
-        monkeypatch.setattr(adapter_base, "_PLUGINS", {})
+        # The autouse fixture has already emptied the registry.
         with pytest.raises(ConfigError) as caught:
             get_adapter("nope", role="embed")
         hint = caught.value.hint or ""

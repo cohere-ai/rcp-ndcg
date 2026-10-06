@@ -274,8 +274,9 @@ class RerankEndpoint(Endpoint):
             the template puts the document first, so does the query), and the template is re-attached after
             the cut. The cut is never left to the engine: an engine-side truncation of the rendered prompt
             drops anchors from one end or the other. The query is cut first, to ``query_max_tokens``; the
-            document gets the rest of the budget. ``None`` sends every pair whole. Content. Refused until
-            the text-budget mechanism wires the client-side cut, rather than silently ignoring a budget.
+            document gets the rest of the budget. ``None`` sends every pair whole -- which a self-hosted role
+            config refuses (declare the budget); a hosted vendor profile with no tokenizer sends pairs uncut.
+            Content.
         query_max_tokens: The query's share of the pair budget (``max_tokens``), in the declared tokenizer's
             tokens; the document gets what remains. It binds when a pair overflows -- an input under budget is
             sent byte-identical to the uncut render. ``None`` (the default) declares no split, and the

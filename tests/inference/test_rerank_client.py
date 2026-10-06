@@ -347,19 +347,26 @@ def test_an_adapter_of_another_role_is_refused_by_the_client() -> None:
         name = "wrong_role_probe"
         role: ClassVar[AdapterRole] = "judge"
 
+    import rcp_ndcg.inference.adapters as registry
+
+    saved = dict(registry.base._BUILTINS)
     register_adapter(_JudgeShaped)
-    with pytest.raises(ConfigError, match="unknown rerank adapter 'wrong_role_probe'"):
-        RerankClient(
-            RerankEndpoint(
-                api="wrong_role_probe",
-                base_url="http://a:8000/v1",
-                model="m",
-                tokenizer=_budget.DEFAULT_TOKENIZER,
-                max_tokens=8192,
-                use_activation=False,
-            ),
-            sender=_server(),
-        )
+    try:
+        with pytest.raises(ConfigError, match="unknown rerank adapter 'wrong_role_probe'"):
+            RerankClient(
+                RerankEndpoint(
+                    api="wrong_role_probe",
+                    base_url="http://a:8000/v1",
+                    model="m",
+                    tokenizer=_budget.DEFAULT_TOKENIZER,
+                    max_tokens=8192,
+                    use_activation=False,
+                ),
+                sender=_server(),
+            )
+    finally:
+        registry.base._BUILTINS.clear()
+        registry.base._BUILTINS.update(saved)
 
 
 def test_a_client_tolerates_an_adapter_without_the_profile_facts() -> None:
@@ -384,20 +391,27 @@ def test_a_client_tolerates_an_adapter_without_the_profile_facts() -> None:
         def usage(self, reply: Reply) -> None:
             return None
 
-    register_adapter(_ThirdParty)
-    server = _server()
-    client = RerankClient(
-        RerankEndpoint(
-            api="third_party_rerank",
-            base_url="http://a:8000/v1",
-            model="m",
-            tokenizer=_budget.DEFAULT_TOKENIZER,
-            max_tokens=8192,
-            use_activation=False,
-        ),
-        sender=server,
-    )
+    import rcp_ndcg.inference.adapters as registry
 
-    assert client.rerank("q", ["a"]).scores == (0.5,)
-    # The client read the profile facts defensively: no default base URL was invented, no pause applied.
-    assert server.calls[0].json == {"model": "m", "query": "q", "documents": ["a"], "top_n": 1}
+    saved = dict(registry.base._BUILTINS)
+    register_adapter(_ThirdParty)
+    try:
+        server = _server()
+        client = RerankClient(
+            RerankEndpoint(
+                api="third_party_rerank",
+                base_url="http://a:8000/v1",
+                model="m",
+                tokenizer=_budget.DEFAULT_TOKENIZER,
+                max_tokens=8192,
+                use_activation=False,
+            ),
+            sender=server,
+        )
+
+        assert client.rerank("q", ["a"]).scores == (0.5,)
+        # The client read the profile facts defensively: no default base URL was invented, no pause applied.
+        assert server.calls[0].json == {"model": "m", "query": "q", "documents": ["a"], "top_n": 1}
+    finally:
+        registry.base._BUILTINS.clear()
+        registry.base._BUILTINS.update(saved)

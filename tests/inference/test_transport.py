@@ -586,3 +586,22 @@ class TestAdapterAuth:
             self._send(client)
         assert "fake-sekrit-value" not in str(caught.value)
         assert "fake-sekrit-value" not in str(caught.value.hint)
+
+
+class TestSyncBridgeLoop:
+    """The sync bridge's private loop is part of the transport's lifecycle: closed with the transport
+    (never leaked as an un-closed event loop), rebuilt by a later run."""
+
+    def test_close_closes_the_own_loop_and_a_later_run_builds_a_fresh_one(self) -> None:
+        script = ReplicaScript(200, 200)
+        transport = _transport(script)
+        transport.run(transport.send([Call("POST", "/a", {})]))
+        own = transport._own_loop
+        assert own is not None and not own.is_closed()
+        transport.close()
+        assert transport._own_loop is None and own.is_closed()
+        assert transport.run(transport.send([Call("POST", "/b", {})]))[0].status == 200
+        rebuilt = transport._own_loop
+        assert rebuilt is not None and rebuilt is not own
+        transport.close()
+        assert rebuilt.is_closed() and transport._own_loop is None

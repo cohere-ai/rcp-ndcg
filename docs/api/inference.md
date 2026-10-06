@@ -71,7 +71,8 @@ applies, and then the pair budget: when the config declares one, every request i
 text-budget mechanism (`rcp_ndcg.data.preprocess.fit`, the `pair` shape) -- the query cut to
 `query_max_tokens` when it is set, each document cut to what remains, the template's fixed segments
 re-attached so the anchors survive, every cut recorded in the census, and a chunked document sent as one
-request per chunk with the chunks' scores pooled back by `max`. The wire carries the cut spans (the engine
+candidate-set row per chunk, scored in the query's request(s), with the chunks' scores pooled back by
+`max`. The wire carries the cut spans (the engine
 renders the template itself), and no `truncate_prompt_tokens` or `max_tokens_per_doc` is ever sent: the client
 cut already, so there is nothing left for the engine to truncate. A config without `max_tokens` sends every
 pair whole.
@@ -95,7 +96,8 @@ from rcp_ndcg.inference.types import Call, Reply, Usage
 
 
 # A served rerank config declares its text budget (the tokenizer the pair budget counts in, the cap) and
-# sets use_activation explicitly (F10). The tokenizer here is a tiny in-memory one, saved to disk so the
+# sets use_activation explicitly (true: probability, false: raw logit). The tokenizer here is a tiny
+# in-memory one, saved to disk so the
 # client can load it; a recipe names the model's own.
 backend = Tokenizer(models.WordLevel({"[UNK]": 0}, unk_token="[UNK]"))
 backend.pre_tokenizer = pre_tokenizers.Whitespace()

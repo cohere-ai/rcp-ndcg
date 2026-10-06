@@ -194,8 +194,13 @@ class RoleClient[C: Endpoint]:
 
         **The media lane's seam** (``budget-media``): that lane wires the role config's media policy through
         here -- each image or video block's token count, from the policy the config declares -- and the
-        :func:`~rcp_ndcg.data.preprocess.fit` call reserves them. Until it lands, media never reaches these
-        budgets (the text-only adapters refuse it), so the reservation is zero.
+        :func:`~rcp_ndcg.data.preprocess.fit` call reserves them.
+
+        Until it lands, the reservation is zero, and the roles differ: the embedding adapters refuse media
+        outright (a declared budget is never under-counted there); the rerank and pooling wires carry media
+        today (content parts, or the pooling ``messages`` shape) **without** reserving its tokens -- a
+        declared budget counts text only. Declared interim policy: a media item's cost is outside the
+        declared budget until the media lane lands.
         """
         return [0] * len(contents)
 
@@ -205,9 +210,11 @@ class RoleClient[C: Endpoint]:
         shape: RequestShape,
         *,
         media_tokens: Sequence[int] | None = None,
+        record: bool = True,
     ) -> FitResult:
         """One :func:`~rcp_ndcg.data.preprocess.fit` call for this client's budget: the shared mechanism the
-        brief wires into every ``_prepare``. ``corpus`` is the client's role name; ids are positional."""
+        brief wires into every ``_prepare``. ``corpus`` is the client's role name; ids are positional. A probe
+        call passes ``record=False`` so its spans are decided without recording census rows."""
         budget, tokenizer = self._budget, self._tokenizer
         assert budget is not None  # callers only fit when a budget is declared
         return fit(
@@ -218,7 +225,7 @@ class RoleClient[C: Endpoint]:
             ids=[str(index) for index in range(len(inputs))],
             media_tokens=media_tokens,
             corpus=self.ROLE,
-            census=self.census,
+            census=self.census if record else None,
         )
 
     @staticmethod

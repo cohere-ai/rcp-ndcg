@@ -629,26 +629,37 @@ class Transport:
         self._auth = auth
 
     async def aclose(self) -> None:
-        """Close the underlying client and its connection pool; safe to call more than once.
+        """Close the underlying client and its connection pool, and the sync bridge's private loop; safe to
+        call more than once.
 
         Asynchronous: an async caller awaits it directly, on the loop the pool serves. A synchronous caller
-        uses :meth:`close`, which runs the same close on the pool's own loop. A later :meth:`run` builds a
-        fresh pool.
+        uses :meth:`close`. A later :meth:`run` builds both afresh.
         """
-        pool = self._pool
-        self._pool = None
-        self._semaphore = None
-        self._loop = None
-        if pool is None:
-            return
-        await pool.aclose()
+        try:
+            pool = self._pool
+            self._pool = None
+            self._semaphore = None
+            self._loop = None
+            if pool is None:
+                return
+            await pool.aclose()
+        finally:
+            self._close_own_loop()
 
     def close(self) -> None:
-        """The synchronous twin of :meth:`aclose`: closes the pool on the loop it serves; safe to call twice.
+        """The synchronous twin of :meth:`aclose`: closes the pool on the loop it serves and the sync
+        bridge's private loop; safe to call twice. A later :meth:`run` builds both afresh.
 
         Called from the loop the pool serves (an async caller closing without an ``await``), the close is
         scheduled instead of blocking that loop on itself.
         """
+        try:
+            self._close_pool()
+        finally:
+            self._close_own_loop()
+
+    def _close_pool(self) -> None:
+        """The pool's close, on the loop it serves (see :meth:`close`)."""
         pool, loop = self._pool, self._loop
         self._pool = None
         self._semaphore = None
@@ -666,6 +677,19 @@ class Transport:
             asyncio.run_coroutine_threadsafe(pool.aclose(), loop).result()
             return
         loop.run_until_complete(pool.aclose())
+
+    def _close_own_loop(self) -> None:
+        """The sync bridge's private loop (:meth:`run`), closed once it is not running; a later ``run``
+        builds a fresh one. The background thread's loop (a notebook's bridge) serves the process and is
+        left to it.
+        """
+        own = self._own_loop
+        self._own_loop = None
+        if own is None or own.is_closed():
+            return
+        if own.is_running():
+            return  # still serving a caller (the notebook bridge's thread); it lives with the transport
+        own.close()
 
     def __enter__(self) -> Self:
         return self
