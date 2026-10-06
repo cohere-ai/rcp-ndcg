@@ -25,17 +25,19 @@ below are verified against the vLLM entrypoints (`vllm/entrypoints/pooling/` and
 | Field | Sent | Why |
 | --- | --- | --- |
 | `model` | the config's `model` | the served model name |
-| `input` | the batch's texts | one list per request |
+| `input` | the batch's texts (or, under `request_shape: token_ids`, the fitted id lists) | one list per request |
 | `task` | `"token_embed"` | one vector per token, the late-interaction task |
 | `encoding_format` | `"base64"` | JSON floats are what made corpus indexing expensive |
 | `embed_dtype` | the config's `embed_dtype` | the transfer precision (below) |
 | `endianness` | `"little"` | explicit, so the frame decodes on any server platform |
 
-Two request shapes exist, and only one of them runs the server's chat template:
-a text-only batch travels as one `input` list (tokenised raw), while a media
-item (a page image, for the ColPali and ColQwen3 checkpoints) travels as its own
-`messages` request — the only shape in which the template reaches the image
-placeholders. `dimensions` is never sent:
+Two wire forms exist, and only one of them runs the server's chat template:
+a text-only batch travels as one `input` list (the rendered strings, or the
+client-fitted id lists under `request_shape: token_ids`), while a media item (a
+page image, for the ColPali and ColQwen3 checkpoints) always travels as its own
+`messages` request — the only form in which the template reaches the image
+placeholders, which is why the pooling wire lowers it itself and a config
+declaring `request_shape: messages` is refused. `dimensions` is never sent:
 `/pooling` refuses it.
 
 A media batch of one page and one caption therefore becomes two requests, and the

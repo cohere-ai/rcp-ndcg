@@ -56,7 +56,8 @@ released together.
   does not name is refused with a typed error naming the field, before the media is fetched; a config that
   declares media fields with no allowed side is refused.
 - **`empty_query` on the rerank role** (CONTENT): `refuse` (the default) refuses an empty query with a typed
-  error naming the query id; `send` keeps today's empty string.
+  error naming the query id; `send` keeps today's empty string. `rerank`/`arerank` take the new
+  `query_id` keyword ("" names it `<unnamed>`; `arerank_many` passes each example's id).
 - **`request_shape` is implemented end to end on the embedding and pooling roles**: `openai_embeddings`
   sends the chat-style embeddings input (`messages`: one user message per item, content parts, image parts
   and video parts -- sampled frames as image parts, a `video_url` container per the role's `video_policy`),

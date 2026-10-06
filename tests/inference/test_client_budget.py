@@ -343,6 +343,23 @@ class TestPoolBudget:
                 sender=RecordingSender(),
             )
 
+    def test_the_pool_config_refuses_a_declared_messages_shape(self, tokenizer_json: str) -> None:
+        """The pooling wire lowers chat parts for its media items itself; a config-declared messages shape
+        would leave every text batch on the rendered-string route while the identity declared the chat
+        form -- refused, never silently inert."""
+        with pytest.raises(ConfigError, match="messages"):
+            PoolingClient(
+                PoolingEndpoint(
+                    base_url="http://127.0.0.1:9000/v1",
+                    model="m",
+                    dim=2,
+                    tokenizer=tokenizer_json,
+                    max_tokens=64,
+                    request_shape="messages",
+                ),
+                sender=RecordingSender(),
+            )
+
     def test_the_pooling_config_honours_the_per_shape_budget_too(self, tokenizer_json: str) -> None:
         """``query_max_tokens`` on a :class:`PoolingEndpoint` caps the query shape (its whole budget there)."""
         sender = RecordingSender()

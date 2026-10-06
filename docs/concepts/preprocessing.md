@@ -308,7 +308,10 @@ tokenizer, a vendor profile follows the same rule as self-hosted.
 The role configs also declare `template` (the `TemplateSpec` above), `empty_doc` (`send`, `omit_zero` --
 never sent and scored `0.0` -- or `send_text` with its `empty_doc_text` placeholder; every role client
 consumes it, for an empty text document and for one whose every media item the budget dropped),
-`request_shape` (`text`, `messages` or `token_ids`; the adapters implement it), and the reranker's
+`request_shape` (`text`, `messages` or `token_ids`; the embedding wires implement all three -- the
+messages route is the chat-style embeddings input, and `token_ids` sends the ids the fit tokenised -- and a
+rerank config that declares anything but `text` is refused, the rerank wires sending rendered text today),
+and the reranker's
 `instruction` gains a `system` value (the instruction as a system message). The reranker also declares
 `empty_query` (`refuse` by default -- an empty query is refused with a typed error naming the query id,
 instead of being scored against every candidate; `send` keeps the empty string), and every role config

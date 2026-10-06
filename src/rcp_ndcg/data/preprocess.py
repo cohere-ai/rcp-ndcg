@@ -790,8 +790,10 @@ class TextBudget(BaseModel):
             ``query`` shape (an embedding role's per-shape budget) it is that shape's WHOLE budget --
             ``max_tokens`` then caps the document shape only. ``None`` (the default) declares no split: on
             a pair, a query that does not fit the budget is then refused rather than cut undeclared (declare
-            the split instead). On a pair it must be smaller than ``max_tokens`` -- the check the contracts
-            follow-up left open, refused here where the budget is resolved.
+            the split instead). A share above ``max_tokens`` is refused here; EQUALITY is legal (both shapes
+            capped the same) -- a pair share at or over the budget is refused one layer up, by the rerank
+            config, and ``fit``'s pair cut refuses a query whose settled render would leave the document
+            nothing.
         template: The request template (:class:`~rcp_ndcg.data.templates.TemplateSpec`), whose fixed
             segments are measured once per (template, shape) and whose specials are resolved from the
             tokenizer. ``None`` fits raw text: the overhead is then the tokenizer post-processor's tokens
@@ -1085,7 +1087,11 @@ def fit(
     if overhead > shape_budget:
         raise ConfigError(
             f"the template's fixed overhead alone is {overhead} tokens, over the budget of {shape_budget}",
-            hint="raise max_tokens, or simplify the template (every fixed segment is reserved)",
+            hint=(
+                "raise query_max_tokens, or simplify the template (every fixed segment is reserved)"
+                if shape == "query" and budget.query_max_tokens is not None
+                else "raise max_tokens, or simplify the template (every fixed segment is reserved)"
+            ),
         )
 
     def assemble(query: str, document: str) -> str:

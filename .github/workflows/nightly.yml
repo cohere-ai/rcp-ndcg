@@ -49,6 +49,7 @@ jobs:
           status=$?
           set -e
           uv run --no-sync python - <<'PY'
+          import os
           import xml.etree.ElementTree as ET
 
           root = ET.parse("nightly-report.xml").getroot()
@@ -56,10 +57,21 @@ jobs:
           for case in root.iter("testcase"):
               if case.find("failure") is None and case.find("error") is None:
                   continue
-              # junit writes the class name dotted; a rerunnable id names the file path.
-              module = (case.get("classname") or "").replace(".", "/")
-              path = f"{module}.py" if module and not module.endswith(".py") else module
-              failures.append(f"{path}::{case.get('name') or ''}")
+              # junit writes the class name dotted WITH the class chain; a rerunnable node id names the file,
+              # then the classes. Split the dotted name at the longest prefix that exists as a module file.
+              parts = (case.get("classname") or "").split(".")
+              module = 0
+              for length in range(len(parts), 0, -1):
+                  if os.path.exists("/".join(parts[:length]) + ".py"):
+                      module = length
+                      break
+              node_id = (
+                  ("/".join(parts[:module]) + ".py" if module else ".".join(parts))
+                  + "".join("::" + part for part in parts[module:])
+                  + "::"
+                  + (case.get("name") or "")
+              )
+              failures.append(node_id)
           with open("failures.txt", "w", encoding="utf-8") as handle:
               handle.write("\n".join(failures) + ("\n" if failures else ""))
           print(f"{len(failures)} failing test id(s)")

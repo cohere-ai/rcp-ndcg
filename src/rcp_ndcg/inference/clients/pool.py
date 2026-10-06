@@ -44,7 +44,7 @@ from rcp_ndcg.inference.adapters.base import Adapter, get_adapter
 from rcp_ndcg.inference.clients._base import PreparedItems, RoleClient
 from rcp_ndcg.inference.config import PoolingEndpoint
 from rcp_ndcg.inference.transport import Sender
-from rcp_ndcg.inference.types import Call, Embeddings, EncodeRole, PoolRequest, Reply, TokenCount
+from rcp_ndcg.inference.types import Call, Embeddings, EncodeRole, PoolRequest, Reply, TokenCount, l2_normalize
 
 
 class PoolingClient(RoleClient):
@@ -101,6 +101,14 @@ class PoolingClient(RoleClient):
                 f"request_shape {config.request_shape!r} is declared, but the {config.api} wire implements "
                 f"{sorted(supported)}",
                 hint="declare a request shape the wire implements (the default is text)",
+            )
+        if config.request_shape == "messages":
+            raise ConfigError(
+                "request_shape 'messages' is declared, but the pooling wire lowers chat parts for its media "
+                "items itself; a text batch would silently travel as the rendered strings while the config's "
+                "identity declared the chat form",
+                hint="drop request_shape (the default): the pooling wire applies the chat form to media "
+                "items on its own, and token_ids sends the fitted ids for the text batches",
             )
         if config.request_shape == "token_ids" and config.tokenizer is None:
             raise ConfigError(
@@ -328,16 +336,17 @@ class PoolingClient(RoleClient):
         return embeddings
 
     def _apply_mrl_cut(self, embeddings: Embeddings) -> Embeddings:
-        """The Matryoshka cut (2g, plug-pplx): the model's vectors sliced to the declared ``mrl_dim``,
-        renormalised by the ``normalize`` step that follows -- cut-then-renormalise, the card's order.
-        Slicing AFTER the normalisation (x/||x|| cut) would ship un-normalised cut vectors; the card slices
-        the raw model output and normalises the slice, and ``/pooling`` refuses per-request ``dimensions``,
-        so the cut is the client's. The config refuses an ``mrl_dim`` at or over ``dim``, and the adapter
-        refuses a reply whose width differs from ``dim``, so the slice never runs empty.
+        """The Matryoshka cut (2g, plug-pplx): the model's vectors sliced to the declared ``mrl_dim`` and
+        renormalised HERE -- cut-then-renormalise, the card's order, whatever ``normalize`` says (the cut
+        destroys unit-ness; the later ``normalize`` step is then idempotent). Slicing AFTER a normalisation
+        (x/||x|| cut) would ship un-normalised cut vectors; the card slices the raw model output and
+        normalises the slice, and ``/pooling`` refuses per-request ``dimensions``, so the cut is the
+        client's. The config refuses an ``mrl_dim`` at or over ``dim``, and the adapter refuses a reply
+        whose width differs from ``dim``, so the slice never runs empty.
         """
         assert self.config.mrl_dim is not None
         cut = np.ascontiguousarray(embeddings.vectors[:, : self.config.mrl_dim])
-        return Embeddings(vectors=cut, offsets=embeddings.offsets)
+        return Embeddings(vectors=l2_normalize(cut), offsets=embeddings.offsets)
 
     def _refuse_a_media_batch_under_skip_ids(self) -> None:
         """The typed refusal of a media batch under declared ``document_skip_token_ids``, before anything is
