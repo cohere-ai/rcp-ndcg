@@ -97,8 +97,8 @@ SGLang. Frame-directory corpora need neither, because their frames are sent as i
 
 Inside one node, use the engine's own data parallelism for one URL per node (vLLM `--data-parallel-size`, SGLang
 `python3 -m sglang_router.launch_server --dp-size`); across nodes, run independent replicas and list their URLs
-(below). The paper's exact engine commands, with their images pinned, are in `experiments/paper/serve/` of the
-repository.
+(below). The paper's exact engine commands, with their images and weights revisions pinned, are in
+`experiments/paper/serve/` of the repository.
 
 ### What the client checks at run time
 

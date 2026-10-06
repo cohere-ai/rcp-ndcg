@@ -53,7 +53,8 @@ judge model and the benchmark corpora. The paper's primary judges were Qwen3.5-3
 v3; text only) and Qwen3.6-27B (TREC-DL); gpt-oss-120b was the second judge on NanoBEIR, BRIGHT and TREC-DL.
 
 - The judge configs ship in the package (`src/rcp_ndcg/llm/judges/`, loaded by name), and the paper's engine
-  commands, with their images pinned, are in `experiments/paper/serve/` ([serving](docs/concepts/serving.md)).
+  commands, with their images and weights revisions pinned, are in `experiments/paper/serve/`
+  ([serving](docs/concepts/serving.md)).
 - [Calibrate your benchmark](docs/tutorials/calibrate-your-benchmark.md) walks through a run.
 - The schedules are specified in placements per document, so their window counts scale with the pool. At the
   paper's pool of 150 candidates the defaults give exactly its counts: 53 random, 27 stratified (both mirrored) and
