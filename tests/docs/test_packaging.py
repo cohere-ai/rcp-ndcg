@@ -147,7 +147,11 @@ def _assert_one_environment_per_package(workflow: dict) -> None:
     assert workflow[True]["push"]["tags"] == ["v*"]  # YAML reads the key `on` as true
     assert set(jobs) == {"build", *RELEASE_PUBLISH_JOBS, "github-release"}
     build = str(jobs["build"])
-    assert "uv build --all-packages" in build and "packages/rcp-ndcg-vllm" in build, (
+    # The published packages are built by name (rcp-ndcg-vllm from its own directory, outside the uv
+    # workspace); --all-packages is refused so a future workspace member (rcp-ndcg-test) is never swept
+    # into the release build.
+    assert "--all-packages" not in build, "the release builds the three published packages by name"
+    assert "--package rcp-ndcg --package rcp-ndcg-core" in build and "packages/rcp-ndcg-vllm" in build, (
         "rcp-ndcg-vllm is outside the uv workspace: the build job must build it from its own directory"
     )
     assert "twine check" in build and "requirements-constraints.txt" in build
@@ -179,6 +183,7 @@ def _assert_one_environment_per_package(workflow: dict) -> None:
 def test_the_release_workflow_publishes_three_packages_one_environment_each() -> None:
     workflow, text = _release_workflow()
     assert "secrets." not in text  # trusted publishing: no token anywhere
+    assert "rcp-ndcg-test" not in text  # the unpublished test package is never built or published
     _assert_one_environment_per_package(workflow)
 
 

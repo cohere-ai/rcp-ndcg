@@ -42,6 +42,7 @@ conflicts = [[
 members = [
     "rcp-ndcg",
     "rcp-ndcg-core",
+    "rcp-ndcg-test",
 ]
 
 [[package]]
@@ -4985,6 +4986,11 @@ vllm = [
     { name = "vllm" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "rcp-ndcg-test" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "accelerate", marker = "extra == 'local'", specifier = ">=1.10" },
@@ -5033,6 +5039,9 @@ requires-dist = [
 ]
 provides-extras = ["s3", "azure", "hf", "http", "local", "mteb", "calibrate", "vllm", "data", "dev", "docs"]
 
+[package.metadata.requires-dev]
+dev = [{ name = "rcp-ndcg-test", editable = "packages/rcp-ndcg-test" }]
+
 [[package]]
 name = "rcp-ndcg-core"
 version = "0.0.1"
@@ -5058,6 +5067,63 @@ requires-dist = [
     { name = "torch", marker = "extra == 'irt'", specifier = ">=2.0" },
 ]
 provides-extras = ["irt"]
+
+[[package]]
+name = "rcp-ndcg-test"
+version = "0.0.1"
+source = { editable = "packages/rcp-ndcg-test" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-8-rcp-ndcg-vllm'" },
+    { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-8-rcp-ndcg-local' or extra != 'extra-8-rcp-ndcg-vllm'" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "rcp-ndcg" },
+    { name = "rcp-ndcg-vllm" },
+]
+
+[package.optional-dependencies]
+test = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "rcp-ndcg", editable = "." },
+    { name = "rcp-ndcg-vllm", editable = "packages/rcp-ndcg-vllm" },
+]
+provides-extras = ["test"]
+
+[[package]]
+name = "rcp-ndcg-vllm"
+version = "0.0.1"
+source = { editable = "packages/rcp-ndcg-vllm" }
+dependencies = [
+    { name = "httpx" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-8-rcp-ndcg-vllm'" },
+    { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-8-rcp-ndcg-local' or extra != 'extra-8-rcp-ndcg-vllm'" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "rcp-ndcg" },
+    { name = "tokenizers", version = "0.22.2", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-8-rcp-ndcg-vllm'" },
+    { name = "tokenizers", version = "0.23.2", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-8-rcp-ndcg-local' or extra != 'extra-8-rcp-ndcg-vllm'" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "jinja2", marker = "extra == 'test'", specifier = ">=3.1" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "rcp-ndcg", specifier = "==0.0.1" },
+    { name = "tokenizers", specifier = ">=0.21" },
+]
+provides-extras = ["test"]
 
 [[package]]
 name = "referencing"

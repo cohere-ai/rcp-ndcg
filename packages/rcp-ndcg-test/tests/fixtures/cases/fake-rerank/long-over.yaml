@@ -1,0 +1,31 @@
+id: fake-rerank/long-over
+recipe: fake-rerank
+role: rerank
+source:
+  kind: generated
+strata:
+  modality: text
+  length: long_over
+  batch: single
+inputs:
+  queries:
+  - id: q1
+    text: anchors must survive
+  documents:
+  - id: d1
+    text: budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
+      budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
+  - id: d2
+    text: a short companion document
+expected:
+  kind: scores
+  values:
+  - - 0.47938559
+    - 0.83409627
+  tolerance:
+    abs: 0.0001
+  origin: engine
+  status: reproduced
+notes: 'The first document is the word ''budgetpad'' joined by single spaces, 18 repeats, measured 162
+  tokens (over max_tokens 160): the pair fit cuts it and re-attaches the ASSISTANT anchor. Values are
+  the tests'' FakeRerankEngine answers for the cut render.'

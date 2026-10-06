@@ -1,0 +1,51 @@
+# The late-interaction fixture recipe for the conformance suite's multi-vector path tests.
+#
+# A TEST fixture, like the packaged fake-embed one: the model id names nothing real, the tokenizer is the
+# small fixture tokenizer.json, and the engine is the test-local FakePoolEngine (tests/fakes_fixture.py,
+# registered by the tests). The fixture exists so the multi-vector path of the runner -- the per-side fit,
+# PoolingClient over /pooling in base64 float16, and the product's MaxSim scorer -- is exercised on CPU.
+id: fake-pool
+model: fixtures/LateInteractionEmbedder
+revision: "0123456789abcdef0123456789abcdef01234567"
+role: multi_vector
+input: [text]
+licence: apache-2.0
+engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0", startup_timeout_s: 60}
+resources: {gpus: 1}
+serve:
+  runner: pooling
+  convert: null
+  hf_overrides: {}
+  chat_template: null
+  pooler_config: {task: token_embed}
+  trust_remote_code: false
+  max_model_len: 512
+  dtype: float16
+  plugin: null
+  extra_args: []
+client:
+  api: vllm_pooling
+  tokenizer: ../../tokenizer.json
+  max_tokens: 64
+  template:
+    query:
+      - {fixed: "query: "}
+      - {content: query}
+    document:
+      - {fixed: "doc: "}
+      - {content: document}
+    anchor: mean
+  on_overflow: cut
+  empty_doc: omit_zero
+  embed_dtype: float16
+  dim: 8
+reference:
+  # No reference subprocess ships for the fixture: the conformance suite compares against the case's
+  # recorded values (the test fake's deterministic answers), not against a reference implementation.
+  kind: stored_scores
+  score_scale: cosine
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources: []
+notes: "A test fixture for the conformance suite; its engine is the tests' FakePoolEngine, and its
+  reference block is stored_scores because the suite compares against recorded case values."

@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rcp-ndcg-test"
+version = "0.0.1"
+description = "Reference cases and one conformance suite for rcp-ndcg recipes: every case through the product's role clients."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.12"
+authors = [
+  { name = "RCP-nDCG contributors" },
+]
+keywords = ["information-retrieval", "evaluation", "conformance", "vllm", "testing"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Testing",
+]
+# Unpublished on purpose (never on PyPI): the repository's CI, the product's pytest suite and the GPU waves
+# install it from the workspace or the staged wheelhouse. It depends on the product and the serving-recipes
+# harness at the release's version, and never the other way round: neither published package names this one.
+dependencies = [
+  "rcp-ndcg==0.0.1",
+  "rcp-ndcg-vllm==0.0.1",
+  "numpy>=1.26",
+  "pydantic>=2.0",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# The package's own CPU test suite. The conformance and case loaders reach the tokenizer through the
+# product's [hf] extra (declare it in the environment that measures token lengths, e.g. the dev extra).
+test = [
+  "pytest>=8.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/cohere-ai/rcp-ndcg"
+Repository = "https://github.com/cohere-ai/rcp-ndcg"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# Package data: the fixture recipe, its tokenizer and its fixture cases (the shipped fake's end-to-end
+# example) travel in the wheel, so a GPU-node client environment runs the suite from wheels alone.
+# The real cases live at the package root under cases/ (written by the cases lanes; staged by the wave
+# runner) -- they are repository data, not importable package data.
+[tool.setuptools.package-data]
+"rcp_ndcg_test" = [
+  "py.typed",
+  "fixtures/tokenizer.json",
+  "fixtures/recipes/*/*",
+  "fixtures/cases/*/*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

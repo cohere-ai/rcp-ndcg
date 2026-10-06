@@ -1,0 +1,38 @@
+id: fake-embed/short-mixed-length
+recipe: fake-embed
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: short
+  batch: mixed_length
+inputs:
+  queries:
+  - id: q1
+    text: what is retrieval evaluation
+  - id: q2
+    text: ndcg
+  documents:
+  - id: d1
+    text: rcp-ndcg calibrates relevance judgements with an IRT model
+  - id: d2
+    text: graded gains and a rank-sensitive metric
+  - id: d3
+    text: budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
+      budgetpad budgetpad budgetpad budgetpad
+expected:
+  kind: similarity_matrix
+  tolerance:
+    abs: 0.0001
+  origin: engine
+  status: reproduced
+  values:
+  - - -0.06773625
+    - 0.22013411
+    - -0.05351645
+  - - 0.48138377
+    - 0.31906667
+    - -0.01295907
+notes: 'A mixed-length batch: documents of 9, 7 and 126 tokens in one request; the long one stays under
+  the budget (max_tokens 128).'

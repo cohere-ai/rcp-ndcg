@@ -25,6 +25,26 @@ released together.
 
 ### Public surface
 
+- New package `rcp-ndcg-test` (`packages/rcp-ndcg-test/`, a uv workspace member; version 0.0.1, depends on
+  `rcp-ndcg==0.0.1` and `rcp-ndcg-vllm==0.0.1`): the reference cases and the one conformance suite for served
+  recipes. **Unpublished on purpose — never on PyPI** (used by this repository's CI, the product's pytest
+  suite and the GPU waves; no published package names it, and `release.yml` builds the three published
+  distributions by name so it is never swept into a release). The case format is operator-defined
+  (one case per `cases/<recipe-id>/<case-slug>.yaml`); validation covers the file-level rules (the
+  `model_card` verbatim quote and 40-hex revision, media existence, the expected shapes and tolerances) and
+  — with the recipe — the role/modality/template-shape rules, the strata grid coverage per recipe and the
+  long inputs' measured token lengths against `client.max_tokens` with the product tokenizer. The runner
+  sends every case through the product's role clients built from the recipe's `client` block (never raw
+  HTTP, never a copy of the client), against a live engine (`target="engine"`) or a recipe-level fake
+  (`target="fake"`), and returns a typed report (`CaseResult`: compared, passed, skipped with reason —
+  `values: null` is a skip, never a pass). Public names: `Case`, `CaseSource`, `CaseStrata`, `CaseQuery`,
+  `CaseDocument`, `CaseInputs`, `CaseTolerance`, `CaseExpected`, `CaseBundle`, `load_case`, `load_cases`,
+  `default_cases_root`, `CaseResult`, `ConformanceReport`, `run_case`, `run_suite`, `FakeEngine`,
+  `FakeReply`, `FakeEmbedEngine`, `fake_engine_for`, `fake_http_transport`, `register_fake_engine`,
+  `unregister_fake_engine`, `registered_fake_engines`, `fixture_path`, `package_tokenizer_path`,
+  `FIXTURE_RECIPE_ID`, `CaseRun`, `conformance_params`, `CaseError`, `ConformanceError`. The fake-engine
+  registry ships no model-level fakes yet (they are built from the GPU recordings later); one test fake for
+  the packaged fixture recipe (`fake-embed`) exercises the runner end to end on CPU.
 - New package `rcp-ndcg-vllm` (`packages/rcp-ndcg-vllm/`, outside the root uv workspace and lock; version
   0.0.1, depends on `rcp-ndcg==0.0.1` — a hard dependency, and pinned by the release workflow's version
   check): serving recipes for vLLM as data. The recipe's `client` block **is**

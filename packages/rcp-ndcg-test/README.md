@@ -1,0 +1,183 @@
+# rcp-ndcg-test
+
+Reference cases and one conformance suite for [rcp-ndcg](https://github.com/cohere-ai/rcp-ndcg) models
+served with [vLLM](https://docs.vllm.ai) — every case through the product's role clients, never raw HTTP
+and never a copy of the client.
+
+**Unpublished on purpose.** This package is never uploaded to PyPI: the repository's CI, the product's
+pytest suite and the GPU waves install it from the uv workspace (the root's `dev` dependency group) or
+from the staged wheelhouse. No published package names it, and the release workflow builds the three
+published distributions by name, so it is never built or released with them. It depends on `rcp-ndcg` and
+`rcp-ndcg-vllm` at the release's version — never the other way round.
+
+## What a case is
+
+One case per file, `cases/<recipe-id>/<case-slug>.yaml` (the recipe id is the canonical one from the
+serving-recipes package's `recipes/` root):
+
+```yaml
+id: qwen3-embedding-0.6b/card-asymmetry
+recipe: qwen3-embedding-0.6b
+role: embed
+source:
+  kind: model_card                      # model_card | generated
+  url: https://huggingface.co/Qwen/Qwen3-Embedding-0.6B
+  revision: "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"   # 40-hex commit of the README
+  section: "Transformers Usage"
+  quote: |                              # the exact lines of the card's example, verbatim
+    query = "What is the capital of China?"
+    ...
+    embeddings[0][:5]
+strata:
+  modality: text                        # text | image | video | mixed
+  length: short                         # short | long_under | long_over | mixed
+  batch: single                         # single | uniform | mixed_length | mixed_modality
+inputs:
+  instruction: "Given a web search query, retrieve relevant passages"
+  queries:   [{id: q1, text: "What is the capital of China?"}]
+  documents: [{id: d1, text: "The capital of China is Beijing."}]
+expected:
+  kind: similarity_matrix               # similarity_matrix | scores | ranking | none
+  values: [[0.76]]                      # null while the GPU wave has not filled it
+  tolerance: {abs: 5e-4}
+  origin: published                     # published | reference | engine
+  status: reproduced                    # published_unverified | reproduced | pending_gpu
+notes: "the card prints 4 decimals; a bf16 margin is declared"
+```
+
+A `model_card` case copies its inputs and printed outputs verbatim from the card at the pinned README
+revision (the tolerance reflects the card's rounding plus a declared margin). A `generated` case fills a
+stratum the cards do not cover: every recipe needs at least one case per applicable cell of
+modality × length × batch — `short`, `long_under` (within 5% under `client.max_tokens`, never cut),
+`long_over` (over it; the client cuts, the anchors must survive), `mixed_length` batches, and for
+vision-language recipes `image` / `video` (if the model takes video) and `mixed_modality` batches.
+Generated cases start `origin: reference, status: pending_gpu, values: null`; the GPU waves fill them from
+the reference implementation and the engine. Long inputs are deterministic (their construction is
+recorded in `notes`), measured with the recipe's tokenizer; media files live under the recipe's
+`media/` directory, and nothing is fetched at test time.
+
+### How to add one
+
+1. Write `cases/<recipe-id>/<case-slug>.yaml` — the slug is the file stem, the directory is the recipe id.
+2. Run the validator (from the repository root; it needs no GPU):
+
+   ```bash
+   uv run --no-sync python -c "
+   from rcp_ndcg_test.cases import load_cases
+   from rcp_ndcg_vllm.recipe import load_recipe
+   recipe = load_recipe('packages/rcp-ndcg-vllm/recipes/<recipe-id>')
+   bundle = load_cases('packages/rcp-ndcg-test/cases', recipe)
+   print(bundle)
+   "
+   ```
+
+3. The product suite enforces the same thing on every push: `tests/test_cases_package.py` loads every
+   case (file level everywhere, recipe level where the recipe exists, lengths where a tokenizer is
+   loadable), so a malformed case fails CI.
+
+Media: only files whose licence allows redistribution in an Apache-2.0 repository; otherwise generate a
+synthetic image or video with a script kept in the case directory as `media/make_media.py` and say so in
+`notes`. Never touch another recipe's directory.
+
+## The conformance suite
+
+One runner, two targets, one typed report:
+
+```python
+import rcp_ndcg_test.fakes  # noqa: F401  (registers the shipped fixture fake)
+
+from rcp_ndcg_test.cases import load_cases
+from rcp_ndcg_test.conformance import run_suite
+from rcp_ndcg_test.fakes import fake_engine_for, fixture_path
+from rcp_ndcg_vllm.recipe import load_recipe
+
+# The packaged fixture recipe and its shipped fake: the runner's end-to-end exercise, CPU only.
+recipe = load_recipe(fixture_path("recipes", "fake-embed"))
+bundle = load_cases(fixture_path("cases"), recipe, recipes_root=fixture_path("recipes"))
+report = run_suite(recipe, bundle.cases, target="fake")
+print(report.summary())
+assert report.ok
+
+# A live engine serving the recipe (a vLLM on a GPU slot):
+# run_suite(recipe, bundle.cases, target="engine", base_url="http://127.0.0.1:8100/v1")
+```
+
+The report is per case (`CaseResult`: `compared`, `passed`, `skipped` with a reason, `detail` with the
+worst delta) and per run (`ConformanceReport`: `ok`, `failures`, `skipped`, `summary`). `values: null`
+(pending the GPU wave) is a skip, never a pass; `kind: none` runs the path and compares nothing; a
+tolerance breach is a failure with the worst cell in its detail; a product error (an engine refusal, an
+unusable reply) fails the case carrying the product's typed message.
+
+Both targets send through the **product's role clients** built from the recipe's `client` block —
+`EmbeddingClient`, `PoolingClient` or `RerankClient` over the product's adapter and transport. The
+engine is reached with a real `httpx` pool; a fake sits *below* the transport (an `httpx` transport the
+product's `Transport` sends through), so routing, retries and the adapters are the product's in both.
+One bridge is declared while the role clients do not carry the text budget yet (the `clients-final`
+wiring): the runner pre-fits every input with the product's `fit` — the recipe's own tokenizer, template
+and budget — and sends the fitted contents through a client whose budget fields are cleared; a recipe
+with per-side prompts is refused with that reason. When the wiring lands, drop the pre-fit and send the
+raw contents.
+
+## Fake engines
+
+`rcp_ndcg_test.fakes` is the seam a recipe-level fake implements: the protocol
+(`recipe_id`, `name`, `handle(method, path, body) -> FakeReply`) and the registry by recipe id. A fake
+must answer the role's route(s) plus `GET /models` and `POST /tokenize` (the engine's tokenization ground
+truth, so anything that cross-checks the client's `fit` can do it offline). No model-level fake ships
+yet — the verified emulators are built from the GPU recordings later. What ships is one test fake for the
+packaged fixture recipe (`fake-embed`: recipe, tokenizer and cases under `rcp_ndcg_test/fixtures/`, all
+in the wheel), registered on import:
+
+```python
+from rcp_ndcg_test.fakes import FakeEmbedEngine, fake_engine_for
+
+engine = fake_engine_for("fake-embed")   # the shipped one
+assert isinstance(engine, FakeEmbedEngine)
+```
+
+A test fake is a deterministic surrogate, clearly marked — a test that asserts numbers may only do so
+against inputs whose answer it recorded.
+
+## The pytest plugin
+
+Opt-in, one import — installing the package never injects tests into another suite:
+
+```python
+import pytest
+
+from rcp_ndcg_test.plugin import conformance_params
+
+
+@pytest.mark.parametrize("run", conformance_params("fake"))
+def test_conformance(run):
+    run.assert_passes()
+```
+
+`conformance_params(target, *, recipes_root, cases_root, base_url)` builds one param per case (id
+`<recipe>/<case-slug>`). A skipped case (pending values) becomes `pytest.skip` with its reason; a failed
+case an `AssertionError` with the detail. Against a live engine from the CI job's environment variable:
+
+<!-- snippet: skip (needs a live engine's URL) -->
+```python
+import os
+
+import pytest
+
+from rcp_ndcg_test.plugin import conformance_params
+
+
+@pytest.mark.parametrize("run", conformance_params("engine", base_url=os.environ["RCP_NDCG_CONFORMANCE_URL"]))
+def test_served_conformance(run):
+    run.assert_passes()
+```
+
+The package's own tests run from the root venv (the dev dependency group installs it):
+
+```bash
+uv run --no-sync pytest packages/rcp-ndcg-test/tests -q
+```
+
+The real cases under `cases/` are repository data, staged to a GPU node by the wave runner; the fixture
+recipe, its tokenizer and its fixture cases are package data (in the wheel), so the suite runs end to end
+anywhere the package is installed. See `docs/how-to/add-a-model.md` for the recipe side and
+`docs/how-to` for the wider guides.
