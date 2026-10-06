@@ -217,6 +217,36 @@ class TestEmbedBudget:
                 query_max_tokens=1025,
             )
 
+    def test_a_prompt_prefix_beside_a_template_is_refused(self) -> None:
+        """One home for a prompt prefix (rec-qwen3-embedding-0.6b): the client prepends query_prompt before
+        the template renders, so declaring both doubles the prefix. Refused, naming the template segment to
+        use instead; the fields stay for template-less configs (hosted profiles)."""
+        template = TemplateSpec(query=(Segment(fixed="Instruct: task\\nQuery:"), Segment(content="query")))
+        with pytest.raises(ConfigError, match="doubles the prefix") as caught:
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer="test/word-level",
+                max_tokens=64,
+                template=template,
+                query_prompt="Instruct: task\\nQuery:",
+            )
+        assert "fixed segment" in caught.value.hint and "query" in caught.value.hint
+        with pytest.raises(ConfigError, match="doubles the prefix") as caught:
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer="test/word-level",
+                max_tokens=64,
+                template=TemplateSpec(document=(Segment(fixed="D: "), Segment(content="document"))),
+                doc_prompt="D: ",
+            )
+        assert "fixed segment" in caught.value.hint and "document" in caught.value.hint
+        # Template-less configs (hosted profiles) keep the fields.
+        EmbeddingEndpoint(
+            api="cohere", base_url="http://127.0.0.1:9000/v1", model="m", max_tokens=64, query_prompt="Q: "
+        )
+
     def test_the_query_shape_budget_caps_the_query_not_the_document(self, tokenizer_json: str) -> None:
         """The per-shape budget (the topk hand-off: query 1024, document 8192): ``query_max_tokens`` caps
         the query shape whole; ``max_tokens`` keeps capping the document shape; the census rows name the

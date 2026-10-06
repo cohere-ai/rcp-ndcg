@@ -79,6 +79,30 @@ def _empty_doc_pairing(config: EmbeddingEndpoint | RerankEndpoint) -> None:
         raise ValueError(f"empty_doc_text applies to empty_doc 'send_text' only, not {config.empty_doc!r}")
 
 
+def _one_home_for_a_prompt_prefix(config: EmbeddingEndpoint) -> None:
+    """A prompt prefix has one home (2d, rec-qwen3-embedding-0.6b): the client prepends ``query_prompt``/
+    ``doc_prompt`` before the template renders, so declaring both doubles the prefix. Refused, naming the
+    template segment to use instead; the fields stay for template-less configs (hosted profiles)."""
+    if config.template is None:
+        return
+    declared: list[str] = []
+    if config.query_prompt:
+        declared.append("query_prompt")
+    if config.doc_prompt:
+        declared.append("doc_prompt")
+    if not declared:
+        return
+    shapes = {"query_prompt": "query", "doc_prompt": "document"}
+    segment = "/".join(shapes[name] for name in declared)
+    raise ConfigError(
+        f"{type(config).__name__} declares {' and '.join(declared)} beside a template: the client prepends the "
+        "prefix before the template renders, so declaring both doubles the prefix",
+        hint=f"write the prefix as a fixed segment of the template's {segment!r} shape instead "
+        "(Segment(fixed=...)), and drop " + " and ".join(declared) + " (the fields stay for template-less "
+        "configs, e.g. hosted profiles)",
+    )
+
+
 def _no_inert_overflow_policies(config: EmbeddingEndpoint | RerankEndpoint) -> None:
     """Without a tokenizer the content is sent uncut (a hosted vendor profile): an overflow policy that needs
     one would be silently inert, so it is refused instead of ignored."""
@@ -281,6 +305,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
         _no_inert_overflow_policies(self)
         _chunk_geometry_matches_overflow(self)
         _empty_doc_pairing(self)
+        _one_home_for_a_prompt_prefix(self)
         if (
             self.query_max_tokens is not None
             and self.max_tokens is not None
