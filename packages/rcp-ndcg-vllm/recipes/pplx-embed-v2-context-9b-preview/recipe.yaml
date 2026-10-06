@@ -1,0 +1,197 @@
+# Serving recipe for perplexity-ai/pplx-embed-v2-context-9b-preview on the stock
+# vllm/vllm-openai:v0.31.0 image plus the pure-Python plugin wheel
+# rcp-ndcg-vllm-pplx (packages/rcp-ndcg-vllm/plugins/pplx/). Sources are
+# revision-pinned; the audit rows in research/audit-synth/out/corrections.md
+# (r-pplx table) override the research draft this recipe was derived from.
+id: pplx-embed-v2-context-9b-preview
+model: perplexity-ai/pplx-embed-v2-context-9b-preview
+revision: "b667039ee8b438a6350fbc91bbcecd86f9d363ba"  # re-checked against the Hub API (sha field) on 2026-10-06
+role: multi_vector  # one 2048-d int8-valued vector per document chunk; the query is one vector
+input: [text]  # the checkpoint ships a vision tower, but the embedding code is text-only
+licence: MIT
+engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0"}
+resources: {gpus: 1}  # fp32 weights 33.6 GB + KV; an 80 GB-class GPU
+serve:
+  runner: pooling
+  convert: null  # the plugin's model class sets is_pooling_model itself (colqwen3_5.py:133 precedent)
+  hf_overrides: {}  # the plugin's config handler promotes text_config.is_causal=false to the level vLLM reads
+  chat_template: null  # see notes: the /pooling completion route applies no chat template at the pinned engine
+  pooler_config: {task: token_embed}
+  trust_remote_code: true  # the config class comes from the repo's auto_map (PplxContextualConfig)
+  max_model_len: 262144  # the model's own limit (query_length/document_length); the model raises beyond it
+  dtype: float32  # the whole checkpoint is F32 and the reference runs fp32; bfloat16 is the production option pending the stage-2 gate
+  plugin: rcp-ndcg-vllm-pplx  # pure-Python wheel, installed with --no-deps before the engine starts
+  extra_args: []
+client:
+  api: vllm_pooling
+  request_shape: token_ids  # the plugin refuses text documents: the [D] prefix must cross as the literal ids the reference renders
+  tokenizer: "perplexity-ai/pplx-embed-v2-context-9b-preview@b667039ee8b438a6350fbc91bbcecd86f9d363ba"
+  # The model's own limit is 262144 model-side ids; the model-side count of a render
+  # is the engine-side count plus a content-dependent prefix delta (the [D] prefix
+  # crosses as two literal ids where the engine-side count keeps one special id, and
+  # the first content pretoken re-tokenizes with the prefix's trailing space: measured
+  # deltas 0..+2, worst 2), so 262142 reserves two tokens and no measured render hits
+  # the model's own over-limit raise. See the notes.
+  max_tokens: 262142
+  template:
+    # The bracket prefixes are written as the tokenizer's own literal form: the
+    # product's {special:<name>} resolver strips the captured name, and these added
+    # tokens' names carry a significant trailing space ("[Q] ", "[D] "), so the
+    # by-name spelling cannot express them (product gap, recorded in the notes).
+    query:
+      - {fixed: "[Q] "}
+      - {content: query}
+    document:
+      - {fixed: "[D] "}
+      - {content: document}
+    anchor: first  # the leading role prefix is the load-bearing fixed token: the query mean includes it, the document spans are located after it, and the plugin reads it to tell the roles apart
+    add_special_tokens: true  # the pooling route's engine default; this tokenizer's post-processor appends nothing (measured)
+  on_overflow: cut
+  empty_doc: send  # the model's own empty-chunk branch pools to the zero vector
+  normalize: true
+  embed_dtype: float16  # the owner's Q11 decision; int8-valued vectors survive the cast exactly
+  dim: 2048
+reference:
+  kind: remote_code  # the checkpoint's trusted code (custom_code tag), transformers AutoModel with trust_remote_code=True
+  score_scale: cosine
+  entry: reference.py
+  known_deviations: []
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources:
+  # The model card and the checkpoint's own files, at the pinned revision.
+  - https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/README.md
+  - https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/config.json
+  - https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/modeling_pplx_contextual.py
+  - https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/configuration_pplx_contextual.py
+  - https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/tokenizer_config.json
+  # vLLM at the pinned image (v0.31.0 ~= checkout d0d6e5f3a; load-bearing files checked against the tag).
+  - "vllm v0.31.0 (d0d6e5f3a): vllm/entrypoints/pooling/base/protocol.py:212-220 (completion input takes text and token ids; add_special_tokens defaults true)"
+  - "vllm v0.31.0 (d0d6e5f3a): vllm/entrypoints/pooling/pooling/protocol.py (PoolingCompletionRequest: /pooling text input renders no chat template)"
+  - "vllm v0.31.0 (d0d6e5f3a): vllm/entrypoints/pooling/base/io_processor.py:122-152 (the completion path applies no template, only tok_params)"
+  - "vllm v0.31.0 (d0d6e5f3a): vllm/config/pooler.py:33,60 (PoolerConfig.task, PoolerConfig.use_activation)"
+  - "vllm v0.31.0 (d0d6e5f3a): vllm/pooling_params.py:55 (use_activation default None -> the token_embed pooler's default activation)"
+  - "vllm v0.31.0 (d0d6e5f3a): vllm/model_executor/models/colqwen3_5.py:133 (is_pooling_model on an out-of-tree pooling precedent)"
+  # The product this client block constructs.
+  - "rcp-ndcg: src/rcp_ndcg/inference/config.py (PoolingEndpoint: api, request_shape, embed_dtype, dim, budget fields)"
+  - "rcp-ndcg: src/rcp_ndcg/data/templates.py (TemplateSpec: segments, specials by name, anchor, add_special_tokens)"
+  - "rcp-ndcg: src/rcp_ndcg/data/preprocess.py (TextBudget/fit: content-only cuts, anchors reserved, census)"
+  # The research and its audit.
+  - "research/r-pplx/out/report.md (serving decision, per-model table, risks)"
+  - "research/r-pplx/out/reference-draft.py (the CPU-verified render draft this reference.py corrects)"
+  - "research/audit-synth/out/corrections.md (r-pplx rows: dtype, vision-tower 1.82 GB, empty-chunk guard, pad_token, stale cites)"
+  - "research/ANCHOR-FINDING.md (cuts never drop anchors)"
+notes: |
+  Serving: the out-of-tree vllm.general_plugins distribution rcp-ndcg-vllm-pplx
+  (packages/rcp-ndcg-vllm/plugins/pplx/, pure Python, installed with pip install
+  --no-deps into the unmodified image) registers the checkpoint's
+  PplxContextualModel as a pooling model: the language_model.* weight mapper,
+  the contextual_projection head, and a chunk pooler that segments on the
+  boundary id 248079 and applies the int8 tanh head. The plugin must NOT
+  register a multimodal processor (the ColQwen3_5 precedent it is modelled on
+  does): the embedding code is text-only, and a copy-paste would silently
+  embed images into a text model instead of rejecting them.
+
+  The wire contract (request_shape: token_ids). The reference tokenizes the
+  document with split_special_tokens=True, so the "[D] " prefix crosses as the
+  two literal tokens '[D',']' (ids 62724, 60) while a server-side parse of the
+  same text keeps the added special id 248078 (measured at the pinned revision:
+  27 vs 26 tokens, divergence at index 0). No text render can reproduce the
+  reference ids over a text wire, and the plugin refuses inputs whose first id
+  is neither 248077 ([Q] ) nor (62724, 60): the client must send token ids equal
+  to the model's own prepare_inputs ids - query [248077] + tokenize(query);
+  document tokenize("[D] " + chunks joined by "<|chunk_sep|>", split semantics)
+  = [62724, 60, ...] with 248079 markers. PRODUCT GAP (reported, not worked
+  around): the product's pooling adapter sends text today and fit returns texts
+  rather than ids, so the GPU wave needs the token-ids path (and stage 2's wire
+  to carry it) before documents can be verified; queries already tokenize to
+  the reference ids over text (measured), but both legs declare token_ids.
+
+  Role disambiguation on the engine (the plugin's rule, stated here because the
+  audit found it unstated): first id 248077 -> query, pooled as the mean over
+  the whole sequence with the prefix token included; leading (62724, 60) ->
+  document, pooled as one span mean per chunk between 248079 markers, the
+  prefix and the markers excluded from every span. A one-chunk document has no
+  marker and is a single span; the leading id is the only role signal. An empty
+  chunk (consecutive or trailing markers) pools to the zero vector, the
+  reference's own branch for a chunk with no tokens.
+
+  Chunks: the document content is the model's chunk list joined by the boundary
+  marker - chunk boundaries are input to this model, and the chunker that
+  produces them is declared preprocessing recorded upstream of this recipe. A
+  chunk's text must contain no all-special token of this tokenizer; the
+  boundary marker is the declared case (the plugin segments on every 248079, so
+  a marker inside chunk text would create phantom chunks - the r-pplx
+  instrument's segmentation hazard), and the reference's split-side parse makes
+  any other all-special token in content diverge from the engine-side parse the
+  same way. reference.py re-splits the content on the marker for the model call.
+
+  Scores: the card gives per-chunk scores (doc_embeddings @ query_embeddings)
+  but no aggregation; the product's multi-vector scorer (MaxSim with a single
+  query vector) pools by max over chunks. Max is the retrieval reading and
+  INFERENCE - the GPU wave confirms it against the vendor's retrieval numbers.
+
+  dtype: the checkpoint is all-F32 (33,604,334,528 bytes) and the reference
+  runs fp32, so the first equivalence runs at float32 to isolate kernel deltas
+  from dtype deltas; bfloat16 (16.8 GB weights) is the production option
+  pending the stage-2 tolerance gate. Skipping the unused vision tower saves
+  1.82 GB fp32 (the audit's shard-header parse), not the 3.4 GB first quoted.
+
+  Budget: the model's own limit is 262144 tokens model-side (config
+  query_length and document_length; the model raises beyond it and truncates
+  nothing). The model-side count of a render is the engine-side count plus a
+  content-dependent prefix delta: the [D] prefix contributes +1 (two literal
+  ids where the engine-side count keeps one special id) minus whatever the
+  first content pretoken saves by re-tokenizing with the prefix's trailing
+  space - measured total deltas 0..+2 over letter, digit, whitespace, CJK and
+  emoji-initial content, worst 2. The client budget is therefore
+  262142: the measured worst case reserved, so no measured render hits the
+  model's own raise, and a content class outside the measured ones fails
+  loudly at the engine's own max_model_len, never silently. The cut is the
+  declared policy, census-recorded by the product's fit. The product's pooling
+  role client also refuses a max_tokens config outright until the text-budget
+  mechanism is wired into it (a loud ConfigError, never silent) - the recipe's
+  numbers are what that wiring must implement. max_model_len
+  262144 reserves whole-sequence prefill (bidirectional pooling disables
+  chunked prefill at the pinned engine): roughly 17 GB of fp32 KV per 262k
+  sequence. The wave confirms the VRAM plan and lowers BOTH numbers deliberately,
+  never one, if the slot cannot afford the worst case.
+
+  Template file: no serve.chat_template. The /pooling completion route applies
+  no chat template at the pinned engine (pooling/protocol.py, io_processor.py),
+  the repo's chat_template.jinja is a chat-generation template containing none
+  of the embedding prefixes, and a served template file would be inert on this
+  route while the harness's template check renders one string that cannot equal
+  two declared shapes' different frames. The declared shapes above are the
+  frame the client tokenizes and sends as ids.
+
+  add_special_tokens: true declares the pooling route's engine default; this
+  tokenizer's post-processor appends nothing (bos is null, measured), so the
+  reserved block is empty and the ids are identical either way.
+
+  Template segments: the two bracket prefixes are written as the tokenizer's
+  own literal form, not {special:<name>} - the product's special resolver strips
+  the captured name (templates.py _resolve_specials), and these added tokens'
+  names carry a significant trailing space ("[Q] ", "[D] "), so the by-name
+  spelling cannot express them. That resolver seam is a product gap, reported;
+  the render check against the reference's constants holds the spelling, and
+  the wire is token ids, so the text form only feeds the client-side
+  tokenization the gap already covers.
+
+  MRL {1024, 2048} is NOT declared (dimensions unset): the card's cut takes the
+  first 1024 of the UNNORMALISED values and renormalises, while the product's
+  encoder L2-normalises unconditionally - adopting MRL needs a normalize:false
+  path end to end (recorded per the audit). normalize: true matches the card's
+  usage; the plugin's request-level activation L2-normalises by default and the
+  end state matches either way. empty_doc: send exercises the model's own
+  empty-chunk branch (the zero vector) instead of substituting a product-side
+  zero; the wave should confirm the plugin reproduces it - and name the one
+  divergence the audit found between the plugin and the remote code: the remote
+  code RAISES for a non-empty chunk that yields no tokens, the plugin zero-pools
+  it, unreachable under this recipe's declared chunker guarantee for this
+  tokenizer. pad_token is the tokenizer's endoftext token and there is no bos
+  token (tokenizer_config.json; the audit row that names a different pad
+  spelling is itself refuted by that file). The card states no
+  chunking policy of its own: chunk boundaries are model input, and the
+  chunker's guarantee - no all-special token inside chunk text, the boundary
+  marker being the declared case - is declared here.
