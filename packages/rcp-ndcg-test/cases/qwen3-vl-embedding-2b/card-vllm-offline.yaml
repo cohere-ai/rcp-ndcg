@@ -54,9 +54,11 @@ notes: >-
   no printed numbers, so expected.kind is none (path-exercise case; no tolerance - nothing is
   compared). Same engine family as the recipe (vLLM), but the card's example is the offline
   LLM.embed route with trust_remote_code=true (inert: config.json has no auto_map) and no
-  images_kwargs pixel override (immaterial here: the demo image is far below the 1.31 Mpx default
-  cap). No ranking is derived from the card's other matrices: the printed d2/d3 gaps go down to
-  2e-4 and the stand-in media changes the image-doc scores wholesale. CPU reproduction declined:
-  2B parameters exceeds the 1B CPU cap (brief rule 3). The GPU wave may run the inputs through the
+  images_kwargs pixel override (immaterial here: the stand-in media, 934x612 = 0.57 Mpx, sits far
+  below the 1.31 Mpx default cap; the card's own demo.jpeg, 2048x1365 = 2.80 Mpx, would not - it
+  is not redistributed, so this case never exercises the override - image-text-long-over does). No
+  ranking is derived from the card's other matrices: the printed d2/d3 gaps go down to 2e-4 and
+  the stand-in media changes the image-doc scores wholesale. CPU reproduction declined: 2B
+  parameters exceeds the 1B CPU cap (brief rule 3). The GPU wave may run the inputs through the
   served engine as a cross-runtime sanity check (chat-messages shape for the image doc; research
   report section 3).
