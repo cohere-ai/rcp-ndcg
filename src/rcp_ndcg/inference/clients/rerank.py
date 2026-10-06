@@ -40,10 +40,13 @@ from rcp_ndcg_core.content import Content
 from rcp_ndcg.data.prepare import MediaCensus
 from rcp_ndcg.data.preprocess import (
     CHUNK_ID_SEPARATOR,
+    ContentParts,
     DataError,
     FitResult,
     TextTruncationCensus,
+    fixed_overhead,
     max_pool_scores_by_document,
+    rendered_pair_tokens,
     token_prefix,
 )
 from rcp_ndcg.inference.clients._base import RoleClient
@@ -247,45 +250,94 @@ class RerankClient(RoleClient):
 
         With a budget declared, :meth:`RoleClient._fit` runs the shared mechanism over the ``(query,
         document)`` pairs (shape ``pair``): the query's span is settled first -- once for the batch, through
-        fit's own settlement on a probe pair, because one query rides per request while fit settles a pair's
-        query only when that pair overflows -- each document gets what remains, and a chunked document comes
-        back as one output per chunk (``<id>#<k>``) with the full template around it. The settlement (a
-        query over its declared ``query_max_tokens``, or one that alone fills the budget) is recorded in the
-        census under :data:`QUERY_DOC_ID`. The vendor path (no tokenizer) settles nothing: fit sends the
-        pairs uncut and records the documented limit. The wire takes the cut spans (the engine renders the
-        template itself); the chunks' ``max`` pooling is the caller's, through the fit result.
+        fit's own settlement on a probe pair reserving the documents' maximum media count, because one query
+        rides every request while fit settles a pair's query only when that pair overflows -- each document
+        gets what remains, and a chunked document comes back as one output per chunk (``<id>#<k>``) with the
+        full template around it. The settlement (a query over its declared ``query_max_tokens``, or one that
+        alone fills the budget) is recorded in the census under :data:`QUERY_DOC_ID`. The vendor path (no
+        tokenizer) settles nothing: fit sends the pairs uncut and records the documented limit. The wire
+        takes the cut spans (the engine renders the template itself); the chunks' ``max`` pooling is the
+        caller's, through the fit result.
+
+        The media are decided so that one query and one document always fit one wire call: the request is
+        prepared ONCE (:meth:`RoleClient._prepare_request`), each document's media is fitted against the
+        budget minus the fixed frame, and the query's media -- decided once, against the heaviest document
+        media the fit kept, because the same query content rides every call -- against what remains. Every
+        pair's reserved media (query plus document) is then what the text fit subtracts, and the span the
+        batch fit verified is the span the wire ships: no pair is shipped over the budget, whatever its
+        media.
 
         Returns:
-            ``(wire_query, wire_documents, fitted, omitted, kept_positions)``: the query content (cut), the
-            document contents (one per fit output, in fit's order), the fit result (its ``ids`` align to the
-            wire documents; its ``chunk_mapping`` carries each chunk back to its input), the document
-            indices ``empty_doc: omit_zero`` never sends, and per kept document its original index.
+            ``(wire_query, wire_documents, fitted, omitted, kept_positions)``: the query content (cut, its
+            media the one uniform decision), the document contents (one per fit output, in fit's order), the
+            fit result (its ``ids`` align to the wire documents; its ``chunk_mapping`` carries each chunk
+            back to its input), the document indices ``empty_doc: omit_zero`` never sends, and per kept
+            document its original index.
 
         Raises:
             TextBudgetExceededError: the declared overflow policy refuses to shorten a pair.
         """
-        # The request's media, per wire request: the pooling of one query's candidate set is one
-        # RerankRequest (the adapter splits pointwise by batch_size, each call still one query's
-        # documents), so the fit runs per (query, document) pair -- the query's media reserved with the
-        # document's on every pair (the query rides every pair). The gates run per pair.
-        request_prepared = self._prepare_request([query, *documents])
-        query = request_prepared.contents[0]
-        documents = list(request_prepared.contents[1:])
-        # The media fit runs per (query, document) pair -- the wire request the engine sees -- and the
-        # fitted contents (both images possibly shrunk to the policy minimum) are what ships. The query
-        # rides every pair, so its media is reserved on every pair and the FITTED query is what the wire
-        # carries (the pairs agree on the query's fit while no pair drops query media; a query-item drop
-        # ships fewer tokens than budgeted and is recorded under QUERY_DOC_ID).
-        pairs_after_media = [
-            self._fit_media_for_request([query, document], doc_ids=[QUERY_DOC_ID, str(original_index)])
-            for original_index, document in enumerate(documents)
-        ]
-        query = pairs_after_media[0][0][0]
-        documents = [pair[0][1] for pair in pairs_after_media]
-        pair_media = [pair[1] for pair in pairs_after_media]
+        # ONE preparation of the whole request (the query's and every document's media): the census rows it
+        # writes name their own doc id, and the per-pair fits below slice it (no second preparation, whose
+        # rows would name data: URIs).
+        request_prepared = self._prepare_request(
+            [query, *documents], doc_ids=[QUERY_DOC_ID, *(str(index) for index in range(len(documents)))]
+        )
+        prepared_query = request_prepared.contents[0]
+        prepared_documents = list(request_prepared.contents[1:])
+        pair_media = [0] * len(prepared_documents)
+        query_media = 0
+        if self._budget is not None and request_prepared.media:
+            allowance = max(
+                self._budget.max_tokens
+                - fixed_overhead(self._budget, self._tokenizer, "pair", instruction=instruction or ""),
+                0,
+            )
+            # The media reserve what a servable pair needs beside them: the query's media (raw, before its
+            # own fit), the query's empty-render (fit refuses a pair whose document text cannot keep one
+            # token beside the settled query -- the settled span must stay below the pair's cap), and that
+            # one token. Without these the media fit keeps media that exactly fill the budget-minus-overhead
+            # and the text fit refuses the request blaming the query.
+            if self._tokenizer is not None:
+                query_render = rendered_pair_tokens(
+                    self._budget,
+                    self._tokenizer,
+                    query=request_prepared.contents[0].text,
+                    document="",
+                    instruction=instruction or "",
+                )
+            else:
+                query_render = 0
+            query_media_raw = request_prepared.content_tokens[0].tokens
+            # The documents first: each pair's document media, against the budget minus everything the
+            # pair needs beside its media.
+            doc_fits = [
+                self._fit_media_for_request(
+                    [content],
+                    doc_ids=[str(index)],
+                    prepared=request_prepared.select([1 + index]),
+                    allowance=max(allowance - query_media_raw - query_render - (1 if content.text else 0), 0),
+                )
+                for index, content in enumerate(prepared_documents)
+            ]
+            prepared_documents = [fit[0][0] for fit in doc_fits]
+            pair_media = [fit[1] for fit in doc_fits]
+            # The query's media, decided once against the heaviest kept document media: the same query
+            # content rides every call, so one pair's decision is the request's (a query-item drop is
+            # recorded under QUERY_DOC_ID, exactly like the query's text settlement).
+            text_floor = 1 if any(document.text for document in prepared_documents) else 0
+            query_fit = self._fit_media_for_request(
+                [prepared_query],
+                doc_ids=[QUERY_DOC_ID],
+                prepared=request_prepared.select([0]),
+                allowance=max(allowance - max(pair_media, default=0) - text_floor, 0),
+            )
+            prepared_query = query_fit[0][0]
+            query_media = query_fit[1]
+        query = prepared_query
+        documents = prepared_documents
         kept_documents, omitted = self._apply_empty_documents(documents)
         kept_positions = [index for index in range(len(documents)) if index not in set(omitted)]
-        query_media = self._media_counts_of([query])[0].tokens
         if self._budget is None:
             return (
                 query,
@@ -299,15 +351,6 @@ class RerankClient(RoleClient):
                 tuple(omitted),
                 kept_positions,
             )
-        # One query rides per request: settle its span first, so every pair of the batch carries the same
-        # one. fit settles a pair's query only when that pair overflows (the share binds on overflow only),
-        # which would settle differently per document -- an under-budget pair keeps the whole query while an
-        # overflowing one cuts it to its share. So the client settles it once, exactly as fit would: to the
-        # declared share when the query exceeds it, then through fit's own probe pair (the query with an
-        # empty document, reserving the documents' maximum media count so the settled span matches what
-        # ships) for the empty-render verification.
-        original_query = query.text
-        query_text = original_query
         if not kept_documents:
             # Every document omitted (empty_doc: omit_zero): no request, no settlement, an empty result.
             return (
@@ -317,6 +360,16 @@ class RerankClient(RoleClient):
                 tuple(omitted),
                 [],
             )
+        # One query rides per request: settle its span first, so every pair of the batch carries the same
+        # one. fit settles a pair's query only when that pair overflows (the share binds on overflow only),
+        # which would settle differently per document -- an under-budget pair keeps the whole query while an
+        # overflowing one cuts it to its share. So the client settles it once, exactly as fit would: to the
+        # declared share when the query exceeds it, then through fit's own probe pair (the query with an
+        # empty document, reserving the query's media beside the documents' maximum media count, so the
+        # settled span fits every pair's cap -- a pair with less media only has more room).
+        original_query = query.text
+        query_text = original_query
+        kept_pair_media = [query_media + pair_media[position] for position in kept_positions]
         if self._tokenizer is not None:
             share = self._budget.query_max_tokens
             if share is not None and self._tokenizer.count(query_text) > share:
@@ -325,7 +378,7 @@ class RerankClient(RoleClient):
                 [(query_text, "")],
                 "pair",
                 instruction=instruction,
-                media_tokens=[query_media],
+                media_tokens=[query_media + max(pair_media, default=0)],
                 record=False,
             ).contents[0][0]
             if settled != original_query:
@@ -344,7 +397,7 @@ class RerankClient(RoleClient):
             result = self._fit(
                 pairs,
                 "pair",
-                media_tokens=[pair_media[position] for position in kept_positions],
+                media_tokens=kept_pair_media,
                 instruction=instruction,
             )
         else:
@@ -357,25 +410,67 @@ class RerankClient(RoleClient):
                 instruction=instruction,
             )
         contents = [pair if isinstance(pair, tuple) else (pair, "") for pair in result.contents]
-        # The settled span is the one every output carries: an under-budget pair repeats it and an
-        # overflowing one settles to it (or to a shorter cut that the probe pair already applied).
+        # The settled span is the one every output carries: the probe pair reserved every pair's media, so
+        # no pair re-cuts the query. A residual divergence (a re-tokenization corner) is closed by re-fitting
+        # every pair at the shortest verified span -- one query rides per request, so the spans must agree.
         if contents and len({left for left, _ in contents}) != 1:
-            raise DataError(
-                f"the pair fit settled the shared query differently across {len(contents)} document(s); "
-                "one query rides per request, so the spans must agree",
-                hint="this is a bug in the rerank pair fit: report it with the inputs",
+            shortest = min({left for left, _ in contents}, key=len)
+            result = self._fit(
+                [(shortest, document.text) for document in kept_documents],
+                "pair",
+                media_tokens=kept_pair_media,
+                instruction=instruction,
             )
+            contents = [pair if isinstance(pair, tuple) else (pair, "") for pair in result.contents]
+            if len({left for left, _ in contents}) != 1:
+                raise DataError(
+                    f"the pair fit settled the shared query differently across {len(contents)} document(s); "
+                    "one query rides per request, so the spans must agree",
+                    hint="this is a bug in the rerank pair fit: report it with the inputs",
+                )
         # A chunked document is one wire document per chunk, each carrying its input's media parts beside
         # the piece (the media tokens are reserved per chunk: fit's cap subtracts the pair's media, and
         # every chunk's text is verified against it).
         mapping = result.chunk_mapping or {}
         chunk_origin = [int(mapping.get(out_id, out_id)) for out_id in result.ids]
-        wire_query = self._with_text(query, settled)
+        shipped_query = contents[0][0]  # the span the fit verified -- what ships, not the probe's alone
+        # Each chunk output carries its input's media beside the piece, so the per-output media are the
+        # kept pair's (a chunked document's media ride every chunk).
+        per_output_media = [kept_pair_media[source] for source in chunk_origin]
+        self._assert_pairs_within_budget(shipped_query, contents, per_output_media, instruction)
+        wire_query = self._with_text(query, shipped_query)
         wire_documents = [
             self._with_text(kept_documents[source], document_text)
             for source, (_, document_text) in zip(chunk_origin, contents, strict=True)
         ]
         return wire_query, wire_documents, result, tuple(omitted), kept_positions
+
+    def _assert_pairs_within_budget(
+        self,
+        query_text: str,
+        contents: Sequence[ContentParts],
+        pair_media: Sequence[int],
+        instruction: str | None,
+    ) -> None:
+        """The shipped pairs are the budget's, before anything is sent: each wire pair's assembled render
+        (the same measure :func:`rcp_ndcg.data.preprocess.fit` verified it with) plus the pair's reserved
+        media stays within ``max_tokens``. A violation means the shipped spans and the verified ones
+        diverged -- a bug in the pair fit, raised as one, never sent to the engine to truncate."""
+        budget, tokenizer = self._budget, self._tokenizer
+        assert budget is not None  # a pair fit without a budget ships uncut and never asserts one
+        if tokenizer is None:
+            return  # the vendor path: nothing is measured client-side
+        for (query_span, document_span), media_tokens in zip(contents, pair_media, strict=True):
+            total = rendered_pair_tokens(
+                budget, tokenizer, query=query_span, document=document_span, instruction=instruction or ""
+            )
+            if total + media_tokens > budget.max_tokens:
+                raise DataError(
+                    f"the shipped pair is {total + media_tokens} tokens (render {total} + media "
+                    "{media_tokens}) over the budget of {budget.max_tokens}; the fit verified a pair that "
+                    "differs from the one the wire carries",
+                    hint="this is a bug in the rerank pair fit: report it with the inputs",
+                )
 
     def _probe_calls(self, content: Content) -> Sequence[Call]:
         """The rerank request one prepared probe item is sent as (a one-document pair)."""

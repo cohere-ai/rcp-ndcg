@@ -42,6 +42,7 @@ import hashlib
 import io
 import json
 import os
+import threading
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -148,6 +149,43 @@ class PreparedRequest(NamedTuple):
     tokens: MediaTokenCount
     """The request's media token counts: exact where the sizes were recorded, a bound (counted in
     ``bounded``) where they were not."""
+
+    content_tokens: tuple[MediaTokenCount, ...] = ()
+    """Per content, its own media token counts (the same rule as :attr:`tokens`). A per-content slice of a
+    request (:meth:`select`) needs them; :func:`prepare_request` fills them."""
+
+    def select(self, indices: Sequence[int]) -> PreparedRequest:
+        """The preparation of a subset of this request's contents: their media items (the flat list is in
+        content order, so it slices by each content's media count) and their exact media token counts.
+
+        A role client that prepares a whole request once and then fits one wire request's slice of it (a
+        rerank pair, one pooling item) calls this instead of preparing the slice again -- a second
+        preparation would re-inline prepared bytes and record census rows against ``data:`` URIs.
+
+        Raises:
+            DataError: this request carries no per-content counts (it was not built by
+                :func:`prepare_request`, which fills them).
+        """
+        if len(self.content_tokens) != len(self.contents):
+            raise DataError(
+                "a prepared request without per-content token counts cannot be sliced; construct prepared "
+                "requests through prepare_request, which fills them",
+            )
+        wanted = set(indices)
+        media: list[PreparedMedia] = []
+        offset = 0
+        for position, content in enumerate(self.contents):
+            count = sum(len(part.media_refs()) for part in content.parts)
+            if position in wanted:
+                media.extend(self.media[offset : offset + count])
+            offset += count
+        tokens = tuple(self.content_tokens[position] for position in indices)
+        return PreparedRequest(
+            contents=[self.contents[position] for position in indices],
+            media=media,
+            tokens=MediaTokenCount(sum(count.tokens for count in tokens), sum(count.bounded for count in tokens)),
+            content_tokens=tokens,
+        )
 
 
 class MediaFit(NamedTuple):
@@ -398,13 +436,18 @@ def prepare_request(
     """
     prepared = [prepare_content(content, image, video) for content in contents]
     media = [item for one in prepared for item in one.media]
+    per_content: list[MediaTokenCount] = []
     tokens = 0
     bounded = 0
     for one in prepared:
         count = content_media_tokens(one.content, image or ImagePolicy.native(), video)
+        per_content.append(count)
         tokens, bounded = tokens + count.tokens, bounded + count.bounded
     return PreparedRequest(
-        contents=[one.content for one in prepared], media=media, tokens=MediaTokenCount(tokens, bounded)
+        contents=[one.content for one in prepared],
+        media=media,
+        tokens=MediaTokenCount(tokens, bounded),
+        content_tokens=tuple(per_content),
     )
 
 
@@ -460,14 +503,22 @@ def apply_media_fit(contents: Sequence[Content], fit: MediaFit) -> list[Content]
                 continue
             if isinstance(part, VideoPart):
                 if part.frames:
-                    kept_frames: list[Any] = []
-                    for _ in part.frames:
+                    # A dropped frame leaves with its sampled-index entry, so the sent video's frames and
+                    # its provenance stay aligned: a fit that kept 1 of 10 frames must not ship a part
+                    # that still claims 10 sampled source frames (the next count of it refuses).
+                    sampled = part.frame_indices
+                    pairs: list[tuple[Any, Any]] = []
+                    for frame_position, _frame in enumerate(part.frames):
                         decision = fit.decisions[applied]
+                        index = sampled[frame_position] if sampled and frame_position < len(sampled) else frame_position
                         applied += 1
                         if decision is not None:
-                            kept_frames.append(decision)
-                    if kept_frames:
-                        parts.append(part.model_copy(update={"frames": kept_frames}))
+                            pairs.append((decision, index))
+                    if pairs:
+                        update: dict[str, Any] = {"frames": [frame for frame, _ in pairs]}
+                        if sampled is not None:
+                            update["frame_indices"] = [index for _, index in pairs]
+                        parts.append(part.model_copy(update=update))
                     continue
                 # A ref-only container (``wire: video_url``): one prepared item, sent or dropped whole.
                 decision = fit.decisions[applied]
@@ -494,38 +545,82 @@ def apply_media_fit(contents: Sequence[Content], fit: MediaFit) -> list[Content]
 
 
 class MediaCensus:
-    """Every media item a judgement store's passes sent, once per ``(corpus, document, source)``.
+    """Every media item a judgement store's passes sent, once per ``(corpus, document, source, outcome)``.
 
     Rows go to ``sink`` (the store's ``preprocessing.jsonl``, shared with the text cuts) as JSON lines. A resumed
     pass reads the rows already there and does not write them again. Referent: the media of a document, not its
     presentations: an image shown in fourteen windows is prepared identically fourteen times and recorded once.
+    The dedup key names the outcome (``dropped`` or not) beside the source, so a budget that first kept an
+    item and a later one that refused it are both on record -- a kept pass must not hide a later drop.
+
+    A torn last line of the shared log (a writer killed mid-append, the same failure class the judgement
+    store's journal repairs) is skipped with a warning, never fatal: resumability survives it. Rows from a
+    schema older than the current fields are read defensively (a missing field reads as "unset"). Writes are
+    serialised by a lock, so concurrent recorders cannot double-write a row.
     """
+
+    #: One process-wide lock per census instance: ``record`` is a check-then-append, and two concurrent
+    #: recorders (concurrent tasks in one process, thread runners later) must not double-write a row.
+    _lock = threading.Lock()
 
     def __init__(self, *, sink: str | Path | None = None) -> None:
         self.sink = Path(sink) if sink is not None else None
-        self._seen: set[tuple[str, str, str]] = set()
+        self._seen: set[tuple[str, str, str, bool]] = set()
+        self._warned_torn = False
         if self.sink is not None and self.sink.is_file():
-            for line in self.sink.read_text(encoding="utf-8").splitlines():
+            self._seen = self._read()
+
+    def _read(self) -> set[tuple[str, str, str, bool]]:
+        """The media rows already in the sink, read defensively; an unparsable line is a torn tail (a
+        half-written record from a crash), warned once and skipped -- never a dead store."""
+        seen: set[tuple[str, str, str, bool]] = set()
+        assert self.sink is not None
+        for line in self.sink.read_text(encoding="utf-8").splitlines():
+            try:
                 row = json.loads(line)
-                if row.get("mechanism") == MEDIA_MECHANISM:
-                    self._seen.add((row["corpus"], row["doc_id"], row["uri"]))
+            except json.JSONDecodeError:
+                if not self._warned_torn:
+                    get_logger(__name__).warning(
+                        "media census: %s holds a line that is not JSON (a torn tail from a killed writer); "
+                        "skipping it -- the store stays readable and the next pass rewrites the row",
+                        self.sink,
+                    )
+                self._warned_torn = True
+                continue
+            if not isinstance(row, dict) or row.get("mechanism") != MEDIA_MECHANISM:
+                continue
+            # A row from an older schema or an interrupted write: a missing field reads as "unset".
+            corpus, doc_id, uri = row.get("corpus"), row.get("doc_id"), row.get("uri")
+            if not isinstance(corpus, str) or not isinstance(doc_id, str) or not isinstance(uri, str):
+                continue
+            seen.add((corpus, doc_id, uri, bool(row.get("dropped", False))))
+        return seen
+
+    def recorded(self) -> tuple[tuple[str, str, str, bool], ...]:
+        """What is on record, as ``(corpus, doc_id, uri, dropped)`` rows -- the dedup keys, ascending. A
+        caller (a test, a run summary) reads this instead of the sink's lines or the private set."""
+        with self._lock:
+            return tuple(sorted(self._seen))
 
     def record(self, *, corpus: str, doc_id: str, media: list[PreparedMedia], dropped: bool = False) -> None:
         """Record ``media`` of document ``doc_id`` of ``corpus``, skipping what is already on record.
 
         ``dropped=True`` records items a request's text budget refused (:func:`fit_media_to_budget` returns
-        them); they were never sent, and the row says so.
+        them); they were never sent, and the row says so. A kept row and a dropped row of the same item are
+        distinct records -- the outcome is part of the dedup key, so a drop after a kept pass of the same
+        item is still recorded.
         """
-        fresh = []
-        for item in media:
-            key = (corpus, doc_id, item.source.uri)
-            if key in self._seen:
-                continue
-            self._seen.add(key)
-            fresh.append(item.as_row(corpus=corpus, doc_id=doc_id, dropped=dropped))
-        if fresh and self.sink is not None:
-            with open(self.sink, "a", encoding="utf-8") as handle:
-                handle.writelines(json.dumps(row, sort_keys=True) + "\n" for row in fresh)
+        with self._lock:
+            fresh = []
+            for item in media:
+                key = (corpus, doc_id, item.source.uri, dropped)
+                if key in self._seen:
+                    continue
+                self._seen.add(key)
+                fresh.append(item.as_row(corpus=corpus, doc_id=doc_id, dropped=dropped))
+            if fresh and self.sink is not None:
+                with open(self.sink, "a", encoding="utf-8") as handle:
+                    handle.writelines(json.dumps(row, sort_keys=True) + "\n" for row in fresh)
 
 
 __all__ = [

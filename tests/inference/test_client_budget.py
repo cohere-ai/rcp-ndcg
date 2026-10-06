@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 from PIL import Image as PILImage
 from rcp_ndcg_core._records import RankingExample
-from rcp_ndcg_core.content import Content, ImagePart
+from rcp_ndcg_core.content import Content, ImagePart, TextPart
 
 from rcp_ndcg.data.prepare import apply_media_fit
 from rcp_ndcg.data.preprocess import TextBudgetExceededError, TextTruncationCensus
@@ -637,7 +637,7 @@ class TestEmbedEmptyDocuments:
         # beside it -- never an empty request, and every drop is on record.
         assert list(result.offsets) == [0, 0, 1]
         assert len(sender.bodies[-1]["input"]) == 1, "only the text item was sent"
-        assert client.media_census._seen, "the drop is recorded"
+        assert client.media_census.recorded(), "the drop is recorded"
 
 
 class TestMediaGates:
@@ -816,8 +816,8 @@ class TestEngineMediaCheck:
 
         client = self._client(UsagelessSender(), tokenizer_json=tokenizer_json)
         asyncio.run(client.check_engine_media())  # never silent, never a pass: the census records it
-        rows = client.media_census._seen
-        assert any(doc_id.startswith("engine_media_check:not_checked") for _, doc_id, _ in rows)
+        rows = client.media_census.recorded()
+        assert any(doc_id.startswith("engine_media_check:not_checked") for _corpus, doc_id, _uri, _dropped in rows)
 
 
 class TestRerankChunkAndOmitCompose:
@@ -1145,7 +1145,7 @@ class TestDropCensusDocIds:
         query_image = _png_content(tmp_path, 10)
         document_image = _png_content(tmp_path, 20)
         client._fit_media_for_request([query_image, document_image], doc_ids=[QUERY_DOC_ID, "0"])
-        rows = {row_doc_id for _corpus, row_doc_id, _uri in census._seen}
+        rows = {doc_id for _corpus, doc_id, _uri, _dropped in census.recorded()}
         assert rows == {QUERY_DOC_ID, "0"}, "each drop under its own input's doc_id, never the role name"
 
     def test_a_document_with_two_images_both_dropped(self, tokenizer_json: str, tmp_path: Any) -> None:
@@ -1172,7 +1172,7 @@ class TestDropCensusDocIds:
 
         client._fit_media_for_request([Content.from_text("query"), document], doc_ids=[QUERY_DOC_ID, "0"])
 
-        rows = {row_doc_id for _corpus, row_doc_id, _uri in census._seen}
+        rows = {doc_id for _corpus, doc_id, _uri, _dropped in census.recorded()}
         assert rows == {"0"}, "both drops under the document's id, never the role name"
 
     def test_pool_content_with_two_images_both_dropped(self, tokenizer_json: str, tmp_path: Any) -> None:
@@ -1199,5 +1199,141 @@ class TestDropCensusDocIds:
 
         asyncio.run(client.aencode([document], EncodeRole.DOCUMENT))
 
-        rows = {row_doc_id for _corpus, row_doc_id, _uri in census._seen}
+        rows = {doc_id for _corpus, doc_id, _uri, _dropped in census.recorded()}
         assert rows == {"0"}, "both drops under the item's id, never the role name"
+
+
+def _words(count: int) -> str:
+    """A text of exactly ``count`` tokens in the word tokenizer (one token per word)."""
+    return " ".join(["alpha"] * count)
+
+
+def _image_content(tmp_path: Any, index: int, size: int) -> Any:
+    """One square PNG (``size`` a multiple of the processor's patch factor, so the token count is exact)."""
+    from rcp_ndcg_core.content import Content
+
+    page = tmp_path / f"page-{index}-{size}.png"
+    PILImage.new("RGB", (size, size), (10, 10, 200)).save(page, format="PNG")
+    return Content.from_image(page.as_uri())
+
+
+def _media_tokens_of(document: Any, policy: ImagePolicy) -> int:
+    """The vision blocks of one lowered rerank document, as an honest engine charges them."""
+    tokens = 0
+    for part in document.get("content", []) if isinstance(document, dict) else []:
+        if not isinstance(part, dict) or part.get("type") != "image_url":
+            continue
+        url = part["image_url"]["url"]
+        payload = (
+            base64.b64decode(url.partition(",")[2])
+            if url.startswith("data:")
+            else Path(url.replace("file://", "")).read_bytes()
+        )
+        image = PILImage.open(io.BytesIO(payload))
+        content = Content.from_image(url, width=image.size[0], height=image.size[1])
+        tokens += content_media_tokens(content, policy, None).tokens
+    return tokens
+
+
+class _HonestBudgetRerankServer(RecordingSender):
+    """A rerank server that charges what an honest engine charges: for a pointwise reranker every call
+    renders one prompt per (query, document) pair -- the query tokens plus that document's text and media
+    blocks -- and the recorded number per call is the DEEPEST pair (the engine's longest prompt), so a test
+    can assert no pair went out over the budget."""
+
+    def __init__(self, tokenizer: Any, policy: ImagePolicy) -> None:
+        self.tokenizer = tokenizer
+        self.policy = policy
+        self.prompt_tokens: list[int] = []
+        self.bodies: list[dict[str, Any]] = []
+
+    async def send(self, calls: Any) -> list[Any]:
+        for call in calls:
+            body = call.json
+            self.bodies.append(body)
+            query_tokens = self.tokenizer.count(body["query"])
+            deepest = 0
+            for document in body["documents"]:
+                pair = query_tokens + self.tokenizer.count(document if isinstance(document, str) else "")
+                pair += _media_tokens_of(document, self.policy)
+                deepest = max(deepest, pair)
+            self.prompt_tokens.append(deepest)
+        documents = calls[0].json["documents"]
+        rows = [{"index": i, "relevance_score": float(i)} for i in range(len(documents))]
+        return [Reply(200, {"results": rows[::-1]}, {})]
+
+
+class TestRerankPairFitWithMedia:
+    """The pair fit with media (the sweep's blocker): a candidate set with mixed media settles ONE query
+    span for the whole batch -- no crash, and no pair shipped over the budget."""
+
+    POLICY = {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"}
+
+    @staticmethod
+    def _client(tokenizer_json: str, sender: Any, *, max_tokens: int) -> RerankClient:
+        return RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=max_tokens,
+                query_max_tokens=70,
+                use_activation=False,
+                image_policy=dict(TestRerankPairFitWithMedia.POLICY),
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            sender=sender,
+        )
+
+    def test_one_plain_and_one_media_document_settle_one_query_span(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """A plain and a media document in one candidate set: the old fit re-cut the query per pair (the
+        probe reserved only the query's media) and died on its own consistency check; now one span settles
+        across the batch and the scores stay aligned to the documents."""
+        sender = _HonestBudgetRerankServer(load_tokenizer(tokenizer_json), ImagePolicy(**self.POLICY))
+        client = self._client(tokenizer_json, sender, max_tokens=200)
+        result = client.rerank(_words(40), ["some document text", _image_content(tmp_path, 1, 392)], instruction="find")
+
+        assert len(result.scores) == 2, "the scores stay aligned to the documents"
+        assert sender.prompt_tokens and max(sender.prompt_tokens) <= 200, "no pair ships over the budget"
+
+    def test_a_media_pair_is_never_shipped_over_the_budget(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """The sweep's A2 (repro_pair_budget.py): one two-image document and a long query with a generous
+        share. The old fit settled the query against a probe that reserved only the query's media and
+        shipped that span with the pair's media -- 300 query tokens + 512 media = 812 over max_tokens 700,
+        leaving the truncation to the engine. The wire now carries the span the pair fit verified."""
+        page = _image_content(tmp_path, 0, 896)  # 900x900 class: one image ~1026 tokens, two over the budget
+        document = Content.from_parts([*page.parts, *page.parts])
+        sender = _HonestBudgetRerankServer(load_tokenizer(tokenizer_json), ImagePolicy(**self.POLICY))
+        client = RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=700,
+                query_max_tokens=600,
+                use_activation=False,
+                image_policy={"min_px": 200704, "max_px": 1003520, "processor": "qwen2_vl"},
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            sender=sender,
+        )
+        result = client.rerank(_words(300), [document], instruction="find")
+
+        assert result.scores == (0.0,)
+        assert sender.prompt_tokens, "the request went out"
+        assert max(sender.prompt_tokens) <= 700, "the shipped pair is within the budget"
+
+    def test_a_heavy_media_document_does_not_blame_the_query(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """A document whose media shrink the pair's cap below the settled query: the fit attributes the
+        constraint to the media it reserved, and the request is served -- the query is never blamed for
+        media that fit."""
+        sender = _HonestBudgetRerankServer(load_tokenizer(tokenizer_json), ImagePolicy(**self.POLICY))
+        client = self._client(tokenizer_json, sender, max_tokens=200)
+        document = Content.from_parts([*_image_content(tmp_path, 2, 392).parts, TextPart(text="some text")])
+
+        result = client.rerank(_words(40), [document], instruction="find")
+
+        assert result.scores == (0.0,)
+        assert sender.prompt_tokens and max(sender.prompt_tokens) <= 200, "no pair ships over the budget"

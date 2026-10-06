@@ -37,7 +37,7 @@ import numpy as np
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.data.prepare import MediaCensus
-from rcp_ndcg.data.preprocess import TextTruncationCensus
+from rcp_ndcg.data.preprocess import TextTruncationCensus, fixed_overhead
 from rcp_ndcg.errors import ConfigError, ProviderError
 from rcp_ndcg.inference.adapters.base import Adapter
 from rcp_ndcg.inference.clients._base import PreparedItems, RoleClient
@@ -194,23 +194,35 @@ class PoolingClient(RoleClient):
         """The contents as they are sent: the role's prompt prepended, the media prepared, then the budget.
 
         This is the one place a content decision applies -- the role's prompt, the one media preparation
-        call (:meth:`RoleClient._prepare_request`), the budget's media fit per wire request with every drop
-        recorded (:meth:`RoleClient._fit_media_for_request`), and the text fit: only the text's content span
-        is cut (the template re-attached, every cut recorded), and media tokens are reserved whole and
-        never cut. The client cuts nothing else: a model-side change without a config field is a silent
-        change to the vectors.
+        call (:meth:`RoleClient._prepare_request`, which records the kept media), the budget's media fit per
+        wire request with every drop recorded (:meth:`RoleClient._fit_media_for_request`, slicing the one
+        preparation), and the text fit: only the text's content span is cut (the template re-attached, every
+        cut recorded), and media tokens are reserved whole and never cut. The client cuts nothing else: a
+        model-side change without a config field is a silent change to the vectors.
         """
         prefix = self.config.query_prompt if role is EncodeRole.QUERY else self.config.doc_prompt
         prompted = [content.with_text_prefix(prefix) for content in contents]
-        request = self._prepare_request(prompted)
-        # The media fit runs per wire request: the pooling wire sends one media item per call, so one
-        # item's fit bounds that item's media (drops recorded under the input's position).
-        prepared_pairs = [
-            self._fit_media_for_request([content], doc_ids=[str(index)])
-            for index, content in enumerate(request.contents)
-        ]
-        fitted = [pair[0][0] for pair in prepared_pairs]
-        media_tokens = [pair[1] for pair in prepared_pairs]
+        position_ids = [str(index) for index in range(len(prompted))]
+        request = self._prepare_request(prompted, doc_ids=position_ids)
+        if self._budget is not None and request.media:
+            # The media fit runs per wire request: the pooling wire sends one media item per call, so one
+            # item's fit bounds that item's media -- against the budget minus the fixed frame (the fit's
+            # own reservation, never the bare max_tokens: the two thresholds must not disagree).
+            allowance = max(self._budget.max_tokens - fixed_overhead(self._budget, self._tokenizer, "query"), 0)
+            prepared = [
+                self._fit_media_for_request(
+                    [content],
+                    doc_ids=[position_ids[index]],
+                    prepared=request.select([index]),
+                    allowance=allowance,
+                )
+                for index, content in enumerate(request.contents)
+            ]
+            fitted = [pair[0][0] for pair in prepared]
+            media_tokens = [pair[1] for pair in prepared]
+        else:
+            fitted = list(request.contents)
+            media_tokens = [0] * len(fitted)
         kept, omitted = self._apply_empty_documents(fitted)
         positions = [index for index in range(len(fitted)) if index not in set(omitted)]
         if self._budget is None or not kept:

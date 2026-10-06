@@ -56,7 +56,7 @@ from rcp_ndcg.data.preprocess import (
 )
 from rcp_ndcg.data.resolution import ImagePolicy, MediaTokenCount, VideoPolicy, content_media_tokens
 from rcp_ndcg.data.templates import RequestShape
-from rcp_ndcg.errors import CapabilityError, ConfigError
+from rcp_ndcg.errors import CapabilityError, ConfigError, DataError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
 from rcp_ndcg.inference.adapters.base import AdapterRole, get_adapter
 from rcp_ndcg.inference.endpoint import Endpoint
@@ -341,16 +341,32 @@ class RoleClient[C: Endpoint]:
                         f"(max_{kind}). Split the request, or raise the limit on the server and here."
                     )
 
-    def _prepare_request(self, contents: Sequence[Content]) -> PreparedRequest:
+    def _prepare_request(self, contents: Sequence[Content], *, doc_ids: Sequence[str] | None = None) -> PreparedRequest:
         """The one preparation call for a request's contents: media sized exactly as the judge's, the
-        request's media token counts.
+        request's media token counts -- and, when ``doc_ids`` names each content, the kept media recorded
+        into the media census (the judge's rows, beside which the fit records its drops; the outcome is
+        part of the census' dedup key, so a kept row never hides a later drop).
 
         The media gates are each wire call's (see :meth:`_gate_media_calls`), not this call's.
         """
         if not self.MEDIA_ON_WIRE and any(content.has_media for content in contents):
             self._refuse_media_before_preparation(contents)
         image, video = self._media_policies()
-        return prepare_request(contents, image, video)
+        prepared = prepare_request(contents, image, video)
+        if doc_ids is not None and prepared.media:
+            if len(doc_ids) != len(contents):
+                raise DataError(
+                    f"{len(doc_ids)} doc_id(s) for {len(contents)} content(s); one doc_id per content names "
+                    "the census rows of a request's prepared media",
+                )
+            offset = 0
+            for content, doc_id in zip(prepared.contents, doc_ids, strict=True):
+                count = sum(len(part.media_refs()) for part in content.parts)
+                items = prepared.media[offset : offset + count]
+                offset += count
+                if items:
+                    self.media_census.record(corpus=self.ROLE, doc_id=doc_id, media=items, dropped=False)
+        return prepared
 
     def _refuse_media_before_preparation(self, contents: Sequence[Content]) -> None:
         """Refuse media for a text-only role before the media is fetched, sized or counted.
@@ -377,18 +393,38 @@ class RoleClient[C: Endpoint]:
                     )
 
     def _fit_media_for_request(
-        self, contents: Sequence[Content], *, doc_ids: Sequence[str]
+        self,
+        contents: Sequence[Content],
+        *,
+        doc_ids: Sequence[str],
+        prepared: PreparedRequest | None = None,
+        allowance: int | None = None,
     ) -> tuple[list[Content], int]:
         """The media fit for ONE wire request's contents: media never cut, drops recorded.
 
         The budget's ``max_tokens`` bounds one wire request (the shipped tests cut each request
         individually; ``batch_size`` is how fast, never what), so the fit runs per request -- the pool
         role's per item (its media wire is one item per call), the rerank role's per (query, document)
-        pair. When the request's media alone exceed it, the declared overflow policy decides -- ``cut``
-        (the default): :func:`~rcp_ndcg.data.prepare.fit_media_to_budget` shrinks to the policy minimum,
-        then drops whole items most expensive first, every drop recorded in the media census with
+        pair. When the request's media alone exceed the allowance, the declared overflow policy decides --
+        ``cut`` (the default): :func:`~rcp_ndcg.data.prepare.fit_media_to_budget` shrinks to the policy
+        minimum, then drops whole items most expensive first, every drop recorded in the media census with
         ``dropped=True`` under the request's ``doc_ids``; ``fail``: the request is refused naming the media
         tokens and the budget; ``chunk``: refused -- media are not chunkable, a vision block is atomic.
+
+        Args:
+            contents: The wire request's contents, as prepared.
+            doc_ids: One census doc_id per content, for the drop rows.
+            prepared: The caller's own preparation of exactly ``contents`` (it prepared the whole request
+                once, through :meth:`_prepare_request`, and slices it with :meth:`PreparedRequest.select`);
+                ``None`` prepares here. A second preparation of already-prepared contents would re-inline
+                the bytes and record census rows against ``data:`` URIs, so callers that already prepared
+                pass the request in.
+            allowance: The token count this wire request's media may cost: the budget minus the fixed
+                template overhead and everything else the request reserves (:func:`fixed_overhead`), never
+                the bare ``max_tokens`` -- in the dead zone between them the media alone fit the budget but
+                the text fit would refuse the request (``the fixed template overhead ... plus the declared
+                media ... already fill the budget``). ``None`` (a caller with no overhead to name): the
+                budget's ``max_tokens``.
 
         Returns:
             ``(contents, tokens)``: the contents to send (the kept media in place, possibly shrunk, drops
@@ -397,17 +433,22 @@ class RoleClient[C: Endpoint]:
             The media gates are the wire call's (see :meth:`_gate_media_calls`), not this method's.
 
         Raises:
-            TextBudgetExceededError: ``on_overflow: fail`` and media alone fill the budget.
-            ConfigError: ``on_overflow: chunk`` and media alone fill the budget.
+            TextBudgetExceededError: ``on_overflow: fail`` and media alone fill the allowance.
+            ConfigError: ``on_overflow: chunk`` and media alone fill the allowance.
         """
         image, video = self._media_policies()
-        prepared = prepare_request(contents, image, video)
+        if prepared is None:
+            prepared = prepare_request(contents, image, video)
         media = prepared.media
         tokens = prepared.tokens.tokens
-        if self._budget is not None and tokens > self._budget.max_tokens:
-            assert image is not None, (
-                "counted media imply an effective image policy (content_media_tokens refused one without a family)"
-            )
+        bound = allowance if allowance is not None else (self._budget.max_tokens if self._budget else None)
+        if self._budget is not None and bound is not None and tokens > bound:
+            if image is None:
+                raise DataError(
+                    f"counted media ({tokens} tokens) imply an effective image policy, and this config declares none",
+                    hint="declare image_processor with a bounded image_policy (a media token count needs a "
+                    "processor family and a pixel budget), or drop the media parts",
+                )
             if self._budget.on_overflow == "fail":
                 raise TextBudgetExceededError(
                     f"this request's media alone cost {tokens} tokens, over the declared text budget of "
@@ -424,7 +465,7 @@ class RoleClient[C: Endpoint]:
                     hint="declare on_overflow: cut (the media fit shrinks to the policy minimum, then drops "
                     "whole items, every drop recorded), or a smaller image_policy",
                 )
-            fit = fit_media_to_budget(media, image=image, video=video, text_budget_tokens=self._budget.max_tokens)
+            fit = fit_media_to_budget(media, image=image, video=video, text_budget_tokens=bound)
             # The dropped items are the original prepared items at their positions; each position's
             # doc_id is its owning content's (doc_ids expanded per media item over the PRE-fit contents,
             # in the part order the fit's decisions index). Built before apply_media_fit, whose contents
@@ -441,9 +482,9 @@ class RoleClient[C: Endpoint]:
                     media=[media[position]],
                     dropped=True,
                 )
-            contents = list(apply_media_fit(contents, fit))
+            contents = list(apply_media_fit(list(prepared.contents), fit))
         else:
-            contents = list(contents)
+            contents = list(prepared.contents)
         counted = self._media_counts_of(contents)
         return contents, sum(count.tokens for count in counted)
 
