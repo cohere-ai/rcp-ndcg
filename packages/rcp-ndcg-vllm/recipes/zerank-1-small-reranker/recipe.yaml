@@ -129,7 +129,7 @@ sources:
     (safe_apply_chat_template, the renderer the engine calls); vllm/renderers/params.py get_encode_kwargs."
   - "rcp-ndcg: experiments/paper/rerankers/reference/zerank.py (the paper-exact ZerankRerank reference.py
     derives from; that reference/ split lands on the unified-inference line ahead of the recipes - this
-    lane's base still carries the same code at src/rcp_ndcg/retrieval/external_rerankers.py:168 ZerankRerank)
+    lane's base still carries the same code at src/rcp_ndcg/retrieval/external_rerankers.py:165 ZerankRerank)
     with experiments/paper/rerankers/reference/requirements.txt (its environment);
     experiments/paper/rerankers/zerank_1_small.yaml (the paper's served-path config: provider local,
     model zeroentropy/zerank-1-small); src/rcp_ndcg/retrieval/cross_encoder.py:42,46 (MAX_SEQ_LENGTH 8192,
@@ -190,4 +190,5 @@ notes: >
   at the last non-pad position over 5, sigmoided); its --mode render implements the recipe's
   anchor-preserving served render (the reference environment has no rcp-ndcg), pinned byte-identical
   to the product's fit by the recipe tests. Environment: requirements-reference.txt beside
-  reference.py (the paper reference's pins, minus flash-attn, which zerank.py never imports).
+  reference.py (the paper reference's pins, minus flash-attn and accelerate, neither of which
+  zerank.py imports).

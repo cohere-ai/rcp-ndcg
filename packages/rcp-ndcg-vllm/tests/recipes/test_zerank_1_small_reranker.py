@@ -201,6 +201,9 @@ def test_stage1_on_cpu_token_ids_anchor_check_and_over_length_pairs(tmp_path: Pa
     the anchors agree on 25 sampled pairs (20 from the pairs file, 5 over-length)."""
     recipe = _resolved_recipe(tmp_path)
     tokenizer = tokenizer_of(recipe)
+    # The score head is the lm_head row of the token "Yes": a single token, id 9454, measured on
+    # the pinned tokenizer.json (reference.py asserts it again when it loads, on the GPU wave).
+    assert tokenizer.ids("Yes") == [9454]
     # The frame's fixed overhead, measured (add_special_tokens adds none for this tokenizer).
     assert recipe.client.template.overhead("pair", tokenizer) == 13
     document = stage1_prompts(recipe, _pairs_path(tmp_path, _sample_pairs()), sys.executable, over_length_per_shape=5)
@@ -228,7 +231,8 @@ def test_reference_render_matches_fit_on_over_budget_pairs(tmp_path: Path) -> No
     im_end = tokenizer.special_text("im_end")
     rows = _sample_pairs()[:2] + [
         # over budget, both spans: the query alone is past its 4096-token share, the document past
-        # the 8192 budget ("alfa "/"bravo " are one token each in this tokenizer's BPE)
+        # the 8192 budget ("alfa " re-tokenizes to 2 tokens and "bravo " to 3, so the pairs are
+        # comfortably over budget)
         {"query": "alfa " * 6000, "documents": ["bravo " * 6000]},
         # the query under its share, the document alone past the budget
         {"query": "short query", "documents": ["bravo " * 9000]},

@@ -34,8 +34,8 @@
 
  The fallback branch (plain system/user/assistant roles, tools handling) never executes on the
  score route; it keeps this file a drop-in for the checkpoint's template outside rcp-ndcg.
- Score: sigmoid(l_Yes / 5) at the last token; the Yes token is id 9454
- (1_LogitScore/config.json true_token_id).
+ Score: sigmoid(l_Yes / 5) at the last token; the Yes token is id 9454, a single token
+ of this tokenizer (measured on the pinned tokenizer.json; the recipe tests pin it).
 -#}
 {%- if messages is defined -%}
 {%- set zerank_query = messages | selectattr("role", "eq", "query") | map(attribute="content") | list -%}

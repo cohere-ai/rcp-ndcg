@@ -22,8 +22,8 @@ paper code wins:
 Checkpoint: zeroentropy/zerank-1-small-reranker @ a65fd51c450e9b47fdddab98e31166ecad21af8d.
 Qwen3-1.7B causal LM (hidden 2048, 28 layers, tie_word_embeddings=true, bf16; the card's
 "Base Model: Qwen3-4B" row is wrong), scored on the last position's logit of the token "Yes"
-(id 9454 = ``1_LogitScore/config.json`` true_token_id; a single token of this tokenizer).
-Score = ``sigmoid(l_Yes / 5)``.
+(id 9454, a single token of this tokenizer: measured on the pinned tokenizer.json). Score =
+``sigmoid(l_Yes / 5)``.
 
 This file runs as a SUBPROCESS in the reference environment -- never inside the harness, which
 imports no torch and no transformers. The reference environment is pinned in
