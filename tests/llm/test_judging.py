@@ -450,7 +450,7 @@ class TestTheTokenizer:
 
         (tmp_path / "world").mkdir()
         (tmp_path / "world" / "dataset.jsonl").write_text(
-            "".join(json.dumps({"query_id": r.id, "query": r.query, "doc_ids": r.doc_ids, "docs": r.docs}) + "\n"
+            "".join(json.dumps({"query_id": r.id, "query": r.text, "doc_ids": r.doc_ids, "docs": r.docs}) + "\n"
                     for r in ROWS),
             encoding="utf-8",
         )  # fmt: skip

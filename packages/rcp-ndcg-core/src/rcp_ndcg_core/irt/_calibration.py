@@ -100,6 +100,10 @@ class FitDiagnostics(BaseModel):
 
     Attributes:
         n_observations: Rubric placements fitted.
+        skipped_observations: Rubric placements the fit skipped: rows whose document has no Bradley-Terry
+            theta (tournament mode). Nothing is dropped silently: the skipped input is counted here.
+        skipped_queries: Queries whose observations the fit skipped: a query absent from ``bt_scores``
+            (tournament mode). Its rows count in ``skipped_observations`` too.
         n_queries: Queries with a fitted scale map (tournament mode).
         n_documents: Documents fitted (rubric-only mode).
         mean_placements: Placements per document (rubric-only mode).
@@ -115,6 +119,8 @@ class FitDiagnostics(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     n_observations: int
+    skipped_observations: int = 0
+    skipped_queries: int = 0
     n_queries: int | None = None
     n_documents: int | None = None
     mean_placements: float | None = None
@@ -178,6 +184,10 @@ def fit_calibration(
     Returns:
         The :class:`CalibrationFit`.
 
+    Rows whose document has no Bradley-Terry score, and every row of a query ``bt_scores`` lacks, are skipped
+    in ``"tournament"`` mode (they have nothing to attach to); the fit records how many in
+    ``FitDiagnostics.skipped_observations`` and ``skipped_queries`` rather than dropping them silently.
+
     Raises:
         ValueError: An unknown switch value, a tournament fit without scores, rows
             whose judge tags do not match ``judges``, a pooled rubric-only fit, or
@@ -190,7 +200,7 @@ def fit_calibration(
     _check_judges(observations, judges)
     priors = priors or Priors()
     if mode == "tournament":
-        assert bt_scores is not None
+        assert bt_scores is not None  # narrowed: refused above when None
         return _fit_tournament(observations, bt_scores, num_criteria=num_criteria, priors=priors)
     if judges == "pooled":
         raise ValueError(
@@ -201,6 +211,13 @@ def fit_calibration(
 
 
 def _check_judges(observations: Mapping[str, Sequence[Observation]], judges: Judges) -> None:
+    for rows in observations.values():
+        for row in rows:
+            if len(row) not in (2, 3):
+                raise ValueError(
+                    f"rubric observation rows must be (doc_id, criteria) or (doc_id, criteria, judge_id), "
+                    f"got length {len(row)}: a longer row would have its tail silently ignored"
+                )
     tags = {row[2] if len(row) == 3 else None for rows in observations.values() for row in rows}  # type: ignore[misc]
     if judges == "single":
         if tags - {None}:
@@ -238,7 +255,21 @@ def _fit_tournament(
         query_id: {doc_id: queries[query_id].calibrated(theta) for doc_id, theta in bt_scores[query_id].items()}
         for query_id in queries
     }
-    diagnostics = FitDiagnostics(n_observations=len(engine._obs_rows), n_queries=len(queries))
+    skipped_observations = sum(len(rows) for query_id, rows in observations.items() if query_id not in queries)
+    skipped_queries = sum(1 for query_id in observations if query_id not in queries)
+    skipped_observations += sum(
+        1
+        for query_id, rows in observations.items()
+        if query_id in queries
+        for row in rows
+        if len(row) >= 2 and row[0] not in bt_scores.get(query_id, {})
+    )
+    diagnostics = FitDiagnostics(
+        n_observations=len(engine._obs_rows),
+        skipped_observations=skipped_observations,
+        skipped_queries=skipped_queries,
+        n_queries=len(queries),
+    )
     return CalibrationFit("tournament", items, queries, thetas, diagnostics, judge_severity=engine.get_judge_severity())
 
 
@@ -301,7 +332,8 @@ def _fit_rubric_only(
         theta_se.setdefault(query_id, {})[doc_id] = float(spread)
 
     diag = engine.diagnostics
-    assert diag is not None  # fit() always sets it
+    if diag is None:  # pragma: no cover - fit() always sets it
+        raise ValueError("the 2PL fit reported no diagnostics")
     diagnostics = FitDiagnostics(
         n_observations=int(n.sum()),
         n_documents=diag.n_documents,

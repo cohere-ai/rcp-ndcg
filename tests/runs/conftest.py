@@ -19,7 +19,7 @@ def data(tmp_path_factory: pytest.TempPathFactory) -> Path:
     path = tmp_path_factory.mktemp("data") / "rows.jsonl"
     rows, _ = tiny_rows()
     lines = [
-        json.dumps({"query_id": r.id, "query": r.query, "doc_ids": r.doc_ids, "docs": r.docs, "qrels": r.qrels})
+        json.dumps({"query_id": r.id, "query": r.text, "doc_ids": r.doc_ids, "docs": r.docs, "qrels": r.qrels})
         for r in rows
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

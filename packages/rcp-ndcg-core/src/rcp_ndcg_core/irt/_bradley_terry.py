@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn.functional as F
 
@@ -24,10 +26,37 @@ class BradleyTerryEstimator(BaseScoredModel):
         self._observation_tensors: None | tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor] = None
 
     def add_comparison(self, winner: str, loser: str, weight: float = 1.0, soft_label: float | None = None):
-        if winner in self.doc_to_idx and loser in self.doc_to_idx and winner != loser:
-            label = float(soft_label) if soft_label is not None else 1.0
-            self.observations.append((self.doc_to_idx[winner], self.doc_to_idx[loser], float(weight), label))
-            self._observation_tensors = None
+        """Record one weighted soft comparison.
+
+        Nothing is dropped: an observation the estimator cannot attach (an unknown id, a
+        self-pair) or that is malformed (a non-positive weight, a ``soft_label`` outside
+        ``[0, 1]``) is refused, because a silently dropped comparison fits a weaker model
+        and reports standard errors from less information than the data held.
+
+        Raises:
+            ValueError: a comparison names a document outside ``doc_ids``, compares a document
+                with itself, or carries a non-finite/non-positive ``weight`` or a ``soft_label``
+                outside ``[0, 1]``.
+        """
+        unknown = [doc for doc in (winner, loser) if doc not in self.doc_to_idx]
+        if unknown:
+            raise ValueError(
+                f"comparison ({winner!r}, {loser!r}) names unknown document(s) {unknown}: a comparison the "
+                "estimator cannot attach is silently dropped evidence. An id the fit does not know (an "
+                "id-format mismatch such as chunk id vs document id) must be named in doc_ids"
+            )
+        if winner == loser:
+            raise ValueError(
+                f"comparison ({winner!r}, {loser!r}) compares a document with itself: it carries no "
+                "evidence about any difference and is refused rather than dropped"
+            )
+        if not math.isfinite(weight) or weight <= 0:
+            raise ValueError(f"comparison weight must be finite and > 0, got {weight!r}")
+        label = 1.0 if soft_label is None else float(soft_label)
+        if not math.isfinite(label) or not 0.0 <= label <= 1.0:
+            raise ValueError(f"soft_label must be a probability in [0, 1], got {soft_label!r}")
+        self.observations.append((self.doc_to_idx[winner], self.doc_to_idx[loser], float(weight), label))
+        self._observation_tensors = None
 
     def _prepare_observation_tensors(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Materialise (and cache) the observations as tensors.

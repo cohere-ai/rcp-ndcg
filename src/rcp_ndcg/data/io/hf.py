@@ -214,11 +214,24 @@ class HfReader(SourceReader):
         score_column = _first(columns, ("score", "relevance", "label", "grade"))
         if query_column is None or doc_column is None:
             raise DataError(f"{self.uri}[{self.qrels_split}] needs query and corpus id columns. Columns: {columns}.")
+        if score_column is None:
+            raise DataError(
+                f"{self.uri}[{self.qrels_split}] needs a score column (the grade of each pair); "
+                f"columns: {columns}. Recognised: ('score', 'relevance', 'label', 'grade') -- without one, "
+                "every row would silently become grade 1.0. Rename the grade column, or read the split "
+                "yourself and pass the grades through Dataset.from_records."
+            )
         out: dict[ID, dict[ID, float]] = {}
         source = f"{self.uri}[{self.qrels_split}]"
         for row in split:
-            label = grade(row[score_column], source=source) if score_column else 1.0
-            out.setdefault(str(row[query_column]), {})[str(row[doc_column])] = label
+            label = grade(row[score_column], source=source)
+            judged = out.setdefault(str(row[query_column]), {})
+            if row[doc_column] in judged or str(row[doc_column]) in judged:
+                raise DataError(
+                    f"{source}: query {row[query_column]!r}, document {row[doc_column]!r} is labelled twice",
+                    details={"query_id": str(row[query_column]), "doc_id": str(row[doc_column])},
+                )
+            judged[str(row[doc_column])] = label
         return out
 
 

@@ -6,7 +6,9 @@ from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
+from rcp_ndcg_core._records import RankingExample
 from rcp_ndcg_core.schemas import (
+    DocumentEstimate,
     Family,
     ItemParams,
     Judgement,
@@ -76,6 +78,43 @@ def test_the_family_and_record_digests_are_pinned() -> None:
     assert judgement_record_id(RUBRIC.key, "q", "rubric", 0, ["a", "b"]) == "830d72371490547b10df9609e3052102"
 
 
+def test_query_params_refuse_non_finite_values() -> None:
+    """``Field(gt=0)`` admits ``inf``; an alpha of NaN calibrated every theta to NaN."""
+    with pytest.raises(ValidationError, match="finite"):
+        QueryParams(tau=1.0, alpha=float("nan"))
+    with pytest.raises(ValidationError, match="finite"):
+        QueryParams(tau=float("inf"), alpha=0.0)
+
+
+def test_a_document_estimate_refuses_non_finite_values() -> None:
+    for field in ("theta", "se", "information"):
+        values: dict[str, float] = {"theta": 0.0, "se": 1.0, "information": 1.0}
+        values[field] = float("inf") if field == "se" else float("nan")
+        with pytest.raises(ValidationError, match="finite"):
+            DocumentEstimate(**values)
+
+
+def test_a_placement_score_must_be_finite() -> None:
+    """A NaN score made a ``valid=True`` tournament judgement whose NaN NaNs the BT/2PL fits."""
+    for score in (float("nan"), float("inf")):
+        with pytest.raises(ValidationError, match="finite"):
+            Placement(position=1, doc_id="a", score=score)
+
+
+def test_recorded_at_must_be_timezone_aware() -> None:
+    """The store and :func:`supersedes` order windows by ``recorded_at``; a naive datetime
+    recorded on one host crashed every comparison with an aware one with a bare TypeError."""
+    with pytest.raises(ValidationError, match="timezone-aware"):
+        _rubric(recorded_at=datetime(2026, 1, 1))
+
+
+def test_a_ranking_example_refuses_non_finite_scores() -> None:
+    """A NaN comparison is always False, so the descending sort silently degenerated to the
+    input order -- for pools, often the relevance order the tie rules warn about."""
+    with pytest.raises(ValueError, match="finite"):
+        RankingExample(query_id="q1", doc_ids=["a", "b"], scores=[1.0, float("nan")], docs=["A", "B"])
+
+
 def test_a_valid_rubric_judgement_needs_every_verdict_binary() -> None:
     assert _rubric().valid
     with pytest.raises(ValidationError, match="criteria on every placement"):
@@ -89,6 +128,25 @@ def test_a_valid_rubric_judgement_needs_every_verdict_binary() -> None:
         _rubric(valid=False, invalid_reason="no JSON")
     with pytest.raises(ValidationError, match="invalid_category"):
         _rubric(invalid_category="schema")
+
+
+def test_a_placement_carries_one_shape_not_both() -> None:
+    """A parser bug emitting both shapes must not be recorded as a valid observation: a rubric
+    placement's verdicts are its criteria, a tournament placement's vote is its score."""
+    with pytest.raises(ValidationError, match="score"):
+        _rubric(placements=(Placement(position=1, doc_id="a", criteria={"C1": 1, "C2": 0}, score=999.0),))
+    family = Family(stage="tournament", judge_model="m", prompt_hash="p" * 64, parse_version=1)
+    with pytest.raises(ValidationError, match="criteria"):
+        Judgement(
+            record_id=judgement_record_id(family.key, "q", "tournament", 0, ["a"]),
+            dataset="d",
+            query_id="q",
+            stage="tournament",
+            family_key=family.key,
+            window_seq=0,
+            placements=(Placement(position=1, doc_id="a", score=1.0, criteria={"C1": 1}),),
+            recorded_at=RECORDED_AT,
+        )
 
 
 def test_judgement_json_round_trip_carries_the_schema_id() -> None:

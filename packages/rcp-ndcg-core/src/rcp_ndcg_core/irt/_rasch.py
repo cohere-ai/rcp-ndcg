@@ -53,27 +53,26 @@ class RaschEstimator(BaseScoredModel):
         self.observations.append((self.doc_to_idx[doc_id], vec))
         self._observation_tensors = None
 
-    def _prepare_observation_tensors(self) -> None:
-        if self._observation_tensors is not None:
-            return
-        if not self.observations:
-            self._observation_tensors = (
-                torch.empty(0, dtype=torch.long),
-                torch.empty((0, self.num_criteria), dtype=torch.float32),
-            )
-            return
-        doc_indices, criteria_vecs = zip(*self.observations, strict=False)
-        self._observation_tensors = (
-            torch.tensor(doc_indices, dtype=torch.long),
-            torch.tensor(criteria_vecs, dtype=torch.float32),
-        )
+    def _prepare_observation_tensors(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Materialise (and cache) the observations as ``(doc indices, criteria)`` tensors, and return them."""
+        if self._observation_tensors is None:
+            if not self.observations:
+                self._observation_tensors = (
+                    torch.empty(0, dtype=torch.long),
+                    torch.empty((0, self.num_criteria), dtype=torch.float32),
+                )
+            else:
+                doc_indices, criteria_vecs = zip(*self.observations, strict=False)
+                self._observation_tensors = (
+                    torch.tensor(doc_indices, dtype=torch.long),
+                    torch.tensor(criteria_vecs, dtype=torch.float32),
+                )
+        return self._observation_tensors
 
     def model_loss(self) -> torch.Tensor:
         if not self.observations:
             return torch.tensor(0.0)
-        self._prepare_observation_tensors()
-        assert self._observation_tensors is not None
-        doc_indices, Y = self._observation_tensors  # (M,), (M, K)
+        doc_indices, Y = self._prepare_observation_tensors()  # (M,), (M, K)
         theta_obs = self.theta[doc_indices]  # (M,)
         logits = theta_obs[:, None] - self.beta[None, :]  # (M, K)
         return F.binary_cross_entropy_with_logits(logits, Y, reduction="mean")

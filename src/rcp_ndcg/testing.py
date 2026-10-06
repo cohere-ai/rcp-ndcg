@@ -107,9 +107,7 @@ def build_tiny_world(root: str | Path, *, seed: int = 0) -> TinyWorld:
     rows = root / "dataset.jsonl"
     rows.write_text(
         "".join(
-            json.dumps(
-                {"query_id": ex.id, "query": ex.query, "doc_ids": ex.doc_ids, "docs": ex.docs, "qrels": ex.qrels}
-            )
+            json.dumps({"query_id": ex.id, "query": ex.text, "doc_ids": ex.doc_ids, "docs": ex.docs, "qrels": ex.qrels})
             + "\n"
             for ex in examples
         ),

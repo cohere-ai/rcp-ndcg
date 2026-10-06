@@ -159,6 +159,15 @@ def test_candidate_docs_keeps_the_pool_order_and_drops_excluded_ids() -> None:
         candidate_docs("nope", [])
 
 
+def test_candidate_docs_deduplicates_instead_of_returning_duplicates() -> None:
+    """The entering ids are the ones a ranking may hold, and a ranking may not repeat an id:
+    fed straight to ``ndcg``, the duplicated list raised while ``score_query`` silently deduped.
+    """
+    assert candidate_docs("plain", ["b", "a", "a", "b"]) == ["b", "a"]
+    assert candidate_docs("plain", ["b", "a"], candidates=["a", "a", "b"]) == ["a", "b"]
+    assert candidate_docs("nanobeir", ["b", "a", "a"], candidates=["a", "b", "c"]) == ["a", "b"]
+
+
 def test_aggregate_takes_the_mean_per_dataset_then_over_datasets() -> None:
     assert aggregate({"d1": {"q1": 1.0}, "d2": {"q1": 0.0, "q2": 0.5}}) == pytest.approx((1.0 + 0.25) / 2)
     assert aggregate({"d1": {"q1": math.nan, "q2": 0.5}, "d2": {"q1": math.nan}, "d3": {}}) == 0.5

@@ -84,12 +84,21 @@ class Criteria2PLDiagnostics:
 def _validate_observations(n: np.ndarray, S: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     n = np.asarray(n, dtype=float)
     S = np.asarray(S, dtype=float)
+    if not (np.isfinite(n).all() and np.isfinite(S).all()):
+        raise ValueError(
+            "placement and pass counts must be finite: a NaN or infinite count is missing data, "
+            "not a zero, and would silently produce a NaN ability"
+        )
     if n.ndim != 1 or n.size == 0:
         raise ValueError(f"n must be a non-empty 1-D array, got shape {n.shape}")
     if S.ndim != 2 or S.shape[0] != n.size:
         raise ValueError(f"S must be (len(n), K), got {S.shape} for n of shape {n.shape}")
     if S.shape[1] < 2:
         raise ValueError(f"need at least 2 criteria to identify a 2PL, got K={S.shape[1]}")
+    if (n != np.round(n)).any():
+        raise ValueError(f"every placement count must be a whole number, got {n.tolist()}")
+    if (S != np.round(S)).any():
+        raise ValueError(f"every pass count s_k must be a whole number with 0 <= s_k <= n, got {S.tolist()}")
     if (S < 0).any() or (S > n[:, None]).any():
         raise ValueError("every s_k must satisfy 0 <= s_k <= n")
     if (n < 1).any():

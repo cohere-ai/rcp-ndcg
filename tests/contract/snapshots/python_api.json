@@ -6549,6 +6549,124 @@
       }
     }
   },
+  "rcp_ndcg.data.revisions": {
+    "all": {
+      "ResolvedRevision": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.data.revisions",
+        "init": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "repo_id"
+          },
+          {
+            "annotation": "str | None",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "commit"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "identity": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, Any]"
+              }
+            ]
+          },
+          "verified": "property"
+        }
+      },
+      "dataset_uri_revision": {
+        "defined_in": "rcp_ndcg.data.revisions",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | None",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "uri"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "revision"
+          },
+          {
+            "returns": "dict[str, Any] | None"
+          }
+        ]
+      },
+      "hub_cache_dir": {
+        "defined_in": "rcp_ndcg.data.revisions",
+        "kind": "function",
+        "signature": [
+          {
+            "returns": "Path"
+          }
+        ]
+      },
+      "hub_offline": {
+        "defined_in": "rcp_ndcg.data.revisions",
+        "kind": "function",
+        "signature": [
+          {
+            "returns": "bool"
+          }
+        ]
+      },
+      "is_commit": {
+        "defined_in": "rcp_ndcg.data.revisions",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | None",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "revision"
+          },
+          {
+            "returns": "bool"
+          }
+        ]
+      },
+      "resolve_revision": {
+        "defined_in": "rcp_ndcg.data.revisions",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "repo_id"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "revision"
+          },
+          {
+            "returns": "ResolvedRevision"
+          }
+        ]
+      }
+    }
+  },
   "rcp_ndcg.errors": {
     "all": {
       "BackendUnavailableError": {
@@ -20289,6 +20407,20 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "skipped_observations": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "skipped_queries": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           }
         },
         "frozen": true,

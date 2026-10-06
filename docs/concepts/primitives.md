@@ -101,7 +101,8 @@ judge's logit shifted by its severity $s_j$. A document that failed
 (or passed) every criterion in every placement has no interior maximum of the
 likelihood; its score is prior-bounded and flagged (`flags.degenerate` is `all_fail`
 or `all_pass`); a document whose own evidence misses the standard-error target is
-flagged `low_information`.
+flagged `low_information`. Pass counts are counts: a NaN or fractional one is
+refused where it is scored, not read as a share.
 
 The judgements must come from the calibration's rubric family (the same prompt,
 judge and parse), or the call raises `IdentityError`. A document the calibration

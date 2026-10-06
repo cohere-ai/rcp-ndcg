@@ -92,7 +92,7 @@ def test_rrf_propagates_qrels_query_instruction() -> None:
     ]
     fused = reciprocal_rank_fusion([a, b], top_k=2, rrf_k=60)
     assert fused[0].qrels == qrels
-    assert fused[0].query == "full text"
+    assert fused[0].text == "full text"
     assert fused[0].instruction == "Find a thing."
     # docs is intentionally None to keep fused JSONLs small.
     assert fused[0].docs is None

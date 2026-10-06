@@ -88,3 +88,26 @@ def test_a_missing_verdict_is_refused_not_read_as_a_fail(mode: str) -> None:
     verdicts["q000"][0] = (doc_id, {label: value for label, value in criteria.items() if label != "C3"})
     with pytest.raises(ValueError, match=r"missing \['C3'\]"):
         fit_calibration(verdicts, mode=mode, bt_scores=bt_scores if mode == "tournament" else None)
+
+
+@pytest.mark.parametrize("mode", ["tournament", "rubric_only"])
+def test_a_malformed_row_length_is_refused_not_truncated(mode: str) -> None:
+    """``_check_judges`` classified any row of length != 3 as untagged, so a malformed 4-tuple
+    slipped past the tagged/untagged refusal and rubric-only mode silently ignored its tail."""
+    bt_scores, verdicts = _observations(num_queries=2, num_docs=5, placements=1)
+    doc_id, criteria = verdicts["q000"][0]
+    verdicts["q000"][0] = (doc_id, criteria, "judge-a", "extra")
+    with pytest.raises(ValueError, match="doc_id, criteria"):
+        fit_calibration(verdicts, mode=mode, bt_scores=bt_scores if mode == "tournament" else None)
+
+
+def test_the_tournament_fit_reports_what_it_skipped() -> None:
+    """Rows whose document has no BT theta, and whole queries absent from bt_scores, are skipped;
+    the count was computed and then discarded unless nothing survived."""
+    bt_scores, verdicts = _observations(num_queries=1, num_docs=5, placements=2)
+    verdicts["q000"].append(("d_unjudged", {f"C{k + 1}": 0 for k in range(5)}))
+    verdicts["q_absent"] = [("d1", {f"C{k + 1}": 1 for k in range(5)})]
+    fit = fit_calibration(verdicts, mode="tournament", bt_scores=bt_scores)
+    assert fit.diagnostics.n_observations == 10
+    assert fit.diagnostics.skipped_observations == 2
+    assert fit.diagnostics.skipped_queries == 1

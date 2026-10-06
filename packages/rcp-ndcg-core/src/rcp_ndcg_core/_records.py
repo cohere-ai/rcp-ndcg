@@ -137,7 +137,6 @@ class RankingExample(Query):
     # rescored file still drops straight back into its original consumer.
     model_config = ConfigDict(validate_by_name=True, validate_by_alias=True, extra="allow")
 
-    query: str = ""
     instruction: str | None = None
     id: ID = Field(alias="query_id")
     docs: list[str] | None = None

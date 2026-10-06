@@ -112,6 +112,24 @@ class TestTruncated:
             assert content.text.startswith(content.truncated(n).text)
             assert content.truncated(n).text == content.text[:n].removesuffix("\n")
 
+    def test_an_empty_text_part_does_not_break_the_prefix_contract(self):
+        """The empty part spent the join newline's budget on the *next* part and was then
+        dropped, so the cut was neither a prefix of the text nor max_chars long -- and
+        judging's window accounting assumes ``truncated(len(cut)).text == cut``."""
+        content = Content.from_parts([TextPart(text=""), TextPart(text="abc")])
+        assert content.text == "\nabc"
+        assert content.truncated(2).text == "\na"
+        for n in range(len(content.text) + 1):
+            assert content.text.startswith(content.truncated(n).text)
+            assert len(content.truncated(n).text) <= n
+
+    def test_a_negative_budget_is_a_caller_bug(self):
+        """A negative max_chars silently cut everything; 0 legitimately cuts to nothing."""
+        with pytest.raises(ValueError, match="max_chars"):
+            Content.from_text("abc").truncated(-3)
+        with pytest.raises(ValueError, match="max_chars"):
+            Content.from_image("gs://b/page.png").truncated(-1)
+
     def test_an_exhausted_budget_drops_later_text_but_keeps_media(self):
         content = Content.from_parts([TextPart(text="aaaa"), ImagePart(ref=MediaRef(uri="u")), TextPart(text="bbbb")])
         truncated = content.truncated(4)

@@ -1,4 +1,5 @@
-"""Tests for rcp_ndcg_core.schemas — data model invariants."""
+"""Tests for ``rcp_ndcg_core._records`` (the pipeline's records; the public records have their
+own suite in ``test_public_records.py``)."""
 
 from __future__ import annotations
 
@@ -81,8 +82,16 @@ class TestRankingExample:
     def test_ranking_example_serialize_roundtrip(self, ranking_example):
         json_str = ranking_example.model_dump_json()
         restored = RankingExample(**json.loads(json_str))
-        assert restored.query == ranking_example.query
+        assert restored.text == ranking_example.text
         assert restored.doc_ids == ranking_example.doc_ids
+
+    def test_the_query_alias_is_the_text_not_a_second_field(self):
+        """``query`` duplicated the aliased ``text``: built with ``text=``, ``query`` stayed
+        empty and both keys were written, so the two could disagree in one line."""
+        ex = RankingExample(query="AAA", query_id="q1", doc_ids=["a"])
+        assert ex.text == "AAA"
+        assert json.loads(ex.serialize_jsonl())["text"] == "AAA"
+        assert "query" not in json.loads(ex.serialize_jsonl())
 
     @pytest.mark.parametrize(
         ("field", "value"),

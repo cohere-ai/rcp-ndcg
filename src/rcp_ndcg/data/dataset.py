@@ -126,7 +126,8 @@ class QueryRow(BaseModel):
 
     Attributes:
         query_id: The query id.
-        text: The query text (the text view of ``content``; empty for a pure image query).
+        text: The query text as given; the parts of ``content`` are authoritative when it is set, and
+            :attr:`as_content` reads them (a text query's ``text`` is its one part's text).
         instruction: A task instruction the query is asked under (BRIGHT), or ``None``.
         content: The query as parts when it carries media; ``None`` for text.
     """
@@ -160,7 +161,8 @@ class DocumentRow(BaseModel):
 
     Attributes:
         doc_id: The document id.
-        text: The document text (title and body; the text view of ``content``).
+        text: The document text (title and body) as given; the parts of ``content`` are authoritative when
+            it is set, and :attr:`as_content` reads them.
         content: The document as parts when it carries media; ``None`` for text.
     """
 
@@ -345,11 +347,19 @@ class Dataset(BaseModel):
             raise DataError(f"{self.name!r} is a suite; read {key} from one of its subsets (Dataset.subsets)")
         if key not in self._cache:
             rows = [] if loader is None else [row(record) for record in loader()]
-            self._cache[key] = {(r.query_id if key == "queries" else r.doc_id): r for r in rows}
+            self._cache[key] = {}
+            for record in rows:
+                record_id = record.query_id if key == "queries" else record.doc_id
+                if record_id in self._cache[key]:
+                    raise DataError(
+                        f"{key}: {key[:-1] if key.endswith('s') else key}_id {record_id!r} appears twice",
+                        details={"records": key, f"{key[:-1] if key.endswith('s') else key}_id": record_id},
+                    )
+                self._cache[key][record_id] = record
         return self._cache[key]
 
 
-def _unique[Keyed: (QueryRow, DocumentRow)](rows: list[Keyed], key: str, what: str) -> dict[str, Keyed]:
+def _unique[Keyed: QueryRow | DocumentRow](rows: list[Keyed], key: str, what: str) -> dict[str, Keyed]:
     table: dict[str, Keyed] = {}
     for row in rows:
         value = getattr(row, key)
@@ -518,19 +528,41 @@ def _load_hub_subset(repo: str, subset: str, *, revision: str | None, protocol: 
     columns = [qrels_frame[c] for c in ("query-id", "corpus-id", "score")]
     extra = [qrels_frame["gain"], qrels_frame["theta"]] if has_gains else [[None] * len(qrels_frame)] * 2
     for query_id, doc_id, label, gain, theta in zip(*columns, *extra, strict=True):
-        qrels.setdefault(str(query_id), {})[str(doc_id)] = grade(label, source=source)
+        judged = qrels.setdefault(str(query_id), {})
+        if str(doc_id) in judged:
+            raise DataError(
+                f"{source}: query {query_id!r}, document {doc_id!r} is labelled twice",
+                details={"query_id": str(query_id), "doc_id": str(doc_id)},
+            )
+        judged[str(doc_id)] = grade(label, source=source)
         if has_gains and theta == theta:  # theta is null (NaN) outside the judged pool
+            if not (math.isfinite(gain) and 0.0 <= float(gain) <= 1.0):
+                raise DataError(
+                    f"{source}: gain {gain!r} of query {query_id!r}, document {doc_id!r} is not a gain in [0, 1]"
+                )
+            if not math.isfinite(theta):
+                raise DataError(f"{source}: theta {theta!r} of query {query_id!r}, document {doc_id!r} is not finite")
             gains.setdefault(str(query_id), {})[str(doc_id)] = float(gain)
             thetas.setdefault(str(query_id), {})[str(doc_id)] = float(theta)
 
     candidates = None
     if pools_frame is not None:
+        for column in ("query-id", "corpus-ids"):
+            if column not in pools_frame.columns:
+                raise DataError(
+                    f"{where}: top_ranked.parquet has no {column!r} column; columns: {list(pools_frame.columns)}"
+                )
         candidates = {
             str(q): [str(d) for d in docs]
             for q, docs in zip(pools_frame["query-id"], pools_frame["corpus-ids"], strict=True)
         }
     excluded: dict[str, list[str]] = {}
     if excluded_frame is not None:
+        for column in ("query-id", "excluded-corpus-ids"):
+            if column not in excluded_frame.columns:
+                raise DataError(
+                    f"{where}: excluded.parquet has no {column!r} column; columns: {list(excluded_frame.columns)}"
+                )
         for query_id, docs in zip(excluded_frame["query-id"], excluded_frame["excluded-corpus-ids"], strict=True):
             excluded[str(query_id)] = [str(d) for d in docs]
 
@@ -553,6 +585,8 @@ def _load_hub_subset(repo: str, subset: str, *, revision: str | None, protocol: 
 def _hub_queries(repo: str, subset: str, revision: str | None) -> Iterable[Query]:
     frame = _read_hub_table(repo, f"{subset}/queries.parquet", revision)
     assert frame is not None
+    if "id" not in frame.columns:
+        raise DataError(f"hf://{repo}/{subset}: queries.parquet has no 'id' column; columns: {list(frame.columns)}")
     for row in frame.to_dict("records"):
         yield Query(query_id=str(row["id"]), query=str(row.get("text") or ""), instruction=row.get("instruction"))
 

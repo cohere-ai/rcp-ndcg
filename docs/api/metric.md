@@ -7,7 +7,8 @@ torch, no pandas, no LLM client, no cloud storage.
 
 - `ndcg(scores, gains, *, k=10, ties="group_mean", ideal=None)`: the one nDCG@k, with linear gains. `scores` is
   a mapping `{doc_id: score}` (ranked under the tie rule) or an ordered list of doc ids. `ideal` gives the gains of
-  the ideal ranking (default: all values of `gains`). RCP-, qrel- and Count-nDCG differ only in the gains.
+  the ideal ranking (default: all values of `gains`). RCP-, qrel- and Count-nDCG differ only in the gains. Scores,
+  gains and ideal gains must be finite numbers: a non-finite one is refused, not NaN'd through the sums.
 - Tie rules (`TieRule`): `"group_mean"` (every tied document gets its tie group's mean gain: the expected nDCG over
   tie orders, as mteb's `ndcg_float_at_k`), `"doc_id_desc"` (trec_eval), `"input_order"` (the order the scores
   come in).
@@ -18,9 +19,10 @@ torch, no pandas, no LLM client, no cloud storage.
 - `gain(theta, items)`: the RCP gain; `pass_probabilities(theta, items)`: the per-criterion pass
   probabilities. `items` has `gamma` and `beta` sequences.
 - `count_gain(passes, placements)`: the paper's rubric-only **Count-nDCG** gain: the share of Stage B criteria a
-  document passes, $\sum_c S_c / (C\, n)$, with no tournament and no calibration.
+  document passes, $\sum_c S_c / (C\, n)$, with no tournament and no calibration. The pass counts are counts:
+  a fractional or out-of-range one is refused, not read as a share.
 - `qrel_gain(grade, scheme="linear")`: the gain of a grade (`"linear"`, the paper) or `2**grade - 1`
-  (`"exponential"`).
+  (`"exponential"`, which refuses a grade whose `2**grade` would overflow, i.e. grades >= 1024).
 
 The gain of the paper is the discrimination-weighted criterion pass probability
 

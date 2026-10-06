@@ -166,6 +166,12 @@ class TestValidation:
         with pytest.raises(ValueError):
             _score(1, [2, 0, 0, 0, 0])
 
+    def test_non_finite_pass_count_refused_not_scored(self) -> None:
+        """A NaN window score upstream must refuse here, not return theta=nan as a
+        clean-looking DocumentEstimate (degenerate=None, low_information=False)."""
+        with pytest.raises(ValueError, match="finite"):
+            _score(2, [float("nan"), 1, 1, 1, 1])
+
     def test_reports_an_se_in_range(self) -> None:
         assert 0 < _score(8, [5, 4, 3, 2, 0]).se < 2.0
 
