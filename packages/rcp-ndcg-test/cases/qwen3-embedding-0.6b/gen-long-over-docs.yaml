@@ -3,7 +3,6 @@ recipe: qwen3-embedding-0.6b
 role: embed
 source:
   kind: generated
-  revision: 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3
 strata:
   modality: text
   length: long_over
