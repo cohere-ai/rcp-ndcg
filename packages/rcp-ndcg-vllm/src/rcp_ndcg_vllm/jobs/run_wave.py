@@ -2,11 +2,14 @@
 
 For every recipe it packs the engine onto ``resources.gpus`` GPUs (``--tensor-parallel-size`` follows the recipe),
 starts one ``vllm serve`` per slot from :func:`~rcp_ndcg_vllm.recipe.serve_argv` with its own
-``CUDA_VISIBLE_DEVICES`` and port (``--port-base`` + slot; default 8100; ``--port-base 0`` gives every engine port 0),
-waits for ``GET /v1/models`` within the
+``CUDA_VISIBLE_DEVICES``, port (``--port-base`` + slot; default 8100; ``--port-base 0`` gives every engine port 0),
+``VLLM_PORT`` and ``TMPDIR`` (one home per slot: two engines cannot collide), waits for ``GET /v1/models`` within the
 recipe's ``engine.startup_timeout_s`` (an engine that exits early fails that recipe only), then runs smoke,
 equivalence (stages 1 and 2) and — with ``--record`` — the recorder, stops the engine's process group, and moves
-on.  It writes ``<out>/<id>/{serve.log, equivalence.json, EQUIVALENCE.md, status.json}``, a wave summary
+on.  The pod has no persistent volume (node-runtime item 8): before each recipe the runner measures the free
+disk and the model's Hub size and fails the recipe early when it measurably cannot fit; after a recipe whose
+model no later recipe reuses, the model's weights are evicted from the HF cache.  It writes
+``<out>/<id>/{serve.log, equivalence.json, EQUIVALENCE.md, status.json}``, a wave summary
 (``wave.json`` and ``WAVE.md``), and with ``--upload`` copies ``<out>`` to the URI after each recipe
 (``gcloud storage cp -r`` with a ``gsutil -m cp -r`` fallback).
 
@@ -67,6 +70,7 @@ def run_wave(
     """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    _MODEL_SIZES.clear()  # each wave asks the Hub for its models' sizes once
     recipes = _resolve_recipes(recipe_ids, recipes_root)
     results: dict[str, dict[str, Any]] = {}
     used_gpus: set[int] = set()
@@ -89,6 +93,25 @@ def run_wave(
                 pending.remove(recipe)
                 continue
             if len(used_gpus) + need <= gpus:
+                # Node-runtime item 8: the pod has no persistent volume; a model that measurably cannot
+                # fit fails here, before its engine has started and downloaded anything.
+                disk = _disk_check(recipe)
+                if disk["error"] is not None:
+                    results[recipe.id] = _status(
+                        recipe,
+                        "failed",
+                        error=disk["error"],
+                        steps={"serve": {"state": "failed", "error": disk["error"]}},
+                        disk=disk,
+                    )
+                    directory = out / recipe.id
+                    directory.mkdir(parents=True, exist_ok=True)
+                    (directory / "status.json").write_text(
+                        json.dumps(results[recipe.id], indent=2) + "\n", encoding="utf-8"
+                    )
+                    pending.remove(recipe)
+                    progressed = True
+                    continue
                 assigned = _lowest_free(used_gpus, need)
                 used_gpus.update(assigned)
                 try:
@@ -117,9 +140,14 @@ def run_wave(
             elif run.timed_out():
                 error = f"GET /v1/models not ready within {run.timeout_s:.0f}s"
             if run.exited() or run.timed_out() or run.ready():
+                # One home per concept (item 8): the model's weights stay while any other recipe in this
+                # wave still needs them (queued or already served); otherwise they are evicted below.
+                reuse = any(other.model == run.recipe.model for other in pending) or any(
+                    other.recipe.model == run.recipe.model for other in running if other is not run
+                )
                 _finalise(
                     run, results, out, pairs_dir=pairs_dir, record=record, error=error,
-                    reference_python=reference_python,
+                    reference_python=reference_python, reuse=reuse,
                 )  # fmt: skip
                 running.remove(run)
                 used_gpus.difference_update(run.gpus)
@@ -148,6 +176,7 @@ class _EngineRun:
         popen: subprocess.Popen[bytes],
         log_path: Path,
         out_dir: Path,
+        disk: dict[str, Any] | None = None,
     ) -> None:
         self.recipe = recipe
         self.gpus = gpus
@@ -155,6 +184,7 @@ class _EngineRun:
         self.popen = popen
         self.log_path = log_path
         self.out_dir = out_dir
+        self.disk: dict[str, Any] = disk or {}
         self.started = time.monotonic()
         self.timeout_s = float(recipe.engine.startup_timeout_s)
         self.status: dict[str, Any] = _status(recipe, "running", port=port, gpus=gpus, steps={})
@@ -248,7 +278,11 @@ def _lowest_free(used: set[int], count: int) -> list[int]:
 
 
 def _start(recipe: Recipe, gpus: list[int], slot: int, out: Path, vllm_cmd: str | None, port_base: int) -> _EngineRun:
-    """Start one engine on the given GPUs; the port is ``port_base + slot``, or 0 (announced) in test mode."""
+    """Start one engine on the given GPUs; the port is ``port_base + slot``, or 0 (announced) in test mode.
+
+    Node-runtime item 7: every slot gets its own ``CUDA_VISIBLE_DEVICES``, HTTP port, ``VLLM_PORT`` (the
+    engine's internal port) and ``TMPDIR``, so two engines on one node cannot collide on any of them.
+    """
     port = port_base if port_base == 0 else port_base + slot
     argv = serve_argv(recipe, port=port, served_model_name=recipe.id)
     if vllm_cmd:
@@ -257,6 +291,12 @@ def _start(recipe: Recipe, gpus: list[int], slot: int, out: Path, vllm_cmd: str 
     directory.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
     env["CUDA_VISIBLE_DEVICES"] = ",".join(str(g) for g in gpus)
+    tmpdir = directory / "tmp"
+    tmpdir.mkdir(exist_ok=True)
+    env["TMPDIR"] = str(tmpdir)
+    if port_base != 0:
+        # The engine's internal port, distinct per slot (test mode leaves it to the stub).
+        env["VLLM_PORT"] = str(port_base + 1000 + slot)
     try:
         popen = subprocess.Popen(
             argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, start_new_session=True
@@ -270,10 +310,65 @@ def _start(recipe: Recipe, gpus: list[int], slot: int, out: Path, vllm_cmd: str 
         popen,
         directory / "serve.log",
         directory,
+        disk=_disk_check(recipe),
     )
     run.status["serve_argv"] = argv
     run.status["steps"]["serve"] = {"state": "running", "port": port, "gpus": gpus}
     return run
+
+
+_MODEL_SIZES: dict[str, int | None] = {}
+"""The Hub size of each model, asked once per wave (the same model does not download twice)."""
+
+
+def _disk_check(recipe: Recipe) -> dict[str, Any]:
+    """The pre-serve disk check (node-runtime item 8): free disk, the model's size, the verdict.
+
+    A model whose Hub metadata is unreachable has an unknown size: the check records ``unknown`` and
+    the wave proceeds (never silently - the status says so); a model that measurably does not fit is
+    the recipe's early failure, with the one-line reason.
+    """
+    from . import weights
+
+    free = weights.disk_free_bytes(weights.hf_cache_root())
+    size = _model_size(recipe)
+    ok, reason = weights.will_fit(free, size)
+    document: dict[str, Any] = {
+        "free_disk_bytes": free,
+        "model_bytes": size,
+        "fits": ok if size is not None else None,
+    }
+    document["error"] = reason if not ok else None
+    if size is None:
+        document["note"] = "the model's size is unknown (the Hub did not answer); the disk check is a record only"
+    return document
+
+
+def _model_size(recipe: Recipe) -> int | None:
+    """The recipe model's weight bytes, asked once per model per process (the Hub's file metadata)."""
+    from . import weights
+
+    key = f"{recipe.model}@{recipe.revision}"
+    if key not in _MODEL_SIZES:
+        _MODEL_SIZES[key] = weights.model_disk_bytes(recipe.model, recipe.revision)
+    return _MODEL_SIZES[key]
+
+
+def _evict(recipe: Recipe, *, reuse: bool) -> dict[str, Any]:
+    """The post-recipe eviction (node-runtime item 8), recorded for the recipe's status."""
+    from . import weights
+
+    if reuse:
+        return {"evicted": False, "reason": "a later recipe in this wave serves the same model"}
+    eviction = weights.evict(recipe.model)
+    document: dict[str, Any] = {
+        "evicted": eviction.removed,
+        "freed_bytes": eviction.freed_bytes,
+        "free_disk_bytes": eviction.bytes_after,
+    }
+    if eviction.error is not None:
+        document["error"] = eviction.error
+    return document
 
 
 def _mark_serve_step(run: _EngineRun, state: str) -> None:
@@ -296,8 +391,14 @@ def _finalise(
     record: bool = False,
     error: str | None = None,
     reference_python: str | None = None,
+    reuse: bool = False,
 ) -> None:
-    """Take one engine to its end state: run the steps, or record the failure, then stop it."""
+    """Take one engine to its end state: run the steps, or record the failure, then stop it.
+
+    Unless ``reuse`` (a later recipe in the wave serves the same model), the model's weights are evicted
+    from the HF cache when the engine has stopped (node-runtime item 8: the pod has no persistent
+    volume), and the disk before/after is recorded with the recipe's status.
+    """
     try:
         if error is None and run.port == 0:
             announced = run.announced_port(_ANNOUNCE_TIMEOUT_S)
@@ -331,6 +432,7 @@ def _finalise(
         serve_state = "failed" if (error is not None or run.status["state"] == "failed") else "passed"
         _mark_serve_step(run, serve_state)
         run.stop()
+        run.status["disk"] = {**run.disk, **_evict(run.recipe, reuse=reuse)}
         run.status["finished"] = _now()
         _write_status(run)
         results[run.recipe.id] = run.status

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from pathlib import Path
 
 import pytest
 from rcp_ndcg_vllm import load_recipe
 from rcp_ndcg_vllm.equivalence.metrics import stage3_metrics
+from rcp_ndcg_vllm.jobs import weights
 from rcp_ndcg_vllm.jobs.run_wave import run_wave
 from rcp_ndcg_vllm.record import record
 
@@ -129,6 +131,99 @@ def test_wave_runs_a_recipe_end_to_end(tmp_path: Path) -> None:
     assert (out / "fixture-embed" / "serve.log").is_file()
     assert (out / "fixture-embed" / "status.json").is_file()
     assert (out / "wave.json").is_file()
+
+
+def test_wave_records_disk_and_evicts_after_the_last_recipe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Node-runtime item 8 in the wave runner: the disk record per recipe, the eviction once.
+
+    Two recipes serving the same model run in parallel on two slots; the model's cache is evicted only
+    after the last of them stopped, and every recipe's status carries the disk before/after.
+    """
+    cache = tmp_path / "hub"
+    model_dir = cache / "models--fixtures--DenseEmbedder"
+    (model_dir / "snapshots" / "0123456789abcdef0123456789abcdef01234567").mkdir(parents=True)
+    (model_dir / "snapshots" / "0123456789abcdef0123456789abcdef01234567" / "model.safetensors").write_bytes(
+        b"0" * (3 << 20)
+    )
+    monkeypatch.setenv("HF_HUB_CACHE", str(cache))
+    recipes_root = tmp_path / "recipes"
+    shutil.copytree(RECIPES, recipes_root)
+    # The fixtures sit two levels above a recipe dir (../../tokenizer.json, ../../deterministic.py).
+    shutil.copy2(RECIPES.parent / "tokenizer.json", recipes_root.parent / "tokenizer.json")
+    shutil.copy2(RECIPES.parent / "deterministic.py", recipes_root.parent / "deterministic.py")
+    recipe_yaml = recipes_root / "fixture-embed-cls" / "recipe.yaml"
+    recipe_yaml.write_text(
+        recipe_yaml.read_text(encoding="utf-8").replace("model: fixtures/ClsEmbedder", "model: fixtures/DenseEmbedder"),
+        encoding="utf-8",
+    )
+    out = tmp_path / "wave"
+    document = run_wave(
+        ["fixture-embed", "fixture-embed-cls"],
+        recipes_root,
+        gpus=2,
+        out_dir=out,
+        pairs_dir=_pairs_dir(tmp_path, {"fixture-embed", "fixture-embed-cls"}),
+        reference_python=REFERENCE_PYTHON,
+        vllm_cmd=f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'} --tokenizer {TOKENIZER}",
+        port_base=0,
+    )
+    by_id = {row["recipe"]: row for row in document["recipes"]}
+    assert all(row["state"] == "verified" for row in document["recipes"]), by_id
+    disks = {row["recipe"]: row["disk"] for row in document["recipes"]}
+    assert disks["fixture-embed"]["free_disk_bytes"] > 0
+    assert disks["fixture-embed"]["model_bytes"] is None  # offline: the size is unknown, recorded
+    evictions = [disks[row["recipe"]].get("evicted") for row in document["recipes"]]
+    assert evictions.count(True) == 1, evictions  # one model, one eviction, after the last recipe
+    assert not model_dir.exists()
+
+
+def test_wave_fails_a_recipe_that_measurably_cannot_fit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A model whose size cannot fit the free disk fails before its engine started (one line)."""
+    monkeypatch.setattr(weights, "model_disk_bytes", lambda model, revision=None: 1 << 40)  # 1 TiB of weights
+    monkeypatch.setattr(weights, "disk_free_bytes", lambda path: 2 << 30)  # 2 GiB free: it cannot fit
+    document = run_wave(
+        ["fixture-embed"],
+        RECIPES,
+        gpus=1,
+        out_dir=tmp_path / "wave",
+        reference_python=REFERENCE_PYTHON,
+        vllm_cmd=f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'} --tokenizer {TOKENIZER}",
+        port_base=0,
+    )
+    row = document["recipes"][0]
+    assert row["state"] == "failed"
+    assert "free" in (row["error"] or "") and "GiB" in (row["error"] or "")
+    assert row["disk"]["model_bytes"] == 1 << 40
+    assert row["steps"]["serve"]["state"] == "failed"
+    assert not (tmp_path / "wave" / "fixture-embed" / "serve.log").exists()  # no engine ever started
+
+
+def test_wave_gives_each_slot_its_own_paths(tmp_path: Path) -> None:
+    """Node-runtime item 7: each slot's engine gets its own TMPDIR (test-mode ports are ephemeral)."""
+    document = run_wave(
+        ["fixture-embed", "fixture-embed-cls"],
+        RECIPES,
+        gpus=2,
+        out_dir=tmp_path / "wave",
+        pairs_dir=_pairs_dir(tmp_path, {"fixture-embed", "fixture-embed-cls"}),
+        reference_python=REFERENCE_PYTHON,
+        vllm_cmd=f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'} --tokenizer {TOKENIZER}",
+        port_base=0,
+    )
+    assert all(row["state"] == "verified" for row in document["recipes"])
+    for row in document["recipes"]:
+        assert (tmp_path / "wave" / row["recipe"] / "tmp").is_dir()
+
+
+def _pairs_dir(tmp_path: Path, recipe_ids: set[str]) -> Path:
+    """A pairs directory with one row per named recipe, so each recipe's equivalence stage runs."""
+    pairs = tmp_path / "pairs"
+    pairs.mkdir(exist_ok=True)
+    for recipe_id in recipe_ids:
+        (pairs / f"{recipe_id}.jsonl").write_text(
+            "".join(json.dumps(row) + "\n" for row in sample_pairs()[:1]), encoding="utf-8"
+        )
+    return pairs
 
 
 def test_wave_recipe_cannot_start_fails_only_itself(tmp_path: Path) -> None:
