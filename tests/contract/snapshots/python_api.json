@@ -9858,6 +9858,12 @@
             "name": "dim"
           },
           {
+            "annotation": "Literal['per_token', 'per_chunk']",
+            "default": "per_token",
+            "kind": "positional_or_keyword",
+            "name": "outputs"
+          },
+          {
             "returns": "None"
           }
         ],
@@ -10063,6 +10069,13 @@
             "required": false,
             "type": "str"
           },
+          "document_skip_token_ids": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis]"
+          },
           "embed_dtype": {
             "alias": null,
             "default": "float16",
@@ -10150,6 +10163,13 @@
             "required": true,
             "type": "str"
           },
+          "mrl_dim": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -10163,6 +10183,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "outputs": {
+            "alias": null,
+            "default": "per_token",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['per_token', 'per_chunk']"
           },
           "query_max_tokens": {
             "alias": null,
@@ -14064,6 +14091,13 @@
             "required": false,
             "type": "str"
           },
+          "document_skip_token_ids": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis]"
+          },
           "embed_dtype": {
             "alias": null,
             "default": "float16",
@@ -14151,6 +14185,13 @@
             "required": true,
             "type": "str"
           },
+          "mrl_dim": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -14164,6 +14205,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "outputs": {
+            "alias": null,
+            "default": "per_token",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['per_token', 'per_chunk']"
           },
           "query_max_tokens": {
             "alias": null,
@@ -14824,6 +14872,13 @@
             "required": false,
             "type": "str"
           },
+          "document_skip_token_ids": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis]"
+          },
           "embed_dtype": {
             "alias": null,
             "default": "float16",
@@ -14911,6 +14966,13 @@
             "required": true,
             "type": "str"
           },
+          "mrl_dim": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "normalize": {
             "alias": null,
             "default": true,
@@ -14924,6 +14986,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "outputs": {
+            "alias": null,
+            "default": "per_token",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['per_token', 'per_chunk']"
           },
           "query_max_tokens": {
             "alias": null,

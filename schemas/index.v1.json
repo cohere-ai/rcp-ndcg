@@ -1367,6 +1367,15 @@
           "title": "Doc Prompt",
           "type": "string"
         },
+        "document_skip_token_ids": {
+          "default": [],
+          "description": "The token ids whose DOCUMENT vectors the model scores nothing by (2, the topk hand-off): the client drops the vector at every position whose token id is listed, before MaxSim (topk-embed-v1-small drops 41 ids -- standalone punctuation and specials; queries keep all their vectors). The positions are the ids the client sent: it tokenises the fitted document text with the declared tokenizer, checks the returned vector count against them (a mismatch is a typed error, never a silent misalignment), and refuses a batch that carries media -- a media request's positions are the server's chat-template render, which the client cannot tokenise. Needs the declared tokenizer; a hosted profile without one cannot apply it (refused as inert). Content.",
+          "items": {
+            "type": "integer"
+          },
+          "title": "Document Skip Token Ids",
+          "type": "array"
+        },
         "embed_dtype": {
           "default": "float16",
           "description": "The precision the vectors cross the wire in; ``\"float16\"`` (the owner's Q11 decision) halves the bytes of a ragged buffer, ``\"float32\"`` is the lossless opt-in. Content: it changes the vectors. MaxSim computes in float32 either way.",
@@ -1491,6 +1500,20 @@
           "title": "Model",
           "type": "string"
         },
+        "mrl_dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka output size served (2g, plug-pplx), below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the default) serves the checkpoint's own dim. Content.",
+          "title": "Mrl Dim"
+        },
         "normalize": {
           "default": true,
           "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected).",
@@ -1506,6 +1529,16 @@
             "fail"
           ],
           "title": "On Overflow",
+          "type": "string"
+        },
+        "outputs": {
+          "default": "per_token",
+          "description": "What one input yields (2g, plug-pplx): ``\"per_token\"`` (the default) is the token_embed contract -- one vector per prompt token, which the reply's ``usage`` cross-checks; ``\"per_chunk\"`` is a per-chunk multi-output model -- several outputs per input, one slice of chunk vectors per input, so the usage cross-check cannot apply and is skipped. Content.",
+          "enum": [
+            "per_token",
+            "per_chunk"
+          ],
+          "title": "Outputs",
           "type": "string"
         },
         "query_max_tokens": {
@@ -2146,6 +2179,15 @@
           "title": "Doc Prompt",
           "type": "string"
         },
+        "document_skip_token_ids": {
+          "default": [],
+          "description": "The token ids whose DOCUMENT vectors the model scores nothing by (2, the topk hand-off): the client drops the vector at every position whose token id is listed, before MaxSim (topk-embed-v1-small drops 41 ids -- standalone punctuation and specials; queries keep all their vectors). The positions are the ids the client sent: it tokenises the fitted document text with the declared tokenizer, checks the returned vector count against them (a mismatch is a typed error, never a silent misalignment), and refuses a batch that carries media -- a media request's positions are the server's chat-template render, which the client cannot tokenise. Needs the declared tokenizer; a hosted profile without one cannot apply it (refused as inert). Content.",
+          "items": {
+            "type": "integer"
+          },
+          "title": "Document Skip Token Ids",
+          "type": "array"
+        },
         "embed_dtype": {
           "default": "float16",
           "description": "The precision the vectors cross the wire in; ``\"float16\"`` (the owner's Q11 decision) halves the bytes of a ragged buffer, ``\"float32\"`` is the lossless opt-in. Content: it changes the vectors. MaxSim computes in float32 either way.",
@@ -2270,6 +2312,20 @@
           "title": "Model",
           "type": "string"
         },
+        "mrl_dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka output size served (2g, plug-pplx), below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the default) serves the checkpoint's own dim. Content.",
+          "title": "Mrl Dim"
+        },
         "normalize": {
           "default": true,
           "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected).",
@@ -2285,6 +2341,16 @@
             "fail"
           ],
           "title": "On Overflow",
+          "type": "string"
+        },
+        "outputs": {
+          "default": "per_token",
+          "description": "What one input yields (2g, plug-pplx): ``\"per_token\"`` (the default) is the token_embed contract -- one vector per prompt token, which the reply's ``usage`` cross-checks; ``\"per_chunk\"`` is a per-chunk multi-output model -- several outputs per input, one slice of chunk vectors per input, so the usage cross-check cannot apply and is skipped. Content.",
+          "enum": [
+            "per_token",
+            "per_chunk"
+          ],
+          "title": "Outputs",
           "type": "string"
         },
         "query_max_tokens": {

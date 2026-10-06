@@ -87,11 +87,16 @@ class PreparedItems(NamedTuple):
             from); every input not in :attr:`omitted` appears exactly once.
         omitted: The input indices ``empty_doc: omit_zero`` never sends -- ascending; the caller places the
             missing result (a zero vector, an empty slice, a 0.0 score) at each.
+        token_ids: For each item, the token ids of its sent text as the engine reads it (the client's
+            tokenisation of the fitted render under the shape's ``add_special_tokens`` flag), when the role
+            tracks them -- the pooling role's ``document_skip_token_ids`` needs the positions. Empty when
+            not tracked.
     """
 
     items: tuple[Content, ...]
     positions: tuple[int, ...]
     omitted: tuple[int, ...]
+    token_ids: tuple[tuple[int, ...], ...] = ()
 
 
 class RoleClient[C: Endpoint]:

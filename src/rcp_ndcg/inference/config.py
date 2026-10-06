@@ -116,6 +116,8 @@ def _no_inert_overflow_policies(config: EmbeddingEndpoint | RerankEndpoint) -> N
         inert.append("on_overflow")
     if getattr(config, "query_max_tokens", None) is not None:
         inert.append("query_max_tokens")
+    if getattr(config, "document_skip_token_ids", ()):
+        inert.append("document_skip_token_ids")
     if config.chunk is not None:
         inert.append("chunk")
     if config.template is not None:
@@ -365,16 +367,50 @@ class PoolingEndpoint(EmbeddingEndpoint):
             checked against it, so a mistyped width fails loudly instead of silently mis-shaping every
             vector. The self-describing float and bytes frames decode without it, and the ``bytes`` encoding
             makes it unnecessary (its metadata carries each item's ``shape``).
+        document_skip_token_ids: The token ids whose DOCUMENT vectors the model scores nothing by (2, the
+            topk hand-off): the client drops the vector at every position whose token id is listed, before
+            MaxSim (topk-embed-v1-small drops 41 ids -- standalone punctuation and specials; queries keep
+            all their vectors). The positions are the ids the client sent: it tokenises the fitted document
+            text with the declared tokenizer, checks the returned vector count against them (a mismatch is
+            a typed error, never a silent misalignment), and refuses a batch that carries media -- a media
+            request's positions are the server's chat-template render, which the client cannot tokenise.
+            Needs the declared tokenizer; a hosted profile without one cannot apply it (refused as inert).
+            Content.
+        mrl_dim: The Matryoshka output size served (2g, plug-pplx), below :attr:`dim` when set: applied
+            CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then
+            L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the
+            default) serves the checkpoint's own :attr:`dim`. Content.
+        outputs: What one input yields (2g, plug-pplx): ``"per_token"`` (the default) is the token_embed
+            contract -- one vector per prompt token, which the reply's ``usage`` cross-checks;
+            ``"per_chunk"`` is a per-chunk multi-output model -- several outputs per input, one slice of
+            chunk vectors per input, so the usage cross-check cannot apply and is skipped. Content.
     """
 
     IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {
         "embed_dtype": FieldRole.CONTENT,
         "dim": FieldRole.CONTENT,
+        "document_skip_token_ids": FieldRole.CONTENT,
+        "mrl_dim": FieldRole.CONTENT,
+        "outputs": FieldRole.CONTENT,
     }
 
     api: str = "vllm_pooling"  # type: ignore[assignment]  # this role's wire adapter, defaulted
     embed_dtype: Literal["float16", "float32"] = "float16"
     dim: int | None = Field(default=None, ge=1)
+    document_skip_token_ids: tuple[int, ...] = ()
+    mrl_dim: int | None = Field(default=None, ge=1)
+    outputs: Literal["per_token", "per_chunk"] = "per_token"
+
+    @model_validator(mode="after")
+    def _mrl_dim_below_the_checkpoint_width(self) -> PoolingEndpoint:
+        """An MRL cut at or above the checkpoint's own width would cut nothing -- a mistyped knob that
+        silently changes nothing."""
+        if self.mrl_dim is not None and self.dim is not None and self.mrl_dim >= self.dim:
+            raise ValueError(
+                f"mrl_dim ({self.mrl_dim}) must be below dim ({self.dim}): the MRL output size cuts the "
+                "checkpoint's token vectors, so declaring it at or over the width cuts nothing",
+            )
+        return self
 
 
 class RerankEndpoint(_MediaEndpoint):

@@ -38,7 +38,7 @@ from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.data.prepare import MediaCensus
 from rcp_ndcg.data.preprocess import TextTruncationCensus
-from rcp_ndcg.errors import ConfigError, ProviderError
+from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError
 from rcp_ndcg.inference.adapters.base import Adapter
 from rcp_ndcg.inference.clients._base import PreparedItems, RoleClient
 from rcp_ndcg.inference.config import PoolingEndpoint
@@ -165,13 +165,16 @@ class PoolingClient(RoleClient):
                 hint=f"set batch_size to {max_batch} or less, or leave it unset",
             )
         batches = [prepared.items[start : start + size] for start in range(0, len(prepared.items), size)]
+        id_batches = [prepared.token_ids[start : start + size] for start in range(0, len(prepared.items), size)]
         gate = asyncio.Semaphore(self.config.concurrency)
 
-        async def one(batch: list[Content]) -> Embeddings:
+        async def one(batch: list[Content], batch_ids: tuple[tuple[int, ...], ...]) -> Embeddings:
             async with gate:
-                return await self._encode_batch(batch, role)
+                return await self._encode_batch(batch, role, batch_ids)
 
-        chunks = await RoleClient.gather([one(list(batch)) for batch in batches])
+        chunks = await RoleClient.gather(
+            [one(list(batch), batch_ids) for batch, batch_ids in zip(batches, id_batches, strict=True)]
+        )
         if not prepared.omitted:
             return _concat_all(chunks)
         # Some inputs were omitted (empty_doc: omit_zero): rebuild the buffer with an empty slice (a zero
@@ -227,7 +230,19 @@ class PoolingClient(RoleClient):
             items=tuple(self._with_text(content, text) for content, text in zip(kept, texts, strict=True)),
             positions=tuple(positions),
             omitted=tuple(omitted),
+            token_ids=self._sent_ids(texts, role),
         )
+
+    def _sent_ids(self, texts: Sequence[str], role: EncodeRole) -> tuple[tuple[int, ...], ...]:
+        """The token ids of each sent text, as the engine reads it, when the role tracks them (2): the
+        document side under declared ``document_skip_token_ids``. The client tokenises the fitted render
+        with the shape's ``add_special_tokens`` flag -- the same count the fit verified -- so the skip
+        positions are the ids the engine reads; a reply whose vector count disagrees is a typed error."""
+        if role is not EncodeRole.DOCUMENT or not self.config.document_skip_token_ids:
+            return ()
+        assert self._tokenizer is not None, "the config refuses skip ids without a tokenizer (inert without one)"
+        flag = self.config.template.adds_special_tokens("document") if self.config.template is not None else True
+        return tuple(tuple(self._tokenizer.ids(text, add_special_tokens=flag)) for text in texts)
 
     def _probe_calls(self, content: Content) -> Sequence[Call]:
         """The pooling calls one prepared probe item is sent as."""
@@ -251,13 +266,24 @@ class PoolingClient(RoleClient):
         """The reply's prompt-token report (the pooling adapter's, ``None`` when it reported none)."""
         return self._adapter.usage(reply)
 
-    async def _encode_batch(self, contents: Sequence[Content], role: EncodeRole) -> Embeddings:
-        """One batch: a pooling request through the adapter and the sender, checked for alignment."""
+    async def _encode_batch(
+        self,
+        contents: Sequence[Content],
+        role: EncodeRole,
+        batch_ids: tuple[tuple[int, ...], ...] = (),
+    ) -> Embeddings:
+        """One batch: a pooling request through the adapter and the sender, checked for alignment.
+
+        ``batch_ids`` carries each document's sent token ids (tracked when the config declares
+        ``document_skip_token_ids``): the returned vectors are checked against them (a mismatch is a typed
+        error, never a silent misalignment) and the skip positions' vectors are dropped before MaxSim.
+        """
         request = PoolRequest(
             contents=tuple(contents),
             role=role,
             embed_dtype=self.config.embed_dtype,
             dim=self.config.dim,
+            outputs=self.config.outputs,
         )
         calls = self._adapter.calls(request, model=self.config.model)
         self._gate_media_calls(calls)
@@ -268,9 +294,72 @@ class PoolingClient(RoleClient):
                 f"the pooling endpoint returned {embeddings.num_items} item(s) for {len(contents)} input(s); "
                 "refusing to return misaligned vectors"
             )
+        if self.config.document_skip_token_ids and role is EncodeRole.DOCUMENT:
+            embeddings = self._apply_document_skips(contents, embeddings, batch_ids)
+        if self.config.mrl_dim is not None:
+            embeddings = self._apply_mrl_cut(embeddings)
         if self.config.normalize:
             embeddings = embeddings.l2_normalized()
         return embeddings
+
+    def _apply_mrl_cut(self, embeddings: Embeddings) -> Embeddings:
+        """The Matryoshka cut (2g, plug-pplx): the model's vectors sliced to the declared ``mrl_dim``,
+        renormalised by the ``normalize`` step that follows -- cut-then-renormalise, the card's order.
+        Slicing AFTER the normalisation (x/||x|| cut) would ship un-normalised cut vectors; the card slices
+        the raw model output and normalises the slice, and ``/pooling`` refuses per-request ``dimensions``,
+        so the cut is the client's. The config refuses an ``mrl_dim`` at or over ``dim``, and the adapter
+        refuses a reply whose width differs from ``dim``, so the slice never runs empty.
+        """
+        assert self.config.mrl_dim is not None
+        cut = np.ascontiguousarray(embeddings.vectors[:, : self.config.mrl_dim])
+        return Embeddings(vectors=cut, offsets=embeddings.offsets)
+
+    def _apply_document_skips(
+        self, contents: Sequence[Content], embeddings: Embeddings, batch_ids: tuple[tuple[int, ...], ...]
+    ) -> Embeddings:
+        """The document vectors without the ``document_skip_token_ids`` positions (2, the topk hand-off).
+
+        The positions are the ids the client sent (the engine's tokenisation of the fitted render); a reply
+        whose per-item vector count disagrees with the sent ids is a typed :class:`ProviderError` -- the
+        skip would otherwise drop the wrong tokens, a silent misalignment. A batch that carries media is
+        refused: a media request's positions are the server's chat-template render, which the client cannot
+        tokenise, so no id-side skip can be applied to one honestly.
+
+        Raises:
+            CapabilityError: the batch carries media (see above) or ids were not tracked for a text item.
+            ProviderError: a returned vector count disagrees with the sent ids.
+        """
+        if any(content.has_media for content in contents):
+            raise CapabilityError(
+                f"{self.config.model} declares document_skip_token_ids, but this batch carries media: a media "
+                "request's vector positions are the server's chat-template render, which the client cannot "
+                "tokenise, so the skip positions cannot be found there",
+                hint="encode the text documents with the skip list and the media documents separately (the "
+                "media policy's keep-rule is the engine's), or drop document_skip_token_ids",
+            )
+        if embeddings.offsets is None:
+            raise ProviderError(
+                "the pooling endpoint answered one pooled vector per input, and the config declares "
+                "document_skip_token_ids: a token_embed answer has one vector per prompt token, so the "
+                "served task is not token_embed",
+                hint="check the served pooler task against the endpoint config",
+            )
+        skip = frozenset(self.config.document_skip_token_ids)
+        offsets = embeddings.offsets
+        slices: list[np.ndarray] = []
+        for index, ids in enumerate(batch_ids):
+            vectors = np.asarray(embeddings.vectors[offsets[index] : offsets[index + 1]])
+            if len(vectors) != len(ids):
+                raise ProviderError(
+                    f"the pooling endpoint returned {len(vectors)} token vector(s) for document {index} whose "
+                    f"sent render the client tokenised to {len(ids)} token id(s); the skip positions would "
+                    "not align to the ids the client sent, so none are returned",
+                    hint="the reply's prompt tokens must be the client's tokenisation of the sent text: check "
+                    "the served route's add_special_tokens against the declared template",
+                )
+            keep = [position for position, token in enumerate(ids) if token not in skip]
+            slices.append(vectors[keep])
+        return Embeddings.ragged(slices, dtype=self.config.embed_dtype)
 
 
 def _concat_all(chunks: Sequence[Embeddings]) -> Embeddings:

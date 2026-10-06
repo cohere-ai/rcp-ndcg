@@ -120,6 +120,15 @@ sync bridge, `close()`/`await aclose()`, and the fan-out under one `asyncio.Task
   late-interaction document is chunked at the corpus layer, one slice per chunk in the index);
 * `normalize` (the default) L2-normalises every token vector, in float32,
   stored back in the transfer dtype;
+* `document_skip_token_ids` drops document vectors at the positions whose token
+  id is listed (the topk reference scores nothing by 41 punctuation/special
+  ids; queries keep all their vectors) -- the positions are the ids the client
+  sent, a count mismatch is a typed error, and a media batch is refused (its
+  positions are the server's chat-template render);
+* `mrl_dim` applies the Matryoshka cut client-side as cut-then-renormalise
+  (the card's order; `/pooling` refuses per-request `dimensions`), and
+  `outputs: per_chunk` accepts a per-chunk multi-output model -- several
+  outputs per input -- where the per-token usage cross-check cannot apply;
 * `batch_size` items per request, at most `concurrency` requests in flight,
   reassembled in input order.
 

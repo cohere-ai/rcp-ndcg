@@ -370,12 +370,17 @@ class PoolRequest:
             no shape) can be reshaped to ``(tokens, dim)``; ``None`` when undeclared, which only the
             self-describing float frames can decode. Filled from the endpoint config; the reply's token
             counts cross-check it.
+        outputs: What one input yields, copied from the endpoint config (2g): ``"per_token"`` (the default)
+            is the token_embed contract -- one vector per prompt token, which the reply's own ``usage``
+            cross-checks; ``"per_chunk"`` is a per-chunk multi-output model -- several outputs per input, so
+            the usage cross-check cannot apply and the adapter skips it.
     """
 
     contents: tuple[Content, ...]
     role: EncodeRole
     embed_dtype: Literal["float16", "float32"] = "float16"
     dim: int | None = None
+    outputs: Literal["per_token", "per_chunk"] = "per_token"
 
 
 # ---------------------------------------------------------------------------
