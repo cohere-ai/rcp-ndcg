@@ -300,13 +300,8 @@ refused); on SLURM the option applies with a container runtime — with `contain
 environment provides the release, and a wheelhouse is refused.
 
 `jobs/rc_build.sh` in `rcp-ndcg-vllm` does all of this in one command (build, checks, wheelhouse, stage,
-manifest) — see [Release candidates and the GPU waves](../how-to/release-candidates.md); the commands it runs
-are these:
-
-```bash
-
-locked dependencies beside the release wheels (for the node's platform; the coordinator installs with `--no-index`,
-so the wheelhouse must carry every package, the CPU torch build included):
+manifest) — see [Release candidates and the GPU waves](../how-to/release-candidates.md). Built by hand, the
+same commands are:
 
 ```bash
 # the release wheels, as release.yml builds them (the three pyproject.toml versions must match)

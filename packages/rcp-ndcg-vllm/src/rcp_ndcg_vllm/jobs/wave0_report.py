@@ -108,6 +108,7 @@ class Wave0Stop(BaseModel):
     pids: list[int]
     scan_found: list[str]
     all_stopped: bool
+    free_disk_after_stop_bytes: int | None = None
     passed: bool
 
 

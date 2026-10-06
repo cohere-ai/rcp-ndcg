@@ -3,9 +3,11 @@
 A recipe's ``serve.plugin`` names the pip package the engine imports through ``vllm.general_plugins``;
 the bootstrap installs it into the engine environment with ``--no-deps`` (the image ships torch, vLLM
 and transformers, and a plugin vendors its own model code), under the freeze-diff guard: after the
-installs, the engine environment's ``pip freeze`` may differ by exactly those wheels, or the bootstrap
-fails before any engine starts. ``io_processor_plugin`` names a package resolved through the
-checkpoint's own config, so it is recorded here, not installed by name.
+installs, the engine environment's ``pip freeze`` may differ only in the plugins' own distributions,
+or the bootstrap fails before any engine starts. A spec that names a file is installed from the staged
+tree; anything else is installed as named (a wheelhouse wheel, or a name on an index - the item-9
+fallback, declared). ``io_processor_plugin`` names a package resolved through the checkpoint's own
+config, so it is recorded here, not installed by name.
 """
 
 from __future__ import annotations
@@ -25,7 +27,8 @@ def collect(recipes_root: str | Path, recipe_ids: list[str]) -> list[str]:
 
     A spec that names a file inside its recipe directory (``plugin.wheel``) or under the recipes root
     is returned as the recipe-relative path (``<recipe-id>/<file>``), so the bootstrap finds it in the
-    staged tree; anything else passes through as named (a wheelhouse wheel, a name on an index).
+    staged tree; anything else passes through as named (the bootstrap then installs it from the
+    wheelhouse or an index - the item-9 fallback, never silently).
     """
     specs: list[str] = []
     seen: set[str] = set()

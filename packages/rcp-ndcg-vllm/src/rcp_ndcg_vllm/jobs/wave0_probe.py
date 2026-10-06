@@ -129,6 +129,9 @@ def _engines_start(spec_path: Path, state_path: Path, report: Path) -> dict[str,
     handles: dict[int, subprocess.Popen[bytes]] = {}
     running: list[dict[str, Any]] = []
     started = time.monotonic()
+    # The engine scan is scoped to what this job added: the pids that already match the engine pattern
+    # before anything starts (another job's vLLM on a shared machine) are recorded and excluded later.
+    baseline = {int(entry.split(":", 1)[0]) for entry in _engine_process_scan()}
     for slot in slots:
         directory = Path(slot["log_dir"])
         directory.mkdir(parents=True, exist_ok=True)
@@ -152,7 +155,7 @@ def _engines_start(spec_path: Path, state_path: Path, report: Path) -> dict[str,
                 raise HarnessError(f"cannot start the slot {slot['slot']} engine ({slot['model']}): {error}") from error
         handles[process.pid] = process
         running.append({"slot": slot["slot"], "model": slot["model"], "pid": process.pid, "port": slot["port"]})
-    state = {"engines": running, "started": _now()}
+    state = {"engines": running, "started": _now(), "baseline_pids": sorted(baseline)}
     state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
 
     deadline = time.monotonic() + float(spec.get("startup_timeout_s", 1800))
@@ -198,21 +201,41 @@ def _engines_start(spec_path: Path, state_path: Path, report: Path) -> dict[str,
 
 
 def _engines_stop(state_path: Path, report: Path) -> dict[str, Any]:
-    """Stop the engines' process groups, then assert that no engine process remains (step g)."""
+    """Stop the engines' process groups, then assert that no engine process remains (step g).
+
+    The scan covers every live process that looks like a vLLM engine, minus the ones already running
+    before this job started anything (its baseline): a shared machine's other engines are not this
+    wave's. The free disk on the HF cache is re-measured here - the eviction's freed space shows once
+    the engine that mapped the weights is gone.
+    """
+
     state = json.loads(state_path.read_text(encoding="utf-8"))
     pids = [engine["pid"] for engine in state.get("engines", [])]
+    baseline = set(state.get("baseline_pids", []))
     for pid in pids:
         _stop_group(pid)
-    scan = _engine_process_scan()
+    scan = _engine_process_scan(exclude_pids=baseline)
     all_stopped = all(not _alive(pid) for pid in pids) and not scan
+    free_disk_after_stop = weights_free_disk()
     fragment = {
         "pids": pids,
         "scan_found": scan,
         "all_stopped": all_stopped,
+        "free_disk_after_stop_bytes": free_disk_after_stop,
         "passed": all_stopped,
     }
     _write(report, fragment)
     return fragment
+
+
+def weights_free_disk() -> int | None:
+    """Free bytes on the HF cache's filesystem (the eviction's authority), or ``None`` offline."""
+    try:
+        from . import weights
+
+        return weights.disk_free_bytes(weights.hf_cache_root())
+    except Exception:  # noqa: BLE001 - the measurement is a record, never a failure
+        return None
 
 
 def _stop_group(pid: int) -> None:
@@ -242,11 +265,12 @@ def _alive(pid: int) -> bool:
         return False
 
 
-def _engine_process_scan() -> list[str]:
+def _engine_process_scan(*, exclude_pids: set[int] | None = None) -> list[str]:
     """The cmdlines of every live process that looks like a vLLM engine (the assert of step g)."""
+    excluded = exclude_pids or set()
     found: list[str] = []
     for entry in Path("/proc").iterdir():
-        if not entry.name.isdigit():
+        if not entry.name.isdigit() or int(entry.name) in excluded:
             continue
         try:
             cmdline = (entry / "cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", errors="replace")

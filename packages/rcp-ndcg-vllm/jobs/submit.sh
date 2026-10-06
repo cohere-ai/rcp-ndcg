@@ -130,15 +130,21 @@ for wave in "${WAVES[@]}"; do
     "app=$JOB_NAME"
     "priority_class=$PRIORITY"
     "worker.shared_memory=$SHARED_MEMORY"
-    "worker.command=/bin/bash /etc/rcp/files/$SCRIPT_NAME/$SCRIPT_NAME.sh $RC_STAGE_URI $OUT_URI"
   )
   if [[ "$SCRIPT_NAME" == "wave0" ]]; then
     args+=(
+      "worker.command=/bin/bash /etc/rcp/files/wave0/wave0.sh $RC_STAGE_URI $OUT_URI"
       "files.wave0.from_file=$WAVE0_SH" "files.wave0.mount_path=/etc/rcp/files/wave0/wave0.sh"
       "files.wave0host.from_file=$HERE/wave0_host.py" "files.wave0host.mount_path=/etc/rcp/files/wave0host/wave0_host.py"
+      # wave 0's step (b) runs the bootstrap: mounted beside its own script.
+      "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
     )
   else
-    args+=("files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh")
+    # The recipe wave: bootstrap.sh builds the three environments and runs the wave's list.
+    args+=(
+      "worker.command=/bin/bash /etc/rcp/files/bootstrap/bootstrap.sh wave $RC_STAGE_URI $OUT_URI --wave $wave"
+      "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
+    )
   fi
   args+=(
     "files.report.from_file=$HERE/report.py" "files.report.mount_path=/etc/rcp/files/report/report.py"

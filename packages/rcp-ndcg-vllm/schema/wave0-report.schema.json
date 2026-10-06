@@ -285,6 +285,18 @@
           "title": "All Stopped",
           "type": "boolean"
         },
+        "free_disk_after_stop_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Free Disk After Stop Bytes"
+        },
         "passed": {
           "title": "Passed",
           "type": "boolean"

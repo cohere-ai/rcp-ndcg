@@ -103,6 +103,7 @@ export WAVE0_MODEL WAVE0_REVISION WAVE0_SERVED_NAME WAVE0_SECOND_MODEL WAVE0_SEC
 export WAVE0_SECOND_ARGS WAVE0_PORT_BASE WAVE0_VLLM_PORT_BASE WAVE0_STARTUP_TIMEOUT_S
 
 report() { python3 "$REPORT_PY" "$@"; }
+report init --file "$REPORT" --schema rcp-ndcg.wave0-report.v1 >/dev/null
 fragment_error() { # fragment_error FILE: the fragment's one-line error, or a fallback
   python3 -c 'import json, sys
 document = json.load(open(sys.argv[1]))
@@ -171,7 +172,7 @@ raise SystemExit(0 if json.load(open(sys.argv[1])).get("passed", True) else 1)' 
   fi
 }
 
-report init --file "$REPORT" --schema rcp-ndcg.wave0-report.v1
+
 
 # --- preflight: the assumptions the node must meet ----------------------------------------------------
 
@@ -181,9 +182,9 @@ if ((GPUS < WAVE0_MIN_GPUS)); then
 fi
 SHM_BYTES="$(python3 -c 'import os
 stats = os.statvfs("/dev/shm")
-print(stats.f_bsize * stats.f_bavail)')"
+print(stats.f_bsize * stats.f_blocks)')"
 if ((SHM_BYTES < (WAVE0_MIN_SHM_GIB << 30))); then
-  fail_step preflight "/dev/shm is $((SHM_BYTES >> 30)) GiB, under the assumed ${WAVE0_MIN_SHM_GIB} GiB (submit with worker.shared_memory)"
+  fail_step preflight "/dev/shm is sized $((SHM_BYTES >> 30)) GiB, under the assumed ${WAVE0_MIN_SHM_GIB} GiB (submit with worker.shared_memory)"
 fi
 FREE_BYTES="$(python3 -c 'import shutil; print(shutil.disk_usage("/").free)')"
 if ((FREE_BYTES < (WAVE0_MIN_FREE_GIB << 30))); then
@@ -301,7 +302,7 @@ spec = {
 with open(sys.argv[1], "w", encoding="utf-8") as handle:
     handle.write(json.dumps(spec, indent=2) + "\n")
 PYEOF
-run_probe engines "$STATE" engines-start --spec "$SPEC" --state "$STATE/engines.json" --report "$WORK/engines.json"
+run_probe engines engines-start --spec "$SPEC" --state "$STATE/engines.json" --report "$WORK/engines.json"
 
 # --- (e) the product's budget, client and the engine's /tokenize ---------------------------------------
 

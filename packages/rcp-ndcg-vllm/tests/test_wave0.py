@@ -19,7 +19,6 @@ PY = sys.executable
 WAVE0_SH = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_vllm" / "jobs" / "wave0.sh"
 REPORT_PY = Path(__file__).resolve().parents[1] / "jobs" / "report.py"
 WAVE0_HOST = Path(__file__).resolve().parents[1] / "jobs" / "wave0_host.py"
-WAVE0_HOST = Path(__file__).resolve().parents[1] / "jobs" / "wave0_host.py"
 
 PINNED_REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
 
@@ -237,9 +236,6 @@ def _stub_spec(tmp_path: Path, count: int = 2) -> Path:
     spec_path = tmp_path / "spec.json"
     spec_path.write_text(json.dumps({"startup_timeout_s": 120, "slots": slots}, indent=2), encoding="utf-8")
     return spec_path
-
-
-WAVE0_HOST = Path(__file__).resolve().parents[1] / "jobs" / "wave0_host.py"
 
 
 def test_engines_start_and_stop_probe(tmp_path: Path) -> None:

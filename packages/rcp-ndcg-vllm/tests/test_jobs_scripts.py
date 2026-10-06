@@ -53,18 +53,22 @@ def bootstrap_functions() -> str:
     return str(BOOTSTRAP)
 
 
-def test_bootstrap_freeze_guard_passes_an_unchanged_environment(bootstrap_functions: str) -> None:
+def test_bootstrap_freeze_guard_passes_an_unchanged_environment(bootstrap_functions: str, tmp_path: Path) -> None:
+    before = tmp_path / "before"
+    after = tmp_path / "after"
+    allowed = tmp_path / "allowed"
+    before.write_text("pkg-a==1.0\npkg-b==2.0\n", encoding="utf-8")
+    shutil.copy(before, after)
+    allowed.write_text("my-plugin\n", encoding="utf-8")
     completed = subprocess.run(
         [
             "bash",
             "-c",
-            f'source "{bootstrap_functions}" && '
-            'printf "pkg-a==1.0\\npkg-b==2.0\\n" > "$1" && cp "$1" "$2" && : > "$3" && '
-            'freeze_diff_guard "$1" "$2" "$3"',
+            f'source "{bootstrap_functions}" && freeze_diff_guard "$1" "$2" "$3"',
             "bash",
-            "/tmp/x-before",
-            "/tmp/x-after",
-            "/tmp/x-allowed",
+            str(before),
+            str(after),
+            str(allowed),
         ],
         capture_output=True,
         text=True,
@@ -79,7 +83,7 @@ def test_bootstrap_freeze_guard_fires_beyond_the_plugin(bootstrap_functions: str
     allowed = tmp_path / "allowed"
     before.write_text("pkg-a==1.0\npkg-b==2.0\n", encoding="utf-8")
     after.write_text("pkg-a==1.0\npkg-b==2.0\nrogue==9.9\n", encoding="utf-8")
-    allowed.write_text("", encoding="utf-8")
+    allowed.write_text("my-plugin\n", encoding="utf-8")
     completed = subprocess.run(
         [
             "bash",
@@ -95,30 +99,35 @@ def test_bootstrap_freeze_guard_fires_beyond_the_plugin(bootstrap_functions: str
     )
     assert completed.returncode == 1
     assert "changed beyond the declared plugins" in completed.stderr
-    assert "rogue==9.9" in completed.stderr
+    assert "rogue" in completed.stderr
 
 
 def test_bootstrap_freeze_guard_allows_exactly_the_plugin(bootstrap_functions: str, tmp_path: Path) -> None:
+    """The plugin's two freeze shapes pass: name==version and the local-wheel direct URL."""
     before = tmp_path / "before"
     after = tmp_path / "after"
     allowed = tmp_path / "allowed"
     before.write_text("pkg-a==1.0\npkg-b==2.0\n", encoding="utf-8")
-    after.write_text("pkg-a==1.0\npkg-b==2.0\nmy_plugin==1.2.3\n", encoding="utf-8")
-    allowed.write_text("my_plugin==1.2.3\n", encoding="utf-8")
-    completed = subprocess.run(
-        [
-            "bash",
-            "-c",
-            f'source "{bootstrap_functions}" && freeze_diff_guard "$1" "$2" "$3"',
-            "bash",
-            str(before),
-            str(after),
-            str(allowed),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert completed.returncode == 0, completed.stderr
+    allowed.write_text("my-plugin\n", encoding="utf-8")
+    for installed in (
+        "My_Plugin @ file:///opt/wheels/My_Plugin-1.2.3-py3-none-any.whl\n",
+        "my_plugin==1.2.3\n",
+    ):
+        after.write_text("pkg-a==1.0\npkg-b==2.0\n" + installed, encoding="utf-8")
+        completed = subprocess.run(
+            [
+                "bash",
+                "-c",
+                f'source "{bootstrap_functions}" && freeze_diff_guard "$1" "$2" "$3"',
+                "bash",
+                str(before),
+                str(after),
+                str(allowed),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert completed.returncode == 0, (installed, completed.stderr)
 
 
 def test_bootstrap_freeze_guard_fires_on_an_upgrade_beyond_the_plugin(bootstrap_functions: str, tmp_path: Path) -> None:
@@ -127,7 +136,7 @@ def test_bootstrap_freeze_guard_fires_on_an_upgrade_beyond_the_plugin(bootstrap_
     allowed = tmp_path / "allowed"
     before.write_text("pkg-a==1.0\n", encoding="utf-8")
     after.write_text("pkg-a==1.1\nmy_plugin==1.2.3\n", encoding="utf-8")
-    allowed.write_text("my_plugin==1.2.3\n", encoding="utf-8")
+    allowed.write_text("my-plugin\n", encoding="utf-8")
     completed = subprocess.run(
         [
             "bash",
@@ -144,13 +153,13 @@ def test_bootstrap_freeze_guard_fires_on_an_upgrade_beyond_the_plugin(bootstrap_
     assert completed.returncode == 1
 
 
-def test_wheel_freeze_line_parses_wheel_names(bootstrap_functions: str) -> None:
+def test_wheel_freeze_name_parses_wheel_names(bootstrap_functions: str) -> None:
     completed = subprocess.run(
-        ["bash", "-c", f'source "{bootstrap_functions}" && wheel_freeze_line "my_plugin-1.2.3-py3-none-any.whl"'],
+        ["bash", "-c", f'source "{bootstrap_functions}" && wheel_freeze_name "My_Plugin-1.2.3-py3-none-any.whl"'],
         capture_output=True,
         text=True,
     )
-    assert completed.stdout.strip() == "my_plugin==1.2.3"
+    assert completed.stdout.strip() == "my-plugin"
 
 
 # --- submit.sh: the operator's submission, KJOBS=echo prints the plan ----------------------------------
@@ -209,7 +218,11 @@ def test_submit_prints_the_expected_argv(tmp_path: Path, monkeypatch: pytest.Mon
     assert "priority_class=dev-high" in words
     assert "worker.shared_memory=128Gi" in words
     command = next(word for word in words if word.startswith("worker.command="))
-    assert command.startswith("worker.command=/bin/bash /etc/rcp/files/bootstrap/bootstrap.sh gs://YOUR-BUCKET/rc0")
+    # The recipe wave: bootstrap.sh's wave mode, with the wave's list resolved on the node.
+    assert command == (
+        "worker.command=/bin/bash /etc/rcp/files/bootstrap/bootstrap.sh"
+        " wave gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves/wave-a --wave wave-a"
+    )
     assert f"files.bootstrap.from_file={JOBS / 'bootstrap.sh'}" in words
     assert f"files.report.from_file={REPORT_PY}" in words
     assert f"files.gcsauth.from_file={tmp_path / 'gcs_auth.sh'}" in words

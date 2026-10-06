@@ -99,12 +99,16 @@ uvx twine check dist/*
 # torch build included), so a node install never asks an index (node-runtime item 3).
 echo "rc_build: building the wheelhouse (this downloads the locked dependencies; a few minutes)"
 mkdir -p stage/"$RC_NAME"/wheelhouse
+cp -r dist stage/"$RC_NAME"/dist
 cp dist/* stage/"$RC_NAME"/wheelhouse/
 cp requirements-constraints.txt stage/"$RC_NAME"/requirements-constraints.txt
+cp packages/rcp-ndcg-vllm/requirements-reference.txt stage/"$RC_NAME"/requirements-reference.txt
 uv venv "$WORK/dl" --python 3.12 >/dev/null
 uv pip install --python "$WORK/dl/bin/python" pip >/dev/null
 "$WORK/dl/bin/python" -m pip download --quiet \
   -r stage/"$RC_NAME"/requirements-constraints.txt \
+  -c stage/"$RC_NAME"/requirements-constraints.txt \
+  "rcp-ndcg-vllm[test]==${VERSION}" "rcp-ndcg[hf]==${VERSION}" \
   --dest stage/"$RC_NAME"/wheelhouse \
   --only-binary :all: \
   --index-url "$CPU_INDEX" --extra-index-url "$PYPI_INDEX"

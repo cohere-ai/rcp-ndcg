@@ -69,25 +69,29 @@ now_s() { date +%s; }
 # freeze_of PYTHON: the engine environment's pip freeze, one package per line.
 freeze_of() { "$1" -m pip freeze --disable-pip-version-check 2>/dev/null; }
 
-# wheel_freeze_line WHEEL_FILE: the freeze line pip reports for an installed wheel (name==version).
-wheel_freeze_line() {
-  local stem="${1##*/}" rest
+# wheel_freeze_name WHEEL_FILE: the canonical distribution name a wheel installs (PEP 503: lowercase,
+# runs of '-_.' to one '-'). pip reports a wheel installed from a local path as a PEP 610 direct URL
+# ('Name @ file://...') or as 'name==version' depending on the pip; the guard matches by canonical
+# name, and both forms collapse to it.
+wheel_freeze_name() {
+  local stem="${1##*/}"
   stem="${stem%.whl}"
-  rest="${stem#*-}"      # the wheel name is escaped ('-' -> '_'), so the first dash separates name and version
-  rest="${rest%-*-*-*}"  # drop the python/abi/platform tags
-  printf '%s==%s\n' "${stem%%-*}" "$rest"
+  stem="${stem%%-*}"  # the wheel name is escaped ('-' -> '_'), so the first dash separates name and version
+  printf '%s\n' "$(printf '%s' "$stem" | sed -E 's/[-_.]+/-/g' | tr '[:upper:]' '[:lower:]')"
 }
 
-# freeze_diff_guard BEFORE AFTER ALLOWED: fails when the freeze changed beyond the allowed lines
-# (anything added, removed or upgraded that is not one of the declared plugin wheels).
+# freeze_diff_guard BEFORE AFTER ALLOWED: fails when the freeze changed beyond the allowed names
+# (anything added, removed or upgraded whose canonical name is not one of the declared plugin wheels).
 freeze_diff_guard() {
-  local before="$1" after="$2" allowed="$3" added removed
-  added="$(comm -13 <(sort -u "$before") <(sort -u "$after") | grep -Fvx -f "$allowed" || true)"
-  removed="$(comm -23 <(sort -u "$before") <(sort -u "$after") | grep -Fvx -f "$allowed" || true)"
-  if [[ -n "$added" || -n "$removed" ]]; then
+  local before="$1" after="$2" allowed="$3" changed
+  changed="$(
+    { comm -13 <(sort -u "$before") <(sort -u "$after"); comm -23 <(sort -u "$before") <(sort -u "$after"); } \
+      | awk '{ line = tolower($0); sub(/ @ .*/, "", line); gsub(/[-_.]+/, "-", line); sub(/==.*/, "", line); print line }' \
+      | sort -u | grep -Fvx -f "$allowed" || true
+  )"
+  if [[ -n "$changed" ]]; then
     echo "bootstrap: the engine environment changed beyond the declared plugins" >&2
-    [[ -n "$added" ]] && echo "  added: $added" >&2
-    [[ -n "$removed" ]] && echo "  removed: $removed" >&2
+    echo "  changed: $changed" >&2
     return 1
   fi
   return 0
@@ -160,6 +164,7 @@ manifest_field() { # manifest_field NAME: the manifest's top-level field
   python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$STAGE_DIR/manifest.json" "$1"
 }
 
+ENVS_START="$(now_s)"
 VERSION="$(manifest_field version)"
 [[ -n "$VERSION" ]] || { echo "bootstrap: the manifest carries no version" >&2; exit 1; }
 echo "bootstrap: staged RC version $VERSION (commit $(manifest_field commit))" >&2
@@ -231,10 +236,18 @@ print(json.dumps({
 }))
 PYEOF
 client_install_s="$(( $(now_s) - install_start ))"
-grep -q "\"rcp-ndcg\": \"${VERSION}\"" "$STATE/client-versions.json" || {
-  echo "bootstrap: the client installed $(cat "$STATE/client-versions.json"), not the manifest's ${VERSION}" >&2
-  exit 1
-}
+python3 - "$STATE/client-versions.json" "$VERSION" <<'VCHK' || exit 1
+import json
+import sys
+
+versions = json.load(open(sys.argv[1]))
+expected = sys.argv[2]
+bad = {name: seen for name, seen in versions.items() if seen != expected}
+if bad:
+    print(f"bootstrap: the client installed {bad}, not the manifest's {expected}", file=sys.stderr)
+    raise SystemExit(1)
+VCHK
+
 
 # The state's client wrapper: every later client command runs the same mechanism (one home per concept).
 cat >"$STATE/client" <<WRAPPER
@@ -258,12 +271,35 @@ versions["install_s"] = int(sys.argv[2])
 print(json.dumps(versions, indent=2))
 PYEOF
 
+# --- the wave's recipes and list (both modes; wave 0 has neither) -------------------------------------
+
+RECIPES_ROOT=""
+if [[ "$MODE" == "wave" ]]; then
+  if [[ -z "$WAVE_LIST_FILE" ]]; then
+    found=""
+    for candidate in "$STAGE_DIR/wave-lists/$WAVE_NAME.txt" "$STAGE_DIR"/extra/*/wave-lists/"$WAVE_NAME.txt"; do
+      [[ -f "$candidate" ]] && { found="$candidate"; break; }
+    done
+    [[ -n "$found" ]] || { echo "bootstrap: no wave list for '$WAVE_NAME' under $STAGE_DIR (wave-lists/)" >&2; exit 1; }
+    WAVE_LIST_FILE="$found"
+  fi
+  RECIPES_ROOT="$STATE/recipes"
+  mkdir -p "$RECIPES_ROOT"
+  for root in "$STAGE_DIR/recipes" "$STAGE_DIR"/extra/*/recipes; do
+    [[ -d "$root" ]] || continue
+    for recipe_dir in "$root"/*/; do
+      ln -sfn "$(realpath "$recipe_dir")" "$RECIPES_ROOT/$(basename "$recipe_dir")"
+    done
+  done
+  RECIPES_DIR="${RECIPES_DIR:-$STAGE_DIR/recipes}"
+fi
+
 # --- the engine's plugin wheels (none in wave 0), under the freeze-diff guard ------------------------
 
 : >"$STATE/plugin-allowed.txt"
-if [[ -n "$WAVE_LIST_FILE" ]]; then
+if [[ -n "${WAVE_LIST_FILE:-}" && -n "$RECIPES_ROOT" ]]; then
   PLUGINS="$("$STATE/client" python -m rcp_ndcg_vllm.jobs.plugins collect \
-    --recipes-root "$RECIPES_DIR" --recipes "@$WAVE_LIST_FILE")"
+    --recipes-root "$RECIPES_ROOT" --recipes "@$WAVE_LIST_FILE")"
 else
   PLUGINS=""
 fi
@@ -271,19 +307,25 @@ if [[ -n "$PLUGINS" ]]; then
   echo "bootstrap: installing the recipes' plugin wheels into the engine environment (--no-deps)" >&2
   while IFS= read -r plugin; do
     [[ -z "$plugin" ]] && continue
-    if [[ -e "$STAGE_DIR/$plugin" ]]; then
-      plugin_path="$STAGE_DIR/$plugin"
-    elif [[ -e "$plugin" ]]; then
-      plugin_path="$plugin"
+    plugin_path=""
+    for candidate in "$STAGE_DIR/recipes/$plugin" "$STAGE_DIR/$plugin" "$RECIPES_ROOT/$plugin" "$plugin"; do
+      if [[ -n "$candidate" && -e "$candidate" ]]; then
+        plugin_path="$candidate"
+        break
+      fi
+    done
+    if [[ -n "$plugin_path" ]]; then
+      "$ENGINE_PYTHON" -m pip install --quiet --no-deps "$plugin_path"
     else
-      echo "bootstrap: the recipe's plugin $plugin is neither a staged file nor installable as named" >&2
-      exit 1
+      # Not a staged file: a name on an index or in the wheelhouse (the item-9 fallback, declared).
+      echo "bootstrap: the recipe's plugin $plugin is not staged; installing it as named" >&2
+      "$ENGINE_PYTHON" -m pip install --quiet --no-deps "$plugin"
     fi
-    "$ENGINE_PYTHON" -m pip install --quiet --no-deps "$plugin_path"
-    wheel_freeze_line "$(basename "$plugin_path")" >>"$STATE/plugin-allowed.txt"
+    wheel_freeze_name "${plugin_path:-$plugin}" >>"$STATE/plugin-allowed.txt"
   done <<<"$PLUGINS"
 fi
 freeze_of "$ENGINE_PYTHON" >"$STATE/engine-freeze-after.txt"
+ENGINE_MEASURE_S="$(( $(now_s) - ENVS_START ))"
 freeze_diff_guard "$STATE/engine-freeze-before.txt" "$STATE/engine-freeze-after.txt" "$STATE/plugin-allowed.txt"
 
 # --- the reference environment: the image's torch, read through --system-site-packages ---------------
@@ -313,6 +355,14 @@ except ImportError:
     versions["transformers"] = None
 print(json.dumps(versions))
 PYEOF
+python3 - "$STATE/reference-versions.json" "$ref_s" <<'PYEOF' >"$STATE/reference.json"
+import json
+import sys
+
+versions = json.load(open(sys.argv[1]))
+versions["install_s"] = int(sys.argv[2])
+print(json.dumps(versions, indent=2))
+PYEOF
 echo "bootstrap: reference environment ready in ${ref_s}s ($(cat "$STATE/reference-versions.json"))" >&2
 
 # --- the report --------------------------------------------------------------------------------------
@@ -321,40 +371,26 @@ REPORT_PY="${RCP_REPORT_PY:-/etc/rcp/files/report/report.py}"
 REPORT="$STATE/bootstrap.json"
 python3 "$REPORT_PY" init --file "$REPORT" --schema rcp-ndcg.bootstrap-report.v1 --started "$STARTED"
 python3 "$REPORT_PY" merge --file "$REPORT" --key engine --fragment <(
-  python3 - "$STATE/plugin-allowed.txt" "$ENGINE_PYTHON_VERSION" "$ENGINE_VLLM_VERSION" <<'PYEOF'
+  python3 - "$STATE/plugin-allowed.txt" "$ENGINE_PYTHON_VERSION" "$ENGINE_VLLM_VERSION" "$ENGINE_MEASURE_S" <<'PYEOF'
 import json
 import sys
 from pathlib import Path
 
-allowed, python_version, vllm_version = sys.argv[1:4]
+allowed, python_version, vllm_version, measure_s = sys.argv[1:5]
 plugins = [line.strip() for line in Path(allowed).read_text(encoding="utf-8").splitlines() if line.strip()]
-print(json.dumps({"python": python_version, "vllm": vllm_version, "freeze_unchanged": True, "plugins": plugins}))
+print(json.dumps({
+    "python": python_version, "vllm": vllm_version, "freeze_unchanged": True, "plugins": plugins,
+    "measure_s": int(measure_s),
+}))
 PYEOF
 )
 python3 "$REPORT_PY" merge --file "$REPORT" --key client --fragment "$STATE/client.json"
-python3 "$REPORT_PY" merge --file "$REPORT" --key reference --fragment "$STATE/reference-versions.json"
+python3 "$REPORT_PY" merge --file "$REPORT" --key reference --fragment "$STATE/reference.json"
 python3 "$REPORT_PY" emit --file "$REPORT"
 
 # --- wave mode: the wave runs through the client mechanism -------------------------------------------
 
 if [[ "$MODE" == "wave" ]]; then
-  list="$WAVE_LIST_FILE"
-  if [[ -z "$list" ]]; then
-    found=""
-    for candidate in "$STAGE_DIR/wave-lists/$WAVE_NAME.txt" "$STAGE_DIR"/extra/*/wave-lists/"$WAVE_NAME.txt"; do
-      [[ -f "$candidate" ]] && { found="$candidate"; break; }
-    done
-    [[ -n "$found" ]] || { echo "bootstrap: no wave list for '$WAVE_NAME' under $STAGE_DIR (wave-lists/)" >&2; exit 1; }
-    list="$found"
-  fi
-  recipes_root="$STATE/recipes"
-  mkdir -p "$recipes_root"
-  for root in "$STAGE_DIR/recipes" "$STAGE_DIR"/extra/*/recipes; do
-    [[ -d "$root" ]] || continue
-    for recipe_dir in "$root"/*/; do
-      ln -sfn "$recipe_dir" "$recipes_root/$(basename "$recipe_dir")"
-    done
-  done
   pairs_args=()
   for candidate in "$STAGE_DIR/pairs" "$STAGE_DIR"/extra/*/pairs; do
     if [[ -d "$candidate" ]]; then
@@ -363,9 +399,9 @@ if [[ "$MODE" == "wave" ]]; then
     fi
   done
   gpus="$(nvidia-smi --list-gpus 2>/dev/null | wc -l || echo 0)"
-  echo "bootstrap: running the wave '$WAVE_NAME' on $gpus GPUs" >&2
+  echo "bootstrap: running the wave '$WAVE_NAME' on $gpus GPUs (list: $WAVE_LIST_FILE)" >&2
   exec "$STATE/client" python -m rcp_ndcg_vllm.jobs.run_wave \
-    --recipes "@$list" --recipes-root "$recipes_root" --gpus "$gpus" \
+    --recipes "@$WAVE_LIST_FILE" --recipes-root "$RECIPES_ROOT" --gpus "$gpus" \
     --out "$STATE/wave" --upload "$OUT_URI" --record \
     --reference-python "$STATE/reference/bin/python" "${pairs_args[@]+${pairs_args[@]}}"
 fi

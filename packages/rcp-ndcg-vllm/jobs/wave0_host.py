@@ -40,6 +40,7 @@ def collect(workdir: Path) -> dict[str, Any]:
         "free_disk_bytes": _free_disk(workdir),
         "free_disk_path": str(workdir),
         "shm_bytes": _shm_bytes(),
+        "shm_total_bytes": _shm_bytes(total=True),
         "python": {"engine": _python_version(sys.executable)},
         "nvidia_smi_present": shutil.which("nvidia-smi") is not None,
         "collected": _now(),
@@ -145,12 +146,12 @@ def _free_disk(path: Path) -> int | None:
         return None
 
 
-def _shm_bytes() -> int | None:
+def _shm_bytes(*, total: bool = False) -> int | None:
     try:
         stats = os.statvfs("/dev/shm")
     except OSError:
         return None
-    return stats.f_bsize * stats.f_bavail
+    return stats.f_bsize * (stats.f_blocks if total else stats.f_bavail)
 
 
 def _python_version(python: str) -> str:

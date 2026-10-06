@@ -31,6 +31,7 @@ under `<prefix>/rc0/` is what the node installs from:
 | `plugins/` | public plugin packages, when the package ships any |
 | `wave-lists/<wave>.txt` | one recipe id per line, per wave |
 | `pairs/` | the stage-2 pairs files, when the checkout has any |
+| `requirements-reference.txt` | what the reference venv installs from the wheelhouse (the image's torch stays) |
 | `extra/<name>/` | the `EXTRA_DIRS` entries (private plugins, pairs, wave lists), as they are |
 | `manifest.json` | the commit, the version, the SHA-256 of every staged file |
 
