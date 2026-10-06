@@ -26,11 +26,13 @@ client:
   api: vllm_pooling
   request_shape: token_ids  # the plugin refuses text documents: the [D] prefix must cross as the literal ids the reference renders
   tokenizer: "perplexity-ai/pplx-embed-v2-context-9b-preview@b667039ee8b438a6350fbc91bbcecd86f9d363ba"
-  # The model's own limit is 262144 model-side ids; the model-side count of a document is
-  # engine-side count + 1 (the [D] prefix splits into two literal ids where the engine-side
-  # count keeps one special id), so 262143 is the largest client budget whose renders never
-  # hit the model's own over-limit raise. See the notes.
-  max_tokens: 262143
+  # The model's own limit is 262144 model-side ids; the model-side count of a render
+  # is the engine-side count plus a content-dependent prefix delta (the [D] prefix
+  # crosses as two literal ids where the engine-side count keeps one special id, and
+  # the first content pretoken re-tokenizes with the prefix's trailing space: measured
+  # deltas +1..+2), so 262142 reserves two tokens and no measured render hits the
+  # model's own over-limit raise. See the notes.
+  max_tokens: 262142
   template:
     # The bracket prefixes are written as the tokenizer's own literal form: the
     # product's {special:<name>} resolver strips the captured name, and these added
@@ -137,16 +139,19 @@ notes: |
 
   Budget: the model's own limit is 262144 tokens model-side (config
   query_length and document_length; the model raises beyond it and truncates
-  nothing). The model-side count of a document render is the engine-side count
-  plus one - the [D] prefix crosses as two literal ids where the engine-side
-  count keeps one special id (measured) - so the client budget is 262143: the
-  largest budget whose document renders never hit the model's own raise (the
-  delta is the document prefix's; a query render carries the same tokens on
-  both sides, and a query whose text embeds an added token splits differently
-  model-side - a pathological corpus that fails loudly at the engine, never
-  silently). The client's
-  cut therefore never removes content the model itself would accept, and
-  on_overflow: cut is the declared, census-recorded policy. max_model_len
+  nothing). The model-side count of a render is the engine-side count plus a
+  content-dependent prefix delta: the [D] prefix crosses as two literal ids
+  where the engine-side count keeps one special id (+1 on every probed
+  content), and the first content pretoken re-tokenizes with the prefix's
+  trailing space (a further 0..1, measured over letter, digit, whitespace and
+  CJK-initial content - total deltas +1..+2). The client budget is therefore
+  262142: the measured worst case reserved, so no measured render hits the
+  model's own raise, and a content class outside the measured ones fails
+  loudly at the engine's own max_model_len, never silently. The cut is the
+  declared policy, census-recorded by the product's fit. The product's pooling
+  role client also refuses a max_tokens config outright until the text-budget
+  mechanism is wired into it (a loud ConfigError, never silent) - the recipe's
+  numbers are what that wiring must implement. max_model_len
   262144 reserves whole-sequence prefill (bidirectional pooling disables
   chunked prefill at the pinned engine): roughly 17 GB of fp32 KV per 262k
   sequence. The wave confirms the VRAM plan and lowers BOTH numbers deliberately,

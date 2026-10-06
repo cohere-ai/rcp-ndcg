@@ -82,10 +82,13 @@ def _pairs(tokenizer) -> list[dict]:
     def document(*chunks: str) -> str:
         return marker.join(chunks)
 
-    # The harness builds its over-length samples by repeating the first row's texts,
-    # so that row carries a long multi-chunk document: a short seed makes the repeated
-    # sample land under the 262,143-token cap (the joins merge) and the over-length
-    # audit would never fire for the document shape.
+    # The harness builds its over-length samples by repeating the first row's texts;
+    # whether the repeated sample exceeds the 262,142-token cap depends on the seed
+    # (the repetition joins merge differently per seed - measured both ways: a
+    # letter-initial seed lands over, a long single-line seed landed under). The long
+    # multi-chunk first row makes the document-shape samples exceed the cap robustly
+    # and carries chunk markers into the padded content, so the anchor audit covers
+    # the marker-bearing, over-cap form of the document leg.
     layers = [
         f"paris expanded outward from the cite island for two thousand years; every era left its layer of "
         f"walls, bridges and boulevards on the plan (layer {index})"
@@ -242,7 +245,7 @@ def test_recipe_validates_against_the_product_endpoint() -> None:
     assert recipe.client.api == "vllm_pooling"
     assert recipe.client.request_shape == "token_ids"
     assert recipe.client.tokenizer == TOKENIZER_SPEC
-    assert recipe.client.max_tokens == 262143
+    assert recipe.client.max_tokens == 262142
     template = recipe.client.template
     assert template is not None and template.shapes() == ("query", "document")
     assert template is not None and template.anchor == "first"
