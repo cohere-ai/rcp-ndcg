@@ -278,20 +278,26 @@ def test_over_length_inputs_keep_every_anchor(tmp_path: Path) -> None:
     tokenizer = tokenizer_of(recipe)
     budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
     unit = "the diesel locomotive hauled freight through the alpine tunnel and arrived late in the evening "
-    long_document = unit * 400  # far over the 8192-token budget once tokenised
-    long_query = unit * 400
+    long_document = unit * 500  # 500 repetitions tokenise well over the 8192-token budget
+    long_query = unit * 500
+
+    # The sample must actually overflow: the whole point is the cut, so pin it before asserting the anchors.
+    raw_document_ids = tokenizer.ids(DOCUMENT_PREFIX + long_document, add_special_tokens=True)
+    raw_query_ids = tokenizer.ids(long_query, add_special_tokens=True)
+    assert len(raw_document_ids) > MAX_TOKENS, f"the sample document is under the budget ({len(raw_document_ids)})"
+    assert len(raw_query_ids) > MAX_TOKENS, f"the sample never exceeds the budget ({len(raw_query_ids)})"
 
     doc_result = fit([long_document], "document", budget, tokenizer, ids=["0"])
     doc_ids = tokenizer.ids(doc_result.texts[0], add_special_tokens=True)
     assert doc_result.texts[0].startswith(DOCUMENT_PREFIX)  # the head prefix survived the cut
     assert doc_ids[-1] == APPENDED_ANCHOR_ID  # the pooled anchor survived the cut
-    assert len(doc_ids) <= MAX_TOKENS  # the whole input fits the budget the engine sees
+    assert len(doc_ids) <= MAX_TOKENS < len(raw_document_ids)  # the render actually shrank to fit
 
     query_result = fit([long_query], "query", budget, tokenizer, ids=["0"])
     query_ids = tokenizer.ids(query_result.texts[0], add_special_tokens=True)
     assert not query_result.texts[0].startswith(DOCUMENT_PREFIX)  # queries carry no prefix
     assert query_ids[-1] == APPENDED_ANCHOR_ID
-    assert len(query_ids) <= MAX_TOKENS
+    assert len(query_ids) <= MAX_TOKENS < len(raw_query_ids)
 
 
 # -- mutations: the anchor declaration is load-bearing ------------------------------------------

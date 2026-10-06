@@ -86,8 +86,9 @@ notes: >-
   tail anchor, which the prefix's BPE merge into the first content word makes unsatisfiable). The
   checkpoint's ChatML chat template must NOT be served (chat_template: null): vLLM applies no
   template on /v1/embeddings, and the research's chat-template counterfactual (r-octen
-  check_tokens.py) measured the template render at 26 ids vs 7-8 bare on the sample query under the
-  same special-token regime -- serving it would change every prompt. Do not call the Cohere-shaped
+  check_tokens.py) measured the template render at 26 ids vs 7 bare on the sample query under the
+  same special-token regime (8 bare in the default, anchor-appended regime) -- serving it would
+  change every prompt. Do not call the Cohere-shaped
   /v2/embed with input_type: that route auto-applies the checkpoint's ST prompts
   ("Instruct: ...\nQuery:" for queries, a single space for documents), both different from the paper
   (entrypoints/pooling/embed/io_processor.py:77-82,373-392); this recipe pins api openai_embeddings.
