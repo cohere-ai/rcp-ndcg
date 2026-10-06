@@ -147,7 +147,9 @@ reference.py --mode <render|score|embed> --pairs <file> --out <file> \
 The serving path is chosen per model — flags alone, a chat template, pooler settings, or a plugin — and the
 decision tree lives in this section once the survey of model families lands; for now, a recipe's `serve` section
 renders verbatim into `vllm serve` argv, and `serve.plugin` is reserved for a `vllm.general_plugins` package when
-no flag can express the model's scoring.
+no flag can express the model's scoring (the first one ships: `rcp-ndcg-vllm-pplx`, which registers
+perplexity-ai/pplx-embed-v2-context-9b-preview's per-chunk pooling head on the stock image; its README carries
+the token-id client contract).
 
 ## Worked example: a last-token-pooling embedder (CPU)
 
