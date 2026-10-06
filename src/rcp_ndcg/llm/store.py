@@ -13,7 +13,9 @@ Layout of a store directory::
                            (the family's prompt_hash), so the instrument survives its file
 
 Each record is keyed by its ``record_id`` (a digest of the family, query,
-stage, window position and the ids shown), and a record is only ever appended:
+stage, the dataset's identity key, the window position and the ids shown; a
+planned window by the schedule instead of the position), and a record is only
+ever appended:
 re-running a judging pass reads the records present and asks the judge only for
 the windows that are missing, so a resumed or re-judged pass needs no merge step.
 

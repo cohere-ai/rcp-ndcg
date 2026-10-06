@@ -512,7 +512,15 @@ class Pipeline:
 
         reranker = self.config.candidates.rerank
         assert reranker is not None
-        first = _read_rankings(self._first_stage)
+        if (
+            self.config.candidates.source == "rankings"
+            and "retrieve" not in self.config.steps
+            and not Path(self._first_stage).exists()
+        ):
+            # A `from: rankings` run without a retrieve step: the rankings file IS the first stage.
+            first = Rankings.from_orders(self._supplied_pools(), system=CANDIDATES)
+        else:
+            first = _read_rankings(self._first_stage)
         pools = self._limited(first.queries())
         depth = max((len(pool) for pool in pools.values()), default=1)
         rescored = rerank(
@@ -713,12 +721,17 @@ class Pipeline:
         """
         path = self.layout.candidates
         if not Path(path).exists():
-            if self.config.candidates.source != "dataset":
+            if self.config.candidates.source == "rankings" and "retrieve" not in self.config.steps:
+                # A `from: rankings` run without a retrieve step has no candidates file: the rankings file IS
+                # its first stage, so the pools are read straight from it.
+                pools = self._supplied_pools()
+            elif self.config.candidates.source != "dataset":
                 raise MissingInputError(
                     f"{path} does not exist yet: the candidates come from {self.config.candidates.source}",
                     hint="run the retrieve step first",
                 )
-            pools = self._dataset_pools()
+            else:
+                pools = self._dataset_pools()
         else:
             pools = {query: _order(scores) for query, scores in _read_rankings(path).queries().items()}
         depth = self.config.candidates.depth

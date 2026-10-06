@@ -1112,3 +1112,77 @@ def test_a_resume_whose_judge_config_is_gone_raises_the_typed_error(
     manifest = RunManifest.load(pipeline.layout.root)
     assert manifest.status is RunStatus.FAILED
     assert manifest.step("tournament").error and "judge.yaml" in manifest.step("tournament").error
+
+
+def test_a_rankings_sourced_rerank_run_without_a_retrieve_step_reranks_the_supplied_pools(
+    data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`from: rankings` + a rerank step, with no retrieve step: the rankings file IS the first stage, so the
+    run works -- the preamble writes the first stage from the supplied pools, the reranker rescores it, and
+    the judging steps read its candidates (the combination used to fail mid-run on an internal scratch path)."""
+    from rcp_ndcg.llm import JudgeClient
+    from tests.llm.test_judging import _SchemaEndpoint
+
+    rankings = tmp_path / "rankings.jsonl"
+    rows, _ = tiny_rows()
+    rankings.write_text(
+        "".join(json.dumps({"query_id": row.id, "system": "bm25", "doc_ids": row.doc_ids[:6]}) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(JudgeClient, "from_config", staticmethod(lambda config: _SchemaEndpoint("3.1").client()))
+
+    def score_by_position(self, examples, *, checkpoint=None, **kwargs):
+        """The stub client scores each document by its pool position: it prefers the pool's last documents."""
+        for example in examples:
+            checkpoint(str(example.id), tuple(float(i) for i in range(len(example.doc_ids))))
+        return []
+
+    monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", score_by_position)
+    config = tiny_config(
+        data,
+        candidates={
+            "from": "rankings",
+            "rankings": str(rankings),
+            "system": "bm25",
+            "rerank": {"api": "rerank", "model": "stub", "base_url": "http://stub:8000", **_SERVED_RERANK_BUDGET},
+        },
+        steps=["rerank", "tournament", "rubric", "calibrate", "evaluate"],
+    )
+    pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+    manifest = pipeline.run()
+    assert manifest.status is RunStatus.COMPLETED
+    assert manifest.step("rerank").succeeded
+    written = load_rankings(pipeline.layout.candidates)
+    assert written.systems == ["candidates"], "the reranker's order is what the judging steps read"
+    # The stub scores by pool position: the supplied pools' last documents now rank first -- the reranker
+    # rescored the rankings file's own pools, not a retrieval's.
+    (q1,) = [query for query in written.queries() if query == "q1"]
+    assert written.for_query(q1) and written.for_query("q1")
+
+
+def test_a_rankings_run_without_retrieve_judges_its_supplied_pools(data: Path, tmp_path: Path) -> None:
+    rows, _ = tiny_rows()
+    rankings = tmp_path / "rankings.jsonl"
+    rankings.write_text(
+        "".join(json.dumps({"query_id": row.id, "system": "bm25", "doc_ids": row.doc_ids[:6]}) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    config = tiny_config(
+        data, candidates={"from": "rankings", "rankings": str(rankings)}, steps=["tournament", "rubric"]
+    )
+    manifest = Pipeline(config, runs_dir=str(tmp_path / "runs")).run()
+    assert manifest.step("tournament").succeeded, "the rankings file is the first stage; no retrieve step needed"
+
+
+def test_a_retrieval_sourced_rerank_run_without_a_retrieve_step_is_refused(data: Path) -> None:
+    """`from: retrieval` really has no first stage until the retrieve step runs it: the config is refused."""
+    with pytest.raises(Exception, match="retrieve step"):
+        tiny_config(
+            data,
+            candidates={
+                "from": "retrieval",
+                "retrieval": {"kind": "bm25"},
+                "rerank": {"api": "cohere", "model": "rerank-v4.0"},
+            },
+            steps=["rerank"],
+        )

@@ -584,12 +584,20 @@ released together.
   passes claiming the two stages of one fresh store at the same time used to lose one stage's entry (the last
   full-file write clobbered the other, and the losing pass crashed on `read()`); `claim` and `note_engines`
   hold an advisory `flock` on the store directory around their read and their write. The multi-process stress
-  test (`tests/llm/test_store_multiprocess.py`) reproduces the loss without the lock; the append-side torn-tail
-  race did not reproduce and stays covered by the same test.
+  test (`tests/llm/test_store_multiprocess.py`) reproduces the loss without the lock; the append side holds the
+  same lock (below).
+- **The store's record append holds the store's advisory lock** (sweep-llm M2): the first append's torn-tail
+  repair truncates to the last complete line, and a peer's in-flight record is exactly what that truncation
+  would cut — the isolated first-append window measured 4/250 lost records. The stress test now pre-claims the
+  store, seeds a torn tail and aligns the two workers' first appends; a lock-scope pin catches the unlocked
+  append deterministically.
+- **The census writers cut a torn last row before their first append** (`rcp_ndcg.data.preprocess
+  .drop_torn_last_line`, the one repair the records' append already used): a killed writer's torn row used to
+  merge with the next appended row, and the merged line was refused by every later read.
 - **One atomic-write helper** (`rcp_ndcg.storage.atomic_write`): the store's identity file and prompts, the run
-  manifest (whose temp name was pid-only) and the remote cache publish through it; the store's prompt texts are
-  verified against their hash and rewritten when a torn write left a file whose content contradicted its
-  filename (sweep-llm m14).
+  manifest (whose temp name was pid-only — two writers in one process shared it and lost saves) and the remote
+  cache publish through it; the store's prompt texts are verified against their hash and rewritten when a torn
+  write left a file whose content contradicted its filename (sweep-llm m14).
 - `run status` (and `run cancel`, `run resume`) no longer fail for a job that has left the queue: a non-zero
   `squeue` — what standard Slurm answers for a finished job (`Invalid job id specified`) — means "not in queue"
   and the `sacct` fallback runs; it used to raise (sweep-runs 2).
@@ -599,9 +607,11 @@ released together.
 - A resume whose identity check raises before a step starts (a judge config file gone) fails with the typed
   `MissingInputError` instead of the failure handler's `AttributeError` on the not-yet-set usage, which masked
   it (sweep-runs 4).
-- A rerank step without the retrieve step over `candidates.from: rankings` or `retrieval` is refused in the
-  config validator (nothing writes the first-stage pools it rescores); it used to validate and fail mid-run on
-  an internal scratch path (sweep-runs 5).
+- **`from: rankings` + a rerank step, with no retrieve step, works**: the rankings file IS the run's first
+  stage — the rerank step reads its supplied pools directly, and the judging steps read the reranker's
+  candidates — where the combination used to validate and fail mid-run on an internal scratch path
+  (sweep-runs 5). The refusal stays where it is true: `from: retrieval` really has no first stage until the
+  retrieve step runs it, and that combination is refused in the config.
 - `JudgeConfig`'s copied base-URL validator and `urls` are gone: the copy had drifted to accept
   `base_url: ""` — a config that validated and could never be sent to. The `Endpoint` rule and property are the
   only ones (sweep-x-arch F1).
@@ -700,7 +710,9 @@ released together.
 - One criterion-label derivation (`rcp_ndcg.llm.prompts.criterion_labels_in`), read by `Prompt.criteria` and
   the fake judge; a step re-run clears its record's previous attempt (inputs, outputs, usage, engines, and a
   failed `evaluate`'s metrics); `records_stored` (`rcp_ndcg.llm.store`) is the one count of a stage file's
-  lines; a plugin whose constructor rejects the options raises the typed `ConfigError` the built-ins raise.
+  lines (the estimate's note and `run status`'s progress both read it); a plugin whose constructor rejects the
+  options raises the typed `ConfigError` the built-ins raise; naming the judge's default wire (`api:
+  openai_chat`) keys like the unset default (one instrument); reparse re-serializes the census rows it copies.
 - `tests/contract` snapshots and the exported schemas regenerated: the `Family` fields (in
   `calibration.v1.json`, `judgement-store.v1.json`, `run-manifest.v1.json`), `JudgeConfig.urls` gone from the
   collected surface (`JudgeClient` carries its `RoleClient` base), and the text-policy default's literal.

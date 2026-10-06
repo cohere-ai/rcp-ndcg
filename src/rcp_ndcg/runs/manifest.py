@@ -12,7 +12,6 @@ identity and inputs are unchanged.
 
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -24,6 +23,7 @@ from rcp_ndcg_core.schemas import Family
 from rcp_ndcg.errors import DataError
 from rcp_ndcg.llm.client import EngineInfo, Usage
 from rcp_ndcg.runs.layout import LAYOUT_VERSION, RunLayout
+from rcp_ndcg.storage import atomic_write
 from rcp_ndcg.storage.artifacts import ArtifactRef, CodeVersion, code_version
 from rcp_ndcg.support.identity import hash_payload
 
@@ -177,15 +177,13 @@ class RunManifest(BaseModel):
     # -- disk ----------------------------------------------------------------
 
     def save(self, layout: RunLayout) -> str:
-        """Write the manifest atomically (a temp file and a rename, locally)."""
+        """Write the manifest atomically (the one storage helper: a per-process, per-call temp file and a
+        rename, so a concurrent reader of a running job's manifest never sees a truncated moment, and two
+        writers never share a temp file)."""
         self.updated_at = _now()
         payload = self.model_dump_json(indent=2)
         target = layout.manifest
-        path = Path(target)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(f".{os.getpid()}.tmp")
-        temporary.write_text(payload, encoding="utf-8")
-        temporary.replace(path)
+        atomic_write(Path(target), lambda tmp: tmp.write_text(payload, encoding="utf-8"))
         return target
 
     @classmethod
