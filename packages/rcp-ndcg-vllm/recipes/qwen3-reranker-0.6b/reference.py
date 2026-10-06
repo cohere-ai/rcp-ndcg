@@ -104,8 +104,8 @@ class PairTokenizer:
     ``requirements-reference.txt``, where ``score`` runs). Stage 1 on CPU runs in the harness's
     environment, which carries no transformers; there the same ``tokenizer.json`` loads through the
     ``tokenizers`` library directly — the library transformers' fast tokenizers wrap — giving the
-    same ids, truncation and decode for this checkpoint (its post-processor adds no tokens; the
-    research lane measured the parts-concatenated and whole-prompt ids equal).
+    same ids and truncation for this checkpoint (its post-processor adds no tokens; the research
+    lane measured the parts-concatenated and whole-prompt ids equal).
 
     The ``padding_side`` the paper code sets is ``left``; padding applies to ``score`` batching
     only (``_process_inputs``), never to the rendered prompt text.
@@ -137,17 +137,25 @@ class PairTokenizer:
             return int(self._fast.convert_tokens_to_ids(token))
         return int(self._fast.token_to_id(token))
 
-    def encode(self, text: str) -> list[int]:
-        """The ids of ``text``, with the tokenizer's default post-processor (none for this model)."""
-        if self._hub:
-            return list(self._fast.encode(text))
-        return list(self._fast.encode(text, add_special_tokens=True).ids)
-
     def encode_prefix(self, text: str) -> list[int]:
         """The ids of ``text`` with no post-processor tokens (the frame parts)."""
         if self._hub:
             return list(self._fast.encode(text, add_special_tokens=False))
         return list(self._fast.encode(text, add_special_tokens=False).ids)
+
+    def encode_with_offsets(self, text: str) -> tuple[list[int], list[tuple[int, int]]]:
+        """The ids of ``text`` (with the tokenizer's default post-processor) and their character
+        offsets into the raw string. The tokenizer's normalizer changes text forms (e.g. NFC), but
+        the offsets map back to the characters that were sent."""
+        if self._hub:
+            encoded = self._fast(text, return_offsets_mapping=True)
+            ids = encoded["input_ids"]
+            offsets = encoded["offset_mapping"]
+            if ids and isinstance(ids[0], list):  # a single string still comes back batch-wrapped
+                ids, offsets = ids[0], offsets[0]
+            return list(ids), [tuple(pair) for pair in offsets]
+        encoding = self._fast.encode(text, add_special_tokens=True)
+        return list(encoding.ids), [tuple(pair) for pair in encoding.offsets]
 
     def encode_truncated(self, texts: list[str], max_length: int) -> list[list[int]]:
         """The ids of every text, truncated ``longest_first`` at ``max_length`` (the paper's call)."""
@@ -166,10 +174,6 @@ class PairTokenizer:
             return [list(self._fast.encode(text, add_special_tokens=True).ids) for text in texts]
         finally:
             self._fast.no_truncation()
-
-    def decode(self, ids: list[int]) -> str:
-        """The text of ``ids`` (byte-level back to the original bytes at a token boundary)."""
-        return self._fast.decode(ids, skip_special_tokens=False)
 
     def pad(self, inputs: dict[str, Any], *, max_length: int) -> dict[str, Any]:
         """Left-pad a batch to its longest sequence, capped at ``max_length`` (the paper's call)."""
@@ -243,16 +247,20 @@ class Qwen3RerankerReference:
         """The exact prompt text for one pair, with the paper truncation applied.
 
         The pair string is truncated ``longest_first`` at ``max_length - len(prefix) - len(suffix)``
-        (the prefix and suffix are never cut, so the anchor always survives) and re-attached.
+        (the prefix and suffix are never cut, so the anchor always survives) and re-attached. Under
+        the budget the raw strings are returned: ``decode(encode(x))`` is not the identity for this
+        checkpoint (its normalizer maps non-NFC text to NFC, keeping the token ids equal but not
+        the characters), so the kept text is cut at the raw character offset of the last kept token
+        instead of decoded from ids.
         """
         if instruction is None:
             instruction = self.instruction
         pair = f"<Instruct>: {instruction}\n<Query>: {query}\n<Document>: {doc}"
         budget = self.max_length - len(self.prefix_tokens) - len(self.suffix_tokens)
-        (ids,) = self.tokenizer.encode_truncated([pair], budget)
-        # Byte-level BPE decodes losslessly; an over-budget cut lands on a token boundary, which is
-        # the reference's own ground truth for its shape.
-        return self.prefix + self.tokenizer.decode(ids) + self.suffix
+        ids, offsets = self.tokenizer.encode_with_offsets(pair)
+        if len(ids) <= budget:
+            return self.prefix + pair + self.suffix
+        return self.prefix + pair[: offsets[budget - 1][1]] + self.suffix
 
     def score(self, query: str, docs: list[str], instruction: str | None = None) -> list[float]:
         """The probability of "yes" per document, aligned with ``docs`` (the paper's ``predict``)."""

@@ -125,6 +125,12 @@ def _pairs(tmp_path: Path) -> tuple[Path, list[dict]]:
         {"query": "longer query " * 200, "documents": ["filler text for the document side of the pair. " * 900]}
     )
     rows.append({"query": "q", "documents": ["x " * 12000]})
+    # A non-NFC pair (decomposed accents): the engine tokenizes the NFC-normalized form, so the
+    # ids match, but the reference's render must keep the raw characters for the render check.
+    decomposed = "cafe" + chr(101) + chr(769)  # e + combining acute (not NFC)
+    rows.append(
+        {"query": f"what about {decomposed}?", "documents": [f"The {decomposed} is served over the river." * 3]}
+    )
     path = tmp_path / "pairs.jsonl"
     path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
     return path, rows
@@ -222,10 +228,10 @@ def test_stage1_on_cpu_passes_with_the_reference_render(tmp_path: Path, tokenize
     pairs, _ = _pairs(tmp_path)
     report = stage1_prompts(recipe, pairs, _reference_python(), over_length_per_shape=20)
     assert report["passed"] is True, json.dumps(report)[:2000]
-    assert report["render_check"]["status"] == "run" and report["render_check"]["rows"] == 25
+    assert report["render_check"]["status"] == "run" and report["render_check"]["rows"] == 26
     assert report["render_check"]["passed"] is True, report["render_check"]["failures"][:1]
     assert report["anchor_check"]["passed"] is True, report["anchor_check"]["failures"][:1]
-    assert report["anchor_check"]["checked"] == 45  # 25 pairs rows + 20 over-length samples
+    assert report["anchor_check"]["checked"] == 46  # 26 pairs rows + 20 over-length samples
     assert report["template_render_check"]["passed"] is True
     assert report["engine_tokenize_check"]["status"] == "not_run"  # no engine on CPU: never "passed"
 
