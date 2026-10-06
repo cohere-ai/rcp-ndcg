@@ -20,7 +20,6 @@ import hashlib
 import io
 import os
 import struct
-import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -313,20 +312,12 @@ def _isobmff_header(payload: bytes) -> VideoHeader | None:
 
 
 def _atomic_write_bytes(target: Path, payload: bytes) -> None:
-    """Publish *payload* at *target* via a temp file in the same directory.
+    """Publish *payload* at *target* through the one storage helper (a temp file in the same directory).
 
     Concurrent readers -- the N worker ranks that all resolve the same
     corpus at start-up -- would otherwise observe a half-written image.
     """
-    target.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.{os.getpid()}.", dir=target.parent)
-    tmp = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(payload)
-        os.replace(tmp, target)
-    finally:
-        tmp.unlink(missing_ok=True)
+    storage.atomic_write(target, lambda tmp: tmp.write_bytes(payload))
 
 
 _DEFAULT_RESOLVER: MediaResolver | None = None

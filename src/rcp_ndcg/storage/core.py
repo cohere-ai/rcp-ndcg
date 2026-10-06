@@ -9,8 +9,10 @@ not installed raises a message naming the extra to install rather than an
 
 from __future__ import annotations
 
+import os
 import shutil
-from collections.abc import Iterator
+import tempfile
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import IO, Any
@@ -183,6 +185,29 @@ def write_bytes(uri: str | Path, payload: bytes) -> None:
 def write_text(uri: str | Path, payload: str, encoding: str = "utf-8") -> None:
     """Write *payload* to *uri* as text."""
     write_bytes(uri, payload.encode(encoding))
+
+
+def atomic_write(target: Path, write: Callable[[Path], Any]) -> None:
+    """Publish *target* atomically: ``write`` fills a per-call temp file in the target's directory, then the
+    temp file replaces the target.
+
+    The one home of the temp-then-rename dance: a reader of *target* sees the old or the new file, never a
+    truncated moment, and concurrent writers never share a temp file (the name carries the process id and a
+    random suffix; the store, the run manifest and the remote cache publish through it).
+
+    Args:
+        target: The file to publish, locally (a store, a manifest and a cached object are local by construction).
+        write: What fills the temp file, called with its path (write bytes, text, or download into it).
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=f".{target.name}.{os.getpid()}.", suffix=".tmp", dir=target.parent)
+    tmp = Path(name)
+    os.close(fd)
+    try:
+        write(tmp)
+        os.replace(tmp, target)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def get(remote: str | Path, local: str | Path) -> Path:

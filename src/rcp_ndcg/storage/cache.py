@@ -13,13 +13,12 @@ case -- would otherwise observe a half-written file.
 from __future__ import annotations
 
 import json
-import os
 import re
-import tempfile
 from pathlib import Path
 from typing import Any
 
 from rcp_ndcg.storage import core
+from rcp_ndcg.storage.core import atomic_write
 from rcp_ndcg.storage.uri import is_remote
 from rcp_ndcg.support.identity import hash_text, short
 
@@ -39,16 +38,8 @@ def _identity(metadata: dict[str, Any]) -> dict[str, str]:
 
 
 def _atomic_write(target: Path, write: Any) -> None:
-    """Materialise *target* through a temp file in the same directory."""
-    target.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=f"{target.name}.{os.getpid()}.", suffix=".tmp", dir=target.parent)
-    os.close(fd)
-    tmp = Path(tmp_name)
-    try:
-        write(tmp)
-        os.replace(tmp, target)
-    finally:
-        tmp.unlink(missing_ok=True)
+    """Materialise *target* through the one storage helper (a temp file in the same directory, renamed over it)."""
+    atomic_write(target, write)
 
 
 #: How much of the URI's file name a cache file keeps after the digest, for a person reading the directory.

@@ -202,3 +202,33 @@ class TestBackendErrors:
             storage.exists("s3://b/k")
         error = classify(raised.value)
         assert error.exit_code == 10 and error.hint == 'pip install "rcp-ndcg[s3]"'
+
+
+class TestAtomicWrite:
+    def test_a_reader_sees_the_old_or_the_new_file_never_a_partial_one(self, tmp_path: Path) -> None:
+        target = tmp_path / "data.json"
+        target.write_text("old", encoding="utf-8")
+        storage.atomic_write(target, lambda tmp: tmp.write_text("new", encoding="utf-8"))
+        assert target.read_text(encoding="utf-8") == "new"
+        assert not list(tmp_path.glob("*.tmp")), "the temp file is gone after the rename"
+
+    def test_concurrent_writers_never_share_a_temp_file(self, tmp_path: Path) -> None:
+        import threading
+
+        target = tmp_path / "shared"
+        errors: list[BaseException] = []
+
+        def writer(name: str) -> None:
+            try:
+                storage.atomic_write(target, lambda tmp: tmp.write_text(name, encoding="utf-8"))
+            except BaseException as exc:  # noqa: BLE001 - the test reports it
+                errors.append(exc)
+
+        threads = [threading.Thread(target=writer, args=(f"w{index}",)) for index in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        assert not errors
+        assert target.read_text(encoding="utf-8").startswith("w")
+        assert not list(tmp_path.glob("*.tmp"))

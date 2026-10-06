@@ -22,6 +22,7 @@ remote object changes.
 
 from rcp_ndcg.storage.cache import cache, cache_path_for
 from rcp_ndcg.storage.core import (
+    atomic_write,
     exists,
     filesystem,
     get,
@@ -46,6 +47,7 @@ from rcp_ndcg.storage.uri import (
 )
 
 __all__ = [
+    "atomic_write",
     "cache",
     "cache_path_for",
     "exists",

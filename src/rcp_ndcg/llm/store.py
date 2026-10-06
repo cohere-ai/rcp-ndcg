@@ -30,11 +30,12 @@ person reading the store; no code reads those four.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import shutil
-import threading
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -44,6 +45,7 @@ from rcp_ndcg_core.schemas import Family, Judgement, JudgementSet, Stage, supers
 
 from rcp_ndcg.errors import DataError, IdentityError
 from rcp_ndcg.llm.client import EngineInfo
+from rcp_ndcg.storage import atomic_write
 from rcp_ndcg.support.identity import identity_differences
 from rcp_ndcg.support.logging import get_logger
 
@@ -189,20 +191,21 @@ class JudgementStore:
         """
         import rcp_ndcg
 
-        if not self.check(stage, identity, force=force):
-            return
-        entries = self.identities()
-        if stage in entries:
-            self._supersede(stage)
-        entries[stage] = {
-            "identity": identity,
-            "family": family.model_dump(mode="json"),
-            "family_key": family.key,
-            "created_at": datetime.now(UTC).isoformat(),
-            "package_version": rcp_ndcg.__version__,
-            **({"sources": sources} if sources else {}),
-        }
-        self._write_identities(entries)
+        with self._identity_lock():
+            if not self.check(stage, identity, force=force):
+                return
+            entries = self.identities()
+            if stage in entries:
+                self._supersede(stage)
+            entries[stage] = {
+                "identity": identity,
+                "family": family.model_dump(mode="json"),
+                "family_key": family.key,
+                "created_at": datetime.now(UTC).isoformat(),
+                "package_version": rcp_ndcg.__version__,
+                **({"sources": sources} if sources else {}),
+            }
+            self._write_identities(entries)
 
     def note_engines(self, stage: Stage, engines: Sequence[Any]) -> None:
         """Add what the endpoints reported (:class:`~rcp_ndcg.llm.client.EngineInfo`) to ``stage``'s entry.
@@ -211,33 +214,52 @@ class JudgementStore:
         engine version adds a report instead of being refused. A report already recorded is not added again, and one
         that completes a recorded report replaces it.
         """
-        entries = self.identities()
-        entry = entries.get(stage)
-        if entry is None or not engines:
-            return
-        recorded = list(entry.get("engines", []))
-        for engine in engines:
-            report = engine.model_dump(mode="json", exclude_none=True, exclude_defaults=True)
-            if any(report.items() <= known.items() for known in recorded):
-                continue
-            # A report that completes one recorded before (the fingerprint of a first answer) replaces it.
-            recorded = [known for known in recorded if not known.items() <= report.items()] + [report]
-        if recorded == entry.get("engines"):
-            return
-        entries[stage] = {**entry, "engines": recorded}
-        self._write_identities(entries)
+        with self._identity_lock():
+            entries = self.identities()
+            entry = entries.get(stage)
+            if entry is None or not engines:
+                return
+            recorded = list(entry.get("engines", []))
+            for engine in engines:
+                report = engine.model_dump(mode="json", exclude_none=True, exclude_defaults=True)
+                if any(report.items() <= known.items() for known in recorded):
+                    continue
+                # A report that completes one recorded before (the fingerprint of a first answer) replaces it.
+                recorded = [known for known in recorded if not known.items() <= report.items()] + [report]
+            if recorded == entry.get("engines"):
+                return
+            entries[stage] = {**entry, "engines": recorded}
+            self._write_identities(entries)
+
+    @contextmanager
+    def _identity_lock(self) -> Iterator[None]:
+        """Serialize the identity file's read-modify-write between processes.
+
+        Two passes claiming the two stages of one fresh store at the same time would otherwise lose one
+        stage's entry (the last full-file write clobbers the other), and the losing pass crashes on ``read()``;
+        the store's resume design invites overlapping passes, so the read and the write of every claim or
+        engine note happen under one advisory lock. It is an ``flock`` on the store directory itself: no lock
+        file joins the layout, and it is released by closing, so a killed process leaves nothing behind.
+        """
+        self.root.mkdir(parents=True, exist_ok=True)
+        fd = os.open(self.root, os.O_RDONLY)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            yield
+        finally:
+            os.close(fd)
 
     def _write_identities(self, entries: dict[str, dict[str, Any]]) -> None:
         payload = {"schema": STORE_SCHEMA, "stages": entries}
         StoreIdentity.model_validate(payload)  # the file is what the exported schema describes
-        self.root.mkdir(parents=True, exist_ok=True)
-        # A temp file and a rename, like the run manifest's: `run status` counts a running pass's windows while
+        # A temp file and a rename (the one storage helper): `run status` counts a running pass's windows while
         # the pass claims its stages, and a rewrite in place would serve it an empty or partial file
-        # (tests/llm/test_store.py races a claim against a reader). The name carries the thread id, so two
-        # writers in one process never share the temp file.
-        temporary = self.identity_path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
-        temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        temporary.replace(self.identity_path)
+        # (tests/llm/test_store.py races a claim against a reader). The temp name carries the process id and a
+        # random suffix, so two writers never share one.
+        atomic_write(
+            self.identity_path,
+            lambda tmp: tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"),
+        )
 
     def schedule(self, stage: Stage) -> TournamentSchedule | RubricSchedule | None:
         """The schedule ``stage`` of this store was judged with (``None``: unclaimed): its numbers from the identity,
@@ -252,13 +274,20 @@ class JudgementStore:
         return kind.model_validate({**entry["identity"]["schedule"], "prompt": prompt})
 
     def keep_prompt(self, text: str) -> Path:
-        """Store a prompt's text as ``prompts/<sha256>.txt`` (once) and return that path."""
+        """Store a prompt's text as ``prompts/<sha256>.txt`` (once) and return that path.
+
+        The stored text is verified against its name: a torn write (a process killed mid-write) left a file
+        whose content contradicted its filename forever, silently corrupting the store's provenance claim; one
+        whose hash disagrees with its stem is rewritten.
+        """
         from rcp_ndcg.support.identity import hash_text
 
-        path = self.root / PROMPTS_DIR / f"{hash_text(text)}.txt"
-        if not path.exists():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
+        digest = hash_text(text)
+        path = self.root / PROMPTS_DIR / f"{digest}.txt"
+        if path.exists() and path.read_text(encoding="utf-8") == text:
+            return path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(path, lambda tmp: tmp.write_text(text, encoding="utf-8"))
         return path
 
     def _supersede(self, stage: Stage) -> None:
