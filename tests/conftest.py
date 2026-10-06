@@ -38,6 +38,16 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _fresh_warn_once_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The preprocess warnings fire once per (mechanism, corpus) per process; each test starts unwarned, so a
+    test that asserts the warning does not depend on which tests ran before it."""
+    from rcp_ndcg.data import preprocess
+
+    monkeypatch.setattr(preprocess, "_WARNED", set())
+    monkeypatch.setattr(preprocess, "_VENDOR_WARNED", set())
+
+
+@pytest.fixture(autouse=True)
 def _hub_is_offline_and_empty(
     request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ):
