@@ -9,7 +9,7 @@ import subprocess
 import pytest
 
 from rcp_ndcg import __version__
-from rcp_ndcg.runners import JobSpec
+from rcp_ndcg.runners import JobPhase, JobSpec
 from rcp_ndcg.runners.kubernetes import KubernetesRunner
 from rcp_ndcg.runners.local import LocalRunner
 from rcp_ndcg.runners.script import CONSTRAINTS_URL, TORCH_CPU_INDEX, install_argv, worker_script
@@ -147,6 +147,14 @@ def test_a_local_wheelhouse_path_is_recorded_absolute_and_a_url_is_left_alone() 
     assert resolved["constraints"].endswith("/wheels/c.txt")
     remote = SlurmRunner(wheelhouse="gs://b/w", container_runtime="pyxis").options.resolved()
     assert remote["wheelhouse"] == "gs://b/w"
+
+
+def test_with_argv_refuses_an_empty_command() -> None:
+    """The per-phase builder validates what model_copy would skip: an empty phase command is refused, not
+    rendered into a script that crashes."""
+    job = JobSpec(name="j", phases=(JobPhase(argv=("echo", "hi")),))
+    with pytest.raises(ValueError, match="argv must not be empty"):
+        job.with_argv(())
 
 
 @pytest.mark.parametrize("name", ["HF HOME", "A;echo INJECTED;B", "1X", "", "X-Y"])

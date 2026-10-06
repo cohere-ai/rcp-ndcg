@@ -133,7 +133,7 @@ class SlurmOptions(JobOptions):
         sbatch_args: Further ``#SBATCH`` arguments, verbatim (e.g. ``--constraint=a100``).
     """
 
-    PATHS = ("log_dir", "workdir")
+    PATHS = ("log_dir", "workdir", "wheelhouse", "constraints")
 
     image: str | None = None
     partition: str | None = None
@@ -145,8 +145,6 @@ class SlurmOptions(JobOptions):
     container_runtime: Literal["none", "apptainer", "pyxis"] = "none"
     container_mounts: list[str] = Field(default_factory=list)
     sbatch_args: list[str] = Field(default_factory=list)
-
-    PATHS = ("log_dir", "workdir", "wheelhouse", "constraints")
 
     @model_validator(mode="after")
     def _an_install_source_needs_a_container(self) -> Self:

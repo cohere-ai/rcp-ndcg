@@ -117,7 +117,14 @@ class JobSpec(BaseModel):
 
     def with_argv(self, argv: Sequence[str]) -> JobSpec:
         """The same job running ``argv``: the spec a runner renders for one phase of this job (its image,
-        resources and environment; no phases -- a phase's command lives in the job's ``phases``)."""
+        resources and environment; no phases -- a phase's command lives in the job's ``phases``).
+
+        Raises:
+            ValueError: ``argv`` is empty (a phase's command is never empty; ``model_copy`` would skip the
+                model's own check and the rendered script would crash instead).
+        """
+        if not argv:
+            raise ValueError("argv must not be empty")
         return self.model_copy(update={"argv": tuple(argv), "phases": ()})
 
 
@@ -139,11 +146,13 @@ class JobOptions(BaseModel):
     wheelhouse: str | None = Field(default=None, min_length=1)
     """Where the coordinator installs the release from instead of PyPI: a directory of staged wheels, or an
     ``http(s)://`` or ``gs://`` URL of one, readable on the node; rendered as ``uvx --find-links <wheelhouse>
-    --no-index`` -- every package comes from the wheelhouse (a pre-release, or an air-gapped node). A local
-    path is recorded absolute (a URL already names its location); a URL or path is also the rendered value, so
-    it must be readable where the job runs (a container: mounted in). Only runners that install the release
-    has it, setting one is refused. The wheels are built and staged as ``docs/concepts/serving.md``
-    ("The coordinator installs itself") describes.
+    --no-index`` -- every package comes from the wheelhouse (a pre-release, or an air-gapped node). A relative
+    local path is recorded absolute by the runners whose job records read paths on the submitting host (slurm);
+    the value is always rendered verbatim, so it must be readable where the job runs (a container: mounted in).
+    On an air-gapped node set ``constraints`` too: the default release constraints URL is fetched at job start
+    even under ``--no-index``. Only runners that install the release take one (a container on SLURM,
+    Kubernetes); where the coordinator runs in an environment that already has it, setting one is refused. The
+    wheels are built and staged as ``docs/concepts/serving.md`` ("The coordinator installs itself") describes.
     """
     constraints: str | None = Field(default=None, min_length=1)
     """A constraints file (path or URL) replacing the release's, which pins every dependency to the version

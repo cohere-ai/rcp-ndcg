@@ -282,7 +282,9 @@ in the larger `ghcr.io/astral-sh/uv:python3.12-trixie` image, which has git.
 **Before the release is on PyPI** (a release candidate, an RC wave on a cluster), and on a node without any network
 access, the coordinator installs from a **wheelhouse** instead of PyPI: set the runner's `wheelhouse` and
 `constraints` options (`runner.options.wheelhouse`, `runner.options.constraints`; the generic `--set
-runner.options.wheelhouse=...` overrides them from the command line). The wheelhouse is a directory or an
+runner.options.wheelhouse=...` overrides them from the command line) — on a node without any network access, name
+`constraints` too, since `uvx` fetches the default release URL at job start even under `--no-index`. The wheelhouse
+is a directory or an
 `http(s)://`/`gs://` URL of staged wheels, readable on the node (on Kubernetes, mounted in or a URL); the rendered
 `uvx` then takes everything from the wheelhouse and asks no index, and the constraints file you name replaces the
 release's:
@@ -292,7 +294,7 @@ runner:
   name: kubernetes
   options:
     wheelhouse: gs://my-bucket/wheelhouse/0.0.1rc1    # or /shared/wheelhouse on a shared filesystem
-    constraints: gs://bucket/wheelhouse/0.0.1rc1/requirements-constraints.txt
+    constraints: gs://my-bucket/wheelhouse/0.0.1rc1/requirements-constraints.txt
 ```
 
 The local runner runs the coordinator in this host's environment and installs nothing (a wheelhouse there is
@@ -304,9 +306,9 @@ locked dependencies beside the release wheels (for the node's platform; the coor
 so the wheelhouse must carry every package, the CPU torch build included):
 
 ```bash
-# the release wheels, as release.yml builds them (the three pyproject.toml versions must match)
-uv build --out-dir /shared/wheelhouse/0.0.1rc1
-uv build --out-dir /shared/wheelhouse/0.0.1rc1 packages/rcp-ndcg-vllm   # built from its own directory
+# the release wheels, as release.yml builds them (--all-packages builds every workspace member:
+# rcp-ndcg and the rcp-ndcg-core it pins exactly; the pyproject.toml versions must match)
+uv build --all-packages --out-dir /shared/wheelhouse/0.0.1rc1
 # the locked dependencies, pinned exactly (the command the committed requirements-constraints.txt records)
 uv export --frozen --no-hashes --no-emit-workspace --no-dev --extra calibrate --extra hf --extra s3 --extra azure \
   -o /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt
