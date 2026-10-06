@@ -77,6 +77,10 @@ class Pipeline:
         engines: Mapping[EngineRole, EngineURLs] | None = None,
     ):
         self.config = config
+        # Set here, not only in _run_step: a resume whose identity check raises before the step starts (a
+        # judge config file gone) reaches the failure handler, which records a judging step's usage -- without
+        # this, the handler itself crashes with an AttributeError that masks the typed error.
+        self._judge_usage: Usage | None = None
         self._engines = dict(engines) if engines is not None else _engines_overlay()
         if self._engines:
             _check_engines(config, self._engines)

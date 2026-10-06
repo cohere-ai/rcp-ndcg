@@ -428,6 +428,12 @@ class RunConfig(BaseModel):
             raise ValueError("the retrieve step needs candidates.from: retrieval or rankings")
         if "rerank" in self.steps and self.candidates.rerank is None:
             raise ValueError("the rerank step needs candidates.rerank (the reranker's settings)")
+        if "rerank" in self.steps and "retrieve" not in self.steps and self.candidates.source != "dataset":
+            raise ValueError(
+                "the rerank step needs the retrieve step when candidates.from is not 'dataset': nothing else "
+                "writes the first-stage pools it rescores (add retrieve to steps, before rerank, or set "
+                "candidates.from: dataset)"
+            )
         if JUDGE_STEPS & set(self.steps) and self.judge is None:
             raise ValueError("the tournament and rubric steps need a judge (judge: <config path> | fake | {...})")
         return self

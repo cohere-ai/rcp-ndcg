@@ -1089,3 +1089,26 @@ class TestFailures:
         else:
             assert (manifest.status, record.status) == (RunStatus.FAILED, StepStatus.FAILED)
         assert record.error.startswith("Interrupted")
+
+
+def test_a_resume_whose_judge_config_is_gone_raises_the_typed_error(
+    data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A resume of a finished run whose judge config file is gone fails with the typed MissingInputError from
+    the identity check -- not the AttributeError of the failure handler touching an unset usage, which used to
+    mask it and skip finish_step."""
+    from rcp_ndcg.llm import JudgeClient
+    from tests.llm.test_judging import _SchemaEndpoint
+
+    judge_yaml = tmp_path / "judge.yaml"
+    judge_yaml.write_text("base_url: http://judge.test/v1\nmodel: m\n", encoding="utf-8")
+    monkeypatch.setattr(JudgeClient, "from_config", staticmethod(lambda config: _SchemaEndpoint("3.1").client()))
+    pipeline = Pipeline(tiny_config(data, judge=str(judge_yaml), steps=["tournament"]), runs_dir=str(tmp_path / "runs"))
+    pipeline.run()
+    assert RunManifest.load(pipeline.layout.root).step("tournament").succeeded
+    judge_yaml.unlink()
+    with pytest.raises(MissingInputError, match="judge config"):
+        Pipeline.resume(pipeline.layout.root).run()
+    manifest = RunManifest.load(pipeline.layout.root)
+    assert manifest.status is RunStatus.FAILED
+    assert manifest.step("tournament").error and "judge.yaml" in manifest.step("tournament").error

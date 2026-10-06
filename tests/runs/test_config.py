@@ -76,6 +76,28 @@ class TestValidation:
         with pytest.raises(ValueError, match=message):
             RunConfig.model_validate({"dataset": DATASET, **fields})
 
+    @pytest.mark.parametrize("source", ["rankings", "retrieval"])
+    def test_a_rerank_step_without_a_first_stage_is_refused_at_config_time(self, source: str) -> None:
+        """``from: rankings`` (or ``retrieval``) with a rerank step and no retrieve step passes nothing to
+        rerank: the first-stage file is written by the retrieve step (or the dataset source's own preamble),
+        and the run used to fail mid-run on the internal scratch path."""
+        with pytest.raises(ValueError, match="rerank"):
+            RunConfig.model_validate(
+                {
+                    "dataset": DATASET,
+                    "judge": "fake",
+                    "candidates": {
+                        **(
+                            {"from": source, "rankings": "pools.parquet"}
+                            if source == "rankings"
+                            else {"from": source, "retrieval": {"kind": "bm25"}}
+                        ),
+                        "rerank": {"api": "cohere", "model": "rerank-v4.0"},
+                    },
+                    "steps": ["rerank", "calibrate", "evaluate"],
+                }
+            )
+
     def test_schedules_default_to_none_and_validate_when_given(self) -> None:
         from rcp_ndcg.llm import RubricSchedule
 

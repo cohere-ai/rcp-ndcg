@@ -134,7 +134,7 @@ def worker_script(
         install_argv(cmd, wheelhouse=wheelhouse, constraints=constraints) if install else tuple(cmd) for cmd in commands
     ]
     if any(cmd[0] == "uvx" and cmd != orig for cmd, orig in zip(rendered, commands, strict=True)):
-        lines += bootstrap_uv()
+        lines += bootstrap_uv(wheelhouse)
     *head, last = rendered
     for cmd in head:
         lines.append(quote_argv(cmd))
@@ -146,11 +146,23 @@ def worker_script(
 UV_BOOTSTRAP_DIR = "${TMPDIR:-/tmp}/rcp-ndcg-uv"
 
 
-def bootstrap_uv() -> list[str]:
-    """Bash lines that install uv with the image's ``python3 -m pip`` when ``uvx`` is not on ``PATH``."""
+def bootstrap_uv(wheelhouse: str | None = None) -> list[str]:
+    """Bash lines that install uv with the image's ``python3 -m pip`` when ``uvx`` is not on ``PATH``.
+
+    ``wheelhouse``: install uv from the staged wheels (``--find-links ... --no-index``), like the release
+    install the wheelhouse is declared for -- an air-gapped node has no PyPI to ask, and the uv wheel is
+    staged in the wheelhouse beside the package's own. Without one, uv comes from PyPI (a node with network).
+    """
+    if wheelhouse:
+        install = (
+            f"python3 -m pip install --quiet --no-index --find-links {shlex.quote(wheelhouse)} "
+            f'--target "{UV_BOOTSTRAP_DIR}" uv'
+        )
+    else:
+        install = f'python3 -m pip install --quiet --target "{UV_BOOTSTRAP_DIR}" uv'
     return [
         "if ! command -v uvx >/dev/null; then",
-        f'  python3 -m pip install --quiet --target "{UV_BOOTSTRAP_DIR}" uv',
+        f"  {install}",
         f'  export PATH="{UV_BOOTSTRAP_DIR}/bin:$PATH"',
         "fi",
     ]

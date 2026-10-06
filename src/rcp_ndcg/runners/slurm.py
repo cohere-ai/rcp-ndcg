@@ -430,9 +430,16 @@ class SlurmRunner:
         return handles
 
     def status(self, handle: JobHandle) -> JobStatus:
-        """``squeue`` while the job is queued or running, ``sacct`` once it has left the queue."""
+        """``squeue`` while the job is queued or running, ``sacct`` once it has left the queue.
+
+        A non-zero ``squeue`` is what standard Slurm answers for a job that has left the queue (``Invalid job
+        id specified``), so it means "not in queue" and the ``sacct`` fallback runs -- it is not an error."""
         states: list[JobStatus] = []
-        for line in run_cli(["squeue", "-h", "-o", "%i %T", "-j", handle]).splitlines():
+        try:
+            queue = run_cli(["squeue", "-h", "-o", "%i %T", "-j", handle])
+        except RunnerError:
+            queue = ""
+        for line in queue.splitlines():
             job_id, _, state = line.strip().partition(" ")
             if job_id == handle:
                 states.append(_STATES.get(state.strip(), JobStatus.UNKNOWN))
