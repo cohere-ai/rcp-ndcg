@@ -389,25 +389,123 @@ class TestInjectedTransportCredentials:
         with pytest.raises(CredentialsError, match="RCP_NDCG_CLIENT_KEY"):
             client.encode([Content.from_text("x")], EncodeRole.DOCUMENT)
 
-    def test_an_injected_transport_without_the_variable_named_falls_back_to_the_profile(
+    def test_an_injected_transport_without_the_variable_named_keeps_the_key_off_a_foreign_host(
         self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A cohere client over a transport built on a bare config: the profile's variables and their
-        required-ness are what the transport resolves (the header follows the adapter)."""
+        """A cohere client over a transport built on a bare config, aimed at a gateway URL: the profile's
+        variables stay home (they name the vendor's own host), so a key reaches this request only through
+        the config's own ``api_key_env`` -- never by falling back to the vendor's variables."""
         from rcp_ndcg.inference.transport import Transport
 
+        monkeypatch.setenv("CO_API_KEY", "co-secret-key")
+        monkeypatch.setenv("COHERE_API_KEY", "cohere-secret-key")
         config = EmbeddingEndpoint(api="cohere", base_url="http://127.0.0.1:9000/v1", model="m", max_tokens=1024)
         foreign = EmbeddingEndpoint(
             base_url="http://127.0.0.1:9000/v1", model="m", tokenizer=tokenizer_json, max_tokens=8192
         )
         client = EmbeddingClient(config, sender=Transport(foreign, httpx_transport=_null_transport()))
+        assert client._sender._auth.variables == ()
+        assert client._sender._auth.required is False
+
+
+def _capturing_transport() -> tuple[Any, list[Any]]:
+    """A mock transport that records every request it is handed (the wire's headers included)."""
+    import httpx
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.path.endswith("/embed"):  # the Cohere v2 shape; /embeddings takes the OpenAI one
+            return httpx.Response(200, json={"embeddings": {"float": [[0.0, 0.0]]}})
+        return httpx.Response(200, json={"data": [{"index": 0, "embedding": [0.0, 0.0]}]})
+
+    return httpx.MockTransport(handler), seen
+
+
+class TestKeysStayOnTheProfileHost:
+    """A profile's default key variables travel only to the profile's own default host.
+
+    ``OPENAI_API_KEY`` exists to pay OpenAI: a request to any other ``base_url`` (a self-hosted engine,
+    a third party) carries a key only when the config names one with ``api_key_env``. A variable set for
+    one vendor must never authenticate a request somewhere else.
+    """
+
+    def test_a_served_engines_profile_key_never_reaches_a_custom_base_url(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An ``openai_embeddings`` engine at a local URL is sent no OpenAI key, however the variable is set."""
+        from rcp_ndcg.inference.transport import Transport
+
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-secret-openai-key")
+        config = EmbeddingEndpoint(
+            api="openai_embeddings",
+            base_url="http://127.0.0.1:8000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=8192,
+        )
+        mock, seen = _capturing_transport()
+        client = EmbeddingClient(config, sender=Transport(config, httpx_transport=mock))
+        assert client._sender._auth.variables == ()
+        assert client._sender._auth.required is False
+        client.encode([Content.from_text("x")], EncodeRole.DOCUMENT)
+        client.close()
+        assert seen, "the request never went out"
+        assert "Authorization" not in seen[0].headers
+
+    def test_a_hosted_profile_behind_a_custom_base_url_sends_no_key_without_an_explicit_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cohere's variables behind a gateway URL: the gateway injects its own credential, so the vendor's
+        key stays home; an explicitly named variable is the one exception."""
+        from rcp_ndcg.inference.transport import Transport
+
+        monkeypatch.setenv("CO_API_KEY", "co-secret-key")
+        config = EmbeddingEndpoint(
+            api="cohere", base_url="https://gateway.example.com/cohere", model="m", max_tokens=1024
+        )
+        mock, seen = _capturing_transport()
+        client = EmbeddingClient(config, sender=Transport(config, httpx_transport=mock))
+        assert client._sender._auth.variables == ()
+        client.encode([Content.from_text("x")], EncodeRole.DOCUMENT)
+        client.close()
+        assert seen and "Authorization" not in seen[0].headers
+
+    def test_a_named_api_key_env_travels_to_any_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The one exception is explicit: ``api_key_env`` names the variable, wherever the request goes."""
+        from rcp_ndcg.inference.transport import Transport
+
+        monkeypatch.setenv("GATEWAY_COHERE_KEY", "gw-secret-key")
+        config = EmbeddingEndpoint(
+            api="cohere",
+            base_url="https://gateway.example.com/cohere",
+            model="m",
+            max_tokens=1024,
+            api_key_env="GATEWAY_COHERE_KEY",
+        )
+        mock, seen = _capturing_transport()
+        client = EmbeddingClient(config, sender=Transport(config, httpx_transport=mock))
+        assert client._sender._auth.variables == ("GATEWAY_COHERE_KEY",)
+        client.encode([Content.from_text("x")], EncodeRole.DOCUMENT)
+        client.close()
+        assert seen and seen[0].headers["Authorization"] == "Bearer gw-secret-key"
+
+    def test_the_profile_keys_apply_on_the_profile_s_own_default_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """At the vendor's own root the profile's variables resolve as before -- that is what they are for."""
+        from rcp_ndcg.inference.transport import Transport
+
+        monkeypatch.setenv("CO_API_KEY", "co-secret-key")
+        monkeypatch.delenv("COHERE_API_KEY", raising=False)
+        config = EmbeddingEndpoint(api="cohere", model="m", max_tokens=1024)
+        resolved = config.model_copy(update={"base_url": "https://api.cohere.com/v2"})
+        mock, seen = _capturing_transport()
+        client = EmbeddingClient(config, sender=Transport(resolved, httpx_transport=mock))
         assert client._sender._auth.variables == ("CO_API_KEY", "COHERE_API_KEY")
         assert client._sender._auth.required is True
-
-        monkeypatch.delenv("CO_API_KEY", raising=False)
-        monkeypatch.delenv("COHERE_API_KEY", raising=False)
-        with pytest.raises(CredentialsError, match="CO_API_KEY"):
-            client.encode([Content.from_text("x")], EncodeRole.DOCUMENT)
+        client.encode([Content.from_text("x")], EncodeRole.DOCUMENT)
+        client.close()
+        assert seen and seen[0].headers["Authorization"] == "Bearer co-secret-key"
 
 
 def _null_transport() -> Any:

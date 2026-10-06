@@ -379,20 +379,48 @@ class TestCredentials:
         with pytest.raises(ValidationError, match="api_key_env"):
             endpoint(api_key_env="")
 
-    def test_a_hosted_profile_without_a_key_names_its_variables(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Through a real transport: a missing required key is refused before anything is queued."""
+    def test_a_hosted_profile_on_its_own_host_without_a_key_names_its_variables(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Through a real transport at the vendor's own root: a missing required key is refused before
+        anything is queued."""
         from rcp_ndcg.inference.transport import Transport
 
         monkeypatch.delenv("CO_API_KEY", raising=False)
         monkeypatch.delenv("COHERE_API_KEY", raising=False)
-        config = endpoint("cohere", base_url="http://127.0.0.1:9000/v1")
-        client = EmbeddingClient(config, sender=Transport(config, httpx_transport=_null_httpx()))
+        config = endpoint("cohere")  # the profile's own host: https://api.cohere.com/v2
+        resolved = config.model_copy(update={"base_url": "https://api.cohere.com/v2"})
+        client = EmbeddingClient(config, sender=Transport(resolved, httpx_transport=_null_httpx()))
 
         with pytest.raises(CredentialsError) as caught:
             client.encode(texts("x"), EncodeRole.DOCUMENT)
 
         assert "CO_API_KEY" in (caught.value.hint or "")
         assert "COHERE_API_KEY" in (caught.value.hint or "")
+
+    def test_a_hosted_profile_at_a_foreign_host_sends_no_key_and_the_server_refuses(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A hosted profile pointed at another URL resolves no key (the vendor's variable never crosses to a
+        third party): the request goes out unauthenticated and the 401 is what refuses it."""
+        import httpx
+
+        from rcp_ndcg.inference.transport import Transport
+
+        monkeypatch.setenv("CO_API_KEY", "co-secret-key")
+        seen: list[httpx.Request] = []
+
+        def answer(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(401, json={"message": "no key"})
+
+        config = endpoint("cohere", base_url="http://127.0.0.1:9000/v1", wait_on_outage_s=0)
+        client = EmbeddingClient(config, sender=Transport(config, httpx_transport=httpx.MockTransport(answer)))
+
+        with pytest.raises(CredentialsError, match="no key"):
+            client.encode(texts("x"), EncodeRole.DOCUMENT)
+        client.close()
+        assert seen and "Authorization" not in seen[0].headers
 
     def test_the_transport_sends_the_profile_header(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """One header per profile, resolved by the transport from the profile's own variables."""
@@ -407,8 +435,9 @@ class TestCredentials:
             seen.append(request)
             return httpx.Response(200, json={"embeddings": {"float": [[1.0, 1.0]]}})
 
-        config = endpoint("cohere", base_url="http://127.0.0.1:9000/v1")
-        EmbeddingClient(config, sender=Transport(config, httpx_transport=httpx.MockTransport(answer))).encode(
+        config = endpoint("cohere")  # the profile's own host, where its variables resolve
+        resolved = config.model_copy(update={"base_url": "https://api.cohere.com/v2"})
+        EmbeddingClient(config, sender=Transport(resolved, httpx_transport=httpx.MockTransport(answer))).encode(
             texts("x"), EncodeRole.DOCUMENT
         )
 
