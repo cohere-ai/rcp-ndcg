@@ -125,12 +125,14 @@ notes: >-
   final float32 cosines.  That loop is not expressible in the recipe schema (a product gap: no
   block-loop field, no per-document budget next to the pair budget) -- reported, not worked around.
   HEADROOM for that client (record-audit-corrected numbers): rerank()'s capacity loop counts only
-  document bodies, but each passage costs 13 wrapper+joiner prompt tokens at passage ids 0-8 (14 at
-  ids 9-99, 15 at ids 100+ -- the step lands at the 10th document because the intro's passage count
-  grows "9" -> "10") on top of its body, plus 151 fixed tokens for the zero-document render (the
-  digest's earlier "13/doc + 132 fixed" double-subtracted one document body; 13/doc itself holds
-  only for single-digit passage ids).  A client flush rule must keep
-  125*15 + 151 + 2*q_len + 2048 under the spare capacity, or vLLM refuses blocks the paper scored.
+  document bodies, but each passage costs 13-16 wrapper+joiner prompt tokens on top of its body (the
+  record's own averages: 13.86/document at a 63-document block, 14.28 at 150; the exact +/-1 boundary
+  moves with BPE merges at the passage joins and the intro's passage-count digits), plus 151 fixed
+  tokens for the record's zero-document probe render (a render that still carries both copies of its
+  9-token probe query; the query-free frame measures 134, and the formula's 2*q_len term reserves the
+  query).  A client flush rule must keep 125*15 + 151 + 2*q_len + 2048 under the spare capacity
+  (conservative: the measured worst case sits ~100 tokens lower), or vLLM refuses blocks the paper
+  scored.
   Reference: the checkpoint's remote code (transformers AutoModel, auto_map, trust_remote_code=true,
   revision pinned) -- kind: remote_code; its environment is documented in requirements-reference.txt
   beside reference.py.  The reference truncates per text (decode-back) where the served client cuts
