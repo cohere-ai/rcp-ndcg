@@ -67,7 +67,7 @@ def record(
     exchanges: list[dict[str, Any]] = []
     with httpx.Client(base_url=root, timeout=timeout_s) as bare:
         _record_one(bare, exchanges, "GET", "/v1/models", None)
-        _record_role_request(recipe, base_url, exchanges, timeout_s=timeout_s)
+        _record_role_request(recipe, base_url, exchanges)
         _record_errors(bare, recipe, exchanges)
     return [
         _write_exchange(out / f"{index:02d}-{_slug(exchange)}.json", exchange)
@@ -90,7 +90,7 @@ def _record_one(http: httpx.Client, exchanges: list[dict[str, Any]], method: str
     exchanges.append(_exchange(f"{_PLACEHOLDER}{route}", method, body, response))
 
 
-def _record_role_request(recipe: Recipe, base_url: str, exchanges: list[dict[str, Any]], *, timeout_s: float) -> None:
+def _record_role_request(recipe: Recipe, base_url: str, exchanges: list[dict[str, Any]]) -> None:
     """The role route through the product's role client: the captured exchange is the product's request."""
     client, capture = role_client(recipe, base_url)
     if recipe.role == "rerank":

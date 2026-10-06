@@ -275,6 +275,25 @@ class TestRerankBudget:
         settings.update(overrides)
         return RerankEndpoint(**settings)
 
+    def test_the_census_names_the_documents_original_positions(self, tokenizer_json: str) -> None:
+        """With ``empty_doc: omit_zero``, a later document's census cut names ITS position -- never the kept
+        position an earlier omission displaced."""
+        census = TextTruncationCensus()
+        client = RerankClient(
+            self._config(tokenizer=tokenizer_json, max_tokens=10, empty_doc="omit_zero"),
+            sender=RecordingSender(),
+            census=census,
+        )
+        long_document = " ".join(["evidence"] * 40)
+
+        client.rerank("query", ["", long_document])
+
+        rows = [cut.doc_id for cut in census.cuts(mechanism=TextTruncationCensus.TEXT_BUDGET)]
+        assert rows, "the over-cap document records its cut"
+        assert all(doc_id.isdigit() for doc_id in rows), rows
+        assert 1 in [int(doc_id) for doc_id in rows], f"the over-cap document is named at its original position: {rows}"
+        assert "0" not in rows, "the omitted document made no request and records no cut"
+
     def test_a_budget_cuts_the_pair_spans_and_records_the_census(self, tokenizer_json: str) -> None:
         sender = RecordingSender()
         census = TextTruncationCensus()
@@ -823,6 +842,31 @@ class TestEngineMediaCheck:
 class TestRerankChunkAndOmitCompose:
     """Chunking and ``empty_doc: omit_zero`` compose: the pooled score lands on the document it was scored
     for, an omitted document scores 0.0 at its position, and the whole thing stays aligned."""
+
+    def test_chunked_census_rows_name_their_original_document(self, tokenizer_json: str) -> None:
+        """A chunked document's census rows carry its original position (``<position>#<chunk>``)."""
+        client = RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=12,
+                query_max_tokens=2,
+                on_overflow="chunk",
+                chunk={"max_tokens": 5, "overlap_tokens": 0},
+                empty_doc="omit_zero",
+                use_activation=False,
+            ),
+            sender=RecordingSender(),
+            census=TextTruncationCensus(),
+        )
+        long_document = " ".join(["evidence one two three four five"] * 4)
+
+        client.rerank("query", ["", long_document])
+
+        rows = [cut.doc_id for cut in client.census.cuts(mechanism=TextTruncationCensus.TEXT_BUDGET)]
+        assert any(doc_id.startswith("1#") for doc_id in rows), f"chunk rows name their original document: {rows}"
+        assert all(doc_id.startswith("1#") for doc_id in rows if "#" in doc_id), rows
 
     def test_chunked_documents_with_an_omitted_sibling(self, tokenizer_json: str) -> None:
         class ScoringSender(RecordingSender):

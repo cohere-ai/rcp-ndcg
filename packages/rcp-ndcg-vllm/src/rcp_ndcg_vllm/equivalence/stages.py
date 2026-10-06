@@ -14,9 +14,7 @@ from __future__ import annotations
 
 import json
 import tempfile
-from importlib import import_module
 from pathlib import Path
-from types import ModuleType
 from typing import Any
 
 import numpy as np
@@ -35,11 +33,6 @@ __all__ = ["load_pairs", "stage1_prompts", "stage2_scores"]
 
 _SNIPPET = 240
 _OUTPUT_SNIPPET = 500
-
-
-def _fitting() -> ModuleType:
-    """The fitting module, imported lazily (the capture path imports it only when it runs)."""
-    return import_module("rcp_ndcg_vllm.equivalence.fitting")
 
 
 def stage1_prompts(
@@ -440,11 +433,14 @@ def _render_check(
         if served is None:
             failures.append({"row": row, "note": "the reference rendered a row the harness did not sample"})
             continue
+        # Over-cap rows the client had to cut (its census says so) compare differently by declaration.
+        over = bool(probe["rows"][key[0]]["over_cap"])
         if recipe.role == "rerank":
-            failures.extend(_span_mismatches(row, served, recipe, deviation, over_cap))
+            mismatches = _span_mismatches(row, served)
         else:
+            mismatches = []
             if row.get("text", "") != served:
-                failures.append(
+                mismatches.append(
                     {
                         "index": row["index"],
                         "shape": key[1],
@@ -453,6 +449,10 @@ def _render_check(
                         "text": str(row.get("query", ""))[:_SNIPPET],
                     }
                 )
+        if mismatches and over and deviation:
+            over_cap.append({"index": key[0], "shape": key[1], "mismatches": mismatches})
+        else:
+            failures.extend(mismatches)
     for key in sorted(set(served_by_key) - seen):
         failures.append({"index": key[0], "shape": key[1], "note": "the reference did not render this declared shape"})
     summary: dict[str, Any] = {
@@ -475,14 +475,9 @@ def _render_check(
     return summary
 
 
-def _span_mismatches(
-    row: dict[str, Any], served: dict[str, Any], recipe: Recipe, deviation: bool, over_cap: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
-    """The rerank render comparison: the reference's spans against the client's captured spans.
+def _span_mismatches(row: dict[str, Any], served: dict[str, Any]) -> list[dict[str, Any]]:
+    """The rerank render comparison: the reference's spans against the client's captured spans."""
 
-    Over-cap rows (the client had to cut) are carved out under the declared deviation and reported
-    separately; the settle-once query is compared once per row (every pointwise request carries the same one).
-    """
     failures: list[dict[str, Any]] = []
     if row.get("query", "") != served.get("query"):
         failures.append(

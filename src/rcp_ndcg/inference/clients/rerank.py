@@ -346,6 +346,7 @@ class RerankClient(RoleClient):
                 "pair",
                 media_tokens=[pair_media[position] for position in kept_positions],
                 instruction=instruction,
+                ids=[str(position) for position in kept_positions],
             )
         else:
             # The vendor path: no tokenizer, so nothing is measured or settled; fit sends the pairs uncut
@@ -367,9 +368,12 @@ class RerankClient(RoleClient):
             )
         # A chunked document is one wire document per chunk, each carrying its input's media parts beside
         # the piece (the media tokens are reserved per chunk: fit's cap subtracts the pair's media, and
-        # every chunk's text is verified against it).
+        # every chunk's text is verified against it).  The fit ids are the documents' ORIGINAL positions
+        # (the census rows name them); the wire document's media comes from the kept document at that
+        # original position.
         mapping = result.chunk_mapping or {}
-        chunk_origin = [int(mapping.get(out_id, out_id)) for out_id in result.ids]
+        original_to_kept = {position: kept for kept, position in enumerate(kept_positions)}
+        chunk_origin = [original_to_kept[int(mapping.get(out_id, out_id))] for out_id in result.ids]
         wire_query = self._with_text(query, settled)
         wire_documents = [
             self._with_text(kept_documents[source], document_text)
@@ -422,10 +426,10 @@ class RerankClient(RoleClient):
             per_chunk = dict(zip(fitted.ids, result.scores, strict=True))
             pooled = max_pool_scores_by_document(per_chunk, fitted.chunk_mapping)
             for kept_id, score in pooled.items():
-                original_index = (
-                    int(kept_id.rsplit(CHUNK_ID_SEPARATOR, 1)[0]) if CHUNK_ID_SEPARATOR in kept_id else int(kept_id)
-                )
-                scores[kept_positions[original_index]] = score
+                # The fit ids are the documents' ORIGINAL positions (the census rows name them); a chunk's
+                # id carries its origin before the separator, so the pooled score lands on its document.
+                original_index = int(kept_id.rsplit(CHUNK_ID_SEPARATOR, 1)[0])
+                scores[original_index] = score
         return RerankResult(scores=tuple(scores))
 
     async def _send(self, calls: Sequence[Call]) -> list[Any]:

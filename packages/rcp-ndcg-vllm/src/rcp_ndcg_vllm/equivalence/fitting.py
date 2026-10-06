@@ -15,22 +15,18 @@ import json
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg.data.preprocess import ChunkPolicy, TextBudget
-from rcp_ndcg.data.templates import RequestShape, TemplateSpec
+from rcp_ndcg.data.templates import RequestShape
 from rcp_ndcg.data.tokenizer import load_tokenizer
 
 from ..errors import HarnessError
 from ..recipe import Recipe
 
 __all__ = [
-    "budget_of",
     "cast_shape",
-    "chunk_of",
     "declared_shapes",
     "default_shape",
     "load_pairs",
     "resolved_tokenizer_spec",
-    "template_of",
     "tokenizer_of",
 ]
 
@@ -53,16 +49,6 @@ def tokenizer_of(recipe: Recipe) -> Any:
         return load_tokenizer(resolved)
     except Exception as error:
         raise HarnessError(f"recipe {recipe.id}: loading the tokenizer {resolved!r} failed: {error}") from error
-
-
-def template_of(recipe: Recipe) -> TemplateSpec | None:
-    """The recipe's declared :class:`~rcp_ndcg.data.templates.TemplateSpec` (``None`` when it sets none)."""
-    return recipe.client.template
-
-
-def chunk_of(recipe: Recipe) -> ChunkPolicy | None:
-    """The recipe's declared :class:`~rcp_ndcg.data.preprocess.ChunkPolicy` (``None`` when it sets none)."""
-    return getattr(recipe.client, "chunk", None)
 
 
 def declared_shapes(recipe: Recipe) -> list[str]:
@@ -107,20 +93,6 @@ def resolved_tokenizer_spec(recipe: Recipe) -> str:
     return spec
 
 
-def budget_of(recipe: Recipe) -> TextBudget:
-    """The product's :class:`~rcp_ndcg.data.preprocess.TextBudget` the recipe's client config declares."""
-    client = recipe.client
-    return TextBudget(
-        tokenizer=client.tokenizer,
-        max_tokens=client.max_tokens or 1,
-        query_max_tokens=getattr(client, "query_max_tokens", None),
-        template=client.template,
-        on_overflow=client.on_overflow,
-        chunk=client.chunk,
-        aggregation=client.aggregation,
-    )
-
-
 def load_pairs(path: str | Path) -> list[dict[str, Any]]:
     """The pairs file: JSONL, one object per query, ``{"query": str, "documents": [str, ...]}``.
 
@@ -144,6 +116,8 @@ def load_pairs(path: str | Path) -> list[dict[str, Any]]:
                 raise HarnessError(f'{path}:{number}: expected {{"query": str, "documents": [str, ...]}}')
             if not all(isinstance(document, str) for document in row["documents"]):
                 raise HarnessError(f"{path}: documents must be strings")
+            if not row["documents"]:
+                raise HarnessError(f"{path}:{number}: the row carries no documents")
             pairs.append(row)
     if not pairs:
         raise HarnessError(f"{path} holds no pairs")

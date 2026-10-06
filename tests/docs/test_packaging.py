@@ -288,11 +288,15 @@ def test_both_distributions_ship_the_license_and_the_notice() -> None:
     folders = [ROOT, ROOT / "packages" / "rcp-ndcg-core", ROOT / "packages" / "rcp-ndcg-vllm"]
     plugins = ROOT / "packages" / "rcp-ndcg-vllm" / "plugins"
     if plugins.is_dir():
-        folders += sorted(folder for folder in plugins.iterdir() if folder.is_dir() and (folder / "pyproject.toml").is_file())
+        folders += sorted(
+            folder for folder in plugins.iterdir() if folder.is_dir() and (folder / "pyproject.toml").is_file()
+        )
     for folder in folders:
         project = tomllib.loads((folder / "pyproject.toml").read_text(encoding="utf-8"))["project"]
         assert project["license-files"] == ["LICENSE", "NOTICE"], folder
     for name in ("LICENSE", "NOTICE"):
         for folder in folders[1:]:
-            assert (folder / name).read_bytes() == (ROOT / name).read_bytes(), f"{folder.relative_to(ROOT)}/{name} is stale"
+            assert (folder / name).read_bytes() == (ROOT / name).read_bytes(), (
+                f"{folder.relative_to(ROOT)}/{name} is stale"
+            )
     assert "smart_resize" in (ROOT / "NOTICE").read_text(encoding="utf-8")
