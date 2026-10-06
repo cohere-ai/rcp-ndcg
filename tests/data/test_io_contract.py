@@ -563,6 +563,18 @@ def test_a_labelled_pair_twice_is_refused_not_last_wins(beir_dir) -> None:
         get_reader("beir", uri=beir_dir).qrels()
 
 
+def test_a_ranking_row_labelling_a_pair_twice_is_refused_not_last_wins(ranking_jsonl, tmp_path) -> None:
+    """Two ranking rows for one query, each labelling q1/d1, silently merged last-wins through
+    the derived qrels of the ranking layout."""
+    rows = list(Path(ranking_jsonl).read_text().splitlines())
+    extra = json.loads(rows[0])
+    extra["qrels"] = {"d1": 5}
+    out = tmp_path / "dup.jsonl"
+    out.write_text(rows[0] + "\n" + json.dumps(extra) + "\n")
+    with pytest.raises(DataError, match="twice"):
+        get_reader("jsonl", uri=str(out)).qrels()
+
+
 def test_a_sidecar_qrels_shape_error_names_the_row(image_dir) -> None:
     """``jsonl:`` refused a malformed qrels row; ``images:`` crashed with a bare AttributeError
     on the same format -- one format, one error."""

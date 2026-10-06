@@ -146,7 +146,14 @@ class SourceReader(abc.ABC):
         out: dict[ID, dict[ID, float]] = {}
         for example in self.examples():
             if example.qrels:
-                out.setdefault(example.id, {}).update({doc_id: float(g) for doc_id, g in example.qrels.items()})
+                judged = out.setdefault(example.id, {})
+                for doc_id, value in example.qrels.items():
+                    if doc_id in judged:
+                        raise DataError(
+                            f"{type(self).__name__}: query {example.id!r}, document {doc_id!r} is labelled twice",
+                            details={"query_id": example.id, "doc_id": str(doc_id)},
+                        )
+                    judged[doc_id] = float(value)
         return out
 
     # -- ranking shape -----------------------------------------------------

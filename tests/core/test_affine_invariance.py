@@ -20,6 +20,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from rcp_ndcg_core import gain, ndcg
+from rcp_ndcg_core.metric import rank_by_score
 from scipy import stats
 
 ITEM_PARAMS = {
@@ -56,32 +57,20 @@ def rcp_ndcg(ranking: list[str], thetas: dict[str, float], items: dict, *, k: in
 
 
 @pytest.mark.parametrize(("tau", "alpha"), AFFINE_CASES)
-def test_within_query_ranking_is_pinned(tau: float, alpha: float) -> None:
-    """A positive affine map cannot reorder documents inside a query."""
+def test_a_within_query_ordering_is_pinned(tau: float, alpha: float) -> None:
+    """A positive affine map cannot reorder documents inside a query -- through the metric's own
+    ordering (``rank_by_score``, the ``doc_id_desc`` tie rule) and through a per-query Spearman.
+
+    This is the statement any within-query rank statistic inherits: two fits that differ only by
+    the map are indistinguishable by it (zero power), so the discrimination must come from the
+    gain, which the next test pins.
+    """
     rescaled = _rescale(BASE_THETA, tau, alpha)
     a = np.array([BASE_THETA[d] for d in DOCS])
     b = np.array([rescaled[d] for d in DOCS])
     assert stats.spearmanr(a, b).statistic == pytest.approx(1.0, abs=1e-12)
-    assert sorted(DOCS, key=lambda d: -BASE_THETA[d]) == sorted(DOCS, key=lambda d: -rescaled[d])
-
-
-@pytest.mark.parametrize(("tau", "alpha"), AFFINE_CASES)
-def test_pairwise_concordance_is_pinned(tau: float, alpha: float) -> None:
-    """Concordance against fixed grades is identical -- zero power to separate fits."""
-    grades = {d: i % 4 for i, d in enumerate(DOCS)}
-    rescaled = _rescale(BASE_THETA, tau, alpha)
-
-    def concordance(theta: dict[str, float]) -> float:
-        agree = total = 0
-        for i, di in enumerate(DOCS):
-            for dj in DOCS[i + 1 :]:
-                if grades[di] == grades[dj]:
-                    continue
-                total += 1
-                agree += int(np.sign(grades[di] - grades[dj]) == np.sign(theta[di] - theta[dj]))
-        return agree / total
-
-    assert concordance(rescaled) == pytest.approx(concordance(BASE_THETA), abs=1e-12)
+    # The metric's own ordering (rank_by_score backs the doc_id_desc tie rule) agrees on the two fits.
+    assert rank_by_score(BASE_THETA) == rank_by_score(rescaled)
 
 
 def test_rcp_ndcg_is_not_pinned() -> None:

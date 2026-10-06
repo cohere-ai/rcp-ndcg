@@ -89,11 +89,6 @@ def iter_jsonl[BaseModelType: BaseModel](
                     f"{file_path}:{line_number}: unknown key(s) {unknown} for {example_class.__name__}; "
                     "a key the record does not declare would be silently ignored"
                 )
-            if unknown:
-                raise DataError(
-                    f"{file_path}:{line_number}: unknown key(s) {unknown} for {example_class.__name__}; "
-                    "a key the record does not declare would be silently ignored"
-                )
         try:
             yield example_class(**row)
         except ValidationError as exc:

@@ -29,7 +29,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from rcp_ndcg.errors import MissingInputError
 from rcp_ndcg.storage import core
-from rcp_ndcg.storage.uri import is_remote
+from rcp_ndcg.storage.uri import is_remote, local_path
 from rcp_ndcg.support.identity import hash_text, short
 from rcp_ndcg.support.logging import get_logger
 
@@ -142,6 +142,9 @@ def cache(uri: str | Path) -> Path:
         uri: Local path or remote URI.
     """
     if not is_remote(uri):
+        local = local_path(uri)
+        if local is not None:
+            return local
         return Path(uri)
 
     text = str(uri)

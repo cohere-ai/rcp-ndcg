@@ -66,6 +66,9 @@ def test_ndcg_refuses_non_finite_gains() -> None:
             ndcg({"a": 1.0}, {"a": bad})
     with pytest.raises(ValueError, match="finite"):
         ndcg(["a"], {"a": 1.0}, ideal=[1.0, bad])
+    with pytest.raises(ValueError, match="finite"):
+        # an ideal given separately must not bypass the gains check
+        ndcg(["a", "b"], {"a": bad, "b": 1.0}, ideal=[1.0, 0.5])
 
 
 def test_the_discount_counts_ranks_from_one() -> None:

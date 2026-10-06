@@ -452,11 +452,16 @@ released together.
   an empty one) vanished without a message and is now refused with its file and line; a missing corpus,
   queries or qrels file raises `MissingInputError` instead of a bare `FileNotFoundError`; a `(query, doc)` pair
   labelled twice silently took the last label in the BEIR tsv, the HF reader, the sidecar format (whose image,
-  video and frame readers crashed with `AttributeError` where `jsonl` refused — one shared reader now) and the
-  hub loader, and is refused everywhere; a qrels split whose grade column is none of `score`/`relevance`/
+  video and frame readers crashed with `AttributeError` where `jsonl` refused — one shared reader now), the
+  derived qrels of a ranking-layout file (two rows for one query silently merged) and the hub loader — and is
+  refused everywhere; a qrels split whose grade column is none of `score`/`relevance`/
   `label`/`grade` silently labelled every row 1.0 in `HfReader` and is refused with the column list. The hub
   loader refuses duplicate query ids (it silently kept the last row), a non-finite or out-of-range `gain`, a
   non-finite `theta`, and names a missing `top_ranked`/`excluded`/`queries` column like the qrels path does.
+- A judgement record's placements carry one shape: a rubric placement with a stray `score` and a tournament
+  placement with rubric `criteria` were both recorded as `valid=True` observations (a parser bug emitting both
+  shapes went unnoticed); they are refused with the shape named. `cache()` returns a `file://` URI's real path
+  instead of the literal `file:/...` string, which names no file.
 - **The BEIR writer keeps what it wrote**: qrels labels are written with `repr` (round-trip exact) instead of
   `%g`'s six significant digits (a grade of 0.123456789 came back 0.123457); a query's `instruction` is written
   (the reader restores it) instead of dropped; a media-bearing query is refused like a media-bearing document

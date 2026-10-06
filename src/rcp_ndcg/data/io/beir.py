@@ -173,7 +173,8 @@ class BeirWriter(SinkWriter):
             handle.write("query-id\tcorpus-id\tscore\n")
             for query_id, judged in qrels.items():
                 for doc_id, label in judged.items():
-                    handle.write(f"{query_id}\t{doc_id}\t{label!r}\n")  # repr round-trips: no silent 6-digit rounding
+                    # repr of a builtin float round-trips exactly; no silent 6-digit rounding.
+                    handle.write(f"{query_id}\t{doc_id}\t{float(label)!r}\n")
 
         logger.info(f"wrote BEIR layout to {uri}: {n_docs} docs, {len(qrels)} judged queries")
         return n_docs

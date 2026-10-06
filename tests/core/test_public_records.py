@@ -130,6 +130,25 @@ def test_a_valid_rubric_judgement_needs_every_verdict_binary() -> None:
         _rubric(invalid_category="schema")
 
 
+def test_a_placement_carries_one_shape_not_both() -> None:
+    """A parser bug emitting both shapes must not be recorded as a valid observation: a rubric
+    placement's verdicts are its criteria, a tournament placement's vote is its score."""
+    with pytest.raises(ValidationError, match="score"):
+        _rubric(placements=(Placement(position=1, doc_id="a", criteria={"C1": 1, "C2": 0}, score=999.0),))
+    family = Family(stage="tournament", judge_model="m", prompt_hash="p" * 64, parse_version=1)
+    with pytest.raises(ValidationError, match="criteria"):
+        Judgement(
+            record_id=judgement_record_id(family.key, "q", "tournament", 0, ["a"]),
+            dataset="d",
+            query_id="q",
+            stage="tournament",
+            family_key=family.key,
+            window_seq=0,
+            placements=(Placement(position=1, doc_id="a", score=1.0, criteria={"C1": 1}),),
+            recorded_at=RECORDED_AT,
+        )
+
+
 def test_judgement_json_round_trip_carries_the_schema_id() -> None:
     judgement = _rubric()
     payload = judgement.model_dump_json()

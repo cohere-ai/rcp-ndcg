@@ -159,6 +159,16 @@ class TestRelative:
         with pytest.raises(DataError, match="not below"):
             storage.relative(tmp_path / "root" / ".." / "sibling" / "x.txt", tmp_path / "root")
 
+    @pytest.mark.parametrize("root", ["memory://bucket/root"])
+    def test_refuses_escapes_on_a_remote_spelling_too(self, root: str) -> None:
+        """The remote spellings keep (or drop) the scheme in fsspec's own stripping; either way the
+        escape is refused, not returned."""
+        with pytest.raises(DataError, match="not below"):
+            storage.relative(f"{root}/../../etc/passwd", root)
+        with pytest.raises(DataError, match="not below"):
+            storage.relative(f"{root}/../sibling/x.txt", root)
+        assert storage.relative(f"{root}/a/../b.txt", root) == "b.txt"
+
 
 class TestFileUris:
     """``file://`` is a spelling the product accepts (wheelhouse URLs); the local fast paths
@@ -221,6 +231,11 @@ class TestCache:
         source = tmp_path / "already-local.jsonl"
         source.write_text("{}", encoding="utf-8")
         assert storage.cache(source) == source
+
+    def test_a_file_uri_is_returned_as_its_path(self, tmp_path: Path) -> None:
+        source = tmp_path / "already-local.jsonl"
+        source.write_text("{}", encoding="utf-8")
+        assert storage.cache(f"file://{source}") == source, "not the literal 'file:/...' string, which names no file"
 
     def test_remote_object_is_downloaded_once(self) -> None:
         storage.write_text("memory://corpus.jsonl", '{"id": 1}\n')

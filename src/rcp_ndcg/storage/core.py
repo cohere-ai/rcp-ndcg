@@ -153,15 +153,14 @@ def ls(uri: str | Path, *, recursive: bool = False) -> list[str]:
 
 def _normalised(fs: Any, text: str) -> str:
     """*text* with dot segments resolved and a trailing slash dropped, in the filesystem's own
-    spelling. Local paths go through ``os.path.normpath``; a remote URI keeps its scheme and
-    bucket and normalises only the path below them, so a surviving ``..`` can never cross the
-    bucket boundary silently."""
+    spelling (some backends keep the scheme in ``_strip_protocol``, some drop it; both are
+    normalised the same way, so the containment check sees the same shape on both sides). A
+    surviving ``..`` can never cross the root, whatever the spelling."""
     protocol, _ = split_protocol(text)
     stripped = str(fs._strip_protocol(text)).rstrip("/")
     if protocol is None or protocol == "file":
         return os.path.normpath(stripped)
-    scheme, _, tail = stripped.partition("://")
-    return f"{scheme}://{posixpath.normpath(tail)}" if tail else stripped
+    return posixpath.normpath(stripped)
 
 
 def relative(uri: str | Path, root: str | Path) -> str:
