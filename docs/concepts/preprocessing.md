@@ -291,12 +291,24 @@ its content uncut: the vendor's documented limit is declared as `max_tokens`, re
 corpus per process), and nothing is measured or cut client-side. With a
 tokenizer, a vendor profile follows the same rule as self-hosted.
 
-The role configs also declare `template` (the `TemplateSpec` above), `empty_doc` (`send`, `omit_zero` -- filter
-and score `0.0` -- or `send_text` with its `empty_doc_text` placeholder), `request_shape` (`text`, `messages` or
-`token_ids`; the adapters implement it), and the reranker's `instruction` gains a `system` value (the
-instruction as a system message). Media are never cut: a request's media token count is declared per input and
-reserved whole out of the budget before the content is cut (the hook the media lane builds on -- a vision block
-is counted, never cut through).
+The role configs also declare `template` (the `TemplateSpec` above), `empty_doc` (`send`, `omit_zero` --
+never sent and scored `0.0` -- or `send_text` with its `empty_doc_text` placeholder; every role client
+consumes it, for an empty text document and for one whose every media item the budget dropped),
+`request_shape` (`text`, `messages` or `token_ids`; the adapters implement it), and the reranker's
+`instruction` gains a `system` value (the instruction as a system message).
+
+Media are never cut. Every served request goes through one preparation call
+(`rcp_ndcg.data.prepare.prepare_request`) -- the same path the judge's images take -- which sizes every image
+and video frame exactly as the declared `image_processor` would under the role's `image_policy`, counts the
+request's media tokens exactly, and reserves them whole out of `max_tokens` before the content is cut. When
+media alone fill the budget the declared `on_overflow` decides: `cut` (the default) shrinks to the policy's
+minimum, then drops whole items most expensive first -- every drop recorded in the media census with
+`dropped=True` --, `fail` refuses the request, and `chunk` is refused (media are not chunkable: a vision
+block is atomic, the engine sees a whole item or none of it). A document whose every media item was dropped
+is an empty document, and follows `empty_doc`. A role with an `image_processor` also declares
+`max_images`/`max_videos` (the per-request gates, refused before sending), and its startup probe runs the
+engine media check: one prepared probe image, the engine's reported prompt tokens compared with the counted
+ones -- a mismatch is refused, a reply without usage is recorded `not_checked`, never silent.
 
 ## Page images and video
 

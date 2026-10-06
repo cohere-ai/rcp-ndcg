@@ -593,6 +593,7 @@ class TestAdapterAuth:
             self._send(client)
         assert all("fake-sekrit-value" not in record.getMessage() for record in caplog.records)
         monkeypatch.delenv("CO_API_KEY", raising=False)
+        monkeypatch.delenv("COHERE_API_KEY", raising=False)  # the profile's second variable must not paper over it
         with pytest.raises(CredentialsError) as caught:
             self._send(client)
         assert "fake-sekrit-value" not in str(caught.value)

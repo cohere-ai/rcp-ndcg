@@ -20,6 +20,7 @@ from rcp_ndcg.inference import EmbeddingClient, PoolingClient, RerankClient
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp_ndcg.inference.types import EncodeRole, Reply, Usage
 from tests._tokenizers import framed_bpe_tokenizer, save, word_tokenizer
+from tests.conftest import SESSION_TOKENIZER
 
 END_TURN = "<|end_turn|>"
 
@@ -179,16 +180,19 @@ class TestEmbedBudget:
         with pytest.raises(TextBudgetExceededError):
             client.encode(texts(" ".join(["evidence"] * 50)), EncodeRole.DOCUMENT)
 
-    def test_the_media_seam_is_named_and_reserved(self, tokenizer_json: str) -> None:
-        """The budget-media lane wires the role config's media policy through ``_media_tokens``; until then
-        no media tokens reach the budget, and text-only adapters refuse media as before."""
+    def test_the_media_wiring_runs_through_the_shared_preparation(self, tokenizer_json: str) -> None:
+        """The one preparation path: a media-carrying request for the text-only embed role is refused
+        before the media is fetched (the adapters' own contract, kept in front of preparation); the
+        media-token reservation the fit receives is the prepared request's."""
+        from rcp_ndcg_core.content import ImagePart, MediaRef
+
         client = EmbeddingClient(
             EmbeddingEndpoint(base_url="http://127.0.0.1:9000/v1", model="m", tokenizer=tokenizer_json, max_tokens=64),
             sender=RecordingSender(),
         )
-        assert client._media_tokens(texts("x")) == [0]
+        page = Content(root=[ImagePart(ref=MediaRef(uri="gs://bucket/page_1.png"))])
         with pytest.raises(CapabilityError, match="image"):
-            client.encode([Content.from_image("gs://bucket/page.png")], EncodeRole.DOCUMENT)
+            client.encode([page], EncodeRole.DOCUMENT)
 
 
 class TestPoolBudget:
@@ -479,3 +483,318 @@ class TestInstructionReserved:
         # The pair the engine renders: the instruction line + the query + the cut document, all within the
         # declared budget (the instruction reserved in the overhead, the document cut to what remains).
         assert word_tokenizer().count(f"{long_instruction}\nthe query {document}") <= 12
+
+
+class TestMediaUnderTheBudget:
+    """The budget's media rule: media never cut; when media alone fill the budget the declared overflow
+    policy decides (cut shrinks then drops whole items, fail refuses, chunk is refused -- a vision block is
+    atomic), and every drop is recorded with ``dropped=True``."""
+
+    @staticmethod
+    def _media_client(sender: Any, **overrides: Any) -> PoolingClient:
+        settings: dict[str, Any] = {
+            "base_url": "http://127.0.0.1:9000/v1",
+            "model": "colqwen",
+            "dim": 2,
+            "tokenizer": str(SESSION_TOKENIZER),
+            "max_tokens": 8192,
+            "image_policy": {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            "max_images": 4,
+        }
+        settings.update(overrides)
+        return PoolingClient(PoolingEndpoint(**settings), sender=sender)
+
+    def test_fitting_media_counts_blocks_and_the_budget_carves_the_rest(self, tmp_path: Any) -> None:
+        """Media that fit the budget ride whole (never cut); the fit reserves the media tokens it was
+        given, and the text gets what remains."""
+        from PIL import Image as PILImage
+
+        sender = RecordingSender()
+        client = self._media_client(sender, max_tokens=1100)
+        big = tmp_path / "big.png"
+        PILImage.new("RGB", (900, 900), (10, 10, 200)).save(big, format="PNG")
+
+        client.encode([Content.from_image(big.as_uri()), Content.from_text("plain")], EncodeRole.DOCUMENT)
+
+        body = sender.bodies[-1]
+        assert body.get("messages"), "the media item went through the messages shape"
+        sent_texts = [
+            part["text"] for message in body["messages"] for part in message["content"] if part.get("type") == "text"
+        ]
+        assert "plain" in sent_texts, "the text item rides with its media"
+
+    def test_media_alone_over_the_budget_fails_under_the_fail_policy(self, tmp_path: Any) -> None:
+        from rcp_ndcg.data.preprocess import TextBudgetExceededError
+
+        sender = RecordingSender()
+        client = self._media_client(sender, max_tokens=60, on_overflow="fail")
+        with pytest.raises(TextBudgetExceededError, match="media"):
+            client.encode([self._media_item(tmp_path)], EncodeRole.DOCUMENT)
+        assert sender.bodies == [], "refused before anything was sent"
+
+    def test_media_alone_over_the_budget_refused_under_chunk(self, tokenizer_json: str, tmp_path: Any) -> None:
+        sender = RecordingSender()
+        config = RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=60,
+            on_overflow="chunk",
+            chunk={"max_tokens": 8, "overlap_tokens": 0},
+            use_activation=False,
+            image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            max_images=2,
+        )
+        client = RerankClient(config, sender=sender)
+        with pytest.raises(ConfigError, match="cannot be chunked"):
+            client.rerank("q", [self._media_item(tmp_path)])
+
+    @staticmethod
+    def _media_item(tmp_path: Any) -> Any:
+        from PIL import Image as PILImage
+
+        page = tmp_path / "media.png"
+        PILImage.new("RGB", (900, 900), (10, 10, 200)).save(page, format="PNG")
+        return Content.from_image(page.as_uri())
+
+
+class TestEmptyDocuments:
+    """``empty_doc`` is consumed by every role client, for an empty text document and for one whose every
+    media item the budget dropped: ``send`` (the empty string, as today), ``send_text`` (the placeholder),
+    ``omit_zero`` (never sent, scoring 0.0). A request is never sent empty."""
+
+
+def _png(tmp_path: Any, name: str, colour: tuple[int, int, int], size: tuple[int, int]) -> Any:
+    from PIL import Image as PILImage
+
+    page = tmp_path / f"page-{colour}.png"
+    PILImage.new("RGB", size, colour).save(page, format="PNG")
+    return Content.from_image(page.as_uri())
+
+
+class TestEmbedEmptyDocuments:
+    @pytest.mark.parametrize("policy", ["send", "send_text", "omit_zero"])
+    def test_the_three_policies_on_an_empty_text_item(self, tokenizer_json: str, policy: str) -> None:
+        overrides: dict[str, Any] = {"empty_doc": policy}
+        if policy == "send_text":
+            overrides["empty_doc_text"] = "NULL"
+        client = EmbeddingClient(
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=64,
+                **overrides,
+            ),
+            sender=RecordingSender(),
+        )
+        result = client.encode(texts("", "the evidence"), EncodeRole.DOCUMENT)
+
+        if policy == "omit_zero":
+            assert result.num_items == 2 and result.as_matrix()[0].tolist() == [0.0, 0.0], "the omitted item scores 0.0"
+            assert result.as_matrix()[1].tolist() != [0.0, 0.0], "the kept item carries its vectors"
+            sent = client._sender.bodies[-1]["input"]
+            assert sent == ["the evidence"], "the omitted item never goes out (and the request is not empty)"
+            return
+        # "send" embeds the empty string; "send_text" embeds the placeholder.
+        sent = client._sender.bodies[-1]["input"]
+        assert sent == (["", "the evidence"] if policy == "send" else ["NULL", "the evidence"])
+
+    def test_a_document_whose_every_media_item_was_dropped_is_empty(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """All media dropped + no text = an empty document: it follows ``empty_doc``, never an empty request."""
+        from PIL import Image as PILImage
+
+        page = tmp_path / "page.png"
+        PILImage.new("RGB", (900, 900), (10, 10, 200)).save(page, format="PNG")
+        sender = RecordingSender()
+        client = PoolingClient(
+            PoolingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="colqwen",
+                dim=2,
+                tokenizer=str(SESSION_TOKENIZER),
+                max_tokens=4,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                max_images=2,
+                empty_doc="omit_zero",
+            ),
+            sender=sender,
+        )
+
+        result = asyncio.run(
+            client.aencode([Content.from_image(page.as_uri()), Content.from_text("plain")], EncodeRole.DOCUMENT)
+        )
+        assert result.num_items == 2, "the result stays aligned to the inputs"
+        # The media item was dropped whole (it cannot shrink into 4 tokens): the document is empty, and
+        # empty_doc: omit_zero gives it an empty slice (a zero MaxSim score), while the text item rides
+        # beside it -- never an empty request, and every drop is on record.
+        assert list(result.offsets) == [0, 0, 1]
+        assert len(sender.bodies[-1]["input"]) == 1, "only the text item was sent"
+        assert client.media_census._seen, "the drop is recorded"
+
+
+class TestMediaGates:
+    def test_a_request_over_max_images_is_refused_before_sending(self, tokenizer_json: str, tmp_path: Any) -> None:
+        from rcp_ndcg.errors import CapabilityError
+
+        sender = RecordingSender()
+        client = PoolingClient(
+            PoolingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="colqwen",
+                dim=2,
+                tokenizer=str(SESSION_TOKENIZER),
+                max_tokens=8192,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                max_images=1,
+            ),
+            sender=sender,
+        )
+        pages = [_png_content(tmp_path, index) for index in range(2)]
+        with pytest.raises(CapabilityError, match="max_images"):
+            asyncio.run(client.aencode(pages, EncodeRole.DOCUMENT))
+        assert sender.bodies == [], "the gate refuses before anything is sent"
+
+    def test_media_for_a_model_that_reads_none_is_refused(self, tokenizer_json: str, tmp_path: Any) -> None:
+        from rcp_ndcg.errors import CapabilityError
+
+        sender = RecordingSender()
+        client = PoolingClient(
+            PoolingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="colqwen",
+                dim=2,
+                tokenizer=str(SESSION_TOKENIZER),
+                max_tokens=8192,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            ),
+            sender=sender,
+        )
+        with pytest.raises(CapabilityError, match="max_images"):
+            asyncio.run(client.aencode([_png_content(tmp_path, 0)], EncodeRole.DOCUMENT))
+
+
+def _png_content(tmp_path: Any, index: int) -> Any:
+    from PIL import Image as PILImage
+
+    page = tmp_path / f"page-{index}.png"
+    PILImage.new("RGB", (300, 300), (10, 10, 200)).save(page, format="PNG")
+    return Content.from_image(page.as_uri())
+
+
+class TestRerankEmptyDocuments:
+    """``empty_doc`` on the rerank role: the scores stay aligned to the documents as given; ``omit_zero``
+    never sends the item and scores it 0.0, and a candidate set whose every document is omitted makes no
+    request (never an empty request)."""
+
+    def _client(self, tokenizer_json: str, policy: str, sender: Any) -> RerankClient:
+        overrides: dict[str, Any] = {"empty_doc": policy, "use_activation": False}
+        if policy == "send_text":
+            overrides["empty_doc_text"] = "NULL"
+        return (
+            RerankClient(self._config(tokenizer=tokenizer_json, **overrides), sender=sender)
+            if False
+            else RerankClient(
+                RerankEndpoint(
+                    base_url="http://127.0.0.1:9000/v1",
+                    model="m",
+                    tokenizer=tokenizer_json,
+                    max_tokens=8192,
+                    **overrides,
+                ),
+                sender=sender,
+            )
+        )
+
+    def _config(self, **overrides: Any) -> Any:
+        return overrides
+
+    @pytest.mark.parametrize("policy", ["send", "send_text", "omit_zero"])
+    def test_the_three_policies_on_an_empty_document(self, tokenizer_json: str, policy: str) -> None:
+        sent: list[dict] = []
+
+        class ScoringSender(RecordingSender):
+            async def send(self, calls: Any) -> list[Any]:
+                from rcp_ndcg.inference.types import Reply
+
+                for call in calls:
+                    sent.append(call.json)
+                documents = calls[0].json["documents"]
+                rows = [{"index": i, "relevance_score": 0.9} for i in range(len(documents))]
+                return [Reply(200, {"results": rows[::-1]}, {})]
+
+        client = self._client(tokenizer_json, policy, ScoringSender())
+        result = client.rerank("q", ["", "the evidence"])
+
+        if policy == "omit_zero":
+            assert result.scores == (0.0, 0.9), "the omitted document scores 0.0, the kept one its score"
+            assert [d for d in sent[-1]["documents"]] == ["the evidence"], "the omitted one never goes out"
+            return
+        expected = ["", "the evidence"] if policy == "send" else ["NULL", "the evidence"]
+        assert sent[-1]["documents"] == expected
+
+    def test_every_document_omitted_makes_no_request(self, tokenizer_json: str) -> None:
+        sender = RecordingSender()
+        client = self._client(tokenizer_json, "omit_zero", sender)
+        result = client.rerank("q", ["", ""])
+        assert result.scores == (0.0, 0.0), "the omitted documents score 0.0"
+        assert sender.bodies == [], "no empty request goes out"
+
+
+class TestEngineMediaCheck:
+    """The startup media probe (item 5): one prepared probe image to the engine, the engine's reported
+    prompt tokens compared with the counted ones -- a mismatch is refused (typed, with the hint naming
+    ``image_processor`` / ``image_policy`` / the server's media flags); a reply without usage is recorded
+    ``not_checked``; never silent."""
+
+    @staticmethod
+    def _client(sender: Any, *, tokenizer_json: str) -> PoolingClient:
+        return PoolingClient(
+            PoolingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="colqwen",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                image_processor="qwen2_vl",
+                max_images=4,
+            ),
+            sender=sender,
+        )
+
+    def test_a_text_only_role_skips_the_check(self, tokenizer_json: str) -> None:
+        client = EmbeddingClient(
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1", model="m", tokenizer=tokenizer_json, max_tokens=8192
+            ),
+            sender=RecordingSender(),
+        )
+        assert asyncio.run(client.check_engine_media()) is None, "no media, nothing to check"
+
+    def test_a_mismatch_is_refused_with_the_hint(self, tokenizer_json: str) -> None:
+        from rcp_ndcg.errors import ProviderError
+
+        class LyingUsageSender(RecordingSender):
+            """Answers the probe's /pooling with a prompt-token report the count contradicts."""
+
+            async def send(self, calls: Any) -> list[Any]:
+                from rcp_ndcg.inference.types import Reply
+
+                return [Reply(200, {"data": [], "usage": {"prompt_tokens": 9999}}, {}) for _ in calls]
+
+        client = self._client(LyingUsageSender(), tokenizer_json=tokenizer_json)
+        with pytest.raises(ProviderError, match="prompt tokens"):
+            asyncio.run(client.check_engine_media())
+
+    def test_a_reply_without_usage_is_recorded_not_checked(self, tokenizer_json: str) -> None:
+        class UsagelessSender(RecordingSender):
+            async def send(self, calls: Any) -> list[Any]:
+                from rcp_ndcg.inference.types import Reply
+
+                return [Reply(200, {"data": [{"index": 0, "data": [[1.0, 1.0]]}]}, {}) for _ in calls]
+
+        client = self._client(UsagelessSender(), tokenizer_json=tokenizer_json)
+        asyncio.run(client.check_engine_media())  # never silent, never a pass: the census records it
+        rows = client.media_census._seen
+        assert any(doc_id.startswith("engine_media_check:not_checked") for _, doc_id, _ in rows)

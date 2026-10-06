@@ -166,13 +166,13 @@ class EmbeddingEndpoint(_MediaEndpoint):
     """A dense-embedding endpoint speaking OpenAI ``POST {base_url}/embeddings``.
 
     The package owns every content decision itself: it applies the prompts in the text, sends ``dimensions``
-    only when set, and L2-normalises the result. Cutting text to ``max_tokens`` at token boundaries of the
-    declared ``tokenizer`` is the text-budget mechanism's job; until that mechanism is wired into the client,
-    a config that sets ``max_tokens`` is refused, never silently ignored. The media
-    fields declare what the role sends; the client prepares media through
-    :func:`~rcp_ndcg.data.prepare.prepare_request` once the text budget is wired in.
-    The media fields declare what the role sends; the client prepares every request through
-    :func:`~rcp_ndcg.data.prepare.prepare_request`.
+    only when set, and L2-normalises the result. A config that sets ``max_tokens`` (required, with the
+    ``tokenizer``, on a self-hosted role) is fitted by the client through the one text-budget mechanism:
+    only content spans cut at token boundaries of the declared ``tokenizer``, the template re-attached,
+    every cut recorded, the media tokens reserved whole and never cut. The media fields declare what the
+    role sends; the client prepares every request through
+    :func:`~rcp_ndcg.data.prepare.prepare_request` -- the same preparation path the judge uses, and the
+    role's startup probe runs the engine media check when an ``image_processor`` is declared.
 
 
     Attributes:

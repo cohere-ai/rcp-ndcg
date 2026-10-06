@@ -47,7 +47,7 @@ from rcp_ndcg.data.preprocess import (
 from rcp_ndcg.inference.clients._base import RoleClient
 from rcp_ndcg.inference.config import RerankEndpoint
 from rcp_ndcg.inference.transport import Sender
-from rcp_ndcg.inference.types import Call, EncodeRole, RerankRequest, RerankResult
+from rcp_ndcg.inference.types import Call, EncodeRole, Reply, RerankRequest, RerankResult, TokenCount
 
 if TYPE_CHECKING:
     from rcp_ndcg.inference.adapters.rerank import RerankWire
@@ -152,20 +152,39 @@ class RerankClient(RoleClient):
     async def arerank(
         self, query: str | Content, documents: Sequence[str | Content], *, instruction: str | None = None
     ) -> RerankResult:
-        """The async half of :meth:`rerank`: prepare, fit to the budget, send, and read the scores back
-        aligned to the documents."""
+        """The async half of :meth:`rerank`: prepare (media, gates, budget), send, and read the scores back
+        aligned to the documents.
+
+        ``empty_doc: omit_zero`` omits an empty document from the request and scores it 0.0: the returned
+        scores stay aligned to the documents as given, and a candidate set whose every document is omitted
+        makes no request (an empty request never goes out).
+        """
         prepared_query = self._prepare([query], EncodeRole.QUERY, instruction=instruction)[0]
         prepared_documents = self._prepare(documents, EncodeRole.DOCUMENT)
-        if not prepared_documents:
+        if not documents:
             return RerankResult(scores=())  # an empty candidate set is not a request (as on the served path)
-        wire_query, wire_documents, fitted = self._fit_pair(prepared_query, prepared_documents, instruction=instruction)
+        wire_query, wire_documents, fitted, omitted, origin = self._fit_pair(
+            prepared_query, prepared_documents, instruction=instruction
+        )
+        if not wire_documents:
+            # Every document omitted (empty_doc: omit_zero): nothing to score, no request.
+            return RerankResult(scores=tuple(0.0 for _ in documents))
         request = RerankRequest(
             query=wire_query,
             documents=tuple(wire_documents),
             instruction=instruction if self.config.instruction == "field" else None,
         )
         replies = await self._send(self._adapter.calls(request, model=self.config.model))
-        return self._pooled(fitted, self._adapter.interpret(request, replies), len(prepared_documents))
+        scored = self._pooled(fitted, self._adapter.interpret(request, replies), len(prepared_documents))
+        if not omitted:
+            return scored
+        # The omitted documents score 0.0 at their positions; the kept ones carry their real scores.
+        kept_scores = dict(zip(origin, scored.scores, strict=True))
+        return RerankResult(
+            scores=tuple(
+                0.0 if index in set(omitted) else kept_scores.get(index, 0.0) for index in range(len(documents))
+            )
+        )
 
     async def arerank_many(
         self, examples: Sequence[RankingExample], *, checkpoint: Checkpoint | None = None
@@ -218,7 +237,7 @@ class RerankClient(RoleClient):
 
     def _fit_pair(
         self, query: Content, documents: Sequence[Content], *, instruction: str | None = None
-    ) -> tuple[Content, list[Content], FitResult]:
+    ) -> tuple[Content, list[Content], FitResult, tuple[int, ...], list[int]]:
         """The query and its candidates as the wire carries them, fitted into the pair budget.
 
         With a budget declared, :meth:`RoleClient._fit` runs the shared mechanism over the ``(query,
@@ -232,35 +251,69 @@ class RerankClient(RoleClient):
         template itself); the chunks' ``max`` pooling is the caller's, through the fit result.
 
         Returns:
-            ``(wire_query, wire_documents, fitted)``: the query content (cut) and the document contents
-            (one per fit output, in fit's order), and the fit result -- its ``ids`` align to the wire
-            documents, its ``chunk_mapping`` carries each chunk back to its input.
+            ``(wire_query, wire_documents, fitted, omitted, origin)``: the query content (cut), the document
+            contents (one per fit output, in fit's order), the fit result (its ``ids`` align to the wire
+            documents; its ``chunk_mapping`` carries each chunk back to its input), the document indices
+            ``empty_doc: omit_zero`` never sends, and for each fit output the index of the kept document it
+            came from (chunks of one document repeat its index).
 
         Raises:
             TextBudgetExceededError: the declared overflow policy refuses to shorten a pair.
         """
+        # The request's media, through the one preparation path: the gates, the budget's media fit (never
+        # cut), and the per-document token counts the fit reserves. The empty-document policy follows the
+        # drops (a document whose every media item was dropped is empty, exactly like an empty text one).
+        request_prepared = self._prepare_request([query, *documents])
+        contents_after_media, media_tokens = self._fit_media(request_prepared)
+        query = contents_after_media[0]
+        documents = list(contents_after_media[1:])
+        kept_documents, omitted = self._apply_empty_documents(documents)
+        kept_documents = list(kept_documents)
+        kept_positions = [index for index in range(len(documents)) if index not in set(omitted)]
+        omitted = tuple(omitted)
+        max_media = max((media_tokens[1 + index] for index in kept_positions), default=0)
         if self._budget is None:
             return (
                 query,
-                list(documents),
+                kept_documents,
                 FitResult(
-                    shape="pair", texts=(), contents=(), ids=tuple(str(index) for index in range(len(documents)))
+                    shape="pair",
+                    texts=(),
+                    contents=(),
+                    ids=tuple(str(index) for index in range(len(kept_documents))),
                 ),
-            )
+                tuple(omitted),
+                list(range(len(kept_documents))),
+            )  # type: ignore[return-value]  # list[int] against tuple[int, ...] -- same shape
         # One query rides per request: settle its span first, so every pair of the batch carries the same
         # one. fit settles a pair's query only when that pair overflows (the share binds on overflow only),
         # which would settle differently per document -- an under-budget pair keeps the whole query while an
         # overflowing one cuts it to its share. So the client settles it once, exactly as fit would: to the
         # declared share when the query exceeds it, then through fit's own probe pair (the query with an
-        # empty document) for the empty-render verification, so the shipped span is exactly the one every
-        # document span is verified against.
+        # empty document, reserving the documents' maximum media count so the settled span matches what
+        # ships) for the empty-render verification.
         original_query = query.text
         query_text = original_query
+        if not kept_documents:
+            # Every document omitted (empty_doc: omit_zero): no request, no settlement, an empty result.
+            return (
+                query,
+                [],
+                FitResult(shape="pair", texts=(), contents=(), ids=()),
+                tuple(omitted),
+                [],
+            )
         if self._tokenizer is not None:
             share = self._budget.query_max_tokens
             if share is not None and self._tokenizer.count(query_text) > share:
                 query_text = token_prefix(query_text, share, self._tokenizer)
-            settled = self._fit([(query_text, "")], "pair", instruction=instruction, record=False).contents[0][0]
+            settled = self._fit(
+                [(query_text, "")],
+                "pair",
+                instruction=instruction,
+                media_tokens=[max_media],
+                record=False,
+            ).contents[0][0]
             if settled != original_query:
                 self.census.record(
                     corpus=self.ROLE,
@@ -273,31 +326,63 @@ class RerankClient(RoleClient):
                     budget_source="tokenizer",
                     shape="pair",
                 )
+            pairs = [(settled, document.text) for document in kept_documents]
+            result = self._fit(
+                pairs,
+                "pair",
+                media_tokens=[media_tokens[1 + index] for index in range(len(kept_documents))],
+                instruction=instruction,
+            )
         else:
             # The vendor path: no tokenizer, so nothing is measured or settled; fit sends the pairs uncut
             # and records the vendor's documented limit.
             settled = query_text
-        pairs = [(settled, document.text) for document in documents]
-        result = self._fit(pairs, "pair", media_tokens=self._media_tokens(documents), instruction=instruction)
+            result = self._fit(
+                [(settled, document.text) for document in kept_documents],
+                "pair",
+                instruction=instruction,
+            )
         contents = [pair if isinstance(pair, tuple) else (pair, "") for pair in result.contents]
         # The settled span is the one every output carries: an under-budget pair repeats it and an
         # overflowing one settles to it (or to a shorter cut that the probe pair already applied).
-        if len({left for left, _ in contents}) != 1:
+        if contents and len({left for left, _ in contents}) != 1:
             raise DataError(
                 f"the pair fit settled the shared query differently across {len(contents)} document(s); "
                 "one query rides per request, so the spans must agree",
                 hint="this is a bug in the rerank pair fit: report it with the inputs",
             )
         # A chunked document is one wire document per chunk, each carrying its input's media parts beside
-        # the piece.
+        # the piece (the media tokens are reserved per chunk: fit's cap subtracts the pair's media, and
+        # every chunk's text is verified against it).
         mapping = result.chunk_mapping or {}
-        origin = [int(mapping.get(out_id, out_id)) for out_id in result.ids]
+        chunk_origin = [int(mapping.get(out_id, out_id)) for out_id in result.ids]
+        origin = [kept_positions[index] for index in chunk_origin]
         wire_query = self._with_text(query, settled)
         wire_documents = [
-            self._with_text(documents[source], document_text)
-            for source, (_, document_text) in zip(origin, contents, strict=True)
+            self._with_text(kept_documents[source], document_text)
+            for source, (_, document_text) in zip(chunk_origin, contents, strict=True)
         ]
-        return wire_query, wire_documents, result
+        return wire_query, wire_documents, result, tuple(omitted), origin
+
+    def _probe_calls(self, content: Content) -> Sequence[Call]:
+        """The rerank request one prepared probe item is sent as (a one-document pair)."""
+        request = RerankRequest(
+            query=Content.from_text("probe"),
+            documents=(content,),
+            instruction=None,
+        )
+        return self._adapter.calls(request, model=self.config.model)
+
+    async def probe(self) -> Any:
+        """The role's startup probe: the transport's replica probe, plus -- when the config declares an
+        ``image_processor`` -- the engine media check (never silent)."""
+        probe: Any = await self._sender.probe()
+        await self.check_engine_media()
+        return probe
+
+    def _probe_usage(self, reply: Reply) -> TokenCount | None:
+        """The reply's prompt-token report (the served rerank wires report OpenAI-style usage)."""
+        return self._adapter.usage(reply)
 
     def _pooled(self, fitted: FitResult, result: RerankResult, documents: int) -> RerankResult:
         """The scores of one query, pooled back onto its documents when the budget chunked them.

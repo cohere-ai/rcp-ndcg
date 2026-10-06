@@ -19,10 +19,8 @@ The client owns what the model reads and how the requests go out -- the client b
   requests in flight under one :class:`asyncio.TaskGroup` (a failing request cancels its siblings, R7),
   reassembled in the input's order.
 
-Credentials are the transport's (R6): the adapter profile's key variables, their required-ness and the
-header travel to the transport as an :class:`~rcp_ndcg.inference.transport.AuthProfile`; no client-side key
-handling remains. Media is refused by the adapter (these endpoints are text-only until the media lane
-wires its policy through :meth:`EmbeddingClient._media_tokens`).
+handling remains. Media is refused before it is fetched (these adapters are text-only; the refusal is the
+base's, in front of the one preparation path).
 """
 
 from __future__ import annotations
@@ -38,7 +36,7 @@ from rcp_ndcg.data.preprocess import TextTruncationCensus
 from rcp_ndcg.errors import ConfigError, RequestRejectedError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
 from rcp_ndcg.inference.adapters.base import get_adapter
-from rcp_ndcg.inference.clients._base import RoleClient
+from rcp_ndcg.inference.clients._base import PreparedItems, RoleClient
 from rcp_ndcg.inference.config import EmbeddingEndpoint
 from rcp_ndcg.inference.transport import Sender
 from rcp_ndcg.inference.types import Embeddings, EmbedRequest, EncodeRole, l2_normalize
@@ -81,6 +79,9 @@ class EmbeddingClient(RoleClient):
     """
 
     ROLE = "embed"
+
+    #: The embed role's shipped adapters are text-only: media is refused before it is fetched.
+    MEDIA_ON_WIRE = False
 
     def __init__(
         self, config: EmbeddingEndpoint, *, sender: Sender | None = None, census: TextTruncationCensus | None = None
@@ -139,12 +140,20 @@ class EmbeddingClient(RoleClient):
         """
         prepared = self._prepare(contents, role)
         size = self._request_size(batch_size)
-        if not prepared:
-            return Embeddings.empty(0)
+        if not prepared.items:
+            if not contents:
+                return Embeddings.empty(0)
+            # Every input was omitted (empty_doc: omit_zero): no request goes out, and the result is one
+            # zero vector per input -- the score an omitted document contributes.
+            return Embeddings.single(np.zeros((len(contents), 0), dtype=np.float32))
 
         requests = [
-            EmbedRequest(contents=tuple(prepared[offset : offset + size]), role=role, dimensions=self.config.dimensions)
-            for offset in range(0, len(prepared), size)
+            EmbedRequest(
+                contents=tuple(prepared.items[offset : offset + size]),
+                role=role,
+                dimensions=self.config.dimensions,
+            )
+            for offset in range(0, len(prepared.items), size)
         ]
         calls = [list(self._adapter.calls(request, model=self.config.model)) for request in requests]
 
@@ -162,14 +171,19 @@ class EmbeddingClient(RoleClient):
                 f"{self.config.api} answered vectors of differing dimension ({widths}) across batches; "
                 "one endpoint's embeddings share a dimension"
             )
-        vectors = np.concatenate([part.as_matrix() for part in parts])
+        width = widths[0] if widths else 0
+        # One matrix row per input: the sent items' vectors in their order, zeros where omit_zero omitted.
+        matrix = np.zeros((len(contents), width), dtype=np.float32)
+        sent = np.concatenate([part.as_matrix() for part in parts]) if parts else np.zeros((0, width))
+        for out_row, position in enumerate(prepared.positions):
+            matrix[position] = sent[out_row]
         if self.config.normalize:
-            vectors = l2_normalize(vectors)
-        return Embeddings.single(vectors)
+            matrix = l2_normalize(matrix)
+        return Embeddings.single(matrix)
 
     # -- the content decisions ---------------------------------------------
-    def _prepare(self, contents: Sequence[Content], role: EncodeRole) -> tuple[Content, ...]:
-        """The content decisions, in one place: the per-side prompt, then the shared text budget.
+    def _prepare(self, contents: Sequence[Content], role: EncodeRole) -> PreparedItems:
+        """The content decisions, in one place: the per-side prompt, the media preparation, then the budget.
 
         Args:
             contents: The items as given.
@@ -177,20 +191,33 @@ class EmbeddingClient(RoleClient):
                 request shape follows it).
 
         Returns:
-            The items to send: each with the side's prompt prepended, and -- when the config declares a
-            budget -- the content fitted to it (only content spans cut, the template re-attached, cuts
-            recorded). Without a budget, unchanged apart from the prompt.
+            The items to send (each with the side's prompt, the media prepared, the text fitted -- only
+            content spans cut, the template re-attached, cuts recorded), each with its original position,
+            and the positions ``empty_doc: omit_zero`` never sends (they score 0.0). Media is never cut;
+            a media-only request that overflows the budget follows the declared overflow policy.
         """
         prompt = self.config.query_prompt if role is EncodeRole.QUERY else self.config.doc_prompt
-        prepared = tuple(content.with_text_prefix(prompt) for content in contents)
+        prompted = [content.with_text_prefix(prompt) for content in contents]
+        request = self._prepare_request(prompted)
+        fitted, media_tokens = self._fit_media(request)
+        kept, omitted = self._apply_empty_documents(fitted)
+        positions = [index for index in range(len(fitted)) if index not in set(omitted)]
         if self._budget is None:
-            return prepared
-        result = self._fit(
-            [content.text for content in prepared],
-            "query" if role is EncodeRole.QUERY else "document",
-            media_tokens=self._media_tokens(prepared),
+            texts = [content.text for content in kept]
+        elif kept:
+            result = self._fit(
+                [content.text for content in kept],
+                "query" if role is EncodeRole.QUERY else "document",
+                media_tokens=[media_tokens[position] for position in positions],
+            )
+            texts = result.texts
+        else:
+            texts = []
+        return PreparedItems(
+            items=tuple(self._with_text(content, text) for content, text in zip(kept, texts, strict=True)),
+            positions=tuple(positions),
+            omitted=tuple(omitted),
         )
-        return tuple(self._with_text(content, text) for content, text in zip(prepared, result.texts, strict=True))
 
     def _request_size(self, batch_size: int | None) -> int:
         """The request size of one call: ``batch_size``, else the config's; below 1 or above the profile's

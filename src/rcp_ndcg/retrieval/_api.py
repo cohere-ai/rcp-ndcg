@@ -555,14 +555,7 @@ def _encode(config: Any, contents: Sequence[Any], role: EncodeRole) -> Embedding
     try:
         return client.encode(contents, role)
     finally:
-        _close(client)
-
-
-def _close(client: Any) -> None:
-    """Close the transport a client built (an injected sender closes nothing); safe on any client."""
-    aclose = getattr(getattr(client, "_sender", None), "aclose", None)
-    if callable(aclose):
-        aclose()
+        client.close()  # the client base's sync close (an injected sender closes nothing)
 
 
 __all__ = ["Index", "fuse", "index", "load_index", "rerank", "retrieve", "search"]

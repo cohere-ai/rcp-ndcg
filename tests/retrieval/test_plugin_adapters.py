@@ -30,6 +30,7 @@ from rcp_ndcg.retrieval import (
 )
 from rcp_ndcg.retrieval import _api as retrieval_api
 from rcp_ndcg.retrieval.config import PluginEmbedding, PluginReranker
+from tests.conftest import SESSION_TOKENIZER
 
 DOCS = {
     "d1": "tortoises move slowly across the sand",
@@ -172,7 +173,15 @@ def test_a_registered_rerank_adapter_runs_rerank_end_to_end(dataset, tmp_path: P
     from rcp_ndcg.retrieval import rerank
 
     config = validate_reranker(
-        {"api": "slow_rerank", "base_url": "fake://seed/1", "model": "stub-reranker", "instruction": "none"}
+        {
+            "api": "slow_rerank",
+            "base_url": "fake://seed/1",
+            "model": "stub-reranker",
+            "instruction": "none",
+            "use_activation": False,
+            "tokenizer": str(SESSION_TOKENIZER),
+            "max_tokens": 8192,
+        }
     )
     assert isinstance(config, PluginReranker), "the generic rerank config carries the third-party api"
 

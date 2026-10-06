@@ -42,16 +42,22 @@ released together.
 - **No sibling left running** (R7): every client's fan-out runs in one `asyncio.TaskGroup` -- a failing
   request cancels its siblings, no rerank `checkpoint` lands after the failure, and no task is left
   pending; a group carrying exactly one failure is raised as that failure, so the typed errors surface.
-- **The text budget and the media seam wired into every client** (item 4): a config with `max_tokens` fits
-  every request through the shared mechanism (`rcp_ndcg.data.preprocess.fit`), cutting only content spans
-  with the template re-attached, recording every cut in the census (`client.census`, a
+- **The text budget wired into every client, and the media with it** (item 4): a config with `max_tokens`
+  fits every request through the shared mechanism (`rcp_ndcg.data.preprocess.fit`), cutting only content
+  spans with the template re-attached, recording every cut in the census (`client.census`, a
   `TextTruncationCensus`; the rerank client records a shared query's settlement under the doc id
   `<query>`); the interim refusal of `max_tokens` is gone. The served rerank path sends no
-  `truncate_prompt_tokens`/`max_tokens_per_query`/`max_tokens_per_doc` (the client cut already). Media is
-  prepared with the role config's media policy and counted through the named seam `RoleClient._media_tokens`;
-  until the budget-media lane wires it, the embedding adapters refuse media outright, and the rerank and
-  pooling wires carry media (content parts, or the pooling `messages` shape) without reserving its tokens --
-  declared interim policy: a media item's cost is outside the declared budget until that lane lands.
+  `truncate_prompt_tokens`/`max_tokens_per_query`/`max_tokens_per_doc` (the client cut already). **Media is
+  wired through the one preparation path** (`rcp_ndcg.data.prepare.prepare_request` -- the judge's own):
+  sized exactly as the declared `image_processor` would under the role's `image_policy`, its tokens counted
+  and reserved whole out of `max_tokens`, never cut; when media alone fill the budget the declared
+  `on_overflow` decides (`cut` shrinks to the policy minimum then drops whole items, every drop recorded
+  with `dropped=True` in `client.media_census`; `fail` refuses; `chunk` is refused -- a vision block is
+  atomic); a document whose every media item was dropped is empty and follows `empty_doc` (which every role
+  client consumes, for an empty text document too). `max_images`/`max_videos` gate per request before
+  anything is sent; a role with an `image_processor` exposes `probe()`/`check_engine_media()` -- one
+  prepared probe image, the engine's reported prompt tokens compared with the counted ones, a mismatch
+  refused and a reply without usage recorded `not_checked` (never silent).
 - **Explicit budgets for the role clients**: a self-hosted role config must declare `tokenizer` +
   `max_tokens` (already enforced at the config); a hosted profile may declare only the vendor's documented
   limit (`budget_source: vendor`, content uncut). `on_overflow: chunk` is refused for the embed and pooling
@@ -67,7 +73,8 @@ released together.
   engine overlay refuses a config whose `api` selects an adapter of a different engine role.
 - **A served rerank config sets `use_activation` explicitly** (F10): `RerankEndpoint` with `api: rerank`
   refuses `use_activation: None` (two engines with different defaults would share an identity); hosted
-  profiles keep `None` (their scale is fixed).
+  profiles keep `None` (their scale is fixed). The role client enforces the same rule keyed on the resolved
+  adapter's `HOSTED` flag, so a served third-party rerank wire needs an explicit choice too.
 - `Transport.aclose()` is a true async close (R15): awaited on the pool's own loop; `close()` stays the
   synchronous twin.
 - **A pooling adapter's `MAX_BATCH` cap is honoured** by `PoolingClient` like the embedding ones'.

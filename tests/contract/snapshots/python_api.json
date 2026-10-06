@@ -9871,6 +9871,20 @@
                 "returns": "Embeddings"
               }
             ]
+          },
+          "probe": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "Any"
+              }
+            ]
           }
         }
       },
@@ -10266,6 +10280,20 @@
               }
             ]
           },
+          "probe": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "Any"
+              }
+            ]
+          },
           "rerank": {
             "kind": "method",
             "signature": [
@@ -10651,12 +10679,32 @@
             "name": "census"
           },
           {
+            "annotation": "MediaCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "media_census"
+          },
+          {
             "returns": null
           }
         ],
         "kind": "class",
         "members": {
           "aclose": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "check_engine_media": {
             "kind": "method",
             "signature": [
               {

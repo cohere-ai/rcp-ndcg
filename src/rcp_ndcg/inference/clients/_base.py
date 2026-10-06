@@ -34,22 +34,44 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Coroutine, Sequence
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, Self, TypeVar
 
-from rcp_ndcg_core.content import Content, TextPart
+from rcp_ndcg_core.content import Content, ImagePart, TextPart, VideoPart
 
-from rcp_ndcg.data.preprocess import FitResult, TextBudget, TextTruncationCensus, fit
+from rcp_ndcg.data.prepare import (
+    MediaCensus,
+    PreparedRequest,
+    apply_media_fit,
+    fit_media_to_budget,
+    media_policies_for,
+    prepare_request,
+)
+from rcp_ndcg.data.preprocess import (
+    FitResult,
+    TextBudget,
+    TextBudgetExceededError,
+    TextTruncationCensus,
+    fit,
+)
+from rcp_ndcg.data.resolution import ImagePolicy, MediaTokenCount, VideoPolicy, content_media_tokens
 from rcp_ndcg.data.templates import RequestShape
-from rcp_ndcg.errors import ConfigError
+from rcp_ndcg.errors import CapabilityError, ConfigError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
 from rcp_ndcg.inference.adapters.base import AdapterRole, get_adapter
+from rcp_ndcg.inference.adapters.chat import media_counts
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.transport import AuthProfile, Sender, Transport
+from rcp_ndcg.inference.types import Call, Reply, TokenCount
+from rcp_ndcg.support.logging import get_logger
+
+_TRANSPORT_CLASS = Transport
+"""The transport class, captured at import: a test may patch the module attribute (an offline wire), and
+the base's own transport checks must not break when it does."""
 
 if TYPE_CHECKING:
     from rcp_ndcg.data.tokenizer import TextTokenizer
 
-_TRANSPORT_CLASS = Transport
+
 """The transport class, captured at import: a test may patch the module attribute (an offline wire), and
 the base's own transport checks must not break when it does."""
 
@@ -58,6 +80,22 @@ T = TypeVar("T")
 
 C = TypeVar("C", bound=Endpoint)
 """The role config a client serves (an :class:`~rcp_ndcg.inference.endpoint.Endpoint` subclass)."""
+
+
+class PreparedItems(NamedTuple):
+    """What a role client's ``_prepare`` decided to send, aligned back to the inputs.
+
+    Attributes:
+        items: The contents to send, in fit order (the media prepared, the text fitted).
+        positions: For each item, its original input index (``positions[i]`` is where ``items[i]`` came
+            from); every input not in :attr:`omitted` appears exactly once.
+        omitted: The input indices ``empty_doc: omit_zero`` never sends -- ascending; the caller places the
+            missing result (a zero vector, an empty slice, a 0.0 score) at each.
+    """
+
+    items: tuple[Content, ...]
+    positions: tuple[int, ...]
+    omitted: tuple[int, ...]
 
 
 class RoleClient[C: Endpoint]:
@@ -75,10 +113,22 @@ class RoleClient[C: Endpoint]:
     #: the engine role of the configs it serves (F7 keeps the two vocabularies mapped in one place).
     ROLE: ClassVar[AdapterRole]
 
+    #: Whether this role's wires carry media. ``False`` (the embed role: its adapters are text-only)
+    #: refuses a media-carrying request before the media is fetched or counted, with the adapter's own
+    #: typed refusal.
+    MEDIA_ON_WIRE: ClassVar[bool] = True
+
     #: The role config, as it was given (a hosted profile's ``base_url`` stays ``None``).
     config: C
 
-    def __init__(self, config: C, *, sender: Sender | None = None, census: TextTruncationCensus | None = None):
+    def __init__(
+        self,
+        config: C,
+        *,
+        sender: Sender | None = None,
+        census: TextTruncationCensus | None = None,
+        media_census: MediaCensus | None = None,
+    ):
         """Build the client for ``config``, sending over ``sender``.
 
         Args:
@@ -89,6 +139,9 @@ class RoleClient[C: Endpoint]:
                 a transport's, or the sender's own.
             census: Where the text-budget cuts are recorded; ``None`` gives the client a fresh in-memory
                 census (:attr:`census`), whose rows a caller can read or hand a sink to.
+            media_census: Where the prepared media (and the items a budget dropped) are recorded; ``None``
+                gives the client a fresh in-memory :class:`~rcp_ndcg.data.prepare.MediaCensus`
+                (:attr:`media_census`).
 
         Raises:
             ConfigError: ``api`` names no adapter of this client's role (the hint lists that role's names),
@@ -104,6 +157,7 @@ class RoleClient[C: Endpoint]:
         self.config = config
         self.endpoint = self._resolved_endpoint(config, self._adapter_cls)
         self.census = census if census is not None else TextTruncationCensus()
+        self.media_census = media_census if media_census is not None else MediaCensus()
         if sender is None:
             self._sender: Any = Transport(self.endpoint, auth=self._auth_profile())
         elif isinstance(sender, _TRANSPORT_CLASS) or callable(getattr(sender, "run", None)):
@@ -116,6 +170,7 @@ class RoleClient[C: Endpoint]:
                 "run(coroutine) method",
             )
         self._budget, self._tokenizer = self._resolve_budget()
+        self._check_use_activation(config)
         self._point_sender_at_the_profile()
 
     # -- the shared construction decisions ----------------------------------
@@ -133,6 +188,36 @@ class RoleClient[C: Endpoint]:
                 "(e.g. http://127.0.0.1:8000/v1)",
             )
         return config.model_copy(update={"base_url": default})
+
+    def _check_use_activation(self, config: C) -> None:
+        """F10, keyed on the resolved adapter: a *served* rerank wire (one whose profile is not HOSTED)
+        must be told whether its activation runs -- ``None`` would send nothing and let the engine's
+        default apply, and two engines with different defaults would then share an identity. Hosted
+        profiles keep ``None`` (their scale is fixed). The shipped names are refused at the config, so the
+        config-level validator stays; this catch reaches a served third-party adapter too.
+
+        Raises:
+            ConfigError: a config with a ``use_activation`` field builds on a served adapter and leaves
+                it unset.
+        """
+        if "use_activation" not in type(config).model_fields:
+            return
+        if getattr(config, "use_activation", None) is not None:
+            return
+        hosted = getattr(self._adapter_cls, "HOSTED", False)
+        if hosted:
+            return
+        raise ConfigError(
+            f"{type(config).__name__} on the served {self._adapter_cls_name()} wire must set use_activation "
+            "explicitly: None sends nothing and the engine's default applies, so two engines with different "
+            "defaults would share an identity",
+            hint="set use_activation: true (the engine's activation runs: the score is a probability) or "
+            "use_activation: false (the raw logit is stored) -- the choice is content and enters the identity",
+        )
+
+    def _adapter_cls_name(self) -> str:
+        """The wire adapter's registered name, for messages."""
+        return str(getattr(self._adapter_cls, "name", self.config.api))
 
     def _auth_profile(self) -> AuthProfile:
         """The credential facts of this client's config and adapter, for the transport to resolve the key
@@ -193,24 +278,122 @@ class RoleClient[C: Endpoint]:
         )
         return budget, tokenizer
 
-    def _media_tokens(self, contents: Sequence[Content]) -> list[int]:
-        """Per-input media token counts, reserved whole out of the budget and never cut.
+    def _media_policies(self) -> tuple[ImagePolicy | None, VideoPolicy | None]:
+        """The effective media policies of this client's config (the one shared rule, no per-client code)."""
+        return media_policies_for(self.config)
 
-        **The media lane's seam** (``budget-media``): that lane wires the role config's media policy through
-        here -- each image or video block's token count, from the policy the config declares -- and the
-        :func:`~rcp_ndcg.data.preprocess.fit` call reserves them.
+    def _prepare_request(self, contents: Sequence[Content]) -> PreparedRequest:
+        """The one preparation call for a request's contents: media sized exactly as the judge's, the
+        request's media token counts, and the ``max_images``/``max_videos`` gates before anything is sent.
 
-        Until it lands, the reservation is zero, and the roles differ: the embedding adapters refuse media
-        Until it lands, the reservation is zero, and the roles differ: the embedding adapters refuse media
-        outright (a declared budget is never under-counted there); the rerank and pooling wires carry media
-        today (content parts, or the pooling ``messages`` shape) **without** reserving its tokens -- a
-        declared budget counts text only. Declared interim policy: a media item's cost is outside the
-        declared budget until the media lane lands. When that lane wires non-zero counts through here, the
-        rerank settlement probe must reserve the documents' maximum media count (per-pair caps then differ
-        per document; the probe's cap must match what ships), and the document's media parts ride on every
-        chunk of it -- the media lane owns both policies.
+        Raises:
+            CapabilityError: The request carries more images or videos than the config's
+                ``max_images``/``max_videos`` allow (as the judge's per-request gate).
         """
-        return [0] * len(contents)
+        if not self.MEDIA_ON_WIRE and any(content.has_media for content in contents):
+            self._refuse_media_before_preparation(contents)
+        image, video = self._media_policies()
+        prepared = prepare_request(contents, image, video)
+        # The per-request media gates, as the judge's (``adapters.chat._check_media``): the request's
+        # images and videos against the config's declared limits, refused before anything is sent.
+        totals = media_counts(Content.from_parts([part for content in prepared.contents for part in content.parts]))
+        for kind, count, limit in (
+            ("images", totals.images, getattr(self.config, "max_images", 0)),
+            ("videos", totals.videos, getattr(self.config, "max_videos", 0)),
+        ):
+            if count and not limit:
+                raise CapabilityError(
+                    f"{self.config.model} is not declared to read {kind} (max_{kind}: 0), but this request "
+                    f"carries {count}. Declare max_{kind} for a checkpoint that reads them, or drop the "
+                    "media parts from the corpus."
+                )
+            if count > limit:
+                raise CapabilityError(
+                    f"this request carries {count} {kind} and the endpoint accepts {limit} per request "
+                    f"(max_{kind}). Split the request, or raise the limit on the server and here."
+                )
+        return prepared
+
+    def _refuse_media_before_preparation(self, contents: Sequence[Content]) -> None:
+        """Refuse media for a text-only role before the media is fetched, sized or counted.
+
+        Raises:
+            CapabilityError: an item carries an image or video part; the message names the media type and
+                the item (the shipped embed adapters' own refusal, kept one home in front of preparation).
+        """
+        for index, content in enumerate(contents):
+            for part in content.parts:
+                if isinstance(part, ImagePart):
+                    raise CapabilityError(
+                        f"the {getattr(self._adapter_cls, 'name', self.config.api)} adapter takes text only, "
+                        f"but item {index} carries an image part",
+                        hint="embed a text rendering of the media, or declare the media fields on the role "
+                        "config for a wire that reads it",
+                    )
+                if isinstance(part, VideoPart):
+                    raise CapabilityError(
+                        f"the {getattr(self._adapter_cls, 'name', self.config.api)} adapter takes text only, "
+                        f"but item {index} carries a video part",
+                        hint="embed a text rendering of the media; video embedding is wired with the "
+                        "media-preparation mechanism",
+                    )
+
+    def _fit_media(self, prepared: PreparedRequest) -> tuple[list[Content], list[int]]:
+        """The prepared request under the declared budget: media never cut, drops recorded.
+
+        When the request's media alone exceed ``max_tokens``, the declared overflow policy decides --
+        ``cut`` (the default): :func:`~rcp_ndcg.data.prepare.fit_media_to_budget` shrinks to the policy
+        minimum, then drops whole items most expensive first, every drop recorded in the media census with
+        ``dropped=True``; ``fail``: the request is refused naming the media tokens and the budget;
+        ``chunk``: refused -- media are not chunkable, a vision block is atomic.
+
+        Returns:
+            ``(contents, media_tokens)``: the contents to send (drops removed, their text untouched) and the
+            media token count to reserve per input -- the tokens the client's
+            :func:`~rcp_ndcg.data.preprocess.fit` call subtracts from the budget, never cutting media.
+
+        Raises:
+            TextBudgetExceededError: ``on_overflow: fail`` and media alone fill the budget.
+            ConfigError: ``on_overflow: chunk`` and media alone fill the budget.
+        """
+        contents = prepared.contents
+        per_content = [count.tokens for count in self._media_counts_of(prepared.contents)]
+        if self._budget is None or prepared.tokens.tokens <= self._budget.max_tokens:
+            return contents, per_content
+        image, video = self._media_policies()
+        assert image is not None, (
+            "counted media imply an effective image policy (content_media_tokens refused one without a family)"
+        )
+        if self._budget.on_overflow == "fail":
+            raise TextBudgetExceededError(
+                f"this request's media alone cost {prepared.tokens.tokens} tokens, over the declared text "
+                f"budget of {self._budget.max_tokens}; the media are never cut, and the policy refuses to "
+                "shorten them",
+                hint="raise max_tokens, or declare a smaller image_policy (a smaller pixel budget is fewer "
+                "vision tokens)",
+            )
+        if self._budget.on_overflow == "chunk":
+            raise ConfigError(
+                f"this request's media alone cost {prepared.tokens.tokens} tokens, over the declared text "
+                f"budget of {self._budget.max_tokens}, and media overflow cannot be chunked: a vision block "
+                "is atomic -- the engine sees a whole media item or none of it",
+                hint="declare on_overflow: cut (the media fit shrinks to the policy minimum, then drops whole "
+                "items, every drop recorded), or a smaller image_policy",
+            )
+        fit = fit_media_to_budget(prepared.media, image=image, video=video, text_budget_tokens=self._budget.max_tokens)
+        contents = apply_media_fit(contents, prepared.media, fit)
+        for index, item in enumerate(fit.dropped):
+            self.media_census.record(corpus=self.ROLE, doc_id=str(index), media=[item], dropped=True)
+        per_content = [count.tokens for count in self._media_counts_of(contents)]
+        return contents, per_content
+
+    def _media_counts_of(self, contents: Sequence[Content]) -> list[MediaTokenCount]:
+        """The exact media token count of each content, as the engine adds it to the prompt."""
+        image, video = self._media_policies()
+        return [
+            content_media_tokens(content, image if image is not None else ImagePolicy.native(), video)
+            for content in contents
+        ]
 
     def _fit(
         self,
@@ -247,6 +430,104 @@ class RoleClient[C: Endpoint]:
         parts: list[Any] = [TextPart(text=text)] if (text or not content.has_media) else []
         parts += [part for part in content.parts if not isinstance(part, TextPart)]
         return Content.from_parts(parts)
+
+    async def check_engine_media(self) -> None:
+        """The startup media probe: one prepared probe image to the engine, its prompt tokens compared
+        with the counted ones (never silent).
+
+        Runs when the role declares an ``image_processor``: the probe sends one prepared image through the
+        adapter, counts the request's prompt tokens exactly (the media block plus the render the engine
+        reads), and :func:`~rcp_ndcg.data.resolution.engine_media_check` compares the engine's own
+        ``usage.prompt_tokens`` with it. A mismatch is a typed
+        :class:`~rcp_ndcg.errors.ProviderError` whose hint names ``image_processor``, the
+        ``image_policy`` and the server's media flags; a reply without usage is recorded in the media
+        census as ``not_checked`` -- the check never passes silently.
+
+        Raises:
+            CapabilityError: the engine refused the probe request.
+            ProviderError: the engine's prompt-token count disagrees with the counted one.
+        """
+        image_policy, video_policy = self._media_policies()
+        if image_policy is None or getattr(self.config, "image_processor", None) is None:
+            return  # a text-only role: nothing to check (the gate refuses media it cannot count)
+        from tempfile import NamedTemporaryFile
+
+        from PIL import Image as PILImage
+
+        from rcp_ndcg.data.resolution import engine_media_check
+        from rcp_ndcg.errors import ProviderError
+
+        with NamedTemporaryFile(suffix=".png", delete=False) as probe_file:
+            PILImage.new("RGB", (224, 224), (120, 120, 120)).save(probe_file, format="PNG")
+            probe_uri = probe_file.name
+        probe = Content.from_image(f"file://{probe_uri}")
+        prepared = self._prepare_request([probe])
+        counted = int(
+            content_media_tokens(
+                prepared.contents[0],
+                image_policy if image_policy is not None else ImagePolicy.native(),
+                video_policy,
+            ).tokens
+        )
+        calls = list(self._probe_calls(prepared.contents[0]))
+        replies = await self._sender.send(calls)
+        tokens = self._probe_usage(replies[0])
+        if tokens is None or tokens.input_tokens is None:
+            self.media_census.record(
+                corpus=self.ROLE,
+                doc_id="engine_media_check:not_checked",
+                media=[prepared.media[0]],
+                dropped=False,
+            )
+            get_logger(__name__).warning(
+                "engine media check: the %s reply reported no usage, so the counted prompt tokens cannot be "
+                "verified against the engine (recorded as not_checked); media counting proceeds on the "
+                "declared %s policy",
+                getattr(self._adapter_cls, "name", self.config.api),
+                getattr(self.config, "image_processor", None),
+            )
+            return
+        mismatch = engine_media_check(tokens.input_tokens, counted)
+        if mismatch is not None:
+            raise ProviderError(mismatch.message, hint=mismatch.message)
+
+    def _probe_calls(self, content: Content) -> Sequence[Call]:
+        """The calls one prepared probe item is sent as (the role's wire)."""
+        raise NotImplementedError
+
+    def _probe_usage(self, reply: Reply) -> TokenCount | None:
+        """The reply's prompt-token report (``None``: the engine reported none)."""
+        raise NotImplementedError
+
+    def _apply_empty_documents(self, contents: Sequence[Content]) -> tuple[list[Content], list[int]]:
+        """The request's empty documents as the config's ``empty_doc`` policy sends them.
+
+        An empty document is one with no text and no media left (a document whose every media item the
+        budget dropped is one, exactly like an empty text document). ``send`` (the default) sends the empty
+        string as today; ``send_text`` sends the configured placeholder text; ``omit_zero`` never sends the
+        item -- it scores 0.0 -- and the caller places the missing result (a zero vector, an empty slice, a
+        0.0 score) at its position. A request is never sent empty: the omitted items leave it, and the
+        caller returns without one when nothing remains.
+
+        Returns:
+            ``(kept, omitted)``: the contents to send and the indices of the omitted inputs (``omit_zero``).
+        """
+        policy = getattr(self.config, "empty_doc", "send")
+        kept: list[Content] = []
+        omitted: list[int] = []
+        for index, content in enumerate(contents):
+            if content.text or content.has_media:
+                kept.append(content)
+                continue
+            if policy := getattr(self.config, "empty_doc", "send"):
+                if policy == "omit_zero":
+                    omitted.append(index)
+                    continue
+                if policy == "send_text":
+                    kept.append(self._with_text(content, getattr(self.config, "empty_doc_text", None) or ""))
+                    continue
+            kept.append(content)  # "send": the empty string goes out, as today
+        return kept, omitted
 
     # -- the fan-out, one rule (R7) --------------------------------------------
     @staticmethod

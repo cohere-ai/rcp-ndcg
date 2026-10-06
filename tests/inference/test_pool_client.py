@@ -54,6 +54,8 @@ def _client(sender: Any, **config: Any) -> PoolingClient:
         "normalize": False,
         "tokenizer": _budget.DEFAULT_TOKENIZER or "test/tokenizer",
         "max_tokens": 8192,
+        "image_policy": {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+        "max_images": 4,
     }
     settings.update(config)
     return PoolingClient(PoolingEndpoint(**settings), sender=sender)
@@ -95,13 +97,14 @@ class TestEncode:
         assert second["input"] == ["Document: d"]
 
     def test_media_items_travel_as_messages_through_the_client(self, tmp_path: Any) -> None:
-        """The adapter decides the shapes; the client only splits and reassembles."""
+        """The adapter decides the shapes; the client prepares the media (one call, tokens counted) and
+        splits and reassembles."""
         image = tmp_path / "page.png"
         image.write_bytes(_png_bytes())
         sender = _GatedSender(
             PoolingServer({"plain": np.ones((1, 2), dtype=np.float16)}, media_vector=np.ones((1, 2), dtype=np.float16))
         )
-        client = _client(sender)
+        client = _client(sender, image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"})
 
         embeddings = asyncio.run(
             client.aencode([Content.from_image(image.as_uri()), Content.from_text("plain")], EncodeRole.DOCUMENT)
@@ -257,3 +260,21 @@ def _png_bytes() -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", (1, 1), (255, 0, 0)).save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def _media_chunk_client(sender: Any) -> PoolingClient:
+    """A pooling client whose config declares chunk overflow (refused at construction: vectors do not pool);
+    the media-fit refusal for chunk must be reachable before that."""
+    return PoolingClient(
+        PoolingEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="colqwen",
+            dim=2,
+            tokenizer=_budget.DEFAULT_TOKENIZER or "test/tokenizer",
+            max_tokens=60,
+            image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            max_images=4,
+            on_overflow="fail",
+        ),
+        sender=sender,
+    )

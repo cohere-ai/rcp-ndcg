@@ -157,10 +157,16 @@ all derived from `rcp_ndcg.inference.clients.RoleClient`, which owns the shared 
 - **the fan-out, one rule** -- every client's requests run in one `asyncio.TaskGroup`: a failing request
   cancels its siblings, no callback (a rerank `checkpoint`) lands after the failure, and no task is left
   pending; a group carrying exactly one failure is raised as that failure, so the typed errors surface;
-- **the text budget** -- the `TextBudget` resolved once from the role config's fields, the tokenizer it names
-  loaded once, and the shared `rcp_ndcg.data.preprocess.fit` called from each client's `_prepare` (see
-  [preprocessing](preprocessing.md#text-budgets-for-served-roles)); a census of every cut is at
-  `client.census`.
+- **the text budget and the media** -- the `TextBudget` resolved once from the role config's fields, the
+  tokenizer it names loaded once, and the shared `rcp_ndcg.data.preprocess.fit` called from each client's
+  `_prepare` (see [preprocessing](preprocessing.md#text-budgets-for-served-roles)); a census of every cut is
+  at `client.census`. Every request is prepared through one call (`prepare_request`): media sized exactly as
+  the judge's under the role's `image_policy`/`image_processor`, its tokens counted and reserved whole (never
+  cut), the `max_images`/`max_videos` gates, and the budget's media fit (a vision block is atomic -- shrink to
+  the policy minimum, drop whole items with `dropped=True` in `client.media_census`, or refuse under
+  `fail`/`chunk`). A role with an `image_processor` exposes `probe()` and `check_engine_media()`: one prepared
+  probe image, the engine's prompt-token report compared with the counted ones -- a mismatch is refused, a
+  reply without usage recorded `not_checked`, never silent.
 
 The two role vocabularies meet in one written mapping, `ENGINE_ADAPTER_ROLES`
 (`rcp_ndcg.inference.adapters.base`): a `judge` engine speaks `judge` adapters, an `encoder` engine `embed` or

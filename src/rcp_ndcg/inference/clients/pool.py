@@ -31,16 +31,18 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
+from typing import Any
 
+import numpy as np
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.data.preprocess import TextTruncationCensus
 from rcp_ndcg.errors import ConfigError, ProviderError
 from rcp_ndcg.inference.adapters.base import Adapter
-from rcp_ndcg.inference.clients._base import RoleClient
+from rcp_ndcg.inference.clients._base import PreparedItems, RoleClient
 from rcp_ndcg.inference.config import PoolingEndpoint
 from rcp_ndcg.inference.transport import Sender
-from rcp_ndcg.inference.types import Embeddings, EncodeRole, PoolRequest
+from rcp_ndcg.inference.types import Call, Embeddings, EncodeRole, PoolRequest, Reply, TokenCount
 
 
 class PoolingClient(RoleClient):
@@ -138,8 +140,15 @@ class PoolingClient(RoleClient):
             per item, which the adapter refuses when the reply reports usage.
         """
         prepared = self._prepare(contents, role)
-        if not prepared:
-            return Embeddings.empty(0, multi_vector=True, dtype=self.config.embed_dtype)
+        if not prepared.items:
+            if not contents:
+                return Embeddings.empty(0, multi_vector=True, dtype=self.config.embed_dtype)
+            # Every input was omitted (empty_doc: omit_zero): no request goes out; the result is one empty
+            # slice per input -- the MaxSim score an omitted document contributes.
+            return Embeddings.ragged(
+                [np.zeros((0, 0), dtype=self.config.embed_dtype)] * len(contents),
+                dtype=self.config.embed_dtype,
+            )
         if batch_size is not None and batch_size < 1:
             raise ConfigError(f"batch_size must be at least 1, got {batch_size}")
         size = batch_size or self.config.batch_size
@@ -149,7 +158,7 @@ class PoolingClient(RoleClient):
                 f"the {self.config.api} pooling API takes at most {max_batch} items per request; batch_size is {size}",
                 hint=f"set batch_size to {max_batch} or less, or leave it unset",
             )
-        batches = [prepared[start : start + size] for start in range(0, len(prepared), size)]
+        batches = [prepared.items[start : start + size] for start in range(0, len(prepared.items), size)]
         gate = asyncio.Semaphore(self.config.concurrency)
 
         async def one(batch: list[Content]) -> Embeddings:
@@ -157,26 +166,78 @@ class PoolingClient(RoleClient):
                 return await self._encode_batch(batch, role)
 
         chunks = await RoleClient.gather([one(list(batch)) for batch in batches])
-        return _concat_all(chunks)
+        if not prepared.omitted:
+            return _concat_all(chunks)
+        # Some inputs were omitted (empty_doc: omit_zero): rebuild the buffer with an empty slice (a zero
+        # MaxSim score) at each omission, the gathered slices in their places, in input order.
+        per_item: list[np.ndarray] = []
+        for chunk in chunks:
+            offsets = chunk.offsets
+            assert offsets is not None
+            per_item.extend(chunk.vectors[a:b] for a, b in zip(offsets[:-1], offsets[1:], strict=True))
+        sent = iter(per_item)
+        slices: list[np.ndarray] = []
+        for index in range(len(contents)):
+            if index in set(prepared.omitted):
+                slices.append(np.zeros((0, 0), dtype=self.config.embed_dtype))
+            else:
+                slices.append(next(sent))
+        return Embeddings.ragged(slices, dtype=self.config.embed_dtype)
 
-    def _prepare(self, contents: Sequence[Content], role: EncodeRole) -> tuple[Content, ...]:
-        """The contents as they are sent: the role's prompt prepended, then the shared text budget.
+    def _prepare(self, contents: Sequence[Content], role: EncodeRole) -> PreparedItems:
+        """The contents as they are sent: the role's prompt prepended, the media prepared, then the budget.
 
-        This is the one place a content decision applies -- the role's prompt and, when the config declares
-        a budget, the fit: only the text's content span is cut (the template re-attached, every cut
-        recorded), and media parts ride beside the fitted text. The client cuts nothing else: a model-side
-        change without a config field is a silent change to the vectors.
+        This is the one place a content decision applies -- the role's prompt, the one media preparation
+        call (:meth:`RoleClient._prepare_request`: media sized as the judge's, the ``max_images``/
+        ``max_videos`` gates, the budget's media fit with every drop recorded), and the fit: only the text's
+        content span is cut (the template re-attached, every cut recorded), media tokens reserved whole and
+        never cut. The client cuts nothing else: a model-side change without a config field is a silent
+        change to the vectors.
         """
         prefix = self.config.query_prompt if role is EncodeRole.QUERY else self.config.doc_prompt
-        prepared = tuple(content.with_text_prefix(prefix) for content in contents)
+        prompted = [content.with_text_prefix(prefix) for content in contents]
+        request = self._prepare_request(prompted)
+        fitted, media_tokens = self._fit_media(request)
+        kept, omitted = self._apply_empty_documents(fitted)
+        positions = [index for index in range(len(fitted)) if index not in set(omitted)]
         if self._budget is None:
-            return prepared
-        result = self._fit(
-            [content.text for content in prepared],
-            "query" if role is EncodeRole.QUERY else "document",
-            media_tokens=self._media_tokens(prepared),
+            texts = [content.text for content in kept]
+        elif kept:
+            result = self._fit(
+                [content.text for content in kept],
+                "query" if role is EncodeRole.QUERY else "document",
+                media_tokens=[media_tokens[position] for position in positions],
+            )
+            texts = result.texts
+        else:
+            texts = []
+        return PreparedItems(
+            items=tuple(self._with_text(content, text) for content, text in zip(kept, texts, strict=True)),
+            positions=tuple(positions),
+            omitted=tuple(omitted),
         )
-        return tuple(self._with_text(content, text) for content, text in zip(prepared, result.texts, strict=True))
+
+    def _probe_calls(self, content: Content) -> Sequence[Call]:
+        """The pooling calls one prepared probe item is sent as."""
+        request = PoolRequest(
+            contents=(content,),
+            role=EncodeRole.DOCUMENT,
+            embed_dtype=self.config.embed_dtype,
+            dim=self.config.dim,
+        )
+        return self._adapter.calls(request, model=self.config.model)
+
+    async def probe(self) -> Any:
+        """The role's startup probe: the transport's replica probe, plus -- when the config declares an
+        ``image_processor`` -- the engine media check (one prepared probe image, the engine's prompt-token
+        report compared with the counted ones; never silent)."""
+        probe: Any = await self._sender.probe()
+        await self.check_engine_media()
+        return probe
+
+    def _probe_usage(self, reply: Reply) -> TokenCount | None:
+        """The reply's prompt-token report (the pooling adapter's, ``None`` when it reported none)."""
+        return self._adapter.usage(reply)
 
     async def _encode_batch(self, contents: Sequence[Content], role: EncodeRole) -> Embeddings:
         """One batch: a pooling request through the adapter and the sender, checked for alignment."""
@@ -195,7 +256,7 @@ class PoolingClient(RoleClient):
                 "refusing to return misaligned vectors"
             )
         if self.config.normalize:
-            return embeddings.l2_normalized()
+            embeddings = embeddings.l2_normalized()
         return embeddings
 
 

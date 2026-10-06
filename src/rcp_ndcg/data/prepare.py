@@ -397,6 +397,85 @@ def prepare_request(
     )
 
 
+def media_policies_for(config: Any) -> tuple[ImagePolicy | None, VideoPolicy | None]:
+    """The effective media policies of a role config: the declared image policy under its processor family.
+
+    The one rule every role client applies (``image_policy =
+    config.image_policy.for_processor(config.image_processor)`` when both are declared); a policy without
+    either family cannot be counted, and :func:`prepare_request` (through
+    :func:`~rcp_ndcg.data.resolution.content_media_tokens`) refuses it rather than guessing.
+
+    Args:
+        config: A role config with the media fields (:class:`~rcp_ndcg.inference.config._MediaEndpoint`'s).
+
+    Returns:
+        ``(image_policy, video_policy)`` as the preparation and the token counting use them.
+    """
+    image = getattr(config, "image_policy", None)
+    processor = getattr(config, "image_processor", None)
+    if image is not None and processor is not None:
+        image = image.for_processor(processor)
+    return image, getattr(config, "video_policy", None)
+
+
+def apply_media_fit(contents: Sequence[Content], original: Sequence[PreparedMedia], fit: MediaFit) -> list[Content]:
+    """The contents carrying exactly the media :func:`fit_media_to_budget` decided to send.
+
+    A vision block is atomic: the fit shrinks whole items to the policy minimum and drops whole items (most
+    expensive first, every drop recorded by the caller). This applies its decision to the prepared contents
+    -- a kept item's part carries the shrunk reference (``item.sent``), a dropped item's part leaves the
+    content. A content that loses every part it had becomes the empty content, which the caller's
+    ``empty_doc`` policy then handles like any empty document.
+
+    Args:
+        contents: The prepared contents (:func:`prepare_request` returned them).
+        original: The request's prepared media in part order (``PreparedRequest.media``): the items the
+            decisions apply to, in the order their parts appear.
+        fit: The budget's decision (:func:`fit_media_to_budget` returned it).
+
+    Returns:
+        One content per input, in order, with the sent media in place and the dropped media removed.
+
+    Raises:
+        DataError: a decision cannot be matched to the prepared parts (a different request's fit).
+    """
+    decisions: dict[str, MediaRef | None] = {}
+    kept_by_source = {item.source.uri: item.sent for item in fit.media}
+    for item in original:
+        decisions[item.sent.uri] = kept_by_source.get(item.source.uri)  # None: the item was dropped
+    kept: list[Content] = []
+    matched: set[str] = set()
+    for content in contents:
+        parts: list[Any] = []
+        for part in content.parts:
+            refs = [ref for ref in part.media_refs()]
+            relevant = [ref for ref in refs if ref.uri in decisions]
+            if not relevant:
+                parts.append(part)
+                continue
+            matched.update(ref.uri for ref in relevant)
+            if isinstance(part, VideoPart) and part.frames:
+                kept_frames = [ref for ref in part.frames if decisions.get(ref.uri) is not None]
+                if kept_frames:
+                    parts.append(part.model_copy(update={"frames": kept_frames}))
+                continue
+            if isinstance(part, ImagePart):
+                replacement = decisions.get(part.ref.uri)
+                if replacement is not None:
+                    parts.append(part.model_copy(update={"ref": replacement}))
+                continue
+            parts.append(part)
+        kept.append(Content.from_parts(parts))
+    missing = set(decisions) - matched
+    if missing:
+        raise DataError(
+            f"{len(missing)} prepared media item(s) match no part of the request's contents "
+            f"(first: {sorted(missing)[0]})",
+            hint="apply_media_fit is called with the media :func:`prepare_request` prepared for these contents",
+        )
+    return kept
+
+
 class MediaCensus:
     """Every media item a judgement store's passes sent, once per ``(corpus, document, source)``.
 
@@ -434,6 +513,8 @@ class MediaCensus:
 
 __all__ = [
     "DEFAULT_IMAGE_MIME",
+    "apply_media_fit",
+    "media_policies_for",
     "IMAGE_CACHE_SIZE",
     "MEDIA_MECHANISM",
     "MediaCensus",

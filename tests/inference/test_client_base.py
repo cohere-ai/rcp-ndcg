@@ -415,3 +415,83 @@ def _null_transport() -> Any:
     import httpx
 
     return httpx.MockTransport(lambda request: httpx.Response(500, json={}))
+
+
+class TestUseActivationOnTheAdapter:
+    """F10 keyed on the resolved adapter's HOSTED flag (the operator's decision): a served third-party
+    rerank wire also needs an explicit ``use_activation``; hosted profiles keep ``None``."""
+
+    def test_a_served_third_party_rerank_adapter_refuses_an_unset_use_activation(self) -> None:
+        from rcp_ndcg.inference import adapters as registry
+        from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
+        from tests.conftest import SESSION_TOKENIZER
+
+        class _ServedThirdParty:
+            name = "served_third_party_rerank"
+            role: ClassVar[AdapterRole] = "rerank"
+            HOSTED = False
+            DEFAULT_BASE_URL = None
+            API_KEY_ENV = ()
+            KEY_REQUIRED = False
+            AUTH_HEADER = None
+
+            def calls(self, request: Any, *, model: str) -> list[Call]:
+                return []
+
+            def interpret(self, request: Any, replies: list[Reply]) -> Any:
+                return None
+
+            def usage(self, reply: Reply) -> None:
+                return None
+
+        saved = dict(registry.base._BUILTINS)
+        register_adapter(_ServedThirdParty)  # type: ignore[arg-type]
+        try:
+            with pytest.raises(ConfigError, match="use_activation"):
+                RerankClient(
+                    RerankEndpoint(
+                        api="served_third_party_rerank",
+                        base_url="http://h:8000/v1",
+                        model="m",
+                        tokenizer=str(SESSION_TOKENIZER),
+                        max_tokens=8192,
+                    ),
+                    sender=RecordingSender(),
+                )
+        finally:
+            registry.base._BUILTINS.clear()
+            registry.base._BUILTINS.update(saved)
+
+    def test_a_hosted_third_party_rerank_adapter_keeps_none(self) -> None:
+        from rcp_ndcg.inference import adapters as registry
+        from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
+
+        class _HostedThirdParty:
+            name = "hosted_third_party_rerank"
+            role: ClassVar[AdapterRole] = "rerank"
+            HOSTED = True
+            DEFAULT_BASE_URL = "https://vendor.example/v1"
+            API_KEY_ENV = ("VENDOR_API_KEY",)
+            KEY_REQUIRED = True
+            AUTH_HEADER = None
+
+            def __init__(self, config: Any) -> None:
+                self.config = config
+
+            def calls(self, request: Any, *, model: str) -> list[Call]:
+                return []
+
+            def interpret(self, request: Any, replies: list[Reply]) -> Any:
+                return None
+
+            def usage(self, reply: Reply) -> None:
+                return None
+
+        saved = dict(registry.base._BUILTINS)
+        register_adapter(_HostedThirdParty)  # type: ignore[arg-type]
+        try:
+            client = RerankClient(RerankEndpoint(api="hosted_third_party_rerank", model="m"), sender=RecordingSender())
+            client.close()
+        finally:
+            registry.base._BUILTINS.clear()
+            registry.base._BUILTINS.update(saved)
