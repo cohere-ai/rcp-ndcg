@@ -162,9 +162,9 @@ def score_rows(rows: list[dict], tokenizer_spec: str, device: str) -> list[list[
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    recipe = json.loads((Path(__file__).resolve().parent / "recipe.yaml").read_text(encoding="utf-8"))
-    revision = str(recipe["revision"])
-    repo, _ = _repo_and_revision(tokenizer_spec)
+    # The tokenizer spec is the recipe's <repo>@<revision>; the checkpoint loads from the same
+    # repo at the same revision (the paper code's model_name_or_path + revision constructor args).
+    repo, revision = _repo_and_revision(tokenizer_spec)
     tokenizer = AutoTokenizer.from_pretrained(repo, padding_side="left", revision=revision)
     token_false_id = tokenizer.convert_tokens_to_ids("no")
     token_true_id = tokenizer.convert_tokens_to_ids("yes")

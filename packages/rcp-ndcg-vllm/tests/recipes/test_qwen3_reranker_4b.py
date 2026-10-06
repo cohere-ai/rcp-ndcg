@@ -156,6 +156,74 @@ def test_over_length_pairs_keep_the_suffix_anchor_ids(tmp_path: Path, recipe, qw
     assert qwen_tokenizer.ids(result.texts[0])[0] == 151644
 
 
+def test_score_mode_setup_parses_and_reaches_the_model_load(recipe) -> None:
+    """Score mode (stage 2) gets past its setup on CPU: with torch and transformers stubbed and an
+    empty pairs list, ``score_rows`` returns without parsing anything as JSON. Failing test first:
+    on the unfixed reference this died parsing the YAML recipe with json.loads, which stage 1's
+    render-only suite never executes."""
+    import importlib.util
+    import types
+
+    class _StubTokenizer:
+        """The parts of the paper's AutoTokenizer the setup path calls before any row is scored."""
+
+        def convert_tokens_to_ids(self, token: str) -> int:
+            return {"no": 2152, "yes": 9693}[token]
+
+        def encode(self, text: str, add_special_tokens: bool = False) -> list[int]:
+            return [1, 2]
+
+    class _StubModel:
+        def eval(self):
+            return self
+
+        def to(self, device):
+            return self
+
+    class _StubAutoTokenizer:
+        @staticmethod
+        def from_pretrained(*args, **kwargs):
+            return _StubTokenizer()
+
+    class _StubAutoModel:
+        @staticmethod
+        def from_pretrained(*args, **kwargs):
+            return _StubModel()
+
+    torch_stub = types.ModuleType("torch")
+    torch_stub.bfloat16 = "bfloat16"
+    cuda_stub = types.ModuleType("torch.cuda")
+
+    class _OutOfMemory(RuntimeError):
+        """The stubbed torch.cuda.OutOfMemoryError the score path catches."""
+
+    class _NullContext:
+        """The stubbed torch.no_grad()."""
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    cuda_stub.OutOfMemoryError = _OutOfMemory
+    torch_stub.cuda = cuda_stub
+    torch_stub.no_grad = _NullContext
+    transformers_stub = types.ModuleType("transformers")
+    transformers_stub.AutoTokenizer = _StubAutoTokenizer
+    transformers_stub.AutoModelForCausalLM = _StubAutoModel
+    monkey = pytest.MonkeyPatch()
+    try:
+        monkey.setitem(sys.modules, "torch", torch_stub)
+        monkey.setitem(sys.modules, "transformers", transformers_stub)
+        spec = importlib.util.spec_from_file_location("qwen3_reranker_4b_reference", RECIPE_DIR / "reference.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        assert module.score_rows([], f"Qwen/Qwen3-Reranker-4B@{REVISION}", "cpu") == []
+    finally:
+        monkey.undo()
+
+
 def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_red(
     tmp_path: Path, recipe, qwen_tokenizer
 ) -> None:
