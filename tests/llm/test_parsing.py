@@ -18,7 +18,7 @@ import pytest
 from pydantic import ValidationError
 from rcp_ndcg_core.schemas import Judgement, Placement
 
-from rcp_ndcg.llm._parsing.common import PARSE_VERSION, MAX_ESCAPE_REPAIRS, UnparseableAnswer, decode_answer
+from rcp_ndcg.llm._parsing.common import MAX_ESCAPE_REPAIRS, PARSE_VERSION, UnparseableAnswer, decode_answer
 from rcp_ndcg.llm._parsing.listwise import judgement_comparisons, parse_calibrated_listwise, window_comparisons
 from rcp_ndcg.llm._parsing.rubric import parse_rubric_criteria
 from rcp_ndcg.llm._parsing.schema import answer_schema, response_format
