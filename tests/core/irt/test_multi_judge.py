@@ -153,6 +153,17 @@ class TestJudgeOverlap:
         assert report["overlap_ok"] is True
         assert report["pairs"]["a|b"] == 10
 
+    def test_judges_sharing_exactly_one_item_pass_the_default_check(self) -> None:
+        """The shipped default threshold is ``MIN_SHARED_ITEMS = 1``: two judges sharing exactly one
+        ``(query, doc)`` item are pooled, not refused."""
+        cal = Tournament2PLCalibrator(num_criteria=5)
+        cal.add_observation("q1", "d0", 0.5, _ROW, judge_id="a")
+        cal.add_observation("q1", "d0", -0.5, _ROW, judge_id="b")  # the one shared item
+        cal.add_observation("q2", "d1", -0.5, _ROW, judge_id="b")
+        report = cal.check_judge_overlap()
+        assert report["min_shared"] == 1
+        assert report["overlap_ok"] is True and report["pairs"]["a|b"] == 1
+
     def test_overlap_checkable_before_finalize(self) -> None:
         cal = Tournament2PLCalibrator(num_criteria=5)
         cal.add_observation("q1", "d0", 0.5, _ROW, judge_id="a")

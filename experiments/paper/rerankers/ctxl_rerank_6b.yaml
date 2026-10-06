@@ -1,5 +1,20 @@
-# ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
-# `rcp-ndcg retrieval rerank --reranker <this file>`. Runs in process (the [local] extra); the model family is picked from the model id.
-provider: local
-model: ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b
-batch_size: 8
+# ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b, served: a reranker config
+# (rcp_ndcg.retrieval.RerankerConfig) for `rcp-ndcg retrieval rerank --reranker <this file>`.
+# Served by recipe `ctxl-rerank-v2-instruct-multilingual-6b` (the classifier_from_token "<unk>"
+# (token id 0), raw-logit pooler and score template of packages/rcp-ndcg-vllm; reference:
+# experiments/paper/rerankers/reference/contextual.py). `base_url` is the placeholder the runner's
+# engines overlay (serve.reranker) replaces; `model` is the --served-model-name. Serve it with
+# tokenizer-mode auto (never mistral: the cross-encoder processor refuses the mistral tokenizer).
+# Budgets are the paper's: the 8192-token pair budget as the paper code sets it (load_external_model
+# passed MAX_SEQ_LENGTH over the 32768 default), queries capped at 4096; the release's in-process
+# path passed the bare query, hence `instruction: none`.
+api: rerank
+base_url: http://127.0.0.1:8000/v1
+model: ctxl-rerank-v2-instruct-multilingual-6b
+revision: f14ca1a2fc204dc0934c84a3d2e278f8ff646b80
+recipe: ctxl-rerank-v2-instruct-multilingual-6b
+tokenizer: ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b@f14ca1a2fc204dc0934c84a3d2e278f8ff646b80
+max_tokens: 8192
+query_max_tokens: 4096
+instruction: none
+use_activation: false  # the raw logit is stored -- the paper reference (reference/contextual.py) reads it as is

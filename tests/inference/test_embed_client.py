@@ -11,6 +11,7 @@ import asyncio
 from collections.abc import Callable
 from typing import Any, ClassVar
 
+import httpx
 import numpy as np
 import pytest
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef
@@ -19,7 +20,7 @@ from rcp_ndcg.errors import CapabilityError, ConfigError, CredentialsError, Requ
 from rcp_ndcg.inference import EmbeddingClient, EncodeRole
 from rcp_ndcg.inference.types import Call, Embeddings, Reply
 from tests._tokenizers import byte_bpe_tokenizer, save, word_tokenizer
-from tests.inference._embed import FakeSender, openai_data, vendor_payload
+from tests.inference._embed import FakeSender, embeddings_data, vendor_payload
 
 #: Every profile under its registered api name.
 APIS = ("openai_embeddings", "cohere", "voyage", "gemini")
@@ -62,7 +63,7 @@ def handler(api: str, values: dict[str, float], *, shuffle: bool = False) -> Cal
         batch = input_texts(api, call)
         vectors = [[values.get(text, 1.0), 1.0] for text in batch]
         if shuffle and api in ("openai_embeddings", "voyage"):
-            body = openai_data(vectors, indices=list(reversed(range(len(vectors)))))
+            body = embeddings_data(vectors, indices=list(reversed(range(len(vectors)))))
         else:
             body = vendor_payload(api, vectors)
         return Reply(200, body, {})
@@ -145,7 +146,7 @@ class TestContentDecisions:
         assert sender.calls == []
 
     def test_empty_input_needs_no_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """An empty call makes no request, so a missing key must not fail it (api_dense's behaviour)."""
+        """An empty call makes no request, so a missing key must not fail it (the hosted path's behaviour)."""
         monkeypatch.delenv("CO_API_KEY", raising=False)
         monkeypatch.delenv("COHERE_API_KEY", raising=False)
         client = EmbeddingClient(endpoint("cohere"), sender=FakeSender(handler("cohere", {})))
@@ -267,9 +268,11 @@ class TestSyncBridge:
 
 
 class TestConstruction:
-    def test_max_tokens_is_refused_until_the_text_budget_mechanism_is_wired(self) -> None:
-        with pytest.raises(ConfigError, match=r"max_tokens needs the text-budget mechanism, which is not wired yet"):
-            EmbeddingClient(endpoint(max_tokens=8192), sender=FakeSender(handler("openai_embeddings", {})))
+    def test_max_tokens_is_the_budget_the_client_fits_to(self) -> None:
+        """The text-budget mechanism is wired: a declared budget cuts the content (tests/inference/
+        test_client_budget.py pins the cuts, the census and the re-attached template); a client is built."""
+        client = EmbeddingClient(endpoint(max_tokens=8192), sender=FakeSender(handler("openai_embeddings", {})))
+        assert client.config.max_tokens == 8192
 
     @pytest.mark.parametrize("api", ("cohere", "voyage", "gemini"))
     def test_a_hosted_config_refuses_a_dimensions_cut(self, api: str) -> None:
@@ -279,11 +282,12 @@ class TestConstruction:
             EmbeddingClient(endpoint(api, dimensions=256), sender=FakeSender(handler(api, {})))
 
     def test_an_explicit_api_key_env_that_is_unset_is_an_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The config names the variable: the transport refuses an unset one, before anything is queued."""
+        from rcp_ndcg.inference.transport import Transport
+
         monkeypatch.delenv("MISSING_KEY_ENV", raising=False)
-        client = EmbeddingClient(
-            endpoint(base_url="http://127.0.0.1:8000/v1", api_key_env="MISSING_KEY_ENV"),
-            sender=FakeSender(handler("openai_embeddings", {})),
-        )
+        config = endpoint(base_url="http://127.0.0.1:8000/v1", api_key_env="MISSING_KEY_ENV")
+        client = EmbeddingClient(config, sender=Transport(config, httpx_transport=_null_httpx()))
 
         with pytest.raises(CredentialsError, match="MISSING_KEY_ENV"):
             client.encode(texts("x"), EncodeRole.DOCUMENT)
@@ -349,16 +353,25 @@ class TestEndpoints:
 
         assert client.endpoint.base_url == "http://127.0.0.1:8000/v1"
 
-    def test_the_transport_sees_no_api_key_env(self) -> None:
-        client = EmbeddingClient(
-            endpoint(api_key_env="MY_KEY_ENV"), sender=FakeSender(handler("openai_embeddings", {}))
-        )
+    def test_the_transport_sees_the_api_key_env(self) -> None:
+        """The key decision is the transport's (R6): the config's variable reaches it un-cleared, and the
+        client points an injected transport at the profile's facts."""
+        from rcp_ndcg.inference.transport import Transport
+
+        config = endpoint(api_key_env="MY_KEY_ENV", base_url="http://127.0.0.1:9000/v1")
+        client = EmbeddingClient(config, sender=Transport(config, httpx_transport=_null_httpx()))
 
         assert client.config.api_key_env == "MY_KEY_ENV"
-        assert client.endpoint.api_key_env is None
+        assert client.endpoint.api_key_env == "MY_KEY_ENV"
+        # the profile carries the config's named variable (an unset named one is an error), not the profile's
+        assert client._sender._auth.variables == ("MY_KEY_ENV",)
+        assert client._sender._auth.required is True
 
 
 class TestCredentials:
+    """The key is the transport's decision now (R6): the client resolves nothing. The per-profile header
+    tests live with the transport (tests/inference/test_transport.py::TestAdapterAuth); here the refusals."""
+
     def test_an_empty_api_key_env_is_a_config_error(self) -> None:
         """An empty variable name would silently send no header; the endpoint config refuses it."""
         from pydantic import ValidationError
@@ -367,9 +380,13 @@ class TestCredentials:
             endpoint(api_key_env="")
 
     def test_a_hosted_profile_without_a_key_names_its_variables(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Through a real transport: a missing required key is refused before anything is queued."""
+        from rcp_ndcg.inference.transport import Transport
+
         monkeypatch.delenv("CO_API_KEY", raising=False)
         monkeypatch.delenv("COHERE_API_KEY", raising=False)
-        client = EmbeddingClient(endpoint("cohere"), sender=FakeSender(handler("cohere", {})))
+        config = endpoint("cohere", base_url="http://127.0.0.1:9000/v1")
+        client = EmbeddingClient(config, sender=Transport(config, httpx_transport=_null_httpx()))
 
         with pytest.raises(CredentialsError) as caught:
             client.encode(texts("x"), EncodeRole.DOCUMENT)
@@ -377,38 +394,30 @@ class TestCredentials:
         assert "CO_API_KEY" in (caught.value.hint or "")
         assert "COHERE_API_KEY" in (caught.value.hint or "")
 
-    def test_a_local_engine_sends_no_authorization_without_a_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        sender = FakeSender(handler("openai_embeddings", {}))
-        client = EmbeddingClient(endpoint(base_url="http://127.0.0.1:8000/v1"), sender=sender)
+    def test_the_transport_sends_the_profile_header(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """One header per profile, resolved by the transport from the profile's own variables."""
+        import httpx
 
-        client.encode(texts("x"), EncodeRole.DOCUMENT)
+        from rcp_ndcg.inference.transport import Transport
 
-        assert "Authorization" not in sender.calls[0].headers
+        monkeypatch.setenv("CO_API_KEY", "test-fake-cohere")
+        seen: list[httpx.Request] = []
 
-    @pytest.mark.parametrize(
-        ("api", "header", "value"),
-        [
-            ("openai_embeddings", "Authorization", "Bearer test-openai_api_key"),
-            ("voyage", "Authorization", "Bearer test-voyage_api_key"),
-            ("gemini", "x-goog-api-key", "test-gemini_api_key"),
-        ],
-    )
-    def test_the_key_goes_in_the_profile_header(self, api: str, header: str, value: str) -> None:
-        sender = FakeSender(handler(api, {}))
+        def answer(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(200, json={"embeddings": {"float": [[1.0, 1.0]]}})
 
-        EmbeddingClient(endpoint(api), sender=sender).encode(texts("x"), EncodeRole.DOCUMENT)
+        config = endpoint("cohere", base_url="http://127.0.0.1:9000/v1")
+        EmbeddingClient(config, sender=Transport(config, httpx_transport=httpx.MockTransport(answer))).encode(
+            texts("x"), EncodeRole.DOCUMENT
+        )
 
-        assert sender.calls[0].headers[header] == value
+        assert seen[0].headers["Authorization"] == "Bearer test-fake-cohere"
 
-    def test_the_config_api_key_env_overrides_the_profile(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("MY_KEY_ENV", "key-from-config")
-        sender = FakeSender(handler("cohere", {}))
-        client = EmbeddingClient(endpoint("cohere", api_key_env="MY_KEY_ENV"), sender=sender)
 
-        client.encode(texts("x"), EncodeRole.DOCUMENT)
-
-        assert sender.calls[0].headers["Authorization"] == "Bearer key-from-config"
+def _null_httpx() -> httpx.AsyncBaseTransport:
+    """A mock endpoint that answers nothing useful; credentials fail before anything is queued."""
+    return httpx.MockTransport(lambda request: httpx.Response(500, json={}))
 
 
 class TestTokenizerIdentity:
@@ -431,4 +440,4 @@ class TestTokenizerIdentity:
         assert same != endpoint(tokenizer=str(other)).identity_extra()  # different bytes
 
     def test_no_tokenizer_no_extra_identity(self) -> None:
-        assert endpoint().identity_extra() == {}
+        assert endpoint("cohere").identity_extra() == {}  # a hosted profile declares none

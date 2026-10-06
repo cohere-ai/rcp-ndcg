@@ -21,11 +21,16 @@ def _reported_variables() -> set[str]:
 
 
 def test_doctor_reports_the_variables_the_shipped_configs_read() -> None:
-    from rcp_ndcg.retrieval.api_dense import VENDORS
+    from rcp_ndcg.inference.adapters.embeddings import (
+        CohereEmbeddings,
+        GeminiEmbeddings,
+        OpenAIEmbeddings,
+        VoyageEmbeddings,
+    )
 
     shipped = [*ROOT.joinpath("configs").rglob("*.yaml"), *ROOT.joinpath("src/rcp_ndcg/llm/judges").glob("*.yaml")]
     read = {m for path in shipped for m in re.findall(r"api_key_env:\s*([A-Z_]+)", path.read_text(encoding="utf-8"))}
-    read |= {vendor.api_key_env[0] for vendor in VENDORS.values()}
+    read |= {cls.API_KEY_ENV[0] for cls in (OpenAIEmbeddings, CohereEmbeddings, VoyageEmbeddings, GeminiEmbeddings)}
     assert "CO_API_KEY" in read
     reported = _reported_variables()
     assert read <= reported, read - reported
@@ -33,7 +38,7 @@ def test_doctor_reports_the_variables_the_shipped_configs_read() -> None:
 
 
 def test_doctor_checks_every_module_the_error_map_names_under_its_extra() -> None:
-    """doctor kept its own extras table: it lacked vllm, and proved [hf] without tokenizers."""
+    """doctor builds its extras table from the one map, and the served-only package carries no engine extra."""
     from rcp_ndcg.cli.doctor import _EXTRAS
     from rcp_ndcg.errors import EXTRA_FOR_MODULE
 
@@ -41,4 +46,4 @@ def test_doctor_checks_every_module_the_error_map_names_under_its_extra() -> Non
         EXTRA_FOR_MODULE.items()
     )
     assert set(_EXTRAS["hf"]) == {"huggingface_hub", "tokenizers"}
-    assert "vllm" in _EXTRAS and "sglang" not in EXTRA_FOR_MODULE
+    assert "vllm" not in _EXTRAS and "sglang" not in EXTRA_FOR_MODULE

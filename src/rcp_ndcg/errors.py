@@ -265,6 +265,7 @@ WarningCode = Literal[
     "APPROXIMATE_IMAGE_TOKENS",
     "BT_L2_MISMATCH",
     "INVALID_WINDOWS",
+    "SNAPSHOT_LISTING",
     "UNCALIBRATED_DOCUMENTS",
     "UNPINNED_REVISION",
     "UNREADABLE_RUN",
@@ -302,8 +303,6 @@ class RcpNdcgWarning(UserWarning):
 #: between a fixable situation and an apparent crash.
 EXTRA_FOR_MODULE: dict[str, str] = {
     "torch": "calibrate",
-    "accelerate": "local",
-    "transformers": "local",
     "mteb": "mteb",
     "datasets": "data",
     "pypdfium2": "data",
@@ -312,7 +311,6 @@ EXTRA_FOR_MODULE: dict[str, str] = {
     "s3fs": "s3",
     "adlfs": "azure",
     "aiohttp": "http",
-    "vllm": "vllm",
 }
 
 _INSTALL_MARKER = "rcp-ndcg["

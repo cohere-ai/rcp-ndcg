@@ -104,13 +104,18 @@ vector per prompt token, so the decoded token counts must sum to
 
 ## What the client decides about content
 
-A `PoolingClient` owns the content decisions the config states, and nothing else:
+A `PoolingClient` owns the content decisions the config states, and nothing else, on the shared client base
+(`rcp_ndcg.inference.clients.RoleClient` -- the adapter lookup, the transport or an injected `Sender` with the
+sync bridge, `close()`/`await aclose()`, and the fan-out under one `asyncio.TaskGroup`):
 
-* the role's prompt (`query_prompt`/`doc_prompt`) is prepended by `_prepare`,
-  the one seam the text budget will join. Until that mechanism is wired the
-  client cuts nothing and sends every content as given — a config that sets
-  `max_tokens` is refused (`ConfigError`), because a budget silently ignored
-  would change the vectors;
+* the role's prompt (`query_prompt`/`doc_prompt`) is prepended by `_prepare`, and then -- when the config
+  declares a budget (`tokenizer` + `max_tokens`, explicit for a self-hosted role) -- every item's text is
+  fitted through the one text-budget mechanism: only the content span is cut, the template re-attached with
+  its anchor, every cut recorded in the census. A config without `max_tokens` sends every item whole. Media
+  items keep their parts beside the fitted text; a config with `dim` unset is refused at construction (the
+  base64 frame needs the width -- a refusal at construction keeps the GPU idle-time free), and so is
+  `on_overflow: chunk` (chunks pool scores by max, and token vectors have none to pool -- a
+  late-interaction document is chunked at the corpus layer, one slice per chunk in the index);
 * `normalize` (the default) L2-normalises every token vector, in float32,
   stored back in the transfer dtype;
 * `batch_size` items per request, at most `concurrency` requests in flight,

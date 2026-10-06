@@ -13,10 +13,13 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from importlib.metadata import entry_points
-from typing import Any, ClassVar, Literal, Protocol, TypeVar, runtime_checkable
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol, TypeVar, runtime_checkable
 
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference.types import Call, Reply, TokenCount
+
+if TYPE_CHECKING:
+    from rcp_ndcg.support.serve import EngineRole
 
 #: The entry-point group a third-party adapter registers in
 #: (``[project.entry-points."rcp_ndcg.adapters"]``, e.g. ``embed.bedrock = "pkg.module:BedrockEmbed"``).
@@ -27,6 +30,19 @@ AdapterRole = Literal["judge", "embed", "rerank", "multi_vector"]
 
 #: Every role an adapter may serve, in the registry's and the entry-point group's namespace.
 ROLES: tuple[str, ...] = ("judge", "embed", "rerank", "multi_vector")
+
+#: The one written mapping between the two role vocabularies (F7): the adapter roles an engine of each
+#: :data:`~rcp_ndcg.support.serve.EngineRole` speaks. An ``encoder`` engine serves either wire of the
+#: retrieval configs (a dense checkpoint speaks an ``embed`` adapter, a late-interaction checkpoint a
+#: ``multi_vector`` one); a ``reranker`` engine speaks a ``rerank`` adapter; a ``judge`` engine a ``judge``
+#: one. Written here -- the layering allows ``inference`` to import ``support``, never the reverse -- so
+#: nothing else re-derives it, and :func:`check_engine_api` refuses a config whose ``api`` selects an
+#: adapter of a different engine role where the runners and the run config resolve engines.
+ENGINE_ADAPTER_ROLES: dict[EngineRole, frozenset[AdapterRole]] = {
+    "judge": frozenset({"judge"}),
+    "encoder": frozenset({"embed", "multi_vector"}),
+    "reranker": frozenset({"rerank"}),
+}
 
 Req = TypeVar("Req", contravariant=True)
 """The request type an adapter consumes (a role's request type); contravariant: adapters are called."""
@@ -265,11 +281,67 @@ def get_adapter(name: str, *, role: AdapterRole) -> type[Adapter[Any, Any]]:
     return adapter
 
 
+def adapter_roles_of(engine_role: EngineRole) -> frozenset[AdapterRole]:
+    """The adapter roles an engine of ``engine_role`` speaks (the values of :data:`ENGINE_ADAPTER_ROLES`).
+
+    Raises:
+        ConfigError: ``engine_role`` is not an engine role (``judge``, ``encoder``, ``reranker``).
+    """
+    try:
+        return ENGINE_ADAPTER_ROLES[engine_role]  # type: ignore[index]  # an unknown role is refused below
+    except KeyError:
+        raise ConfigError(
+            f"{engine_role!r} is not an engine role",
+            hint=f"an engine role is one of {', '.join(sorted(ENGINE_ADAPTER_ROLES))}",
+            details={"engine_role": engine_role, "known": sorted(ENGINE_ADAPTER_ROLES)},
+        ) from None
+
+
+def check_engine_api(api: str | None, *, engine_role: EngineRole, where: str) -> None:
+    """Refuse a config whose ``api`` selects no adapter of ``engine_role``'s adapter roles (F7).
+
+    Called where the runners and the run config resolve engines onto configs (the engine overlay), so a
+    config whose ``api`` names an adapter of a different role is refused at resolution time, not at the
+    first request.
+
+    Args:
+        api: The config's ``api`` field; ``None`` (no wire adapter declared -- the retrieval configs' and the
+            judge's today) is not checked.
+        engine_role: The engine role the config is being resolved for.
+        where: What is being resolved, for the error message (``"serve.encoder"``).
+
+    Raises:
+        ConfigError: ``api`` names an adapter, and none of the engine role's adapter roles registers it.
+    """
+    if api is None:
+        return
+    roles = adapter_roles_of(engine_role)
+    for role in sorted(roles):
+        if (role, api) in _BUILTINS or (role, api) in _load_plugins():
+            return
+    registered = (*_BUILTINS, *_load_plugins())
+    elsewhere = sorted({registered_role for registered_role, name in registered if name == api})
+    hint = (
+        f"the {engine_role} role speaks these adapter roles: {', '.join(sorted(roles))}"
+        if elsewhere == []
+        else f"{api!r} is registered for the {', '.join(elsewhere)} role(s), not for the {engine_role} "
+        f"role's adapters ({', '.join(sorted(roles))})"
+    )
+    raise ConfigError(
+        f"{where}: the config's api {api!r} names an adapter outside the {engine_role} engine's roles",
+        hint=hint,
+        details={"api": api, "engine_role": engine_role, "adapter_roles": sorted(roles)},
+    )
+
+
 __all__ = [
     "ADAPTER_ENTRY_POINTS",
+    "ENGINE_ADAPTER_ROLES",
     "Adapter",
     "AdapterRole",
     "ROLES",
+    "adapter_roles_of",
+    "check_engine_api",
     "get_adapter",
     "known_adapters",
     "register_adapter",

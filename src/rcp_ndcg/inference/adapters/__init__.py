@@ -1,9 +1,10 @@
 """The adapter seam: the :class:`Adapter` protocol, its role-scoped registry and the entry-point group (C2).
 
-The shipped adapters register at import of this package, each under its role's namespace: the embed role's OpenAI
-shape and its hosted profiles (:mod:`rcp_ndcg.inference.adapters.embeddings`), the rerank role's Cohere-shaped wire
-and its hosted profiles (:mod:`rcp_ndcg.inference.adapters.rerank`), and the multi-vector role's ``vllm_pooling``
-(:mod:`rcp_ndcg.inference.adapters.pooling`). The judge's ``openai_chat`` arrives with the judge port.
+The shipped adapters register at import of this package, each under its role's namespace: the judge role's
+``openai_chat`` (:mod:`rcp_ndcg.inference.adapters.chat`), the embed role's OpenAI shape and its hosted profiles
+(:mod:`rcp_ndcg.inference.adapters.embeddings`), the rerank role's Cohere-shaped wire and its hosted profiles
+(:mod:`rcp_ndcg.inference.adapters.rerank`), and the multi-vector role's ``vllm_pooling``
+(:mod:`rcp_ndcg.inference.adapters.pooling`).
 """
 
 from rcp_ndcg.inference.adapters.base import (
@@ -15,6 +16,7 @@ from rcp_ndcg.inference.adapters.base import (
     known_adapters,
     register_adapter,
 )
+from rcp_ndcg.inference.adapters.chat import OpenAIChat
 from rcp_ndcg.inference.adapters.pooling import VllmPooling
 from rcp_ndcg.inference.adapters.rerank import (
     CohereRerankAdapter,
@@ -25,6 +27,7 @@ from rcp_ndcg.inference.adapters.rerank import (
 
 __all__ = [
     "ADAPTER_ENTRY_POINTS",
+    "OpenAIChat",
     "ROLES",
     "Adapter",
     "AdapterRole",

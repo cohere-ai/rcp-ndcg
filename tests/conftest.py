@@ -13,6 +13,15 @@ from pathlib import Path
 _SESSION_SCRATCH = Path(tempfile.mkdtemp(prefix="rcp-ndcg-tests-"))
 os.environ.setdefault("RCP_NDCG_CACHE_DIR", str(_SESSION_SCRATCH / "cache"))
 
+#: The session's saved word-level tokenizer, written once at import: the explicit-budget tests declare it
+#: (a self-hosted role config names its tokenizer), and a client that declares a budget loads the file.
+SESSION_TOKENIZER = _SESSION_SCRATCH / "tokenizers" / "word" / "tokenizer.json"
+if not SESSION_TOKENIZER.is_file():
+    SESSION_TOKENIZER.parent.mkdir(parents=True, exist_ok=True)
+    from tests._tokenizers import word_tokenizer
+
+    SESSION_TOKENIZER.write_text(word_tokenizer().backend.to_str(), encoding="utf-8")
+
 import pytest  # noqa: E402
 from rcp_ndcg_core._records import ID, RankingExample  # noqa: E402
 
@@ -60,6 +69,13 @@ def _hub_is_offline_and_empty(
 # ---------------------------------------------------------------------------
 # Sample data
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def tokenizer_json() -> str:
+    """The path of the saved session ``tokenizer.json`` (the word-level test tokenizer), for configs that
+    declare one (the explicit-budget rule), stable across the session so identities compare equal."""
+    return str(SESSION_TOKENIZER)
 
 
 @pytest.fixture()

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.schemas import Judgement, Placement
+from rcp_ndcg_core.schemas import Family, Judgement, Placement
 
 from rcp_ndcg.errors import DataError
 from rcp_ndcg.llm import JudgementStore
@@ -29,6 +29,48 @@ def _window(record_id: str, *, valid: bool = True, response: str | None = "answe
         invalid_category=None if valid else "refused",
         recorded_at=RECORDED_AT,
     )
+
+
+def test_the_store_identity_is_replaced_never_rewritten(tmp_path: Path) -> None:
+    """`run status` reads a running job's store progress while the job claims its stages: the identity file is
+    written through a temp file and renamed (as the run manifest is), so a concurrent reader sees the old or
+    the new file, never the truncated moment."""
+    store = JudgementStore(tmp_path)
+    family = Family(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+    store.claim("tournament", {"a": 1}, family)
+    first = store.identity_path.stat().st_ino
+    store.claim("tournament", {"a": 2}, family, force=True)
+    assert store.identity_path.stat().st_ino != first, "a rewrite in place is caught half-written by a reader"
+
+
+def test_a_claim_racing_a_progress_reader_never_serves_a_partial_identity(tmp_path: Path) -> None:
+    """The race the MCP e2e poll lost: `_judge_progress` reads the store's identity while the job's pass
+    rewrites it; with a big payload the truncated-in-place window is wide, and the reader must never see it."""
+    import threading
+
+    store = JudgementStore(tmp_path)
+    family = Family(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+    sources = {f"{i}": "x" * 200 for i in range(800)}  # a payload big enough to make the window visible
+    store.claim("tournament", {"a": 0}, family, sources=sources)
+    stop = threading.Event()
+    errors: list[BaseException] = []
+
+    def read() -> None:
+        while not stop.is_set():
+            try:
+                store.identities()
+            except Exception as exc:  # noqa: BLE001 -- what run_status would surface to its caller
+                errors.append(exc)
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    try:
+        for i in range(1, 12):
+            store.claim("tournament", {"a": i}, family, force=True, sources=sources)
+    finally:
+        stop.set()
+        reader.join()
+    assert errors == []
 
 
 def test_a_corrupt_record_inside_the_file_is_refused_by_line(tmp_path: Path) -> None:

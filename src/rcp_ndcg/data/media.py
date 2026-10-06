@@ -93,7 +93,14 @@ class MediaResolver:
 
     # -- resolution --------------------------------------------------------
     def bytes_of(self, ref: MediaRef) -> bytes:
-        """The bytes behind *ref*, fetching and caching on first use."""
+        """The bytes behind *ref*, fetching and caching on first use.
+
+        A ``data:`` URI carries its bytes inline (what the preparation inlines): decoded here, never
+        fetched."""
+        if ref.uri.startswith("data:"):
+            header, _, payload = ref.uri.partition(",")
+            if "base64" in header:
+                return base64.b64decode(payload)
         return self.local_path(ref).read_bytes()
 
     def local_path(self, ref: MediaRef) -> Path:
@@ -308,7 +315,7 @@ def _isobmff_header(payload: bytes) -> VideoHeader | None:
 def _atomic_write_bytes(target: Path, payload: bytes) -> None:
     """Publish *payload* at *target* via a temp file in the same directory.
 
-    Concurrent readers -- the N accelerate ranks that all resolve the same
+    Concurrent readers -- the N worker ranks that all resolve the same
     corpus at start-up -- would otherwise observe a half-written image.
     """
     target.parent.mkdir(parents=True, exist_ok=True)
