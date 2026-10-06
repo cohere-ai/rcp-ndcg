@@ -121,9 +121,12 @@ jobs:
           enable-cache: true
       # The package is outside the uv workspace on purpose (the engine image carries vLLM and torch): its own
       # venv, its own editable install, its own pytest. The test extra adds pytest and jinja2; the reference and
-      # metrics extras stay uninstalled (a torch pin would fight the image's; rcp-ndcg is only needed for stage 3).
+      # metrics extras stay uninstalled (a torch pin would fight the image's). The package pins rcp-ndcg, which
+      # the harness drives, so rcp-ndcg and rcp-ndcg-core install from this checkout, never from an index.
       - run: uv venv "$RUNNER_TEMP/vllm-pkg" --python 3.12
-      - run: uv pip install --python "$RUNNER_TEMP/vllm-pkg/bin/python" -e 'packages/rcp-ndcg-vllm[test]'
+      - run: >-
+          uv pip install --python "$RUNNER_TEMP/vllm-pkg/bin/python"
+          -e packages/rcp-ndcg-core -e . -e 'packages/rcp-ndcg-vllm[test]'
       - run: "$RUNNER_TEMP/vllm-pkg/bin/python" -m pytest packages/rcp-ndcg-vllm/tests -q
 
   mteb:
