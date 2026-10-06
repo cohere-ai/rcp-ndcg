@@ -429,7 +429,14 @@ class TestFailAndCut:
 
 
 class TestVendorBudget:
-    def test_content_goes_uncut_and_the_budget_is_recorded_as_vendor(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_content_goes_uncut_and_the_budget_is_recorded_as_vendor(
+        self, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The one-warning-per-(mechanism, corpus) dedup is a process-global set; a shuffled run may have
+        # already warned for this corpus, so the test owns a fresh one.
+        import rcp_ndcg.data.preprocess as preprocess_module
+
+        monkeypatch.setattr(preprocess_module, "_VENDOR_WARNED", set())
         vendor = TextBudget(tokenizer=None, max_tokens=4096)
         census = TextTruncationCensus()
         with caplog.at_level(logging.WARNING, logger="rcp_ndcg.data.preprocess"):

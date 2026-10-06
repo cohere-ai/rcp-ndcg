@@ -144,8 +144,6 @@ class TestAFailedRerun:
         """A step re-run that fails records what THAT attempt did: the previous attempt's inputs, outputs,
         usage and engines describe work this attempt did not do (a record saying ``failed`` while listing
         outputs it never wrote is a lie a reader cannot tell from the truth)."""
-        from rcp_ndcg.storage.artifacts import artifact_ref
-
         manifest = _manifest()
         manifest.start_step("evaluate", identity={"a": 1})
         manifest.finish_step("evaluate", inputs=["in"], outputs=["y.parquet"])
