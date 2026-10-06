@@ -9,8 +9,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.retrieval import topk
-from rcp_ndcg.retrieval.topk import numpy_topk
+from rcp_ndcg.retrieval.topk import numpy_topk, select_topk
 
 
 def _random(rows: int, dim: int, seed: int = 0) -> np.ndarray:
@@ -55,6 +56,36 @@ class TestCorrectness:
 
         assert indices.tolist() == [[0, 1, 2]]
 
+    @pytest.mark.parametrize("tied", [2, 3, 5, 8])
+    def test_a_tie_class_straddling_the_cut_breaks_toward_the_lower_index(self, tied: int) -> None:
+        """One winner plus a tie class competing for the remaining slots: ``argpartition``'s pick among the
+        candidates tied at the k-th score is arbitrary (the sweep's repro dropped index 1 while keeping 2 and
+        3), so the cut itself must resolve the tie by index, as the documented rule says."""
+        docs = np.array([[9.0, 0.0]] + [[5.0, 0.0]] * tied, dtype=np.float32)
+        queries = np.array([[1.0, 0.0]], dtype=np.float32)
+
+        _, indices = numpy_topk(docs, queries, k=3)
+
+        assert indices[0].tolist() == [0, 1, 2]
+
+    def test_a_tie_class_across_blocks_breaks_toward_the_lower_index(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        docs = np.array([[9.0, 0.0], [8.0, 0.0], [5.0, 0.0], [5.0, 0.0], [5.0, 0.0], [5.0, 0.0]], dtype=np.float32)
+        queries = np.array([[1.0, 0.0]], dtype=np.float32)
+        monkeypatch.setattr(topk, "_TILE_BYTES", 1)  # one document per block
+
+        _, indices = numpy_topk(docs, queries, k=5)
+
+        assert indices[0].tolist() == [0, 1, 2, 3, 4]
+
+    def test_select_topk_resolves_a_straddling_tie_by_index(self) -> None:
+        scores = np.array([[5.0, 5.0, 5.0]], dtype=np.float32)
+        indices = np.array([[0, 1, 2]], dtype=np.int64)
+
+        kept_scores, kept_indices = select_topk(scores, indices, 2)
+
+        assert kept_indices[0].tolist() == [0, 1], "three tied candidates for two slots keep the lowest indices"
+        np.testing.assert_allclose(kept_scores[0], [5.0, 5.0])
+
 
 class TestEdgeCases:
     def test_k_larger_than_the_corpus_is_clamped(self) -> None:
@@ -75,9 +106,9 @@ class TestEdgeCases:
         assert scores.shape == (2, 0)
 
     def test_non_positive_k_is_rejected(self) -> None:
-        with pytest.raises(ValueError, match="k must be positive"):
+        with pytest.raises(ConfigError, match="k must be positive"):
             numpy_topk(_random(3, 4), _random(1, 4), k=0)
 
     def test_mismatched_dimensions_are_rejected(self) -> None:
-        with pytest.raises(ValueError, match="aligned 2D matrices"):
+        with pytest.raises(DataError, match="aligned 2D matrices"):
             numpy_topk(_random(3, 4), _random(1, 8), k=1)

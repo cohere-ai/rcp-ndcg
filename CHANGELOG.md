@@ -25,6 +25,10 @@ released together.
 
 ### Public surface
 
+- **The plugin endpoint configs require `api`**: `PluginEmbedding`, `PluginPooling` and `PluginReranker`
+  (constructed directly, a public name) no longer inherit their role's shipped `api` default -- a config
+  without `api` does not build (a "plugin" was silently built around a shipped wire), and a shipped name stays
+  refused in the class. The exported config schemas carry the required field.
 - **`JobSpec` takes exactly one of `argv` and `phases`** (`rcp_ndcg.runners`): a job without phases runs its
   `argv`; a phased job's commands are its phases' `argv`, and it carries no `argv` of its own — both or neither
   are refused with a message naming which. `JobSpec.argv` is optional (`tuple[str, ...] | None`); phased jobs
@@ -552,6 +556,64 @@ released together.
 
 ### Fixed
 
+- **MaxSim no longer corrupts or drops empty items** (`rcp_ndcg.retrieval.maxsim`): the reduceat grouping
+  clamped a trailing empty item's start into the last column/row, which truncated its predecessor's score by
+  one token (a 2-token item next to an empty one scored over all but its last token, on either axis), and a
+  block whose every item was empty was skipped whole, leaking the running `-inf`/`-1` placeholders into the
+  returned `(scores, indices)` whenever `k` reached them. The reduction now runs over the non-empty items'
+  starts and every block scores: an empty document carries its designed sentinel score (finite, strictly below
+  every real one) with a real index, and an empty query scores 0 against every real document, so an all-empty
+  query set comes back as 0.0/real indices instead of no ranking.
+- **The rerank checkpoint key covers the reranker's content and the exact texts**
+  (`rcp_ndcg.retrieval._api._checkpoint_key`): every CONTENT field of the config (model, revision, `api`,
+  recipe, instruction mode, `use_activation`, the budgets), the tokenizer's SHA-256, the query's raw text and
+  instruction, and a digest of the candidate contents -- where it named only the model, revision, historical
+  budget constants and ids, so a rerun after any content change silently resumed stale scores. The record
+  format is unchanged; a checkpoint written before this key existed is scored again, not resumed (nothing is
+  released yet, so no checkpoint in the wild carries the old key).
+- **The gains' keying rule holds for `count_gains` and for mixed styles** (`rcp_ndcg.eval.evaluate`):
+  bare query ids over subsets that share them are refused for `count_gains` as they were for `gains` (they
+  silently scored one subset's query with another subset's document gains); gains that mix
+  `"<subset>/<query_id>"` keys with bare ids for one subset are refused (the prefixed ones won and the
+  bare-keyed queries silently lost their gains and their RCP rows); a query with gains but no qrel row now
+  counts as labelled for a suite's bare-key fallback (the module's labelled-query definition), so its RCP
+  value is scored instead of silently dropped; and gains -- RCP or count -- that match no labelled query are
+  refused, as they were for RCP gains.
+- **The documented tie rule decides the top-k cut as well as the order** (`rcp_ndcg.retrieval.topk.select_topk`):
+  `argpartition`'s pick among the candidates tied at the k-th score was arbitrary, so a tie class straddling
+  the cut could drop a lower-index document in favour of higher-index ones; the cut now resolves that tie class
+  by ascending index, as the documented "ties break toward the lower document index" says, for `numpy_topk` and
+  `maxsim_topk` alike.
+- **Depth is validated where it is used**: `rerank(depth=0)` raised the unrelated "rankings hold 0 systems"
+  and `rerank(depth=-1)` silently kept all but the last candidate (pandas' `head(-n)`); both are refused with
+  `ConfigError` like `search` does, and `Rankings.top` refuses a non-positive `depth` at the root.
+- **A checkpoint record that misses a document is re-scored, not a dead loop**: resuming a record whose score
+  map did not cover its example's candidates failed with a refusal whose hint -- rerun the rerank -- replayed
+  the identical failure on every run, and a non-numeric score value raised a bare `ValueError`; the reader now
+  drops an incomplete or unparseable record (its own record only) and the query is scored again.
+- **`retrieve(out=...)` rebuilds over an `index.json` it cannot read** (an earlier release's shape, or a
+  corrupt one) instead of failing there forever, which is what its own `IdentityError` hint promises.
+- **A cutoff a report never computed is refused everywhere**: `leaderboard(metric, k)` silently returned an
+  all-NaN table and `compare`/`sensitivity` failed with a misleading "share no scored query"; one `DataError`
+  naming the cutoffs the report has now guards `leaderboard`, `compare` and `sensitivity` alike.
+- **`explain`'s deltas exist without RCP gains**: on a qrel-only report `deltas` was silently `[]` although
+  the docstring and the docs promise the gap between every system and the first; the gaps are now computed
+  from the query's qrel grades when it has no RCP gains (the displayed `gain` values stay the RCP ones).
+- **A BM25 corpus with no indexable tokens is a `DataError` with a hint** (every document empty, or only stop
+  words after removal): it crashed inside bm25s with a bare `ValueError: max() iterable argument is empty`;
+  and bm25s' tqdm progress bars no longer print from library code.
+- **`mteb.get_tasks` refuses `names=[]`** (it meant "all subsets") **and a repeated subset name** (it built
+  the task twice); `ndcg_float_scores` raises `DataError` for a query without gains, as its docstring always
+  claimed (the code raised a bare `KeyError`).
+- **`retrieval fuse` fuses per-subset files**: one file per (system, subset), as a per-subset fan-out writes
+  them, fuses each subset from the files that name it instead of failing with "no rankings of dataset" naming
+  the wrong datasets; a ranking with no rows for a subset stays out of that subset's fusion, and no rankings
+  at all is refused before the loop.
+- **A BM25 index directory that cannot be searched is refused by name**: one written in the earlier build's
+  pickle format (loading it would run its code), one without the `meta.json` that names its stemmer, and one
+  whose `meta.json` is unreadable or stemmer-less are all `MissingInputError` with a rebuild hint (the last
+  two were bare file errors).
+
 - `run status`, `run list` and `run show` no longer fail when they read a running job's judgement store while
   the job claims or reports a stage: the store's `identity.json` is written through a temp file and renamed (as
   the run manifest's save is) instead of rewritten in place, so a concurrent reader sees the old or the new
@@ -627,6 +689,18 @@ released together.
   rewritten by the next online one instead of failing it.
 
 ### Changed
+
+- **The BM25 index is persisted in bm25s' own format, never a pickle** (`rcp_ndcg.retrieval.sparse`): the
+  index directory's model is stored with `BM25.save(..., allow_pickle=False)` (npz arrays + JSON parameters)
+  and loaded with `allow_pickle=False` -- the index directory comes from ordinary user paths (`retrieval index
+  --out`, `retrieval search --index`), and unpickling one somebody else wrote would run their code. A directory
+  holding only the earlier build's pickle file is refused with a rebuild hint; indexes built by this build
+  must be rebuilt.
+- **The public retrieval and eval functions refuse their bad inputs with typed errors**: `numpy_topk` and
+  `maxsim_topk` raise `ConfigError` (a non-positive `k`) and `DataError` (a non-multi-vector or mismatched
+  input, a 3-D array into `numpy_topk`) instead of bare `ValueError`; `mteb._hub_text` raises
+  `MissingInputError` instead of `FileNotFoundError`; the mteb task's cross-encoder and `skip_first_result`
+  refusals are `CapabilityError`.
 
 - **One lock for a served-only package**: with the `[local]` and `[vllm]` extras gone, `uv.lock` holds one torch
   (2.14.0, the version the coordinator's extras already resolved, CPU-index compatible) instead of the

@@ -196,12 +196,17 @@ class EvalReport(BaseModel):
         Args:
             metric: The metric.
             k: The cutoff (may be omitted when the report has one).
+
+        Raises:
+            DataError: The report has no such metric, or no ``(metric, k)`` row (the error names the cutoffs
+                it has), so a wrong k never returns an empty table.
         """
         import pandas as pd
 
         k = _one_k(self, k)
         if metric not in self.metrics:
             raise DataError(f"the report has no {metric}; it has {self.metrics}")
+        _refuse_missing_cutoff(self, metric, k)
         cells = {(r.system, r.dataset): r.value for r in self.per_dataset if (r.metric, r.k) == (metric, k)}
         datasets = list(dict.fromkeys(dataset for _, dataset in cells))
         means = {r.system: r.value for r in self.summary if (r.metric, r.k) == (metric, k)}
@@ -259,7 +264,8 @@ def evaluate(
         k: One cutoff or several.
         metrics: Which of ``"rcp_ndcg"``, ``"qrel_ndcg"``, ``"count_ndcg"`` to compute.
         count_gains: The Count-nDCG gains (:func:`rcp_ndcg_core.count_gain` per document), required for
-            ``"count_ndcg"``.
+            ``"count_ndcg"``. Keys are the gains': ``{query_id: {doc_id: gain}}``, or ``"<subset>/<query_id>"``
+            for a suite -- and must be when subsets share query ids.
         systems: The systems to score, in the rankings' order in the report (``None``: every system the rankings
             hold). Use it to score the healthy systems of a file one of whose systems matches nothing of the
             dataset (``--system`` on the command line, repeatable).
@@ -273,9 +279,11 @@ def evaluate(
         ConfigError: Conflicting or unknown arguments, or a ``systems`` name the rankings do not hold (the error
             lists the systems they do).
         DataError: No gains for RCP-nDCG, gains outside ``[0, 1]``, a protocol that needs pools the dataset
-            lacks, rankings (or gains) keyed by bare query ids over subsets that share query ids, or a system's
-            rankings that match nothing of the scored dataset (no row names any of its subsets, or not one
-            ranked document id is in its pools or labels): every score would be 0.
+            lacks, rankings or gains (RCP or count) keyed by bare query ids over subsets that share query ids,
+            gains that mix the ``"<subset>/<query_id>"`` and bare styles for one subset, gains or count gains
+            that match no labelled query, or a system's rankings that match
+            nothing of the scored dataset (no row names any of its subsets, or not one ranked document id is in
+            its pools or labels): every score would be 0.
     """
     ks = sorted({k} if isinstance(k, int) else set(k))
     if not ks or ks[0] <= 0:
@@ -294,8 +302,18 @@ def evaluate(
     selected = _selected_systems(rankings, systems)
 
     rcp_gains, source = _resolve_gains(gains, dataset) if "rcp_ndcg" in metrics else (None, "none")
-    if "count_ndcg" in metrics and count_gains is None:
-        raise DataError("count_ndcg needs count_gains= (the share of passed rubric criteria per document)")
+    if "count_ndcg" in metrics:
+        # The gains are validated where they are scored: a qrel-only run that carries count gains for a later
+        # run reads them as it left them, exactly as gains= on a qrel-only run reads the RCP ones.
+        if count_gains is None:
+            raise DataError("count_ndcg needs count_gains= (the share of passed rubric criteria per document)")
+        _refuse_bare_keys(count_gains, dataset)
+        _refuse_unknown_prefixes(count_gains, dataset)
+        if not any(_gains_for(count_gains, part, dataset) for part in dataset.parts):
+            raise DataError(
+                f"the count gains match no labelled query of {dataset.name!r}",
+                hint="key them by the dataset's query ids (or '<subset>/<query_id>' for a suite)",
+            )
     labels: dict[MetricName, dict[str, Mapping[str, Mapping[str, float]]]] = {}
     for part in dataset.parts:
         if rcp_gains is not None:
@@ -429,6 +447,7 @@ def _resolve_gains(gains: Any, dataset: Dataset) -> tuple[dict[str, Mapping[str,
         elif isinstance(gains, Mapping):
             resolved, source = dict.fromkeys((part.name for part in parts), gains), "gains"
             _refuse_bare_keys(gains, dataset)
+            _refuse_unknown_prefixes(gains, dataset)
         else:
             raise ConfigError(f"gains must be a mapping or have a gains() method, got {type(gains).__name__}")
         if not any(_gains_for(resolved[part.name], part, dataset) for part in parts):
@@ -455,11 +474,34 @@ def _resolve_gains(gains: Any, dataset: Dataset) -> tuple[dict[str, Mapping[str,
 def _gains_for(
     gains: Mapping[str, Mapping[str, float]], part: Dataset, dataset: Dataset
 ) -> dict[str, Mapping[str, float]]:
-    """The gains of one dataset part: keys ``"<part>/<query_id>"``, or bare query ids for a single dataset."""
+    """The gains of one dataset part: keys ``"<part>/<query_id>"``, or bare query ids for a single dataset.
+
+    A part reads either the gains keyed with its own prefix, or the bare-keyed ones -- never a mix of the two
+    styles for one part, which would quietly score the prefixed queries with their gains and the bare-keyed
+    ones without. A bare key is this part's when it labels the query (qrels or released gains -- the module's
+    labelled-query definition, the one :func:`rcp_ndcg.eval.explain` reads too); a dataset scored alone has no
+    subset to disambiguate, so every bare key is its, whatever the qrels say.
+
+    Raises:
+        DataError: The gains mix ``"<part>/<query_id>"`` keys with bare query ids of this part, or a gain
+            falls outside ``[0, 1]``.
+    """
     prefix = f"{part.name}/"
-    out = {key[len(prefix) :]: docs for key, docs in gains.items() if key.startswith(prefix)}
-    if not out:  # bare query ids: all of them for one dataset, the part's own queries for a suite
-        out = {q: docs for q, docs in gains.items() if not dataset.subsets or q in part.qrels}
+    prefixed = {key[len(prefix) :]: docs for key, docs in gains.items() if key.startswith(prefix)}
+    if dataset.subsets:
+        bare = {q: docs for q, docs in gains.items() if q in set(part.qrels) | set(part.gains or {})}
+    else:  # one dataset, no ambiguity: every bare key is its, unlabelled queries included
+        bare = {q: docs for q, docs in gains.items() if not q.startswith(prefix)}
+    if prefixed and bare:
+        first_prefixed = sorted(key for key in gains if key.startswith(prefix))[0]
+        raise DataError(
+            f"the gains of {part.name!r} mix '<subset>/<query_id>' keys with bare query ids (e.g. "
+            f"{first_prefixed!r} and {sorted(bare)[0]!r}): the prefixed ones would win and the "
+            "bare-keyed queries would silently lose their gains",
+            hint="key every gain '<subset>/<query_id>' (a suite's parts may share query ids), or key them all "
+            "by bare query id",
+        )
+    out = prefixed or bare
     for query_id, docs in out.items():
         bad = [d for d, g in docs.items() if not (0.0 <= g <= 1.0)]
         if bad:
@@ -641,6 +683,29 @@ def _refuse_bare_keys(gains: Mapping[str, Any], dataset: Dataset) -> None:
         )
 
 
+def _refuse_unknown_prefixes(gains: Mapping[str, Any], dataset: Dataset) -> None:
+    """Refuse gains keyed ``'<something>/<query_id>'`` where no subset of the suite has that name.
+
+    The mirror of :func:`_refuse_bare_keys`: a typo'd subset name would silently drop that subset's gains
+    from its part (one dataset's rows in the aggregate, no warning, and the gains' bounds unchecked). A key
+    that is a labelled query of some part is a bare id and reads as one, whatever slashes it carries.
+
+    Raises:
+        DataError: Naming the stray keys and the subsets the suite has.
+    """
+    if not dataset.subsets:
+        return
+    prefixes = tuple(f"{part.name}/" for part in dataset.parts)
+    labelled = {q for part in dataset.parts for q in set(part.qrels) | set(part.gains or {})}
+    strays = sorted(key for key in gains if "/" in key and not key.startswith(prefixes) and key not in labelled)
+    if strays:
+        raise DataError(
+            f"the gains are keyed '<{strays[0].split('/', 1)[0]}>/<query_id>' but no subset has that name "
+            f"(e.g. {strays[0]!r}); the subsets are {sorted(prefixes)}",
+            hint="key them '<subset>/<query_id>' with the exact subset names, or by bare query id",
+        )
+
+
 def _score(
     rules: Protocol,
     scores: Mapping[str, float],
@@ -667,6 +732,25 @@ def _score(
         excluded=part.excluded.get(query_id, ()),
         query_id=query_id,
     )
+
+
+def _has_cutoff(report: EvalReport, metric: MetricName, k: int) -> bool:
+    """Whether the report computed ``(metric, k)`` for at least one system."""
+    return any((row.metric, row.k) == (metric, k) for row in report.summary)
+
+
+def _refuse_missing_cutoff(report: EvalReport, metric: MetricName, k: int) -> None:
+    """Refuse a ``(metric, k)`` the report never computed, before a reader gets an empty table from it.
+
+    ``value()`` refuses a missing summary row by name; this is the same refusal for the readers that would
+    otherwise silently return nothing (:meth:`EvalReport.leaderboard`) or fail later with a message about
+    shared queries (:func:`rcp_ndcg.eval.compare`, :func:`rcp_ndcg.eval.sensitivity`).
+
+    Raises:
+        DataError: Naming the metric, the cutoff and the cutoffs the report has.
+    """
+    if not _has_cutoff(report, metric, k):
+        raise DataError(f"the report has no {metric}@{k} for any system; it has cutoffs {report.k}")
 
 
 def _aggregate(

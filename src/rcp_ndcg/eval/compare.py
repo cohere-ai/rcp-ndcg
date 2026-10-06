@@ -24,7 +24,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from rcp_ndcg_core.protocol import MetricName
 
 from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.eval.evaluate import EvalReport, _aggregate_values, _one_k, bootstrap_interval
+from rcp_ndcg.eval.evaluate import (
+    EvalReport,
+    _aggregate_values,
+    _has_cutoff,
+    _one_k,
+    _refuse_missing_cutoff,
+    bootstrap_interval,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -142,7 +149,8 @@ def compare(
 
     Raises:
         ConfigError: The baseline or a named system is not in the report (or not among ``systems``).
-        DataError: Fewer than two systems to compare.
+        DataError: Fewer than two systems to compare, or a ``(metric, k)`` the report never computed (the
+            error names the cutoffs it has).
     """
     k = _one_k(report, k)
     values = _values(report, metric, k)
@@ -162,7 +170,9 @@ def compare(
         else list(itertools.combinations(compared, 2))
     )
     other = "qrel_ndcg" if metric == "rcp_ndcg" else "rcp_ndcg" if metric == "qrel_ndcg" else None
-    other_values = _values(report, other, k) if other in report.metrics else None
+    # The sign flips are a bonus: a metric the report lists that has no values at this cutoff (it matched no
+    # labelled query) drops out of them, where the requested metric above is refused.
+    other_values = _values(report, other, k) if other is not None and _has_cutoff(report, other, k) else None
     return Comparison(
         metric=metric,
         k=k,
@@ -196,7 +206,8 @@ def sensitivity(
         The mean over datasets of the separated share of (dataset, system pair) comparisons, in ``[0, 1]``.
 
     Raises:
-        DataError: fewer than two systems, or no dataset where a pair shares two queries.
+        DataError: fewer than two systems, no dataset where a pair shares two queries, or a ``(metric, k)``
+            the report never computed (the error names the cutoffs it has).
     """
     k = _one_k(report, k)
     values = _values(report, metric, k)
@@ -229,6 +240,7 @@ Values = dict[str, dict[str, dict[str, float]]]
 def _values(report: EvalReport, metric: str, k: int) -> Values:
     if metric not in report.metrics:
         raise DataError(f"the report has no {metric}; it has {report.metrics}")
+    _refuse_missing_cutoff(report, metric, k)  # without it, a wrong k read as 'share no scored query' below
     out: Values = {}
     for row in report.per_query:
         if row.metric == metric and row.k == k and row.value is not None:

@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from rcp_ndcg import storage
-from rcp_ndcg.errors import DataError, MissingInputError
+from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -298,7 +298,14 @@ class Rankings:
         return key
 
     def top(self, depth: int) -> Rankings:
-        """The ``depth`` best-scored documents of every query (ties broken by document id, descending)."""
+        """The ``depth`` best-scored documents of every query (ties broken by document id, descending).
+
+        Raises:
+            ConfigError: ``depth`` is not positive: zero would return an empty table, and a negative one would
+                silently keep all but the last ``|depth|`` rows (pandas' ``head`` semantics).
+        """
+        if depth <= 0:
+            raise ConfigError(f"depth must be positive, got {depth}")
         ordered = self._table.sort_values(["score", "doc_id"], ascending=False, kind="mergesort")
         kept = ordered.groupby(["system", "dataset", "query_id"], sort=False).head(depth)
         return Rankings(kept.sort_index())

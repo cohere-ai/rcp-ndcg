@@ -1930,7 +1930,7 @@
     },
     "PluginEmbedding": {
       "additionalProperties": false,
-      "description": "A third-party embed wire: ``api`` names a registered adapter of the embed role that is not a shipped\none, and the role's generic config carries it (the shipped names select their own classes).\n\nThe registry check happens where the config is read (_resolve_embed_api); this class is the shape a\nregistered plugin name builds, every field inherited from\nEmbeddingEndpoint. A shipped ``api`` is refused here, so it always\nselects its own class.",
+      "description": "A third-party embed wire: ``api`` names a registered adapter of the embed role that is not a shipped\none, and the role's generic config carries it (the shipped names select their own classes).\n\nThe registry check happens where the config is read (_resolve_embed_api); this class is the shape a\nregistered plugin name builds, every other field inherited from\nEmbeddingEndpoint. A shipped ``api`` is refused here, and ``api`` has\nno default: a plugin config names its adapter, or it does not build.",
       "properties": {
         "aggregation": {
           "const": "max",
@@ -1940,8 +1940,7 @@
           "type": "string"
         },
         "api": {
-          "default": "openai_embeddings",
-          "description": "The wire adapter; ``\"openai_embeddings\"`` by default (a hosted profile overrides it in its own config).",
+          "description": "The registered adapter name of the third-party wire (required: a plugin is its api)",
           "title": "Api",
           "type": "string"
         },
@@ -2251,6 +2250,7 @@
         }
       },
       "required": [
+        "api",
         "model"
       ],
       "title": "PluginEmbedding",
@@ -2268,8 +2268,7 @@
           "type": "string"
         },
         "api": {
-          "default": "vllm_pooling",
-          "description": "The wire adapter; ``\"vllm_pooling\"`` by default.",
+          "description": "The registered adapter name of the third-party wire (required: a plugin is its api)",
           "title": "Api",
           "type": "string"
         },
@@ -2603,6 +2602,7 @@
         }
       },
       "required": [
+        "api",
         "model"
       ],
       "title": "PluginPooling",
@@ -2620,8 +2620,7 @@
           "type": "string"
         },
         "api": {
-          "default": "rerank",
-          "description": "The wire adapter; ``\"rerank\"`` by default.",
+          "description": "The registered adapter name of the third-party wire (required: a plugin is its api)",
           "title": "Api",
           "type": "string"
         },
@@ -2951,6 +2950,7 @@
         }
       },
       "required": [
+        "api",
         "model"
       ],
       "title": "PluginReranker",

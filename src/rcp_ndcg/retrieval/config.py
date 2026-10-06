@@ -163,10 +163,14 @@ class PluginEmbedding(_ApiSelected, EmbeddingEndpoint):
     one, and the role's generic config carries it (the shipped names select their own classes).
 
     The registry check happens where the config is read (:func:`_resolve_embed_api`); this class is the shape a
-    registered plugin name builds, every field inherited from
-    :class:`~rcp_ndcg.inference.config.EmbeddingEndpoint`. A shipped ``api`` is refused here, so it always
-    selects its own class.
+    registered plugin name builds, every other field inherited from
+    :class:`~rcp_ndcg.inference.config.EmbeddingEndpoint`. A shipped ``api`` is refused here, and ``api`` has
+    no default: a plugin config names its adapter, or it does not build.
     """
+
+    api: str = Field(  # type: ignore[assignment]  # required: a plugin is its api, never a default
+        description="The registered adapter name of the third-party wire (required: a plugin is its api)",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -220,6 +224,10 @@ class PluginPooling(_ApiSelected, PoolingEndpoint):
     not a shipped one, and the role's generic config carries it. See :class:`PluginEmbedding`; a shipped
     ``api`` is refused here, so ``vllm_pooling`` always selects :class:`ServedPooling`.
     """
+
+    api: str = Field(  # type: ignore[assignment]  # required: a plugin is its api, never a default
+        description="The registered adapter name of the third-party wire (required: a plugin is its api)",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -286,6 +294,10 @@ class PluginReranker(_ApiSelected, RerankEndpoint):
     one, and the role's generic config carries it. See :class:`PluginEmbedding`; a shipped ``api`` is refused
     here, so ``rerank``, ``cohere`` and ``voyage`` always select their own classes.
     """
+
+    api: str = Field(  # type: ignore[assignment]  # required: a plugin is its api, never a default
+        description="The registered adapter name of the third-party wire (required: a plugin is its api)",
+    )
 
     @model_validator(mode="before")
     @classmethod

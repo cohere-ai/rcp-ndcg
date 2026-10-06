@@ -2,8 +2,9 @@
 
 The per-criterion view comes from :func:`rcp_ndcg_core.pass_probabilities`: at a calibrated ability ``theta``
 criterion ``c`` passes with probability ``sigmoid(gamma_c (theta - beta_c))`` and contributes
-``gamma_c p_c / sum(gamma)`` to the gain. Between two systems the RCP-nDCG@k gap (B minus A) splits into
-**selection** (which documents reach the top k) and **ordering** (how the chosen ones are arranged).
+``gamma_c p_c / sum(gamma)`` to the gain. Between two systems the nDCG@k gap (B minus A) over the query's
+gains -- its RCP gains, or its qrel grades when it has none -- splits into **selection** (which documents
+reach the top k) and **ordering** (how the chosen ones are arranged).
 """
 
 from __future__ import annotations
@@ -79,11 +80,13 @@ class SystemExplanation(BaseModel):
 
 
 class ScoreDelta(BaseModel):
-    """The RCP-nDCG gap between two systems' displayed orders (B minus A), split into selection and ordering.
+    """The nDCG gap between two systems' displayed orders (B minus A), split into selection and ordering.
 
-    The cutoff is the explanation's ``k`` (the documents shown), which may differ from the report's cutoffs in
-    :attr:`SystemExplanation.values`. ``selection`` is what choosing other documents for the top k changes, and
-    ``ordering`` what arranging them differently changes; the two sum to ``total``.
+    The gap is computed over the explanation's gains -- the query's RCP gains, or its qrel grades when the
+    query has none. The cutoff is the explanation's ``k`` (the documents shown), which may differ from the
+    report's cutoffs in :attr:`SystemExplanation.values`. ``selection`` is what choosing other
+    documents for the top k changes, and ``ordering`` what arranging them differently changes; the two sum to
+    ``total``.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -105,7 +108,9 @@ class QueryExplanation(BaseModel):
         protocol: The name of the report's scoring protocol.
         items: The criteria's item parameters behind every document's ``criteria`` (empty without a calibration).
         systems: Each system's values (at the report's cutoffs) and its top k.
-        deltas: Every system against the first, at cutoff ``k``.
+        deltas: Every system against the first, at cutoff ``k``. The gaps are computed from the query's RCP
+            gains, or -- when the query has none -- from its qrel grades; empty when the query has no
+            labels, no positive grade, or every labelled document of it is excluded.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -192,18 +197,23 @@ def explain(
         dataset: The dataset (subset) of the query, when the report spans several.
 
     Returns:
-        The :class:`QueryExplanation`; deltas compare every system against the first.
+        The :class:`QueryExplanation`; deltas compare every system against the first, from the query's RCP
+        gains, or its qrel grades when the query has none.
     """
     rankings = report._inputs.get("rankings")
     data: Dataset | None = report._inputs.get("dataset")
     if rankings is None or data is None:
         raise DataError("explain needs the rankings and data behind the report; use a report returned by evaluate()")
     part = _part(data, dataset, query_id)
-    gains = report._inputs["labels"].get("rcp_ndcg", {}).get(part.name, {}).get(query_id, {})
+    labels = report._inputs["labels"]  # {metric: {part: {query_id: {doc_id: label}}}}
+    gains = labels.get("rcp_ndcg", {}).get(part.name, {}).get(query_id, {})
+    delta_gains = gains or {
+        d: g for d, g in labels.get("qrel_ndcg", {}).get(part.name, {}).get(query_id, {}).items() if g > 0
+    }  # a qrel-only report: the deltas compare by the grades the query has (the display gains stay the RCP ones)
     items, thetas = _calibration(calibration, part, query_id, suite=bool(data.subsets))
     rules = report.protocol
     excluded = set(part.excluded.get(query_id, ()))
-    ideal_gains = {d: g for d, g in gains.items() if d not in excluded}
+    ideal_gains = {d: g for d, g in delta_gains.items() if d not in excluded}
 
     systems, orders = [], {}
     scored = report.systems  # the systems the report scored (systems= may have restricted the rankings' file)

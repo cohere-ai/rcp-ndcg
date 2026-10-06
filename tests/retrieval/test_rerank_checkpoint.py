@@ -2,9 +2,10 @@
 
 The checkpoint is what makes a crashed rerank cheap: every scored query is one JSON record (``{"q", "k", "s"}``)
 appended to ``rank000.jsonl`` and fsynced, and a rerun with the same reranker over the same candidates skips the
-queries the checkpoint holds. The key and the record format are the served path's historical ones, so a rerun
-also resumes a checkpoint an earlier release wrote -- that is what ``test_an_old_format_checkpoint_resumes``
-pins, writing the file with the key payload the release's served path computed.
+queries the checkpoint already holds. The key is the reranker's content identity plus the exact texts sent (the
+record format is still the served path's), so a rerun after any content change -- the config's, the query's, or
+the candidates' -- is scored again instead of resuming stale scores; a checkpoint written before that key
+existed (the earlier release keyed on ids and historical budget constants only) is re-scored too.
 """
 
 from __future__ import annotations
@@ -19,7 +20,8 @@ from rcp_ndcg_core._records import RankingExample
 
 from rcp_ndcg.retrieval import _api as retrieval_api
 from rcp_ndcg.retrieval import rerank
-from rcp_ndcg.retrieval.config import ServedReranker
+from rcp_ndcg.retrieval._api import _checkpoint_key
+from rcp_ndcg.retrieval.config import CohereReranker, ServedReranker
 from rcp_ndcg.support.identity import hash_payload, short
 from tests.conftest import SESSION_TOKENIZER
 
@@ -79,8 +81,65 @@ def test_a_resumed_rerank_skips_the_scored_queries_and_keeps_their_scores(tmp_pa
     assert [e.scores for e in second] == [e.scores for e in first]
 
 
-def test_an_old_format_checkpoint_resumes(tmp_path: Any) -> None:
-    """A checkpoint written by the earlier release (its key payload, its file name) is read, not rescored."""
+def test_the_key_covers_every_content_field_and_the_exact_texts() -> None:
+    """The key is what a checkpointed query's scores are valid for: a rerun after the instruction mode, the
+    activation switch, the recipe, the wire adapter, the query's text or the documents' contents changed must
+    not resume the old scores. Only model, revision and budgets used to re-key it."""
+    example = _examples()[0]
+    base = _checkpoint_key(_config(), example)
+
+    changed_configs = {
+        "instruction": _config(instruction="none"),
+        "use_activation": _config(use_activation=False),
+        "recipe": _config(recipe="qwen3-v2"),
+        "api": CohereReranker(model="stub-reranker"),
+    }
+    for label, config in changed_configs.items():
+        assert _checkpoint_key(config, example) != base, f"{label} is content"
+
+    changed_texts = {
+        "another query": _examples()[1],
+        "query text": example.model_copy(update={"query": "a different question entirely"}),
+        "query instruction": example.model_copy(update={"instruction": "Find the passage"}),
+        "document texts": example.model_copy(update={"docs": ["changed text", "other text", "third text"]}),
+    }
+    for label, changed in changed_texts.items():
+        assert _checkpoint_key(_config(), changed) != base, f"{label} is content"
+
+    assert _checkpoint_key(_config(), example) == base, "the same content keys the same"
+
+
+def test_a_budget_change_re_keys_the_checkpoint(tmp_path: Any) -> None:
+    """``max_tokens`` and ``query_max_tokens`` decide what text reaches the model, so they re-key; the
+    tokenizer's digest does too (same bytes under another path never does)."""
+    from tests._tokenizers import byte_bpe_tokenizer, save, word_tokenizer
+
+    example = _examples()[0]
+    base = _checkpoint_key(_config(), example)
+
+    assert _checkpoint_key(_config(max_tokens=512), example) != base
+    assert _checkpoint_key(_config(query_max_tokens=128), example) != base
+
+    for directory in ("one", "two", "other"):
+        (tmp_path / directory).mkdir()
+    first = save(word_tokenizer(), tmp_path / "one")
+    second = save(word_tokenizer(), tmp_path / "two")  # same bytes, different path
+    other = save(byte_bpe_tokenizer(), tmp_path / "other")
+
+    assert _checkpoint_key(_config(tokenizer=str(first)), example) != base, "a declared tokenizer re-keys"
+    assert _checkpoint_key(_config(tokenizer=str(second)), example) == _checkpoint_key(
+        _config(tokenizer=str(first)), example
+    ), "the digest, not the name"
+    assert _checkpoint_key(_config(tokenizer=str(other)), example) != _checkpoint_key(
+        _config(tokenizer=str(first)), example
+    ), "different tokenizer bytes re-key"
+
+
+def test_an_old_format_checkpoint_is_scored_again(tmp_path: Any) -> None:
+    """A checkpoint written by the earlier release (its key payload: model, the ``vllm`` framework name, the
+    historical budget constants, the ids) does not match the content key: the query is scored again instead of
+    resuming scores computed for other texts. Nothing is released yet, so no checkpoint in the wild carries the
+    old key (CHANGELOG); the old record stays where it is and a fresh one lands beside it."""
     example = _examples()[0]
     config = _config(revision="cafe1234")
     # The served path's historical key: model, the "vllm" framework name, the budgets as constants.
@@ -93,17 +152,52 @@ def test_an_old_format_checkpoint_resumes(tmp_path: Any) -> None:
         "query_id": str(example.id),
         "doc_ids": [str(doc_id) for doc_id in example.doc_ids],
     }
-    key = short(hash_payload(payload), 16)
+    old_key = short(hash_payload(payload), 16)
 
     ckpt = tmp_path / "ckpt"
     ckpt.mkdir()
-    scores = {"d1": 0.5, "d2": 0.25, "d3": 0.125}
-    (ckpt / "rank000.jsonl").write_text(json.dumps({"q": str(example.id), "k": key, "s": scores}) + "\n")
+    (ckpt / "rank000.jsonl").write_text(
+        json.dumps({"q": str(example.id), "k": old_key, "s": {"d1": 0.5, "d2": 0.25, "d3": 0.125}}) + "\n"
+    )
+
+    scored = retrieval_api._rerank_examples([example], config, checkpoint_dir=ckpt)
+    fresh = retrieval_api._rerank_examples([example], config, checkpoint_dir=None)  # what a run without it scores
+
+    assert len(_records(ckpt / "rank000.jsonl")) == 2, "the query was scored again: a record was appended"
+    assert scored[0].scores == fresh[0].scores, "the fresh scores, not the old record's"
+    assert _checkpoint_key(config, example) != old_key, "the content key is not the historical one"
+
+
+def test_a_checkpoint_record_missing_a_document_is_scored_again(tmp_path: Any) -> None:
+    """A record that misses one of its example's documents (historical or hand-edited) is dropped and the
+    query scored again: resuming it would fail with a refusal whose hint -- rerun the rerank -- replayed the
+    identical failure forever."""
+    example = _examples()[0]
+    config = _config()
+    key = _checkpoint_key(config, example)
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    (ckpt / "rank000.jsonl").write_text(json.dumps({"q": "q1", "k": key, "s": {"d1": 0.5, "d2": 0.25}}) + "\n")
+
+    first = retrieval_api._rerank_examples([example], config, checkpoint_dir=ckpt)
+    second = retrieval_api._rerank_examples([example], config, checkpoint_dir=ckpt)
+
+    assert first[0].scores == second[0].scores, "the second run resumes the fresh complete record"
+    assert len(_records(ckpt / "rank000.jsonl")) == 2, "exactly one re-score: the partial record was dropped"
+
+
+def test_a_record_with_an_unparseable_score_is_dropped_not_a_crash(tmp_path: Any) -> None:
+    """A value that is not a number poisons only its own record (the reader's tolerance for foreign files):"""
+    example = _examples()[0]
+    config = _config()
+    key = _checkpoint_key(config, example)
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    (ckpt / "rank000.jsonl").write_text(json.dumps({"q": "q1", "k": key, "s": {"d1": "oops"}}) + "\n")
 
     scored = retrieval_api._rerank_examples([example], config, checkpoint_dir=ckpt)
 
-    assert scored[0].scores == [0.5, 0.25, 0.125], "the scores come back from the old checkpoint"
-    assert retrieval_api._checkpoint_key(config, example) == key, "the same key the old writer computed"
+    assert len(scored[0].scores or []) == 3, "the record was dropped and the query scored"
 
 
 def test_another_reranker_or_a_deeper_pool_is_scored_again(tmp_path: Any) -> None:

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.inference.types import Embeddings
 
 #: Score-tile budget in bytes.  16 MiB is small enough to stay in cache-friendly
@@ -43,16 +44,22 @@ def numpy_topk(
         ``(scores, indices)``, both ``(num_queries, min(k, num_docs))``, sorted
         by score descending.  Ties break toward the lower document index, so
         results are stable across runs and platforms.
+
+    Raises:
+        ConfigError: ``k`` is not positive.
+        DataError: The matrices are not aligned 2-D arrays (a 3-D, multi-vector array is
+            :func:`rcp_ndcg.retrieval.maxsim.maxsim_topk`'s input).
     """
     if k <= 0:
-        raise ValueError(f"k must be positive, got {k}")
+        raise ConfigError(f"k must be positive, got {k}", hint="pass the number of documents per query")
     docs = np.ascontiguousarray(doc_embs, dtype=np.float32)
     queries = np.ascontiguousarray(query_embs, dtype=np.float32)
     if docs.ndim != 2 or queries.ndim != 2 or docs.shape[1] != queries.shape[1]:
-        raise ValueError(
+        raise DataError(
             f"embeddings must be aligned 2D matrices, got {docs.shape} and {queries.shape}. "
             "Multi-vector (late-interaction) embeddings are scored by "
-            "rcp_ndcg.retrieval.maxsim.maxsim_topk, or by score_topk which dispatches on layout."
+            "rcp_ndcg.retrieval.maxsim.maxsim_topk, or by score_topk which dispatches on layout.",
+            hint="score_topk dispatches on the layout, multi-vector embeddings to maxsim_topk",
         )
 
     num_docs = docs.shape[0]
@@ -108,12 +115,16 @@ def select_topk(scores: np.ndarray, indices: np.ndarray, k: int) -> tuple[np.nda
 
     Shared with the MaxSim scorer: the tie-break is what makes a run reproducible
     across machines, and having two copies of it would eventually mean two
-    different orders for the same scores.
+    different orders for the same scores. The tie rule decides the cut as well as
+    the order: ``argpartition``'s pick among the candidates tied at the k-th score
+    is implementation-defined, so a tie class straddling the cut is re-selected by
+    index (:func:`_repair_ties_at_the_cut`) before the final ordering.
     """
     if scores.shape[1] <= k:
         chosen = np.broadcast_to(np.arange(scores.shape[1]), scores.shape)
     else:
         chosen = np.argpartition(-scores, k - 1, axis=1)[:, :k]
+        _repair_ties_at_the_cut(scores, indices, chosen, k)
 
     rows = np.arange(scores.shape[0])[:, None]
     part_scores = scores[rows, chosen]
@@ -126,6 +137,36 @@ def select_topk(scores: np.ndarray, indices: np.ndarray, k: int) -> tuple[np.nda
         np.take_along_axis(part_scores, order, axis=1).astype(np.float32),
         np.take_along_axis(part_indices, order, axis=1).astype(np.int64),
     )
+
+
+def _repair_ties_at_the_cut(scores: np.ndarray, indices: np.ndarray, chosen: np.ndarray, k: int) -> None:
+    """Give the candidates tied at the k-th score the cut's remaining slots by ascending index, in place.
+
+    ``argpartition`` selects an arbitrary subset of a tie class straddling the k-th score, so the documented
+    rule (ties toward the lower index) is restored per affected row, in the selected-positions array itself.
+    Rows without a straddling tie -- the common case -- keep the partition's answer: the repair costs one
+    comparison of each row against its threshold and nothing else.
+
+    Args:
+        scores: ``(rows, candidates)``, the candidates' scores.
+        indices: The candidate indices, aligned with ``scores``.
+        chosen: The selected positions per row, from ``argpartition`` (written in place).
+        k: The cut; ``scores.shape[1] > k``.
+    """
+    rows = np.arange(scores.shape[0])[:, None]
+    part_scores = scores[rows, chosen]
+    threshold = part_scores.min(axis=1)
+    at_threshold = scores == threshold[:, None]
+    selected_at_threshold = at_threshold[rows, chosen].sum(axis=1)
+    for row in np.flatnonzero(at_threshold.sum(axis=1) > selected_at_threshold):
+        slots = int(selected_at_threshold[row])
+        tied = np.flatnonzero(at_threshold[row])
+        keep = tied[np.argsort(indices[row, tied])[:slots]]  # the tie class's lowest document indices
+        picked = chosen[row][at_threshold[row, chosen[row]]]
+        drop = np.setdiff1d(picked, keep)
+        fill = np.setdiff1d(keep, picked)
+        positions = np.flatnonzero(np.isin(chosen[row], drop))
+        chosen[row, positions] = fill
 
 
 __all__ = ["numpy_topk", "score_topk", "select_topk"]

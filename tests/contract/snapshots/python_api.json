@@ -13563,9 +13563,9 @@
           },
           "api": {
             "alias": null,
-            "default": "openai_embeddings",
+            "default": "<required>",
             "frozen": false,
-            "required": false,
+            "required": true,
             "type": "str"
           },
           "api_key_env": {
@@ -13792,9 +13792,9 @@
           },
           "api": {
             "alias": null,
-            "default": "vllm_pooling",
+            "default": "<required>",
             "frozen": false,
-            "required": false,
+            "required": true,
             "type": "str"
           },
           "api_key_env": {
@@ -14035,9 +14035,9 @@
           },
           "api": {
             "alias": null,
-            "default": "rerank",
+            "default": "<required>",
             "frozen": false,
-            "required": false,
+            "required": true,
             "type": "str"
           },
           "api_key_env": {
