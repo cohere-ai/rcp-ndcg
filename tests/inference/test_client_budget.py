@@ -964,3 +964,59 @@ class TestPoolEmptyDocuments:
 
         sent = sender.sent[0][0]["input"]
         assert sent == (["", "plain"] if policy == "send" else ["NULL", "plain"])
+
+
+class TestRerankChunkOmitMatrix:
+    """The chunk/omit composition matrix (the re-fix round's regression): every combination keeps the
+    pooled score on the original document's position."""
+
+    def _client(self, tokenizer_json: str) -> RerankClient:
+        return RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=12,
+                query_max_tokens=2,
+                on_overflow="chunk",
+                chunk={"max_tokens": 5, "overlap_tokens": 0},
+                empty_doc="omit_zero",
+                use_activation=False,
+            ),
+            sender=_ChunkScoreSender(),
+        )
+
+    def test_chunk_no_omit(self, tokenizer_json: str) -> None:
+        long_doc = " ".join(["evidence one two three four five"] * 4)
+        result = self._client(tokenizer_json).rerank("query", [long_doc, "short doc"])
+        assert result.scores == pytest.approx((0.4, 0.5))
+
+    def test_chunk_with_middle_omit(self, tokenizer_json: str) -> None:
+        long_doc = " ".join(["evidence one two three four five"] * 4)
+        result = self._client(tokenizer_json).rerank("query", [long_doc, "", "short doc"])
+        # the empty document is omitted from the wire; the short one scores at its own position.
+        assert result.scores == pytest.approx((0.4, 0.0, 0.5))
+
+    def test_two_chunked_documents(self, tokenizer_json: str) -> None:
+        long_doc = " ".join(["evidence one two three four five"] * 4)
+        result = self._client(tokenizer_json).rerank("query", [long_doc, long_doc])
+        assert result.scores == pytest.approx((0.4, 0.9))
+
+    def test_omit_then_one_chunked(self, tokenizer_json: str) -> None:
+        long_doc = " ".join(["evidence one two three four five"] * 4)
+        result = self._client(tokenizer_json).rerank("query", ["", long_doc])
+        # the wire carries only the kept document's chunks (scored 0..4): its best chunk is the score.
+        assert result.scores == pytest.approx((0.0, 0.4))
+
+
+class _ChunkScoreSender(RecordingSender):
+    """Chunk k of the wire's candidate set scores k/10: the pool must take each document's best chunk."""
+
+    async def send(self, calls: Any) -> list[Any]:
+        from rcp_ndcg.inference.types import Reply
+
+        for call in calls:
+            self.bodies.append(call.json)
+        documents = calls[0].json["documents"]
+        rows = [{"index": i, "relevance_score": i / 10} for i in range(len(documents))]
+        return [Reply(200, {"results": rows[::-1]}, {})]

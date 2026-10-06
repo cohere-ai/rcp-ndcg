@@ -167,6 +167,16 @@ class MediaFit(NamedTuple):
     dropped: list[PreparedMedia]
     """The items the budget refused, in drop order (most expensive first); record them in the census."""
 
+    decisions: tuple[MediaRef | None, ...] = ()
+    """Per original item (in part order), the sent reference -- the kept item's (possibly shrunk)
+    ``sent`` -- or ``None`` when the item was dropped. Positional, so identical items (one page prepared
+    twice) are decided per occurrence, never per URI."""
+
+    @property
+    def dropped_positions(self) -> tuple[int, ...]:
+        """The original indices of the dropped items, ascending (the census's doc ids)."""
+        return tuple(index for index, decision in enumerate(self.decisions) if decision is None)
+
 
 def fit_media_to_budget(
     media: Sequence[PreparedMedia], *, image: ImagePolicy, video: VideoPolicy | None, text_budget_tokens: int
@@ -210,10 +220,10 @@ def fit_media_to_budget(
 
     items = list(media)
     if not items:
-        return MediaFit([], 0, [])
+        return MediaFit([], 0, [], tuple())
     tokens = count(items)
     if tokens <= text_budget_tokens:
-        return MediaFit(items, tokens, [])
+        return MediaFit(items, tokens, [], tuple(item.sent for item in items))
     if image.resizes:
         assert image.min_px is not None and image.processor is not None
         minimum = ImagePolicy(min_px=image.min_px, max_px=image.min_px, processor=image.processor)
@@ -236,7 +246,7 @@ def fit_media_to_budget(
                 shrunk.append(item)
         tokens = count(shrunk)
         if tokens <= text_budget_tokens:
-            return MediaFit(shrunk, tokens, [])
+            return MediaFit(shrunk, tokens, [], tuple(item.sent for item in shrunk))
         items = shrunk
     costs = [count([item]) for item in items]
     keep = list(range(len(items)))
@@ -247,7 +257,8 @@ def fit_media_to_budget(
         keep.remove(dearest)
         dropped.append(items[dearest])
     kept = [items[index] for index in keep]
-    return MediaFit(kept, sum(costs[index] for index in keep), dropped)
+    decisions = tuple(items[index].sent if index in keep else None for index in range(len(items)))
+    return MediaFit(kept, sum(costs[index] for index in keep), dropped, decisions)
 
 
 def _content(items: Sequence[PreparedMedia]) -> Content:
@@ -418,60 +429,59 @@ def media_policies_for(config: Any) -> tuple[ImagePolicy | None, VideoPolicy | N
     return image, getattr(config, "video_policy", None)
 
 
-def apply_media_fit(contents: Sequence[Content], original: Sequence[PreparedMedia], fit: MediaFit) -> list[Content]:
+def apply_media_fit(contents: Sequence[Content], fit: MediaFit) -> list[Content]:
     """The contents carrying exactly the media :func:`fit_media_to_budget` decided to send.
 
     A vision block is atomic: the fit shrinks whole items to the policy minimum and drops whole items (most
-    expensive first, every drop recorded by the caller). This applies its decision to the prepared contents
-    -- a kept item's part carries the shrunk reference (``item.sent``), a dropped item's part leaves the
+    expensive first, every drop recorded by the caller). This applies its positional decisions
+    (:attr:`MediaFit.decisions` -- per original item in part order, the sent reference or ``None``) to the
+    prepared contents: a kept item's part carries the decision's reference, a dropped item's part leaves the
     content. A content that loses every part it had becomes the empty content, which the caller's
     ``empty_doc`` policy then handles like any empty document.
 
     Args:
         contents: The prepared contents (:func:`prepare_request` returned them).
-        original: The request's prepared media in part order (``PreparedRequest.media``): the items the
-            decisions apply to, in the order their parts appear.
-        fit: The budget's decision (:func:`fit_media_to_budget` returned it).
+        fit: The budget's decision (:func:`fit_media_to_budget` returned it), whose decisions are positional
+            over ``PreparedRequest.media``.
 
     Returns:
         One content per input, in order, with the sent media in place and the dropped media removed.
 
     Raises:
-        DataError: a decision cannot be matched to the prepared parts (a different request's fit).
+        DataError: the decisions cannot be matched to the prepared parts (a different request's fit).
     """
-    decisions: dict[str, MediaRef | None] = {}
-    kept_by_source = {item.source.uri: item.sent for item in fit.media}
-    for item in original:
-        decisions[item.sent.uri] = kept_by_source.get(item.source.uri)  # None: the item was dropped
     kept: list[Content] = []
-    matched: set[str] = set()
+    applied = 0
     for content in contents:
         parts: list[Any] = []
         for part in content.parts:
-            refs = [ref for ref in part.media_refs()]
-            relevant = [ref for ref in refs if ref.uri in decisions]
-            if not relevant:
+            if not part.media_refs():
                 parts.append(part)
                 continue
-            matched.update(ref.uri for ref in relevant)
             if isinstance(part, VideoPart) and part.frames:
-                kept_frames = [ref for ref in part.frames if decisions.get(ref.uri) is not None]
+                kept_frames: list[Any] = []
+                for _ in part.frames:
+                    decision = fit.decisions[applied]
+                    applied += 1
+                    if decision is not None:
+                        kept_frames.append(decision)
                 if kept_frames:
                     parts.append(part.model_copy(update={"frames": kept_frames}))
                 continue
             if isinstance(part, ImagePart):
-                replacement = decisions.get(part.ref.uri)
-                if replacement is not None:
-                    parts.append(part.model_copy(update={"ref": replacement}))
+                decision = fit.decisions[applied]
+                applied += 1
+                if decision is not None:
+                    parts.append(part.model_copy(update={"ref": decision}))
                 continue
             parts.append(part)
         kept.append(Content.from_parts(parts))
-    missing = set(decisions) - matched
-    if missing:
+    if applied != len(fit.decisions):
         raise DataError(
-            f"{len(missing)} prepared media item(s) match no part of the request's contents "
-            f"(first: {sorted(missing)[0]})",
-            hint="apply_media_fit is called with the media :func:`prepare_request` prepared for these contents",
+            f"applied {applied} media decision(s) for {len(fit.decisions)} prepared item(s); the parts of "
+            "these contents do not carry the media :func:`prepare_request` prepared for them",
+            hint="apply_media_fit is called with the media :func:`prepare_request` prepared for the same "
+            "contents, in part order",
         )
     return kept
 

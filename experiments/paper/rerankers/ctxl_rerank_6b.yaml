@@ -17,4 +17,4 @@ tokenizer: ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b@f14ca1a2fc204dc0
 max_tokens: 8192
 query_max_tokens: 4096
 instruction: none
-use_activation: false  # the raw yes-logit is stored; the paper reference applies its own activation client-side (reference/<family>.py)
+use_activation: false  # the raw logit is stored -- the paper reference (reference/contextual.py) reads it as is

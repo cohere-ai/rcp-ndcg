@@ -15,4 +15,4 @@ tokenizer: zeroentropy/zerank-2-reranker@5eae30d5ee3c6b2df2ef6d723bde45172d761c4
 max_tokens: 8192
 query_max_tokens: 4096
 instruction: none
-use_activation: false  # the raw yes-logit is stored; the paper reference applies its own activation client-side (reference/<family>.py)
+use_activation: false  # the raw logit is stored -- the paper reference applies sigmoid(yes/5) client-side (reference/zerank.py)

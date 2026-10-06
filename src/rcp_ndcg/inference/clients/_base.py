@@ -108,6 +108,9 @@ class RoleClient[C: Endpoint]:
             when the config set none.
         census: The :class:`~rcp_ndcg.data.preprocess.TextTruncationCensus` every text-budget cut is
             recorded into -- the one passed in, or a fresh in-memory one.
+        media_census: The :class:`~rcp_ndcg.data.prepare.MediaCensus` the prepared media (and the items a
+            budget dropped, with ``dropped=True``) are recorded into -- the one passed in, or a fresh
+            in-memory one.
     """
 
     #: The adapter role this client speaks: the registry namespace its config's ``api`` resolves in, and
@@ -400,19 +403,14 @@ class RoleClient[C: Endpoint]:
                     "whole items, every drop recorded), or a smaller image_policy",
                 )
             fit = fit_media_to_budget(media, image=image, video=video, text_budget_tokens=self._budget.max_tokens)
-            contents = list(apply_media_fit(contents, media, fit))
-            media = fit.media
-            tokens = fit.tokens
-            for item in fit.dropped:
-                owner = next(
-                    (
-                        doc_id
-                        for doc_id, slice_ in zip(doc_ids, self._media_slices(prepared), strict=False)
-                        if item in slice_
-                    ),
-                    doc_ids[0] if doc_ids else self.ROLE,
+            contents = list(apply_media_fit(contents, fit))
+            for position, item in zip(fit.dropped_positions, fit.dropped, strict=True):
+                self.media_census.record(
+                    corpus=self.ROLE,
+                    doc_id=doc_ids[position] if position < len(doc_ids) else self.ROLE,
+                    media=[item],
+                    dropped=True,
                 )
-                self.media_census.record(corpus=self.ROLE, doc_id=owner, media=[item], dropped=True)
         else:
             contents = list(contents)
         counted = self._media_counts_of(contents)
@@ -467,8 +465,9 @@ class RoleClient[C: Endpoint]:
         with the counted ones (never silent).
 
         Runs when the role declares an ``image_processor``: the probe sends one prepared image through the
-        adapter, counts the request's prompt tokens exactly (the media block plus the render the engine
-        reads), and :func:`~rcp_ndcg.data.resolution.engine_media_check` compares the engine's own
+        adapter, counts the request's prompt tokens exactly (the media block plus the probe's text tokens --
+        what the declared budget counts; a server-side chat template beyond it is the recipe's
+        responsibility), and :func:`~rcp_ndcg.data.resolution.engine_media_check` compares the engine's own
         ``usage.prompt_tokens`` with it -- the counted number covers the same request (the media block
         plus the probe's text tokens). A mismatch is a typed :class:`~rcp_ndcg.errors.ProviderError`
         (the message names ``image_processor`` and the server's media flags); a reply without usage is

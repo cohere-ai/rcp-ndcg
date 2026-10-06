@@ -213,17 +213,15 @@ class EmbeddingClient(RoleClient):
                 positions=tuple(range(len(contents))),
                 omitted=tuple(omitted),
             )
-        request = self._prepare_request(list(prepared))
-        fitted, _media = self._fit_media_for_request(
-            request.contents, doc_ids=[str(index) for index in range(len(request.contents))]
-        )
         if self._budget is not None:
             result = self._fit(
-                [content.text for content in fitted], "query" if role is EncodeRole.QUERY else "document"
+                [content.text for content in prepared], "query" if role is EncodeRole.QUERY else "document"
             )
-            fitted = [self._with_text(content, text) for content, text in zip(fitted, result.texts, strict=True)]
-        kept, omitted = self._apply_empty_documents(fitted)
-        positions = [index for index in range(len(fitted)) if index not in set(omitted)]
+            prepared = tuple(
+                self._with_text(content, text) for content, text in zip(prepared, result.texts, strict=True)
+            )
+        kept, omitted = self._apply_empty_documents(prepared)
+        positions = [index for index in range(len(prepared)) if index not in set(omitted)]
         return PreparedItems(
             items=tuple(kept),
             positions=tuple(positions),

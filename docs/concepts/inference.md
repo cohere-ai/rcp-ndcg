@@ -160,11 +160,11 @@ all derived from `rcp_ndcg.inference.clients.RoleClient`, which owns the shared 
 - **the text budget and the media** -- the `TextBudget` resolved once from the role config's fields, the
   tokenizer it names loaded once, and the shared `rcp_ndcg.data.preprocess.fit` called from each client's
   `_prepare` (see [preprocessing](preprocessing.md#text-budgets-for-served-roles)); a census of every cut is
-  at `client.census`. Every request is prepared through one call (`prepare_request`): media sized exactly as
-  the judge's under the role's `image_policy`/`image_processor`, its tokens counted and reserved whole (never
-  cut), the `max_images`/`max_videos` gates, and the budget's media fit (a vision block is atomic -- shrink to
-  the policy minimum, drop whole items with `dropped=True` in `client.media_census`, or refuse under
-  `fail`/`chunk`). A role with an `image_processor` exposes `probe()` and `check_engine_media()`: one prepared
+  at `client.census`. Media preparation runs through the judge's own path (`prepare_request`) -- sized exactly as
+  the role's `image_policy`/`image_processor` would -- with the tokens counted and reserved whole (never
+  cut), the budget's fit applied per wire request (a vision block is atomic -- shrink to the policy minimum,
+  drop whole items with `dropped=True` in `client.media_census`, or refuse under `fail`/`chunk`), and the
+  `max_images`/`max_videos` gates over what one wire request carries. A role with an `image_processor` exposes `probe()` and `check_engine_media()`: one prepared
   probe image, the engine's prompt-token report compared with the counted ones -- a mismatch is refused, a
   reply without usage recorded `not_checked`, never silent.
 
