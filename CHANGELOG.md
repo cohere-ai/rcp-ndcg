@@ -42,6 +42,12 @@ released together.
   stage 3 (`stage3_metrics`), the wave runner (`run_wave`) and the subprocess reference runner (`run_reference`)
   are public with package tests covering each; `metrics.py` shells out to `rcp-ndcg eval score` (the product is
   a dependency, so no extra is needed for stage 3).
+- The first serving recipe ships: `packages/rcp-ndcg-vllm/recipes/topk-embed-v1-small/` (recipe.yaml,
+  reference.py; the recipe directory is grafted into the sdist with the rest of `recipes/`), serving
+  `topk-io/topk-embed-v1-small` as a multi-vector model on `vllm/vllm-openai:v0.31.0` through a
+  `vllm.general_plugins` wheel (`serve.plugin: topk-embed-vllm`, built by the plugin lane). Its tests pin
+  the recipe on CPU: stage 1 over the product's `fit` (tokenizer files only), the image-wrapper ids of
+  the served chat template, the document keep-mask asymmetry, and anchor mutations that go red.
 
 - `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
   larger than `adaptive_window` runs one batch, not one per batch: every adaptive window of such a pool holds
