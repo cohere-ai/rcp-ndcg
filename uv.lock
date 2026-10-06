@@ -42,6 +42,7 @@ conflicts = [[
 members = [
     "rcp-ndcg",
     "rcp-ndcg-core",
+    "rcp-ndcg-test",
 ]
 
 [[package]]
@@ -5058,6 +5059,11 @@ requires-dist = [
     { name = "torch", marker = "extra == 'irt'", specifier = ">=2.0" },
 ]
 provides-extras = ["irt"]
+
+[[package]]
+name = "rcp-ndcg-test"
+version = "0.0.0"
+source = { virtual = "packages/rcp-ndcg-test" }
 
 [[package]]
 name = "referencing"
