@@ -23,7 +23,7 @@ vLLM and torch.
 - `src/rcp_ndcg_vllm/equivalence/` — the three-stage equivalence check of the design's section on in-process
   scoring, as functions and a CLI (`python -m rcp_ndcg_vllm.equivalence`).
 - `src/rcp_ndcg_vllm/record.py` — records one fixed request/response exchange per engine route under
-  `<out>/<engine>-<version>/<recipe-id>/`, for the contract fixtures in `rcp-ndcg`'s `tests/contract/engines/`.
+  `<out>/<engine>-<version>/<recipe-id>/`, the fixtures the engine adapters' contract tests replay.
 - `src/rcp_ndcg_vllm/jobs/` — `run_wave.py` (packs recipes onto one node's GPUs), `bootstrap.sh` (a superseded
   stub; the node bootstrap ships with the rc-build image) and `submit.sh` (the operator's job submission).
 - `schema/recipe.schema.json` — the exported JSON Schema of `Recipe`.

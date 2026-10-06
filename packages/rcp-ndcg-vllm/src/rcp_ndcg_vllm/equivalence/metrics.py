@@ -14,6 +14,7 @@ overridable with ``gates.metrics_max_abs``.
 from __future__ import annotations
 
 import json
+import shlex
 import shutil
 import subprocess
 import sys
@@ -71,7 +72,7 @@ def _score_one(command: str, rankings_dir: str | Path, subset: str, system: str)
     dataset = Path(rankings_dir) / f"{subset}.dataset.jsonl"
     if not path.is_file() or not dataset.is_file():
         raise HarnessError(f"stage 3 needs {path} and {dataset}: rankings and dataset rows in rcp-ndcg's formats")
-    argv = [*command.split(), "eval", "score", "--rankings", str(path), "--dataset", f"jsonl:{dataset}",
+    argv = [*shlex.split(command), "eval", "score", "--rankings", str(path), "--dataset", f"jsonl:{dataset}",
             "--metrics", "qrel_ndcg", "--k", "10", "--bootstrap", "0", "--json"]  # fmt: skip
     try:
         completed = subprocess.run(argv, capture_output=True, text=True, check=True)

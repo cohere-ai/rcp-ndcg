@@ -180,15 +180,13 @@ over-length input, every declared anchor id sits at its declared position in the
 
 Stage 1 (CPU, zero tolerance) renders every sampled prompt the way the client renders it — a declared shape
 assembled from segments, or the `template.jinja` file under a jinja2 environment with `trim_blocks` and
-`lstrip_blocks` on, a stripped trailing newline and undefined variables refused (with the instruction variable
-carrying the recipe's `default_instruction` in `field` mode, and empty in `fold` mode, where the query text
-already carries it) — tokenises with the recipe's tokenizer and requires exact equality with
-`reference.render`. Each declared shape is sampled on its own (at least 20 over-length
-inputs per shape, padded in that shape's own content span), and the audit asserts every anchor survived the cut
-on the served render and — when the reference provides the optional `render_shape(shape, query, document,
-instruction)` hook — on the reference's render of the same shape. The result is reported as `anchor_check`,
-separately from the token-id mismatches; when `serve.chat_template` is set, stage 1 also proves the declared
-shapes render to the same token ids as the template file.
+`lstrip_blocks` on, a stripped trailing newline and undefined variables refused (the instruction variable
+carrying the pairs row's instruction, empty when the row has none — in `fold` mode the query text already
+carries it) — tokenises with the recipe's tokenizer and requires exact equality with `reference.render`. Each
+declared shape is sampled on its own (at least 20 over-length inputs per shape, padded in that shape's own
+content span), and the audit asserts every anchor survived the cut on the served render of every shape. The
+result is reported as `anchor_check`, separately from the token-id mismatches; when `serve.chat_template` is
+set, stage 1 also proves the declared shapes render to the same token ids as the template file.
 
 Stage 2 scores or embeds the same pairs against the served engine (plain `httpx` to `/rerank`, `/v1/embeddings`,
 `/pooling`) and applies the gates: probability |Δ| ≤ 0.02 for 99% of documents and ≤ 0.05 for all; logit |Δ| ≤

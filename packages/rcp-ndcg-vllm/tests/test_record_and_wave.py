@@ -20,7 +20,7 @@ REFERENCE_PY = sys.executable
 
 
 def test_record_writes_exchanges_per_route(tmp_path: Path) -> None:
-    """The product's adapter sends the fixed request set through the recording transport."""
+    """The recorded set: models, the role route, /score, the over-length 400 and the unknown-field 400."""
 
     recipe = load_recipe(RECIPES / "fixture-embed")
     engine = start_stub("--tokenizer", str(TOKENIZER))
@@ -28,7 +28,15 @@ def test_record_writes_exchanges_per_route(tmp_path: Path) -> None:
         written = record(recipe, engine.base_url, tmp_path)
     finally:
         engine.stop()
-    assert len(written) >= 3  # models, embeddings, over-length, unknown-field
+    documents = [json.loads(path.read_text(encoding="utf-8")) for path in written]
+    routes = [(document["route"], document["status"]) for document in documents]
+    assert ("http://engine/v1/models", 200) in routes
+    assert ("http://engine/v1/embeddings", 200) in routes  # the role route, with its path kept
+    assert ("http://engine/score", 200) in routes
+    # the over-length and unknown-field probes record the engine's 400 bodies, not silent 200s
+    statuses_400 = [document for document in documents if document["status"] == 400]
+    assert statuses_400, "the over-length and unknown-field probes must record the engine's 400"
+    assert {document["route"] for document in statuses_400} == {"http://engine/v1/embeddings"}
     for path in written:
         document = json.loads(path.read_text(encoding="utf-8"))
         assert "http://engine" in document["route"]
@@ -44,11 +52,18 @@ def test_record_exchanges_carry_the_product_shape(tmp_path: Path) -> None:
         written = record(recipe, engine.base_url, tmp_path)
     finally:
         engine.stop()
-    by_name = {path.name: json.loads(path.read_text(encoding="utf-8")) for path in written}
-    embeddings = [document for name, document in by_name.items() if "embeddings" in name]
-    assert embeddings
-    body = embeddings[0]["body"]
+    documents = [json.loads(path.read_text(encoding="utf-8")) for path in written]
+    role_route = next(
+        document
+        for document in documents
+        if document["route"] == "http://engine/v1/embeddings" and document["status"] == 200
+    )
+    body = role_route["body"]
     assert "embedding" in body["data"][0]
+    # the role request is the product's shape: model = the recipe id, float encoding
+    request = role_route["request"]["body"]
+    assert request["model"] == "fixture-embed"
+    assert request["encoding_format"] == "float"
 
 
 def test_stage3_metrics_compares_served_against_reference(tmp_path: Path) -> None:

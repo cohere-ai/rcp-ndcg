@@ -214,9 +214,40 @@ def _anchor_check(recipe: Recipe, fitted: dict[str, Any], tokenizer: Any) -> dic
     }
 
 
+def _post_processor_tail(tokenizer: Any, text: str) -> list[int]:
+    """The tokens ``add_special_tokens: true`` adds after the content, for the shape's tokenizer.
+
+    Measured, not assumed: the ids of ``text`` with the post-processor are aligned against its plain ids and
+    the tail after the content's last occurrence is the post-processor's suffix — empty for a prepend-only
+    post-processor, the end token for the common append-only one.  When the text's own render is empty or
+    displaced (a template literal that happens to contain the specials), the tail is measured on a sentinel.
+    """
+    plain = list(tokenizer.ids(text, add_special_tokens=False))
+    full = list(tokenizer.ids(text, add_special_tokens=True))
+    index = _last_sublist(full, plain) if plain else None
+    if index is None:
+        probe_plain = list(tokenizer.ids("x", add_special_tokens=False))
+        probe_full = list(tokenizer.ids("x", add_special_tokens=True))
+        probe_index = _last_sublist(probe_full, probe_plain)
+        if probe_index is None:  # pragma: no cover - a post-processor that both displaces and reshapes
+            return full[len(plain) :]
+        return probe_full[probe_index + len(probe_plain) :]
+    return full[index + len(plain) :]
+
+
+def _last_sublist(haystack: list[int], needle: list[int]) -> int | None:
+    """The last index where ``needle`` occurs in ``haystack`` contiguously, or ``None`` (empty needle too)."""
+    if not needle or len(needle) > len(haystack):
+        return None
+    for start in range(len(haystack) - len(needle), -1, -1):
+        if haystack[start : start + len(needle)] == needle:
+            return start
+    return None
+
+
 def _anchor_edge_ids(recipe: Recipe, tokenizer: Any, shape: Any) -> list[int]:
     """The anchor ids of one shape: the tail (or, for ``anchor: first``, head) fixed segment's rendered ids,
-    plus the post-processor tokens the shape's ``add_special_tokens`` flag adds."""
+    plus the post-processor tokens the shape's ``add_special_tokens`` flag appends after them."""
     template = recipe.client.template
     if template is None:
         return []
@@ -229,7 +260,7 @@ def _anchor_edge_ids(recipe: Recipe, tokenizer: Any, shape: Any) -> list[int]:
         text = fixed[-1].render(tokenizer) if fixed else ""
     ids = list(tokenizer.ids(text, add_special_tokens=False))
     if template.adds_special_tokens(shape):
-        ids += tokenizer.ids("", add_special_tokens=True)
+        ids += _post_processor_tail(tokenizer, text)
     return ids
 
 
@@ -279,33 +310,6 @@ def _render_check(
                 }
             )
     return {"status": "run", "rows": len(reference.get("rows", [])), "passed": not failures, "failures": failures}
-
-
-def _fit_ids_by_row(recipe: Recipe, sampled: list[dict[str, Any]], tokenizer: Any) -> dict[tuple[int, str], list[int]]:
-    """``fit``'s rendered ids per sampled row, keyed by (row index, shape) — the served render the engine sees."""
-    budget = _fitting().budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
-    out: dict[tuple[int, str], list[int]] = {}
-    for index, row in enumerate(sampled):
-        shape = str(row.get("shape") or _fitting().default_shape(recipe))
-        instruction = row.get("instruction")
-        query = _fitting().fold_query(recipe, row["query"], instruction)
-        inputs: list[Any] = (
-            [(query, row["documents"][0])] if shape == "pair" else [query if shape == "query" else row["documents"][0]]
-        )
-        result = fit(inputs, cast_shape(shape), budget, tokenizer, ids=[str(index)])
-        out[(index, shape)] = list(tokenizer.ids(result.texts[0], add_special_tokens=_add_specials_flag(recipe, shape)))
-    return out
-    out: dict[tuple[int, str], list[int]] = {}
-    for index, row in enumerate(sampled):
-        shape = str(row.get("shape") or _fitting().default_shape(recipe))
-        instruction = row.get("instruction")
-        query = _fitting().fold_query(recipe, row["query"], instruction)
-        inputs: list[Any] = (
-            [(query, row["documents"][0])] if shape == "pair" else [query if shape == "query" else row["documents"][0]]
-        )
-        result = fit(inputs, cast_shape(shape), budget, tokenizer, ids=[str(index)])
-        out[(index, shape)] = list(tokenizer.ids(result.texts[0], add_special_tokens=_add_specials_flag(recipe, shape)))
-    return out
 
 
 def _template_check(recipe: Recipe, fitted: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -905,15 +909,27 @@ def _cosine(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def _fit_texts_by_row(recipe: Recipe, sampled: list[dict[str, Any]], tokenizer: Any) -> dict[tuple[int, str], str]:
-    """``fit``'s rendered texts per sampled row, keyed by (row index, shape) — the engine's prompt."""
+    """``fit``'s rendered texts per sampled row, keyed by (row index, shape) — the engine's prompt.
+
+    A pairs row (no ``shape``) is rendered under every declared shape: the reference contract emits one render
+    per declared shape at the row's index, so a multi-shape recipe compares them all.
+    """
     budget = _fitting().budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    declared = (
+        [str(shape) for shape in recipe.client.template.shapes()]
+        if recipe.client.template is not None
+        else [_fitting().default_shape(recipe)]
+    )
     out: dict[tuple[int, str], str] = {}
     for index, row in enumerate(sampled):
-        shape = str(row.get("shape") or _fitting().default_shape(recipe))
-        query = _fitting().fold_query(recipe, row["query"], row.get("instruction"))
-        inputs: list[Any] = (
-            [(query, row["documents"][0])] if shape == "pair" else [query if shape == "query" else row["documents"][0]]
-        )
-        result = fit(inputs, cast_shape(shape), budget, tokenizer, ids=[str(index)])
-        out[(index, shape)] = result.texts[0]
+        shapes = [str(row["shape"])] if "shape" in row else declared
+        for shape in shapes:
+            query = _fitting().fold_query(recipe, row["query"], row.get("instruction"))
+            inputs: list[Any] = (
+                [(query, row["documents"][0])]
+                if shape == "pair"
+                else [query if shape == "query" else row["documents"][0]]
+            )
+            result = fit(inputs, cast_shape(shape), budget, tokenizer, ids=[str(index)])
+            out[(index, shape)] = result.texts[0]
     return out

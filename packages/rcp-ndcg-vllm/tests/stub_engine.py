@@ -28,11 +28,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "fixtures"))
 from deterministic import score, token_vectors, tokens, vector  # noqa: E402
 
 _ALLOWED: dict[str, set[str]] = {
-    "/v1/embeddings": {"input", "encoding_format"},
+    "/embeddings": {"input", "encoding_format"},
     "/pooling": {"input", "task", "encoding_format", "embed_dtype", "endianness"},
     "/rerank": {"query", "documents", "top_n", "instruction", "use_activation"},
     "/score": {"queries", "documents", "query", "text_1", "text_2"},
 }
+"""Keyed on the normalised route: ``do_POST`` strips ``/v1/`` before dispatch."""
 
 _ARGS = argparse.Namespace(served_model_name="stub", max_model_len=512, noise=0.0, tokenizer="")
 _TOKENIZER_BACKEND: Any = None
