@@ -394,13 +394,28 @@ class Pipeline:
         if step == "retrieve":
             # Retrieval covers every query of the dataset and draws nothing at random: no limit, no seed. The
             # content payload only: a served encoder's URL, key variable, concurrency, timeouts and retries move
-            # the work, not the numbers (the reranker keys the rerank step, not the retrieval).
+            # the work, not the numbers (the reranker keys the rerank step, not the retrieval). The encoder's
+            # tokenizer digest (``identity_extra()``) is spliced in at the encoder: what cuts the text is
+            # content, and the tokenizer's *name* is not.
             candidates = identity_payload(config.candidates)
             candidates.pop("rerank", None)
+            retrieval = candidates.get("retrieval")
+            retriever = config.candidates.retrieval
+            if isinstance(retrieval, dict) and "encoder" in retrieval and retriever is not None:
+                encoder = getattr(retriever, "encoder", None)
+                assert encoder is not None
+                retrieval["encoder"] = {
+                    **retrieval["encoder"],
+                    **encoder.identity_extra(),
+                }
             return {**dataset, "candidates": candidates, "output": self.layout.relative(self._first_stage)}
         if step == "rerank":
             reranker = config.candidates.rerank
-            rerank = identity_payload(reranker) if reranker is not None else None
+            if reranker is None:
+                rerank = None
+            else:
+                # The reranker's content payload plus its tokenizer's SHA-256 (the name itself is runtime).
+                rerank = {**identity_payload(reranker), **reranker.identity_extra()}
             return {**common, "rerank": rerank, "depth": config.candidates.depth}
         if step in JUDGE_STEPS:
             schedule = self.schedule(step)
@@ -501,15 +516,24 @@ class Pipeline:
         """``endpoint`` with the role's engine URLs (and outage wait) applied, when the overlay names the role.
 
         The overlay is runtime only: it is never written into ``run.yaml`` and never reaches an identity, since
-        ``base_url`` and ``wait_on_outage_s`` are RUNTIME fields.
+        ``base_url`` and ``wait_on_outage_s`` are RUNTIME fields. The config is rebuilt through its model, so the
+        overlaid config passes every validator a configured one does (a URL is normalised, a fake:// replica
+        list is refused), with the typed error for what a configured config would refuse.
         """
+        from pydantic import ValidationError
+
+        from rcp_ndcg.support.config import config_error
+
         engines = self._engines.get(role)
         if engines is None:
             return endpoint
         update: dict[str, Any] = {"base_url": engines.urls[0] if len(engines.urls) == 1 else list(engines.urls)}
         if engines.wait_on_outage_s is not None:
             update["wait_on_outage_s"] = engines.wait_on_outage_s
-        return endpoint.model_copy(update=update)
+        try:
+            return type(endpoint).model_validate({**endpoint.model_dump(), **update})
+        except ValidationError as exc:
+            raise config_error(exc, model=type(endpoint), source=f"the {ENGINES_ENV} overlay") from exc
 
     def _judge_client_config(self) -> Any:
         """The judge config the client is built from: the engines overlay applied (runtime only)."""
@@ -728,10 +752,7 @@ def _check_engines(config: RunConfig, engines: Mapping[EngineRole, EngineURLs]) 
             or hosted encoder, no reranker), or gives a retrieval role more than one replica URL (this release's
             retrieval clients address one URL).
     """
-    from rcp_ndcg.retrieval.config import (
-        OpenAICompatibleEncoder,
-        OpenAICompatibleReranker,
-    )
+    from rcp_ndcg.retrieval.config import ServedEmbedding, ServedPooling, ServedReranker
 
     for role, engine in engines.items():
         if role == "judge":
@@ -748,17 +769,17 @@ def _check_engines(config: RunConfig, engines: Mapping[EngineRole, EngineURLs]) 
                 )
         elif role == "encoder":
             encoder = getattr(config.candidates.retrieval, "encoder", None)
-            if not isinstance(encoder, OpenAICompatibleEncoder):
+            if not isinstance(encoder, ServedEmbedding | ServedPooling):
                 raise ConfigError(
                     "the engines overlay names the encoder, and this run has no served encoder to point at it",
-                    hint="the encoder role serves a run's openai_compatible encoder; drop the role, or start "
-                    "its engine with serve.encoder",
+                    hint="the encoder role serves a run's openai_embeddings or vllm_pooling encoder; drop the "
+                    "role, or start its engine with serve.encoder",
                 )
         else:
-            if not isinstance(config.candidates.rerank, OpenAICompatibleReranker):
+            if not isinstance(config.candidates.rerank, ServedReranker):
                 raise ConfigError(
                     "the engines overlay names the reranker, and this run has no served reranker to point at it",
-                    hint="the reranker role serves a run's openai_compatible reranker; drop the role, or set "
+                    hint="the reranker role serves a run's api: rerank reranker; drop the role, or set "
                     "candidates.rerank to one",
                 )
         if role != "judge" and len(engine.urls) != 1:

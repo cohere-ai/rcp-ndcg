@@ -1,42 +1,58 @@
-"""The retrieval API: typed configs, and index/search/retrieve/rerank/fuse from a Dataset to Rankings."""
+"""The retrieval API: role configs by ``api``, and index/search/retrieve/rerank/fuse from a Dataset to Rankings.
+
+Every model runs behind the offline fakes (``fake://``, the served wire) or an ``httpx.MockTransport`` wired
+under the role clients (a hosted profile's public shape), so the tests exercise the real clients over the real
+transport.
+"""
 
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
+from typing import Any
 
+import httpx
 import numpy as np
 import pytest
 import yaml
 from pydantic import TypeAdapter, ValidationError
 
 from rcp_ndcg.data import Rankings, load_dataset
-from rcp_ndcg.errors import ConfigError, CredentialsError, IdentityError
+from rcp_ndcg.errors import ConfigError, CredentialsError
 from rcp_ndcg.retrieval import (
     BM25Config,
-    Cohere,
+    CohereEmbedding,
+    CohereReranker,
     DenseConfig,
-    EncoderConfig,
-    Local,
-    LocalEncoder,
-    OpenAICompatibleReranker,
+    GeminiEmbedding,
+    LateInteractionConfig,
     RerankerConfig,
     RetrieverConfig,
+    ServedEmbedding,
+    ServedPooling,
+    ServedReranker,
+    VoyageEmbedding,
+    VoyageReranker,
     fuse,
     index,
+    load_index,
     rerank,
     retrieve,
     search,
+    validate_reranker,
+    validate_retriever,
 )
 from rcp_ndcg.retrieval import _api as retrieval_api
-from rcp_ndcg.retrieval.encoder import Embeddings
+from rcp_ndcg.retrieval.config import _OLD_SHAPE_HINT
 
 DOCS = {
     "d1": "tortoises move slowly across the sand",
     "d2": "hares run fast in open fields",
     "d3": "the sand dunes of the desert",
 }
+
+_ENCODER = TypeAdapter(DenseConfig.model_fields["encoder"].annotation)
+_RERANKER = TypeAdapter(RerankerConfig)
 
 
 @pytest.fixture
@@ -54,73 +70,198 @@ def dataset(tmp_path: Path):
     return load_dataset(f"beir:{root}")
 
 
+@pytest.fixture
+def hosted_wire(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
+    """The role clients' transports send through one recording ``httpx.MockTransport``.
+
+    The retrieval API builds its clients from configs alone, so the wire is patched under the clients (the
+    endpoint they hand the transport already carries the profile's public URL). The handler answers the
+    profiles' public shapes: Cohere ``/embed`` and ``/v2/rerank``, Voyage ``/embeddings`` and ``/v1/rerank``,
+    Gemini ``batchEmbedContents``.
+    """
+    sent: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        body = json.loads(request.content)
+        texts = _texts(body)
+        if request.url.path.endswith("/rerank"):
+            scores = [{"index": i, "relevance_score": 1.0 / (i + 1)} for i in range(len(texts))]
+            if body.get("results") is not None or "cohere" in str(request.url):
+                return httpx.Response(200, json={"results": scores})
+            return httpx.Response(200, json={"data": scores})
+        vectors = [[float(len(text) % 7 + 1), 1.0] for text in texts]
+        if "batchEmbedContents" in str(request.url):
+            return httpx.Response(200, json={"embeddings": [{"values": vector} for vector in vectors]})
+        if request.url.path.endswith("/embed"):
+            return httpx.Response(200, json={"embeddings": {"float": vectors}})
+        return httpx.Response(
+            200, json={"data": [{"index": i, "embedding": vector} for i, vector in enumerate(vectors)]}
+        )
+
+    from rcp_ndcg.inference import transport as transport_module
+
+    real = transport_module.Transport
+
+    def patched(endpoint: Any, *, httpx_transport: httpx.AsyncBaseTransport | None = None) -> Any:
+        return real(endpoint, httpx_transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr("rcp_ndcg.inference.clients.embed.Transport", patched)
+    monkeypatch.setattr("rcp_ndcg.inference.clients.rerank.Transport", patched)
+    monkeypatch.setenv("CO_API_KEY", "test-key")
+    monkeypatch.setenv("VOYAGE_API_KEY", "test-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    return sent
+
+
+def _texts(body: dict) -> list[str]:
+    """The texts one hosted request carries, whatever shape it arrives in."""
+    if isinstance(body.get("input"), list):
+        return [str(text) for text in body["input"]]
+    if isinstance(body.get("texts"), list):
+        return [str(text) for text in body["texts"]]
+    if isinstance(body.get("documents"), list):
+        return [str(text) for text in body["documents"]]
+    if isinstance(body.get("requests"), list):
+        return [str(row["content"]["parts"][0]["text"]) for row in body["requests"]]
+    return [str(body.get("query", ""))]
+
+
 # ---------------------------------------------------------------------------
 # Configs
 # ---------------------------------------------------------------------------
 
 
-_ENCODER = TypeAdapter(EncoderConfig)
-_RERANKER = TypeAdapter(RerankerConfig)
-
-
-def test_the_retriever_config_is_a_union_discriminated_on_kind_and_provider() -> None:
+def test_the_retriever_config_is_a_union_discriminated_on_kind() -> None:
     adapter = TypeAdapter(RetrieverConfig)
-
-    bm25 = adapter.validate_python({"kind": "bm25"})
-    dense = adapter.validate_python(
-        {"kind": "dense", "encoder": {"provider": "cohere", "model": "embed-v4.0", "api_key_env": "CO_API_KEY"}}
+    assert adapter.validate_python({"kind": "bm25"}).kind == "bm25"
+    assert (
+        adapter.validate_python({"kind": "dense", "encoder": {"api": "cohere", "model": "m"}}).encoder.api == "cohere"
     )
-
-    assert isinstance(bm25, BM25Config) and isinstance(dense, DenseConfig)
-    assert isinstance(dense.encoder, Cohere)
-    with pytest.raises(ValidationError):
-        adapter.validate_python({"kind": "splade"})
-    with pytest.raises(ValidationError, match="implementation"):
-        adapter.validate_python({"kind": "bm25", "implementation": "numpy"})
+    with pytest.raises(ValidationError, match="kind"):
+        adapter.validate_python({"provider": "local", "model": "m"})
 
 
 @pytest.mark.parametrize(
-    ("encoder", "match"),
+    ("encoder", "api_type"),
     [
-        ({"provider": "local", "model": "m"}, "pooling"),
-        ({"provider": "local", "model": "m", "pooling": "mean"}, "last token"),
-        ({"provider": "cohere", "model": "m", "pooling": "token"}, "pooling"),
-        ({"provider": "local", "model": "m", "pooling": "last", "query_prompt": "q: "}, "no query prompt"),
-        ({"provider": "openai_compatible", "model": "m", "base_url": "http://h", "concurrency": 4}, "one at a time"),
-        ({"provider": "gemini", "model": "m", "concurrency": 4}, "one at a time"),
+        ({"api": "openai_embeddings", "model": "m", "base_url": "http://h:8000/v1"}, ServedEmbedding),
+        ({"api": "cohere", "model": "m"}, CohereEmbedding),
+        ({"api": "voyage", "model": "m"}, VoyageEmbedding),
+        ({"api": "gemini", "model": "m"}, GeminiEmbedding),
     ],
 )
-def test_an_encoder_takes_only_what_its_provider_uses(encoder: dict, match: str) -> None:
-    with pytest.raises(ValidationError, match=match):
-        _ENCODER.validate_python(encoder)
+def test_an_encoder_config_is_its_role_endpoint(encoder: dict, api_type: type) -> None:
+    assert isinstance(_ENCODER.validate_python(encoder), api_type)
+
+
+@pytest.mark.parametrize(
+    ("reranker", "api_type"),
+    [
+        ({"api": "rerank", "model": "m", "base_url": "http://h:8000/v1"}, ServedReranker),
+        ({"api": "cohere", "model": "rerank-v4.0-pro"}, CohereReranker),
+        ({"api": "voyage", "model": "rerank-2.5", "batch_size": 50}, VoyageReranker),
+    ],
+)
+def test_a_reranker_config_is_its_role_endpoint(reranker: dict, api_type: type) -> None:
+    assert isinstance(_RERANKER.validate_python(reranker), api_type)
+
+
+def test_an_encoder_takes_only_what_its_api_uses() -> None:
+    with pytest.raises(ValidationError):
+        _ENCODER.validate_python({"api": "openai_embeddings", "model": "m", "pooling": "token"})
+    with pytest.raises(ValidationError):
+        _ENCODER.validate_python({"api": "cohere", "model": "m", "engine": "hf"})
+
+
+def test_an_old_config_shape_is_refused_with_the_new_shape_hint() -> None:
+    for data in (
+        {"provider": "local", "model": "m", "pooling": "last"},
+        {"provider": "cohere", "model": "m"},
+        {"provider": "openai_compatible", "model": "m", "base_url": "http://h:8000"},
+        {"engine": "vllm", "model": "m", "pooling": "token"},
+    ):
+        with pytest.raises(ConfigError, match="api, not by provider|api, not by engine") as caught:
+            validate_retriever({"kind": "dense", "encoder": data})
+        assert "openai_embeddings" in (caught.value.hint or "")
+    with pytest.raises(ConfigError, match="api, not by provider"):
+        validate_reranker({"provider": "local", "model": "Qwen/Qwen3-Reranker-8B"})
+    assert "api: rerank" in _OLD_SHAPE_HINT
+
+
+def test_the_old_shapes_load_through_the_cli_as_a_config_error(tmp_path: Path) -> None:
+    from click.testing import CliRunner
+
+    from rcp_ndcg.cli.retrieval import retrieval_group
+
+    path = tmp_path / "old_shape.yaml"
+    path.write_text(yaml.safe_dump({"kind": "dense", "encoder": {"provider": "local", "model": "m"}}))
+    result = CliRunner().invoke(
+        retrieval_group,
+        [
+            "index",
+            "--dataset",
+            "beir:/nope",
+            "--retriever",
+            str(path),
+            "--out",
+            str(tmp_path / "out.parquet"),
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 3, result.output
+    error = json.loads(result.stdout)["error"]
+    assert error["code"] == "CONFIG"
+    assert "api: openai_embeddings" in error["hint"]
 
 
 def test_single_and_multi_vector_retrievers_are_different_kinds() -> None:
     adapter = TypeAdapter(RetrieverConfig)
-    token = {"provider": "openai_compatible", "model": "colqwen", "base_url": "http://h:8000", "pooling": "token"}
-    local = {"provider": "local", "model": "colqwen", "pooling": "token", "engine": "vllm"}
+    pooling = {"api": "vllm_pooling", "model": "colqwen", "base_url": "http://h:8000/v1"}
+    served = {"api": "openai_embeddings", "model": "colqwen", "base_url": "http://h:8000/v1"}
 
-    with pytest.raises(ValidationError, match="late interaction"):
-        adapter.validate_python({"kind": "dense", "encoder": token})
-    with pytest.raises(ValidationError, match="late interaction needs"):
-        adapter.validate_python({"kind": "late_interaction", "encoder": {**local, "pooling": "last"}})
-    assert adapter.validate_python({"kind": "late_interaction", "encoder": token}).kind == "late_interaction"
-    assert adapter.validate_python({"kind": "late_interaction", "encoder": local}).kind == "late_interaction"
+    # A cross-role api is refused where the config is read, with the registry's own message.
+    with pytest.raises(ConfigError, match="unknown embed adapter 'vllm_pooling'") as caught:
+        adapter.validate_python({"kind": "dense", "encoder": pooling})
+    assert "multi_vector" in (caught.value.hint or "")
+    with pytest.raises(ConfigError, match="unknown multi_vector adapter 'openai_embeddings'") as caught:
+        adapter.validate_python({"kind": "late_interaction", "encoder": served})
+    assert "embed" in (caught.value.hint or "")
+    assert adapter.validate_python({"kind": "late_interaction", "encoder": pooling}).kind == "late_interaction"
 
 
 def test_where_an_encoder_runs_is_not_part_of_what_an_index_is() -> None:
     """The endpoint's timeouts, retries and batch size are runtime; the model, revision and prompts are content."""
-    first = _ENCODER.validate_python({"provider": "cohere", "model": "embed-v4.0", "batch_size": 8})
-    second = _ENCODER.validate_python({"provider": "cohere", "model": "embed-v4.0", "timeout_s": 5, "max_retries": 0})
-    other_model = _ENCODER.validate_python({"provider": "cohere", "model": "embed-v3.0"})
+    first = _ENCODER.validate_python({"api": "cohere", "model": "embed-v4.0", "batch_size": 8})
+    second = _ENCODER.validate_python({"api": "cohere", "model": "embed-v4.0", "timeout_s": 5, "max_retries": 0})
+    other_model = _ENCODER.validate_python({"api": "cohere", "model": "embed-v3.0"})
 
     identity = retrieval_api._identity
     assert identity(DenseConfig(encoder=first), ["d"], []) == identity(DenseConfig(encoder=second), ["d"], [])
     assert identity(DenseConfig(encoder=first), ["d"], []) != identity(DenseConfig(encoder=other_model), ["d"], [])
 
 
+def test_a_listwise_reranker_takes_no_batch_size_and_a_hosted_one_no_engine_fields() -> None:
+    with pytest.raises(ValidationError, match="listwise"):
+        _RERANKER.validate_python({"api": "rerank", "model": "jina-reranker-v3", "listwise": True, "batch_size": 4})
+    with pytest.raises(ValidationError, match="hosted"):
+        _RERANKER.validate_python({"api": "voyage", "model": "rerank-2.5", "use_activation": True})
+    with pytest.raises(ValidationError, match="hosted"):
+        _RERANKER.validate_python({"api": "cohere", "model": "rerank-v4.0-pro", "instruction": "field"})
+
+
+def test_a_reranker_refuses_max_tokens_where_its_client_is_built(dataset) -> None:
+    """A budget is never silently ignored: the clients refuse it until the text-budget mechanism wires the cut."""
+    from rcp_ndcg.inference.clients import RerankClient
+
+    config = validate_reranker({"api": "rerank", "model": "m", "base_url": "http://h:8000/v1", "max_tokens": 8192})
+    with pytest.raises(ConfigError, match="max_tokens"):
+        RerankClient(config)
+
+
 # ---------------------------------------------------------------------------
-# index, search, retrieve
+# index, search, retrieve (the offline fakes: the served wire)
 # ---------------------------------------------------------------------------
 
 
@@ -136,63 +277,119 @@ def test_bm25_indexes_and_searches_a_dataset(dataset, tmp_path: Path) -> None:
         assert len(scores) <= 2
 
 
-class _Encoder:
-    """Documents and queries as fixed vectors: q1 is closest to d3, q2 to d2."""
-
-    vectors = {"tortoises": [0.0, 0.1, 1.0], "hares": [0.0, 1.0, 0.0], "sand": [0.0, 0.0, 1.0]}
-
-    def encode(self, contents, *, role, batch_size=None) -> Embeddings:
-        rows = [next(v for word, v in self.vectors.items() if word in c.text) for c in contents]
-        return Embeddings.single(np.asarray(rows, dtype=np.float32))
-
-
-def test_dense_retrieval_ranks_by_inner_product_and_reuses_an_index(dataset, tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(retrieval_api, "_encoder", lambda config: _Encoder())
-    config = DenseConfig(encoder=LocalEncoder(model="stub", pooling="last"))
+def test_dense_retrieval_ranks_by_inner_product_and_reuses_an_index(dataset, tmp_path: Path) -> None:
+    """A fake served encoder, the real client and transport; the same identity reuses the index."""
+    config = DenseConfig(encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub"))
 
     first = retrieve(dataset, config, depth=3, out=tmp_path / "idx")
     stamp = (tmp_path / "idx" / "index.json").stat().st_mtime_ns
     again = retrieve(dataset, config, depth=3, out=tmp_path / "idx")
 
-    scores = first.for_query("q2", system="stub")
-    assert sorted(scores, key=scores.__getitem__, reverse=True)[0] == "d2"
-    assert again == first
+    vectors = np.load(tmp_path / "idx" / "vectors.npy")
+    assert vectors.shape == (3, 8)
+    assert again.for_query("q1") == first.for_query("q1")
     assert (tmp_path / "idx" / "index.json").stat().st_mtime_ns == stamp, "the same identity reuses the index"
+    assert first.systems == ["stub"]
+    assert all(np.isclose(np.linalg.norm(row), 1.0) for row in vectors), "the client normalises"
 
 
-class _TiedEncoder:
-    """Every document and query as the same vector: every score ties."""
+def test_late_interaction_indexes_and_searches_a_ragged_index(dataset, tmp_path: Path) -> None:
+    """A pooling endpoint builds the ragged index (vectors + offsets) and searches it by MaxSim."""
+    config = LateInteractionConfig(encoder=ServedPooling(base_url="fake://seed/3?dim=4", model="colqwen", dim=4))
 
-    def encode(self, contents, *, role, batch_size=None) -> Embeddings:
-        return Embeddings.single(np.ones((len(contents), 3), dtype=np.float32))
+    built = index(dataset, config, out=tmp_path / "idx")
+    rankings = search(built, dataset, depth=3)
 
-
-def test_dense_ties_break_toward_the_lower_document_id_whatever_the_corpus_order(tmp_path, monkeypatch) -> None:
-    """The corpus lists d3 first; with every score tied, depth 2 keeps d1 and d2, on every run and platform."""
-    root = tmp_path / "beir"
-    (root / "qrels").mkdir(parents=True)
-    corpus = [("d3", "c"), ("d1", "a"), ("d2", "b")]
-    (root / "corpus.jsonl").write_text("".join(json.dumps({"_id": d, "text": t}) + "\n" for d, t in corpus))
-    (root / "queries.jsonl").write_text(json.dumps({"_id": "q1", "text": "q"}) + "\n")
-    (root / "qrels" / "test.tsv").write_text("query-id\tcorpus-id\tscore\nq1\td1\t1\n")
-    monkeypatch.setattr(retrieval_api, "_encoder", lambda config: _TiedEncoder())
-    config = DenseConfig(encoder=LocalEncoder(model="stub", pooling="last"))
-
-    rankings = retrieve(load_dataset(f"beir:{root}"), config, depth=2, out=tmp_path / "idx")
-
-    assert sorted(rankings.for_query("q1", system="stub")) == ["d1", "d2"]
+    vectors = np.load(tmp_path / "idx" / "vectors.npy")
+    offsets = np.load(tmp_path / "idx" / "offsets.npy")
+    assert vectors.dtype == np.float16, "the transfer dtype reaches the index"
+    assert len(offsets) == 4 and offsets[0] == 0 and offsets[-1] == len(vectors)
+    assert set(rankings.for_query("q1")) <= set(DOCS)
 
 
-def test_an_index_refuses_a_different_corpus(dataset, tmp_path: Path) -> None:
-    built = index(dataset, BM25Config(), out=tmp_path / "idx")
-    other_root = tmp_path / "other"
-    (other_root / "qrels").mkdir(parents=True)
-    (other_root / "corpus.jsonl").write_text(json.dumps({"_id": "x", "text": "another corpus"}) + "\n")
-    (other_root / "queries.jsonl").write_text(json.dumps({"_id": "q1", "text": "q"}) + "\n")
-    (other_root / "qrels" / "test.tsv").write_text("query-id\tcorpus-id\tscore\nq1\tx\t1\n")
+def test_a_served_encoder_without_a_url_is_refused_where_its_client_is_built(dataset, tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="no base_url") as caught:
+        retrieve(dataset, DenseConfig(encoder=ServedEmbedding(model="m")), out=tmp_path / "idx")
+    assert "serve.encoder" in (caught.value.hint or "")
+    with pytest.raises(ConfigError, match="no base_url"):
+        retrieve(dataset, LateInteractionConfig(encoder=ServedPooling(model="m")), out=tmp_path / "idx")
 
-    with pytest.raises(IdentityError, match="another corpus or retriever"):
-        search(built, load_dataset(f"beir:{other_root}"))
+
+# ---------------------------------------------------------------------------
+# Hosted profiles through the role clients over a mock wire
+# ---------------------------------------------------------------------------
+
+
+def test_an_index_from_the_previous_release_is_a_config_error_with_the_hint(dataset, tmp_path: Path) -> None:
+    """An index.json written before the api rewiring (provider:-shaped) is refused by name, not as a raw error."""
+    root = tmp_path / "idx"
+    root.mkdir()
+    (root / "index.json").write_text(
+        json.dumps(
+            {
+                "schema": "rcp-ndcg.index.v1",
+                "path": str(root),
+                "dataset": "beir",
+                "retriever": {"kind": "dense", "encoder": {"provider": "local", "model": "m", "pooling": "last"}},
+                "identity": "0" * 64,
+                "num_documents": 3,
+            }
+        )
+    )
+
+    with pytest.raises(ConfigError, match="api, not by provider") as caught:
+        load_index(root)
+    assert "api: openai_embeddings" in (caught.value.hint or "")
+
+
+def test_the_index_identity_carries_the_tokenizer_digest(dataset, tmp_path: Path) -> None:
+    """The encoder's tokenizer digest enters the index identity (as it enters the step identities): the same
+    bytes under another path share it, different bytes do not, and a URL change never does."""
+    from tests._tokenizers import byte_bpe_tokenizer, save, word_tokenizer
+
+    for directory in ("one", "two", "other"):
+        (tmp_path / directory).mkdir()
+    first = save(word_tokenizer(), tmp_path / "one")
+    second = save(word_tokenizer(), tmp_path / "two")  # same bytes, different path
+    other = save(byte_bpe_tokenizer(), tmp_path / "other")
+
+    def identity(encoder: dict) -> str:
+        config = DenseConfig(encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub", **encoder))
+        doc_ids, contents = retrieval_api._corpus(dataset)
+        return retrieval_api._identity(config, doc_ids, contents)
+
+    plain = identity({})
+    with_digest = identity({"tokenizer": str(first)})
+
+    assert "tokenizer" not in plain and plain != with_digest
+    assert identity({"tokenizer": str(second)}) == with_digest, "the same bytes (any path) share the identity"
+    assert identity({"tokenizer": str(other)}) != with_digest, "different tokenizer bytes re-key"
+
+
+def test_a_hosted_encoder_embeds_through_its_public_profile(dataset, tmp_path: Path, hosted_wire) -> None:
+    config = DenseConfig(encoder=CohereEmbedding(model="embed-v4.0", batch_size=2))
+
+    built = index(dataset, config, out=tmp_path / "idx")
+    rankings = search(built, dataset, depth=2)
+
+    assert built.num_documents == 3
+    assert rankings.systems == ["embed-v4.0"]
+    cohere_calls = [request for request in hosted_wire if request.url.host == "api.cohere.com"]
+    assert cohere_calls, "the profile's public URL was used"
+    body = json.loads(cohere_calls[0].content)
+    assert body["input_type"] == "search_document" and len(body["texts"]) == 2, "batch_size splits the corpus"
+    vectors = np.load(tmp_path / "idx" / "vectors.npy")
+    assert all(np.isclose(np.linalg.norm(row), 1.0) for row in vectors), "the client normalises"
+
+
+def test_a_hosted_encoder_key_is_read_from_its_profile_variables(
+    dataset, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("CO_API_KEY", raising=False)
+    monkeypatch.delenv("COHERE_API_KEY", raising=False)
+
+    with pytest.raises(CredentialsError, match="CO_API_KEY"):
+        index(dataset, DenseConfig(encoder=CohereEmbedding(model="embed-v4.0")), out=tmp_path / "idx")
 
 
 # ---------------------------------------------------------------------------
@@ -200,305 +397,90 @@ def test_an_index_refuses_a_different_corpus(dataset, tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_rerank_rescores_the_top_candidates_with_the_reranker(dataset, monkeypatch) -> None:
-    seen = {}
-
-    def fake_rerank(examples, settings, **kwargs):
-        seen["settings"], seen["orders"] = settings, {e.id: list(e.doc_ids) for e in examples}
-        return [e.model_copy(update={"scores": [float(i) for i in range(len(e.doc_ids))]}) for e in examples]
-
-    monkeypatch.setattr("rcp_ndcg.retrieval.cross_encoder.rerank_examples", fake_rerank)
+def test_rerank_rescores_the_top_candidates_through_the_fake_endpoint(dataset, tmp_path: Path) -> None:
+    """Scores align to the candidates, and the checkpoint records each scored query."""
+    config = ServedReranker(base_url="fake://seed/1", model="stub-reranker", instruction="fold")
     candidates = Rankings.from_scores({"q1": {"d1": 3.0, "d2": 2.0, "d3": 1.0}}, system="bm25")
 
-    reranked = rerank(dataset, candidates, OpenAICompatibleReranker(model="rr", base_url="http://h:8000"), depth=2)
+    rescored = rerank(dataset, candidates, config, depth=2, out=tmp_path / "rerank")
 
-    assert seen["orders"] == {"q1": ["d1", "d2"]}, "the top `depth` candidates, best first"
-    assert (seen["settings"].framework, seen["settings"].api_base) == ("vllm", "http://h:8000")
-    assert reranked.for_query("q1", system="rr") == {"d1": 0.0, "d2": 1.0}
-
-
-def test_reranker_backends_resolve_to_their_implementations(monkeypatch) -> None:
-    monkeypatch.setenv("CO_KEY", "k")
-
-    cohere = retrieval_api._rerank_settings(Cohere(model="rerank-v4.0-pro", api_key_env="CO_KEY"))
-    qwen = retrieval_api._rerank_settings(Local(model="Qwen/Qwen3-Reranker-4B"))
-    jina = retrieval_api._rerank_settings(Local(model="jinaai/jina-reranker-v3"))
-
-    assert (cohere.framework, cohere.api_key, qwen.framework, jina.framework) == ("cohere", "k", "qwen_og", "jina_hf")
-    with pytest.raises(CredentialsError, match="NOPE_KEY"):
-        retrieval_api._rerank_settings(
-            _RERANKER.validate_python({"provider": "voyage", "model": "r", "api_key_env": "NOPE_KEY"})
-        )
-    with pytest.raises(ConfigError, match="no in-process reranker"):
-        retrieval_api._rerank_settings(Local(model="someone/else"))
+    assert rescored.systems == ["stub-reranker"]
+    top = rescored.for_query("q1")
+    assert set(top) == {"d1", "d2"}
+    assert (tmp_path / "rerank" / "rank000.jsonl").exists(), "the checkpoint records each scored query"
 
 
-def test_cohere_rerank_scores_each_document_through_the_public_api(monkeypatch) -> None:
-    from rcp_ndcg.retrieval.external_rerankers import CohereRerank
+def test_the_rerank_client_receives_the_raw_query_and_folds_it_once(dataset) -> None:
+    """The example's query and instruction are folded by the client, never by the caller: one fold, not two."""
+    from rcp_ndcg_core._records import RankingExample
 
-    class Response:
-        status_code = 200
+    from rcp_ndcg.inference.clients import RerankClient
+    from rcp_ndcg.inference.types import Reply
 
-        def raise_for_status(self) -> None: ...
+    sent: list[dict] = []
 
-        def json(self) -> dict:
-            return {"results": [{"index": 1, "relevance_score": 0.9}, {"index": 0, "relevance_score": 0.2}]}
+    class RecordingSender:
+        """A sender that records the bodies it is given and scores by position."""
 
-    calls = []
-    monkeypatch.setattr("httpx.post", lambda url, json, headers, timeout: calls.append(json) or Response())
+        async def send(self, calls: list[Any]) -> list[Reply]:
+            replies = []
+            for call in calls:
+                sent.append(call.json)
+                documents = call.json["documents"]
+                rows = [{"index": i, "relevance_score": float(i)} for i in range(len(documents))]
+                replies.append(Reply(200, {"results": rows}, {}))
+            return replies
 
-    scores = CohereRerank(api_key="k", model_name="rerank-v4.0-fast").predict("q", ["a", "", "b"])
+    config = ServedReranker(base_url="http://rerank.test/v1", model="stub-reranker")
+    client = RerankClient(config, sender=RecordingSender())
+    example = RankingExample(
+        query_id="q1", query="base query", instruction="Find relevant passages", doc_ids=["d1"], docs=["a document"]
+    )
+    try:
+        client.rerank_many([example])
+    finally:
+        client.close()
 
-    assert scores == [0.2, 0.0, 0.9], "empty documents are not sent and score 0"
-    assert calls == [{"model": "rerank-v4.0-fast", "query": "q", "documents": ["a", "b"], "top_n": 2}]
-    monkeypatch.delenv("CO_API_KEY", raising=False)
-    monkeypatch.delenv("COHERE_API_KEY", raising=False)
-    with pytest.raises(CredentialsError):
-        CohereRerank()
+    assert sent[0]["query"] == "Task: Find relevant passages\nQuery: base query", "the fold happens exactly once"
+    assert sent[0]["documents"] == ["a document"]
+
+
+def test_a_hosted_reranker_runs_through_its_public_profile(dataset, tmp_path: Path, hosted_wire) -> None:
+    config = CohereReranker(model="rerank-v4.0-fast", api_key_env="CO_API_KEY")
+    candidates = Rankings.from_scores({"q1": {"d1": 3.0, "d2": 2.0, "d3": 1.0}}, system="bm25")
+
+    rescored = rerank(dataset, candidates, config, depth=3)
+
+    assert rescored.systems == ["rerank-v4.0-fast"]
+    cohere_calls = [request for request in hosted_wire if request.url.host == "api.cohere.com"]
+    assert cohere_calls and json.loads(cohere_calls[0].content)["top_n"] == 3
 
 
 def test_fuse_sums_reciprocal_ranks() -> None:
-    first = Rankings.from_scores({"q1": {"a": 3.0, "b": 2.0, "c": 1.0}}, system="bm25")
-    second = Rankings.from_scores({"q1": {"b": 3.0, "c": 2.0, "a": 1.0}}, system="dense")
+    one = Rankings.from_scores({"q1": {"d1": 1.0, "d2": 2.0}}, system="a")
+    two = Rankings.from_scores({"q1": {"d2": 1.0, "d1": 2.0}}, system="b")
 
-    fused = fuse([first, second], rrf_k=60, depth=2).for_query("q1", system="rrf")
+    fused = fuse([one, two], depth=2)
 
-    assert list(fused) == ["b", "a"]
-    assert fused["b"] == pytest.approx(1 / 62 + 1 / 61)
-
-
-def test_fuse_of_one_system_gives_its_rrf_scores() -> None:
-    one = Rankings.from_scores({"q1": {"a": 3.0, "b": 2.0}}, system="bm25")
-
-    assert fuse([one]).for_query("q1") == {"a": 1 / 61, "b": 1 / 62}
+    scores = fused.for_query("q1", system="rrf")
+    assert scores["d1"] == pytest.approx(1 / 61 + 1 / 62)
+    assert scores["d2"] == pytest.approx(1 / 62 + 1 / 61)
 
 
 def test_fuse_keeps_the_datasets_of_a_suite_apart() -> None:
-    """Two subsets share the query id "0": each is fused on its own and keeps its dataset."""
-    rows = [
-        {"system": s, "dataset": ds, "query_id": "0", "doc_id": f"{ds}-{d}", "score": score}
-        for s, order in (("bm25", "xy"), ("dense", "yx"))
-        for ds in ("biology", "earth_science")
-        for d, score in zip(order, (2.0, 1.0), strict=True)
-    ]
-
-    fused = fuse([Rankings.from_records(rows)])
-
-    assert fused.datasets == ["biology", "earth_science"]
-    assert set(fused.for_query("0", dataset="biology")) == {"biology-x", "biology-y"}
-    assert set(fused.for_query("0", dataset="earth_science")) == {"earth_science-x", "earth_science-y"}
-
-
-# ---------------------------------------------------------------------------
-# The in-process (hf) encoder: what the config says reaches the model
-# ---------------------------------------------------------------------------
-
-
-class _FakeTransformers:
-    """``transformers`` with ``AutoModel``/``AutoTokenizer`` that record how they were loaded."""
-
-    def __init__(self) -> None:
-        self.loads: list[tuple[str, str, dict]] = []
-        fake = self
-
-        class _Model:
-            config = type("Config", (), {"hidden_size": 4})()
-
-            def to(self, device):
-                return self
-
-            def eval(self):
-                return self
-
-        class _Auto:
-            def __init__(self, kind: str) -> None:
-                self.kind = kind
-
-            def from_pretrained(self, name, **kwargs):
-                fake.loads.append((self.kind, name, kwargs))
-                return _Model()
-
-        self.module = type(sys)("transformers")
-        self.module.AutoModel = _Auto("model")
-        self.module.AutoTokenizer = _Auto("tokenizer")
-
-
-@pytest.fixture
-def fake_transformers(monkeypatch: pytest.MonkeyPatch) -> _FakeTransformers:
-    pytest.importorskip("torch")
-    fake = _FakeTransformers()
-    monkeypatch.setitem(sys.modules, "transformers", fake.module)
-    return fake
-
-
-def _encoded_texts(monkeypatch: pytest.MonkeyPatch, encoder, role) -> list[str]:
-    seen: list[str] = []
-
-    def fake_encode(model, tokenizer, texts, **kwargs):
-        seen.extend(texts)
-        return np.zeros((len(texts), 4), dtype=np.float32)
-
-    monkeypatch.setattr("rcp_ndcg.retrieval.hf_dense.encode_text_batches", fake_encode)
-    encoder.encode_texts(["tortoises"], role=role)
-    return seen
-
-
-def test_the_octen_config_prefixes_documents_and_not_queries(fake_transformers, monkeypatch) -> None:
-    """The paper encoded Octen documents as ``"- " + text`` and queries bare; the shipped config says so."""
-    from rcp_ndcg.retrieval.encoder import EncodeRole
-
-    octen = yaml.safe_load((_PAPER / "retrieval" / "octen.yaml").read_text(encoding="utf-8"))
-    config = TypeAdapter(RetrieverConfig).validate_python(octen)
-    encoder = retrieval_api._encoder(config.encoder)
-
-    assert config.encoder.doc_prompt == "- "
-    assert _encoded_texts(monkeypatch, encoder, EncodeRole.DOCUMENT) == ["- tortoises"]
-    assert _encoded_texts(monkeypatch, encoder, EncodeRole.QUERY) == ["tortoises"]
-
-
-def test_the_hf_encoder_has_no_prefix_the_config_does_not_state(fake_transformers, monkeypatch) -> None:
-    from rcp_ndcg.retrieval.encoder import EncodeRole
-
-    encoder = retrieval_api._encoder(LocalEncoder(model="some/model", pooling="last"))
-
-    assert _encoded_texts(monkeypatch, encoder, EncodeRole.DOCUMENT) == ["tortoises"]
-
-
-def test_the_encoder_revision_is_the_revision_loaded(fake_transformers) -> None:
-    retrieval_api._encoder(LocalEncoder(model="some/model", pooling="last", revision="abc"))
-
-    assert {(kind, name, kwargs.get("revision")) for kind, name, kwargs in fake_transformers.loads} == {
-        ("model", "some/model", "abc"),
-        ("tokenizer", "some/model", "abc"),
-    }
-
-
-# ---------------------------------------------------------------------------
-# Rerankers: every config field reaches the backend it applies to, or is refused
-# ---------------------------------------------------------------------------
-
-_PAPER = Path(__file__).parents[2] / "experiments" / "paper"
-
-
-def test_the_cohere_configs_send_100_documents_per_request() -> None:
-    """Cohere bills per request (a search unit is 100 documents), so the batch is the API's, not 8."""
-    for name in ("cohere_rerank_v4_pro", "cohere_rerank_v4_fast"):
-        config = yaml.safe_load((_PAPER / f"rerankers/{name}.yaml").read_text(encoding="utf-8"))
-
-        assert retrieval_api._rerank_settings(_RERANKER.validate_python(config)).request_size == 100
-
-
-def test_the_paper_cohere_configs_read_either_key_variable(monkeypatch: pytest.MonkeyPatch) -> None:
-    """They once pinned api_key_env: CO_API_KEY, so a key in COHERE_API_KEY alone (as documented) exited 5."""
-    from rcp_ndcg.retrieval.external_rerankers import CohereRerank
-
-    monkeypatch.delenv("CO_API_KEY", raising=False)
-    monkeypatch.setenv("COHERE_API_KEY", "k")
-    for name in ("cohere_rerank_v4_pro", "cohere_rerank_v4_fast"):
-        config = _RERANKER.validate_python(yaml.safe_load((_PAPER / f"rerankers/{name}.yaml").read_text()))
-        settings = retrieval_api._rerank_settings(config)
-        assert CohereRerank(api_key=settings.api_key, model_name=settings.model_name)._api_key == "k"
-    embed = yaml.safe_load((_PAPER / "retrieval/cohere_embed_v4.yaml").read_text())
-    retriever = TypeAdapter(RetrieverConfig).validate_python(embed)
-    assert retrieval_api._encoder(retriever.encoder).client._key() == "k"
-
-
-@pytest.mark.parametrize(
-    ("config", "match"),
-    [
-        ({"provider": "openai_compatible", "model": "m", "base_url": "http://h", "batch_size": 4}, "batch_size"),
-        ({"provider": "cohere", "model": "rerank-v4.0-pro", "concurrency": 4}, "concurrency"),
-        ({"provider": "local", "model": "m", "base_url": "http://h"}, "base_url"),
-        ({"provider": "gemini", "model": "m"}, "provider"),
-    ],
-)
-def test_a_field_the_provider_does_not_use_is_refused(config: dict, match: str) -> None:
-    with pytest.raises(ValidationError, match=match):
-        _RERANKER.validate_python(config)
-
-
-def test_a_served_model_without_a_url_is_refused_where_its_client_is_built() -> None:
-    """``base_url`` is omitted only when the run's job starts the model's engine (``serve.``); building the
-    retrieval client without one is refused, never silently pointed at a vendor's public API."""
-    from rcp_ndcg.retrieval import _api as retrieval_api
-    from rcp_ndcg.retrieval.config import OpenAICompatibleEncoder, OpenAICompatibleReranker
-
-    with pytest.raises(ConfigError, match="has no base_url"):
-        retrieval_api._encoder(OpenAICompatibleEncoder(model="m"))
-    with pytest.raises(ConfigError, match="has no base_url"):
-        retrieval_api._rerank_settings(OpenAICompatibleReranker(model="m"))
-
-
-@pytest.mark.parametrize("model", ["jinaai/jina-reranker-v3", "zeroentropy/zerank-2"])
-def test_a_local_reranker_that_batches_on_its_own_refuses_a_batch_size(model: str) -> None:
-    with pytest.raises(ConfigError, match="batch_size"):
-        retrieval_api._rerank_settings(Local(model=model, batch_size=4))
-
-
-def test_a_hosted_rerankers_endpoint_reaches_its_requests(monkeypatch: pytest.MonkeyPatch) -> None:
-    """base_url (a proxy), timeout_s and max_retries of a Cohere config are what the requests use."""
-    from rcp_ndcg.retrieval import external_rerankers
-
-    seen: list = []
-    monkeypatch.setattr(
-        "rcp_ndcg.retrieval._http.post_json",
-        lambda url, payload, **kwargs: seen.append((url, kwargs)) or {"results": [{"index": 0, "relevance_score": 1}]},
+    one = Rankings.from_records(
+        [
+            {"system": "a", "dataset": "one", "query_id": "q1", "doc_id": "d1", "score": 1.0},
+            {"system": "a", "dataset": "two", "query_id": "q1", "doc_id": "d2", "score": 1.0},
+        ]
     )
-    config = Cohere(
-        model="rerank-v4.0-pro", api_key_env="CO_KEY", base_url="http://proxy/v2", timeout_s=7, max_retries=1
+    two = Rankings.from_records(
+        [
+            {"system": "b", "dataset": "one", "query_id": "q1", "doc_id": "d2", "score": 1.0},
+            {"system": "b", "dataset": "two", "query_id": "q1", "doc_id": "d1", "score": 1.0},
+        ]
     )
-    monkeypatch.setenv("CO_KEY", "k")
 
-    external_rerankers.load_external_model(retrieval_api._rerank_settings(config)).predict("q", ["a"])
+    fused = fuse([one, two])
 
-    ((url, kwargs),) = seen
-    assert url == "http://proxy/v2/rerank"
-    assert (kwargs["timeout_s"], kwargs["max_retries"]) == (7, 1)
-
-
-def test_the_reranker_revision_is_the_revision_loaded(monkeypatch: pytest.MonkeyPatch) -> None:
-    from rcp_ndcg.retrieval import external_rerankers
-
-    seen: dict = {}
-    monkeypatch.setattr(external_rerankers, "QwenOGRerank", lambda **kwargs: seen.update(kwargs))
-    settings = retrieval_api._rerank_settings(Local(model="Qwen/Qwen3-Reranker-4B", revision="abc"))
-
-    external_rerankers.load_external_model(settings, device="cpu")
-
-    assert (seen["model_name_or_path"], seen["revision"]) == ("Qwen/Qwen3-Reranker-4B", "abc")
-
-
-def test_jina_loads_the_revision(fake_transformers: _FakeTransformers) -> None:
-    from rcp_ndcg.retrieval.external_rerankers import JinaRerank
-
-    fake_transformers.module.AutoModelForSequenceClassification = fake_transformers.module.AutoModel
-    JinaRerank("jinaai/jina-reranker-v3", revision="abc", device="cpu")
-
-    assert {(kind, kwargs.get("revision")) for kind, _, kwargs in fake_transformers.loads} == {
-        ("model", "abc"),
-        ("tokenizer", "abc"),
-    }
-
-
-def test_voyage_reranks_over_http_without_its_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
-    from rcp_ndcg.retrieval.external_rerankers import VoyageRerank
-
-    class Response:
-        status_code = 200
-
-        def raise_for_status(self) -> None: ...
-
-        def json(self) -> dict:
-            return {"data": [{"index": 1, "relevance_score": 0.9}, {"index": 0, "relevance_score": 0.2}]}
-
-    calls = []
-    monkeypatch.setitem(sys.modules, "voyageai", None)
-    monkeypatch.setattr("time.sleep", lambda seconds: None)
-    monkeypatch.setattr("httpx.post", lambda url, json, headers, timeout: calls.append((url, json)) or Response())
-
-    scores = VoyageRerank(api_key="k", model_name="rerank-2.5").predict("q", ["a", "", "b"])
-
-    assert scores == [0.2, 0.0, 0.9], "empty documents are not sent and score 0"
-    assert calls == [
-        ("https://api.voyageai.com/v1/rerank", {"model": "rerank-2.5", "query": "q", "documents": ["a", "b"]})
-    ]
+    assert sorted(fused.datasets) == ["one", "two"]

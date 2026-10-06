@@ -55,6 +55,12 @@ class LocalOptions(JobOptions):
     def _detached_jobs_are_followed_through_files(self) -> Self:
         if self.detach and not self.log_dir:
             raise ValueError("a detached local runner needs `log_dir`: its jobs are followed through their files")
+        if self.wheelhouse or self.constraints:
+            raise ValueError(
+                "the local runner installs nothing (it runs the coordinator in this host's environment): "
+                "drop wheelhouse and constraints, or hand the run to a runner that installs it "
+                "(kubernetes, or slurm with a container runtime)"
+            )
         return self
 
 
@@ -79,15 +85,14 @@ class LocalRunner:
         self._statuses: dict[str, JobStatus] = {}
 
     def render(self, jobs: Sequence[JobSpec]) -> dict[str, str]:
-        """The worker script each job runs. Submits nothing.
+        """The worker script each job runs: a phased job's phases in order (their commands are the job's
+        commands), a plain job its ``argv``. Submits nothing.
 
         Raises:
             ConfigError: a job has a phase that starts an engine, which the local runner does not start.
         """
         for job in jobs:
             serving = sorted(role for phase in job.phases for role in phase.engines)
-            if job.serve is not None:  # the pre-phase shape; the phased rendering removes the field
-                serving = ["(serve:)"]
             if serving:
                 raise ConfigError(
                     f"job {job.name!r} starts engine(s) for role(s) {', '.join(serving)}, and the local runner "

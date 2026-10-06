@@ -86,7 +86,7 @@ class TestServe:
 
     SERVED = {
         "from": "retrieval",
-        "retrieval": {"kind": "dense", "encoder": {"provider": "openai_compatible", "model": "e"}},
+        "retrieval": {"kind": "dense", "encoder": {"api": "openai_embeddings", "model": "e"}},
     }
     ENGINE = {"command": ["vllm", "serve", "e", "--host", "0.0.0.0", "--port", "8000"]}
 
@@ -113,7 +113,7 @@ class TestServe:
             "from": "retrieval",
             "retrieval": {
                 "kind": "dense",
-                "encoder": {"provider": "openai_compatible", "model": "e", "base_url": "http://elsewhere/v1"},
+                "encoder": {"api": "openai_embeddings", "model": "e", "base_url": "http://elsewhere/v1"},
             },
         }
         with pytest.raises(ConfigError, match="sets base_url") as refused:
@@ -130,7 +130,7 @@ class TestServe:
                 "judge": "fake",
                 "candidates": {
                     "from": "retrieval",
-                    "retrieval": {"kind": "dense", "encoder": {"provider": "cohere", "model": "embed-v4.0"}},
+                    "retrieval": {"kind": "dense", "encoder": {"api": "cohere", "model": "embed-v4.0"}},
                 },
                 "steps": ["retrieve"],
             }

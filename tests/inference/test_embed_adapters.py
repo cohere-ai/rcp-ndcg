@@ -1,7 +1,6 @@
 """The embedding wire adapters: what each profile sends, what it reads back, and what it refuses.
 
-The request and response shapes port ``tests/retrieval/test_api_dense.py`` (still green: the hosted path it
-tests is deleted only when the retrieval wiring moves). Every test is offline: adapters build and read
+Every test is offline: adapters build and read
 :class:`~rcp_ndcg.inference.types.Call` / :class:`~rcp_ndcg.inference.types.Reply` objects directly.
 """
 
@@ -23,7 +22,7 @@ from rcp_ndcg.inference.adapters.embeddings import (
     VoyageEmbeddings,
 )
 from rcp_ndcg.inference.types import Reply, TokenCount
-from tests.inference._embed import openai_data, vendor_payload
+from tests.inference._embed import embeddings_data, vendor_payload
 
 #: Every shipped embedding adapter, under its registered name.
 ADAPTERS: dict[str, type] = {
@@ -92,7 +91,7 @@ class TestOpenAIShape:
         assert "dimensions" not in self.adapter.calls(request(), model="m")[0].json
 
     def test_the_reply_is_read_in_index_order(self) -> None:
-        body = openai_data([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]], indices=[2, 0, 1])
+        body = embeddings_data([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]], indices=[2, 0, 1])
         vectors = self.adapter.interpret(request(texts=("a", "b", "c")), [reply(200, body)])
         assert vectors.as_matrix()[:, 0].tolist() == [1.0, 0.0, 1.0]  # items 0, 1, 2 -- not reply order
 
@@ -156,7 +155,7 @@ class TestVoyageShape:
         assert document["input_type"] == "document"
 
     def test_the_reply_is_the_openai_shape(self) -> None:
-        vectors = self.adapter.interpret(request(), [reply(200, openai_data([[0.0, 1.0]]))])
+        vectors = self.adapter.interpret(request(), [reply(200, embeddings_data([[0.0, 1.0]]))])
         assert vectors.as_matrix()[0].tolist() == [0.0, 1.0]
 
 
@@ -263,7 +262,7 @@ class TestRefusals:
             self.adapter.interpret(request(texts=("a", "b")), [reply(200, body)])
 
     def test_a_reply_wider_or_narrower_than_the_cut_is_rejected(self) -> None:
-        body = openai_data([[1.0, 0.0]])
+        body = embeddings_data([[1.0, 0.0]])
         with pytest.raises(RequestRejectedError, match="dimensions=8"):
             self.adapter.interpret(request(dimensions=8), [reply(200, body)])
 
@@ -299,7 +298,7 @@ class TestRefusals:
             self.adapter.interpret(request(), [reply(500, {"error": "boom"})])
 
     def test_vectors_must_align_to_the_request(self) -> None:
-        body = openai_data([[1.0, 0.0], [0.0, 1.0]])
+        body = embeddings_data([[1.0, 0.0], [0.0, 1.0]])
         with pytest.raises(RequestRejectedError, match=r"2 vector\(s\) for 1 item"):
             self.adapter.interpret(request(texts=("a",)), [reply(200, body)])
 

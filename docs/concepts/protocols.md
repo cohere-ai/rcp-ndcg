@@ -69,7 +69,8 @@ names any of its subsets (the file's `dataset` column must hold the exact subset
 `corpus-test-486`). Every score would be 0, which reads as a weak system where the input is broken. A system
 whose rows match some subsets, or some documents, keeps scoring: the missing subsets score 0 with the warning,
 and out-of-pool documents score 0 silently. The checks are per system, so a file of several systems is refused
-when any one of them matches nothing.
+when any one of them matches nothing; score the healthy ones with `--system NAME` (repeatable), or `systems=` in
+Python, and fix or drop the broken one.
 
 ## Aggregation
 

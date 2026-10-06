@@ -18,7 +18,8 @@ from rcp_ndcg.runners import (
     SlurmRunner,
     get_runner,
 )
-from rcp_ndcg.runners.script import supervise
+from rcp_ndcg.runners.base import JobPhase
+from rcp_ndcg.runners.script import EngineStep, engines_env_value, supervise
 from rcp_ndcg.runners.slurm import slurm_time
 from tests.runners.shell import assert_shellcheck_clean
 
@@ -164,23 +165,52 @@ SERVE = ServeConfig(
     env={"HF_HOME": "/shared/hf"},
     resources=Resources(gpus=8, cpus=16),
 )
-SERVED = JobSpec(
-    name="run",
-    argv=("rcp-ndcg", "run", "resume", "--run", "/shared/runs/x"),
-    resources=Resources(cpus=8, time_limit_s=86400),
-    serve=SERVE,
+ENCODER = ServeConfig(
+    image="org/encoder:v2",
+    command=["python3", "-m", "encoder", "--host", "0.0.0.0", "--port", "8001"],
+    port=8001,
 )
-#: The same job with its engine run on the node (``container_runtime: none`` takes no image).
-ON_NODE = SERVED.model_copy(update={"serve": SERVE.model_copy(update={"image": None})})
+RERANKER = ServeConfig(
+    image="org/reranker:v1",
+    command=["python3", "-m", "reranker", "--host", "0.0.0.0", "--port", "8002"],
+    port=8002,
+    replicas=2,
+)
 
 
-class TestServe:
-    def test_one_node_golden(self) -> None:
-        script = SlurmRunner(partition="gpu", setup=["source .venv/bin/activate"]).render([ON_NODE])["run"]
-        engine = (
-            'srun --overlap --nodes=1 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gres=gpu:8 bash -c "$ENGINE"'
+def _on_node(phases: tuple[JobPhase, ...]) -> tuple[JobPhase, ...]:
+    """The same phases with the engines run on the node (``container_runtime: none`` takes no image)."""
+    return tuple(
+        phase.model_copy(
+            update={
+                "engines": {role: engine.model_copy(update={"image": None}) for role, engine in phase.engines.items()}
+            }
         )
-        supervision = supervise(SERVE, engine=engine, coordinator='bash -c "$WORKER"', hosts='"${HOSTS[@]}"')
+        for phase in phases
+    )
+
+
+class TestPhases:
+    def test_one_phase_golden(self) -> None:
+        phase = JobPhase(
+            engines={"judge": SERVE.model_copy(update={"image": None})},
+            argv=("rcp-ndcg", "run", "resume", "--run", "/shared/runs/x"),
+        )
+        job = JobSpec(
+            name="run",
+            resources=Resources(cpus=8, time_limit_s=86400),
+            phases=(phase,),
+        )
+        script = SlurmRunner(partition="gpu", setup=["source .venv/bin/activate"]).render([job])["run"]
+        engine = (
+            "srun --overlap --nodes=1 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gres=gpu:8 "
+            'bash -c "$ENGINE_JUDGE"'
+        )
+        supervision = supervise(
+            [EngineStep(serve=SERVE, role="judge", start=engine, hosts="127.0.0.1")],
+            coordinator='bash -c "$WORKER_1"',
+            engines_env=f"'{engines_env_value({'judge': SERVE}, {'judge': ['http://127.0.0.1:8000/v1']})}'",
+        )
         assert script == (
             "#!/usr/bin/env bash\n"
             "#SBATCH --job-name=run\n"
@@ -194,66 +224,109 @@ class TestServe:
             "#SBATCH --time=1-00:00:00\n"
             "set -euo pipefail\n"
             "source .venv/bin/activate\n"
-            "read -r -d '' WORKER <<'RCP_NDCG_WORKER' || true\n"
+            "read -r -d '' WORKER_1 <<'RCP_NDCG_WORKER_1' || true\n"
             "#!/usr/bin/env bash\n"
             "set -euo pipefail\n"
             "exec rcp-ndcg run resume --run /shared/runs/x\n"
-            "RCP_NDCG_WORKER\n"
-            "read -r -d '' ENGINE <<'RCP_NDCG_ENGINE' || true\n"
+            "RCP_NDCG_WORKER_1\n"
+            "read -r -d '' ENGINE_JUDGE <<'RCP_NDCG_ENGINE_JUDGE' || true\n"
             "export HF_HOME=/shared/hf\n"
             "exec vllm serve org/model --served-model-name m --host 0.0.0.0 --port 8000\n"
-            "RCP_NDCG_ENGINE\n"
-            "HOSTS=(127.0.0.1)\n"
-            'URLS=(); for host in "${HOSTS[@]}"; do URLS+=("http://$host:8000/v1"); done\n'
-            'RCP_NDCG_JUDGE_URLS="$(IFS=,; echo "${URLS[*]}")"\n'
-            "export RCP_NDCG_JUDGE_URLS\n" + "\n".join(supervision) + "\n"
+            "RCP_NDCG_ENGINE_JUDGE\n" + "\n".join(supervision) + "\n"
         )
-        # The supervision block: the engine once in the background (no restart loop), a bounded readiness wait,
-        # the coordinator in the background, and the job ends with the first of the two.
+        # The phase's engine starts once in the background (no restart loop), a bounded readiness wait, the
+        # coordinator with the phase's engines in RCP_NDCG_ENGINES, and the phase ends with the first of the two.
         assert "while true; do\n  vllm" not in script and "restarting" not in script
         assert f"{engine} &\nRCP_NDCG_ENGINE_PID=$!\n" in script
-        assert 'bash -c "$WORKER" &\nRCP_NDCG_COORDINATOR_PID=$!\nstatus=0\nwait -n || status=$?\n' in script
-        assert "local deadline=$((SECONDS + 1800)) status" in script
+        assert 'bash -c "$WORKER_1" &\nRCP_NDCG_COORDINATOR_PID=$!\nstatus=0\nwait -n || status=$?\n' in script
+        assert "local deadline=$((SECONDS + timeout)) status" in script
 
-    def test_several_nodes_run_one_engine_each_and_read_the_urls_from_the_node_list(self) -> None:
-        served = SERVED.model_copy(update={"serve": SERVE.model_copy(update={"replicas": 3})})
-        runner = SlurmRunner(container_runtime="pyxis", container_mounts=["/shared:/shared"])
-        script = runner.render([served])["run"]
-        assert "#SBATCH --nodes=3\n#SBATCH --ntasks-per-node=1\n" in script
-        # One replica that exits ends the whole engine step (at once on a failure, 10 s later on status 0).
+    def test_four_phases_ask_for_the_maximum_over_phases(self) -> None:
+        """The paper run: retrieve (encoder), rerank (2 rerankers), judge, then calibrate+evaluate (none)."""
+        phases = (
+            JobPhase(engines={"encoder": ENCODER}, argv=("a",)),
+            JobPhase(engines={"reranker": RERANKER}, argv=("b",)),
+            JobPhase(engines={"judge": SERVE}, argv=("c",)),
+            JobPhase(argv=("d",)),
+        )
+        script = SlurmRunner(container_runtime="pyxis", container_mounts=["/shared:/shared"]).render(
+            [JobSpec(name="paper", phases=phases)]
+        )["paper"]
+        assert "#SBATCH --nodes=2\n#SBATCH --ntasks-per-node=1\n" in script  # the largest phase's replicas
+        assert "#SBATCH --gres=gpu:8\n" in script  # the largest per-node sum over the phases
+        # Each role's replicas are pinned to their slice of the allocation's nodes — per phase (the phases run
+        # one after another, so each partitions the whole allocation), engines by descending GPU count: the
+        # judge shares the coordinator's node, whose own request is reserved first in the device slices.
+        assert 'mapfile -t RCP_NDCG_HOSTS < <(scontrol show hostnames "$SLURM_JOB_NODELIST")\n' in script
+        assert 'HOSTS_ENCODER=("${RCP_NDCG_HOSTS[@]:0:1}")\n' in script
+        assert 'HOSTS_RERANKER=("${RCP_NDCG_HOSTS[@]:0:2}")\n' in script
+        assert 'HOSTS_JUDGE=("${RCP_NDCG_HOSTS[@]:0:1}")\n' in script
+        assert '--nodelist="$(IFS=,; echo "${HOSTS_RERANKER[*]}")"' in script
+        assert "srun --overlap --nodes=1 --ntasks=1 --nodelist=${RCP_NDCG_HOSTS[0]} " in script  # the coordinator
+        # The RCP_NDCG_ENGINES of a multi-node phase is built when the job starts, from the pinned nodes.
+        assert "RCP_NDCG_ENGINES_SPEC" in script
         assert (
-            "srun --overlap --nodes=3 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gres=gpu:8 "
-            '--container-image=vllm/vllm-openai:v0.30.0 --container-mounts=/shared:/shared bash -c "$ENGINE" &\n'
-        ) in script
-        assert 'mapfile -t HOSTS < <(scontrol show hostnames "$SLURM_JOB_NODELIST")\n' in script
-        # The coordinator is one task on the first node, in the stock image, beside the engine step.
-        (coordinator,) = [line for line in script.splitlines() if line.endswith('bash -c "$WORKER" &')]
-        assert coordinator.startswith("srun --overlap --nodes=1 --ntasks=1 --container-image=")
-        assert "exec uvx --from" in script
+            'RCP_NDCG_ENGINES="$(python3 -c "$RCP_NDCG_ENGINES_SPEC" '
+            '"reranker:8002:900:$( IFS=,; echo "${HOSTS_RERANKER[*]}" )")"' in script
+        )
+        # The last phase has no engines: its command runs directly, with an empty RCP_NDCG_ENGINES.
+        assert "export RCP_NDCG_ENGINES='{}'" in script
+        (last,) = [line for line in script.splitlines() if line.endswith('bash -c "$WORKER_4"')]
+        assert last.startswith("srun --container-image=")
+
+    def test_engine_free_phases_run_directly_between_engine_phases(self) -> None:
+        phases = (
+            JobPhase(engines={"judge": SERVE.model_copy(update={"image": None})}, argv=("a",)),
+            JobPhase(argv=("b",)),
+            JobPhase(engines={"judge": SERVE.model_copy(update={"image": None})}, argv=("c",)),
+        )
+        script = SlurmRunner().render([JobSpec(name="j", phases=phases)])["j"]
+        blocks = [
+            line
+            for line in script.splitlines()
+            if line in ('bash -c "$WORKER_2"', 'bash -c "$WORKER_1" &', 'bash -c "$WORKER_3" &')
+        ]
+        assert blocks == ['bash -c "$WORKER_1" &', 'bash -c "$WORKER_2"', 'bash -c "$WORKER_3" &']
 
     @pytest.mark.parametrize("runtime", ["none", "apptainer", "pyxis"])
-    @pytest.mark.parametrize("replicas", [1, 2])
-    def test_the_rendered_script_is_valid_bash(self, runtime: str, replicas: int) -> None:
-        job = ON_NODE if runtime == "none" else SERVED
-        served = job.model_copy(update={"serve": job.serve.model_copy(update={"replicas": replicas})})
-        script = SlurmRunner(container_runtime=runtime).render([served])["run"]
+    @pytest.mark.parametrize(
+        "phases",
+        [
+            (JobPhase(engines={"judge": SERVE}, argv=("a",)),),
+            (
+                JobPhase(engines={"encoder": ENCODER}, argv=("a",)),
+                JobPhase(engines={"reranker": RERANKER}, argv=("b",)),
+                JobPhase(argv=("c",)),
+            ),
+            (
+                JobPhase(engines={"encoder": ENCODER}, argv=("a",)),
+                JobPhase(engines={"reranker": RERANKER}, argv=("b",)),
+                JobPhase(engines={"judge": SERVE}, argv=("c",)),
+                JobPhase(argv=("d",)),
+            ),
+            # One node: every phase has at most one engine, and the phases' engines are reused across phases.
+            (
+                JobPhase(engines={"judge": SERVE}, argv=("a",)),
+                JobPhase(engines={"encoder": ENCODER}, argv=("b",)),
+                JobPhase(engines={"judge": SERVE}, argv=("c",)),
+            ),
+        ],
+        ids=["one", "three", "four", "one-node-three"],
+    )
+    def test_the_rendered_script_is_valid_bash(self, runtime: str, phases: tuple[JobPhase, ...]) -> None:
+        rendered = _on_node(phases) if runtime == "none" else phases
+        script = SlurmRunner(container_runtime=runtime).render([JobSpec(name="j", phases=rendered)])["j"]
         assert subprocess.run(["bash", "-n", "-c", script], capture_output=True).returncode == 0
         assert_shellcheck_clean(script)
 
-    def test_a_replica_over_several_nodes_is_refused_when_the_config_is_read(self) -> None:
-        """It was accepted here and failed as NotImplementedError (exit 1, 'this is a bug') when rendered."""
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError, match="one replica per node"):
-            ServeConfig(image="i", command="serve", nodes_per_replica=2)
-
-    def test_an_image_is_refused_on_the_node_and_required_in_a_container(self) -> None:
+    def test_the_engine_image_is_refused_on_the_node_and_required_in_a_container(self) -> None:
         """With container_runtime none the image was silently ignored: the command ran on the node."""
+        phases = (JobPhase(engines={"judge": SERVE}, argv=("a",)),)
         with pytest.raises(ConfigError, match="image would be ignored") as refused:
-            SlurmRunner().render([SERVED])
+            SlurmRunner().render([JobSpec(name="j", phases=phases)])
         assert "container_runtime: apptainer | pyxis" in (refused.value.hint or "")
-        with pytest.raises(ConfigError, match="names no image"):
-            SlurmRunner(container_runtime="apptainer").render([ON_NODE])
+        with pytest.raises(ConfigError, match="judge engine.*names no image"):
+            SlurmRunner(container_runtime="apptainer").render([JobSpec(name="j", phases=_on_node(phases))])
 
 
 def test_the_runners_resources_and_env_are_every_jobs_defaults() -> None:

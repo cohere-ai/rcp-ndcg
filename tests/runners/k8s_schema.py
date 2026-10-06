@@ -38,6 +38,7 @@ _CONTAINER = {
 }
 _POD = {
     "restartPolicy": _STR,
+    "initContainers": [_CONTAINER],
     "containers": [_CONTAINER],
     "volumes": [{"name": _STR, "emptyDir": {"medium": _STR}}],
     "serviceAccountName": _STR,

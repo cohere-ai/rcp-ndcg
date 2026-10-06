@@ -14,8 +14,8 @@ A role client holds one transport per endpoint, next to its wire adapter
         transport.add_usage(adapter.usage(reply))
     result = adapter.interpret(request, replies)
 
-The transport counts the calls and the failed calls itself; the tokens cross the adapter, which is where the
-API's field names are known, and come back through :meth:`Transport.add_usage`.
+The transport counts the requests and the failed requests itself; the tokens cross the adapter, which is where
+the API's field names are known, and come back through :meth:`Transport.add_usage`.
 """
 
 from __future__ import annotations
@@ -77,7 +77,7 @@ class Sender(Protocol):
 
     @property
     def usage(self) -> Usage:
-        """Calls and tokens accumulated so far (calls, failed calls, input and output tokens)."""
+        """Requests and tokens accumulated so far (requests, failed requests, input and output tokens)."""
         ...
 
 
@@ -131,9 +131,9 @@ def _body_text(response: httpx.Response) -> str:
     return response.text[:500]
 
 
-def _reply(response: httpx.Response) -> Reply:
+def _reply(response: httpx.Response, *, url: str | None = None) -> Reply:
     """The :class:`~rcp_ndcg.inference.types.Reply` of one response: JSON decoded, ``application/octet-stream``
-    (and anything that does not parse) kept as bytes."""
+    (and anything that does not parse) kept as bytes; ``url`` names the replica that answered."""
     content_type = response.headers.get("content-type", "")
     if "octet-stream" in content_type:
         body: Any = response.content
@@ -142,7 +142,7 @@ def _reply(response: httpx.Response) -> Reply:
             body = response.json()
         except ValueError:
             body = response.content
-    return Reply(status=response.status_code, body=body, headers=dict(response.headers))
+    return Reply(status=response.status_code, body=body, headers=dict(response.headers), url=url)
 
 
 class Transport:
@@ -194,9 +194,9 @@ class Transport:
                 ``httpx_transport`` is supplied, which answers instead of them.
             httpx_transport: A caller-supplied ``httpx.AsyncBaseTransport`` (a mock in tests), wrapped in the
                 transport's own ``httpx.AsyncClient`` with the endpoint's timeouts and pool limits -- never
-                replacing them, unlike the judge client of today, where a supplied client replaced both. The
-                pool limits size the transport's own pool (the default httpx transport); a supplied transport
-                pools as it pleases.
+                replacing them, unlike the judge client this transport replaced, where a supplied client
+                replaced both. The pool limits size the transport's own pool (the default httpx transport); a
+                supplied transport pools as it pleases.
         """
         if not endpoint.urls:
             raise ConfigError(
@@ -243,7 +243,9 @@ class Transport:
         try:
             headers = self._base_headers()
         except CredentialsError:
-            self._usage = self._usage + Usage(failed_calls=len(calls))  # the request failed before it was queued
+            self._usage = self._usage.merged_with(  # the request failed before it was queued
+                Usage(failed_requests=len(calls))
+            )
             raise
         #: Per replica: its successes when this request first failed there.
         failed_at: dict[int, int] = {}
@@ -273,13 +275,13 @@ class Transport:
                     self._set_aside(replica, exc)
                     continue
                 except Exception:
-                    self._usage = self._usage + Usage(failed_calls=len(calls))
+                    self._usage = self._usage.merged_with(Usage(failed_requests=len(calls)))
                     raise
                 finally:
                     replica.in_flight -= 1
                 replica.successes += 1
                 replica.down_until, replica.backoff = 0.0, None
-                self._usage = self._usage + Usage(calls=len(calls))
+                self._usage = self._usage.merged_with(Usage(requests=len(calls)))
                 return replies
 
     async def _send_on(self, replica: _Replica, calls: Sequence[Call], headers: Mapping[str, str]) -> list[Reply]:
@@ -319,7 +321,7 @@ class Transport:
         error = status_error(status, url=replica.url, path=path, model=self.endpoint.model, body=_body_text(response))
         if error is not None:
             raise error
-        return _reply(response)
+        return _reply(response, url=replica.url)
 
     def _url(self, replica: _Replica, path: str) -> str:
         """The request URL: the replica's base URL then the call's path; their queries, if any, joined."""
@@ -492,13 +494,13 @@ class Transport:
 
     @property
     def usage(self) -> Usage:
-        """Calls and tokens accumulated so far (calls, failed calls, input and output tokens).
+        """Requests and tokens accumulated so far (the run manifest's :class:`Usage` shape).
 
-        :meth:`send` counts the calls and the failed calls itself: a request the transport raises on is a failed
-        call, whether before it was queued (a missing credentials variable) or after it was sent (the status
-        map's typed errors); a request the rejection rule refuses, one parked out by ``wait_on_outage_s``, and a
-        reply the status map returns (even one the adapter refuses) are not. The tokens arrive through
-        :meth:`add_usage`.
+        :meth:`send` counts the requests and the failed requests itself: a request the transport raises on is a
+        failed request, whether before it was queued (a missing credentials variable) or after it was sent (the
+        status map's typed errors); a request the rejection rule refuses, one parked out by
+        ``wait_on_outage_s``, and a reply the status map returns (even one the adapter refuses) are not. The
+        tokens arrive through :meth:`add_usage`.
         """
         return self._usage
 
@@ -507,11 +509,11 @@ class Transport:
         ``usage(reply)`` (``None`` when the API reports no tokens, which adds nothing)."""
         if tokens is None:
             return
-        self._usage = Usage(
-            calls=self._usage.calls,
-            failed_calls=self._usage.failed_calls,
-            input_tokens=self._usage.input_tokens + (tokens.input_tokens or 0),
-            output_tokens=self._usage.output_tokens + (tokens.output_tokens or 0),
+        self._usage = self._usage.model_copy(
+            update={
+                "input_tokens": self._usage.input_tokens + (tokens.input_tokens or 0),
+                "output_tokens": self._usage.output_tokens + (tokens.output_tokens or 0),
+            }
         )
 
     # ------------------------------------------------------------------
@@ -560,7 +562,8 @@ class Transport:
 
         Synchronous, so a caller of :meth:`run` can clean up without an event loop of its own: the async close
         runs on the pool's own loop. Called from the loop the pool serves (an async caller), the close is
-        scheduled instead of blocking that loop on itself. A later :meth:`run` builds a fresh pool.
+        scheduled instead of blocking that loop on itself. A pool whose loop has since closed is dropped, not
+        closed: its connections died with the loop. A later :meth:`run` builds a fresh pool.
         """
         pool, loop = self._pool, self._loop
         self._pool = None
@@ -578,6 +581,8 @@ class Transport:
         if loop.is_running():
             asyncio.run_coroutine_threadsafe(pool.aclose(), loop).result()
             return
+        if loop.is_closed():
+            return  # the pool's connections died with its loop; there is nothing left to await
         loop.run_until_complete(pool.aclose())
 
     def close(self) -> None:

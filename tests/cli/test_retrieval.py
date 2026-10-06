@@ -79,21 +79,27 @@ def test_a_malformed_retriever_is_a_config_error(dataset: str, tmp_path: Path) -
     document = _invoke("search", "--dataset", dataset, "--retriever", str(path), "--out", str(tmp_path / "r.parquet"))
 
     assert document["exit_code"] == 3
-    assert "kind" in document["error"]["hint"]
+    assert "api" in document["error"]["hint"], document["error"]["hint"]
 
 
 def test_rerank_rescores_the_top_candidates(dataset: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    class _Served:
-        def __init__(self, *_: object, **__: object) -> None: ...
+    def stub_rerank_many(self, examples, *, checkpoint=None):
+        """The stub endpoint scores each document by its text length."""
+        from rcp_ndcg.inference.types import RerankResult
 
-        def rerank(self, query: object, documents: list[object], **_: object) -> list[float]:
-            return [float(len(str(document))) for document in documents]
+        results = []
+        for example in examples:
+            scores = tuple(float(len(content.text)) for content in example.doc_contents)
+            if checkpoint is not None:
+                checkpoint(str(example.id), scores)
+            results.append(RerankResult(scores=scores))
+        return results
 
-    monkeypatch.setattr("rcp_ndcg.retrieval.vllm_http.VllmPoolingClient", _Served)
+    monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", stub_rerank_many)
     first = tmp_path / "first.parquet"
     Rankings.from_orders({"q1": ["d2", "d3", "d1"]}, system="first").save(first)
     reranker = tmp_path / "reranker.yaml"
-    reranker.write_text(yaml.safe_dump({"provider": "openai_compatible", "model": "stub"}), encoding="utf-8")
+    reranker.write_text(yaml.safe_dump({"api": "rerank", "model": "stub"}), encoding="utf-8")
 
     document = _invoke(
         "rerank", "--dataset", dataset, "--rankings", str(first), "--reranker", str(reranker),

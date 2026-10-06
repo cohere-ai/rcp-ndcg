@@ -11,8 +11,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from rcp_ndcg.inference.types import Embeddings
 from rcp_ndcg.retrieval import maxsim
-from rcp_ndcg.retrieval.encoder import Embeddings
 from rcp_ndcg.retrieval.maxsim import maxsim_topk
 
 

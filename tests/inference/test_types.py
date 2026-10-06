@@ -87,19 +87,24 @@ class TestCallAndReply:
 
 
 class TestUsage:
-    def test_usage_adds_element_wise(self) -> None:
-        total = Usage(calls=1, failed_calls=0, input_tokens=10, output_tokens=2) + Usage(
-            calls=2, failed_calls=1, input_tokens=5, output_tokens=3
-        )
-        assert total == Usage(calls=3, failed_calls=1, input_tokens=15, output_tokens=5)
+    def test_the_judge_and_the_transport_share_one_usage(self) -> None:
+        from rcp_ndcg.llm.client import Usage as JudgeUsage
 
-    def test_usage_refuses_another_type(self) -> None:
-        with pytest.raises(TypeError):
-            Usage() + 1  # type: ignore[operator]
+        assert JudgeUsage is Usage, "one Usage for one concept: the manifest's requests-and-tokens shape"
+
+    def test_usage_merges_element_wise(self) -> None:
+        total = Usage(requests=1, failed_requests=0, input_tokens=10, output_tokens=2).merged_with(
+            Usage(requests=2, failed_requests=1, input_tokens=5, output_tokens=3)
+        )
+        assert total == Usage(requests=3, failed_requests=1, input_tokens=15, output_tokens=5)
+
+    def test_usage_merges_the_cached_tokens_too(self) -> None:
+        total = Usage(cached_input_tokens=7).merged_with(Usage(cached_input_tokens=2))
+        assert total.cached_input_tokens == 9
 
     def test_usage_is_frozen(self) -> None:
-        with pytest.raises(AttributeError):
-            Usage().calls = 3  # type: ignore[misc]
+        with pytest.raises(ValidationError):
+            Usage().requests = 3  # type: ignore[misc]
 
 
 class TestTokenCount:
@@ -512,30 +517,37 @@ class _EmbedProbeAlias(_EmbedProbe):
 
 
 @pytest.fixture(autouse=True)
-def _clean_registry() -> Iterator[None]:
-    """Run each registry test against an empty registry, restoring whatever was there."""
-    saved_builtins, saved_plugins = dict(_adapters.base._BUILTINS), _adapters.base._PLUGINS
-    _adapters.base._BUILTINS.clear()
+def _clean_registry(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Run each registry test against an empty registry, restoring whatever was there.
+
+    One mechanism (``monkeypatch``) saves and restores both attributes: a teardown that mutated the old dict
+    object while another test had replaced the module attribute lost the shipped adapters for the rest of the
+    process (any later test that needs a shipped adapter failed)."""
+    monkeypatch.setattr(_adapters.base, "_BUILTINS", {})
+    monkeypatch.setattr(_adapters.base, "_PLUGINS", _adapters.base._PLUGINS)
     yield
-    _adapters.base._BUILTINS.clear()
-    _adapters.base._BUILTINS.update(saved_builtins)
-    _adapters.base._PLUGINS = saved_plugins
 
 
 class TestAdapterRegistry:
-    def test_an_unknown_adapter_with_an_empty_registry_promises_nothing_shipped(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_an_unknown_adapter_with_an_empty_registry_promises_nothing_shipped(self) -> None:
+        """The empty-registry test clears the registry in place: rebinding the module attribute through
+        ``monkeypatch`` would leave every later client in the process with no shipped adapter (the undo runs
+        after this fixture's own teardown, restoring an emptied dict object)."""
         import rcp_ndcg.inference.adapters.base as adapter_base
 
-        monkeypatch.setattr(adapter_base, "_BUILTINS", {})
-        monkeypatch.setattr(adapter_base, "_PLUGINS", {})
-        with pytest.raises(ConfigError) as caught:
-            get_adapter("nope", role="embed")
-        hint = caught.value.hint or ""
-        assert "no embed wire adapter is registered in this process" in hint
-        assert "importing ``rcp_ndcg.inference.adapters`` registers the shipped ones" in hint
-        assert "arrive with the transport" not in hint  # no promise of adapters that do not exist
+        plugins = adapter_base._PLUGINS
+        adapter_base._BUILTINS.clear()  # the autouse fixture already emptied it
+        adapter_base._PLUGINS = {}
+        try:
+            with pytest.raises(ConfigError) as caught:
+                get_adapter("nope", role="embed")
+            hint = caught.value.hint or ""
+            assert "no embed wire adapter is registered in this process" in hint
+            assert "importing ``rcp_ndcg.inference.adapters`` registers the shipped ones" in hint
+            assert "arrive with the transport" not in hint  # no promise of adapters that do not exist
+        finally:
+            adapter_base._BUILTINS.clear()
+            adapter_base._PLUGINS = plugins
 
     def test_an_adapter_is_registered_under_its_name_and_returned_by_it(self) -> None:
         register_adapter(_ProbeAdapter)

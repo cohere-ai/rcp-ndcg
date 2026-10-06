@@ -75,6 +75,7 @@ TOOLS: tuple[Tool, ...] = (
             "protocol",
             "k",
             "metrics",
+            "system",
             "bootstrap",
             "seed",
             "per_query",

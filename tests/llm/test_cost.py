@@ -68,9 +68,9 @@ class _Recording(FakeJudge):
         super().__init__(*args, **kwargs)
         self.requests: list[CompletionInput] = []
 
-    async def _send(self, request: CompletionInput, *args) -> Completion:
+    async def complete(self, request: CompletionInput) -> Completion:
         self.requests.append(request)
-        return await super()._send(request, *args)
+        return await super().complete(request)
 
 
 def test_with_a_tokenizer_the_estimate_counts_the_prompts_exactly(tmp_path: Path, word_tokenizer_file: Path) -> None:

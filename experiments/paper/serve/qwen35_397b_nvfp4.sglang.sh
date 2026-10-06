@@ -3,7 +3,7 @@
 # Blackwell GPUs (tensor parallel 4 x data parallel 2). The judge preset `qwen35_397b_nvfp4` reaches it at
 # http://127.0.0.1:8000/v1. Run it on the GPU host; the weights (about 250 GB) are read from $HF_HOME.
 #
-# For a run config's `serve:` section, `image` is $IMAGE and `command` is the ENGINE array below.
+# For a job's engine phase, `image` is $IMAGE and `command` is the ENGINE array below.
 set -euo pipefail
 
 IMAGE=${IMAGE:-lmsysorg/sglang:v0.5.17-cu129}

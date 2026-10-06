@@ -220,3 +220,30 @@ def test_resume_checks_cost_one_lookup_per_repository(hub: FakeHub, tmp_path: Pa
         for step in ("retrieve", "tournament", "rubric"):
             pipeline._identity(step)
     assert hub.calls == [("dataset", "BeIR/fiqa", "main")]
+
+
+def test_is_commit_is_public_and_the_private_pattern_stays_home() -> None:
+    """The commit-shape check is public API (`is_commit`); no other module imports the private `_COMMIT`."""
+    import inspect
+
+    import rcp_ndcg.data.dataset as dataset_module
+    from rcp_ndcg.data.revisions import is_commit
+
+    sha = "b" * 40
+    assert is_commit(sha)
+    assert not is_commit("main"), "a branch is not a commit"
+    assert not is_commit(sha.upper()), "a sha is lowercase hex"
+    assert not is_commit(sha[:39]) and not is_commit(sha + "0"), "exactly 40 characters"
+    assert not is_commit(sha + "\n"), "no trailing newline"
+    assert not is_commit(None)
+    assert "_COMMIT" not in inspect.getsource(dataset_module), "dataset.py reads revisions through the public name"
+
+
+def test_a_revision_that_is_not_exactly_a_commit_is_resolved_not_echoed(hub: FakeHub) -> None:
+    """A 40-hex string with a trailing newline is no commit: it resolves (here: warns unverified), never echoes."""
+    with pytest.warns(RcpNdcgWarning, match="resolved to no commit") as seen:
+        resolved = resolve_revision("BeIR/fiqa", "a" * 40 + "\n")
+
+    assert seen[0].message.code == "UNPINNED_REVISION"
+    assert resolved.commit is None and resolved.verified is False
+    resolve_revision.cache_clear()

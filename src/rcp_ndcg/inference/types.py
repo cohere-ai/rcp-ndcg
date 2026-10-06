@@ -51,11 +51,15 @@ class Reply:
         status: The HTTP status code.
         body: The decoded JSON body, or the raw bytes for a binary encoding (a base64 or bytes vector frame).
         headers: The response headers (the transport reads ``Retry-After``; an adapter may read others).
+        url: The replica base URL that answered, set by the transport (a role client needs it to record a
+            per-replica fact such as a completion's ``system_fingerprint``); ``None`` when the reply was not
+            sent by a transport (a test builds it by hand).
     """
 
     status: int
     body: Any
     headers: Mapping[str, str]
+    url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -71,32 +75,42 @@ class TokenCount:
     output_tokens: int | None = None
 
 
-@dataclass(frozen=True)
-class Usage:
-    """Calls and tokens accumulated by a transport or a role client; add instances with ``+``.
+class Usage(BaseModel):
+    """Requests and tokens accumulated by a transport or a role client; merge instances with
+    :meth:`merged_with`.
+
+    One type for every role: a role client's ``usage`` property is this shape, the run manifest serialises it
+    per step and per run, and the transport accumulates it. Tokens and requests only -- the wire reports
+    nothing else (an endpoint's cached-input detail is not tracked and stays 0).
 
     Attributes:
-        calls: Requests sent.
-        failed_calls: Requests the transport raised on, sent or not; a parked-out request and one the rejection
-            rule refuses are the outage's, not a call's.
-        input_tokens: Prompt tokens summed over the calls that reported them.
-        output_tokens: Completion tokens summed over the calls that reported them.
+        requests: Requests sent, as the transport counts them: one logical request however many retries it
+            took; a reply the status map returns (even one the adapter refuses) counts as one.
+        failed_requests: Requests the transport raised on, sent or not; a parked-out request and one the
+            rejection rule refuses are the outage's, not a request's. A role client folds its own refusals
+            (a reply its adapter raised on) in on top.
+        input_tokens: Prompt tokens summed over the requests that reported them.
+        output_tokens: Completion tokens summed over the requests that reported them.
+        cached_input_tokens: The endpoint's cached-input detail, when it reports one; the shared transport's
+            accounting does not track it and it stays 0.
     """
 
-    calls: int = 0
-    failed_calls: int = 0
+    model_config = ConfigDict(frozen=True)
+
+    requests: int = 0
+    failed_requests: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    cached_input_tokens: int = 0
 
-    def __add__(self, other: Usage) -> Usage:
+    def merged_with(self, other: Usage) -> Usage:
         """The element-wise sum of two usages."""
-        if not isinstance(other, Usage):
-            return NotImplemented
         return Usage(
-            calls=self.calls + other.calls,
-            failed_calls=self.failed_calls + other.failed_calls,
+            requests=self.requests + other.requests,
+            failed_requests=self.failed_requests + other.failed_requests,
             input_tokens=self.input_tokens + other.input_tokens,
             output_tokens=self.output_tokens + other.output_tokens,
+            cached_input_tokens=self.cached_input_tokens + other.cached_input_tokens,
         )
 
 
