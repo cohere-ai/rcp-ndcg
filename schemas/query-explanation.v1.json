@@ -123,7 +123,7 @@
       "type": "object"
     },
     "ScoreDelta": {
-      "description": "The nDCG gap between two systems' displayed orders (B minus A), split into selection and ordering.\n\nThe gap is computed over the explanation's gains -- the query's RCP gains, or its qrel grades when the\nreport has no RCP gains. The cutoff is the explanation's ``k`` (the documents shown), which may differ\nfrom the report's cutoffs in SystemExplanation.values. ``selection`` is what choosing other\ndocuments for the top k changes, and ``ordering`` what arranging them differently changes; the two sum to\n``total``.",
+      "description": "The nDCG gap between two systems' displayed orders (B minus A), split into selection and ordering.\n\nThe gap is computed over the explanation's gains -- the query's RCP gains, or its qrel grades when the\nquery has none. The cutoff is the explanation's ``k`` (the documents shown), which may differ from the\nreport's cutoffs in SystemExplanation.values. ``selection`` is what choosing other\ndocuments for the top k changes, and ``ordering`` what arranging them differently changes; the two sum to\n``total``.",
       "properties": {
         "ordering": {
           "title": "Ordering",
@@ -204,7 +204,7 @@
       "type": "string"
     },
     "deltas": {
-      "description": "Every system against the first, at cutoff ``k``. The gaps are computed from the query's RCP gains, or -- when the report has none (a qrel-only report) -- from its qrel grades; empty when the query has no labels, or every labelled document of it is excluded.",
+      "description": "Every system against the first, at cutoff ``k``. The gaps are computed from the query's RCP gains, or -- when the query has none -- from its qrel grades; empty when the query has no labels, no positive grade, or every labelled document of it is excluded.",
       "items": {
         "$ref": "#/$defs/ScoreDelta"
       },

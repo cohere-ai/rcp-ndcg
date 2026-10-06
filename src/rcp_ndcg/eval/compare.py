@@ -142,7 +142,8 @@ def compare(
 
     Raises:
         ConfigError: The baseline or a named system is not in the report (or not among ``systems``).
-        DataError: Fewer than two systems to compare.
+        DataError: Fewer than two systems to compare, or a ``(metric, k)`` the report never computed (the
+            error names the cutoffs it has).
     """
     k = _one_k(report, k)
     values = _values(report, metric, k)
@@ -196,7 +197,8 @@ def sensitivity(
         The mean over datasets of the separated share of (dataset, system pair) comparisons, in ``[0, 1]``.
 
     Raises:
-        DataError: fewer than two systems, or no dataset where a pair shares two queries.
+        DataError: fewer than two systems, no dataset where a pair shares two queries, or a ``(metric, k)``
+            the report never computed (the error names the cutoffs it has).
     """
     k = _one_k(report, k)
     values = _values(report, metric, k)

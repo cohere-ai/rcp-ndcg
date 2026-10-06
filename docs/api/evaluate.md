@@ -23,8 +23,8 @@
   top k with gains, grades, abilities and per-criterion pass probabilities (the criteria's item parameters once,
   in `items`), and the gap between every system and the first at cutoff `k`, split into selection (which documents
   reach the top k) and ordering (how they are arranged). The gaps come from the query's RCP gains, or from its
-  qrel grades when the report has no RCP gains (a qrel-only report), and are empty when the query has no labels
-  or every labelled document of it is excluded.
+  qrel grades when the query has none, and are empty when the query has no labels, no positive grade, or every
+  labelled document of it is excluded.
 - `explain.score_delta(order_a, order_b, gains, *, k=10)` splits one nDCG@k gap between two orders (B minus A)
   the same way, returning `(total, selection, ordering)` -- the primitive the `deltas` are built on.
 - `bootstrap_interval(datasets, *, resamples, seed, alpha=0.05)` is the summary interval's primitive: the

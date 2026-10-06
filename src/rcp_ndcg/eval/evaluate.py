@@ -196,6 +196,10 @@ class EvalReport(BaseModel):
         Args:
             metric: The metric.
             k: The cutoff (may be omitted when the report has one).
+
+        Raises:
+            DataError: The report has no such metric, or no ``(metric, k)`` row (the error names the cutoffs
+                it has), so a wrong k never returns an empty table.
         """
         import pandas as pd
 

@@ -82,8 +82,8 @@ class ScoreDelta(BaseModel):
     """The nDCG gap between two systems' displayed orders (B minus A), split into selection and ordering.
 
     The gap is computed over the explanation's gains -- the query's RCP gains, or its qrel grades when the
-    report has no RCP gains. The cutoff is the explanation's ``k`` (the documents shown), which may differ
-    from the report's cutoffs in :attr:`SystemExplanation.values`. ``selection`` is what choosing other
+    query has none. The cutoff is the explanation's ``k`` (the documents shown), which may differ from the
+    report's cutoffs in :attr:`SystemExplanation.values`. ``selection`` is what choosing other
     documents for the top k changes, and ``ordering`` what arranging them differently changes; the two sum to
     ``total``.
     """
@@ -108,8 +108,8 @@ class QueryExplanation(BaseModel):
         items: The criteria's item parameters behind every document's ``criteria`` (empty without a calibration).
         systems: Each system's values (at the report's cutoffs) and its top k.
         deltas: Every system against the first, at cutoff ``k``. The gaps are computed from the query's RCP
-            gains, or -- when the report has none (a qrel-only report) -- from its qrel grades; empty when the
-            query has no labels, or every labelled document of it is excluded.
+            gains, or -- when the query has none -- from its qrel grades; empty when the query has no
+            labels, no positive grade, or every labelled document of it is excluded.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -197,7 +197,7 @@ def explain(
 
     Returns:
         The :class:`QueryExplanation`; deltas compare every system against the first, from the query's RCP
-        gains, or its qrel grades when the report has no RCP gains.
+        gains, or its qrel grades when the query has none.
     """
     rankings = report._inputs.get("rankings")
     data: Dataset | None = report._inputs.get("dataset")
