@@ -46,12 +46,22 @@ auth() {
   fi
   local out
   out="$(mktemp)"
-  if ! "$AUTH_SCRIPT" >"$out" 2>&1; then
-    echo "bootstrap: the GCS auth script failed; see the node's own logs (its output is not echoed)" >&2
-    rm -f "$out"
+  local status=0
+  # bash: mounted files carry no execute bit; only the exit code is reported, never the output.
+  bash "$AUTH_SCRIPT" >"$out" 2>&1 || status=$?
+  rm -f "$out"
+  if ((status != 0)); then
+    echo "bootstrap: the GCS auth script failed with exit code $status (its output is not echoed)" >&2
     return 1
   fi
-  rm -f "$out"
+  local sdk_bin
+  for sdk_bin in "$HOME/google-cloud-sdk/bin" /root/google-cloud-sdk/bin /opt/google-cloud-sdk/bin \
+    /usr/lib/google-cloud-sdk/bin /usr/local/google-cloud-sdk/bin; do
+    if [[ -x "$sdk_bin/gcloud" || -x "$sdk_bin/gsutil" ]]; then
+      export PATH="$sdk_bin:$PATH"
+      break
+    fi
+  done
 }
 
 now_s() { date +%s; }

@@ -100,14 +100,23 @@ done
 # credentials every transfer path uses. Then the transfer path is chosen once, and recorded.
 set +e
 auth_out="$(mktemp)"
-"$AUTH_SCRIPT" >"$auth_out" 2>&1
+# Run with bash: mounted files carry no execute bit. The script may install the Cloud SDK; its bin dir is
+# put on PATH afterwards (a child process cannot change ours). Only the exit code is reported.
+bash "$AUTH_SCRIPT" >"$auth_out" 2>&1
 auth_status=$?
 rm -f "$auth_out"
 set -e
 if ((auth_status != 0)); then
-  echo "wave0: the GCS auth script failed; see the node's own logs (its output is not echoed)"
+  echo "wave0: the GCS auth script failed with exit code $auth_status (its output is not echoed)"
   exit 1
 fi
+for sdk_bin in "$HOME/google-cloud-sdk/bin" /root/google-cloud-sdk/bin /opt/google-cloud-sdk/bin \
+  /usr/lib/google-cloud-sdk/bin /usr/local/google-cloud-sdk/bin; do
+  if [[ -x "$sdk_bin/gcloud" || -x "$sdk_bin/gsutil" ]]; then
+    export PATH="$sdk_bin:$PATH"
+    break
+  fi
+done
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/rcp-wave0.XXXXXX")"
 # shellcheck disable=SC1090  # the helper is mounted at a job-specific path
 source "$GCS_SH"
