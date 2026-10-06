@@ -6310,6 +6310,21 @@
           }
         ]
       },
+      "drop_torn_last_line": {
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "returns": "None"
+          }
+        ]
+      },
       "fit": {
         "defined_in": "rcp_ndcg.data.preprocess",
         "kind": "function",
