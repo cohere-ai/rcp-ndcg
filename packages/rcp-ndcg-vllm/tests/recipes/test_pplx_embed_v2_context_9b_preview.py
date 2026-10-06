@@ -295,8 +295,8 @@ def test_wire_contract_tokenization_facts(tokenizer) -> None:
     assert document_ids.count(BOUNDARY_ID) == 1
     # The reference's own parse (split_special_tokens=True, verified with transformers
     # 5.18.0 at this revision) renders the prefix as the two literal ids below, and one
-    # token more in total; the server-side parse keeps the special id. The recipe's
-    # budget reserves that one-token delta.
+    # token more in total for this content; the server-side parse keeps the special
+    # id. The recipe's budget reserves the measured worst-case delta (two tokens).
     assert tokenizer.backend.token_to_id("[D") == DOCUMENT_PREFIX_LITERAL_IDS[0]
     assert tokenizer.backend.token_to_id("]") == DOCUMENT_PREFIX_LITERAL_IDS[1]
     assert document_ids[:2] != list(DOCUMENT_PREFIX_LITERAL_IDS)
