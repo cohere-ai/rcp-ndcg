@@ -265,10 +265,14 @@ instruction): one measurement per (template, shape) per process."""
 
 
 def _resolve_specials(text: str, tokenizer: TextTokenizer) -> str:
-    """Replace every ``{special:<name>}`` in *text* with the tokenizer's literal form of that added token."""
+    """Replace every ``{special:<name>}`` in *text* with the tokenizer's literal form of that added token.
+
+    The name is resolved exactly as written, whitespace included: an added token may be named ``"[Q] "``
+    (significant whitespace), and stripping the captured name would make it unwritable.
+    """
 
     def substitute(match: re.Match[str]) -> str:
-        return tokenizer.special_text(match.group(1).strip())
+        return tokenizer.special_text(match.group(1))
 
     return _SPECIAL.sub(substitute, text)
 

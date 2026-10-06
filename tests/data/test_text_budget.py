@@ -28,10 +28,11 @@ from rcp_ndcg.data.preprocess import (
 from rcp_ndcg.data.templates import Segment, TemplateSpec
 from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.support.identity import check_declarations, identity_payload
-from tests._tokenizers import framed_bpe_tokenizer, word_tokenizer
+from tests._tokenizers import framed_bpe_tokenizer, spaced_special_tokenizer, word_tokenizer
 
 FRAMED = framed_bpe_tokenizer()
 WORDS = word_tokenizer()
+SPACED = spaced_special_tokenizer()
 
 #: The two special tokens the framed fixture adds: a template's suffix anchor and the post-processor's,
 #: written in templates by name and resolved to these literals from the tokenizer's added tokens.
@@ -187,6 +188,25 @@ class TestTemplateSpec:
             TemplateSpec(query=(Segment(fixed="{special:no_such_token}"), Segment(content="query"))).render(
                 "query", FRAMED, query="q"
             )
+
+    def test_a_special_name_is_resolved_exactly_keeping_its_whitespace(self) -> None:
+        """An added token named ``[Q] `` (a trailing space, as pplx-embed's ship) is resolved as written: the
+        resolver strips nothing, or the name could not be written at all."""
+        spec = TemplateSpec(query=(Segment(fixed="{special:[Q] }"), Segment(content="query")))
+        assert spec.render("query", SPACED, query="the query") == "[Q] the query"
+        assert spec.render("query", SPACED, query="") == "[Q] "
+
+    def test_an_unknown_special_names_the_nearest_ones(self) -> None:
+        with pytest.raises(ConfigError) as caught:
+            TemplateSpec(query=(Segment(fixed="{special:end_tur}"), Segment(content="query"))).render(
+                "query", FRAMED, query="q"
+            )
+        assert "did you mean" in caught.value.hint and "end_turn" in caught.value.hint
+        with pytest.raises(ConfigError) as caught:
+            TemplateSpec(query=(Segment(fixed="{special:Q}"), Segment(content="query"))).render(
+                "query", SPACED, query="q"
+            )
+        assert "[Q] " in caught.value.hint
 
     def test_the_overhead_is_the_empty_render_counted_once(self) -> None:
         spec = document_template()

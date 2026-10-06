@@ -119,18 +119,25 @@ class TextTokenizer:
     def special_text(self, name: str) -> str:
         """The literal text of the tokenizer's added token named ``name`` (the bare name or the wrapped
         form), for splicing into a rendered template; the engine's tokenizer then matches it back to one id.
+        The name is taken exactly as written: an added token may carry significant whitespace (``"[Q] "``
+        ships on pplx-embed-v2-contextual), and a stripped lookup could never resolve it.
 
         Raises:
-            ConfigError: the tokenizer has no added token by that name; the message lists the names it has.
+            ConfigError: the tokenizer has no added token by that name; the hint names the nearest ones it
+                has, then all of them.
         """
         tokens = self.added_tokens()
         try:
             return tokens[name]
         except KeyError:
+            import difflib
+
             known = sorted({key for key in tokens if not key.startswith("<|")})
+            nearest = difflib.get_close_matches(name, sorted(tokens), n=3, cutoff=0.6)
             raise ConfigError(
                 f"the tokenizer {self.name!r} has no special token named {name!r}",
-                hint=f"its added tokens are named {known}; write one as {{special:<name>}} in the template",
+                hint=("did you mean " + ", ".join(repr(match) for match in nearest) + "? " if nearest else "")
+                + f"its added tokens are named {known}; write one as {{special:<name>}} in the template",
             ) from None
 
     def special_id(self, name: str) -> int:
