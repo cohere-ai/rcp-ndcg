@@ -14,7 +14,6 @@ from typing import Any
 import pytest
 import yaml
 
-from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.retrieval import validate_reranker, validate_retriever
 from rcp_ndcg.retrieval.config import (
     BM25Config,
@@ -102,13 +101,20 @@ def test_the_hosted_paper_configs_omit_base_url() -> None:
     assert cohere.encoder.base_url is None
 
 
-def test_no_paper_config_builds_a_client() -> None:
-    """A served paper config declares ``max_tokens``, and the client refuses it: configs only, never clients."""
-    from rcp_ndcg.inference.clients import RerankClient
+def test_every_served_paper_config_builds_its_client(tokenizer_json: str) -> None:
+    """The budget is wired: every served paper config builds its client.
 
-    config = validate_reranker(
-        yaml.safe_load((PAPER / "rerankers" / "qwen3_reranker_8b.yaml").read_text(encoding="utf-8"))
-    )
-    assert config.max_tokens == 8192
-    with pytest.raises(ConfigError, match="max_tokens"):
-        RerankClient(config)
+    The configs carry their real Hub tokenizers (the recipe serves the checkpoint); the client only loads
+    the tokenizer *file* to count the budget, so the build test runs against the saved offline test
+    tokenizer -- same field, different file, the paper config itself untouched."""
+    from rcp_ndcg.inference.clients import RerankClient
+    from tests.retrieval.test_api import _recording_sender
+
+    for data_path, data in _configs(PAPER / "rerankers"):
+        config = validate_reranker(data)
+        if not isinstance(config, ServedReranker):
+            continue
+        assert data_path.name, "the paper config is a file"
+        built = RerankClient(config.model_copy(update={"tokenizer": tokenizer_json}), sender=_recording_sender())
+        assert built.config.max_tokens == 8192 and built.config.query_max_tokens == 4096
+        built.close()

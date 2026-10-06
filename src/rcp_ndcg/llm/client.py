@@ -282,7 +282,7 @@ class JudgeClient:
         self._adapter = self._transport = self._wired_for = None
         if transport is not None:
             self._refused += transport.usage.failed_requests
-            transport.aclose()
+            transport.close()  # the sync twin (R15: an async caller awaits aclose())
 
     @property
     def model(self) -> str:

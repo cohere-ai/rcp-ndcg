@@ -49,6 +49,10 @@ from rcp_ndcg.inference.transport import AuthProfile, Sender, Transport
 if TYPE_CHECKING:
     from rcp_ndcg.data.tokenizer import TextTokenizer
 
+_TRANSPORT_CLASS = Transport
+"""The transport class, captured at import: a test may patch the module attribute (an offline wire), and
+the base's own transport checks must not break when it does."""
+
 T = TypeVar("T")
 """The result type of a coroutine the fan-out runs."""
 
@@ -102,7 +106,7 @@ class RoleClient[C: Endpoint]:
         self.census = census if census is not None else TextTruncationCensus()
         if sender is None:
             self._sender: Any = Transport(self.endpoint, auth=self._auth_profile())
-        elif isinstance(sender, Transport) or callable(getattr(sender, "run", None)):
+        elif isinstance(sender, _TRANSPORT_CLASS) or callable(getattr(sender, "run", None)):
             self._sender = sender
         else:
             raise ConfigError(
@@ -154,7 +158,7 @@ class RoleClient[C: Endpoint]:
         variable (when the config names one) and the adapter's variables otherwise. The transport's own
         endpoint keeps precedence for its ``base_url`` and its own ``api_key_env`` (the transport's config);
         the profile fills the key in the adapter's header."""
-        if isinstance(self._sender, Transport):
+        if isinstance(self._sender, _TRANSPORT_CLASS):
             self._sender.set_auth(self._auth_profile())
 
     # -- the text budget (item 4) -------------------------------------------

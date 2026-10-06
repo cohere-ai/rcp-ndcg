@@ -11,14 +11,6 @@ from __future__ import annotations
 
 import pytest
 
-from tests._tokenizers import save, word_tokenizer
-
-
-@pytest.fixture(scope="session")
-def tokenizer_json(tmp_path_factory: pytest.TempPathFactory) -> str:
-    """The path of a saved ``tokenizer.json`` (the word-level test tokenizer), for configs that declare one."""
-    return str(save(word_tokenizer(), tmp_path_factory.mktemp("inference-tokenizers")))
-
 
 @pytest.fixture(scope="session", autouse=True)
 def _default_budget(tokenizer_json: str) -> None:

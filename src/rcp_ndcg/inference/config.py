@@ -115,6 +115,8 @@ def _use_activation_is_explicit_on_a_served_wire(config: RerankEndpoint) -> None
             "use_activation: false (the raw logit is stored) -- the choice is content and enters the identity; "
             "a hosted profile (api: cohere, api: voyage) leaves it unset, its scale is fixed",
         )
+
+
 class _MediaEndpoint(Endpoint):
     """The media fields every retrieval role shares: what it declares about the media it sends.
 
@@ -158,6 +160,7 @@ class _MediaEndpoint(Endpoint):
     max_videos: int = Field(default=0, ge=0)
     """Video containers one request may carry; 0 (the default) means the model reads none. There is no
     "unlimited". Runtime: like :attr:`max_images`."""
+
 
 class EmbeddingEndpoint(_MediaEndpoint):
     """A dense-embedding endpoint speaking OpenAI ``POST {base_url}/embeddings``.

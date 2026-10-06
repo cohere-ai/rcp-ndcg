@@ -642,12 +642,14 @@ class Transport:
         uses :meth:`close`. A later :meth:`run` builds both afresh.
         """
         try:
-            pool = self._pool
+            pool, loop = self._pool, self._loop
             self._pool = None
             self._semaphore = None
             self._loop = None
             if pool is None:
                 return
+            if loop is not None and loop.is_closed():
+                return  # the pool's connections died with its loop; there is nothing left to await
             await pool.aclose()
         finally:
             self._bridge_close = None

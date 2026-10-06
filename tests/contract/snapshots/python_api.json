@@ -12534,6 +12534,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "cohere",
@@ -12561,6 +12568,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -12590,12 +12604,47 @@
             "required": false,
             "type": "str"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
             "frozen": false,
             "required": false,
             "type": "dict[str, str]"
+          },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "max_retries": {
             "alias": null,
@@ -12611,6 +12660,13 @@
             "required": false,
             "type": "int | None"
           },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -12624,6 +12680,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
           },
           "query_prompt": {
             "alias": null,
@@ -12639,12 +12702,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -12659,6 +12736,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -12678,6 +12762,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "cohere",
@@ -12706,6 +12797,13 @@
             "required": false,
             "type": "int | None"
           },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
           "concurrency": {
             "alias": null,
             "default": 64,
@@ -12720,6 +12818,20 @@
             "required": false,
             "type": "float"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -12727,12 +12839,26 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
           "instruction": {
             "alias": null,
             "default": "fold",
             "frozen": false,
             "required": false,
-            "type": "Literal['none', 'field', 'fold']"
+            "type": "Literal['none', 'field', 'fold', 'system']"
           },
           "listwise": {
             "alias": null,
@@ -12740,6 +12866,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "max_retries": {
             "alias": null,
@@ -12755,12 +12888,26 @@
             "required": false,
             "type": "int | None"
           },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
             "frozen": false,
             "required": true,
             "type": "str"
+          },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
           },
           "query_max_tokens": {
             "alias": null,
@@ -12776,12 +12923,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -12803,6 +12964,13 @@
             "frozen": false,
             "required": false,
             "type": "bool | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -13016,6 +13184,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "gemini",
@@ -13043,6 +13218,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -13072,12 +13254,47 @@
             "required": false,
             "type": "str"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
             "frozen": false,
             "required": false,
             "type": "dict[str, str]"
+          },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "max_retries": {
             "alias": null,
@@ -13093,6 +13310,13 @@
             "required": false,
             "type": "int | None"
           },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -13106,6 +13330,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
           },
           "query_prompt": {
             "alias": null,
@@ -13121,12 +13352,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -13141,6 +13386,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -13239,6 +13491,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "openai_embeddings",
@@ -13266,6 +13525,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -13295,12 +13561,47 @@
             "required": false,
             "type": "str"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
             "frozen": false,
             "required": false,
             "type": "dict[str, str]"
+          },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "max_retries": {
             "alias": null,
@@ -13316,6 +13617,13 @@
             "required": false,
             "type": "int | None"
           },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -13329,6 +13637,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
           },
           "query_prompt": {
             "alias": null,
@@ -13344,12 +13659,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -13364,6 +13693,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -13384,6 +13720,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "vllm_pooling",
@@ -13411,6 +13754,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -13454,12 +13804,47 @@
             "required": false,
             "type": "Literal['float16', 'float32']"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
             "frozen": false,
             "required": false,
             "type": "dict[str, str]"
+          },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "max_retries": {
             "alias": null,
@@ -13475,6 +13860,13 @@
             "required": false,
             "type": "int | None"
           },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -13488,6 +13880,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
           },
           "query_prompt": {
             "alias": null,
@@ -13503,12 +13902,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -13523,6 +13936,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -13543,6 +13963,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "rerank",
@@ -13571,6 +13998,13 @@
             "required": false,
             "type": "int | None"
           },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
           "concurrency": {
             "alias": null,
             "default": 64,
@@ -13585,6 +14019,20 @@
             "required": false,
             "type": "float"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -13592,12 +14040,26 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
           "instruction": {
             "alias": null,
             "default": "fold",
             "frozen": false,
             "required": false,
-            "type": "Literal['none', 'field', 'fold']"
+            "type": "Literal['none', 'field', 'fold', 'system']"
           },
           "listwise": {
             "alias": null,
@@ -13605,6 +14067,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "max_retries": {
             "alias": null,
@@ -13620,12 +14089,26 @@
             "required": false,
             "type": "int | None"
           },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
             "frozen": false,
             "required": true,
             "type": "str"
+          },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
           },
           "query_max_tokens": {
             "alias": null,
@@ -13641,12 +14124,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -13668,6 +14165,13 @@
             "frozen": false,
             "required": false,
             "type": "bool | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -13696,6 +14200,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "openai_embeddings",
@@ -13723,6 +14234,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -13752,12 +14270,47 @@
             "required": false,
             "type": "str"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
             "frozen": false,
             "required": false,
             "type": "dict[str, str]"
+          },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "max_retries": {
             "alias": null,
@@ -13773,6 +14326,13 @@
             "required": false,
             "type": "int | None"
           },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -13786,6 +14346,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
           },
           "query_prompt": {
             "alias": null,
@@ -13801,12 +14368,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -13821,6 +14402,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -13841,6 +14429,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "vllm_pooling",
@@ -13868,6 +14463,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -13911,12 +14513,47 @@
             "required": false,
             "type": "Literal['float16', 'float32']"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
             "frozen": false,
             "required": false,
             "type": "dict[str, str]"
+          },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "max_retries": {
             "alias": null,
@@ -13932,6 +14569,13 @@
             "required": false,
             "type": "int | None"
           },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -13945,6 +14589,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
           },
           "query_prompt": {
             "alias": null,
@@ -13960,12 +14611,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -13980,6 +14645,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -14000,6 +14672,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "rerank",
@@ -14028,6 +14707,13 @@
             "required": false,
             "type": "int | None"
           },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
           "concurrency": {
             "alias": null,
             "default": 64,
@@ -14042,6 +14728,20 @@
             "required": false,
             "type": "float"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -14049,12 +14749,26 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
           "instruction": {
             "alias": null,
             "default": "fold",
             "frozen": false,
             "required": false,
-            "type": "Literal['none', 'field', 'fold']"
+            "type": "Literal['none', 'field', 'fold', 'system']"
           },
           "listwise": {
             "alias": null,
@@ -14062,6 +14776,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "max_retries": {
             "alias": null,
@@ -14077,12 +14798,26 @@
             "required": false,
             "type": "int | None"
           },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
             "frozen": false,
             "required": true,
             "type": "str"
+          },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
           },
           "query_max_tokens": {
             "alias": null,
@@ -14098,12 +14833,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -14126,6 +14875,13 @@
             "required": false,
             "type": "bool | None"
           },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
+          },
           "wait_on_outage_s": {
             "alias": null,
             "default": null,
@@ -14145,6 +14901,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "voyage",
@@ -14172,6 +14935,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -14201,12 +14971,47 @@
             "required": false,
             "type": "str"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
             "frozen": false,
             "required": false,
             "type": "dict[str, str]"
+          },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "max_retries": {
             "alias": null,
@@ -14222,6 +15027,13 @@
             "required": false,
             "type": "int | None"
           },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -14235,6 +15047,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
           },
           "query_prompt": {
             "alias": null,
@@ -14250,12 +15069,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -14270,6 +15103,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -14289,6 +15129,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "voyage",
@@ -14317,6 +15164,13 @@
             "required": false,
             "type": "int | None"
           },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
           "concurrency": {
             "alias": null,
             "default": 64,
@@ -14331,6 +15185,20 @@
             "required": false,
             "type": "float"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -14338,12 +15206,26 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
           "instruction": {
             "alias": null,
             "default": "fold",
             "frozen": false,
             "required": false,
-            "type": "Literal['none', 'field', 'fold']"
+            "type": "Literal['none', 'field', 'fold', 'system']"
           },
           "listwise": {
             "alias": null,
@@ -14351,6 +15233,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "max_retries": {
             "alias": null,
@@ -14366,12 +15255,26 @@
             "required": false,
             "type": "int | None"
           },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
             "frozen": false,
             "required": true,
             "type": "str"
+          },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
           },
           "query_max_tokens": {
             "alias": null,
@@ -14387,12 +15290,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -14414,6 +15331,13 @@
             "frozen": false,
             "required": false,
             "type": "bool | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,

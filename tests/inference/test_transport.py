@@ -415,11 +415,12 @@ class TestSyncBridge:
 
     def test_aclose_after_its_loop_closed_drops_the_pool_without_raising(self) -> None:
         """The judge client replaces its config after a pass's `asyncio.run` closed the loop the pool rode on;
-        closing the wire then must drop the dead pool, not raise `Event loop is closed`."""
+        closing the wire then must drop the dead pool, not raise `Event loop is closed` (R15: `close()` is
+        the synchronous twin; an async caller awaits `aclose()`)."""
         script = ReplicaScript(200, 200)
         transport = _transport(script)
         asyncio.run(transport.send([Call("POST", "/a", {})]))  # builds the pool on a loop that then closes
-        transport.aclose()
+        transport.close()
         assert transport._pool is None
         assert asyncio.run(transport.send([Call("POST", "/b", {})]))[0].status == 200
 

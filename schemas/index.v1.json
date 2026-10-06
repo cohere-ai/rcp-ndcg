@@ -27,10 +27,48 @@
       "title": "BM25Config",
       "type": "object"
     },
+    "ChunkPolicy": {
+      "additionalProperties": false,
+      "description": "How a long document is split for judging, in tokens of the judge's tokenizer.\n\nA document longer than ``max_tokens`` is split into consecutive chunks of at\nmost ``max_tokens`` tokens, each repeating the last ``overlap_tokens``\ntokens of the previous one, so evidence straddling a boundary is seen\nwhole by one chunk. A chunk is a verbatim slice of the document between\ntoken boundaries. Chunk ``k`` of document ``d`` has the id ``d#k`` (``k``\nfrom 0). The judge sees every chunk, and a document's judgements are pooled\nby ``aggregate``: within one window, a document passes a criterion when any\nof its chunks does, and its tournament score is its best chunk's.",
+      "properties": {
+        "aggregate": {
+          "const": "max",
+          "default": "max",
+          "description": "How chunk judgements pool onto their document (``\"max\"``).",
+          "title": "Aggregate",
+          "type": "string"
+        },
+        "max_tokens": {
+          "description": "The largest chunk, and the length above which a document is split (tokens).",
+          "minimum": 1,
+          "title": "Max Tokens",
+          "type": "integer"
+        },
+        "overlap_tokens": {
+          "description": "Tokens shared by consecutive chunks (``< max_tokens``).",
+          "minimum": 0,
+          "title": "Overlap Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_tokens",
+        "overlap_tokens"
+      ],
+      "title": "ChunkPolicy",
+      "type": "object"
+    },
     "CohereEmbedding": {
       "additionalProperties": false,
       "description": "Cohere's public API: Embed v4 (``embed-v4.0``, which also embeds page images). The key is read from\n``api_key_env``, else ``CO_API_KEY`` or ``COHERE_API_KEY``; ``base_url`` is omitted (the profile's public\nURL) unless it names a proxy.",
       "properties": {
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "description": "How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.",
+          "title": "Aggregation",
+          "type": "string"
+        },
         "api": {
           "const": "cohere",
           "default": "cohere",
@@ -49,7 +87,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -77,6 +115,18 @@
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
+        },
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The chunk geometry for ``on_overflow: chunk`` (a ChunkPolicy reused, not copied). Content."
         },
         "concurrency": {
           "default": 64,
@@ -112,6 +162,30 @@
           "title": "Doc Prompt",
           "type": "string"
         },
+        "empty_doc": {
+          "default": "send",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "enum": [
+            "omit_zero",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
+        },
+        "empty_doc_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
+          "title": "Empty Doc Text"
+        },
         "headers_env": {
           "additionalProperties": {
             "type": "string"
@@ -119,6 +193,40 @@
           "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
           "title": "Headers Env",
           "type": "object"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
         },
         "max_retries": {
           "default": 2,
@@ -138,8 +246,14 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole. Content. Refused until the text-budget mechanism wires the client-side cut (EmbeddingClient raises a ``ConfigError``).",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
           "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -152,6 +266,17 @@
           "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected).",
           "title": "Normalize",
           "type": "boolean"
+        },
+        "on_overflow": {
+          "default": "cut",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
         },
         "query_prompt": {
           "default": "",
@@ -173,6 +298,17 @@
           "description": "The server-side settings the package cannot read (the pooling, the template, the overrides), as a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never share a cache.",
           "title": "Recipe"
         },
+        "request_shape": {
+          "default": "text",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
         "revision": {
           "anyOf": [
             {
@@ -185,6 +321,18 @@
           "default": null,
           "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
           "title": "Revision"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The request template as data (TemplateSpec): per request shape (``query``, ``document``, ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens written by name and resolved from the tokenizer, the anchor the model reads its output from, and the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling routes' default). Content."
         },
         "timeout_s": {
           "default": 600.0,
@@ -206,6 +354,17 @@
           "default": null,
           "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
           "title": "Tokenizer"
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "wait_on_outage_s": {
           "anyOf": [
@@ -269,6 +428,13 @@
       "additionalProperties": false,
       "description": "Google's Gemini embedding API (``gemini-embedding-001``). The key is read from ``api_key_env``, else\n``GEMINI_API_KEY`` or ``GOOGLE_API_KEY``; ``base_url`` is omitted unless it names a proxy.",
       "properties": {
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "description": "How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.",
+          "title": "Aggregation",
+          "type": "string"
+        },
         "api": {
           "const": "gemini",
           "default": "gemini",
@@ -287,7 +453,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -315,6 +481,18 @@
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
+        },
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The chunk geometry for ``on_overflow: chunk`` (a ChunkPolicy reused, not copied). Content."
         },
         "concurrency": {
           "default": 64,
@@ -350,6 +528,30 @@
           "title": "Doc Prompt",
           "type": "string"
         },
+        "empty_doc": {
+          "default": "send",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "enum": [
+            "omit_zero",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
+        },
+        "empty_doc_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
+          "title": "Empty Doc Text"
+        },
         "headers_env": {
           "additionalProperties": {
             "type": "string"
@@ -357,6 +559,40 @@
           "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
           "title": "Headers Env",
           "type": "object"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
         },
         "max_retries": {
           "default": 2,
@@ -376,8 +612,14 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole. Content. Refused until the text-budget mechanism wires the client-side cut (EmbeddingClient raises a ``ConfigError``).",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
           "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -390,6 +632,17 @@
           "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected).",
           "title": "Normalize",
           "type": "boolean"
+        },
+        "on_overflow": {
+          "default": "cut",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
         },
         "query_prompt": {
           "default": "",
@@ -411,6 +664,17 @@
           "description": "The server-side settings the package cannot read (the pooling, the template, the overrides), as a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never share a cache.",
           "title": "Recipe"
         },
+        "request_shape": {
+          "default": "text",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
         "revision": {
           "anyOf": [
             {
@@ -423,6 +687,18 @@
           "default": null,
           "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
           "title": "Revision"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The request template as data (TemplateSpec): per request shape (``query``, ``document``, ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens written by name and resolved from the tokenizer, the anchor the model reads its output from, and the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling routes' default). Content."
         },
         "timeout_s": {
           "default": 600.0,
@@ -445,6 +721,17 @@
           "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
           "title": "Tokenizer"
         },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "wait_on_outage_s": {
           "anyOf": [
             {
@@ -464,6 +751,60 @@
         "model"
       ],
       "title": "GeminiEmbedding",
+      "type": "object"
+    },
+    "ImagePolicy": {
+      "additionalProperties": false,
+      "description": "The pixel budget every page image and video frame is resized to, and the processor whose resize is used.\n\nBudget both or neither: without one, images go at their stored size and the engine's processor decides\n(native), so their token cost cannot be counted. With a known processor the budget must lie within\nthe engines' default budget for it (PROCESSORS), so the engine keeps the prepared size.",
+      "properties": {
+        "max_px": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The most pixels an image is scaled down to.",
+          "title": "Max Px"
+        },
+        "min_px": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The fewest pixels an image is scaled up to.",
+          "title": "Min Px"
+        },
+        "processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge's image processor family (ImageProcessor). Left unset in a declared policy: the judging pass takes it from the judge config's ``image_processor`` (for_processor), so the recorded policy names it. ``None`` in an effective policy means the family is unknown, and images are sent unchanged.",
+          "title": "Processor"
+        }
+      },
+      "title": "ImagePolicy",
       "type": "object"
     },
     "LateInteractionConfig": {
@@ -498,6 +839,13 @@
       "additionalProperties": false,
       "description": "A third-party embed wire: ``api`` names a registered adapter of the embed role that is not a shipped\none, and the role's generic config carries it (the shipped names select their own classes).\n\nThe registry check happens where the config is read (_resolve_embed_api); this class is the shape a\nregistered plugin name builds, every field inherited from\nEmbeddingEndpoint. A shipped ``api`` is refused here, so it always\nselects its own class.",
       "properties": {
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "description": "How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.",
+          "title": "Aggregation",
+          "type": "string"
+        },
         "api": {
           "default": "openai_embeddings",
           "description": "The wire adapter; ``\"openai_embeddings\"`` by default (a hosted profile overrides it in its own config).",
@@ -515,7 +863,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -543,6 +891,18 @@
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
+        },
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The chunk geometry for ``on_overflow: chunk`` (a ChunkPolicy reused, not copied). Content."
         },
         "concurrency": {
           "default": 64,
@@ -578,6 +938,30 @@
           "title": "Doc Prompt",
           "type": "string"
         },
+        "empty_doc": {
+          "default": "send",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "enum": [
+            "omit_zero",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
+        },
+        "empty_doc_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
+          "title": "Empty Doc Text"
+        },
         "headers_env": {
           "additionalProperties": {
             "type": "string"
@@ -585,6 +969,40 @@
           "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
           "title": "Headers Env",
           "type": "object"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
         },
         "max_retries": {
           "default": 2,
@@ -604,8 +1022,14 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole. Content. Refused until the text-budget mechanism wires the client-side cut (EmbeddingClient raises a ``ConfigError``).",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
           "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -618,6 +1042,17 @@
           "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected).",
           "title": "Normalize",
           "type": "boolean"
+        },
+        "on_overflow": {
+          "default": "cut",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
         },
         "query_prompt": {
           "default": "",
@@ -639,6 +1074,17 @@
           "description": "The server-side settings the package cannot read (the pooling, the template, the overrides), as a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never share a cache.",
           "title": "Recipe"
         },
+        "request_shape": {
+          "default": "text",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
         "revision": {
           "anyOf": [
             {
@@ -651,6 +1097,18 @@
           "default": null,
           "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
           "title": "Revision"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The request template as data (TemplateSpec): per request shape (``query``, ``document``, ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens written by name and resolved from the tokenizer, the anchor the model reads its output from, and the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling routes' default). Content."
         },
         "timeout_s": {
           "default": 600.0,
@@ -672,6 +1130,17 @@
           "default": null,
           "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
           "title": "Tokenizer"
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "wait_on_outage_s": {
           "anyOf": [
@@ -698,6 +1167,13 @@
       "additionalProperties": false,
       "description": "A third-party multi-vector wire: ``api`` names a registered adapter of the ``multi_vector`` role that is\nnot a shipped one, and the role's generic config carries it. See PluginEmbedding; a shipped\n``api`` is refused here, so ``vllm_pooling`` always selects ServedPooling.",
       "properties": {
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "description": "How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.",
+          "title": "Aggregation",
+          "type": "string"
+        },
         "api": {
           "default": "vllm_pooling",
           "description": "The wire adapter; ``\"vllm_pooling\"`` by default.",
@@ -715,7 +1191,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -743,6 +1219,18 @@
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
+        },
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The chunk geometry for ``on_overflow: chunk`` (a ChunkPolicy reused, not copied). Content."
         },
         "concurrency": {
           "default": 64,
@@ -802,6 +1290,30 @@
           "title": "Embed Dtype",
           "type": "string"
         },
+        "empty_doc": {
+          "default": "send",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "enum": [
+            "omit_zero",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
+        },
+        "empty_doc_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
+          "title": "Empty Doc Text"
+        },
         "headers_env": {
           "additionalProperties": {
             "type": "string"
@@ -809,6 +1321,40 @@
           "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
           "title": "Headers Env",
           "type": "object"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
         },
         "max_retries": {
           "default": 2,
@@ -828,8 +1374,14 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole. Content. Refused until the text-budget mechanism wires the client-side cut (EmbeddingClient raises a ``ConfigError``).",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
           "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -842,6 +1394,17 @@
           "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected).",
           "title": "Normalize",
           "type": "boolean"
+        },
+        "on_overflow": {
+          "default": "cut",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
         },
         "query_prompt": {
           "default": "",
@@ -863,6 +1426,17 @@
           "description": "The server-side settings the package cannot read (the pooling, the template, the overrides), as a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never share a cache.",
           "title": "Recipe"
         },
+        "request_shape": {
+          "default": "text",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
         "revision": {
           "anyOf": [
             {
@@ -875,6 +1449,18 @@
           "default": null,
           "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
           "title": "Revision"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The request template as data (TemplateSpec): per request shape (``query``, ``document``, ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens written by name and resolved from the tokenizer, the anchor the model reads its output from, and the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling routes' default). Content."
         },
         "timeout_s": {
           "default": 600.0,
@@ -897,6 +1483,17 @@
           "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
           "title": "Tokenizer"
         },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "wait_on_outage_s": {
           "anyOf": [
             {
@@ -918,10 +1515,56 @@
       "title": "PluginPooling",
       "type": "object"
     },
+    "Segment": {
+      "additionalProperties": false,
+      "description": "One segment of a rendered request shape: a piece of fixed frame text or a content span.\n\nExactly one of the two is set. A fixed segment writes its special tokens by name\n(``{special:<name>}``); a content span names the role whose text fills it\n(ContentSpan).",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "enum": [
+                "query",
+                "document",
+                "instruction"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The role whose text fills the span.",
+          "title": "Content"
+        },
+        "fixed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The frame text, with specials written ``{special:<name>}``.",
+          "title": "Fixed"
+        }
+      },
+      "title": "Segment",
+      "type": "object"
+    },
     "ServedEmbedding": {
       "additionalProperties": false,
       "description": "A served embedding model: vLLM (``vllm serve``), SGLang, TEI, Infinity, or OpenAI's own API, through\n``POST <base_url>/embeddings``.",
       "properties": {
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "description": "How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.",
+          "title": "Aggregation",
+          "type": "string"
+        },
         "api": {
           "const": "openai_embeddings",
           "default": "openai_embeddings",
@@ -940,7 +1583,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -969,6 +1612,18 @@
           "title": "Batch Size",
           "type": "integer"
         },
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The chunk geometry for ``on_overflow: chunk`` (a ChunkPolicy reused, not copied). Content."
+        },
         "concurrency": {
           "default": 64,
           "description": "Requests in flight at once.",
@@ -1003,6 +1658,30 @@
           "title": "Doc Prompt",
           "type": "string"
         },
+        "empty_doc": {
+          "default": "send",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "enum": [
+            "omit_zero",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
+        },
+        "empty_doc_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
+          "title": "Empty Doc Text"
+        },
         "headers_env": {
           "additionalProperties": {
             "type": "string"
@@ -1010,6 +1689,40 @@
           "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
           "title": "Headers Env",
           "type": "object"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
         },
         "max_retries": {
           "default": 2,
@@ -1029,8 +1742,14 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole. Content. Refused until the text-budget mechanism wires the client-side cut (EmbeddingClient raises a ``ConfigError``).",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
           "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -1043,6 +1762,17 @@
           "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected).",
           "title": "Normalize",
           "type": "boolean"
+        },
+        "on_overflow": {
+          "default": "cut",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
         },
         "query_prompt": {
           "default": "",
@@ -1064,6 +1794,17 @@
           "description": "The server-side settings the package cannot read (the pooling, the template, the overrides), as a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never share a cache.",
           "title": "Recipe"
         },
+        "request_shape": {
+          "default": "text",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
         "revision": {
           "anyOf": [
             {
@@ -1076,6 +1817,18 @@
           "default": null,
           "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
           "title": "Revision"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The request template as data (TemplateSpec): per request shape (``query``, ``document``, ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens written by name and resolved from the tokenizer, the anchor the model reads its output from, and the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling routes' default). Content."
         },
         "timeout_s": {
           "default": 600.0,
@@ -1097,6 +1850,17 @@
           "default": null,
           "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
           "title": "Tokenizer"
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "wait_on_outage_s": {
           "anyOf": [
@@ -1123,6 +1887,13 @@
       "additionalProperties": false,
       "description": "A served multi-vector (late interaction) model, through vLLM's ``POST <base_url>/pooling`` with\n``task: token_embed``.\n\n``base_url`` is ``None`` only when the run's job starts the encoder's engine (``serve.encoder``): the\nengine's URLs then reach the step at runtime, through ``RCP_NDCG_ENGINES``, and setting both is refused\nrather than silently overridden.",
       "properties": {
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "description": "How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.",
+          "title": "Aggregation",
+          "type": "string"
+        },
         "api": {
           "const": "vllm_pooling",
           "default": "vllm_pooling",
@@ -1141,7 +1912,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -1169,6 +1940,18 @@
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
+        },
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The chunk geometry for ``on_overflow: chunk`` (a ChunkPolicy reused, not copied). Content."
         },
         "concurrency": {
           "default": 64,
@@ -1228,6 +2011,30 @@
           "title": "Embed Dtype",
           "type": "string"
         },
+        "empty_doc": {
+          "default": "send",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "enum": [
+            "omit_zero",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
+        },
+        "empty_doc_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
+          "title": "Empty Doc Text"
+        },
         "headers_env": {
           "additionalProperties": {
             "type": "string"
@@ -1235,6 +2042,40 @@
           "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
           "title": "Headers Env",
           "type": "object"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
         },
         "max_retries": {
           "default": 2,
@@ -1254,8 +2095,14 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole. Content. Refused until the text-budget mechanism wires the client-side cut (EmbeddingClient raises a ``ConfigError``).",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
           "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -1268,6 +2115,17 @@
           "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected).",
           "title": "Normalize",
           "type": "boolean"
+        },
+        "on_overflow": {
+          "default": "cut",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
         },
         "query_prompt": {
           "default": "",
@@ -1289,6 +2147,17 @@
           "description": "The server-side settings the package cannot read (the pooling, the template, the overrides), as a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never share a cache.",
           "title": "Recipe"
         },
+        "request_shape": {
+          "default": "text",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
         "revision": {
           "anyOf": [
             {
@@ -1301,6 +2170,18 @@
           "default": null,
           "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
           "title": "Revision"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The request template as data (TemplateSpec): per request shape (``query``, ``document``, ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens written by name and resolved from the tokenizer, the anchor the model reads its output from, and the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling routes' default). Content."
         },
         "timeout_s": {
           "default": 600.0,
@@ -1323,6 +2204,17 @@
           "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
           "title": "Tokenizer"
         },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "wait_on_outage_s": {
           "anyOf": [
             {
@@ -1344,10 +2236,153 @@
       "title": "ServedPooling",
       "type": "object"
     },
+    "TemplateSpec": {
+      "additionalProperties": false,
+      "description": "The frame of every request a role sends, declared as data.\n\nPer request shape, an ordered list of segments; at render time the fixed segments are joined with\nthe content spans filled from the call's texts. The template is content: two configs whose\ntemplates differ never share an identity (its canonical JSON is what the identity hashes).",
+      "properties": {
+        "add_special_tokens": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "additionalProperties": {
+                "type": "boolean"
+              },
+              "type": "object"
+            }
+          ],
+          "default": true,
+          "description": "What the engine does to the rendered string per shape -- ``True`` (the default) when the route adds the tokenizer's post-processor tokens (vLLM's pooling and scoring routes), ``False`` where it adds none (the chat-embed form). A bool for every shape, or a mapping shape -> bool naming every declared shape. The budget reserves those tokens: measured on the empty render, they are part of the fixed overhead.",
+          "title": "Add Special Tokens"
+        },
+        "anchor": {
+          "default": "last",
+          "description": "The position the model reads its output from (``last`` by default: the last-token poolers, the pointwise rerankers scored at the last position). Declared so the budget knows what must survive and the golden-render tests what to assert.",
+          "enum": [
+            "last",
+            "first",
+            "mean",
+            "marker"
+          ],
+          "title": "Anchor",
+          "type": "string"
+        },
+        "anchor_markers": {
+          "default": [],
+          "description": "For ``anchor: marker``: the special tokens' *names* (resolved like ``{special:...}``), e.g. a listwise reranker's per-passage markers.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Anchor Markers",
+          "type": "array"
+        },
+        "document": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Segment"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``document`` shape's segments (an embedder's document side).",
+          "title": "Document"
+        },
+        "pair": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Segment"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``pair`` shape's segments (a reranker's request; its order is the model's).",
+          "title": "Pair"
+        },
+        "query": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Segment"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``query`` shape's segments (an embedder's query side).",
+          "title": "Query"
+        }
+      },
+      "title": "TemplateSpec",
+      "type": "object"
+    },
+    "VideoPolicy": {
+      "additionalProperties": false,
+      "description": "Which frames of a video the judge is shown, and which videos it may be shown at all.\n\nOne sampling rule: ``num_frames`` frames at uniformly spaced indices over the\nwhole clip (uniform_frame_indices), the rule both serving engines apply\nto a decoded container. It is the only rule whose realised frame count is fixed\nby the policy -- a frames-per-second rule shows a 10-second clip 20 frames and a\n10-minute clip 1200, so two runs \"at 2 fps\" would share a judgement family while\nshowing the judge different amounts of video.\n\nA clip with fewer frames than ``num_frames`` is refused, not shown whole: the\nengines disagree about it (SGLang rejects the request, vLLM resamples at its\nprocessor's own rate), so no single number of frames could be recorded for it.\nA container's frame count must therefore be recorded at ingest\n(``hash_media=True``) before it can be judged over ``video_url``.\n\n``wire`` is how the judge receives the frames, and it is part of the\ninstrument. ``frames`` (client-sampled, the default and the exact one): the\nclient picks the frames from the corpus's pre-extracted frames and sends each,\nsized by the image policy, as its own image, which any OpenAI-compatible\nendpoint accepts -- so the frames counted are the frames sent.\n``video_url`` (engine-sampled, an opt-in for models with a native video encoder):\nthe container is sent unchanged and the engine decodes and samples it (Qwen-VL\ntowers then merge frame pairs in time and see timestamps). A stock engine samples\nits own default number of frames (32 on vLLM), so ``video_url`` is refused unless\nengine_video_pinning declares the engine pinned to ``num_frames`` -- and\nthe same clips judged both ways are different measurements, so the wire is part\nof the policy and a corpus whose videos do not match it is refused.\n\n``max_duration_s`` is a refusal, not a cut: uniform sampling of a long clip\nspreads the same frame budget ever thinner, so a corpus that declares it refuses\nany video whose recorded duration exceeds it -- or whose duration was never\nrecorded -- rather than judging it at a density nobody chose.",
+      "properties": {
+        "engine_video_pinning": {
+          "default": false,
+          "title": "Engine Video Pinning",
+          "type": "boolean"
+        },
+        "max_duration_s": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Duration S"
+        },
+        "num_frames": {
+          "exclusiveMinimum": 0,
+          "title": "Num Frames",
+          "type": "integer"
+        },
+        "wire": {
+          "enum": [
+            "frames",
+            "video_url"
+          ],
+          "title": "Wire",
+          "type": "string"
+        }
+      },
+      "required": [
+        "num_frames",
+        "wire"
+      ],
+      "title": "VideoPolicy",
+      "type": "object"
+    },
     "VoyageEmbedding": {
       "additionalProperties": false,
       "description": "Voyage AI's public API (``voyage-3-large``, ...). The key is read from ``api_key_env``, else\n``VOYAGE_API_KEY``; ``base_url`` is omitted unless it names a proxy.",
       "properties": {
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "description": "How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.",
+          "title": "Aggregation",
+          "type": "string"
+        },
         "api": {
           "const": "voyage",
           "default": "voyage",
@@ -1366,7 +2401,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -1394,6 +2429,18 @@
           "minimum": 1,
           "title": "Batch Size",
           "type": "integer"
+        },
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The chunk geometry for ``on_overflow: chunk`` (a ChunkPolicy reused, not copied). Content."
         },
         "concurrency": {
           "default": 64,
@@ -1429,6 +2476,30 @@
           "title": "Doc Prompt",
           "type": "string"
         },
+        "empty_doc": {
+          "default": "send",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "enum": [
+            "omit_zero",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
+        },
+        "empty_doc_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
+          "title": "Empty Doc Text"
+        },
         "headers_env": {
           "additionalProperties": {
             "type": "string"
@@ -1436,6 +2507,40 @@
           "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
           "title": "Headers Env",
           "type": "object"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
         },
         "max_retries": {
           "default": 2,
@@ -1455,8 +2560,14 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole. Content. Refused until the text-budget mechanism wires the client-side cut (EmbeddingClient raises a ``ConfigError``).",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
           "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -1469,6 +2580,17 @@
           "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected).",
           "title": "Normalize",
           "type": "boolean"
+        },
+        "on_overflow": {
+          "default": "cut",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
         },
         "query_prompt": {
           "default": "",
@@ -1490,6 +2612,17 @@
           "description": "The server-side settings the package cannot read (the pooling, the template, the overrides), as a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never share a cache.",
           "title": "Recipe"
         },
+        "request_shape": {
+          "default": "text",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
         "revision": {
           "anyOf": [
             {
@@ -1502,6 +2635,18 @@
           "default": null,
           "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
           "title": "Revision"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The request template as data (TemplateSpec): per request shape (``query``, ``document``, ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens written by name and resolved from the tokenizer, the anchor the model reads its output from, and the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling routes' default). Content."
         },
         "timeout_s": {
           "default": 600.0,
@@ -1523,6 +2668,17 @@
           "default": null,
           "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
           "title": "Tokenizer"
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "wait_on_outage_s": {
           "anyOf": [

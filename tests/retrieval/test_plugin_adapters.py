@@ -221,11 +221,16 @@ def test_a_registered_pooling_adapter_runs_late_interaction_end_to_end(
 def test_the_identity_keys_on_the_adapter_name(dataset) -> None:
     """The adapter name is content: the config payload carries it, so two plugins never share a key."""
     from rcp_ndcg.support.identity import identity_payload
+    from tests.conftest import SESSION_TOKENIZER
 
+    budget = {"tokenizer": str(SESSION_TOKENIZER), "max_tokens": 8192}
     plugin = validate_retriever(
-        {"kind": "dense", "encoder": {"api": "slow_embed", "base_url": "fake://seed/7?dim=8", "model": "stub"}}
+        {
+            "kind": "dense",
+            "encoder": {"api": "slow_embed", "base_url": "fake://seed/7?dim=8", "model": "stub", **budget},
+        }
     )
-    shipped = DenseConfig(encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub"))
+    shipped = DenseConfig(encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub", **budget))
 
     doc_ids, contents = retrieval_api._corpus(dataset)
 

@@ -99,7 +99,20 @@ def test_rerank_rescores_the_top_candidates(dataset: str, tmp_path: Path, monkey
     first = tmp_path / "first.parquet"
     Rankings.from_orders({"q1": ["d2", "d3", "d1"]}, system="first").save(first)
     reranker = tmp_path / "reranker.yaml"
-    reranker.write_text(yaml.safe_dump({"api": "rerank", "model": "stub"}), encoding="utf-8")
+    from tests.conftest import SESSION_TOKENIZER
+
+    reranker.write_text(
+        yaml.safe_dump(
+            {
+                "api": "rerank",
+                "model": "stub",
+                "tokenizer": str(SESSION_TOKENIZER),
+                "max_tokens": 8192,
+                "use_activation": False,
+            }
+        ),
+        encoding="utf-8",
+    )
 
     document = _invoke(
         "rerank", "--dataset", dataset, "--rankings", str(first), "--reranker", str(reranker),

@@ -14,3 +14,4 @@ tokenizer: Qwen/Qwen3-Reranker-0.6B@e61197ed45024b0ed8a2d74b80b4d909f1255473
 max_tokens: 8192
 query_max_tokens: 4096
 instruction: none
+use_activation: false  # the recipes score the raw logit (the pooler runs no activation)
