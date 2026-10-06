@@ -308,7 +308,7 @@ def _isobmff_header(payload: bytes) -> VideoHeader | None:
 def _atomic_write_bytes(target: Path, payload: bytes) -> None:
     """Publish *payload* at *target* via a temp file in the same directory.
 
-    Concurrent readers -- the N accelerate ranks that all resolve the same
+    Concurrent readers -- the N worker ranks that all resolve the same
     corpus at start-up -- would otherwise observe a half-written image.
     """
     target.parent.mkdir(parents=True, exist_ok=True)

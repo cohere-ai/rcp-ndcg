@@ -32,12 +32,29 @@ def test_the_mteb_extra_installs_an_mteb_the_integration_runs_on() -> None:
 def test_doctor_checks_the_packages_the_extras_install() -> None:
     from rcp_ndcg.cli.doctor import _EXTRAS
 
-    local = {Requirement(spec).name.lower() for spec in EXTRAS["local"]}
-    assert "faiss-cpu" not in local, "nothing imports faiss"
-    assert "faiss" not in _EXTRAS["local"]
+    declared = {Requirement(spec).name.lower() for specs in EXTRAS.values() for spec in specs}
+    assert "faiss-cpu" not in declared, "nothing imports faiss"
+    mapped = {module for modules in _EXTRAS.values() for module in modules}
+    assert "faiss" not in mapped
     core = {Requirement(spec).name.lower() for spec in PYPROJECT["project"]["dependencies"]}
     assert {"bm25s", "pystemmer"} <= core, "BM25 runs on any install"
-    assert {"bm25s", "Stemmer"}.isdisjoint(_EXTRAS["local"])
+    assert {"bm25s", "Stemmer"}.isdisjoint(mapped)
+
+
+def test_extra_names_have_one_home() -> None:
+    """The extras ``EXTRA_FOR_MODULE`` names are exactly the runtime extras ``pyproject.toml`` declares.
+
+    One home for the extra names: a module's install hint may not name an extra that does not exist, and a
+    declared runtime extra that no module maps to would never reach an install hint. ``dev`` and ``docs`` are
+    the tooling extras: nothing the package imports belongs to them, so no module maps to them.
+    """
+    from rcp_ndcg.errors import EXTRA_FOR_MODULE
+
+    named = set(EXTRA_FOR_MODULE.values())
+    tooling = {"dev", "docs"}
+    assert named == set(EXTRAS) - tooling, (
+        f"EXTRA_FOR_MODULE and pyproject.toml disagree: {sorted(named ^ (set(EXTRAS) - tooling))}"
+    )
 
 
 def test_no_extra_restates_a_core_dependency() -> None:
