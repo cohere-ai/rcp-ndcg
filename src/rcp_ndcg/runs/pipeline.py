@@ -25,7 +25,7 @@ import os
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from rcp_ndcg.data import Dataset, Rankings
 from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError
@@ -433,7 +433,9 @@ class Pipeline:
             if schedule is not None and schedule.prompt:
                 prompt_sha256: str = load_prompt(schedule.prompt).sha256
             else:
-                prompt_sha256 = shipped_prompts_digest(step)
+                # step is one of JUDGE_STEPS here ('tournament' or 'rubric'); the set is typed str.
+                stage = cast(Literal["tournament", "rubric"], step)
+                prompt_sha256 = shipped_prompts_digest(stage)
             return {
                 **common,
                 "depth": config.candidates.depth,

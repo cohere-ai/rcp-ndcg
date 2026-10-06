@@ -16,7 +16,7 @@ from pathlib import Path
 
 from rcp_ndcg.llm import JudgementStore
 
-WORKER = r'''
+WORKER = r"""
 import json, os, sys, time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -57,7 +57,7 @@ for index in range(int(rounds)):
     )
     store.append(judgement)
     store.note_engines(stage, [])
-'''
+"""
 
 
 def _run_workers(tmp_path: Path, stages: tuple[str, str], rounds: int) -> None:
