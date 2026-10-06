@@ -46,41 +46,53 @@ jobs:
           ls -a dist
           for file in "${expected[@]}"; do test -f "$file" || { echo "missing $file: the tag is not the version"; exit 1; }; done
           test "$(find dist -type f -not -name '.*' | wc -l)" -eq "${#expected[@]}" || { echo "dist/ holds other versions"; exit 1; }
-          grep -qx "  \"rcp-ndcg-core==${version}\"," pyproject.toml || { echo "rcp-ndcg does not pin rcp-ndcg-core==${version}"; exit 1; }
-      - name: rcp-ndcg-vllm pins rcp-ndcg exactly, when it depends on it
+      - name: each package pins its sibling at the tag's version
         run: |
           version="${GITHUB_REF_NAME#v}"
           python3 - "$version" <<'PY'
-          import re, sys, tomllib
+          import re
+          import sys
+          import tomllib
           from pathlib import Path
 
           version = sys.argv[1]
-          manifest = Path("packages/rcp-ndcg-vllm/pyproject.toml")
-          if not manifest.is_file():
-              print(f"{manifest} is not in this tree; nothing to check")
-              raise SystemExit(0)
-          project = tomllib.loads(manifest.read_text(encoding="utf-8"))["project"]
-          requirements = list(project.get("dependencies", []))
-          for extra in project.get("optional-dependencies", {}).values():
-              requirements += extra
+          # (manifest, sibling, required): the pin is exactly `==<version>` through PEP 508 spelling and PEP 503
+          # name normalisation, read with tomllib (never by matching TOML text). The vllm manifest names rcp-ndcg
+          # at most -- the lean package may drop the dependency -- but every manifest the release builds must exist:
+          # a missing manifest is an error, never "nothing to check".
+          CHECKS = (
+              ("pyproject.toml", "rcp-ndcg-core", True),
+              ("packages/rcp-ndcg-vllm/pyproject.toml", "rcp-ndcg", False),
+          )
           # name, optional [extras], then the specifier: "rcp-ndcg[calibrate]==0.0.1" -> ("rcp-ndcg", "==0.0.1")
           requirement_re = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[[^\]]*\])?\s*(.*)$")
-          pins = [
-              re.sub(r"[\s()]", "", m.group(2))  # "( == 0.0.1 )" and "== 0.0.1" are the exact pin "==0.0.1"
-              for requirement in requirements
-              if (m := requirement_re.match(requirement.split(";", 1)[0]))
-              and re.sub(r"[-_.]+", "-", m.group(1).lower()) == "rcp-ndcg"  # PEP 503 normalisation
-          ]
-          expected = f"=={version}"
-          if any(pin != expected for pin in pins):
-              raise SystemExit(f"rcp-ndcg-vllm must pin rcp-ndcg{expected} exactly; found {pins}")
-          print(f"rcp-ndcg-vllm pins rcp-ndcg{expected}" if pins else "rcp-ndcg-vllm does not depend on rcp-ndcg")
+
+          for path, name, required in CHECKS:
+              manifest = Path(path)
+              if not manifest.is_file():
+                  raise SystemExit(f"{path} is not in this tree: the release builds it, so it must pin {name}=={version}")
+              project = tomllib.loads(manifest.read_text(encoding="utf-8"))["project"]
+              requirements = list(project.get("dependencies", []))
+              for extra in project.get("optional-dependencies", {}).values():
+                  requirements += extra
+              pins = [
+                  re.sub(r"[\s()]", "", m.group(2))  # "( == 0.0.1 )" and "== 0.0.1" are the exact pin "==0.0.1"
+                  for requirement in requirements
+                  if (m := requirement_re.match(requirement.split(";", 1)[0]))
+                  and re.sub(r"[-_.]+", "-", m.group(1).lower()) == re.sub(r"[-_.]+", "-", name.lower())  # PEP 503
+              ]
+              expected = f"=={version}"
+              if not pins:
+                  if required:
+                      raise SystemExit(f"{path} does not declare {name}: it must pin {name}{expected} exactly")
+                  print(f"{path} does not depend on {name}")
+                  continue
+              if any(pin != expected for pin in pins):
+                  raise SystemExit(f"{name} must be pinned {expected} exactly in {path}; found {pins}")
+              print(f"{path} pins {name}{expected}")
           PY
-      - name: the constraints file is the lock's export
-        run: |
-          command=$(sed -n '2s/^#    //p' requirements-constraints.txt)
-          eval "${command/ -o requirements-constraints.txt/ --no-header -o $RUNNER_TEMP/exported.txt}"
-          diff <(grep -v '^#' requirements-constraints.txt) <(grep -v '^#' "$RUNNER_TEMP/exported.txt")
+      - name: the requirements-constraints.txt is the lock's export
+        run: python3 .github/scripts/check_constraints.py
       - name: twine check every file
         run: uvx twine check dist/*
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -131,9 +143,12 @@ jobs:
         with:
           packages-dir: dist/rcp-ndcg
 
+  # rcp-ndcg-vllm pins rcp-ndcg==<version> exactly (and the core through it): every moment of the rollout must
+  # install, so it publishes only after both siblings are on PyPI (PyPI files are immutable; a published
+  # rcp-ndcg-vllm whose siblings failed would be uninstallable forever).
   publish-vllm:
     name: publish rcp-ndcg-vllm to PyPI
-    needs: build
+    needs: [build, publish-core, publish-rcp-ndcg]
     runs-on: ubuntu-latest
     environment: pypi-vllm
     permissions:
