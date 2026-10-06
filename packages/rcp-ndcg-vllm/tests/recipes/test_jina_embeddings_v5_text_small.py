@@ -295,6 +295,18 @@ def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
     assert tokenizer.ids(ref_by_key[(0, "document")], add_special_tokens=True) == DOCUMENT_IDS
 
 
+def test_reference_pins_the_snapshot_revision() -> None:
+    """The reference never loads anything at Hub HEAD: the vendor remote code drops the revision
+    kwarg for every inner load (config, base weights, adapters and tokenizer all resolve at HEAD,
+    modeling_jina_embeddings_v5.py:19-60), so load() must resolve the pinned snapshot itself.
+
+    Source-level guard: the full embed/score path needs torch and the ~1.26 GiB snapshot, which
+    the harness process (and CI) must never touch - the GPU wave runs it in the reference env."""
+    source = (recipe_dir() / "reference.py").read_text(encoding="utf-8")
+    assert "snapshot_download" in source, "load() must resolve the pinned snapshot, not load at HEAD"
+    assert "revision=HF_REVISION" in source, "the snapshot must be resolved at the pinned revision"
+
+
 def test_dropping_the_anchor_segment_turns_the_anchor_check_red(tmp_path: Path) -> None:
     """The mutation: drop the template's anchor segment (the leading fixed marker segment; this
     model's anchor is at the head) and the anchor check goes red on every render."""

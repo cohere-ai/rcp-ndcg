@@ -115,13 +115,19 @@ notes: >-
   pinned for clarity). The retrieval adapter's lora_dropout is 0.1 (the classification
   adapter's is 0.05 - do not generalise "all four 0.1"); scale = alpha/r = 1.0, so the merge
   is exact. Do NOT use --enable-lora: per-request task switching on /v1/embeddings is plumbed
-  but unmeasured (serving.py:126; :234 is the lora_requests membership check in
-  _check_model, not the same method), the vendor prescribes merged weights per task, and one
+  but unmeasured (entrypoints/pooling/base/serving.py:126, _maybe_get_adapters; the :234 site
+  in the corrections table is a different call site, not the same method), the vendor
+  prescribes merged weights per task, and one
   adapter serves both roles. SILENT FAILURE MODE: if adapters/retrieval/ cannot be fetched at
   server start (an offline serve without the file cached, a mirror that strips adapters/, a
   rate limit), vLLM logs "No adapter found for task 'retrieval' ... Loading raw base
   weights" (jina.py:243) and serves UNADAPTED embeddings with no error; the wave's smoke must
-  assert that warning is absent. Never dodge trust_remote_code by overriding model_type to
+  assert that warning is absent. And the checkpoint's remote code fetches the adapters WITHOUT
+  a revision (snapshot_download, modeling_jina_embeddings_v5.py:37-41): a repo-id load pins the
+  base weights but takes the adapters from Hub HEAD - the reference resolves the whole snapshot
+  at the pinned revision to pin them, and the wave's smoke should record the adapters' commit
+  (a drifted adapter set would surface in the stage-2 gates, never as an error). Never dodge
+  trust_remote_code by overriding model_type to
   qwen3 - that also serves raw base weights silently (no adapter is loaded). trust_remote_code
   itself is needed only for config parsing (measured: AutoConfig raises without it); the
   served class is vLLM-native. Template: none is served. The prompts go to /v1/embeddings as
@@ -141,6 +147,9 @@ notes: >-
   re-tokenization at the cut boundary), and the model pools the LAST token, so a pair cut at
   a misaligned boundary can drift a few tail tokens against the reference; the GPU wave
   should keep over-cap rows out of the gated pairs file or read them as expected tail drift.
+  Stage 1 is stricter: it compares every pairs-file row byte-identically against the reference's
+  uncut render, so an over-cap row in the stage-1 pairs file fails stage 1 by design - keep
+  over-cap rows out of the stage-1 pairs file.
   The anchor is the head: anchor: first pins the prompt marker's ids ("Query:" / "Document:")
   at the head of every render; the marker and its separator space are separate fixed segments
   because the space merges into the following content token under BPE, so the marker's own

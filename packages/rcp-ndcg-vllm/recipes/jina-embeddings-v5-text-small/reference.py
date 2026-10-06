@@ -34,8 +34,10 @@ The harness's contract (``rcp_ndcg_vllm.equivalence.reference``):
                  --tokenizer <repo@rev|path> --device <cpu|cuda:N> [--model-path <dir>]
 
 - ``render`` — per pairs row, one row per declared shape: the exact prompt text the engine should
-  see (``{"rows": [{"index", "shape", "text"}]}``). In-budget rows only are compared by stage 1;
-  over-cap inputs belong to stage 2 (the card's own truncation above).
+  see (``{"rows": [{"index", "shape", "text"}]}``). Stage 1 compares every pairs-file row
+  byte-identically against the product fit's render, so the pairs file for stage 1 must be inside
+  the budget: an over-cap row fails stage 1's render comparison by design (over-cap behaviour is
+  the GPU wave's stage-2 business, where the card's own truncation below applies).
 - ``embed`` — ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[...]]}]}``,
   one L2-normalised float32 vector per side (the model is dense, 1024 dims).
 - ``score`` — cosine of the embedded query against each document (embed role; kept for
@@ -44,6 +46,14 @@ The harness's contract (``rcp_ndcg_vllm.equivalence.reference``):
 ``--tokenizer`` is accepted for the interface and unused: the prompt is plain text, and the model
 loads its own tokenizer with the checkpoint (the card path — the ids equality is stage 1's
 zero-tolerance comparison on the harness side, against this same file).
+
+**Pinning:** the checkpoint's remote code drops the ``revision`` kwarg for every inner load — the
+config (``modeling_jina_embeddings_v5.py:19-23``), the base weights (``:25-31``), the adapters
+(a ``snapshot_download`` without a revision, ``:37-41``) and the tokenizer (``:57-60``) all
+resolve at Hub HEAD when given a repo id. :func:`load` therefore resolves the pinned snapshot
+itself (``snapshot_download(HF_REPO, revision=HF_REVISION)``) and loads from it: the vendor
+code's local-dir branch takes the adapters from the snapshot too, so every tensor comes from the
+pinned revision. ``--mode render`` downloads nothing.
 """
 
 from __future__ import annotations
@@ -58,9 +68,7 @@ HF_REVISION = "dd76d535f5447ca3897a9c893fb1e612ead98192"
 QUERY_PREFIX = "Query: "  # config_sentence_transformers.json:8
 DOCUMENT_PREFIX = "Document: "  # config_sentence_transformers.json:9
 DEFAULT_TASK = "retrieval"  # config.json task_names[0]; vLLM's _DEFAULT_TASK
-MAX_LENGTH = 32768  # config.json:19 max_position_embeddings; encode truncates here
 Role = Literal["query", "document"]
-SHAPES: tuple[str, ...] = ("query", "document")
 
 
 def render(text: str, role: Role, instruction: str | None = None) -> str:
@@ -107,22 +115,37 @@ class _CardModel:
         return [[float(value) for value in row] for row in np.asarray(array, dtype=np.float32)]
 
 
+def _pinned_snapshot_path() -> str:
+    """The pinned snapshot directory: the model card's path would load every inner weight at Hub
+    HEAD (the vendor remote code drops the revision kwarg — see the module docstring), so the
+    snapshot is resolved once at the pinned revision and everything loads from it."""
+    from huggingface_hub import snapshot_download
+
+    return snapshot_download(
+        HF_REPO,
+        revision=HF_REVISION,
+        allow_patterns=["*.json", "*.py", "*.txt", "*.jinja", "*.safetensors"],
+    )
+
+
 def load(device: str = "cpu", model_path: str | None = None, task: str = DEFAULT_TASK) -> _CardModel:
-    """Load the card model. ``device``: ``cpu`` or ``cuda:N``; bf16 weights (the card snippet)."""
+    """Load the card model. ``device``: ``cpu`` or ``cuda:N``; bf16 weights (the card snippet).
+
+    ``model_path`` (a local snapshot directory) is used as given; without one the pinned Hub
+    revision is resolved via :func:`_pinned_snapshot_path` — never Hub HEAD (the vendor remote
+    code would ignore the revision on its inner loads)."""
     import torch
     from transformers import AutoModel, AutoTokenizer
 
-    name = model_path or HF_REPO
+    name = model_path or _pinned_snapshot_path()
     model = AutoModel.from_pretrained(
         name,
-        revision=HF_REVISION if model_path is None else None,
         trust_remote_code=True,  # the card snippet (README:153); config parsing + the remote code
         dtype=torch.bfloat16,  # the card snippet; the checkpoint's own torch_dtype
     ).to(device=device)
     model.eval()
     tokenizer = AutoTokenizer.from_pretrained(
         name,
-        revision=HF_REVISION if model_path is None else None,
         trust_remote_code=True,
     )
     return _CardModel(model, tokenizer, task)
