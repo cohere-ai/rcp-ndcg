@@ -5403,6 +5403,13 @@
         "defined_in": "rcp_ndcg.data.resolution",
         "extra": "forbid",
         "fields": {
+          "engine_video_pinning": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
           "max_duration_s": {
             "alias": null,
             "default": null,
@@ -9019,7 +9026,7 @@
       },
       "EmbeddingEndpoint": {
         "bases": [
-          "rcp_ndcg.inference.endpoint.Endpoint"
+          "rcp_ndcg.inference.config._MediaEndpoint"
         ],
         "defined_in": "rcp_ndcg.inference.config",
         "extra": "forbid",
@@ -9115,6 +9122,27 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -9128,6 +9156,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -9198,6 +9233,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -9820,6 +9862,27 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -9833,6 +9896,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -9903,6 +9973,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -10121,7 +10198,7 @@
       },
       "RerankEndpoint": {
         "bases": [
-          "rcp_ndcg.inference.endpoint.Endpoint"
+          "rcp_ndcg.inference.config._MediaEndpoint"
         ],
         "defined_in": "rcp_ndcg.inference.config",
         "extra": "forbid",
@@ -10203,6 +10280,20 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
           "instruction": {
             "alias": null,
             "default": "fold",
@@ -10217,6 +10308,13 @@
             "required": false,
             "type": "bool"
           },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -10230,6 +10328,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -10300,6 +10405,13 @@
             "frozen": false,
             "required": false,
             "type": "bool | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
