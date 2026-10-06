@@ -62,7 +62,7 @@ released together.
   (`RoleClient._fit` takes the caller's ids; `RerankClient._fit_pair` passes them; a chunked document's rows
   carry `<original>#<chunk>`, and the pooled scores land on their document): with `empty_doc: omit_zero`, a
   later document's cut is recorded under ITS position, never the kept position an earlier omission displaced.
-- - Recipe rules (at load, with the product's messages): a rerank recipe speaks `api: rerank` and takes no
+- Recipe rules (at load, with the product's messages): a rerank recipe speaks `api: rerank` and takes no
   `serve.convert`; an embed/multi_vector recipe's template cannot declare an `{content: instruction}` span
   (the role's clients fill no instruction); `recipe.input` declaring an image or video must declare media
   capacity on the client (`max_images`/`max_videos` > 0); `client_config()` keeps a declared `client.recipe`;

@@ -14,7 +14,7 @@ recipes/<id>/
   recipe.yaml                  # the recipe (the Recipe schema; every field is listed in schema/recipe.schema.json)
   template.jinja               # the chat template given to vllm serve --chat-template (only when the model needs one)
   reference.py                 # the reference implementation, run as a subprocess (see the reference interface)
-  requirements-reference.txt   # optional: the reference environment; overrides the package's shared one
+  requirements-reference.txt   # optional: the reference's environment (the node's bootstrap installs it)
 ```
 
 The `id` equals the directory name, matches `^[a-z0-9][a-z0-9.-]*$`, and is also the `--served-model-name` the
@@ -145,8 +145,8 @@ reference.py --mode <render|score|embed> --pairs <file> --out <file> \
   nesting for query and document sides, for every text of the row).
 - The reference environment: `packages/rcp-ndcg-vllm/requirements-reference.txt` pins it for every recipe
   (torch, transformers, sentence-transformers as needed); a recipe may ship its own
-  `recipes/<id>/requirements-reference.txt`, which overrides the shared one for that recipe. It is documented,
-  not installed, by the harness.
+  `recipes/<id>/requirements-reference.txt`, which the node's bootstrap installs for that recipe instead of
+  the shared one. The harness documents both and installs neither.
 
 ## Choosing how vLLM serves a model
 

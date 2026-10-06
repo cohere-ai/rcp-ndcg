@@ -274,11 +274,13 @@ def test_stage2_gates_only_under_cap_pairs_when_the_deviation_is_declared(tmp_pa
 def test_stage2_carves_a_chunked_over_cap_document_out_when_declared(tmp_path: Path) -> None:
     """A chunked over-cap document's census rows carry <original>#<chunk>: the carve-out classifies them."""
     recipe = load("fixture-rerank-pointwise")
+    from rcp_ndcg.data.preprocess import ChunkPolicy
+
     chunking = recipe.model_copy(
         update={
             "reference": recipe.reference.model_copy(update={"known_deviations": ["anchor_drop_over_cap"]}),
             "client": recipe.client.model_copy(
-                update={"on_overflow": "chunk", "chunk": {"max_tokens": 40, "overlap_tokens": 0}}
+                update={"on_overflow": "chunk", "chunk": ChunkPolicy(max_tokens=40, overlap_tokens=0)}
             ),
         }
     )
@@ -301,29 +303,37 @@ def test_stage2_carves_a_chunked_over_cap_document_out_when_declared(tmp_path: P
 
 def test_stage2_raises_a_typed_error_on_a_short_reference(tmp_path: Path) -> None:
     """A reference that emits fewer rows (or fewer scores) than the pairs file is a typed error, never a
-    silent truncation or an untyped zip failure."""
+    silent truncation or an untyped zip failure.  The mutations fire the typed raises (the layout mirrors the
+    fixture's so the reference subprocess runs at all), asserted by their messages."""
     from rcp_ndcg_vllm.errors import HarnessError
 
-    load("fixture-rerank-pointwise")
     pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:2])
     full = (RECIPES / "fixture-rerank-pointwise" / "reference.py").read_text(encoding="utf-8")
+    scores_line = 'rows.append({"index": index, "scores": [score(folded, document) for document in row["documents"]]})'
     mutations = {
-        "short-scores": full.replace(
-            'rows.append({"index": index, "scores": [score(folded, document) for document in row["documents"]]})',
-            'rows.append({"index": index, "scores": [score(folded, document) for document in row["documents"]][:-1]})',
+        "fewer-rows": (
+            full.replace("for index, row in enumerate(pairs):", "for index, row in enumerate(pairs[:1]):"),
+            "silently drop the later rows",
         ),
-        "fewer-rows": full.replace("for index, row in enumerate(pairs):", "for index, row in enumerate(pairs[:1]):"),
+        "short-scores": (
+            full.replace(scores_line, scores_line.replace("]})", "][:-1]})")),
+            "scores align to the documents as given",
+        ),
     }
     engine = start_stub("--tokenizer", str(TOKENIZER))
     try:
-        for name, source in mutations.items():
-            directory = tmp_path / name
-            directory.mkdir()
+        for name, (source, message) in mutations.items():
+            # The fixture layout, mirrored: <scratch>/<name>/recipes/<id>/reference.py two levels under
+            # <scratch>/<name>/, next to deterministic.py -- the mutations must reach the harness, not die
+            # in the subprocess.
+            directory = tmp_path / name / "recipes" / name
+            directory.mkdir(parents=True)
+            shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / name / "deterministic.py")
             (directory / "reference.py").write_text(source, encoding="utf-8")
             manifest = (RECIPES / "fixture-rerank-pointwise" / "recipe.yaml").read_text(encoding="utf-8")
             (directory / "recipe.yaml").write_text(_rebased(manifest, name), encoding="utf-8")
             shutil.copy(RECIPES / "fixture-rerank-pointwise" / "template.jinja", directory / "template.jinja")
-            with pytest.raises(HarnessError):
+            with pytest.raises(HarnessError, match=message):
                 stage2_scores(load_recipe(directory), pairs, REFERENCE_PYTHON, base_url=engine.base_url)
     finally:
         engine.stop()
@@ -346,6 +356,21 @@ def test_stage2_vector_over_cap_carve_out_when_declared(tmp_path: Path) -> None:
         assert document["over_cap"]["known_deviation"] is True
     finally:
         engine.stop()
+
+
+def test_the_public_run_orchestrator_writes_the_report(tmp_path: Path) -> None:
+    """The public `run()` runs the stages, writes equivalence.json and EQUIVALENCE.md, and returns the verdict."""
+    from rcp_ndcg_vllm.equivalence import run
+
+    recipe = load("fixture-embed")
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    out = tmp_path / "out"
+    document = run(recipe, base_url=None, pairs_path=str(pairs), out_dir=str(out), stages=[1])
+    assert document["passed"] is True, document["stage1"]["failures"][:1]
+    report = out / "equivalence.json"
+    markdown = out / "EQUIVALENCE.md"
+    assert report.is_file() and markdown.is_file()
+    assert "Stage 1" in markdown.read_text(encoding="utf-8")
 
 
 def test_stage3_metrics_compares_served_against_reference(tmp_path: Path) -> None:
