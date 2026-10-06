@@ -68,15 +68,11 @@ def _tokenizer(monkeypatch: Any, tmp_path: Any) -> TextTokenizer:
 
 
 def _budget(recipe: Any, tokenizer: TextTokenizer) -> TextBudget:
-    """The recipe's declared pair budget, on the given tokenizer (the served client's fit call)."""
-    client = recipe.client
-    return TextBudget(
-        tokenizer=tokenizer.name,
-        max_tokens=client.max_tokens,
-        query_max_tokens=client.query_max_tokens,
-        template=client.template,
-        on_overflow=client.on_overflow,
-    )
+    """The recipe's declared pair budget, as the harness itself resolves it (``budget_of``), on the
+    loaded tokenizer (the served client's fit call)."""
+    from rcp_ndcg_vllm.equivalence.fitting import budget_of
+
+    return budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
 
 
 def _fit_pair(recipe: Any, tokenizer: TextTokenizer, query: str, document: str) -> Any:
@@ -292,7 +288,8 @@ def test_stage1_on_cpu_passes_anchor_and_template_checks(tmp_path: Any, monkeypa
     assert document["anchor_check"]["checked"] >= 25
     assert document["template_render_check"] is not None
     assert document["template_render_check"]["passed"] is True, document["template_render_check"]["failures"][:2]
-    assert document["render_check"]["status"] in ("run", "not_run")
+    if document["render_check"]["status"] == "run":
+        assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:2]
     assert document["engine_tokenize_check"]["status"] == "not_run"  # no engine on CPU; never reported passed
 
 
@@ -312,8 +309,9 @@ def test_reference_render_matches(tmp_path: Any, monkeypatch: Any) -> None:
         )
     recipe = load_recipe(RECIPE_DIR)
     tokenizer = _tokenizer(monkeypatch, tmp_path)
-    rows = _sample_pairs(tokenizer)[:6]  # render fidelity: the first in-budget rows and the over-cap ones
-    document = stage1_prompts(recipe, _write_pairs(tmp_path, rows), reference_python)
+    rows = _sample_pairs(tokenizer)
+    subset = rows[:6] + rows[20:]  # render fidelity: the in-budget rows and every over-cap one
+    document = stage1_prompts(recipe, _write_pairs(tmp_path, subset), reference_python)
     assert document["render_check"]["status"] == "run"
     assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:2]
 

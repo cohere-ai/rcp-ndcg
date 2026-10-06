@@ -7,7 +7,9 @@ workspace; it is installed into the engine image, which carries its own vLLM and
 
 ## The recipe directory
 
-One directory per model, `packages/rcp-ndcg-vllm/recipes/<id>/`, with three files:
+One directory per model, `packages/rcp-ndcg-vllm/recipes/<id>/`, with three files (plus a
+`requirements-reference.txt` when the reference needs its own pinned environment - see
+[the reference interface](#the-reference-interface)):
 
 ```text
 recipes/<id>/

@@ -78,8 +78,8 @@ sources:
   - "https://huggingface.co/zeroentropy/zerank-1-reranker (canonical repo; sha d03c467e29e29c0a16a130a86ce3b62d30116a2c)"
   - "https://huggingface.co/zeroentropy/zerank-1 (HF 307 -> zerank-1-reranker; the alias the paper's config names)"
   - "experiments/paper/rerankers/zerank_1.yaml:1-4 (the paper's served-path config: provider local, model zeroentropy/zerank-1, no overrides)"
-  - "experiments/paper/rerankers/reference/zerank.py:37-138 (the paper-exact reference, on the integration branch; the same ZerankRerank ships in this tree at src/rcp_ndcg/retrieval/external_rerankers.py:165-262: template at :206-217, the whole-prompt 8192 right cut at :222, yes-logit/5 at :231, expit at :260-262)"
-  - "src/rcp_ndcg/retrieval/external_rerankers.py:165-262 (ZerankRerank as this tree carries it: template :206-217, whole-prompt 8192 right cut :222, yes-logit/5 :231, expit :260-262)"
+  - "experiments/paper/rerankers/reference/zerank.py:37-138 (the paper-exact reference, on the integration branch; the same ZerankRerank ships in this tree at src/rcp_ndcg/retrieval/external_rerankers.py:165-262: template at :206-214, the whole-prompt 8192 right cut at :222, yes-logit/5 at :231, expit at :260-262)"
+  - "src/rcp_ndcg/retrieval/external_rerankers.py:165-262 (ZerankRerank as this tree carries it: template :206-214, whole-prompt 8192 right cut :222, yes-logit/5 :231, expit :260-262)"
   - "src/rcp_ndcg/retrieval/cross_encoder.py:46,268-270 (the served client's historical MAX_QUERY_LENGTH=4096 -> max_tokens_per_query)"
   - "vllm d0d6e5f3a: vllm/model_executor/models/adapters.py:593-647 (load_weights_no_post_processing; score.weight := the \"Yes\" row of the tied lm_head)"
   - "vllm d0d6e5f3a: vllm/model_executor/layers/pooler/activations.py:138-140 (num_labels < 2 -> F.sigmoid) with vllm/model_executor/layers/pooler/seqwise/heads.py:177-200 ((logit - logit_mean) / logit_sigma)"
@@ -87,9 +87,9 @@ sources:
   - "vllm d0d6e5f3a: vllm/entrypoints/pooling/scoring/io_processor.py:701-733 (the score prompt: the CLI chat template is required, the tokenizer's own is refused, encode with add_special_tokens=True)"
   - "vllm d0d6e5f3a: vllm/entrypoints/pooling/scoring/io_processor.py:460-476 (the missing-template warning fires only for is_original_qwen3_reranker - silent for this converted architecture)"
 notes: >-
-  Score = sigmoid(yes_logit / 5) at the last prompt position ("Yes" is single token 9454; pad "..."
-  id 151643; padding/truncation right). The prompt is ChatML: system=query, user=document, ending
-  with the assistant header whose trailing newline is the token the score is pooled from.
+  Score = sigmoid(yes_logit / 5) at the last prompt position ("Yes" is single token 9454; the repo's own
+  pad token is the id-151643 end-of-text special; padding/truncation right). The prompt is ChatML: system=query,
+  user=document, ending with the assistant header whose trailing newline is the token the score is pooled from.
 
   template.jinja is REQUIRED and load bearing (R10): the tokenizer's own chat template is refused on
   the score path (io_processor.py:701-710), and without a template file vLLM silently tokenizes query

@@ -18,8 +18,9 @@ vLLM and torch.
 
 - `src/rcp_ndcg_vllm/recipe.py` — the recipe schema (frozen pydantic models, `extra="forbid"`), its validators,
   `load_recipe`, `iter_recipes`, `serve_argv` and `client_config`.
-- `recipes/<id>/` — one directory per served model: `recipe.yaml`, an optional `template.jinja` chat template and
-  `reference.py`. The recipe lanes write these.
+- `recipes/<id>/` — one directory per served model: `recipe.yaml`, an optional `template.jinja` chat template,
+  `reference.py`, and a `requirements-reference.txt` when the reference needs its own pinned environment. The
+  recipe lanes write these.
 - `src/rcp_ndcg_vllm/equivalence/` — the three-stage equivalence check of the design's section on in-process
   scoring, as functions and a CLI (`python -m rcp_ndcg_vllm.equivalence`).
 - `src/rcp_ndcg_vllm/record.py` — records one fixed request/response exchange per engine route under
