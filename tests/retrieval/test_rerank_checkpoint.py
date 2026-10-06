@@ -99,7 +99,7 @@ def test_the_key_covers_every_content_field_and_the_exact_texts() -> None:
 
     changed_texts = {
         "another query": _examples()[1],
-        "query text": example.model_copy(update={"query": "a different question entirely"}),
+        "query text": example.model_copy(update={"text": "a different question entirely"}),
         "query instruction": example.model_copy(update={"instruction": "Find the passage"}),
         "document texts": example.model_copy(update={"docs": ["changed text", "other text", "third text"]}),
     }
@@ -107,6 +107,22 @@ def test_the_key_covers_every_content_field_and_the_exact_texts() -> None:
         assert _checkpoint_key(_config(), changed) != base, f"{label} is content"
 
     assert _checkpoint_key(_config(), example) == base, "the same content keys the same"
+
+
+def test_the_key_covers_a_media_query_s_parts_not_only_its_text() -> None:
+    """Two image queries with the same (empty) text but different images are different queries."""
+    from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+
+    def image_query(uri: str) -> RankingExample:
+        fields = _examples()[0].model_dump(by_alias=True, exclude={"content"})
+        fields["query"] = ""
+        return RankingExample.model_validate(
+            {**fields, "content": Content.from_parts([ImagePart(ref=MediaRef(uri=uri, mime="image/png"))])}
+        )
+
+    one, other = image_query("gs://YOUR-BUCKET/one.png"), image_query("gs://YOUR-BUCKET/other.png")
+    assert one.text == other.text
+    assert _checkpoint_key(_config(), one) != _checkpoint_key(_config(), other)
 
 
 def test_a_budget_change_re_keys_the_checkpoint(tmp_path: Any) -> None:

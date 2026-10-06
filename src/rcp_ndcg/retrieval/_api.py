@@ -359,7 +359,7 @@ def _checkpoint_key(config: RerankerConfig, example: Any, *, tokenizer_sha256: s
     payload.update(
         {
             "query_id": str(example.id),
-            "query": example.query,
+            "query": example.as_content.model_dump_json(),
             "query_instruction": example.instruction,
             "doc_ids": [str(doc_id) for doc_id in example.doc_ids],
             "docs": hash_strings([content.model_dump_json() for content in example.doc_contents]),
