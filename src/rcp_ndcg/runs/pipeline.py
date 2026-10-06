@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 from rcp_ndcg.data import Dataset, Rankings
 from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError
 from rcp_ndcg.llm.client import Usage
+from rcp_ndcg.llm.prompts import load_prompt, shipped_prompts_digest
 from rcp_ndcg.runs.config import JUDGE_STEPS, RunConfig
 from rcp_ndcg.runs.layout import RunLayout, new_run_id
 from rcp_ndcg.runs.manifest import DatasetRef, RunManifest, RunStatus, StepStatus
@@ -419,11 +420,22 @@ class Pipeline:
             return {**common, "rerank": rerank, "depth": config.candidates.depth}
         if step in JUDGE_STEPS:
             schedule = self.schedule(step)
+            judge = config.judge_config()
+            # The prompt the step resolves to, by its content (the family's prompt_hash): its name or path is
+            # runtime -- the same text under another name is the same instrument, edited text is not. A schedule
+            # that leaves the prompt unset resolves the shipped one from the corpus's modality at judging time,
+            # so the step pins the stage's whole shipped set by content instead (and reads no corpus here: a
+            # resume check never downloads or loads one).
+            if schedule is not None and schedule.prompt:
+                prompt_sha256: str = load_prompt(schedule.prompt).sha256
+            else:
+                prompt_sha256 = shipped_prompts_digest(step)
             return {
                 **common,
                 "depth": config.candidates.depth,
-                "judge": config.judge_config().identity(),
-                "schedule": schedule.model_dump(mode="json") if schedule is not None else None,
+                "judge": {**judge.identity(), **judge.identity_extra()},
+                "schedule": schedule.model_dump(mode="json", exclude={"prompt"}) if schedule is not None else None,
+                "prompt_sha256": prompt_sha256,
                 "preprocessing": config.preprocessing.model_dump(mode="json") if config.preprocessing else None,
             }
         if step == "calibrate":

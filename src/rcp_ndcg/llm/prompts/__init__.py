@@ -123,6 +123,20 @@ def shipped_prompt_name(stage: Literal["tournament", "rubric"], modality: Modali
     return f"{stage}{suffix}"  # type: ignore[return-value]
 
 
+def shipped_prompts_digest(stage: Literal["tournament", "rubric"]) -> str:
+    """SHA-256 over the shipped prompts of ``stage`` (text, page images and videos), by content.
+
+    A run that leaves the schedule's prompt unset has a pass resolve the shipped one from the corpus's
+    modality at judging time, so a step identity pins the stage's whole shipped set by content instead of
+    naming one: any edited shipped prompt re-keys the step (the judgement family still carries the exact
+    prompt's hash, and the names are runtime).
+    """
+    from rcp_ndcg_core._hashing import hash_payload
+
+    names = sorted(name for name in PROMPT_FILES if name.startswith(stage))
+    return hash_payload({name: load_prompt(name).text for name in names})
+
+
 __all__ = [
     "PROMPT_FILES",
     "REQUIRED_PLACEHOLDERS",
@@ -131,4 +145,5 @@ __all__ = [
     "load_prompt",
     "prompt_path",
     "shipped_prompt_name",
+    "shipped_prompts_digest",
 ]

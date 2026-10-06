@@ -14,7 +14,7 @@ from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputE
 from rcp_ndcg.llm import TournamentSchedule
 from rcp_ndcg.runs import Pipeline, RunManifest, RunStatus, StepStatus
 from rcp_ndcg.support.identity import check_declarations, identity_payload
-from rcp_ndcg.testing import TINY_TOURNAMENT, tiny_rows
+from rcp_ndcg.testing import TINY_RUBRIC, TINY_TOURNAMENT, tiny_rows
 from tests._tokenizers import byte_bpe_tokenizer
 from tests.conftest import SESSION_TOKENIZER
 from tests.runs.conftest import STEPS, tiny_config
@@ -543,6 +543,45 @@ class TestTheRetrieveAndRerankIdentities:
         assert identity(same_sha) == with_digest, "the same tokenizer bytes (any path) share the identity"
         assert identity(moved) == with_digest, "a moved URL does not re-key"
         assert identity(other_sha) != with_digest, "different tokenizer bytes re-key"
+
+    def test_the_prompt_content_and_the_judge_tokenizer_splice_into_the_judge_step_identity(
+        self, data: Path, tmp_path: Path
+    ) -> None:
+        """A judge step is keyed by what its judgements answer for: the resolved prompt's content (its name or
+        path is runtime -- the same text under another name is the same instrument, edited text is not) and the
+        judge tokenizer's digest. Editing a prompt file or swapping the tokenizer bytes re-keys the step, so a
+        resume re-judges instead of skipping with stale judgements."""
+        from rcp_ndcg.llm.prompts import load_prompt, shipped_prompts_digest
+        from tests._tokenizers import byte_bpe_tokenizer, save, word_tokenizer
+
+        for directory in ("one", "two", "prompts"):
+            (tmp_path / directory).mkdir()
+        first = save(word_tokenizer(), tmp_path / "one")
+        other = save(byte_bpe_tokenizer(), tmp_path / "two")
+        named, moved, edited = (tmp_path / "prompts" / name for name in ("a.txt", "b.txt", "c.txt"))
+        named.write_text(load_prompt("rubric").text, encoding="utf-8")
+        moved.write_text(load_prompt("rubric").text, encoding="utf-8")  # the same text under another name
+        edited.write_text(load_prompt("rubric").text + "\nA criterion notes line.", encoding="utf-8")
+
+        def identity(prompt: Path | None, tokenizer: Path | None = None) -> dict[str, Any]:
+            judge: dict[str, Any] = {"base_url": "http://judge.test/v1", "model": "m"}
+            if tokenizer is not None:
+                judge["tokenizer"] = str(tokenizer)
+            fields = {"judge": judge, "steps": ["rubric"]}
+            if prompt is not None:
+                fields["rubric"] = TINY_RUBRIC.model_copy(update={"prompt": str(prompt)}).model_dump()
+            return Pipeline(tiny_config(data, **fields), runs_dir=str(tmp_path / "runs"))._identity("rubric")
+
+        base = identity(None)
+        assert base["prompt_sha256"] == shipped_prompts_digest("rubric")  # the shipped set, by content
+        custom = identity(named)
+        assert custom["prompt_sha256"] == load_prompt("rubric").sha256  # the named prompt, by content
+        assert identity(moved) == custom, "the same text under another name is the same instrument"
+        assert identity(edited) != custom, "edited prompt content re-keys the step"
+        with_tokenizer = identity(None, first)
+        assert "tokenizer" not in with_tokenizer["judge"], "the name is runtime"
+        assert with_tokenizer["judge"]["tokenizer_sha256"]
+        assert identity(None, other) != with_tokenizer, "different tokenizer bytes re-key"
 
     def test_the_encoders_pooling_rekeys_the_retrieve_step(self, data: Path, tmp_path: Path) -> None:
         """``pooling: token`` is the late-interaction route (``/pooling``), not the one-vector one."""
