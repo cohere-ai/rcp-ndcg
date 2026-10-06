@@ -18,8 +18,8 @@ Test mode: ``--vllm-cmd "python tests/stub_engine.py"`` replaces the ``vllm serv
 ``--port-base 0`` gives every engine ``--port 0``; such an engine must announce its bound port by printing
 ``RCPS_STUB_PORT=<n>`` on stdout, which the runner reads instead of guessing a port.
 
-Run it on the node with ``python -m rcp_ndcg_vllm.jobs.run_wave`` (the node's rc-build bootstrap does; the
-tracked ``bootstrap.sh`` is a superseded stub).
+Run it on the node with ``python -m rcp_ndcg_vllm.jobs.run_wave`` (the node bootstrap's wave mode does; see
+``jobs/bootstrap.sh``).
 """
 
 from __future__ import annotations

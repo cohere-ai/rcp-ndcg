@@ -81,6 +81,8 @@ from rcp_ndcg.inference.config import EmbeddingEndpoint
 config = EmbeddingEndpoint(
     base_url="http://127.0.0.1:8000/v1",
     model="octen-embedding-8b",
+    tokenizer="fixtures/tokenizer.json",
+    max_tokens=4096,  # a self-hosted config declares its text budget: the package cuts, never the engine
     query_prompt="query: ",
     doc_prompt="- ",
     normalize=True,

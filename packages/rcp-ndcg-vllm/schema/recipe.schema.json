@@ -1077,7 +1077,7 @@
     },
     "ServeConfig": {
       "additionalProperties": false,
-      "description": "Everything rendered into the ``vllm serve`` argv \u2014 nothing implicit.\n\nSee :func:`serve_argv` for the exact argv.  ``plugin`` and ``io_processor_plugin`` never reach the argv: they\nname packages that must be installed into the image before the engine starts (a ``vllm.general_plugins``\npackage and the checkpoint's IO-processor plugin, respectively; the node's own bootstrap \u2014 owned by the\n``rc-build`` lane \u2014 installs what a wave's ``plugins.txt`` lists).",
+      "description": "Everything rendered into the ``vllm serve`` argv \u2014 nothing implicit.\n\nSee :func:`serve_argv` for the exact argv.  ``plugin`` and ``io_processor_plugin`` never reach the argv: they\nname packages that must be installed into the image before the engine starts (a ``vllm.general_plugins``\npackage and the checkpoint's IO-processor plugin, respectively; the node's bootstrap collects a wave's\n``serve.plugin`` wheels with ``python -m rcp_ndcg_vllm.jobs.plugins`` and installs them with ``--no-deps``,\nunder the freeze-diff guard).",
       "properties": {
         "runner": {
           "description": "vLLM --runner; the rcp-ndcg routes need pooling",

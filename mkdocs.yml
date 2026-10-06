@@ -35,6 +35,7 @@ nav:
       - "Reproduce the paper": tutorials/reproduce-the-paper.md
   - How-to:
       - "Add a model": how-to/add-a-model.md
+      - "Release candidates and the GPU waves": how-to/release-candidates.md
   - Reference:
       - "Command line": reference/cli.md
       - "rcp_ndcg_core": api/metric.md

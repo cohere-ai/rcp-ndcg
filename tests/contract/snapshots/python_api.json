@@ -2263,7 +2263,7 @@
       "__version__": {
         "kind": "constant",
         "type": "str",
-        "value": "0.1.0"
+        "value": "0.0.1"
       },
       "calibrate": {
         "defined_in": "rcp_ndcg.calibration.fit",
@@ -12234,6 +12234,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "cohere",
@@ -12262,6 +12269,13 @@
             "required": false,
             "type": "int"
           },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
           "concurrency": {
             "alias": null,
             "default": 64,
@@ -12289,6 +12303,20 @@
             "frozen": false,
             "required": false,
             "type": "str"
+          },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "headers_env": {
             "alias": null,
@@ -12325,6 +12353,13 @@
             "required": false,
             "type": "bool"
           },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
+          },
           "query_prompt": {
             "alias": null,
             "default": "",
@@ -12339,12 +12374,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -12378,6 +12427,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "cohere",
@@ -12406,6 +12462,13 @@
             "required": false,
             "type": "int | None"
           },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
           "concurrency": {
             "alias": null,
             "default": 64,
@@ -12420,6 +12483,20 @@
             "required": false,
             "type": "float"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -12432,7 +12509,7 @@
             "default": "fold",
             "frozen": false,
             "required": false,
-            "type": "Literal['none', 'field', 'fold']"
+            "type": "Literal['none', 'field', 'fold', 'system']"
           },
           "listwise": {
             "alias": null,
@@ -12462,6 +12539,13 @@
             "required": true,
             "type": "str"
           },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
+          },
           "query_max_tokens": {
             "alias": null,
             "default": null,
@@ -12476,12 +12560,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -12716,6 +12814,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "gemini",
@@ -12744,6 +12849,13 @@
             "required": false,
             "type": "int"
           },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
           "concurrency": {
             "alias": null,
             "default": 64,
@@ -12771,6 +12883,20 @@
             "frozen": false,
             "required": false,
             "type": "str"
+          },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "headers_env": {
             "alias": null,
@@ -12807,6 +12933,13 @@
             "required": false,
             "type": "bool"
           },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
+          },
           "query_prompt": {
             "alias": null,
             "default": "",
@@ -12821,12 +12954,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -12939,6 +13086,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "openai_embeddings",
@@ -12967,6 +13121,13 @@
             "required": false,
             "type": "int"
           },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
           "concurrency": {
             "alias": null,
             "default": 64,
@@ -12994,6 +13155,20 @@
             "frozen": false,
             "required": false,
             "type": "str"
+          },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "headers_env": {
             "alias": null,
@@ -13030,6 +13205,13 @@
             "required": false,
             "type": "bool"
           },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
+          },
           "query_prompt": {
             "alias": null,
             "default": "",
@@ -13044,12 +13226,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -13084,6 +13280,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "vllm_pooling",
@@ -13111,6 +13314,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -13154,6 +13364,20 @@
             "required": false,
             "type": "Literal['float16', 'float32']"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -13189,6 +13413,13 @@
             "required": false,
             "type": "bool"
           },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
+          },
           "query_prompt": {
             "alias": null,
             "default": "",
@@ -13203,12 +13434,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -13243,6 +13488,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "rerank",
@@ -13271,6 +13523,13 @@
             "required": false,
             "type": "int | None"
           },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
           "concurrency": {
             "alias": null,
             "default": 64,
@@ -13285,6 +13544,20 @@
             "required": false,
             "type": "float"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -13297,7 +13570,7 @@
             "default": "fold",
             "frozen": false,
             "required": false,
-            "type": "Literal['none', 'field', 'fold']"
+            "type": "Literal['none', 'field', 'fold', 'system']"
           },
           "listwise": {
             "alias": null,
@@ -13327,6 +13600,13 @@
             "required": true,
             "type": "str"
           },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
+          },
           "query_max_tokens": {
             "alias": null,
             "default": null,
@@ -13341,12 +13621,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -13396,6 +13690,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "openai_embeddings",
@@ -13424,6 +13725,13 @@
             "required": false,
             "type": "int"
           },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
           "concurrency": {
             "alias": null,
             "default": 64,
@@ -13451,6 +13759,20 @@
             "frozen": false,
             "required": false,
             "type": "str"
+          },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "headers_env": {
             "alias": null,
@@ -13487,6 +13809,13 @@
             "required": false,
             "type": "bool"
           },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
+          },
           "query_prompt": {
             "alias": null,
             "default": "",
@@ -13501,12 +13830,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -13541,6 +13884,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "vllm_pooling",
@@ -13568,6 +13918,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
           },
           "concurrency": {
             "alias": null,
@@ -13611,6 +13968,20 @@
             "required": false,
             "type": "Literal['float16', 'float32']"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -13646,6 +14017,13 @@
             "required": false,
             "type": "bool"
           },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
+          },
           "query_prompt": {
             "alias": null,
             "default": "",
@@ -13660,12 +14038,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -13700,6 +14092,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "rerank",
@@ -13728,6 +14127,13 @@
             "required": false,
             "type": "int | None"
           },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
           "concurrency": {
             "alias": null,
             "default": 64,
@@ -13742,6 +14148,20 @@
             "required": false,
             "type": "float"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -13754,7 +14174,7 @@
             "default": "fold",
             "frozen": false,
             "required": false,
-            "type": "Literal['none', 'field', 'fold']"
+            "type": "Literal['none', 'field', 'fold', 'system']"
           },
           "listwise": {
             "alias": null,
@@ -13784,6 +14204,13 @@
             "required": true,
             "type": "str"
           },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
+          },
           "query_max_tokens": {
             "alias": null,
             "default": null,
@@ -13798,12 +14225,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -13845,6 +14286,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "voyage",
@@ -13873,6 +14321,13 @@
             "required": false,
             "type": "int"
           },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
           "concurrency": {
             "alias": null,
             "default": 64,
@@ -13900,6 +14355,20 @@
             "frozen": false,
             "required": false,
             "type": "str"
+          },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "headers_env": {
             "alias": null,
@@ -13936,6 +14405,13 @@
             "required": false,
             "type": "bool"
           },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
+          },
           "query_prompt": {
             "alias": null,
             "default": "",
@@ -13950,12 +14426,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,
@@ -13989,6 +14479,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "aggregation": {
+            "alias": null,
+            "default": "max",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['max']"
+          },
           "api": {
             "alias": null,
             "default": "voyage",
@@ -14017,6 +14514,13 @@
             "required": false,
             "type": "int | None"
           },
+          "chunk": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
           "concurrency": {
             "alias": null,
             "default": 64,
@@ -14031,6 +14535,20 @@
             "required": false,
             "type": "float"
           },
+          "empty_doc": {
+            "alias": null,
+            "default": "send",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['omit_zero', 'send', 'send_text']"
+          },
+          "empty_doc_text": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -14043,7 +14561,7 @@
             "default": "fold",
             "frozen": false,
             "required": false,
-            "type": "Literal['none', 'field', 'fold']"
+            "type": "Literal['none', 'field', 'fold', 'system']"
           },
           "listwise": {
             "alias": null,
@@ -14073,6 +14591,13 @@
             "required": true,
             "type": "str"
           },
+          "on_overflow": {
+            "alias": null,
+            "default": "cut",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cut', 'chunk', 'fail']"
+          },
           "query_max_tokens": {
             "alias": null,
             "default": null,
@@ -14087,12 +14612,26 @@
             "required": false,
             "type": "str | None"
           },
+          "request_shape": {
+            "alias": null,
+            "default": "text",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['text', 'messages', 'token_ids']"
+          },
           "revision": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "template": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.templates.TemplateSpec | None"
           },
           "timeout_s": {
             "alias": null,

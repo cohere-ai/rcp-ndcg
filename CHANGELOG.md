@@ -25,6 +25,33 @@ released together.
 
 ### Public surface
 
+- **`rcp-ndcg-vllm` gains the release-candidate and wave scripts** (`packages/rcp-ndcg-vllm/jobs/`, and
+  `wave0.sh` with the package): `rc_build.sh <name> [<commit>]` builds an RC exactly as `release.yml`
+  does — the three distributions, the version and pin checks, the constraints-file check against the
+  lock, `twine check`, and a fresh-venv install smoke from the wheelhouse — and stages the six files
+  with the wheelhouse (every locked dependency beside the release wheels, the CPU torch build included,
+  `uv export` + `pip download`), the recipes, the plugins, the wave lists and any `EXTRA_DIRS` entries
+  to `<RCP_STAGE_PREFIX>/<name>/`, with a hash manifest (`rcp-ndcg.rc-manifest.v1`). `bootstrap.sh`
+  replaces the superseded stub: it verifies the staged files against the manifest, installs `uv` with
+  `pip --target` (the product's `bootstrap_uv` location), leaves the engine environment untouched except
+  recipe plugin wheels with `--no-deps` (a `pip freeze` diff beyond exactly those wheels fails it),
+  builds the client through the product's install mechanism (`uvx --find-links <wheelhouse> --no-index`
+  with the staged constraints — the runners' install-source option, not a second installer) and the
+  reference venv with `--system-site-packages` over the image's torch, records the install times and
+  versions, and (mode `wave`) runs the wave runner with the staged recipes, wave lists and pairs.
+  `submit.sh <rc-stage-uri> <out-prefix> <wave>...` submits one job per wave: `priority_class=` per
+  wave, `worker.shared_memory` sized for eight engines (`RCP_SHARED_MEMORY`, default 128Gi), the HF
+  token from `RCP_HF_TOKEN_FILE` as a kjobs secret expanded inside the script and never printed, at
+  most `--max-jobs` jobs in flight via `depends_on`, the job CLI's output to a file with only names and
+  states printed, and `--script wave0` mounting and running the node test. Wave 0 (`wave0.sh`):
+  preflight assumptions, the host facts, the three environments with an unchanged engine freeze, the
+  Hub (metadata with the token secret) and a gs:// round-trip through `rcp_ndcg.storage` from the
+  client, two engines on two isolated slots at once, the product's `fit` and embedding client over 20
+  texts (5 over the explicit budget) with the engine's `/tokenize` per input, the HF-cache eviction
+  with the disk before/after, and the no-engine assert — fail-fast, with one JSON report
+  (`rcp-ndcg.wave0-report.v1`, schema at `packages/rcp-ndcg-vllm/schema/wave0-report.schema.json`) and
+  a dry mode (`WAVE0_DRY=1`). The wave runner's wave gains per-slot `VLLM_PORT` and `TMPDIR`, the
+  pre-serve disk check against the model's Hub size, and the post-recipe eviction.
 - New package `rcp-ndcg-vllm` (`packages/rcp-ndcg-vllm/`, outside the root uv workspace and lock; version
   0.0.1, depends on `rcp-ndcg==0.0.1` — a hard dependency, and pinned by the release workflow's version
   check): serving recipes for vLLM as data. The recipe's `client` block **is**

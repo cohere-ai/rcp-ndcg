@@ -73,31 +73,31 @@ digest under this one key (`Endpoint.identity_extra()`), computed by the one hel
 `rcp_ndcg.data.tokenizer`; the judge's own identity payload keeps its existing keys and is unchanged.
 
 ```python
-from rcp_ndcg.inference import RerankClient, RerankEndpoint
-from rcp_ndcg.inference.types import Call, Reply, Usage
+from rcp_ndcg.inference import RerankEndpoint, Transport
+from rcp_ndcg.inference.adapters.base import get_adapter
+from rcp_ndcg.inference.types import Content, RerankRequest
 
-
-class FakeRerankServer:
-    """A test sender: one row per document, scored by the text, answered in arrival order shuffled."""
-
-    async def send(self, calls: list[Call]) -> list[Reply]:
-        replies = []
-        for call in calls:
-            documents = call.json["documents"]
-            rows = [{"index": i, "relevance_score": ((len(d) * 7) % 10) / 10} for i, d in enumerate(documents)]
-            replies.append(Reply(200, {"results": rows[::-1]}, {}))
-        return replies
-
-    async def probe(self) -> list[object]:
-        return []
-
-    @property
-    def usage(self) -> Usage:
-        return Usage()
-
-
-config = RerankEndpoint(base_url="http://127.0.0.1:8000/v1", model="qwen3-reranker-8b")
-client = RerankClient(config, sender=FakeRerankServer())
-result = client.rerank("what does rcp-ndcg measure", ["a metric", "a fruit"], instruction="Find the relevant passage")
-print(result.scores)  # aligned to the input documents, whatever order the server answered in
+config = RerankEndpoint(
+    base_url="fake://seed/1",  # the offline fake wire, so the snippet runs with no server
+    model="qwen3-reranker-8b",
+    tokenizer="fixtures/tokenizer.json",
+    max_tokens=8192,  # a self-hosted config declares its text budget: the package cuts, never the engine
+)
+adapter = get_adapter("rerank", role="rerank")(config)
+transport = Transport(config)
+request = RerankRequest(
+    query=Content.from_text("what does rcp-ndcg measure"),
+    documents=(Content.from_text("a metric"), Content.from_text("a fruit")),
+)
+calls = adapter.calls(request, model=config.model)
+scores = adapter.interpret(request, list(transport.run(transport.send(calls)))).scores
+print(scores)  # aligned to the input documents, whatever order the server answered in
+transport.aclose()
 ```
+
+
+A served endpoint's config must declare its text budget (`tokenizer` and `max_tokens`: the package cuts
+itself, never the engine). Until the role clients' budget wiring lands, the client refuses to cut and the
+wire goes through the adapter and the transport with what `rcp_ndcg.data.preprocess.fit` already fitted --
+the equivalence harness's interim shape; the same call becomes `RerankClient(config, sender=...).rerank(...)`
+when the wiring lands.

@@ -134,8 +134,9 @@ class ServeConfig(BaseModel):
 
     See :func:`serve_argv` for the exact argv.  ``plugin`` and ``io_processor_plugin`` never reach the argv: they
     name packages that must be installed into the image before the engine starts (a ``vllm.general_plugins``
-    package and the checkpoint's IO-processor plugin, respectively; the node's own bootstrap — owned by the
-    ``rc-build`` lane — installs what a wave's ``plugins.txt`` lists).
+    package and the checkpoint's IO-processor plugin, respectively; the node's bootstrap collects a wave's
+    ``serve.plugin`` wheels with ``python -m rcp_ndcg_vllm.jobs.plugins`` and installs them with ``--no-deps``,
+    under the freeze-diff guard).
     """
 
     model_config = ConfigDict(**_no_extra())

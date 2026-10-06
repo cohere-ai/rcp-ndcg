@@ -61,7 +61,12 @@ class DemoAdapter:
         return TokenCount(input_tokens=tokens.get("prompt_tokens")) if tokens else None
 
 
-endpoint = EmbeddingEndpoint(base_url="fake://embed?dim=8", model="demo-encoder")
+endpoint = EmbeddingEndpoint(
+    base_url="fake://embed?dim=8",
+    model="demo-encoder",
+    tokenizer="fixtures/tokenizer.json",
+    max_tokens=4096,  # a self-hosted config declares its text budget: the package cuts, never the engine
+)
 transport = Transport(endpoint)
 adapter = get_adapter("demo", role="embed")()
 replies = transport.run(transport.send(adapter.calls(None, model=endpoint.model)))
