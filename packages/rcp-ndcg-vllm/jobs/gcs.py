@@ -7,7 +7,9 @@ environment** (``pip install --target``, the same way uv gets installed), and ru
 credentials the mounted auth script set up (Application Default Credentials: ``GOOGLE_APPLICATION_CREDENTIALS``,
 the gcloud ADC file, or the metadata server). Stdlib besides ``fsspec``/``gcsfs``.
 
-    gcs.py cp SRC DST        one file or a directory (recursive, by the source's kind), either side gs://
+    gcs.py cp SRC DST [dir|file|auto]
+                             one file or a directory, either side gs:// (the kind comes from the caller
+                             when declared, else from the source itself)
     gcs.py ls URI            the entries under a gs:// prefix
     gcs.py rm URI            one object
 

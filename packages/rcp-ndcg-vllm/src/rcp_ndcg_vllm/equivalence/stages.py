@@ -809,7 +809,7 @@ def _vector_stage2(
     """Vectors from the served engine through the product's adapter and transport, against the reference's.
 
     A dense embedder's vectors compare with a cosine floor per vector; a late-interaction model's ragged
-    token vectors compare per token (in the transfer precision the product's client applied on the wire).
+    token vectors compare per token (in the transfer precision the product's adapter applied on the wire).
     The inputs are fitted first (the product's ``fit``, the row's shape), and the fitted strings are what
     the adapter sends.
     """

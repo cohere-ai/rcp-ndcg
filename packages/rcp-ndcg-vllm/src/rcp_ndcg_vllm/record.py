@@ -10,9 +10,9 @@ written under ``<out>/<engine>-<version>/<recipe-id>/``::
 
 Bytes bodies are base64-encoded with their framing headers kept.  No secret and no hostname is written: the URL
 carries the placeholder host ``http://engine``.  The role request goes over the same wire path the product's
-adapter builds (the product's role clients refuse a budget until the client-side budget wiring lands, so the
-recorder sends the fitted request itself — when the wiring lands it drives the clients over a recording
-transport instead).
+adapter builds (the inputs are fitted with the product's ``fit`` — the same call the wired role clients
+make inside their ``encode`` — and the fitted request goes over the recording transport the
+:eqlink:`equivalence` harness shares).
 """
 
 from __future__ import annotations

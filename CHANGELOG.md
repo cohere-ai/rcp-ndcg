@@ -64,10 +64,11 @@ released together.
   pre-serve disk check against the model's Hub size, the post-recipe eviction, and an upload fallback
   through the product's own `rcp_ndcg.storage` when the image has neither `gcloud` nor `gsutil`. Wave
   0's embed step runs the wired `EmbeddingClient` (the config's budget, fitted inside the client);
-  every upload attempt is recorded in the report's `uploads` section with its error, a directory
+  every upload attempt is recorded in the report's `uploads` section with its error (the second
+  durable report copy carries every attempt except its own; the stdout emit is complete), a directory
   source copies its contents under the destination on every transfer path (the caller declares the
-  source's kind, so the probe cannot mis-detect a remote prefix), one retry covers a transient GCS
-  error, and `submit.sh` resolves the image's digest (Docker Hub registry, then
+  source's kind — `dir`, `file` or `auto` — and both gcs.py and the CLIs honour it), one retry covers
+  a transient GCS error, and `submit.sh` resolves the image's digest (Docker Hub registry, then
   `gcloud container images describe`) into `env.RCP_IMAGE_DIGEST` so the report never says null.
 - New package `rcp-ndcg-vllm` (`packages/rcp-ndcg-vllm/`, outside the root uv workspace and lock; version
   0.0.1, depends on `rcp-ndcg==0.0.1` — a hard dependency, and pinned by the release workflow's version

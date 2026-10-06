@@ -152,7 +152,8 @@ fail_step() { # fail_step STEP REASON: one line, the report, the engines stopped
 # Every upload attempt is recorded (uploads.jsonl) and merged into the report's "uploads" section: a
 # failed upload is named with its source, destination and captured error. The only attempt that cannot
 # appear in an uploaded artifact is the artifact's own last copy; the stdout emit carries the complete
-# record (upload_artifacts merges after its last copy).
+# record (upload_artifacts merges after its last copy); a failed upload also leaves its one-line note
+# on stderr.
 record_upload() { # record_upload SRC DST OK ERROR
   python3 - "$1" "$2" "$3" "$4" >>"$WORK/uploads.jsonl" <<'PYEOF'
 import json
