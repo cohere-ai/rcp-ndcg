@@ -178,7 +178,7 @@
           "title": "System Fingerprint"
         },
         "url": {
-          "description": "The replica's base URL.",
+          "description": "The replica's base URL, with any userinfo and query stripped (a key in a URL never reaches the record beside the code's never-logged claim).",
           "title": "Url",
           "type": "string"
         }

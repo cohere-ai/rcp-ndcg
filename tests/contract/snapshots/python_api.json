@@ -6374,6 +6374,39 @@
           }
         ]
       },
+      "fixed_overhead": {
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "TextBudget",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "budget"
+          },
+          {
+            "annotation": "TextTokenizer | None",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "tokenizer"
+          },
+          {
+            "annotation": "RequestShape",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "shape"
+          },
+          {
+            "annotation": "str",
+            "default": "",
+            "kind": "keyword_only",
+            "name": "instruction"
+          },
+          {
+            "returns": "int"
+          }
+        ]
+      },
       "max_pool_rubric_window_by_document": {
         "defined_in": "rcp_ndcg.data.preprocess",
         "kind": "function",
@@ -6413,6 +6446,90 @@
           },
           {
             "returns": "dict[str, float]"
+          }
+        ]
+      },
+      "rendered_pair_tokens": {
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "TextBudget",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "budget"
+          },
+          {
+            "annotation": "TextTokenizer",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "tokenizer"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "query"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "document"
+          },
+          {
+            "annotation": "str",
+            "default": "",
+            "kind": "keyword_only",
+            "name": "instruction"
+          },
+          {
+            "returns": "int"
+          }
+        ]
+      },
+      "rendered_request": {
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "TextBudget",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "budget"
+          },
+          {
+            "annotation": "TextTokenizer",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "tokenizer"
+          },
+          {
+            "annotation": "RequestShape",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "shape"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "query"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "document"
+          },
+          {
+            "annotation": "str",
+            "default": "",
+            "kind": "keyword_only",
+            "name": "instruction"
+          },
+          {
+            "returns": "str"
           }
         ]
       },
@@ -9038,6 +9155,20 @@
                 "returns": "Embeddings"
               }
             ]
+          },
+          "probe": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "Any"
+              }
+            ]
           }
         }
       },
@@ -9638,7 +9769,9 @@
         "kind": "class"
       },
       "OpenAIChat": {
-        "bases": [],
+        "bases": [
+          "rcp_ndcg.inference.adapters.base.AdapterBase"
+        ],
         "defined_in": "rcp_ndcg.inference.adapters.chat",
         "init": [
           {
@@ -10760,7 +10893,8 @@
                 "returns": "list[T]"
               }
             ]
-          }
+          },
+          "usage": "property"
         }
       },
       "SELF_HOSTED_APIS": {
@@ -11099,11 +11233,19 @@
         }
       },
       "VllmPooling": {
-        "bases": [],
+        "bases": [
+          "rcp_ndcg.inference.adapters.base.AdapterBase"
+        ],
         "defined_in": "rcp_ndcg.inference.adapters.pooling",
         "init": [
           {
-            "returns": null
+            "annotation": "Any",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "config"
+          },
+          {
+            "returns": "None"
           }
         ],
         "kind": "class",
@@ -11157,6 +11299,32 @@
               },
               {
                 "returns": "Embeddings"
+              }
+            ]
+          },
+          "media_probe_baseline": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "PoolRequest",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "request"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "keyword_only",
+                "name": "model"
+              },
+              {
+                "returns": "Call"
               }
             ]
           },
@@ -18377,6 +18545,45 @@
           }
         ],
         "kind": "class"
+      },
+      "adapter_contract": {
+        "defined_in": "rcp_ndcg.testing",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "adapter"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "role"
+          },
+          {
+            "annotation": "Any",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "config"
+          },
+          {
+            "annotation": "Any | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "request"
+          },
+          {
+            "annotation": "Sequence[Any] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "replies"
+          },
+          {
+            "returns": "None"
+          }
+        ]
       },
       "build_tiny_world": {
         "defined_in": "rcp_ndcg.testing",

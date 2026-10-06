@@ -412,7 +412,7 @@
         },
         "on_overflow": {
           "default": "cut",
-          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
           "enum": [
             "cut",
             "chunk",
@@ -443,7 +443,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` or ``token_ids`` -- the latter two are refused on this config until a wire adapter implements them (a declared shape the wire does not send would be silently ignored). Content.",
           "enum": [
             "text",
             "messages",
@@ -1202,7 +1202,7 @@
         },
         "on_overflow": {
           "default": "cut",
-          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
           "enum": [
             "cut",
             "chunk",
@@ -1233,7 +1233,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` or ``token_ids`` -- the latter two are refused on this config until a wire adapter implements them (a declared shape the wire does not send would be silently ignored). Content.",
           "enum": [
             "text",
             "messages",
@@ -2138,7 +2138,7 @@
         },
         "on_overflow": {
           "default": "cut",
-          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
           "enum": [
             "cut",
             "chunk",
@@ -2169,7 +2169,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` or ``token_ids`` -- the latter two are refused on this config until a wire adapter implements them (a declared shape the wire does not send would be silently ignored). Content.",
           "enum": [
             "text",
             "messages",
@@ -2490,7 +2490,7 @@
         },
         "on_overflow": {
           "default": "cut",
-          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
           "enum": [
             "cut",
             "chunk",
@@ -2521,7 +2521,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` or ``token_ids`` -- the latter two are refused on this config until a wire adapter implements them (a declared shape the wire does not send would be silently ignored). Content.",
           "enum": [
             "text",
             "messages",
@@ -3576,7 +3576,7 @@
         },
         "on_overflow": {
           "default": "cut",
-          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
           "enum": [
             "cut",
             "chunk",
@@ -3607,7 +3607,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` or ``token_ids`` -- the latter two are refused on this config until a wire adapter implements them (a declared shape the wire does not send would be silently ignored). Content.",
           "enum": [
             "text",
             "messages",
@@ -3929,7 +3929,7 @@
         },
         "on_overflow": {
           "default": "cut",
-          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
           "enum": [
             "cut",
             "chunk",
@@ -3960,7 +3960,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` or ``token_ids`` -- the latter two are refused on this config until a wire adapter implements them (a declared shape the wire does not send would be silently ignored). Content.",
           "enum": [
             "text",
             "messages",
@@ -5075,7 +5075,7 @@
         },
         "on_overflow": {
           "default": "cut",
-          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
           "enum": [
             "cut",
             "chunk",
@@ -5106,7 +5106,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` or ``token_ids`` -- the latter two are refused on this config until a wire adapter implements them (a declared shape the wire does not send would be silently ignored). Content.",
           "enum": [
             "text",
             "messages",

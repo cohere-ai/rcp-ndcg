@@ -61,7 +61,9 @@ lifecycle: `close()` synchronous, `await aclose()` asynchronous, both context ma
 The query text follows one rule for every path, decided by the config's `instruction` mode (`fold` by
 default): `fold` sends `Task: <instruction>\nQuery: <text>` (the served path's render, byte for byte),
 `field` sends the bare query plus the engine's `instruction` request field (served vLLM only -- a hosted
-profile has no such field and refuses the mode), `none` sends the bare query. A served config (`api:
+profile has no such field and refuses the mode), `none` sends the bare query. A `system` mode is refused at
+the config: no shipped rerank wire has a system-message slot, and a mode the wire cannot carry would
+silently drop the instruction. A served config (`api:
 rerank`) sets `use_activation` explicitly (`true`: the score is a probability; `false`: the raw logit is
 stored) -- `None` would send nothing and let the engine's default apply, and two engines with different
 defaults would then share an identity; a hosted profile keeps it unset (its scale is fixed).

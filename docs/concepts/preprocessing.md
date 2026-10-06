@@ -307,8 +307,9 @@ minimum, then drops whole items most expensive first -- every drop recorded in t
 block is atomic, the engine sees a whole item or none of it). A document whose every media item was dropped
 is an empty document, and follows `empty_doc`. A role with an `image_processor` also declares
 `max_images`/`max_videos` (the per-request gates, refused before sending), and its startup probe runs the
-engine media check: one prepared probe image, the engine's reported prompt tokens compared with the counted
-ones -- a mismatch is refused, a reply without usage is recorded `not_checked`, never silent.
+engine media check: one prepared probe image beside its no-media baseline, the DELTA of the engine's two
+prompt-token reports (the template and the text cancel) compared with the counted media tokens -- a mismatch
+is refused, a reply without usage is recorded `not_checked`, never silent.
 
 ## Page images and video
 
@@ -382,9 +383,11 @@ aspect ratio above 200.
   nobody chose, so the policy refuses `video_url` unless `engine_video_pinning: true` declares the engine
   pinned to the same frame count -- `--media-io-kwargs '{"video": {"num_frames": N}}'` on vLLM,
   `--mm-process-config` on SGLang (see [serving](serving.md)) -- and refuses a single-frame container (the
-  declared instrument merges frames in time, which needs a temporal pair; a single frame is an image). Run
-  `engine_media_check` once against a prepared probe when a serving setup changes (below); a mismatch says
-  the engine's media handling is not the one the counted tokens describe.
+  declared instrument merges frames in time, which needs a temporal pair; a single frame is an image). The
+  judge's chat wire is the only lowering that inlines a container: the retrieval roles' configs refuse a
+  `video_url` policy (their wires send sampled frames only). Run `engine_media_check` once against a prepared
+  probe when a serving setup changes (below); a mismatch says the engine's media handling is not the one the
+  counted tokens describe.
 
 ### What a container costs
 
@@ -471,13 +474,14 @@ MediaCensus(sink="preprocessing.jsonl").record(corpus="c", doc_id="d1", media=fi
 ```
 
 Run `rcp_ndcg.data.resolution.engine_media_check` against a prepared probe whenever a serving setup changes:
-send one prepared image, count its prompt exactly (`content_media_tokens` plus the template tokens the probe
-request carries), and compare the engine's `usage.prompt_tokens` against it. A returned mismatch
+send one prepared image and the same request without its media, count the media block exactly
+(`content_media_tokens` of the prepared reference), and compare the engine's media DELTA (its
+`usage.prompt_tokens` with the image minus its report without it) against it. A returned mismatch
 (`EngineMediaMismatch`) says the served engine's media handling is not what the counted tokens describe -- a
 reconfigured engine or a mis-declared `image_processor` -- and every later count is suspect: record or raise
 it instead of judging around it. The runtime call site is wired: a role client with an `image_processor`
-exposes `probe()` and `check_engine_media()` -- the startup probe sends one prepared probe image and refuses
-on a mismatch; a reply without usage is recorded `not_checked` (never silent).
+exposes `probe()` and `check_engine_media()` -- the startup probe sends the prepared image and its baseline
+and refuses on a delta mismatch; a reply without usage is recorded `not_checked` (never silent).
 
 ## Identity
 
