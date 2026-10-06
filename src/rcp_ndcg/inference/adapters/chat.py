@@ -198,8 +198,11 @@ VIDEO_CACHE_SIZE = int(os.environ.get("RCP_NDCG_VIDEO_CACHE_SIZE", "16"))
 @lru_cache(maxsize=VIDEO_CACHE_SIZE)
 def _video_data_uri(cache_key: str, path: str, mime: str) -> str:
     """The data URI for one cached video container, keyed by :attr:`MediaRef.cache_key` (the content hash when
-    there is one)."""
-    return f"data:{mime};base64," + base64.b64encode(Path(path).read_bytes()).decode("ascii")
+    there is one). The bytes are read through the media resolver (the one read path) and inlined with the one
+    :func:`~rcp_ndcg.data.media.data_uri` builder, so every data URI the package produces is the same form."""
+    from rcp_ndcg.data.media import data_uri
+
+    return data_uri(mime, base64.b64encode(Path(path).read_bytes()).decode("ascii"))
 
 
 # ---------------------------------------------------------------------------

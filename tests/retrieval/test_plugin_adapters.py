@@ -45,6 +45,11 @@ class SlowEmbed:
 
     name = "slow_embed"
     role = "embed"
+    HOSTED = False
+    API_KEY_ENV = ()
+    KEY_REQUIRED = False
+    AUTH_HEADER = None
+    DEFAULT_BASE_URL = None
 
     def __init__(self, config: Any | None = None) -> None:
         self.config = config
@@ -69,6 +74,11 @@ class SlowPooling:
 
     name = "slow_pooling"
     role = "multi_vector"
+    HOSTED = False
+    API_KEY_ENV = ()
+    KEY_REQUIRED = False
+    AUTH_HEADER = None
+    DEFAULT_BASE_URL = None
 
     def __init__(self, config: Any = None) -> None:
         self.config = config
@@ -108,6 +118,11 @@ class SlowRerank:
 
     name = "slow_rerank"
     role = "rerank"
+    HOSTED = False
+    API_KEY_ENV = ()
+    KEY_REQUIRED = False
+    AUTH_HEADER = None
+    DEFAULT_BASE_URL = None
 
     def __init__(self, config: Any = None) -> None:
         self.config = config

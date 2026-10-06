@@ -19,6 +19,8 @@ from numpy.typing import DTypeLike
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from rcp_ndcg_core.content import Content
 
+from rcp_ndcg.errors import DataError
+
 _EMPTY_HEADERS: Mapping[str, str] = MappingProxyType({})
 
 
@@ -40,7 +42,10 @@ class Call:
 
     def __post_init__(self) -> None:
         if self.method not in ("GET", "POST"):
-            raise ValueError(f"Call.method must be 'GET' or 'POST', got {self.method!r}")
+            raise DataError(
+                f"Call.method must be 'GET' or 'POST', got {self.method!r}",
+                hint="an adapter builds GET probes and POST calls only",
+            )
 
 
 @dataclass(frozen=True)
@@ -248,23 +253,23 @@ class Embeddings:
 
     def __post_init__(self) -> None:
         if self.vectors.ndim != 2:
-            raise ValueError(
+            raise DataError(
                 f"Embeddings.vectors must be 2-D (got shape {self.vectors.shape}). "
                 "Multi-vector output is stored flat with `offsets`, not as a 3-D array."
             )
         if self.offsets is None:
             return
         if self.offsets.ndim != 1 or len(self.offsets) < 1:
-            raise ValueError(f"offsets must be a 1-D array of length num_items + 1, got shape {self.offsets.shape}")
+            raise DataError(f"offsets must be a 1-D array of length num_items + 1, got shape {self.offsets.shape}")
         if int(self.offsets[0]) != 0:
-            raise ValueError(f"offsets must start at 0, got {int(self.offsets[0])}")
+            raise DataError(f"offsets must start at 0, got {int(self.offsets[0])}")
         if int(self.offsets[-1]) != len(self.vectors):
-            raise ValueError(
+            raise DataError(
                 f"offsets end at {int(self.offsets[-1])} but there are {len(self.vectors)} vectors; "
                 "every vector must belong to exactly one item"
             )
         if np.any(np.diff(self.offsets) < 0):
-            raise ValueError("offsets must be non-decreasing")
+            raise DataError("offsets must be non-decreasing")
 
     # -- shape -------------------------------------------------------------
     @property
@@ -287,7 +292,7 @@ class Embeddings:
         retrieval method with different numbers, and it should be asked for.
         """
         if self.offsets is not None:
-            raise ValueError(
+            raise DataError(
                 f"as_matrix() on multi-vector embeddings ({self.num_items} items, "
                 f"{len(self.vectors)} vectors). Use MaxSim scoring, or pool explicitly first."
             )
@@ -338,9 +343,17 @@ class Embeddings:
     def concat(self, other: Embeddings) -> Embeddings:
         """Append *other*'s items after this one's."""
         if self.is_multi_vector != other.is_multi_vector:
-            raise ValueError("cannot concatenate single-vector and multi-vector embeddings")
+            raise DataError(
+                "cannot concatenate single-vector and multi-vector embeddings",
+                hint="one buffer per layout: pool the multi-vector side explicitly first",
+            )
         if self.num_items and other.num_items and self.dim != other.dim:
-            raise ValueError(f"dimension mismatch: {self.dim} vs {other.dim}")
+            raise DataError(
+                f"dimension mismatch: {self.dim} vs {other.dim}",
+                hint="one endpoint's embeddings share a dimension; these buffers came from different "
+                "widths (a zero-width buffer is an all-omitted batch: empty_doc omit_zero with nothing "
+                "sent)",
+            )
         vectors = np.concatenate([self.vectors, other.vectors], axis=0) if other.num_items else self.vectors
         if self.offsets is None or other.offsets is None:
             return Embeddings(vectors=vectors)
@@ -446,11 +459,11 @@ class RerankResult:
             The aligned result.
 
         Raises:
-            ValueError: ``scores`` holds a different number of entries than ``request.documents`` has
+            DataError: ``scores`` holds a different number of entries than ``request.documents`` has
                 documents.
         """
         if len(scores) != len(request.documents):
-            raise ValueError(
+            raise DataError(
                 f"the reranker returned {len(scores)} score(s) for {len(request.documents)} document(s); "
                 "scores must align to the request's documents"
             )

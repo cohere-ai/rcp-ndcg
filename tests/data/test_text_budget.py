@@ -591,13 +591,20 @@ class TestMediaHook:
 
 class TestIdentityAndFamilies:
     def test_the_tokenizer_sha256_is_content_and_its_name_runtime(self) -> None:
+        from rcp_ndcg.errors import ConfigError
+
         check_declarations(TextBudget)
         check_declarations(ChunkPolicy)
         plain = TextBudget(tokenizer="test/framed-bpe", max_tokens=24)
         payload = identity_payload(plain)
         assert "tokenizer" not in payload and payload["max_tokens"] == 24
         assert plain.identity(FRAMED)["tokenizer_sha256"] == FRAMED.sha256
-        assert plain.identity(None) == payload  # vendor mode: no file, no hash
+        # A budget that declares a tokenizer is never identified without its loaded tokenizer: the hash is
+        # the one field the identity exists to carry (two files are not told apart by name).
+        with pytest.raises(ConfigError, match="loaded tokenizer"):
+            plain.identity(None)
+        with pytest.raises(ConfigError, match="not the budget's"):
+            plain.identity(WORDS)  # a different tokenizer's hash would mis-describe the budget
         other = TextBudget(tokenizer="test/word-level", max_tokens=24)
         assert identity_payload(other) == payload  # the name is runtime: same numbers, same identity
 

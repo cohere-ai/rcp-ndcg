@@ -50,7 +50,7 @@ from typing import Any, Literal, NamedTuple
 
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, VideoPart
 
-from rcp_ndcg.data.media import decode_rgb, default_resolver
+from rcp_ndcg.data.media import DEFAULT_IMAGE_MIME, data_uri, decode_rgb, default_resolver
 from rcp_ndcg.data.resolution import (
     ImagePolicy,
     MediaTokenCount,
@@ -62,9 +62,6 @@ from rcp_ndcg.errors import DataError
 from rcp_ndcg.support.logging import get_logger
 
 logger = get_logger(__name__)
-
-#: The MIME type an unprepared image with no recorded ``mime`` is sent under.
-DEFAULT_IMAGE_MIME = "image/png"
 
 #: The encoding of every resized image: lossless, so the engine decodes exactly the resized pixels.
 PREPARED_MIME = "image/png"
@@ -199,8 +196,8 @@ class MediaFit(NamedTuple):
     """The items to send, in part order, images possibly shrunk to the policy's minimum."""
 
     tokens: int
-    """The exact token count of :attr:`media` as the engine counts it (unrecorded sizes are counted at their
-    bound, so the count errs high)."""
+    """The token count of :attr:`media` as the engine counts it: exact where the sizes are recorded, the
+    policy bound otherwise (so the count errs high)."""
 
     dropped: list[PreparedMedia]
     """The items the budget refused, in drop order (most expensive first); record them in the census."""
@@ -356,7 +353,7 @@ def _prepared(ref_json: str, policy: ImagePolicy | None) -> PreparedMedia:
 
 
 def _inline(payload: bytes, mime: str, *, width: int | None, height: int | None) -> MediaRef:
-    uri = f"data:{mime};base64," + base64.b64encode(payload).decode("ascii")
+    uri = data_uri(mime, base64.b64encode(payload).decode("ascii"))
     return MediaRef(
         uri=uri,
         sha256=hashlib.sha256(payload).hexdigest(),

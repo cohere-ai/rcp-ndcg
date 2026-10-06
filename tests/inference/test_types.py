@@ -70,7 +70,9 @@ class TestCallAndReply:
         assert Call("GET", "/models").headers == {}
 
     def test_a_call_refuses_a_method_that_is_not_get_or_post(self) -> None:
-        with pytest.raises(ValueError, match="GET.*POST"):
+        from rcp_ndcg.errors import DataError
+
+        with pytest.raises(DataError, match="GET.*POST"):
             Call("PUT", "/chat/completions")  # type: ignore[arg-type]
 
     def test_calls_and_replies_are_frozen(self) -> None:
@@ -158,7 +160,9 @@ class TestEmbedTypes:
         assert vectors.num_items == 2 and vectors.dim == 2 and not vectors.is_multi_vector
         ragged = Embeddings.ragged([np.ones((2, 3), dtype=np.float32), np.ones((1, 3), dtype=np.float32)])
         assert ragged.is_multi_vector and ragged.num_items == 2
-        with pytest.raises(ValueError, match="2-D"):
+        from rcp_ndcg.errors import DataError
+
+        with pytest.raises(DataError, match="2-D"):
             Embeddings(vectors=np.zeros(3, dtype=np.float32))
 
     def test_l2_normalize_scales_rows_to_unit_norm(self) -> None:
@@ -178,7 +182,9 @@ class TestRerankTypes:
 
     def test_a_rerank_result_refuses_a_mismatched_score_count(self) -> None:
         request = RerankRequest(Content.from_text("q"), (Content.from_text("a"), Content.from_text("b")))
-        with pytest.raises(ValueError, match="3 score\\(s\\).*2 document"):
+        from rcp_ndcg.errors import DataError
+
+        with pytest.raises(DataError, match="3 score\\(s\\).*2 document"):
             RerankResult.aligned(request, [0.9, 0.1, 0.5])
 
 

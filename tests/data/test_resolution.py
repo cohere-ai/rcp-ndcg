@@ -56,7 +56,9 @@ class TestSmartResize:
             smart_resize(10, 5000, factor=28, min_pixels=56 * 56, max_pixels=1280 * 28 * 28)
 
     def test_rejects_degenerate_dimensions(self):
-        with pytest.raises(ValueError, match="positive"):
+        from rcp_ndcg.errors import DataError
+
+        with pytest.raises(DataError, match="positive"):
             smart_resize(0, 100, factor=28, min_pixels=56 * 56, max_pixels=1280 * 28 * 28)
 
     def test_matches_the_transformers_implementation(self):

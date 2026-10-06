@@ -53,6 +53,11 @@ class DemoAdapter:
 
     name = "demo"
     role = "embed"
+    HOSTED = False
+    API_KEY_ENV = ()
+    KEY_REQUIRED = False
+    AUTH_HEADER = None
+    DEFAULT_BASE_URL = None
 
     def calls(self, request, *, model):
         return [Call("POST", "/embeddings", {"model": model, "input": ["hello"]})]

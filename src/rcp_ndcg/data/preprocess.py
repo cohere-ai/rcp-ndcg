@@ -434,7 +434,7 @@ class TextTruncationCensus:
     Never a config field, so attaching it cannot move a dataset's identity: the
     run manifest records the *policy*, the census records the *cuts*.
 
-    Two mechanisms, two referents, never merged:
+    Three mechanisms, three referents, never merged:
 
     * ``doc_policy`` -- a document shortened once at load time, per corpus.
       Referent: documents.
@@ -489,7 +489,10 @@ class TextTruncationCensus:
         shape: str | None = None,
     ) -> TextCutRecord:
         if mechanism not in self.MECHANISMS:
-            raise ValueError(f"mechanism must be one of {self.MECHANISMS}, got {mechanism!r}")
+            raise DataError(
+                f"mechanism must be one of {self.MECHANISMS}, got {mechanism!r}",
+                hint="record under one of the census' three mechanisms (doc_policy, window_budget, text_budget)",
+            )
         cut = TextCutRecord(
             corpus=corpus,
             doc_id=doc_id,
@@ -868,12 +871,39 @@ class TextBudget(BaseModel):
         return self
 
     def identity(self, tokenizer: TextTokenizer | None = None) -> dict[str, Any]:
-        """The content identity payload of the budget, with the tokenizer file's SHA-256 when a tokenizer is
-        loaded (the name is runtime, as the judge's is; the file's hash is what two tokenizers are told apart
-        by). A hosted vendor profile (a budget that declares no tokenizer) carries no hash: nothing is
-        measured against it."""
+        """The content identity payload of the budget, with the tokenizer file's SHA-256 -- the one field
+        the method exists to carry, so a budget that declares a tokenizer is never identified without it
+        (two tokenizers' files are not told apart by name, which is RUNTIME): a loaded tokenizer is
+        required, and it must be the budget's. A hosted vendor profile (a budget that declares no tokenizer)
+        carries no hash: nothing is measured against it.
+
+        Args:
+            tokenizer: The budget's loaded tokenizer, when the budget declares one.
+
+        Returns:
+            The identity payload (with ``tokenizer_sha256`` when the budget declares a tokenizer).
+
+        Raises:
+            ConfigError: the budget declares a tokenizer and none was loaded (the identity would collide
+                with a different tokenizer file's), or the loaded tokenizer's name is not the budget's (its
+                hash beside content-true fields would mis-describe the budget).
+        """
         payload = identity_payload(self)
-        if tokenizer is not None:
+        if self.tokenizer is not None:
+            if tokenizer is None:
+                raise ConfigError(
+                    f"the budget declares tokenizer {self.tokenizer!r} and identity() was called without the "
+                    "loaded tokenizer: the SHA-256 is the one field this payload exists to carry, and it "
+                    "cannot be omitted on demand",
+                    hint="load the budget's tokenizer and pass it: the identity is taken where the "
+                    "tokenizer is already loaded",
+                )
+            if tokenizer.name != self.tokenizer:
+                raise ConfigError(
+                    f"the loaded tokenizer {tokenizer.name!r} is not the budget's {self.tokenizer!r}: its "
+                    "hash would be recorded beside content-true fields and mis-describe the budget",
+                    hint="load the tokenizer the budget declares",
+                )
             payload["tokenizer_sha256"] = tokenizer.sha256
         return payload
 
@@ -1067,19 +1097,35 @@ def fit(
     if shape == "pair":
         for index, item in enumerate(items):
             if not (isinstance(item, (tuple, list)) and len(item) == 2 and all(isinstance(part, str) for part in item)):
-                raise ValueError(f"inputs[{index}] must be a (query, document) pair of strings for the 'pair' shape")
+                raise DataError(
+                    f"inputs[{index}] must be a (query, document) pair of strings for the 'pair' shape",
+                    hint="pass the pair's parts as strings (the client prepares them); this fit call was "
+                    "given something else",
+                )
     else:
         for index, item in enumerate(items):
             if not isinstance(item, str):
-                raise ValueError(f"inputs[{index}] must be a string for the {shape!r} shape")
+                raise DataError(
+                    f"inputs[{index}] must be a string for the {shape!r} shape",
+                    hint="pass the content strings (the client's preparation materialised them)",
+                )
     names = [str(index) for index in range(len(items))] if ids is None else [str(name) for name in ids]
     if len(names) != len(items):
-        raise ValueError(f"ids ({len(names)}) must name every input ({len(items)})")
+        raise DataError(
+            f"ids ({len(names)}) must name every input ({len(items)})",
+            hint="one id per input: the census and the chunk ids are built from them",
+        )
     media = [0] * len(items) if media_tokens is None else list(media_tokens)
     if len(media) != len(items):
-        raise ValueError(f"media_tokens ({len(media)}) must be declared for every input ({len(items)})")
+        raise DataError(
+            f"media_tokens ({len(media)}) must be declared for every input ({len(items)})",
+            hint="one media token count per input (0 where the input carries none)",
+        )
     if any(not isinstance(count, int) or count < 0 for count in media):
-        raise ValueError("media_tokens must be non-negative token counts")
+        raise DataError(
+            "media_tokens must be non-negative token counts",
+            hint="the counts are the media's exact vision-block cost per input, as content_media_tokens counts them",
+        )
     if budget.tokenizer is not None and (tokenizer is None or tokenizer.name != budget.tokenizer):
         raise ConfigError(
             f"fit was given {'no tokenizer' if tokenizer is None else f'the tokenizer {tokenizer.name!r}'} but "
@@ -1149,7 +1195,11 @@ def fit(
         """One cut row (also appended to the census when the caller passed one)."""
         original_text = original if isinstance(original, str) else original[0] + original[1]
         kept_text = kept if isinstance(kept, str) else kept[0] + kept[1]
-        assert tokenizer is not None
+        if tokenizer is None:  # a cut is recorded only on the tokenizer path (fit's guard)
+            raise DataError(
+                "a cut is recorded with no tokenizer to measure it",
+                hint="fit's vendor path records no cuts; this is a bug in the text-budget mechanism",
+            )
         cut = TextCutRecord(
             corpus=corpus,
             doc_id=doc_id,

@@ -240,7 +240,10 @@ def uniform_frame_indices(total_frames: int, num_frames: int) -> list[int]:
         Strictly increasing indices, ``min(num_frames, total_frames)`` of them.
     """
     if total_frames <= 0 or num_frames <= 0:
-        raise ValueError(f"need positive frame counts, got total={total_frames}, requested={num_frames}")
+        raise DataError(
+            f"need positive frame counts, got total={total_frames}, requested={num_frames}",
+            hint="sample at least one frame from a container that has one",
+        )
     if num_frames >= total_frames:
         return list(range(total_frames))
     return [int(index) for index in np.linspace(0, total_frames - 1, num_frames, dtype=np.int64)]
@@ -275,7 +278,10 @@ def smart_resize(
         ValueError: a non-positive edge, or an aspect ratio above 200 (the processor refuses it too).
     """
     if min(height, width) <= 0:
-        raise ValueError(f"image dimensions must be positive, got {height}x{width}")
+        raise DataError(
+            f"image dimensions must be positive, got {height}x{width}",
+            hint="a recorded size is read from the stored image; this one is corrupt",
+        )
     if max(height, width) / min(height, width) > 200:
         raise ValueError(f"aspect ratio must be below 200, got {max(height, width) / min(height, width):.1f}")
 
