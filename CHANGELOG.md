@@ -31,9 +31,11 @@ released together.
   suite and the GPU waves; no published package names it, and `release.yml` builds the three published
   distributions by name so it is never swept into a release). The case format is operator-defined
   (one case per `cases/<recipe-id>/<case-slug>.yaml`); validation covers the file-level rules (the
-  `model_card` verbatim quote and 40-hex revision, media existence, the expected shapes and tolerances) and
-  — with the recipe — the role/modality/template-shape rules, the strata grid coverage per recipe and the
-  long inputs' measured token lengths against `client.max_tokens` with the product tokenizer. The runner
+  `model_card` Hub URL, verbatim quote and 40-hex revision, media existence, the strata labels against the
+  case's own inputs, the expected shapes and tolerances) and — with the recipe — the role/modality/
+  template-shape rules, the strata grid coverage per recipe, the mixed-length batches' differing measured
+  lengths, and the long inputs' measured token lengths against `client.max_tokens` with the product
+  tokenizer. The runner
   sends every case through the product's role clients built from the recipe's `client` block (never raw
   HTTP, never a copy of the client), against a live engine (`target="engine"`) or a recipe-level fake
   (`target="fake"`), and returns a typed report (`CaseResult`: compared, passed, skipped with reason —

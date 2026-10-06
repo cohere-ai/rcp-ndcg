@@ -36,10 +36,16 @@ def test_the_release_workflow_never_builds_or_publishes_the_test_package() -> No
 def test_no_published_package_names_the_test_package() -> None:
     for project in (ROOT, ROOT / "packages" / "rcp-ndcg-core", ROOT / "packages" / "rcp-ndcg-vllm"):
         data = tomllib.loads(_read(project / "pyproject.toml"))
-        extras = data.get("project", {}).get("optional-dependencies", {})
-        for extra, group_requirements in extras.items():
+        project = data.get("project", {})
+        # Both channels of published metadata: the hard dependencies and every extra.
+        for requirement in project.get("dependencies", []):
+            assert "rcp-ndcg-test" not in requirement, (
+                f"the published dependencies of {project.get('name', 'the root project')} name "
+                "the unpublished test package"
+            )
+        for extra, group_requirements in project.get("optional-dependencies", {}).items():
             assert not any("rcp-ndcg-test" in requirement for requirement in group_requirements), (
-                f"the published extra {extra!r} of {project.name or 'the root project'} names "
+                f"the published extra {extra!r} of {project.get('name', 'the root project')} names "
                 "the unpublished test package"
             )
     constraints = _read(ROOT / "requirements-constraints.txt")

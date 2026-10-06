@@ -46,11 +46,18 @@ notes: "the card prints 4 decimals; a bf16 margin is declared"
 ```
 
 A `model_card` case copies its inputs and printed outputs verbatim from the card at the pinned README
-revision (the tolerance reflects the card's rounding plus a declared margin). A `generated` case fills a
+revision (the tolerance reflects the card's rounding plus a declared margin). If the card prints no
+outputs, the case declares `expected.kind: none` (it exercises the path only) or `ranking` derived from
+the card's text — say which in `notes`. A `generated` case fills a
 stratum the cards do not cover: every recipe needs at least one case per applicable cell of
 modality × length × batch — `short`, `long_under` (within 5% under `client.max_tokens`, never cut),
-`long_over` (over it; the client cuts, the anchors must survive), `mixed_length` batches, and for
-vision-language recipes `image` / `video` (if the model takes video) and `mixed_modality` batches.
+`long_over` (over it; the budget cuts it — through the product's `fit` until the role clients carry the
+text budget, see the bridge note under The conformance suite — and the anchors must survive),
+`mixed_length` batches, and for
+vision-language recipes `image` / `video` (if the model takes video) and `mixed_modality` batches. The
+labels are cross-checked against the case's own inputs at load (a `modality: image` case with no image
+document, or a `mixed_length` batch whose text inputs all measure the same, is refused), so a mislabel
+cannot satisfy the grid.
 Generated cases start `origin: reference, status: pending_gpu, values: null`; the GPU waves fill them from
 the reference implementation and the engine. Long inputs are deterministic (their construction is
 recorded in `notes`), measured with the recipe's tokenizer; media files live under the recipe's
@@ -72,8 +79,9 @@ recorded in `notes`), measured with the recipe's tokenizer; media files live und
    ```
 
 3. The product suite enforces the same thing on every push: `tests/test_cases_package.py` loads every
-   case (file level everywhere, recipe level where the recipe exists, lengths where a tokenizer is
-   loadable), so a malformed case fails CI.
+   case (file level everywhere, recipe level where the recipe exists; the measured token lengths run in
+   the network-marked test, because a recipe whose tokenizer lives on the Hub cannot load offline), so a
+   malformed case fails CI.
 
 Media: only files whose licence allows redistribution in an Apache-2.0 repository; otherwise generate a
 synthetic image or video with a script kept in the case directory as `media/make_media.py` and say so in

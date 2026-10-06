@@ -131,6 +131,17 @@ def test_a_model_card_revision_is_40_hex(tmp_path: Path) -> None:
         load_case(write_case(tmp_path, "fake-embed", "short", body))
 
 
+def test_a_model_card_url_is_a_huggingface_url(tmp_path: Path) -> None:
+    """The format pins the card's provenance to the Hub: a model_card url names huggingface.co/<repo>."""
+    body = VALID.replace(
+        "source: {kind: generated}",
+        'source: {kind: model_card, url: "https://example.com/org/model", revision: "' + "0" * 40 + '", '
+        'section: "Usage", quote: "x = 1"}',
+    )
+    with pytest.raises(CaseError, match="huggingface.co"):
+        load_case(write_case(tmp_path, "fake-embed", "short", body))
+
+
 def test_a_generated_case_carries_no_card_provenance(tmp_path: Path) -> None:
     body = VALID.replace(
         "source: {kind: generated}",
@@ -147,8 +158,10 @@ def test_a_document_needs_a_part(tmp_path: Path) -> None:
 
 
 def test_media_lives_under_media_and_exists(tmp_path: Path) -> None:
-    body = VALID.replace(DOCS_BLOCK, "      documents: [{id: d1, image: media/page.png}]").replace(
-        "values: [[0.5, 0.25]]", "values: [[0.5]]"
+    body = (
+        VALID.replace(DOCS_BLOCK, "      documents: [{id: d1, image: media/page.png}]")
+        .replace("values: [[0.5, 0.25]]", "values: [[0.5]]")
+        .replace("modality: text", "modality: image")
     )
     path = write_case(tmp_path, "fake-embed", "short", body)
     with pytest.raises(CaseError, match="does not exist"):
@@ -232,6 +245,15 @@ def test_rank_exact_ranks_every_document(tmp_path: Path) -> None:
         load_case(write_case(tmp_path, "fake-embed", "short", body))
 
 
+def test_a_constant_expected_row_refuses_a_spearman_tolerance(tmp_path: Path) -> None:
+    """An all-tie expected row carries no ranking information: it is refused at load, not at run time."""
+    body = VALID.replace("values: [[0.5, 0.25]]", "values: [[0.5, 0.5]]").replace(
+        "tolerance: {abs: 0.001}", "tolerance: {spearman_min: 0.9}"
+    )
+    with pytest.raises(CaseError, match="constant"):
+        load_case(write_case(tmp_path, "fake-embed", "short", body))
+
+
 def test_spearman_needs_two_documents(tmp_path: Path) -> None:
     body = (
         VALID.replace(DOCS_BLOCK, "      documents: [{id: d1, text: one}]")
@@ -295,7 +317,7 @@ def test_the_media_kinds_must_fit_the_recipe(tmp_path: Path) -> None:
         .replace("values: [[0.5, 0.25]]", "values: [[0.5]]")
     )
     write_case(tmp_path, "fake-embed", "short", body)
-    with pytest.raises(CaseError, match="accepts input \["):
+    with pytest.raises(CaseError, match=r"accepts input \["):
         load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES, check_lengths=False)
 
 
@@ -308,6 +330,26 @@ def test_a_mixed_modality_needs_two_input_kinds(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # The measured lengths and the strata coverage
 # ---------------------------------------------------------------------------
+
+
+def test_the_modality_label_must_match_the_documents(tmp_path: Path) -> None:
+    """modality 'image' with no image document (or 'text' with one) is a mislabel, refused at load."""
+    body = VALID.replace("modality: text", "modality: image")
+    with pytest.raises(CaseError, match="modality 'image'"):
+        load_case(write_case(tmp_path, "fake-embed", "short", body))
+
+
+def test_a_mixed_modality_batch_mixes_text_and_media(tmp_path: Path) -> None:
+    body = VALID.replace("batch: single", "batch: mixed_modality")
+    with pytest.raises(CaseError, match="mixed_modality"):
+        load_case(write_case(tmp_path, "fake-embed", "short", body))
+
+
+def test_a_mixed_length_case_declares_a_mixed_length_batch(tmp_path: Path) -> None:
+    """length 'mixed' means the batch mixes lengths: a single/uniform batch is a mislabel."""
+    body = VALID.replace("length: short", "length: mixed")
+    with pytest.raises(CaseError, match="mixed"):
+        load_case(write_case(tmp_path, "fake-embed", "short", body))
 
 
 def test_long_under_must_measure_within_five_percent_under(tmp_path: Path) -> None:
@@ -339,6 +381,27 @@ def test_the_packaged_fixture_cases_sit_in_their_strata() -> None:
     bundle = load_cases(PACKAGED, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
     assert {case.strata.length for case in bundle.cases} >= {"short", "long_under", "long_over"}
     assert bundle.skipped_checks == ()
+
+
+def test_a_mixed_length_batch_measures_differing_lengths(tmp_path: Path) -> None:
+    """batch 'mixed_length' means the batch holds differing measured lengths, not just the label."""
+    long_text = " ".join(["budgetpad"] * 14)  # 126 tokens with the fixture tokenizer
+    body = (
+        LENGTH_CASE.format(slug="mixed-batch", length="short", text=long_text)
+        .replace("batch: single", "batch: mixed_length")
+        .replace(
+            "queries: [{id: q1, text: a query}]",
+            f"queries: [{{id: q1, text: '{long_text}'}}, {{id: q2, text: '{long_text}'}}]",
+        )
+        .replace(
+            f'documents: [{{id: d1, text: "{long_text}"}}]',
+            f'documents: [{{id: d1, text: "{long_text}"}}, {{id: d2, text: "{long_text}"}}]',
+        )
+    )
+    # four inputs, all measuring 126 tokens: nothing in the batch is actually mixed
+    write_case(tmp_path, "fake-embed", "mixed-batch", body)
+    with pytest.raises(CaseError, match="holds no mixed lengths"):
+        load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
 
 
 def test_the_strata_grid_must_be_complete(tmp_path: Path) -> None:

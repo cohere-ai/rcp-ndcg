@@ -16,7 +16,13 @@ import pytest
 from rcp_ndcg_test.cases import CaseTolerance, load_case, load_cases
 from rcp_ndcg_test.conformance import CaseResult, ConformanceReport, run_case, run_suite
 from rcp_ndcg_test.errors import CaseError, ConformanceError
-from rcp_ndcg_test.fakes import FakeEmbedEngine, FakeReply, fixture_path
+from rcp_ndcg_test.fakes import (
+    FakeEmbedEngine,
+    FakeReply,
+    fixture_path,
+    register_fake_engine,
+    unregister_fake_engine,
+)
 from rcp_ndcg_vllm.recipe import load_recipe
 
 from tests.fakes_fixture import FakePoolEngine, FakeRerankEngine
@@ -330,3 +336,39 @@ def test_a_malformed_case_fails_the_plugins_collection(tmp_path: Path) -> None:
     (tmp_path / "fake-embed" / "bad.yaml").write_text("not: a: case\n", encoding="utf-8")
     with pytest.raises(CaseError):
         conformance_params("fake", cases_root=tmp_path, recipes_root=PACKAGED_RECIPES)
+
+
+# ---------------------------------------------------------------------------
+# Media: a case with media is a declared skip on every role, never a silent empty-text send
+# ---------------------------------------------------------------------------
+
+
+def test_an_image_case_skips_on_the_rerank_route_too() -> None:
+    """The runner's pre-fit sends text spans only: an image document must never go out as its text part."""
+    from rcp_ndcg_test.cases import CaseDocument, load_cases
+
+    recipe = load_recipe(RECIPES / "fake-rerank")
+    bundle = load_cases(CASES, recipe, recipes_root=RECIPES)
+    case = bundle.cases[0]
+    documents = list(case.inputs.documents)
+    documents[0] = CaseDocument(id=documents[0].id, image="media/pixel.png")
+    inputs = case.inputs.model_copy(update={"documents": documents})
+    image_case = case.model_copy(update={"inputs": inputs})
+    result = run_case(recipe, image_case, target="fake", fake_engine=FakeRerankEngine())
+    assert result.skipped is not None and "text spans only" in result.skipped
+    assert not result.passed and not result.compared
+
+
+def test_the_plugin_skips_recipes_without_a_registered_fake(tmp_path: Path) -> None:
+    """A recipe with no fake for the target is silently absent (the params stay collectable)."""
+    from rcp_ndcg_test.plugin import conformance_params
+
+    register_fake_engine(FakeRerankEngine())
+    register_fake_engine(FakePoolEngine())
+    unregister_fake_engine("fake-rerank")
+    try:
+        params = conformance_params("fake", recipes_root=RECIPES, cases_root=CASES)
+    finally:
+        unregister_fake_engine("fake-rerank")  # restore the registry this test found
+        unregister_fake_engine("fake-pool")
+    assert {param.id.split("/")[0] for param in params} == {"fake-pool"}

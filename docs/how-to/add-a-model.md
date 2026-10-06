@@ -235,8 +235,8 @@ A recipe's behaviour is pinned by reference cases in the unpublished `rcp-ndcg-t
 `packages/rcp-ndcg-test/cases/<recipe-id>/`, each carrying the card's verbatim example or a generated
 stratum, an `expected` block with its tolerance, and the strata cell it covers. The cases are validated on
 every push (a malformed case or an incomplete strata grid fails CI), and the conformance runner sends each
-case through the product's role clients — against a live engine (`target="engine"`, the recipe's
-`client.base_url`) or a recipe-level fake engine (`target="fake"`, resolved through the registry by recipe
-id) — comparing with `expected` under its tolerance. `expected.values: null` (a generated case before its
-GPU wave) is a skip, never a pass. See `packages/rcp-ndcg-test/README.md` for the case format, how to add
-a case, and the fake-engine seam the verified emulators are later built from.
+case through the product's role clients — against a live engine (`target="engine"`, the engine's
+`base_url` passed to `run_suite`) or a recipe-level fake engine (`target="fake"`, resolved through the
+registry by recipe id) — comparing with `expected` under its tolerance. `expected.values: null` (a
+generated case before its GPU wave) is a skip, never a pass. See `packages/rcp-ndcg-test/README.md` for
+the case format, how to add a case, and the fake-engine seam the verified emulators are later built from.

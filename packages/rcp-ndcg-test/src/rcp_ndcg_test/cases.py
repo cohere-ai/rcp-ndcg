@@ -8,8 +8,10 @@ this module implements it and refuses everything else -- a case the format would
 Two validation levels:
 
 - **File level** (no recipe needed): the schema, the ``id``/``recipe``/path agreement, the
-  ``model_card`` provenance rules (verbatim quote, 40-hex README revision), the media files' existence,
-  and the ``expected`` block's shape rules. Every load applies it.
+  ``model_card`` provenance rules (a Hub URL, the verbatim quote, a 40-hex README revision), the media
+  files' existence, the strata labels against the case's own inputs (a ``mixed`` length needs a
+  ``mixed_length`` batch, a ``modality: image`` case needs an image document), and the ``expected``
+  block's shape rules. Every load applies it.
 - **Recipe level** (a loaded :class:`rcp_ndcg_vllm.recipe.Recipe` given or found): the case's role and
   modality against the recipe, the template shapes the case's sides need, the strata grid coverage of a
   recipe's case directory, and the long inputs' measured token lengths against the recipe's
@@ -54,6 +56,9 @@ field and the case directory name must match it."""
 _REVISION_PATTERN = r"^[0-9a-f]{40}$"
 """A model-card revision: the 40-hex commit of the README the case was copied from."""
 
+_HUB_URL_PREFIX = "https://huggingface.co/"
+"""Where a model_card case's url must point (the format pins the card's provenance to the Hub)."""
+
 _MEDIA_PREFIX = "media/"
 """Where a case's media files live, relative to the recipe's case directory."""
 
@@ -69,9 +74,10 @@ def _closed() -> dict[str, Any]:
 class CaseSource(BaseModel):
     """Where a case's inputs and printed outputs come from.
 
-    A ``model_card`` case pins the Hub README it was copied from: ``url``, ``revision`` (40-hex),
-    ``section`` and the verbatim ``quote`` are all required. A ``generated`` case carries none of them:
-    it was built for a stratum, and naming a card would fake provenance.
+    A ``model_card`` case pins the Hub README it was copied from: ``url`` (a ``https://huggingface.co/``
+    URL, as the format pins it), ``revision`` (40-hex), ``section`` and the verbatim ``quote`` are all
+    required. A ``generated`` case carries none of them: it was built for a stratum, and naming a card
+    would fake provenance.
     """
 
     model_config = ConfigDict(**_closed())
@@ -81,6 +87,16 @@ class CaseSource(BaseModel):
     revision: str | None = Field(default=None, pattern=_REVISION_PATTERN)
     section: str | None = Field(default=None, min_length=1)
     quote: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def _card_url_is_the_hub(self) -> CaseSource:
+        """A model_card case's url names the Hub README the quote was copied from."""
+        if self.kind == "model_card" and self.url is not None and not self.url.startswith(_HUB_URL_PREFIX):
+            raise ValueError(
+                f"a model_card case's url is the card's Hub README, {self.url!r} does not name "
+                f"{_HUB_URL_PREFIX}<org>/<repo>"
+            )
+        return self
 
 
 class CaseStrata(BaseModel):
@@ -223,12 +239,38 @@ class Case(BaseModel):
     expected: CaseExpected
     notes: str = ""
 
+    def _check_strata_labels(self) -> None:
+        """The strata labels describe the case's own inputs: a mislabel cannot satisfy the grid."""
+        documents = self.inputs.documents
+        with_image = [document for document in documents if document.image is not None]
+        with_video = [document for document in documents if document.video is not None]
+        with_media = [*with_image, *with_video]
+        text_only = [document for document in documents if document.image is None and document.video is None]
+        modality = self.strata.modality
+        if modality == "text" and with_media:
+            raise ValueError(f"strata.modality 'text', but {len(with_media)} document(s) carry media")
+        if modality == "image" and not with_image:
+            raise ValueError("strata.modality 'image', but no document carries an image")
+        if modality == "video" and not with_video:
+            raise ValueError("strata.modality 'video', but no document carries a video")
+        if modality == "mixed" and not (with_media and text_only):
+            raise ValueError("strata.modality 'mixed' needs both media-bearing and text-only documents")
+        if self.strata.batch == "mixed_modality" and not (with_media and text_only):
+            raise ValueError(
+                "strata.batch 'mixed_modality' means the batch mixes text-only and media-bearing documents"
+            )
+
     @model_validator(mode="after")
     def _case_rules(self) -> Case:
         """The rules one case must satisfy: identity, provenance, tolerance and the values' shape."""
         head, _, slug = self.id.partition("/")
         if head != self.recipe or not slug:
             raise ValueError(f"id {self.id!r} must be <recipe>/<case-slug> with recipe {self.recipe!r}")
+        if self.strata.length == "mixed" and self.strata.batch != "mixed_length":
+            raise ValueError(
+                f"length 'mixed' means the batch mixes lengths; declare batch: mixed_length, not {self.strata.batch!r}"
+            )
+        self._check_strata_labels()
         source = self.source
         if source.kind == "model_card":
             missing = [name for name in ("url", "revision", "section", "quote") if getattr(source, name) is None]
@@ -255,6 +297,13 @@ class Case(BaseModel):
             raise ValueError("kind 'ranking' compares orders: tolerance is rank_exact or spearman_min")
         if rule == "spearman_min" and n_documents < 2:
             raise ValueError("a spearman_min tolerance needs at least two documents to correlate")
+        if rule == "spearman_min" and expected.values is not None:
+            for row in expected.values:
+                if isinstance(row, list) and len(row) >= 2 and all(value == row[0] for value in row):
+                    raise ValueError(
+                        "an all-tie expected row carries no ranking information; a spearman_min tolerance "
+                        "refuses it at load, and the runner would fail it with a nan correlation"
+                    )
         if expected.values is None:
             if expected.status != "pending_gpu":
                 raise ValueError(f"expected.values is null, so status must be pending_gpu, not {expected.status!r}")
@@ -292,6 +341,29 @@ def _check_values(expected: CaseExpected, n_queries: int, n_documents: int, doc_
                 raise ValueError(f"expected.values row {index} holds a non-numeric value: {value!r}")
             if value != value or value in (float("inf"), float("-inf")):
                 raise ValueError(f"expected.values row {index} holds a non-finite value")
+
+
+def _check_strata_labels(self) -> None:
+    """The strata labels describe the case's own inputs, so a mislabel cannot satisfy the grid."""
+    documents = self.inputs.documents
+    with_image = [document for document in documents if document.image is not None]
+    with_video = [document for document in documents if document.video is not None]
+    with_media = [*with_image, *with_video]
+    modality = self.strata.modality
+    if modality == "text" and with_media:
+        raise ValueError(f"strata.modality 'text', but {len(with_media)} document(s) carry media")
+    if modality == "image" and not with_image:
+        raise ValueError("strata.modality 'image', but no document carries an image")
+    if modality == "video" and not with_video:
+        raise ValueError("strata.modality 'video', but no document carries a video")
+    if modality == "mixed" and not (
+        with_media and any(document.image is None and document.video is None for document in documents)
+    ):
+        raise ValueError("strata.modality 'mixed' needs both media-bearing and text-only documents")
+    if self.strata.batch == "mixed_modality" and not (
+        with_media and any(document.image is None and document.video is None for document in documents)
+    ):
+        raise ValueError("strata.batch 'mixed_modality' means the batch mixes text-only and media-bearing documents")
 
 
 class CaseBundle:
@@ -538,6 +610,17 @@ def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
     max_tokens = recipe.client.max_tokens
     tokenizer = _tokenizer_of(recipe)
     for case in cases:
+        if case.strata.batch == "mixed_length" and case.strata.length != "mixed":
+            measured_batch = [
+                tokenizer.count(text)
+                for text in [query.text for query in case.inputs.queries]
+                + [document.text or "" for document in case.inputs.documents]
+            ]
+            if len(set(measured_batch)) < 2:
+                raise CaseError(
+                    f"case {case.id!r}: batch mixed_length, but every text input measures "
+                    f"{measured_batch[0]} tokens; the batch holds no mixed lengths"
+                )
         if case.strata.length not in ("long_under", "long_over"):
             continue
         measured = [

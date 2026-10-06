@@ -288,11 +288,14 @@ def _run_or_skip(resolved: _Resolved, case: Case) -> CaseResult:
 
 
 def _media_skip(recipe: Recipe, case: Case) -> str | None:
-    """Why the runner cannot send this case's media yet, or ``None`` when it can.
+    """Why the runner cannot send this case's media yet, or ``None`` when it has none.
 
-    The product's embed adapters take text only (media embedding is wired with the media-preparation
-    mechanism), and the media lowering sends image parts: a video container needs the frames reader,
-    which is an ingest step. Images on the pooling and rerank routes run.
+    A case with media is a skip on every role today, and the reason names the gap: the product's embed
+    adapters take text only (media embedding is wired with the media-preparation mechanism), and while
+    the media lowering sends image parts, the pre-fit bridge of this runner (``fit`` takes strings) has
+    no media token hook on this branch -- sending the document's text part alone would drop the image
+    silently. A skip is recorded with its reason, never a silent pass, and the cases lanes keep the
+    media strata pending until the media lane closes the gap.
     """
     if not any(document.image or document.video for document in case.inputs.documents):
         return None
@@ -306,7 +309,10 @@ def _media_skip(recipe: Recipe, case: Case) -> str | None:
             "the product's media lowering sends images; a video container is refused by "
             "content_parts_payload until the clip is ingested as frames"
         )
-    return None
+    return (
+        "the runner's pre-fit sends text spans only, so the image document would be sent as its text "
+        "part alone; image inputs run once the media lane wires media token reservation into the fit"
+    )
 
 
 # ---------------------------------------------------------------------------

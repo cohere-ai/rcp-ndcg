@@ -92,9 +92,9 @@ def conformance_params(
     conformance run itself needs no tokenizer; a recipe whose tokenizer lives on the Hub does).
 
     Outputs: params whose id is ``<recipe>/<case-slug>`` and whose value is a :class:`CaseRun`. A case
-    directory whose recipe has no case at the target is silently absent from the list (no fake
-    registered, or no recipe at the recipes root yet): a suite that must not collect green against a
-    half-merged tree asserts on :func:`rcp_ndcg_test.cases.load_cases`'s bundle instead.
+    whose target is not wired is silently absent from the list (no fake registered for the recipe yet, or
+    no recipe at the recipes root yet): a suite that must not collect green against a half-merged tree
+    asserts on :func:`rcp_ndcg_test.cases.load_cases`'s bundle instead.
 
     Raises:
         CaseError: the cases root or a case file does not validate, or an engine target has no
@@ -112,9 +112,13 @@ def conformance_params(
             continue  # no recipe (yet) at the recipes root: the root-suite validation test owns that gap
         engine = None
         if target == "fake":
+            from .errors import ConformanceError
             from .fakes import fake_engine_for
 
-            engine = fake_engine_for(recipe.id)  # absent: the recipe runs against an engine or not at all
+            try:
+                engine = fake_engine_for(recipe.id)
+            except ConformanceError:
+                continue  # no fake registered for the recipe: it runs against an engine or not at all
         params.append(
             pytest.param(
                 CaseRun(recipe=recipe, case=case, target=target, base_url=base_url, fake_engine=engine),

@@ -3,7 +3,7 @@
 Serving recipes, the equivalence harness, the engine recorder and the GPU wave runner for
 [rcp-ndcg](https://github.com/cohere-ai/rcp-ndcg) models served with [vLLM](https://docs.vllm.ai).
 
-This package is **outside the root uv workspace and lock** on purpose: it is installed into an engine image that
+This package is **outside the root uv workspace** on purpose: it is installed into an engine image that
 already carries vLLM, torch and transformers, and a torch pin here would fight every vLLM release. The harness
 imports `rcp-ndcg` (the recipe's `client` block constructs the product's endpoint configs, stage 1 runs the
 product's `fit`); only the engine is reached over HTTP, and the reference runs as a subprocess so the harness
