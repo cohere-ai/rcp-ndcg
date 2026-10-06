@@ -156,8 +156,10 @@ a judge config, and one engine per role, started inside the job. The engine imag
 dataset: suite:nanobeir
 candidates:
   from: retrieval
-  retrieval: {kind: dense, encoder: {recipe: qwen3-embedding-0.6b}}
-  rerank: {recipe: qwen3-reranker-0.6b}
+  # with `rcp-ndcg-vllm` installed, `encoder: {recipe: qwen3-embedding-0.6b}` (and `rerank: {recipe:
+  # qwen3-reranker-0.6b}`) take their whole client block from the recipe instead of the fields below
+  retrieval: {kind: dense, encoder: {api: openai_embeddings, model: my-encoder}}
+  rerank: {api: rerank, model: my-reranker}
   depth: 50
 judge: my-judge.yaml               # your judge config (or the name of a shipped one: Judges, below)
 steps: [retrieve, rerank, tournament, rubric, calibrate, evaluate]
