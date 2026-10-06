@@ -1,0 +1,125 @@
+# Octen/Octen-Embedding-8B: the paper's first-stage retriever, served on stock vLLM v0.31.0.
+# Last-token pooling + L2 normalisation from the checkpoint's own sentence-transformers configs;
+# the paper's document prefix "- " and the 8192-token budget are the client's, declared below as
+# the product's endpoint config. Every load-bearing line is in sources; the full story is in notes.
+id: octen-embedding-8b
+model: Octen/Octen-Embedding-8B
+revision: "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
+role: embed
+input: [text]
+licence: apache-2.0
+engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0"}
+resources: {gpus: 1}
+serve:
+  runner: pooling            # architectures ["Qwen3Model"] -> ("pooling", "embed") suffix rule
+  convert: null              # auto resolves to "embed" for the bare *Model architecture
+  hf_overrides: {}           # none: Qwen3 is native in vLLM, no remote code in the repo
+  chat_template: null        # must stay null: applying the checkpoint's ChatML template changes every prompt
+  pooler_config: {}          # the checkpoint's modules.json gives seq_pooling_type LAST + the normalize activation
+  trust_remote_code: false
+  max_model_len: 8192        # the paper budget, enforced server-side (see notes: defense in depth)
+  dtype: bfloat16            # config.json "dtype"; the paper loads bf16 explicitly
+  plugin: null
+  extra_args: []
+client:
+  api: openai_embeddings     # plain /v1/embeddings; NOT the Cohere-shaped /v2/embed (see notes: route trap)
+  tokenizer: "Octen/Octen-Embedding-8B@5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
+  max_tokens: 8192           # the whole input sequence as the engine sees it, in the pinned tokenizer's tokens
+  template:
+    query:
+      - {content: query}     # queries are encoded as they are; the paper defines no instruction
+    document:
+      - {fixed: "- "}        # the paper's document prompt, one string with the content (BPE: never separate ids)
+      - {content: document}
+      - {fixed: ""}          # tail marker: the anchor is the appended end-of-text token alone (see notes)
+    anchor: last             # the model pools the last token: the post-processor's appended end-of-text id
+    add_special_tokens: true # the /v1/embeddings route adds the post-processor tokens; the budget reserves them
+  on_overflow: cut
+  empty_doc: send            # the paper embeds an empty document as the bare "- " prefix
+  normalize: true            # the engine's embed pooler already L2-normalises; the client's is idempotent
+reference:
+  kind: transformers
+  score_scale: cosine
+  entry: reference.py
+  known_deviations: []       # the paper's cut keeps the appended anchor (HF reserves it at 8192); nothing to declare
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources:
+  - "https://huggingface.co/Octen/Octen-Embedding-8B @ 5adcfa292e712091dfc30f0e97f0b2282e6cc66c (default-branch sha, re-checked 2026-10-06)"
+  - "https://huggingface.co/Octen/Octen-Embedding-8B/blob/5adcfa292e712091dfc30f0e97f0b2282e6cc66c/config.json (architectures [Qwen3Model], dtype bfloat16, max_position_embeddings 40960, tie_word_embeddings false)"
+  - "https://huggingface.co/Octen/Octen-Embedding-8B/blob/5adcfa292e712091dfc30f0e97f0b2282e6cc66c/config_sentence_transformers.json (the ST prompts the /v2/embed route would auto-apply: query instruct prefix, document single space -- both differ from the paper)"
+  - "https://huggingface.co/Octen/Octen-Embedding-8B/blob/5adcfa292e712091dfc30f0e97f0b2282e6cc66c/modules.json and 1_Pooling/config.json (pooling_mode_lasttoken) and 2_Normalize/config.json (vLLM reads modules.json: seq_pooling_type LAST, use_activation from the Normalize entry)"
+  - "https://huggingface.co/Octen/Octen-Embedding-8B/blob/5adcfa292e712091dfc30f0e97f0b2282e6cc66c/tokenizer_config.json (pad = the endoftext added token 151643; eos_token is the chat end-of-turn marker 151645; add_bos_token false; model_max_length 131072)"
+  - "https://huggingface.co/Octen/Octen-Embedding-8B/blob/5adcfa292e712091dfc30f0e97f0b2282e6cc66c/README.md:99 (the card's 40,960-token claim; its results table claims 32,768 -- the eval budget is the paper's 8192)"
+  - "src/rcp_ndcg/retrieval/hf_dense.py:21 (MAX_LENGTH 8192, right side), :49 (padding_side left), :50 (dtype bfloat16), :59 (truncation=True, max_length=8192), :62 (last_hidden_state[:, -1, :] then L2 in float32)"
+  - "src/rcp_ndcg/retrieval/encoders/torch_dense.py:69-70 (the document prefix '- ' is prepended to documents only; queries unchanged)"
+  - "experiments/paper/retrieval/octen.yaml:9-11 (pooling: last, doc_prompt: '- ', batch_size: 32)"
+  - "vLLM at d0d6e5f3a26f484786e7f20490152e911fd4e220 (the research's pinned ref; the mechanisms re-verified at the shipped v0.31.0 tag by the research's reviewer): vllm/config/model.py:2327 (the ('Model', ('pooling', 'embed')) suffix rule; :2288 at the tag), vllm/model_executor/models/adapters.py:250-255 (as_embedding_model: last token, normalised), vllm/transformers_utils/config.py:1023-1055 (ST modules.json -> LAST + use_activation), vllm/renderers/params.py:183 (add_special_tokens defaults true), :485-510 (over-length input is HTTP 400, never a silent cut), vllm/entrypoints/pooling/embed/io_processor.py:77-82,84-100,373-392 (only Cohere/chat requests get the ST prompts; /v1/embeddings renders the string as-is)"
+  - "research record: research/r-octen/out/report.md and the r-octen table of research/audit-synth/out/corrections.md (applied: no client-side truncation exists on the dense embeddings path today; pad is the endoftext token 151643, eos is the chat end-of-turn marker 151645; suffix-rule line :2327 not :2332; the card's 40,960 claim is README.md:99)"
+notes: >-
+  Last-token-pooling embedder (the paper's first-stage retriever) on the stock pooling runner: the
+  bare Qwen3Model architecture hits the ("Model", ("pooling", "embed")) suffix rule
+  (vllm/config/model.py:2327 at the pinned ref, :2288 at the tag), normalises to Qwen3ForCausalLM,
+  and as_embedding_model pools the normalised last hidden state (models/adapters.py:250-255). The
+  checkpoint's own sentence-transformers configs give seq_pooling_type LAST and the normalize
+  activation (transformers_utils/config.py:1023-1055 reads modules.json: the Normalize ENTRY sets
+  use_activation -- the content of 2_Normalize/config.json is never read), so pooler_config stays
+  empty. The checkpoint ships no lm_head with tie_word_embeddings false; the converted pooling class
+  replaces the head with a StageMissingLayer at init, so no hf_overrides are needed (the upstream
+  Qwen3-Embedding-8B has the identical untied, headless shape and is documented-supported).
+
+  The template declares the paper's request shapes as data. Documents are encoded as the ONE string
+  "- " + text (torch_dense.py:70; octen.yaml:10) -- the prefix is the document shape's fixed head
+  segment, and query_prompt/doc_prompt stay empty so the prefix is not also applied by the client and
+  doubled. Queries run as they are; the paper defines no instruction, and the checkpoint's
+  config_sentence_transformers.json query prompt is NOT part of the recipe. The prefix must ride in
+  the string, never as separately tokenised ids: ids("- " + doc) differ from ids("- ") + ids(doc)
+  (the space merges into the next word; 19 vs 20 ids on the research's sample document), so the
+  client sends the rendered string and the engine tokenises it whole. The /v1/embeddings route adds
+  the tokenizer's post-processor tokens (renderers/params.py:183), which append the end-of-text
+  anchor (added-token name endoftext, id 151643; NOT the tokenizer_config eos, which is the chat
+  end-of-turn marker 151645) -- declared with add_special_tokens: true, so the budget reserves it,
+  and it is the token the model pools. The document shape's trailing empty fixed segment marks the
+  tail for the harness's anchor audit: the audit derives the anchor edge from the last fixed segment
+  plus the post-processor block, and this shape's anchor is the appended token alone; the empty
+  segment renders no text and changes no ids (without it the audit would read the head prefix as a
+  tail anchor, which the prefix's BPE merge into the first content word makes unsatisfiable). The
+  checkpoint's ChatML chat template must NOT be served (chat_template: null): vLLM applies no
+  template on /v1/embeddings, and the research's chat-template counterfactual (r-octen
+  check_tokens.py) measured the template render at 26 ids vs 7 bare on the sample query under the
+  same special-token regime (8 bare in the default, anchor-appended regime) -- serving it would
+  change every prompt. Do not call the Cohere-shaped
+  /v2/embed with input_type: that route auto-applies the checkpoint's ST prompts
+  ("Instruct: ...\nQuery:" for queries, a single space for documents), both different from the paper
+  (entrypoints/pooling/embed/io_processor.py:77-82,373-392); this recipe pins api openai_embeddings.
+
+  Budget: client.max_tokens 8192 counts the model's whole input sequence as the engine sees it -- the
+  "- " prefix, the content and the appended end-of-text anchor together, in the pinned tokenizer's
+  tokens. The content is cut on the client (on_overflow: cut) and the frame is re-attached, so every
+  over-length input keeps the prefix at the head and the anchor at the tail. The paper path makes the
+  same anchor-preserving cut (hf_dense.py:21,59: truncation=True, max_length=8192, right side; HF reserves
+  the post-processor's token -- the research's truncation check verified 8191 content ids + the appended
+  anchor), so reference.known_deviations stays empty; the cut BOUNDARY on an over-length input can differ
+  by a token between the two paths (fit cuts at content-token boundaries of the original text and re-renders,
+  the paper cuts the assembled ids), which stage 1 deliberately does not compare and stage 2's vector gate
+  decides on the GPU wave. Wiring status (audit-synth correction, applied):
+  the dense embeddings path has no client-side truncation today -- the product's budget mechanism
+  (rcp_ndcg.data.preprocess.fit) is what these fields declare, the served role clients refuse a
+  budget until the clients-final wiring lands, and until then the only enforced guard is the engine's
+  over-length HTTP 400 (renderers/params.py:485-510), which is loud, not a silent number change.
+  serve.max_model_len 8192 is defense in depth on the same budget; raising it to serve longer inputs
+  for other clients is a deliberate change (the architecture allows 40960). tokenizer_config.json's
+  model_max_length 131072 exceeds the architecture's max_position_embeddings 40960; the recipe never
+  relies on the tokenizer's limit, and the card's context claims disagree among themselves
+  (README.md:99 says 40,960; its results table says 32,768).
+
+  dtype bfloat16 (config.json; the paper loads bf16 explicitly, hf_dense.py:50); vLLM's pooled head
+  normalises in fp32 on both paths. empty_doc: send -- the paper embeds an empty document as the bare
+  "- " prefix; omit_zero would score it 0.0 without sending, which the paper does not do. The
+  reference runs as a subprocess in its own environment (its requirements-reference.txt: torch,
+  transformers>=4.51 for Qwen3; tokenizer-level behaviour verified on transformers 5.17.0); the
+  harness process imports no torch, and the reference module imports none of them at import time
+  (its render mode needs no torch and no transformers; its only third-party imports are numpy,
+  lazily in the embed/score paths, and PyYAML, to read the recipe's declared shapes). Stage 2
+  compares L2-normalised float32 vectors with the cosine gate; the reference applies the same
+  last-token pooling and the same 1e-12-clamped float32 normalisation as hf_dense.py:62.
