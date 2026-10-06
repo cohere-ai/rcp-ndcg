@@ -264,7 +264,10 @@ def test_mutation_template_file_without_its_trailing_newline_turns_the_template_
     for name in ("recipe.yaml", "reference.py", "template.jinja"):
         (mutated_dir / name).write_bytes((RECIPE_DIR / name).read_bytes())
     template = (mutated_dir / "template.jinja").read_text(encoding="utf-8")
-    (mutated_dir / "template.jinja").write_text(template.rstrip("\n"), encoding="utf-8")  # drops both
+    # Strips every trailing newline, one more than the stock-file defect: the renderer then
+    # strips one more than the patch provides, and the render is a newline short of the paper
+    # prompt's double-newline tail either way.
+    (mutated_dir / "template.jinja").write_text(template.rstrip("\n"), encoding="utf-8")
 
     from rcp_ndcg_vllm.equivalence import stage1_prompts
 
