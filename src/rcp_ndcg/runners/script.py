@@ -152,8 +152,8 @@ def device_slices(placed: Sequence[int], reserved: int = 0) -> list[str]:
     engine that declares no GPUs gets the empty value -- it sees no device, never all of them.
 
     Args:
-        placed: Per engine replica, in placement order (roles sorted, replicas in order), the GPU count it
-            declares.
+        placed: Per engine replica, in placement order (engines by descending GPU count, then role name;
+            replicas in order), the GPU count it declares.
         reserved: The devices the coordinator reserves ahead of them (the job's own GPU request).
 
     Returns:

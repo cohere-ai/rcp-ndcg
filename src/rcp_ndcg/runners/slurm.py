@@ -215,13 +215,25 @@ class SlurmRunner:
             step.append(f"--nodelist={nodelist}")
         return self._in_container(serve.image or "", var, srun=step)  # on the node itself for runtime none
 
-    def _phase_worker(self, job: JobSpec, argv: Sequence[str], *, install: bool, engines_env: str | None = None) -> str:
+    def _phase_worker(
+        self,
+        job: JobSpec,
+        argv: Sequence[str],
+        *,
+        install: bool,
+        engines_env: str | None = None,
+        cuda: str | None = None,
+    ) -> str:
         """The worker script of one phase: the job's environment under the phase's own, and the phase's command.
 
         ``engines_env`` is the ``RCP_NDCG_ENGINES`` the phase's coordinator sees; ``"{}"`` for a phase without
-        engines, so no engine of an earlier phase reaches it.
+        engines, so no engine of an earlier phase reaches it. ``cuda`` is the coordinator's
+        ``CUDA_VISIBLE_DEVICES`` (its own GPU request, reserved ahead of the engines' slices on the phase's first
+        node); ``None`` leaves the scheduler's value.
         """
         env = {ENGINES_ENV: engines_env} if engines_env is not None else None
+        if cuda is not None:
+            env = {**(env or {}), "CUDA_VISIBLE_DEVICES": cuda}
         return worker_script(
             job.model_copy(update={"argv": tuple(argv)}), install=install, workdir=self.options.workdir, env=env
         )
@@ -248,7 +260,11 @@ class SlurmRunner:
         roles = sorted(phase.engines, key=lambda role: (-phase.engines[role].resources.gpus, role))
         # On a one-node allocation every phase has at most one engine (the largest phase's replica total sizes the
         # allocation), so roles never share a port there; on larger ones each role gets its own node slice.
-        lines = [*heredoc(worker_var, self._phase_worker(job, phase.argv, install=container))]
+        # The coordinator's own GPU request is reserved ahead of the engines' slices (device_slices on
+        # Kubernetes; an explicit --gres and CUDA_VISIBLE_DEVICES on the coordinator's task here), so an
+        # overlapping step does not take a co-located engine's devices.
+        cuda = ",".join(str(device) for device in range(job.resources.gpus)) if job.resources.gpus else None
+        lines = [*heredoc(worker_var, self._phase_worker(job, phase.argv, install=container, cuda=cuda))]
         steps: list[EngineStep] = []
         offset = 0
         # The replicas are placed one per node (roles by descending GPU count), so no two engine processes share
@@ -283,6 +299,8 @@ class SlurmRunner:
         if not one_node:
             # The coordinator's own GPU request is part of the first node's sum: pin it there.
             srun.append("--nodelist=${RCP_NDCG_HOSTS[0]}")
+        if job.resources.gpus:
+            srun.append(f"--gres=gpu:{job.resources.gpus}")
         coordinator = self._in_container(image, worker_var, srun=srun) if container else f'bash -c "${worker_var}"'
         return [*lines, *supervise(steps, coordinator=coordinator, engines_env=engines_env)]
 
@@ -306,23 +324,15 @@ class SlurmRunner:
         ):
             if value:
                 directives.append(f"--{flag}={value}")
-        # The GPUs of one node are the sum of the engines placed on it (the coordinator's own request on the
-        # first node) -- co-located engines partition the node's devices, they do not share them; the job asks
-        # for the maximum of that over the phases (SLURM's --gres is per node). Per phase the replicas are
-        # placed one per node in role order, so a node's engines are the replica at its position.
+        # The GPUs of one node are the sum of the engines placed on it, and the coordinator's own request sits
+        # on the phase's first node -- co-located engines partition the node's devices, they do not share them.
+        # The placement puts the GPU-largest engine on the first node (see _phase_lines), so a phase's first-node
+        # request is its coordinator plus its largest engine; every other node hosts one replica. The job asks
+        # for the maximum of that over the phases (SLURM's --gres is per node).
         gpus = max(
             [
-                max(
-                    (
-                        (res.gpus if position == 0 else 0) + e.resources.gpus
-                        for position, e in enumerate(
-                            e
-                            for role in sorted(phase.engines)
-                            for e in [phase.engines[role]] * phase.engines[role].replicas
-                        )
-                    ),
-                    default=res.gpus,
-                )
+                (res.gpus if phase.engines else res.gpus)
+                + max((e.resources.gpus for e in phase.engines.values()), default=0)
                 for phase in phases
             ],
             default=res.gpus,

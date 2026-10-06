@@ -337,8 +337,9 @@ class TestRunnersAndServe:
         assert_shellcheck_clean(rendered)
         assert subprocess.run(["bash", "-n", "-c", rendered], capture_output=True).returncode == 0
 
-        kubernetes = config.model_copy(
-            update={
+        kubernetes = RunConfig.model_validate(
+            {
+                **config.resolved(),
                 "runner": {"name": "kubernetes", "options": {"namespace": "eval"}},
                 "mirror": "memory://runs/multi-role",
             }
@@ -351,6 +352,14 @@ class TestRunnersAndServe:
         assert [c["name"] for c in objects[0]["spec"]["template"]["spec"]["initContainers"]] == ["phase-1", "phase-2"]
         assert [c["name"] for c in objects[0]["spec"]["template"]["spec"]["containers"]] == ["phase-3"]
         assert not (tmp_path / "runs").exists()
+
+    def test_a_replica_over_several_nodes_is_a_config_error(self, data: Path, tmp_path: Path) -> None:
+        config = tmp_path / "run.yaml"
+        config.write_text(
+            yaml.safe_dump(tiny_config(data, judge=SERVED_JUDGE, serve=SERVE, runner=SLURM_PYXIS).resolved())
+        )
+        error = _failed("start", str(config), "--set", "serve.judge.nodes_per_replica=2", "--dry-run")
+        assert error["exit_code"] == 3 and error["details"]["errors"][0]["field"] == "serve.judge.nodes_per_replica"
 
     def test_serve_needs_a_served_judge(self, data: Path) -> None:
         from rcp_ndcg.errors import ConfigError

@@ -129,6 +129,29 @@ def test_a_gpu_less_engine_sees_no_device() -> None:
     assert cuda == ["0,1,2,3", ""]  # the empty slice, never all of them
 
 
+def test_the_coordinators_gpus_are_reserved_on_slurm_too() -> None:
+    """The coordinator's task asks its own --gres and pins the reserved device prefix (0..res.gpus-1), so the
+    overlapping step cannot take a co-located engine's devices; the node's --gres carries the sum (2+4+1)."""
+    phases = (JobPhase(engines={"judge": JUDGE_4, "encoder": ENCODER_1}, argv=("a",)),)
+    job = JobSpec(name="j", argv=("x",), resources=_resources(2), phases=phases)
+    script = SlurmRunner(container_runtime="pyxis").render([job])["j"]
+    # The per-node sums: the coordinator's node hosts it and the 4-GPU judge (2+4=6); the encoder is alone (1).
+    assert "#SBATCH --gres=gpu:6" in script  # the maximum over the nodes
+    assert "srun --overlap --nodes=1 --ntasks=1 --nodelist=${RCP_NDCG_HOSTS[0]} --gres=gpu:2 " in script
+    worker = [line for line in script.splitlines() if line.startswith("export CUDA_VISIBLE_DEVICES=")][0]
+    assert worker == "export CUDA_VISIBLE_DEVICES=0,1"  # the coordinator's own devices, before the engines'
+
+
+def test_an_engine_free_phase_still_carries_the_coordinators_gpus() -> None:
+    """The coordinator runs in every phase: an engine-free phase's node requests its GPUs alone."""
+    from rcp_ndcg.runners import Resources
+
+    phases = (JobPhase(argv=("a",)),)
+    job = JobSpec(name="j", argv=("x",), resources=Resources(gpus=2), phases=phases)
+    script = SlurmRunner().render([job])["j"]
+    assert "#SBATCH --ntasks=1\n" in script and "#SBATCH --gres=gpu:2\n" in script
+
+
 def test_slurm_asks_for_the_sum_of_what_a_node_hosts_and_the_maximum_over_phases() -> None:
     """The judge (4 GPUs) shares the coordinator's node; the encoder runs alone on the next; a 6-GPU engine in
     another phase sets the job's maximum --gres."""

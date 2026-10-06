@@ -357,9 +357,9 @@ the engines **partition**, per node:
   Kubernetes' limit is the container's).
 - **The devices.** Every co-located engine process gets a disjoint `CUDA_VISIBLE_DEVICES` slice: with a 4-GPU
   judge and a 1-GPU encoder in one phase container, the container asks for 5 and the judge runs with
-  `0,1,2,3`, the encoder with `4`. Two replicas of a 2-GPU engine on one node run with `0,1` and `2,3`, and (they
-  serve on different ports). An engine that declares no GPUs gets the empty slice — it sees no device, never all
-  of them.
+  `0,1,2,3`, the encoder with `4`. The slices continue across a role's replicas when they share a GPU set
+  (two replicas of a 2-GPU engine: `0,1` and `2,3`, with distinct ports). An engine that declares no GPUs gets
+  the empty slice — it sees no device, never all of it.
 - **SLURM.** Each role's replicas are pinned to a disjoint slice of the allocation's nodes (one replica per node),
   so no two engine processes share a node; a step's `--gres` is its own engine's count, and SLURM's per-step
   `CUDA_VISIBLE_DEVICES` — set per step with unique devices (gres.html, "GPU Management") — could still overlap
