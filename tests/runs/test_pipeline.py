@@ -1145,6 +1145,7 @@ def test_a_rankings_sourced_rerank_run_without_a_retrieve_step_reranks_the_suppl
             "rankings": str(rankings),
             "system": "bm25",
             "rerank": {"api": "rerank", "model": "stub", "base_url": "http://stub:8000", **_SERVED_RERANK_BUDGET},
+            "depth": 3,
         },
         steps=["rerank", "tournament", "rubric", "calibrate", "evaluate"],
     )
@@ -1155,9 +1156,19 @@ def test_a_rankings_sourced_rerank_run_without_a_retrieve_step_reranks_the_suppl
     written = load_rankings(pipeline.layout.candidates)
     assert written.systems == ["candidates"], "the reranker's order is what the judging steps read"
     # The stub scores by pool position: the supplied pools' last documents now rank first -- the reranker
-    # rescored the rankings file's own pools, not a retrieval's.
-    (q1,) = [query for query in written.queries() if query == "q1"]
-    assert written.for_query(q1) and written.for_query("q1")
+    # rescored the rankings file's own pools, not a retrieval's. And the JUDGES judged the reranked order's
+    # top documents, not the raw rankings' (the judged set is the reranker's best depth).
+    rows, _ = tiny_rows()
+    judged = {
+        placement["doc_id"]
+        for record in map(json.loads, (Path(pipeline.layout.root) / "judgements/tournament.jsonl").open())
+        for placement in record["placements"]
+    }
+    for row in rows:
+        assert _order(written.for_query(row.id)) == row.doc_ids[:6][::-1]
+        assert judged == {doc for row2 in rows for doc in row2.doc_ids[:6][::-1][:3]}, (
+            "the judges judged the reranked order's top depth, not the raw rankings'"
+        )
 
 
 def test_a_rankings_run_without_retrieve_judges_its_supplied_pools(data: Path, tmp_path: Path) -> None:
