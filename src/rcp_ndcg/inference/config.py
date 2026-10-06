@@ -423,6 +423,10 @@ class RerankEndpoint(_MediaEndpoint):
             ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder,
             :attr:`empty_doc_text`). Content.
         empty_doc_text: The placeholder text ``empty_doc: send_text`` sends. Content.
+        empty_query: What an empty query does (2f, qwen3-vl-reranker): ``refuse`` (the default) refuses the
+            request with a typed :class:`~rcp_ndcg.errors.DataError` naming the query id -- the reference
+            wrapper refuses an empty query, and silently scoring one against every candidate would rank by
+            nothing; ``send`` sends the empty string, today's behaviour. Content.
         request_shape: How a request crosses the wire: ``text`` (the default), ``messages`` or ``token_ids``;
             the adapters implement it. Content.
         instruction: How the reranker's instruction reaches the model: ``"fold"`` folds it into the query text
@@ -451,6 +455,7 @@ class RerankEndpoint(_MediaEndpoint):
         "aggregation": FieldRole.CONTENT,
         "empty_doc": FieldRole.CONTENT,
         "empty_doc_text": FieldRole.CONTENT,
+        "empty_query": FieldRole.CONTENT,
         "request_shape": FieldRole.CONTENT,
         "listwise": FieldRole.CONTENT,
         "batch_size": FieldRole.RUNTIME,
@@ -469,6 +474,7 @@ class RerankEndpoint(_MediaEndpoint):
     aggregation: Literal["max"] = "max"
     empty_doc: Literal["omit_zero", "send", "send_text"] = "send"
     empty_doc_text: str | None = None
+    empty_query: Literal["refuse", "send"] = "refuse"
     request_shape: Literal["text", "messages", "token_ids"] = "text"
     listwise: bool = False
     batch_size: int | None = Field(default=None, ge=1)

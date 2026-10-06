@@ -796,6 +796,55 @@ class TestPerSideMedia:
             )
 
 
+class TestEmptyQuery:
+    """``empty_query`` (2f, qwen3-vl-reranker): an empty QUERY has a policy, like ``empty_doc`` --
+    ``refuse`` (the default) raises a typed error naming the query id, ``send`` sends the empty string."""
+
+    @staticmethod
+    def _client(tokenizer_json: str, *, empty_query: str) -> RerankClient:
+        return RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                use_activation=False,
+                empty_query=empty_query,  # type: ignore[arg-type]
+            ),
+            sender=RecordingSender(),
+        )
+
+    def test_the_default_refuses_an_empty_query_naming_the_id(self, tokenizer_json: str) -> None:
+        from rcp_ndcg.errors import DataError
+
+        client = RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                use_activation=False,
+            ),
+            sender=RecordingSender(),
+        )
+        with pytest.raises(DataError, match="q42"):
+            asyncio.run(client.arerank("", ["the document"], query_id="q42"))
+        # The default is the field's value, and the refusal names the field.
+        assert client.config.empty_query == "refuse"
+        with pytest.raises(DataError, match="empty_query"):
+            asyncio.run(client.arerank("", ["the document"]))
+
+    def test_send_keeps_todays_empty_string(self, tokenizer_json: str) -> None:
+        client = self._client(tokenizer_json, empty_query="send")
+        result = client.rerank("", ["the document"])
+        assert len(result.scores) == 1
+
+    def test_a_non_empty_query_is_never_refused(self, tokenizer_json: str) -> None:
+        client = self._client(tokenizer_json, empty_query="refuse")
+        result = client.rerank("the query", ["the document"])
+        assert len(result.scores) == 1
+
+
 class TestMediaGates:
     """``max_images``/``max_videos`` gate per wire request (as the judge's per-request gate): the pooling
     wire sends one media item per call, so per item; two single-image items with ``max_images: 1`` are

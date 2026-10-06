@@ -309,7 +309,11 @@ The role configs also declare `template` (the `TemplateSpec` above), `empty_doc`
 never sent and scored `0.0` -- or `send_text` with its `empty_doc_text` placeholder; every role client
 consumes it, for an empty text document and for one whose every media item the budget dropped),
 `request_shape` (`text`, `messages` or `token_ids`; the adapters implement it), and the reranker's
-`instruction` gains a `system` value (the instruction as a system message).
+`instruction` gains a `system` value (the instruction as a system message). The reranker also declares
+`empty_query` (`refuse` by default -- an empty query is refused with a typed error naming the query id,
+instead of being scored against every candidate; `send` keeps the empty string), and every role config
+declares `media_sides`, which names the sides that may carry media (both by default; media on a side it
+does not name is refused with the error naming the field).
 
 Media are never cut. Every served request goes through one preparation call
 (`rcp_ndcg.data.prepare.prepare_request`) -- the same path the judge's images take -- which sizes every image

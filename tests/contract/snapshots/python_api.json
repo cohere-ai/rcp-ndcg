@@ -10364,6 +10364,12 @@
                 "name": "instruction"
               },
               {
+                "annotation": "str",
+                "default": "",
+                "kind": "keyword_only",
+                "name": "query_id"
+              },
+              {
                 "returns": "RerankResult"
               }
             ]
@@ -10544,6 +10550,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "empty_query": {
+            "alias": null,
+            "default": "refuse",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['refuse', 'send']"
           },
           "headers_env": {
             "alias": null,
@@ -13035,6 +13048,13 @@
             "required": false,
             "type": "str | None"
           },
+          "empty_query": {
+            "alias": null,
+            "default": "refuse",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['refuse', 'send']"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -14297,6 +14317,13 @@
             "required": false,
             "type": "str | None"
           },
+          "empty_query": {
+            "alias": null,
+            "default": "refuse",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['refuse', 'send']"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -15050,6 +15077,13 @@
             "required": false,
             "type": "str | None"
           },
+          "empty_query": {
+            "alias": null,
+            "default": "refuse",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['refuse', 'send']"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -15533,6 +15567,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "empty_query": {
+            "alias": null,
+            "default": "refuse",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['refuse', 'send']"
           },
           "headers_env": {
             "alias": null,

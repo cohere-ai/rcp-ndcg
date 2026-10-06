@@ -159,7 +159,12 @@ class RerankClient(RoleClient):
 
     # -- the async core ------------------------------------------------------
     async def arerank(
-        self, query: str | Content, documents: Sequence[str | Content], *, instruction: str | None = None
+        self,
+        query: str | Content,
+        documents: Sequence[str | Content],
+        *,
+        instruction: str | None = None,
+        query_id: str = "",
     ) -> RerankResult:
         """The async half of :meth:`rerank`: prepare (media, gates, budget), send, and read the scores back
         aligned to the documents.
@@ -167,8 +172,42 @@ class RerankClient(RoleClient):
         ``empty_doc: omit_zero`` omits an empty document from the request and scores it 0.0: the returned
         scores stay aligned to the documents as given, and a candidate set whose every document is omitted
         makes no request (an empty request never goes out).
+
+        Args:
+            query: The query, as text or content parts.
+            documents: The candidates, as text or content parts. An empty document follows the config's
+                ``empty_doc`` policy (``send`` sends the empty string as it is and scores whatever the
+                server returns; ``omit_zero`` never sends it and scores 0.0; ``send_text`` sends the
+                placeholder).
+            instruction: The task instruction, folded or sent per the config's ``instruction`` mode.
+            query_id: The query's id, for the empty-query refusal's message (``arerank_many`` passes the
+                example's id); ``""`` names it ``<unnamed>``.
+
+        Returns:
+            One relevance score per document, aligned to the input order (never the server's ranking order).
+
+        Raises:
+            ConfigError: The config cannot serve this request (see :meth:`__init__`).
+            DataError: the query is empty and the config's ``empty_query: refuse`` (the default) declines
+                it, naming the query id.
+            TextBudgetExceededError: ``on_overflow: fail`` and a pair over budget, or a query that fills the
+                budget with no split declared.
+            CapabilityError: The endpoint refused the request as too long, or media rides a side the
+                config's ``media_sides`` does not allow.
+            RequestRejectedError: The endpoint refused this one request.
+            ProviderError: The endpoint failed after its retries, or its answer was unusable.
         """
         prepared_query = self._prepare([query], EncodeRole.QUERY, instruction=instruction)[0]
+        if (
+            getattr(self.config, "empty_query", "send") == "refuse"
+            and not prepared_query.text
+            and not prepared_query.has_media
+        ):
+            raise DataError(
+                f"the query {query_id or '<unnamed>'!r} is empty, and the config refuses an empty query "
+                "(empty_query: refuse): scoring an empty query against every candidate would rank by nothing",
+                hint="declare empty_query: send on the rerank config, or drop the empty query from the run",
+            )
         prepared_documents = self._prepare(documents, EncodeRole.DOCUMENT)
         if not documents:
             return RerankResult(scores=())  # an empty candidate set is not a request (as on the served path)
@@ -202,7 +241,12 @@ class RerankClient(RoleClient):
 
         async def score(index: int, example: RankingExample) -> None:
             async with limit:
-                result = await self.arerank(example.as_content, example.doc_contents, instruction=example.instruction)
+                result = await self.arerank(
+                    example.as_content,
+                    example.doc_contents,
+                    instruction=example.instruction,
+                    query_id=str(example.id),
+                )
             results[index] = result
             if checkpoint is not None:
                 checkpoint(str(example.id), result.scores)

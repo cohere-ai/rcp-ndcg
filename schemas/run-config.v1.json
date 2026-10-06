@@ -674,6 +674,16 @@
           "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
           "title": "Empty Doc Text"
         },
+        "empty_query": {
+          "default": "refuse",
+          "description": "What an empty query does (2f, qwen3-vl-reranker): ``refuse`` (the default) refuses the request with a typed DataError naming the query id -- the reference wrapper refuses an empty query, and silently scoring one against every candidate would rank by nothing; ``send`` sends the empty string, today's behaviour. Content.",
+          "enum": [
+            "refuse",
+            "send"
+          ],
+          "title": "Empty Query",
+          "type": "string"
+        },
         "headers_env": {
           "additionalProperties": {
             "type": "string"
@@ -2853,6 +2863,16 @@
           "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
           "title": "Empty Doc Text"
         },
+        "empty_query": {
+          "default": "refuse",
+          "description": "What an empty query does (2f, qwen3-vl-reranker): ``refuse`` (the default) refuses the request with a typed DataError naming the query id -- the reference wrapper refuses an empty query, and silently scoring one against every candidate would rank by nothing; ``send`` sends the empty string, today's behaviour. Content.",
+          "enum": [
+            "refuse",
+            "send"
+          ],
+          "title": "Empty Query",
+          "type": "string"
+        },
         "headers_env": {
           "additionalProperties": {
             "type": "string"
@@ -4366,6 +4386,16 @@
           "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
           "title": "Empty Doc Text"
         },
+        "empty_query": {
+          "default": "refuse",
+          "description": "What an empty query does (2f, qwen3-vl-reranker): ``refuse`` (the default) refuses the request with a typed DataError naming the query id -- the reference wrapper refuses an empty query, and silently scoring one against every candidate would rank by nothing; ``send`` sends the empty string, today's behaviour. Content.",
+          "enum": [
+            "refuse",
+            "send"
+          ],
+          "title": "Empty Query",
+          "type": "string"
+        },
         "headers_env": {
           "additionalProperties": {
             "type": "string"
@@ -5586,6 +5616,16 @@
           "default": null,
           "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
           "title": "Empty Doc Text"
+        },
+        "empty_query": {
+          "default": "refuse",
+          "description": "What an empty query does (2f, qwen3-vl-reranker): ``refuse`` (the default) refuses the request with a typed DataError naming the query id -- the reference wrapper refuses an empty query, and silently scoring one against every candidate would rank by nothing; ``send`` sends the empty string, today's behaviour. Content.",
+          "enum": [
+            "refuse",
+            "send"
+          ],
+          "title": "Empty Query",
+          "type": "string"
         },
         "headers_env": {
           "additionalProperties": {
