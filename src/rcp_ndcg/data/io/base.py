@@ -33,7 +33,7 @@ from __future__ import annotations
 import abc
 import inspect
 import math
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from enum import StrEnum
 from typing import Any, ClassVar
 
@@ -224,8 +224,13 @@ class SinkWriter(abc.ABC):
 
 def join_title(title: Any, text: Any) -> str:
     """A document's text as the BEIR convention joins it: the title, a blank line, the body; the body alone when
-    there is no title. The one join every reader uses, so a document reads the same whichever format held it."""
-    title, body = str(title or "").strip(), str(text or "")
+    there is no title. The one join every reader uses, so a document reads the same whichever format held it.
+
+    A title that is not a string (a NaN from a float-typed column, a number) counts as no title: ``str(nan)``
+    would join the literal text ``"nan"`` in front of the body.
+    """
+    head = title if isinstance(title, str) else ""
+    title, body = head.strip(), str(text or "")
     return f"{title}\n\n{body}" if title else body
 
 
@@ -271,4 +276,72 @@ def grade(value: Any, *, source: str) -> float:
     return out
 
 
-__all__ = ["DataShape", "SinkWriter", "SourceReader", "grade", "unique_document_ids"]
+def required_id(row: Mapping[str, Any], keys: Sequence[str], *, source: str, what: str) -> str:
+    """The first present, non-empty id among *keys*, as a string.
+
+    Nothing is dropped silently: a row that names no id is refused where it is read, with its file and line
+    number, instead of vanishing from a corpus or a set of judgements.
+
+    Args:
+        row: The raw row as read.
+        keys: The id fields the format may spell the id with, in order.
+        source: The file (and line) the row was read from, for the error.
+        what: What the row holds (``"a corpus row"``, ``"a qrels row"``), for the error.
+
+    Returns:
+        The id.
+
+    Raises:
+        DataError: no key holds a non-empty id.
+    """
+    for key in keys:
+        value = row.get(key)
+        if value is not None and value != "":
+            return str(value)
+    raise DataError(f"{source}: {what} carries no id (looked for {', '.join(keys)}); an id-less row is not droppable")
+
+
+def sidecar_qrels(rows: Iterable[tuple[int, Mapping[str, Any]]], *, source: str) -> dict[ID, dict[ID, float]]:
+    """``{query_id: {doc_id: grade}}`` from ``{"query_id", "qrels": {doc_id: grade}}`` sidecar rows.
+
+    The one reader of the sidecar format (the jsonl corpus layout's ``qrels.jsonl``, and the image, video
+    and frame directories' ``qrels_uri``): one row shape, one error contract.
+
+    Args:
+        rows: ``(line number, row)`` pairs as read.
+        source: The sidecar's path, for the error messages.
+
+    Returns:
+        The qrels table.
+
+    Raises:
+        DataError: a row is not ``{'query_id', 'qrels': {doc_id: grade}}``, a row names no query, or a
+            ``(query, doc)`` pair is labelled twice (nothing is cut and nothing is last-wins).
+    """
+    out: dict[ID, dict[ID, float]] = {}
+    for line_number, row in rows:
+        where = f"{source}:{line_number}"
+        if "query_id" not in row or not isinstance(row.get("qrels"), dict):
+            raise DataError(f"{source}: a qrels row is {{'query_id', 'qrels': {{doc_id: grade}}}}, got {row}")
+        query_id = required_id(row, ("query_id", "_id", "id"), source=f"{source}:{line_number}", what="a qrels row")
+        judged = out.setdefault(query_id, {})
+        for doc_id, label in row["qrels"].items():
+            if doc_id in judged:
+                raise DataError(
+                    f"{source}:{line_number}: query {query_id!r}, document {doc_id!r} is labelled twice",
+                    details={"query_id": query_id, "doc_id": str(doc_id)},
+                )
+            judged[str(doc_id)] = grade(label, source=where)
+    return out
+
+
+__all__ = [
+    "DataShape",
+    "SinkWriter",
+    "SourceReader",
+    "grade",
+    "join_title",
+    "required_id",
+    "sidecar_qrels",
+    "unique_document_ids",
+]

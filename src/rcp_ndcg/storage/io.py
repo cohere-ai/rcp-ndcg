@@ -13,7 +13,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ValidationError
+from pydantic import AliasChoices, BaseModel, ValidationError
 from rcp_ndcg_core._records import RankingExample
 
 from rcp_ndcg import storage
@@ -40,19 +40,60 @@ def iter_json_lines(file_path: str | Path) -> Iterator[dict[str, Any]]:
     Raises:
         DataError: A line is not valid JSON, or not a JSON object.
     """
-    for _, row in _numbered_rows(file_path):
+    for _, row in numbered_json_lines(file_path):
         yield row
 
 
+def numbered_json_lines(file_path: str | Path) -> Iterator[tuple[int, dict[str, Any]]]:
+    """Stream a JSONL file as ``(line number, row)`` pairs, for readers whose errors name the line.
+
+    Raises:
+        DataError: A line is not valid JSON, or not a JSON object.
+    """
+    yield from _numbered_rows(file_path)
+
+
+def _known_keys(example_class: type[BaseModel]) -> set[str]:
+    """Every key a row may name for ``example_class``: its fields plus their validation aliases."""
+    known = set(example_class.model_fields)
+    for field in example_class.model_fields.values():
+        alias = field.validation_alias
+        if isinstance(alias, AliasChoices):
+            known.update(str(choice) for choice in alias.choices)
+        elif isinstance(alias, str):
+            known.add(alias)
+    return known
+
+
 def iter_jsonl[BaseModelType: BaseModel](
-    file_path: str | Path, example_class: type[BaseModelType] = RankingExample
+    file_path: str | Path, example_class: type[BaseModelType] = RankingExample, *, forbid_extra: bool = False
 ) -> Iterator[BaseModelType]:
     """Stream a JSONL file one parsed model at a time (the rows of :func:`iter_json_lines` as ``example_class``).
 
+    Args:
+        file_path: The file to read.
+        example_class: The record each row must validate as.
+        forbid_extra: Refuse a row with keys the record does not declare, instead of reading past them
+            (which silently drops whatever they held). Ranking rows keep their lossless default: the
+            ``extra="allow"`` fields a rescored file carries are the point.
+
     Raises:
-        DataError: A line is not valid JSON, or does not validate as ``example_class``.
+        DataError: A line is not valid JSON, does not validate as ``example_class``, or (with
+            ``forbid_extra``) carries keys the record does not declare.
     """
     for line_number, row in _numbered_rows(file_path):
+        if forbid_extra:
+            unknown = sorted(set(row) - _known_keys(example_class))
+            if unknown:
+                raise DataError(
+                    f"{file_path}:{line_number}: unknown key(s) {unknown} for {example_class.__name__}; "
+                    "a key the record does not declare would be silently ignored"
+                )
+            if unknown:
+                raise DataError(
+                    f"{file_path}:{line_number}: unknown key(s) {unknown} for {example_class.__name__}; "
+                    "a key the record does not declare would be silently ignored"
+                )
         try:
             yield example_class(**row)
         except ValidationError as exc:
@@ -77,4 +118,4 @@ def _numbered_rows(file_path: str | Path) -> Iterator[tuple[int, dict[str, Any]]
             yield line_number, row
 
 
-__all__ = ["iter_json_lines", "iter_jsonl", "load_text"]
+__all__ = ["iter_json_lines", "iter_jsonl", "load_text", "numbered_json_lines"]

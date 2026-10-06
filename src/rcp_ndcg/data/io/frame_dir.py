@@ -43,7 +43,8 @@ class FrameDirReader(ImageDirReader):
     """Reads a tree of per-clip frame directories as one-clip documents.
 
     Takes the same arguments as :class:`~rcp_ndcg.data.io.image_dir.ImageDirReader`;
-    ``hash_media`` hashes and sizes every frame.
+    ``hash_media`` hashes and sizes every frame. ``frame_indices`` records each frame's number in
+    its file name -- which frame of the source it was sampled at -- not its position in the directory.
     """
 
     name = "frames"
@@ -52,7 +53,7 @@ class FrameDirReader(ImageDirReader):
     def documents(self) -> Iterator[Document]:
         for clip_id, uris in self._clips():
             frames = [self._ref(uri) for uri in uris]
-            part = VideoPart(frames=frames, frame_indices=list(range(len(frames))))
+            part = VideoPart(frames=frames, frame_indices=[_frame_number(uri) for uri in uris])
             yield Document(doc_id=clip_id, content=Content.from_parts([part]))
 
     def _clips(self) -> Iterator[tuple[str, list[str]]]:
@@ -68,6 +69,19 @@ class FrameDirReader(ImageDirReader):
             clips.setdefault(clip_id, []).append(uri)
         for clip_id in sorted(clips):
             yield clip_id, sorted(clips[clip_id], key=_natural_key)
+
+
+def _frame_number(uri: str) -> int:
+    """The frame's number in its file name (``000007.jpg`` -> 7): what ``frame_indices`` records.
+
+    Raises:
+        DataError: the file name holds no number -- the record could not say which frame it is.
+    """
+    stem = uri.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    match = _NUMBER.search(stem)
+    if match is None:
+        raise DataError(f"{uri}: a frame file name carries no number; frame_indices cannot name the source frame")
+    return int(match.group(1))
 
 
 __all__ = ["FrameDirReader"]

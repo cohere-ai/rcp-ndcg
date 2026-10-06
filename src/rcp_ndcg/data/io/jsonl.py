@@ -18,8 +18,8 @@ from pathlib import Path
 from rcp_ndcg_core._records import ID, Document, Query, RankingExample
 
 from rcp_ndcg import storage
-from rcp_ndcg.data.io.base import DataShape, SinkWriter, SourceReader, grade
-from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
+from rcp_ndcg.data.io.base import DataShape, SinkWriter, SourceReader, sidecar_qrels
+from rcp_ndcg.errors import ConfigError, MissingInputError
 from rcp_ndcg.support.logging import get_logger
 
 logger = get_logger(__name__)
@@ -35,7 +35,12 @@ class JsonlReader(SourceReader):
     Args:
         uri: A ranking JSONL file, a directory containing exactly one, or a corpus-layout directory (it holds
             ``corpus.jsonl``).
-        name: The dataset name; defaults to the file stem.
+        name: The dataset name; defaults to the file's stem (everything before the ``.jsonl``/``.json``
+            suffix, so ``nfcorpus.v2.jsonl`` is ``nfcorpus.v2``).
+
+    Ranking rows are read losslessly (unknown keys survive as ``extra="allow"`` fields). Corpus rows are read
+    strictly: a row whose keys are not the record's fields is refused rather than read past the unknown ones
+    (a BEIR-shaped ``title`` would otherwise vanish into the text).
     """
 
     name = "jsonl"
@@ -43,7 +48,7 @@ class JsonlReader(SourceReader):
 
     def __init__(self, uri: str, *, name: str | None = None) -> None:
         self.uri = str(uri).rstrip("/")
-        self.dataset_name = name or Path(self.uri).name.split(".")[0]
+        self.dataset_name = name or (Path(self.uri).stem if Path(self.uri).suffix else Path(self.uri).name)
 
     @property
     def layout(self) -> str:
@@ -62,7 +67,7 @@ class JsonlReader(SourceReader):
         from rcp_ndcg.storage.io import iter_jsonl
 
         if self.layout == "corpus":
-            yield from iter_jsonl(storage.join(self.uri, "corpus.jsonl"), example_class=Document)
+            yield from iter_jsonl(storage.join(self.uri, "corpus.jsonl"), example_class=Document, forbid_extra=True)
             return
         yield from super().documents()
 
@@ -70,23 +75,19 @@ class JsonlReader(SourceReader):
         from rcp_ndcg.storage.io import iter_jsonl
 
         if self.layout == "corpus":
-            yield from iter_jsonl(storage.join(self.uri, "queries.jsonl"), example_class=Query)
+            yield from iter_jsonl(storage.join(self.uri, "queries.jsonl"), example_class=Query, forbid_extra=True)
             return
         yield from super().queries()
 
     def qrels(self) -> dict[ID, dict[ID, float]]:
-        from rcp_ndcg.storage.io import iter_json_lines
+        from rcp_ndcg.storage.io import numbered_json_lines
 
         if self.layout != "corpus":
             return super().qrels()
         source = storage.join(self.uri, "qrels.jsonl")
-        out: dict[ID, dict[ID, float]] = {}
-        for row in iter_json_lines(source) if storage.exists(source) else []:
-            if "query_id" not in row or not isinstance(row.get("qrels"), dict):
-                raise DataError(f"{source}: a qrels row is {{'query_id', 'qrels': {{doc_id: grade}}}}, got {row}")
-            judged = out.setdefault(str(row["query_id"]), {})
-            judged.update({str(doc_id): grade(label, source=source) for doc_id, label in row["qrels"].items()})
-        return out
+        if not storage.exists(source):
+            return {}
+        return sidecar_qrels(numbered_json_lines(source), source=source)
 
     def _ranking_file(self) -> str:
         """The ranking JSONL file to read: ``uri`` itself, or the one JSONL file in the directory ``uri``."""

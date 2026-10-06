@@ -17,7 +17,7 @@ import pytest
 
 from rcp_ndcg.data import load_dataset
 from rcp_ndcg.data.revisions import resolve_revision
-from rcp_ndcg.errors import MissingInputError, ProviderError
+from rcp_ndcg.errors import DataError, MissingInputError, ProviderError
 
 REPO = "org/data"
 SUBSET = "hr__english"
@@ -453,3 +453,71 @@ def test_a_read_only_cache_skips_the_ref_write(
         load_dataset(f"hf://{REPO}/{SUBSET}")  # offline without the ref: the load refuses, the resolution warns
 
     assert "--revision" in (caught.value.hint or ""), "without the ref the offline run says what to do"
+
+
+# ---------------------------------------------------------------------------
+# The hub loader refuses what the record path refuses (nothing silently dropped)
+# ---------------------------------------------------------------------------
+
+
+def _staged(cache: Path, **overrides: pd.DataFrame) -> None:
+    files = dict(_TABLES)
+    files[f"{SUBSET}/excluded.parquet"] = pd.DataFrame(
+        {"query-id": pd.Series([], dtype="str"), "excluded-corpus-ids": pd.Series([], dtype=object)}
+    )
+    files.update(overrides)
+    stage(cache, files=files)
+
+
+def test_a_duplicated_query_id_is_refused_not_last_wins(cache: Path) -> None:
+    """Hub query tables de-duplicated silently (last row wins) while from_records raises."""
+    _staged(cache, **{f"{SUBSET}/queries.parquet": pd.DataFrame({"id": ["q1", "q1"], "text": ["first", "second"]})})
+    dataset = load_dataset(f"hf://{REPO}/{SUBSET}", revision=SHA)
+    with pytest.raises(DataError, match="appears twice"):
+        _ = dataset.queries
+
+
+def test_a_hub_pair_labelled_twice_is_refused(cache: Path) -> None:
+    table = pd.DataFrame({"query-id": ["q1", "q1"], "corpus-id": ["a", "a"], "score": [1.0, 2.0]})
+    _staged(cache, **{f"{SUBSET}/qrels.parquet": table})
+    with pytest.raises(DataError, match="twice"):
+        load_dataset(f"hf://{REPO}/{SUBSET}", revision=SHA)
+
+
+def test_a_non_finite_hub_gain_is_refused_not_loaded(cache: Path) -> None:
+    """gain/theta were float()-ed with no finite check: a NaN gain beside a finite theta entered
+    the gains and NaN'd the metric input."""
+    table = pd.DataFrame(
+        {"query-id": ["q1"], "corpus-id": ["a"], "score": [1.0], "gain": [float("nan")], "theta": [0.5]}
+    )
+    _staged(cache, **{f"{SUBSET}/qrels.parquet": table})
+    with pytest.raises(DataError, match="is not a gain"):
+        load_dataset(f"hf://{REPO}/{SUBSET}", revision=SHA)
+
+
+@pytest.mark.parametrize(
+    ("name", "table", "column"),
+    [
+        (f"{SUBSET}/top_ranked.parquet", pd.DataFrame({"query-id": ["q1"]}), "corpus-ids"),
+        (f"{SUBSET}/top_ranked.parquet", pd.DataFrame({"corpus-ids": [["a"]]}), "query-id"),
+        (f"{SUBSET}/excluded.parquet", pd.DataFrame({"query-id": ["q1"]}), "excluded-corpus-ids"),
+        (f"{SUBSET}/queries.parquet", pd.DataFrame({"text": ["q"]}), "id"),
+    ],
+)
+def test_a_layout_drift_is_a_typed_data_error_naming_the_column(
+    cache: Path, name: str, table: pd.DataFrame, column: str
+) -> None:
+    """The qrels path names a missing column; top_ranked, excluded and queries raised a raw KeyError."""
+    files = dict(_TABLES)
+    files[f"{SUBSET}/excluded.parquet"] = pd.DataFrame(
+        {"query-id": pd.Series([], dtype="str"), "excluded-corpus-ids": pd.Series([], dtype=object)}
+    )
+    files[name] = table
+    stage(cache, files=files)
+
+    with pytest.raises(DataError, match=column):
+        dataset = load_dataset(f"hf://{REPO}/{SUBSET}", revision=SHA)
+        if name.endswith("queries.parquet"):
+            _ = dataset.queries  # lazy: the drift surfaces when the table is read
+        else:
+            _ = dataset.candidates or dataset.excluded

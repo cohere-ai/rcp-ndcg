@@ -3,7 +3,8 @@
 A dataset revision such as ``main`` (or none at all) is a moving pointer. Identities that must say *which* corpus
 was judged record the commit it resolved to instead (a judge's ``revision`` is recorded as configured):
 
-* :func:`resolve_revision` asks the Hub (``HfApi.dataset_info``) once per process and falls back to the local cache
+* :func:`resolve_revision` asks the Hub (``HfApi.resolve_revision`` on huggingface-hub >= 1.x,
+  ``HfApi.dataset_info`` on the 0.34 floor) once per process and falls back to the local cache
   (``<hub cache>/datasets--org--name/refs/<revision>``) when offline (``HF_HUB_OFFLINE=1``) or when the Hub cannot
   be reached. A revision that is already a full 40-character commit resolves to itself without any lookup.
 * An online resolution records the ref in the cache (``refs/<ref>``), so the offline run without ``--revision``

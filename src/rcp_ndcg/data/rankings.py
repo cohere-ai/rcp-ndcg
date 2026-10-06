@@ -500,6 +500,8 @@ def _from_json_text(text: str, uri: str) -> Rankings:
             record = json.loads(line)
         except json.JSONDecodeError as exc:
             raise DataError(f"{uri}:{number}: not a JSON object: {exc}") from exc
+        if not isinstance(record, dict):
+            raise DataError(f"{uri}:{number}: a rankings row is a JSON object, got {line[:200]}")
         rows.extend(_json_record_rows(record, f"{uri}:{number}"))
     return _from_file_rows(rows, uri)
 

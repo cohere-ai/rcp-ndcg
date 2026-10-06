@@ -23,9 +23,9 @@ from rcp_ndcg_core._records import ID, Document, Query
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, Modality, Part
 
 from rcp_ndcg import storage
-from rcp_ndcg.data.io.base import DataShape, SourceReader, grade, unique_document_ids
+from rcp_ndcg.data.io.base import DataShape, SourceReader, required_id, sidecar_qrels, unique_document_ids
 from rcp_ndcg.data.media import IMAGE_MIME_BY_SUFFIX, default_resolver
-from rcp_ndcg.storage.io import iter_json_lines
+from rcp_ndcg.storage.io import numbered_json_lines
 from rcp_ndcg.support.logging import get_logger
 
 logger = get_logger(__name__)
@@ -90,10 +90,13 @@ class ImageDirReader(SourceReader):
     def queries(self) -> Iterator[Query]:
         if self.queries_uri is None:
             return
-        for row in iter_json_lines(self.queries_uri):
-            query_id = row.get("query_id") or row.get("_id") or row.get("id")
-            if query_id is None:
-                continue
+        for line_number, row in numbered_json_lines(self.queries_uri):
+            query_id = required_id(
+                row,
+                ("query_id", "_id", "id"),
+                source=f"{self.queries_uri}:{line_number}",
+                what="a query row",
+            )
             yield Query(
                 query_id=str(query_id),
                 query=row.get("text") or row.get("query") or "",
@@ -103,16 +106,7 @@ class ImageDirReader(SourceReader):
     def qrels(self) -> dict[ID, dict[ID, float]]:
         if self.qrels_uri is None:
             return {}
-        out: dict[ID, dict[ID, float]] = {}
-        for row in iter_json_lines(self.qrels_uri):
-            query_id = row.get("query_id") or row.get("_id") or row.get("id")
-            if query_id is None:
-                continue
-            judged = row.get("qrels") or {}
-            out.setdefault(str(query_id), {}).update(
-                {str(k): grade(v, source=self.qrels_uri) for k, v in judged.items()}
-            )
-        return out
+        return sidecar_qrels(numbered_json_lines(self.qrels_uri), source=self.qrels_uri)
 
     def _media_uris(self) -> Iterator[str]:
         suffixes = tuple(self.mime_by_suffix)

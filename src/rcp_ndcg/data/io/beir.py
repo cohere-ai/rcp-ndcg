@@ -25,9 +25,10 @@ from rcp_ndcg.data.io.base import (
     SourceReader,
     grade,
     join_title,
+    required_id,
 )
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.storage.io import iter_json_lines
+from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
+from rcp_ndcg.storage.io import numbered_json_lines
 from rcp_ndcg.support.logging import get_logger
 
 logger = get_logger(__name__)
@@ -56,19 +57,25 @@ class BeirReader(SourceReader):
 
     def documents(self) -> Iterator[Document]:
         path = self._first_existing(CORPUS_FILENAMES, "corpus")
-        for row in iter_json_lines(path):
-            doc_id = row.get("_id") or row.get("id") or row.get("doc_id")
-            if doc_id is None:
-                continue
+        for line_number, row in numbered_json_lines(path):
+            doc_id = required_id(
+                row,
+                ("_id", "id", "doc_id"),
+                source=f"{path}:{line_number}",
+                what="a corpus row",
+            )
             text = row.get("text") or ""
             yield Document(doc_id=str(doc_id), text=join_title(row.get("title"), text))
 
     def queries(self) -> Iterator[Query]:
         path = self._first_existing(QUERIES_FILENAMES, "queries")
-        for row in iter_json_lines(path):
-            query_id = row.get("_id") or row.get("id") or row.get("query_id")
-            if query_id is None:
-                continue
+        for line_number, row in numbered_json_lines(path):
+            query_id = required_id(
+                row,
+                ("_id", "id", "query_id"),
+                source=f"{path}:{line_number}",
+                what="a query row",
+            )
             yield Query(
                 query_id=str(query_id),
                 query=row.get("text") or row.get("query") or "",
@@ -84,11 +91,21 @@ class BeirReader(SourceReader):
             if header is not None and not _looks_like_header(header):
                 handle.seek(0)
                 reader = csv.reader(handle, delimiter="\t")
-            for row in reader:
-                if len(row) < 3:
+            for line_number, row in enumerate(reader, start=1):
+                if not row:
                     continue
+                if len(row) < 3:
+                    raise DataError(
+                        f"{path}:{line_number}: a qrels row is (query-id, corpus-id, score[, ...]), got {row}"
+                    )
                 query_id, doc_id, score = row[0], row[1], row[2]
-                out.setdefault(str(query_id), {})[str(doc_id)] = grade(score, source=str(path))
+                judged = out.setdefault(str(query_id), {})
+                if doc_id in judged:
+                    raise DataError(
+                        f"{path}:{line_number}: query {query_id!r}, document {doc_id!r} is labelled twice",
+                        details={"query_id": str(query_id), "doc_id": str(doc_id)},
+                    )
+                judged[str(doc_id)] = grade(score, source=f"{path}:{line_number}")
         return out
 
     def _first_existing(self, names: tuple[str, ...], what: str) -> str:
@@ -96,7 +113,11 @@ class BeirReader(SourceReader):
             candidate = storage.join(self.uri, filename)
             if storage.exists(candidate):
                 return candidate
-        raise FileNotFoundError(f"no {what} file under {self.uri} (looked for {', '.join(names)})")
+        raise MissingInputError(
+            f"no {what} file under {self.uri} (looked for {', '.join(names)})",
+            hint="a BEIR directory holds corpus.jsonl, queries.jsonl and qrels/*.tsv; "
+            "convert one with `rcp-ndcg data convert --from jsonl --to beir`",
+        )
 
     def _qrels_path(self) -> str:
         candidates = (f"qrels/{self.split}.tsv",) + QRELS_CANDIDATES if self.split else QRELS_CANDIDATES
@@ -104,7 +125,10 @@ class BeirReader(SourceReader):
             candidate = storage.join(self.uri, filename)
             if storage.exists(candidate):
                 return candidate
-        raise FileNotFoundError(f"no qrels under {self.uri} (looked for {', '.join(candidates)})")
+        raise MissingInputError(
+            f"no qrels under {self.uri} (looked for {', '.join(candidates)})",
+            hint="a BEIR directory holds its labels in qrels/<split>.tsv (test.tsv, dev.tsv or train.tsv)",
+        )
 
 
 class BeirWriter(SinkWriter):
@@ -134,22 +158,38 @@ class BeirWriter(SinkWriter):
 
         with storage.open_path(storage.join(uri, "queries.jsonl"), "w") as handle:
             for query in queries:
-                handle.write(json.dumps({"_id": query.id, "text": query.text}) + "\n")
+                if query.has_media:
+                    raise ConfigError(
+                        f"query {query.id!r} carries media, which the BEIR format cannot express. "
+                        "Export to `jsonl` instead, which keeps media as references."
+                    )
+                row: dict[str, str] = {"_id": query.id, "text": query.text}
+                if query.instruction:
+                    row["instruction"] = query.instruction  # the reader restores it
+                handle.write(json.dumps(row) + "\n")
 
         storage.makedirs(storage.join(uri, "qrels"))
         with storage.open_path(storage.join(uri, "qrels", "test.tsv"), "w") as handle:
             handle.write("query-id\tcorpus-id\tscore\n")
             for query_id, judged in qrels.items():
                 for doc_id, label in judged.items():
-                    handle.write(f"{query_id}\t{doc_id}\t{label:g}\n")  # 1.0 -> "1", 0.5 -> "0.5"
+                    handle.write(f"{query_id}\t{doc_id}\t{label!r}\n")  # repr round-trips: no silent 6-digit rounding
 
         logger.info(f"wrote BEIR layout to {uri}: {n_docs} docs, {len(qrels)} judged queries")
         return n_docs
 
 
 def _looks_like_header(row: list[str]) -> bool:
-    """BEIR qrels carry a header; some mirrors do not."""
-    return bool(row) and not row[-1].replace(".", "", 1).replace("-", "", 1).isdigit()
+    """BEIR qrels carry a header; some mirrors do not.
+
+    Only a row whose first cell is one of the header's column names is a header: a headerless
+    file's first *data* row must reach the label checks (its ``score`` cell being a non-integer
+    string once meant the row was silently eaten as a "header").
+    """
+    return bool(row) and row[0].strip().lower() in _HEADER_COLUMNS
+
+
+_HEADER_COLUMNS = frozenset({"query-id", "qid", "query_id", "query"})
 
 
 __all__ = ["BeirReader", "BeirWriter"]
