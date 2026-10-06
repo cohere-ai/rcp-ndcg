@@ -186,6 +186,24 @@ def test_reference_environment_is_documented() -> None:
     assert "transformers==4.57.6" in text
 
 
+def test_reference_resolves_the_hub_tokenizer_spec_without_the_revision_suffix() -> None:
+    """The recipe's client.tokenizer (repo@revision) reaches transformers as a bare repo id.
+
+    ``AutoTokenizer.from_pretrained`` rejects 'repo@revision' (the '@' is not a repo-id
+    character), so the reference must split the spec and pass the revision separately — the
+    harness hands the recipe's spec to the reference subprocess verbatim, and a 'repo@revision'
+    repo id would fail every real reference run (verifier round 1, blocker).
+    """
+    import importlib.util
+
+    module_spec = importlib.util.spec_from_file_location("ctxl_reference", RECIPE_DIR / "reference.py")
+    module = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(module)
+    assert module._tokenizer_dir(f"{MODEL_ID}@{REVISION}") == MODEL_ID
+    assert module._tokenizer_dir(MODEL_ID) == MODEL_ID
+    assert "@" not in module._tokenizer_dir(f"{MODEL_ID}@{REVISION}")
+
+
 def test_stage1_on_cpu_passes_token_id_equality_and_the_anchor_check(tmp_path: Path, tokenizer_file: Path) -> None:
     """Stage 1 on CPU: token-id equality with the reference and the anchor audit over 20 sampled
     pairs, 5 of them over-length (the over-length inputs pad the pair's own content spans)."""

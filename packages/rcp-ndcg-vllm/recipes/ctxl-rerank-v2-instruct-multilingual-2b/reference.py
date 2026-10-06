@@ -112,15 +112,17 @@ def _tokenizer_dir(spec: str) -> str:
     """The tokenizer location the ``--tokenizer`` spec names, in the form transformers loads.
 
     The spec is the recipe's ``client.tokenizer``: a Hub id with an optional ``@revision``, a
-    directory of tokenizer files, or a ``tokenizer.json`` path (its directory is used).
+    directory of tokenizer files, or a ``tokenizer.json`` path (its directory is used). A Hub id
+    is returned WITHOUT its ``@revision`` — the revision travels separately (the constructor's
+    ``revision`` argument); ``repo@revision`` is not a repo id transformers can resolve.
     """
     candidate = Path(spec).expanduser()
     if candidate.is_file():
         return str(candidate.parent)
     if candidate.is_dir():
         return str(candidate)
-    repo, _, revision = spec.partition("@")
-    return repo if not revision else f"{repo}@{revision}"
+    repo, _, _ = spec.partition("@")
+    return repo
 
 
 class PairTokenizer:
@@ -156,6 +158,10 @@ class PairTokenizer:
             self._hub = False
         else:
             self._fast = AutoTokenizer.from_pretrained(_tokenizer_dir(spec), padding_side="left", revision=revision)
+            # The paper's fallback (ContextualRerank.__init__); inert for this checkpoint, whose
+            # tokenizer_config.json already carries pad_token "+".
+            if self._fast.pad_token is None:
+                self._fast.pad_token = self._fast.eos_token
             self._hub = True
 
     def count(self, text: str, *, add_special_tokens: bool = False) -> int:
@@ -174,11 +180,6 @@ class PairTokenizer:
             encoding = self._fast(text, add_special_tokens=False, return_offsets_mapping=True)
             return [tuple(pair) for pair in encoding["offset_mapping"]]
         return [tuple(pair) for pair in self._fast.encode(text, add_special_tokens=False).offsets]
-
-    def pad(self, inputs: dict[str, Any], *, max_length: int) -> dict[str, Any]:
-        """Left-pad a batch to its longest sequence, capped at ``max_length`` (the paper's call)."""
-        assert self._hub, "padding is a score-mode operation and runs in the transformers environment"
-        return self._fast.pad(inputs, padding=True, return_tensors="pt", max_length=max_length)
 
 
 def token_prefix(
@@ -260,10 +261,6 @@ class CtxlRerankReference:
         self.batch_size = batch_size
         self.batch_size_tokens = batch_size_tokens
         self.dtype = dtype
-
-        # The fixed overhead of the frame, as the engine reads it (the route adds the tokenizer's
-        # post-processor tokens; this checkpoint's ByteLevel post-processor adds none).
-        self.overhead = self.tokenizer.count(self.assemble("", ""), add_special_tokens=True)
         self.model: Any = None
         self.device = "cpu"
 
