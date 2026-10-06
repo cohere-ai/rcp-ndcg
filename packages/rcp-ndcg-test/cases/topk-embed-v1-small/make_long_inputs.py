@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic generator for the ``generated`` cases of ``topk-embed-v1-small``.
 
-Re-running this script rewrites the fourteen ``generated`` case files byte-identically
+Re-running this script rewrites the fifteen ``generated`` case files byte-identically
 (Python's ``random.Random`` with fixed seeds is stable across runs and versions). The
 ``model_card`` case is hand-written against the card's README and is never touched here.
 
