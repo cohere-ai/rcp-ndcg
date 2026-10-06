@@ -2294,6 +2294,36 @@
           "description": "The ``document`` shape's segments (an embedder's document side).",
           "title": "Document"
         },
+        "normalize": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "strip",
+                  "lowercase"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "items": {
+                  "enum": [
+                    "strip",
+                    "lowercase"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "type": "object"
+            }
+          ],
+          "default": [],
+          "description": "The declared content normalisation, applied by rcp_ndcg.data.preprocess.fit to a shape's content spans before measuring -- so the reference and the engine see the same text. ``(\"strip\",)`` strips the spans (the topk wrapper strips the query text and the whole document); ``(\"strip\", \"lowercase\")`` strips then lowers them (Cobble's ``lower_case_text`` checkpoints); the ops run in the declared order. A tuple for every declared shape, or a mapping shape -> tuple naming every declared shape. Empty (the default): the text goes in as it is.",
+          "title": "Normalize"
+        },
         "pair": {
           "anyOf": [
             {

@@ -54,6 +54,11 @@ AnchorKind = Literal["last", "first", "last_content", "mean", "marker"]
 #: (declared once per run, never cut).
 ContentSpan = Literal["query", "document", "instruction"]
 
+#: The declared content normalisers: ``strip`` removes leading/trailing whitespace, ``lowercase`` lowers.
+#: Applied by :func:`rcp_ndcg.data.preprocess.fit` to a shape's content spans before measuring, so the
+#: reference and the engine see the same text.
+ContentNormalizer = Literal["strip", "lowercase"]
+
 SHAPES: tuple[RequestShape, ...] = ("query", "document", "pair")
 """The request shapes a :class:`TemplateSpec` declares, in canonical order."""
 
@@ -127,6 +132,13 @@ class TemplateSpec(BaseModel):
             scoring routes), ``False`` where it adds none (the chat-embed form). A bool for every
             shape, or a mapping shape -> bool naming every declared shape. The budget reserves those
             tokens: measured on the empty render, they are part of the fixed overhead.
+        normalize: The declared content normalisation, applied by :func:`rcp_ndcg.data.preprocess.fit`
+            to a shape's content spans before measuring -- so the reference and the engine see the same
+            text. ``("strip",)`` strips the spans (the topk wrapper strips the query text and the whole
+            document); ``("strip", "lowercase")`` strips then lowers them (Cobble's
+            ``lower_case_text`` checkpoints); the ops run in the declared order. A tuple for every
+            declared shape, or a mapping shape -> tuple naming every declared shape. Empty (the
+            default): the text goes in as it is.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -138,6 +150,7 @@ class TemplateSpec(BaseModel):
         "anchor": "content",
         "anchor_markers": "content",
         "add_special_tokens": "content",
+        "normalize": "content",
     }
 
     query: tuple[Segment, ...] | None = None
@@ -146,6 +159,7 @@ class TemplateSpec(BaseModel):
     anchor: AnchorKind = "last"
     anchor_markers: tuple[str, ...] = ()
     add_special_tokens: bool | dict[str, bool] = True
+    normalize: tuple[ContentNormalizer, ...] | dict[str, tuple[ContentNormalizer, ...]] = ()
 
     @model_validator(mode="after")
     def _shapes_are_complete(self) -> TemplateSpec:
@@ -158,6 +172,15 @@ class TemplateSpec(BaseModel):
             if stale or missing:
                 raise ValueError(
                     f"add_special_tokens must name every declared shape {declared}: "
+                    + (f"unknown {stale}; " if stale else "")
+                    + (f"missing {missing}" if missing else "")
+                )
+        if isinstance(self.normalize, dict):
+            stale = sorted(set(self.normalize) - set(declared))
+            missing = sorted(set(declared) - set(self.normalize))
+            if stale or missing:
+                raise ValueError(
+                    f"normalize must name every declared shape {declared}: "
                     + (f"unknown {stale}; " if stale else "")
                     + (f"missing {missing}" if missing else "")
                 )
@@ -228,6 +251,30 @@ class TemplateSpec(BaseModel):
                 ) from None
         return self.add_special_tokens
 
+    def normalisers(self, shape: RequestShape) -> tuple[ContentNormalizer, ...]:
+        """The declared content normalisers of ``shape``, in the order ``fit`` applies them.
+
+        Raises:
+            ConfigError: the template does not declare that shape (the same typed error :meth:`segments`
+                raises, so a caller that reads the normalisers before the segments sees it too).
+        """
+        if isinstance(self.normalize, dict):
+            try:
+                return self.normalize[shape]
+            except KeyError:
+                raise ConfigError(
+                    f"the template declares no {shape!r} shape (it declares {list(self.shapes())})",
+                    hint="declare the shape's segments in the template, or fit a shape the template declares",
+                ) from None
+        return self.normalize
+
+    def normalize_text(self, shape: RequestShape, text: str) -> str:
+        """``text`` under ``shape``'s declared normalisers, in the declared order -- the one normalisation
+        call, so the reference and the engine see the same text (the same ops :func:`fit` applies)."""
+        for op in self.normalisers(shape):
+            text = text.strip() if op == "strip" else text.lower()
+        return text
+
     # -- rendering --------------------------------------------------------------------------------------------
 
     def render(
@@ -286,4 +333,12 @@ def _resolve_specials(text: str, tokenizer: TextTokenizer) -> str:
     return _SPECIAL.sub(substitute, text)
 
 
-__all__ = ["AnchorKind", "ContentSpan", "RequestShape", "SHAPES", "Segment", "TemplateSpec"]
+__all__ = [
+    "AnchorKind",
+    "ContentNormalizer",
+    "ContentSpan",
+    "RequestShape",
+    "SHAPES",
+    "Segment",
+    "TemplateSpec",
+]

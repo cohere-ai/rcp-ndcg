@@ -1042,6 +1042,25 @@ def fit(
 
     template = budget.template
     instr = instruction or ""
+    # The declared content normalisation: the template's per-shape strip/lowercase, applied to the content
+    # spans before anything is measured (the reference and the engine see the same text). Without a
+    # template there is no declaration, so nothing is normalised.
+    ops = template.normalisers(shape) if template is not None else ()
+
+    def normalised(text: str) -> str:
+        """The content span as the engine reads it: the template's declared normalisers, in order."""
+        for op in ops:
+            text = text.strip() if op == "strip" else text.lower()
+        return text
+
+    if ops:
+        raw_items = list(items)  # the inputs as given, for the census rows' original side
+        if shape == "pair":
+            items = [(normalised(query), normalised(document)) for query, document in items]
+        else:
+            items = [normalised(item) for item in items]
+    else:
+        raw_items = items
     # The engine's behaviour for the route: declared on the template; a raw-text request gets the pooling
     # routes' default (the post-processor's tokens are appended), so its anchor is reserved either way.
     flag = template.adds_special_tokens(shape) if template is not None else True
@@ -1085,9 +1104,15 @@ def fit(
         original: ContentParts,
         kept: ContentParts,
         aggregation: str | None,
+        raw: ContentParts | None = None,
     ) -> None:
-        """One cut row (also appended to the census when the caller passed one)."""
-        original_text = original if isinstance(original, str) else original[0] + original[1]
+        """One cut row (also appended to the census when the caller passed one).
+
+        ``raw`` is the input as given, when a declared normalisation changed the spans before the cut: the
+        row's original side is then the raw text (the input), never the normalised one (declared policy).
+        """
+        source = original if raw is None else raw
+        original_text = source if isinstance(source, str) else source[0] + source[1]
         kept_text = kept if isinstance(kept, str) else kept[0] + kept[1]
         assert tokenizer is not None
         cut = TextCutRecord(
@@ -1147,12 +1172,16 @@ def fit(
                 f"fill the budget of {budget.max_tokens}; the media are never cut",
                 hint="raise max_tokens, or shrink the declared media (a media block is indivisible)",
             )
+        # The census rows compare the input AS GIVEN with what ships: normalisation is declared policy,
+        # not a cut, so the row's original side stays the raw text even when the spans were normalised.
+        raw = raw_items[index]
         if shape == "pair":
             assert isinstance(item, (tuple, list))
+            assert isinstance(raw, (tuple, list))
             query, document = item
             original: ContentParts = (query, document)
         else:
-            assert isinstance(item, str)
+            assert isinstance(item, str) and isinstance(raw, str)
             query, document = (item, "") if shape == "query" else ("", item)
             original = item
         if tokenizer.count(assemble(query, document), add_special_tokens=flag) <= cap:
@@ -1207,7 +1236,7 @@ def fit(
                     texts.append(assemble(q_final, d_final))
                 contents.append((q_final, d_final))
                 entries.append((input_id, input_id))
-                _record(doc_id=input_id, original=original, kept=(q_final, d_final), aggregation=None)
+                _record(doc_id=input_id, original=original, kept=(q_final, d_final), aggregation=None, raw=raw)
             else:
                 pieces = _chunks(document, room, q_final, cap)
                 if len(pieces) == 1:
@@ -1217,7 +1246,7 @@ def fit(
                         texts.append(assemble(q_final, pieces[0]))
                     contents.append((q_final, pieces[0]))
                     entries.append((input_id, input_id))
-                    _record(doc_id=input_id, original=original, kept=(q_final, pieces[0]), aggregation=None)
+                    _record(doc_id=input_id, original=original, kept=(q_final, pieces[0]), aggregation=None, raw=raw)
                     continue
                 for k, piece in enumerate(pieces):
                     chunk_id = f"{input_id}{CHUNK_ID_SEPARATOR}{k}"
@@ -1225,7 +1254,13 @@ def fit(
                         texts.append(assemble(q_final, piece))
                     contents.append((q_final, piece))
                     entries.append((chunk_id, input_id))
-                    _record(doc_id=chunk_id, original=original, kept=(q_final, piece), aggregation=budget.aggregation)
+                    _record(
+                        doc_id=chunk_id,
+                        original=original,
+                        kept=(q_final, piece),
+                        aggregation=budget.aggregation,
+                        raw=raw,
+                    )
                 chunked_any = True
         elif budget.on_overflow == "chunk":
             if shape == "query":
@@ -1248,14 +1283,14 @@ def fit(
                 texts.append(assemble("", pieces[0]))
                 contents.append(pieces[0])
                 entries.append((input_id, input_id))
-                _record(doc_id=input_id, original=item, kept=pieces[0], aggregation=None)
+                _record(doc_id=input_id, original=item, kept=pieces[0], aggregation=None, raw=raw)
                 continue
             for k, piece in enumerate(pieces):
                 chunk_id = f"{input_id}{CHUNK_ID_SEPARATOR}{k}"
                 texts.append(assemble("", piece))
                 contents.append(piece)
                 entries.append((chunk_id, input_id))
-                _record(doc_id=chunk_id, original=item, kept=piece, aggregation=budget.aggregation)
+                _record(doc_id=chunk_id, original=item, kept=piece, aggregation=budget.aggregation, raw=raw)
             chunked_any = True
         else:  # cut
             assert isinstance(item, str)  # the pair's cut is handled above
@@ -1273,7 +1308,7 @@ def fit(
                 texts.append(rendered)
             contents.append(kept)
             entries.append((input_id, input_id))
-            _record(doc_id=input_id, original=item, kept=kept, aggregation=None)
+            _record(doc_id=input_id, original=item, kept=kept, aggregation=None, raw=raw)
 
     out = [entry[0] for entry in entries]
     if len(set(out)) != len(out):

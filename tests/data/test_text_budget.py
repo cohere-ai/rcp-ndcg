@@ -238,6 +238,70 @@ class TestTemplateSpec:
 
 
 # ---------------------------------------------------------------------------------------------------------------
+# Declared content normalisation: the template's per-shape strip/lowercase, applied by fit
+# ---------------------------------------------------------------------------------------------------------------
+
+
+class TestDeclaredNormalisation:
+    def test_the_reference_and_the_engine_see_the_same_normalised_text(self) -> None:
+        """G4: the model's wrapper strips the query text and the whole document (topk); Cobble checkpoints
+        lowercase. Declared per shape on the template, applied by fit before measuring, so the reference and
+        the engine read the same text."""
+        spec = TemplateSpec(
+            query=(Segment(content="query"),),
+            document=(Segment(fixed="Document: "), Segment(content="document")),
+            normalize={"query": ("strip",), "document": ("strip", "lowercase")},
+        )
+        query = fit(["  the QUERY  "], shape="query", budget=budget(spec), tokenizer=FRAMED)
+        assert query.contents[0] == "the QUERY"  # stripped, case kept
+        assert query.texts[0] == "the QUERY"
+        document = fit(["  The DOCUMENT  "], shape="document", budget=budget(spec), tokenizer=FRAMED)
+        assert document.contents[0] == "the document"  # stripped and lowercased
+        assert document.texts[0] == "Document: the document"
+
+    def test_a_tuple_declares_the_same_ops_for_every_declared_shape(self) -> None:
+        spec = TemplateSpec(
+            query=(Segment(content="query"),),
+            document=(Segment(content="document"),),
+            normalize=("strip",),
+        )
+        assert spec.normalisers("query") == ("strip",)
+        assert spec.normalisers("document") == ("strip",)
+
+    def test_a_per_shape_mapping_must_name_every_declared_shape(self) -> None:
+        with pytest.raises(ValueError, match="document"):
+            TemplateSpec(query=(Segment(content="query"),), document=(Segment(content="document"),),
+                         normalize={"query": ("strip",)})
+        with pytest.raises(ValueError, match="pair"):
+            TemplateSpec(query=(Segment(content="query"),), normalize={"pair": ("strip",), "query": ()})
+
+    def test_normalisation_applies_to_both_pair_spans_before_measuring(self) -> None:
+        spec = TemplateSpec(
+            pair=(Segment(content="query"), Segment(fixed="\n"), Segment(content="document")),
+            normalize=("strip", "lowercase"),
+        )
+        result = fit([("  The QUERY  ", "  The DOCUMENT ")], shape="pair", budget=budget(spec, max_tokens=64),
+                     tokenizer=FRAMED)
+        assert result.contents[0] == ("the query", "the document")
+        assert result.texts[0] == "the query\nthe document"
+
+    def test_the_cut_is_taken_from_the_normalised_text_and_the_row_names_both_ends(self) -> None:
+        spec = TemplateSpec(document=(Segment(content="document"),), normalize=("strip", "lowercase"))
+        census = TextTruncationCensus()
+        result = fit(["  " + LONG], shape="document", budget=budget(spec), tokenizer=FRAMED, census=census)
+        assert result.contents[0] == result.contents[0].lower()  # the cut was measured on the normalised text
+        row = census.cuts(mechanism=TextTruncationCensus.TEXT_BUDGET)[0].as_row()
+        assert row["original_chars"] == len(LONG) + 2  # the input as given
+        assert row["kept_chars"] == len(result.contents[0])  # the normalised, cut text as sent
+
+    def test_the_normalisation_enters_the_template_identity(self) -> None:
+        one = identity_payload(TemplateSpec(query=(Segment(content="query"),), normalize=("strip",)))
+        other = identity_payload(TemplateSpec(query=(Segment(content="query"),), normalize=("strip", "lowercase")))
+        assert one["normalize"] == ["strip"]
+        assert other["normalize"] == ["strip", "lowercase"]  # the ops and their order are content
+
+
+# ---------------------------------------------------------------------------------------------------------------
 # Anchors: every declared anchor survives a cut at its declared position
 # ---------------------------------------------------------------------------------------------------------------
 

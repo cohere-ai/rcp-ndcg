@@ -222,6 +222,12 @@ carries the last content token. It also declares `add_special_tokens` per shape:
 rendered string for that route (vLLM's pooling and scoring routes append the tokenizer's post-processor tokens;
 the chat-embed form does not). The budget reserves those tokens too: they are part of the measured overhead.
 
+The template can also declare, per shape, a content **normalisation** (`normalize`: `"strip"`, `"lowercase"`,
+in the declared order): `fit` applies it to the shape's content spans before measuring, so the reference and the
+engine see the same text -- the topk wrapper strips the query text and the whole document, Cobble checkpoints
+lowercase their input. The census rows keep the input as given on their original side: normalisation is declared
+policy, not a cut.
+
 ### The budget and the fit
 
 The budget names the tokenizer, the `max_tokens` (the model's whole input sequence, in that tokenizer's tokens),

@@ -4807,6 +4807,13 @@
             "required": false,
             "type": "tuple[rcp_ndcg.data.templates.Segment, Ellipsis] | None"
           },
+          "normalize": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['strip', 'lowercase'], Ellipsis] | dict[str, tuple[Literal['strip', 'lowercase'], Ellipsis]]"
+          },
           "pair": {
             "alias": null,
             "default": null,
@@ -4842,6 +4849,52 @@
               },
               {
                 "returns": "bool"
+              }
+            ]
+          },
+          "normalisers": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "RequestShape",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "shape"
+              },
+              {
+                "returns": "tuple[ContentNormalizer, ...]"
+              }
+            ]
+          },
+          "normalize_text": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "RequestShape",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "shape"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "text"
+              },
+              {
+                "returns": "str"
               }
             ]
           },
