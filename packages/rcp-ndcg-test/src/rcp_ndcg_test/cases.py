@@ -192,8 +192,20 @@ class CaseTolerance(BaseModel):
 
     @property
     def rules(self) -> tuple[str, ...]:
-        """The names of the rules this tolerance declares (at most one of them)."""
-        return tuple(name for name in ("abs", "rank_exact", "spearman_min") if getattr(self, name) is not None)
+        """The names of the rules this tolerance declares (at most one of them).
+
+        ``rank_exact: false`` declares nothing: a rule is its *presence with a meaning*, so a disabled
+        flag is not a rule and a tolerance whose only entry is disabled is refused (nothing would be
+        compared, and a silent no-op tolerance would pass anything).
+        """
+        rules: list[str] = []
+        if self.abs is not None:
+            rules.append("abs")
+        if self.rank_exact:
+            rules.append("rank_exact")
+        if self.spearman_min is not None:
+            rules.append("spearman_min")
+        return tuple(rules)
 
 
 class CaseExpected(BaseModel):
@@ -285,6 +297,8 @@ class Case(BaseModel):
         if expected.kind == "none":
             if expected.values is not None or expected.tolerance is not None:
                 raise ValueError("expected.kind 'none' exercises a path only: no values and no tolerance")
+            if expected.status == "pending_gpu":
+                raise ValueError("a kind 'none' case runs now: pending_gpu is the generated cases' state")
             return self
         if expected.tolerance is None:
             raise ValueError(f"expected.kind {expected.kind!r} needs a tolerance (abs, rank_exact or spearman_min)")
@@ -297,6 +311,13 @@ class Case(BaseModel):
             raise ValueError("kind 'ranking' compares orders: tolerance is rank_exact or spearman_min")
         if rule == "spearman_min" and n_documents < 2:
             raise ValueError("a spearman_min tolerance needs at least two documents to correlate")
+        if rule == "spearman_min" and expected.kind == "ranking":
+            for row in expected.values or ():
+                if isinstance(row, list) and len(row) < 2:
+                    raise ValueError(
+                        "a spearman_min ranking needs an expected row of at least two documents: a top-1 "
+                        "expectation carries no order to correlate, and the runner would pass it free"
+                    )
         if rule == "spearman_min" and expected.values is not None:
             for row in expected.values:
                 if isinstance(row, list) and len(row) >= 2 and all(value == row[0] for value in row):
@@ -341,29 +362,6 @@ def _check_values(expected: CaseExpected, n_queries: int, n_documents: int, doc_
                 raise ValueError(f"expected.values row {index} holds a non-numeric value: {value!r}")
             if value != value or value in (float("inf"), float("-inf")):
                 raise ValueError(f"expected.values row {index} holds a non-finite value")
-
-
-def _check_strata_labels(self) -> None:
-    """The strata labels describe the case's own inputs, so a mislabel cannot satisfy the grid."""
-    documents = self.inputs.documents
-    with_image = [document for document in documents if document.image is not None]
-    with_video = [document for document in documents if document.video is not None]
-    with_media = [*with_image, *with_video]
-    modality = self.strata.modality
-    if modality == "text" and with_media:
-        raise ValueError(f"strata.modality 'text', but {len(with_media)} document(s) carry media")
-    if modality == "image" and not with_image:
-        raise ValueError("strata.modality 'image', but no document carries an image")
-    if modality == "video" and not with_video:
-        raise ValueError("strata.modality 'video', but no document carries a video")
-    if modality == "mixed" and not (
-        with_media and any(document.image is None and document.video is None for document in documents)
-    ):
-        raise ValueError("strata.modality 'mixed' needs both media-bearing and text-only documents")
-    if self.strata.batch == "mixed_modality" and not (
-        with_media and any(document.image is None and document.video is None for document in documents)
-    ):
-        raise ValueError("strata.batch 'mixed_modality' means the batch mixes text-only and media-bearing documents")
 
 
 class CaseBundle:
@@ -602,15 +600,16 @@ def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
 
     A ``long_under`` case: no text input measures over ``client.max_tokens``, and at least one measures
     within 5% under it (``>= 0.95 * max_tokens``) -- the stratum is only real if it is near the budget.
-    A ``long_over`` case: at least one text input measures over ``client.max_tokens``. Media carry no
-    text and are not measured (their token counts are the engine's, not the tokenizer's).
+    A ``long_over`` case: at least one text input measures over ``client.max_tokens``; a ``short`` case
+    measures none over it (a short case whose input would be cut is a mislabel). Media carry no text and
+    are not measured (their token counts are the engine's, not the tokenizer's).
     """
     if recipe.client.max_tokens is None:
         return  # recorded as skipped by the caller: a hosted profile declares no client-side budget
     max_tokens = recipe.client.max_tokens
     tokenizer = _tokenizer_of(recipe)
     for case in cases:
-        if case.strata.batch == "mixed_length" and case.strata.length != "mixed":
+        if case.strata.batch == "mixed_length":
             measured_batch = [
                 tokenizer.count(text)
                 for text in [query.text for query in case.inputs.queries]
@@ -621,7 +620,7 @@ def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
                     f"case {case.id!r}: batch mixed_length, but every text input measures "
                     f"{measured_batch[0]} tokens; the batch holds no mixed lengths"
                 )
-        if case.strata.length not in ("long_under", "long_over"):
+        if case.strata.length not in ("long_under", "long_over", "short"):
             continue
         measured = [
             (label, item.id, tokenizer.count(text))
@@ -630,6 +629,16 @@ def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
             if (text := item.text) is not None
         ]
         counts = [count for _, _, count in measured]
+        if case.strata.length == "short":
+            if any(count > max_tokens for count in counts):
+                label, item_id, count = next(
+                    (label, item_id, count) for label, item_id, count in measured if count > max_tokens
+                )
+                raise CaseError(
+                    f"case {case.id!r}: short, but {label} {item_id!r} measures {count} tokens over the "
+                    f"budget ({max_tokens}); that is the long_over stratum"
+                )
+            continue
         if case.strata.length == "long_under":
             over = next(((label, item_id, count) for label, item_id, count in measured if count > max_tokens), None)
             if over is not None:

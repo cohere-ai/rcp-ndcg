@@ -217,6 +217,28 @@ def test_rank_exact_applies_to_rankings_only(tmp_path: Path) -> None:
         load_case(write_case(tmp_path, "fake-embed", "short", body))
 
 
+def test_a_disabled_rank_exact_is_not_a_rule(tmp_path: Path) -> None:
+    """rank_exact: false declares nothing; a tolerance whose only entry is disabled is refused."""
+    body = (
+        VALID.replace("kind: similarity_matrix", "kind: ranking")
+        .replace("values: [[0.5, 0.25]]", "values: [[d1, d2]]")
+        .replace("tolerance: {abs: 0.001}", "tolerance: {rank_exact: false}")
+    )
+    with pytest.raises(CaseError, match="no tolerance rule|exactly one"):
+        load_case(write_case(tmp_path, "fake-embed", "short", body))
+
+
+def test_a_top_one_ranking_row_refuses_a_spearman_tolerance(tmp_path: Path) -> None:
+    """A declared top-1 expectation carries no order to correlate: refused at load, never a free pass."""
+    body = (
+        VALID.replace("kind: similarity_matrix", "kind: ranking")
+        .replace("values: [[0.5, 0.25]]", "values: [[d1]]")
+        .replace("tolerance: {abs: 0.001}", "tolerance: {spearman_min: 0.9}")
+    )
+    with pytest.raises(CaseError, match="at least two documents"):
+        load_case(write_case(tmp_path, "fake-embed", "short", body))
+
+
 def test_a_ranking_case_rejects_an_abs_tolerance(tmp_path: Path) -> None:
     body = VALID.replace("kind: similarity_matrix", "kind: ranking").replace(
         "values: [[0.5, 0.25]]", "values: [[d1, d2]]"
@@ -283,6 +305,18 @@ def test_values_must_be_finite_numbers(tmp_path: Path) -> None:
 def test_origin_published_requires_a_card(tmp_path: Path) -> None:
     body = VALID.replace("origin: engine", "origin: published")
     with pytest.raises(CaseError, match="source.kind must be model_card"):
+        load_case(write_case(tmp_path, "fake-embed", "short", body))
+
+
+def test_a_kind_none_case_cannot_be_pending(tmp_path: Path) -> None:
+    """A path-exercise case runs now: pending_gpu is the generated cases' state, not a none case's."""
+    body = VALID.replace(
+        """      kind: similarity_matrix
+      values: [[0.5, 0.25]]
+      tolerance: {abs: 0.001}""",
+        "      kind: none",
+    ).replace("status: reproduced", "status: pending_gpu")
+    with pytest.raises(CaseError, match="pending_gpu"):
         load_case(write_case(tmp_path, "fake-embed", "short", body))
 
 
@@ -365,6 +399,13 @@ def test_a_long_under_input_over_the_budget_is_the_wrong_stratum(tmp_path: Path)
         load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
 
 
+def test_a_short_case_must_not_measure_over_the_budget(tmp_path: Path) -> None:
+    """A 'short' case whose inputs measure over the budget is a mislabel (the runner would cut it)."""
+    write_length_case(tmp_path, "short-over", "short", " ".join(["budgetpad"] * 15))  # 135 tokens
+    with pytest.raises(CaseError, match="short, but document"):
+        load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
+
+
 def test_a_long_over_input_must_measure_over(tmp_path: Path) -> None:
     write_length_case(tmp_path, "length-long-over", "long_over", " ".join(["budgetpad"] * 14))  # 126 tokens
     with pytest.raises(CaseError, match="measures over the budget"):
@@ -381,6 +422,26 @@ def test_the_packaged_fixture_cases_sit_in_their_strata() -> None:
     bundle = load_cases(PACKAGED, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
     assert {case.strata.length for case in bundle.cases} >= {"short", "long_under", "long_over"}
     assert bundle.skipped_checks == ()
+
+
+def test_a_mixed_stratum_batch_also_measures_differing_lengths(tmp_path: Path) -> None:
+    """The mixedness measurement covers length 'mixed' too: an all-equal batch is refused either way."""
+    long_text = " ".join(["budgetpad"] * 14)  # 126 tokens with the fixture tokenizer
+    body = (
+        LENGTH_CASE.format(slug="mixed-batch", length="mixed", text=long_text)
+        .replace("batch: single", "batch: mixed_length")
+        .replace(
+            "queries: [{id: q1, text: a query}]",
+            f"queries: [{{id: q1, text: '{long_text}'}}, {{id: q2, text: '{long_text}'}}]",
+        )
+        .replace(
+            f'documents: [{{id: d1, text: "{long_text}"}}]',
+            f'documents: [{{id: d1, text: "{long_text}"}}, {{id: d2, text: "{long_text}"}}]',
+        )
+    )
+    write_case(tmp_path, "fake-embed", "mixed-batch", body)
+    with pytest.raises(CaseError, match="holds no mixed lengths"):
+        load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
 
 
 def test_a_mixed_length_batch_measures_differing_lengths(tmp_path: Path) -> None:

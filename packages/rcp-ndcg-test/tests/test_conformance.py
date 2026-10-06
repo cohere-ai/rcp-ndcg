@@ -311,6 +311,40 @@ class _SpySender:
         return Usage()
 
 
+def test_the_rerank_wire_carries_the_fits_cut_query() -> None:
+    """The pair fit's query cut (to its declared share) is what the wire carries, not the raw fold."""
+    from rcp_ndcg_test.cases import CaseDocument, CaseInputs, CaseQuery
+    from rcp_ndcg_test.conformance import _fit_pair, _fold_query
+
+    recipe = load_recipe(RECIPES / "fake-rerank")
+    long_query = " ".join(["overrun"] * 30)  # the fold measures far over the 48-token query share
+    case = load_case(CASES / "fake-rerank" / "short-single.yaml").model_copy(
+        update={
+            "inputs": CaseInputs(
+                instruction="Find the document that answers the question.",
+                queries=[CaseQuery(id="q1", text=long_query)],
+                documents=[CaseDocument(id="d1", text="plato wrote the republic around 375 bc")],
+            )
+        }
+    )
+    cut_query, documents, query_cut = _fit_pair(recipe, long_query, case)
+    raw_fold = _fold_query(recipe, long_query, case.inputs.instruction)
+    assert query_cut and len(cut_query) < len(raw_fold), "the probe case must overflow its query share"
+
+    recorded: list[dict] = []
+
+    class RecordingRerankEngine(FakeRerankEngine):
+        def handle(self, method: str, path: str, body: object):
+            if method == "POST" and path.endswith("/rerank"):
+                recorded.append(body)
+            return super().handle(method, path, body)
+
+    run_case(recipe, case, target="fake", fake_engine=RecordingRerankEngine())
+    [body] = recorded
+    assert body["query"] != raw_fold, "the wire must carry the fit's cut query, not the raw fold"
+    assert body["query"] == cut_query
+
+
 def test_the_rerank_fit_measures_the_clients_own_fold() -> None:
     from rcp_ndcg_test.conformance import _fold_query
 
@@ -341,6 +375,33 @@ def test_a_malformed_case_fails_the_plugins_collection(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Media: a case with media is a declared skip on every role, never a silent empty-text send
 # ---------------------------------------------------------------------------
+
+
+def test_a_kind_none_case_with_media_skips_too() -> None:
+    """A path-exercise case is a skip, never a silent empty-text send, when it carries media."""
+    from rcp_ndcg_test.cases import CaseDocument
+
+    case = filled_case()
+    documents = list(case.inputs.documents)
+    documents[0] = CaseDocument(id=documents[0].id, image="media/pixel.png")
+    inputs = case.inputs.model_copy(update={"documents": documents})
+    media_case = case.model_copy(
+        update={
+            "inputs": inputs,
+            "expected": case.expected.model_copy(update={"kind": "none", "values": None, "tolerance": None}),
+        }
+    )
+    calls: list[str] = []
+
+    class CountingEngine(FakeEmbedEngine):
+        def handle(self, method: str, path: str, body: object):
+            calls.append(path)
+            return super().handle(method, path, body)
+
+    result = run_case(packaged_recipe(), media_case, target="fake", fake_engine=CountingEngine())
+    assert result.skipped is not None and "text only" in result.skipped
+    assert not result.passed and not result.compared
+    assert calls == [], "a media case must not reach the engine on the kind-none path either"
 
 
 def test_an_image_case_skips_on_the_rerank_route_too() -> None:

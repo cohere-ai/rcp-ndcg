@@ -35,13 +35,13 @@ released together.
   case's own inputs, the expected shapes and tolerances) and — with the recipe — the role/modality/
   template-shape rules, the strata grid coverage per recipe, the mixed-length batches' differing measured
   lengths, and the long inputs' measured token lengths against `client.max_tokens` with the product
-  tokenizer. The runner
+  tokenizer (a `short` case may not measure over it either). The runner
   sends every case through the product's role clients built from the recipe's `client` block (never raw
   HTTP, never a copy of the client), against a live engine (`target="engine"`) or a recipe-level fake
   (`target="fake"`), and returns a typed report (`CaseResult`: compared, passed, skipped with reason —
   `values: null` is a skip, never a pass). Public names: `Case`, `CaseSource`, `CaseStrata`, `CaseQuery`,
   `CaseDocument`, `CaseInputs`, `CaseTolerance`, `CaseExpected`, `CaseBundle`, `load_case`, `load_cases`,
-  `default_cases_root`, `CaseResult`, `ConformanceReport`, `run_case`, `run_suite`, `FakeEngine`,
+  `default_cases_root`, `CaseResult`, `ConformanceReport`, `Target`, `run_case`, `run_suite`, `FakeEngine`,
   `FakeReply`, `FakeEmbedEngine`, `fake_engine_for`, `fake_http_transport`, `register_fake_engine`,
   `unregister_fake_engine`, `registered_fake_engines`, `fixture_path`, `package_tokenizer_path`,
   `FIXTURE_RECIPE_ID`, `CaseRun`, `conformance_params`, `CaseError`, `ConformanceError`. The fake-engine

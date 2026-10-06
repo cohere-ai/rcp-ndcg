@@ -207,7 +207,9 @@ rcp-ndcg-core = { workspace = true }
 # The unpublished test package (never on PyPI): the repository's CI, the product's pytest suite and the
 # GPU waves reach it through the dev dependency group below. It is a workspace member; its dependency on
 # the serving-recipes harness -- deliberately outside the workspace (see its README) -- resolves from the
-# checkout by path, so the root environment installs the same tree the release builds.
+# checkout by an editable path source, so the root environment installs the same tree the release builds
+# (a workspace dependency of the harness itself would drag its engine-image position into the lock; the
+# one path entry carries no torch).
 rcp-ndcg-test = { workspace = true }
 rcp-ndcg-vllm = { path = "packages/rcp-ndcg-vllm", editable = true }
 

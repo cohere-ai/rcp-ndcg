@@ -262,6 +262,9 @@ def _run_or_skip(resolved: _Resolved, case: Case) -> CaseResult:
     """The case's path: the early skips, then the send and the comparison."""
     expected = case.expected
     if expected.kind == "none":
+        blocked = _media_skip(resolved.recipe, case)
+        if blocked is not None:
+            return CaseResult(case_id=case.id, compared=False, passed=False, skipped=blocked, detail=None)
         _send(resolved, case)  # the path is the exercise; nothing is compared
         return CaseResult(
             case_id=case.id,
@@ -424,9 +427,12 @@ def _fit_pair(recipe: Recipe, query: str, case: Case) -> tuple[str, list[str], b
         ids=[document.id for document in case.inputs.documents],
         instruction=case.inputs.instruction,
     )
-    documents = [document for _, document in result.contents]
+    # The product's pair fit settles the query span first (to its declared share) and cuts the document
+    # to the remainder; queries are never chunked, so every pair's query span is the same cut text.
     query_cut = any(query_text != folded for query_text, _ in result.contents)
-    return folded, documents, query_cut
+    cut_query = result.contents[0][0] if query_cut else folded
+    documents = [document for _, document in result.contents]
+    return cut_query, documents, query_cut
 
 
 def _fitter(recipe: Recipe) -> tuple[Any, Any]:
