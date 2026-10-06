@@ -18,9 +18,12 @@ paths send their requests through one set of names:
   served Cohere-shaped wire and its hosted `cohere` and `voyage` profiles, and the multi-vector role's
   `vllm_pooling`;
 * :class:`Sender` and :class:`Transport` -- the transport every role sends through: replicas, retries, parking,
-  the sync bridge, usage (:mod:`rcp_ndcg.inference.transport`);
-* the role clients -- the content decisions above the wire: :class:`EmbeddingClient`, :class:`RerankClient`
-  and :class:`PoolingClient` (:mod:`rcp_ndcg.inference.clients`);
+  the sync bridge, the credentials (the adapter profiles' key variables and headers, R6), usage
+  (:mod:`rcp_ndcg.inference.transport`);
+* the role clients -- the content decisions above the wire: the one base
+  :class:`RoleClient` (:mod:`rcp_ndcg.inference.clients._base`) and the role clients
+  :class:`EmbeddingClient`, :class:`RerankClient` and :class:`PoolingClient`
+  (:mod:`rcp_ndcg.inference.clients`);
 * the role endpoint configs -- :class:`EmbeddingEndpoint`, :class:`PoolingEndpoint`, :class:`RerankEndpoint`
   (:mod:`rcp_ndcg.inference.config`);
 * :data:`FAKE_SCHEME` -- the offline fakes' URL scheme, and :func:`register_fake_route` for their extra routes
@@ -29,9 +32,12 @@ paths send their requests through one set of names:
 
 from rcp_ndcg.inference.adapters.base import (
     ADAPTER_ENTRY_POINTS,
+    ENGINE_ADAPTER_ROLES,
     ROLES,
     Adapter,
     AdapterRole,
+    adapter_roles_of,
+    check_engine_api,
     get_adapter,
     known_adapters,
     register_adapter,
@@ -39,11 +45,11 @@ from rcp_ndcg.inference.adapters.base import (
 from rcp_ndcg.inference.adapters.chat import OpenAIChat
 from rcp_ndcg.inference.adapters.pooling import VllmPooling
 from rcp_ndcg.inference.adapters.rerank import CohereRerankAdapter, RerankAdapter, VoyageRerankAdapter
-from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient, RerankClient
+from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient, RerankClient, RoleClient
 from rcp_ndcg.inference.config import SELF_HOSTED_APIS, EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.fake import FAKE_SCHEME, FakeEndpoint, register_fake_route
-from rcp_ndcg.inference.transport import Sender, Transport
+from rcp_ndcg.inference.transport import AuthProfile, Sender, Transport
 from rcp_ndcg.inference.types import (
     Call,
     Completion,
@@ -63,6 +69,8 @@ from rcp_ndcg.inference.types import (
 
 __all__ = [
     "ADAPTER_ENTRY_POINTS",
+    "ENGINE_ADAPTER_ROLES",
+    "AuthProfile",
     "Adapter",
     "AdapterRole",
     "SELF_HOSTED_APIS",
@@ -90,12 +98,15 @@ __all__ = [
     "RerankRequest",
     "RerankResult",
     "Reply",
+    "RoleClient",
     "Sender",
     "TokenCount",
     "Transport",
     "Usage",
     "VllmPooling",
     "VoyageRerankAdapter",
+    "adapter_roles_of",
+    "check_engine_api",
     "get_adapter",
     "known_adapters",
     "l2_normalize",

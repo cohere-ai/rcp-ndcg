@@ -5409,6 +5409,13 @@
         "defined_in": "rcp_ndcg.data.resolution",
         "extra": "forbid",
         "fields": {
+          "engine_video_pinning": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
           "max_duration_s": {
             "alias": null,
             "default": null,
@@ -8734,6 +8741,34 @@
           "multi_vector"
         ]
       },
+      "AuthProfile": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.inference.transport",
+        "init": [
+          {
+            "annotation": "tuple[str, ...]",
+            "default": [],
+            "kind": "positional_or_keyword",
+            "name": "variables"
+          },
+          {
+            "annotation": "bool",
+            "default": false,
+            "kind": "positional_or_keyword",
+            "name": "required"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "header"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
       "Call": {
         "bases": [],
         "defined_in": "rcp_ndcg.inference.types",
@@ -8867,6 +8902,15 @@
           "has_media": "property"
         }
       },
+      "ENGINE_ADAPTER_ROLES": {
+        "keys": [
+          "encoder",
+          "judge",
+          "reranker"
+        ],
+        "kind": "constant",
+        "type": "dict"
+      },
       "EmbedRequest": {
         "bases": [],
         "defined_in": "rcp_ndcg.inference.types",
@@ -8896,7 +8940,9 @@
         "kind": "class"
       },
       "EmbeddingClient": {
-        "bases": [],
+        "bases": [
+          "rcp_ndcg.inference.clients._base.RoleClient"
+        ],
         "defined_in": "rcp_ndcg.inference.clients.embed",
         "init": [
           {
@@ -8910,6 +8956,18 @@
             "default": null,
             "kind": "keyword_only",
             "name": "sender"
+          },
+          {
+            "annotation": "TextTruncationCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "census"
+          },
+          {
+            "annotation": "MediaCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "media_census"
           },
           {
             "returns": "None"
@@ -8985,7 +9043,7 @@
       },
       "EmbeddingEndpoint": {
         "bases": [
-          "rcp_ndcg.inference.endpoint.Endpoint"
+          "rcp_ndcg.inference.config._MediaEndpoint"
         ],
         "defined_in": "rcp_ndcg.inference.config",
         "extra": "forbid",
@@ -9081,6 +9139,27 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -9094,6 +9173,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -9164,6 +9250,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -9689,7 +9782,9 @@
         "kind": "class"
       },
       "PoolingClient": {
-        "bases": [],
+        "bases": [
+          "rcp_ndcg.inference.clients._base.RoleClient"
+        ],
         "defined_in": "rcp_ndcg.inference.clients.pool",
         "init": [
           {
@@ -9703,6 +9798,18 @@
             "default": null,
             "kind": "keyword_only",
             "name": "sender"
+          },
+          {
+            "annotation": "TextTruncationCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "census"
+          },
+          {
+            "annotation": "MediaCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "media_census"
           },
           {
             "returns": "None"
@@ -9742,7 +9849,6 @@
               }
             ]
           },
-          "config": "property",
           "encode": {
             "kind": "method",
             "signature": [
@@ -9772,6 +9878,20 @@
               },
               {
                 "returns": "Embeddings"
+              }
+            ]
+          },
+          "probe": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "Any"
               }
             ]
           }
@@ -9889,6 +10009,27 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -9902,6 +10043,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -9972,6 +10120,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -10047,7 +10202,9 @@
         "kind": "class"
       },
       "RerankClient": {
-        "bases": [],
+        "bases": [
+          "rcp_ndcg.inference.clients._base.RoleClient"
+        ],
         "defined_in": "rcp_ndcg.inference.clients.rerank",
         "init": [
           {
@@ -10061,6 +10218,18 @@
             "default": null,
             "kind": "keyword_only",
             "name": "sender"
+          },
+          {
+            "annotation": "TextTruncationCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "census"
+          },
+          {
+            "annotation": "MediaCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "media_census"
           },
           {
             "returns": "None"
@@ -10126,7 +10295,7 @@
               }
             ]
           },
-          "close": {
+          "probe": {
             "kind": "method",
             "signature": [
               {
@@ -10136,7 +10305,7 @@
                 "name": "self"
               },
               {
-                "returns": "None"
+                "returns": "Any"
               }
             ]
           },
@@ -10202,7 +10371,7 @@
       },
       "RerankEndpoint": {
         "bases": [
-          "rcp_ndcg.inference.endpoint.Endpoint"
+          "rcp_ndcg.inference.config._MediaEndpoint"
         ],
         "defined_in": "rcp_ndcg.inference.config",
         "extra": "forbid",
@@ -10284,6 +10453,20 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
           "instruction": {
             "alias": null,
             "default": "fold",
@@ -10298,6 +10481,13 @@
             "required": false,
             "type": "bool"
           },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -10311,6 +10501,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -10381,6 +10578,13 @@
             "frozen": false,
             "required": false,
             "type": "bool | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -10460,6 +10664,100 @@
               },
               {
                 "returns": "RerankResult"
+              }
+            ]
+          }
+        }
+      },
+      "RoleClient": {
+        "bases": [
+          "typing.Generic"
+        ],
+        "defined_in": "rcp_ndcg.inference.clients._base",
+        "init": [
+          {
+            "annotation": "C",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "config"
+          },
+          {
+            "annotation": "Sender | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "sender"
+          },
+          {
+            "annotation": "TextTruncationCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "census"
+          },
+          {
+            "annotation": "MediaCensus | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "media_census"
+          },
+          {
+            "returns": null
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "aclose": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "check_engine_media": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "close": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "gather": {
+            "kind": "staticmethod",
+            "signature": [
+              {
+                "annotation": "list[Coroutine[Any, Any, T]]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "tasks"
+              },
+              {
+                "returns": "list[T]"
               }
             ]
           }
@@ -10561,6 +10859,12 @@
             "default": "<required>",
             "kind": "positional_or_keyword",
             "name": "endpoint"
+          },
+          {
+            "annotation": "AuthProfile | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "auth"
           },
           {
             "annotation": "httpx.AsyncBaseTransport | None",
@@ -10700,6 +11004,26 @@
               },
               {
                 "returns": "list[Reply]"
+              }
+            ]
+          },
+          "set_auth": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "AuthProfile",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "auth"
+              },
+              {
+                "returns": "None"
               }
             ]
           },
@@ -10875,6 +11199,48 @@
           }
         ],
         "kind": "class"
+      },
+      "adapter_roles_of": {
+        "defined_in": "rcp_ndcg.inference.adapters.base",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "EngineRole",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "engine_role"
+          },
+          {
+            "returns": "frozenset[AdapterRole]"
+          }
+        ]
+      },
+      "check_engine_api": {
+        "defined_in": "rcp_ndcg.inference.adapters.base",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | None",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "api"
+          },
+          {
+            "annotation": "EngineRole",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "engine_role"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "where"
+          },
+          {
+            "returns": "None"
+          }
+        ]
       },
       "get_adapter": {
         "defined_in": "rcp_ndcg.inference.adapters.base",
@@ -12322,6 +12688,27 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -12335,6 +12722,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -12405,6 +12799,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -12501,6 +12902,20 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
           "instruction": {
             "alias": null,
             "default": "fold",
@@ -12515,6 +12930,13 @@
             "required": false,
             "type": "bool"
           },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -12528,6 +12950,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -12598,6 +13027,13 @@
             "frozen": false,
             "required": false,
             "type": "bool | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -12902,6 +13338,27 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -12915,6 +13372,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -12985,6 +13449,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -13174,6 +13645,27 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -13187,6 +13679,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -13257,6 +13756,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -13382,6 +13888,27 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -13395,6 +13922,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -13465,6 +13999,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -13562,6 +14103,20 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
           "instruction": {
             "alias": null,
             "default": "fold",
@@ -13576,6 +14131,13 @@
             "required": false,
             "type": "bool"
           },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -13589,6 +14151,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -13659,6 +14228,13 @@
             "frozen": false,
             "required": false,
             "type": "bool | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -13778,6 +14354,27 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -13791,6 +14388,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -13861,6 +14465,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -13986,6 +14597,27 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -13999,6 +14631,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -14069,6 +14708,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -14166,6 +14812,20 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
           "instruction": {
             "alias": null,
             "default": "fold",
@@ -14180,6 +14840,13 @@
             "required": false,
             "type": "bool"
           },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -14193,6 +14860,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -14263,6 +14937,13 @@
             "frozen": false,
             "required": false,
             "type": "bool | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -14374,6 +15055,27 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -14387,6 +15089,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -14457,6 +15166,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -14553,6 +15269,20 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "image_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.ImagePolicy | None"
+          },
+          "image_processor": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['qwen2_vl', 'qwen2_5_vl', 'qwen3_vl'] | None"
+          },
           "instruction": {
             "alias": null,
             "default": "fold",
@@ -14567,6 +15297,13 @@
             "required": false,
             "type": "bool"
           },
+          "max_images": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
           "max_retries": {
             "alias": null,
             "default": 2,
@@ -14580,6 +15317,13 @@
             "frozen": false,
             "required": false,
             "type": "int | None"
+          },
+          "max_videos": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           },
           "model": {
             "alias": null,
@@ -14650,6 +15394,13 @@
             "frozen": false,
             "required": false,
             "type": "bool | None"
+          },
+          "video_policy": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg.data.resolution.VideoPolicy | None"
           },
           "wait_on_outage_s": {
             "alias": null,

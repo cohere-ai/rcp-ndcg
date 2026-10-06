@@ -516,17 +516,22 @@ class Pipeline:
         """``endpoint`` with the role's engine URLs (and outage wait) applied, when the overlay names the role.
 
         The overlay is runtime only: it is never written into ``run.yaml`` and never reaches an identity, since
-        ``base_url`` and ``wait_on_outage_s`` are RUNTIME fields. The config is rebuilt through its model, so the
-        overlaid config passes every validator a configured one does (a URL is normalised, a fake:// replica
-        list is refused), with the typed error for what a configured config would refuse.
+        ``base_url`` and ``wait_on_outage_s`` are RUNTIME fields. This is where the runners resolve an engine
+        onto a config, so a config whose ``api`` selects an adapter of a different engine role is refused here
+        (through the one written mapping in :func:`rcp_ndcg.inference.adapters.base.check_engine_api`). The config
+        is then rebuilt through its model, so the overlaid config passes every validator a configured one does (a
+        URL is normalised, a fake:// replica list is refused), with the typed error for what a configured config
+        would refuse.
         """
         from pydantic import ValidationError
 
+        from rcp_ndcg.inference.adapters.base import check_engine_api
         from rcp_ndcg.support.config import config_error
 
         engines = self._engines.get(role)
         if engines is None:
             return endpoint
+        check_engine_api(getattr(endpoint, "api", None), engine_role=role, where=f"the {role} engine overlay")
         update: dict[str, Any] = {"base_url": engines.urls[0] if len(engines.urls) == 1 else list(engines.urls)}
         if engines.wait_on_outage_s is not None:
             update["wait_on_outage_s"] = engines.wait_on_outage_s

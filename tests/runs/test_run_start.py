@@ -10,7 +10,10 @@ import yaml
 from click.testing import CliRunner
 
 from rcp_ndcg.cli.main import cli
+from tests.conftest import SESSION_TOKENIZER
 from tests.runs.conftest import tiny_config
+
+_SERVED_BUDGET = {"tokenizer": str(SESSION_TOKENIZER), "max_tokens": 8192}
 
 
 def _command(name: str, *args: str) -> dict:
@@ -308,7 +311,7 @@ class TestRunnersAndServe:
         fields = {
             "candidates": {
                 "from": "retrieval",
-                "retrieval": {"kind": "dense", "encoder": {"api": "openai_embeddings", "model": "e"}},
+                "retrieval": {"kind": "dense", "encoder": {"api": "openai_embeddings", "model": "e", **_SERVED_BUDGET}},
             },
             "steps": ["retrieve"],
             "serve": {"encoder": {"command": ["vllm", "serve", "e", "--host", "0.0.0.0", "--port", "8000"]}},
@@ -340,7 +343,10 @@ class TestRunnersAndServe:
             "judge": {"base_url": "http://unused/v1", "model": "m"},
             "candidates": {
                 "from": "retrieval",
-                "retrieval": {"kind": "dense", "encoder": {"api": "openai_embeddings", "model": "embedder"}},
+                "retrieval": {
+                    "kind": "dense",
+                    "encoder": {"api": "openai_embeddings", "model": "embedder", **_SERVED_BUDGET},
+                },
             },
             "steps": ["retrieve", "tournament", "rubric", "calibrate", "evaluate"],
             "serve": {

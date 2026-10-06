@@ -22,9 +22,9 @@ from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.errors import CapabilityError, ConfigError, DataError
 from rcp_ndcg.inference.adapters.chat import build_messages, media_counts
 from rcp_ndcg.llm import RubricSchedule, judge, load_prompt
-from rcp_ndcg.llm._templates import collect_media, split_media, wrap_xml
+from rcp_ndcg.llm._templates import MEDIA_MARKER, collect_media, split_media, wrap_xml
 from rcp_ndcg.llm.client import Completion, CompletionInput
-from rcp_ndcg.llm.judging import prompt_overhead_tokens, window_tokens
+from rcp_ndcg.llm.judging import media_marker_tokens, prompt_overhead_tokens, window_tokens
 from rcp_ndcg.testing import FakeJudge
 
 
@@ -155,7 +155,7 @@ class TestJudgingPages:
     def test_the_image_tokens_are_charged_against_the_windows_text_budget(
         self, tmp_path: Path, pages, word_tokenizer_file: Path
     ) -> None:
-        """A page with a long caption: the caption gets the context left after the window's image tokens."""
+        """A page with a long caption: the caption gets the context left after the window's media charge."""
         policy = ImagePolicy(min_px=448 * 448, max_px=448 * 448, processor="qwen3_vl")
         contents = [
             Content.from_parts([TextPart(text=f"caption {i} " + "x " * 5_000), ImagePart(ref=ref)])
@@ -175,15 +175,55 @@ class TestJudgingPages:
         preprocessing = Preprocessing(image=declared)
         judge(rows, None, fake, stage="rubric", out=tmp_path, schedule=SMALL, preprocessing=preprocessing)
 
-        media = content_media_tokens(contents[0], policy).tokens
-        assert media > 0
         words = load_tokenizer(str(word_tokenizer_file))
+        media = content_media_tokens(contents[0], policy).tokens + media_marker_tokens(words)
+        assert media > 0
         overhead = prompt_overhead_tokens(load_prompt("rubric_vision"), "rubric", "q", 2, words)
         budget = window_tokens(fake.config, 2, overhead_tokens=overhead, media_tokens_per_doc=media)
         assert budget is not None and budget < window_tokens(fake.config, 2, overhead_tokens=overhead)
         rows = [json.loads(line) for line in (tmp_path / "preprocessing.jsonl").read_text().splitlines()]
         cuts = [row for row in rows if row["mechanism"] == "window_budget"]
         assert cuts and all(row["kept_tokens"] == budget for row in cuts)
+
+    def test_the_marker_is_measured_from_the_template_not_guessed(self, word_tokenizer_file: Path) -> None:
+        """The window budget charges each media part the template's marker; the count is the judge
+        tokenizer's own, of the marker as the stage's template renders it."""
+        words = load_tokenizer(str(word_tokenizer_file))
+        assert media_marker_tokens(words) == words.count(MEDIA_MARKER.format(index=0)) > 0
+
+    def test_a_multi_image_window_that_used_to_overflow_is_refused(
+        self, tmp_path: Path, pages, word_tokenizer_file: Path
+    ) -> None:
+        """The old accounting charged patches only, so a window of image-heavy documents was sized a text
+        budget that, with each image's vision start/end and its media marker, overflowed the context
+        mid-pass. The pass now refuses before anything is spent."""
+        policy = ImagePolicy(min_px=65536, max_px=65536, processor="qwen3_vl")
+        contents = [Content.from_parts([ImagePart(ref=ref)]) for ref in pages]
+        rows = [RankingExample(query_id="q1", query="q", doc_ids=[f"p{i}" for i in range(4)], contents=contents)]
+        fake = _Recording()
+        words = load_tokenizer(str(word_tokenizer_file))
+        overhead = prompt_overhead_tokens(load_prompt("rubric_vision"), "rubric", "q", 2, words)
+        patches = policy.image_tokens(16, 16)
+        per_doc_old = patches  # the pre-fix charge: patches only
+        per_doc_true = patches + 2 + media_marker_tokens(words)  # + vision start/end + the marker
+        # a context that the old accounting called a fit and the true accounting cannot hold
+        slack = (per_doc_true - per_doc_old) * 2
+        fake.config = fake.config.model_copy(
+            update={
+                "max_images": 2,
+                "context_tokens": overhead + 2 * per_doc_old + slack // 2,
+                "image_processor": "qwen3_vl",
+                "tokenizer": str(word_tokenizer_file),
+            }
+        )
+        declared = Preprocessing(image=ImagePolicy(min_px=65536, max_px=65536))
+
+        assert window_tokens(fake.config, 2, overhead_tokens=overhead, media_tokens_per_doc=per_doc_old) is not None
+        with pytest.raises(CapabilityError, match="does not fit"):
+            window_tokens(fake.config, 2, overhead_tokens=overhead, media_tokens_per_doc=per_doc_true)
+        with pytest.raises(CapabilityError, match="does not fit"):
+            judge(rows, None, fake, stage="rubric", out=tmp_path, schedule=SMALL, preprocessing=declared)
+        assert fake.usage.requests == 0
 
     def test_pages_are_sent_as_the_judges_processor_would_size_them_and_recorded(self, tmp_path: Path) -> None:
         pages = [_sized_png(tmp_path / f"big{i}.png", (1700, 2200), i) for i in range(4)]

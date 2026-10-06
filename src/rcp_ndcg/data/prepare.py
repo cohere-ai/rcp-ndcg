@@ -42,6 +42,7 @@ import hashlib
 import io
 import json
 import os
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
@@ -49,7 +50,14 @@ from typing import Any, Literal, NamedTuple
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, VideoPart
 
 from rcp_ndcg.data.media import decode_rgb, default_resolver
-from rcp_ndcg.data.resolution import ImagePolicy, VideoPolicy, sample_video_part
+from rcp_ndcg.data.resolution import (
+    ImagePolicy,
+    MediaTokenCount,
+    VideoPolicy,
+    content_media_tokens,
+    sample_video_part,
+)
+from rcp_ndcg.errors import DataError
 from rcp_ndcg.support.logging import get_logger
 
 logger = get_logger(__name__)
@@ -90,8 +98,12 @@ class PreparedMedia(NamedTuple):
     processor: str | None
     resized: bool
 
-    def as_row(self, *, corpus: str, doc_id: str) -> dict[str, Any]:
-        """The census row: what was stored, what was sent, and how."""
+    def as_row(self, *, corpus: str, doc_id: str, dropped: bool = False) -> dict[str, Any]:
+        """The census row: what was stored, what was sent, and how.
+
+        ``dropped=True`` records an item a request's text budget refused (never sent): the row holds the
+        prepared state it was refused at, so a refusal is never silent.
+        """
         return {
             "mechanism": MEDIA_MECHANISM,
             "corpus": corpus,
@@ -108,6 +120,7 @@ class PreparedMedia(NamedTuple):
             "processor": self.processor,
             "resized": self.resized,
             "sampling": "engine" if self.kind == "video" else "client",
+            "dropped": dropped,
         }
 
 
@@ -116,6 +129,147 @@ class PreparedContent(NamedTuple):
 
     content: Content
     media: list[PreparedMedia]
+
+
+class PreparedRequest(NamedTuple):
+    """One retrieval request's contents as the endpoint is sent them, with its exact media token counts.
+
+    ``tokens`` is what the request's media costs the prompt, as the engine counts it -- each image and
+    sampled frame its vision block (:data:`~rcp_ndcg.data.resolution.VISION_WRAPPER_TOKENS` plus the patch
+    tokens), a container its temporal grid -- so the role's text budget can subtract it and never cut it.
+    """
+
+    contents: list[Content]
+    """The request's contents, in order, with every image and frame prepared (:func:`prepare_content`)."""
+
+    media: list[PreparedMedia]
+    """Every prepared item, across all contents, in request order."""
+
+    tokens: MediaTokenCount
+    """The request's media token counts: exact where the sizes were recorded, a bound (counted in
+    ``bounded``) where they were not."""
+
+
+class MediaFit(NamedTuple):
+    """What survives a request's text budget: the media to send, and what the budget dropped.
+
+    The rule (:func:`fit_media_to_budget`) keeps every vision block whole; what it sends is exactly what the
+    engine will count.
+    """
+
+    media: list[PreparedMedia]
+    """The items to send, in part order, images possibly shrunk to the policy's minimum."""
+
+    tokens: int
+    """The exact token count of :attr:`media` as the engine counts it (unrecorded sizes are counted at their
+    bound, so the count errs high)."""
+
+    dropped: list[PreparedMedia]
+    """The items the budget refused, in drop order (most expensive first); record them in the census."""
+
+    decisions: tuple[MediaRef | None, ...] = ()
+    """Per original item (in part order), the sent reference -- the kept item's (possibly shrunk)
+    ``sent`` -- or ``None`` when the item was dropped. Positional, so identical items (one page prepared
+    twice) are decided per occurrence, never per URI."""
+
+    @property
+    def dropped_positions(self) -> tuple[int, ...]:
+        """The original indices of the dropped items, ascending (the census's doc ids)."""
+        return tuple(index for index, decision in enumerate(self.decisions) if decision is None)
+
+
+def fit_media_to_budget(
+    media: Sequence[PreparedMedia], *, image: ImagePolicy, video: VideoPolicy | None, text_budget_tokens: int
+) -> MediaFit:
+    """What to send of a request's media when media alone exceed its text budget.
+
+    A vision block is atomic -- the engine either sees a whole media item or none of it, never a cut
+    through one: the vision start and end markers wrap the patch run, and a prompt cut between them
+    would corrupt or orphan the block.
+
+    The declared rule, in order, and never anything else:
+
+    1. Media that fit the budget whole go whole.
+    2. Otherwise every image and frame shrinks to the image policy's minimum pixel budget
+       (``min_px`` as both bounds) and is re-prepared, kept only if the shrunk size is one the declared
+       budget itself keeps (:meth:`~rcp_ndcg.data.resolution.ImagePolicy.target_size` of the sent size
+       returns it) -- a container cannot shrink (the engine decodes it whole), and a minimum whose floored
+       size is not a fixed point of the engine's resize, or not one the declared budget keeps, is refused,
+       and the item cannot shrink.
+    3. What still does not fit is dropped, most expensive first (ties keep the earlier part), until the
+       remaining media fit. Items are dropped whole: tokens are never cut inside a vision block.
+
+    Args:
+        media: The request's prepared media (:func:`prepare_content` or :func:`prepare_request` returns them).
+        image: The effective image policy, whose token counts the decision uses and whose minimum the
+            shrink step targets.
+        video: The video policy, for a container's temporal-grid count.
+        text_budget_tokens: What the request's text budget leaves for media alone, in tokens.
+
+    Returns:
+        :class:`MediaFit`: the items to send with their exact token count, and the drops -- record them in
+        the census (:meth:`MediaCensus.record` with ``dropped=True``), so a refusal is never silent.
+
+    Raises:
+        ConfigError: media whose token cost cannot be counted (a native policy, or no processor family) --
+            a budget is never decided on a guess.
+    """
+
+    def count(items: Sequence[PreparedMedia]) -> int:
+        return content_media_tokens(_content(items), image, video).tokens
+
+    items = list(media)
+    if not items:
+        return MediaFit([], 0, [], tuple())
+    tokens = count(items)
+    if tokens <= text_budget_tokens:
+        return MediaFit(items, tokens, [], tuple(item.sent for item in items))
+    if image.resizes:
+        assert image.min_px is not None and image.processor is not None
+        minimum = ImagePolicy(min_px=image.min_px, max_px=image.min_px, processor=image.processor)
+        shrunk: list[PreparedMedia] = []
+        for item in items:
+            if item.kind == "video":
+                shrunk.append(item)  # the engine decodes the container; nothing client-side to shrink
+                continue
+            try:
+                candidate = prepare_image(item.source, minimum, kind=item.kind)
+            except DataError:
+                shrunk.append(item)  # no fixed point at the floor; the drop step decides instead
+                continue
+            sent_height, sent_width = candidate.sent.height or 0, candidate.sent.width or 0
+            if image.target_size(sent_height, sent_width) == (sent_height, sent_width):
+                shrunk.append(candidate)
+            else:
+                # flooring at the minimum landed below the declared budget, which would scale the image
+                # back up: the sent size would leave the declared instrument, so the item cannot shrink
+                shrunk.append(item)
+        tokens = count(shrunk)
+        if tokens <= text_budget_tokens:
+            return MediaFit(shrunk, tokens, [], tuple(item.sent for item in shrunk))
+        items = shrunk
+    costs = [count([item]) for item in items]
+    keep = list(range(len(items)))
+    dropped: list[PreparedMedia] = []
+    # drop whole items, most expensive first (ties keep the earlier part), until the rest fit
+    while keep and sum(costs[index] for index in keep) > text_budget_tokens:
+        dearest = max(keep, key=lambda index: (costs[index], index))
+        keep.remove(dearest)
+        dropped.append(items[dearest])
+    kept = [items[index] for index in keep]
+    decisions = tuple(items[index].sent if index in keep else None for index in range(len(items)))
+    return MediaFit(kept, sum(costs[index] for index in keep), dropped, decisions)
+
+
+def _content(items: Sequence[PreparedMedia]) -> Content:
+    """The content whose parts are exactly ``items``, for token counting."""
+    parts: list[Any] = []
+    for item in items:
+        if item.kind == "video":
+            parts.append(VideoPart(ref=item.sent))
+        else:
+            parts.append(ImagePart(ref=item.sent))
+    return Content.from_parts(parts)
 
 
 def is_prepared(ref: MediaRef) -> bool:
@@ -215,6 +369,130 @@ def prepare_content(content: Content, image: ImagePolicy | None, video: VideoPol
     return PreparedContent(Content.from_parts(parts), media)
 
 
+def prepare_request(
+    contents: Sequence[Content], image: ImagePolicy | None, video: VideoPolicy | None
+) -> PreparedRequest:
+    """One retrieval request's contents as the endpoint is sent them, with the request's exact media token
+    counts.
+
+    The one preparation call the retrieval role clients make (an embedding item; a rerank pair's query and
+    documents): every content is prepared through :func:`prepare_content` -- the judge's own path, so the
+    frames sampled and the pixels sent are the same instrument the judge sees -- and the media token counts
+    are summed over the request (:func:`~rcp_ndcg.data.resolution.content_media_tokens`, what the engine adds
+    to the prompt for the media). The role's text budget subtracts ``tokens.tokens``; it never cuts the media:
+    when media alone exceed the budget, :func:`fit_media_to_budget` decides what is sent instead.
+
+    Args:
+        contents: The request's contents, in order.
+        image: The effective image policy (the role config's, under its ``image_processor``), or ``None``.
+        video: The video policy, or ``None``.
+
+    Returns:
+        :class:`PreparedRequest`: the prepared contents, every prepared item, and the request's media token
+        counts (exact where the references carry sizes; a bound, counted in ``bounded``, where they do not).
+
+    Raises:
+        VideoPolicyError: the video policy refuses a clip.
+        MediaError: an image cannot be fetched or decoded.
+        ConfigError: media whose token cost cannot be counted (a native policy, or no processor family).
+    """
+    prepared = [prepare_content(content, image, video) for content in contents]
+    media = [item for one in prepared for item in one.media]
+    tokens = 0
+    bounded = 0
+    for one in prepared:
+        count = content_media_tokens(one.content, image or ImagePolicy.native(), video)
+        tokens, bounded = tokens + count.tokens, bounded + count.bounded
+    return PreparedRequest(
+        contents=[one.content for one in prepared], media=media, tokens=MediaTokenCount(tokens, bounded)
+    )
+
+
+def media_policies_for(config: Any) -> tuple[ImagePolicy | None, VideoPolicy | None]:
+    """The effective media policies of a role config: the declared image policy under its processor family.
+
+    The one rule every role client applies (``image_policy =
+    config.image_policy.for_processor(config.image_processor)`` when both are declared); a policy without
+    either family cannot be counted, and :func:`prepare_request` (through
+    :func:`~rcp_ndcg.data.resolution.content_media_tokens`) refuses it rather than guessing.
+
+    Args:
+        config: A role config with the media fields (:class:`~rcp_ndcg.inference.config._MediaEndpoint`'s).
+
+    Returns:
+        ``(image_policy, video_policy)`` as the preparation and the token counting use them.
+    """
+    image = getattr(config, "image_policy", None)
+    processor = getattr(config, "image_processor", None)
+    if image is not None and processor is not None:
+        image = image.for_processor(processor)
+    return image, getattr(config, "video_policy", None)
+
+
+def apply_media_fit(contents: Sequence[Content], fit: MediaFit) -> list[Content]:
+    """The contents carrying exactly the media :func:`fit_media_to_budget` decided to send.
+
+    A vision block is atomic: the fit shrinks whole items to the policy minimum and drops whole items (most
+    expensive first, every drop recorded by the caller). This applies its positional decisions
+    (:attr:`MediaFit.decisions` -- per original item in part order, the sent reference or ``None``) to the
+    prepared contents: a kept item's part carries the decision's reference, a dropped item's part leaves the
+    content. A content that loses every part it had becomes the empty content, which the caller's
+    ``empty_doc`` policy then handles like any empty document.
+
+    Args:
+        contents: The prepared contents (:func:`prepare_request` returned them).
+        fit: The budget's decision (:func:`fit_media_to_budget` returned it), whose decisions are positional
+            over ``PreparedRequest.media``.
+
+    Returns:
+        One content per input, in order, with the sent media in place and the dropped media removed.
+
+    Raises:
+        DataError: the decisions cannot be matched to the prepared parts (a different request's fit).
+    """
+    kept: list[Content] = []
+    applied = 0
+    for content in contents:
+        parts: list[Any] = []
+        for part in content.parts:
+            if not part.media_refs():
+                parts.append(part)
+                continue
+            if isinstance(part, VideoPart):
+                if part.frames:
+                    kept_frames: list[Any] = []
+                    for _ in part.frames:
+                        decision = fit.decisions[applied]
+                        applied += 1
+                        if decision is not None:
+                            kept_frames.append(decision)
+                    if kept_frames:
+                        parts.append(part.model_copy(update={"frames": kept_frames}))
+                    continue
+                # A ref-only container (``wire: video_url``): one prepared item, sent or dropped whole.
+                decision = fit.decisions[applied]
+                applied += 1
+                if decision is not None:
+                    parts.append(part.model_copy(update={"ref": decision}))
+                continue
+            if isinstance(part, ImagePart):
+                decision = fit.decisions[applied]
+                applied += 1
+                if decision is not None:
+                    parts.append(part.model_copy(update={"ref": decision}))
+                continue
+            parts.append(part)
+        kept.append(Content.from_parts(parts))
+    if applied != len(fit.decisions):
+        raise DataError(
+            f"applied {applied} media decision(s) for {len(fit.decisions)} prepared item(s); the parts of "
+            "these contents do not carry the media :func:`prepare_request` prepared for them",
+            hint="apply_media_fit is called with the media :func:`prepare_request` prepared for the same "
+            "contents, in part order",
+        )
+    return kept
+
+
 class MediaCensus:
     """Every media item a judgement store's passes sent, once per ``(corpus, document, source)``.
 
@@ -232,15 +510,19 @@ class MediaCensus:
                 if row.get("mechanism") == MEDIA_MECHANISM:
                     self._seen.add((row["corpus"], row["doc_id"], row["uri"]))
 
-    def record(self, *, corpus: str, doc_id: str, media: list[PreparedMedia]) -> None:
-        """Record ``media`` of document ``doc_id`` of ``corpus``, skipping what is already on record."""
+    def record(self, *, corpus: str, doc_id: str, media: list[PreparedMedia], dropped: bool = False) -> None:
+        """Record ``media`` of document ``doc_id`` of ``corpus``, skipping what is already on record.
+
+        ``dropped=True`` records items a request's text budget refused (:func:`fit_media_to_budget` returns
+        them); they were never sent, and the row says so.
+        """
         fresh = []
         for item in media:
             key = (corpus, doc_id, item.source.uri)
             if key in self._seen:
                 continue
             self._seen.add(key)
-            fresh.append(item.as_row(corpus=corpus, doc_id=doc_id))
+            fresh.append(item.as_row(corpus=corpus, doc_id=doc_id, dropped=dropped))
         if fresh and self.sink is not None:
             with open(self.sink, "a", encoding="utf-8") as handle:
                 handle.writelines(json.dumps(row, sort_keys=True) + "\n" for row in fresh)
@@ -248,13 +530,19 @@ class MediaCensus:
 
 __all__ = [
     "DEFAULT_IMAGE_MIME",
+    "apply_media_fit",
+    "media_policies_for",
     "IMAGE_CACHE_SIZE",
     "MEDIA_MECHANISM",
     "MediaCensus",
+    "MediaFit",
     "PREPARED_MIME",
     "PreparedContent",
     "PreparedMedia",
+    "PreparedRequest",
+    "fit_media_to_budget",
     "is_prepared",
     "prepare_content",
     "prepare_image",
+    "prepare_request",
 ]

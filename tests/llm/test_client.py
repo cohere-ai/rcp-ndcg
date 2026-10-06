@@ -148,7 +148,7 @@ class TestConfig:
         import rcp_ndcg.inference.transport as transport_module
 
         closed: list[str] = []
-        monkeypatch.setattr(transport_module.Transport, "aclose", lambda self: closed.append(self.endpoint.model))
+        monkeypatch.setattr(transport_module.Transport, "close", lambda self: closed.append(self.endpoint.model))
         client = _client(Endpoint())
         _ask(client)  # builds the wire
         client.config = client.config.model_copy(update={"temperature": 0.3})

@@ -15,10 +15,11 @@ import numpy as np
 import pytest
 from rcp_ndcg_core.content import Content
 
-from rcp_ndcg.errors import ConfigError, RequestRejectedError
+from rcp_ndcg.errors import RequestRejectedError
 from rcp_ndcg.inference.clients.pool import PoolingClient
 from rcp_ndcg.inference.config import PoolingEndpoint
 from rcp_ndcg.inference.types import EncodeRole
+from tests.inference import _budget
 from tests.inference._pooling import PoolingServer, server_sender
 
 
@@ -41,9 +42,21 @@ class _GatedSender:
         finally:
             self.in_flight -= 1
 
+    def run(self, coroutine: Any) -> Any:
+        return asyncio.run(coroutine)
+
 
 def _client(sender: Any, **config: Any) -> PoolingClient:
-    settings: dict[str, Any] = {"model": "colbert", "dim": 2, "normalize": False}
+    settings: dict[str, Any] = {
+        "model": "colbert",
+        "base_url": "http://engine:8000/v1",
+        "dim": 2,
+        "normalize": False,
+        "tokenizer": _budget.DEFAULT_TOKENIZER or "test/tokenizer",
+        "max_tokens": 8192,
+        "image_policy": {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+        "max_images": 4,
+    }
     settings.update(config)
     return PoolingClient(PoolingEndpoint(**settings), sender=sender)
 
@@ -84,13 +97,14 @@ class TestEncode:
         assert second["input"] == ["Document: d"]
 
     def test_media_items_travel_as_messages_through_the_client(self, tmp_path: Any) -> None:
-        """The adapter decides the shapes; the client only splits and reassembles."""
+        """The adapter decides the shapes; the client prepares the media (one call, tokens counted) and
+        splits and reassembles."""
         image = tmp_path / "page.png"
         image.write_bytes(_png_bytes())
         sender = _GatedSender(
             PoolingServer({"plain": np.ones((1, 2), dtype=np.float16)}, media_vector=np.ones((1, 2), dtype=np.float16))
         )
-        client = _client(sender)
+        client = _client(sender, image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"})
 
         embeddings = asyncio.run(
             client.aencode([Content.from_image(image.as_uri()), Content.from_text("plain")], EncodeRole.DOCUMENT)
@@ -122,7 +136,17 @@ class TestEncode:
         vectors = {"a": np.arange(8, dtype=np.float16).reshape(2, 4)}
         server = PoolingServer(vectors, usage=False)
         sender = _GatedSender(server)
-        client = PoolingClient(PoolingEndpoint(model="m", dim=4, normalize=False), sender=sender)
+        client = PoolingClient(
+            PoolingEndpoint(
+                model="m",
+                base_url="http://engine:8000/v1",
+                dim=4,
+                normalize=False,
+                tokenizer=_budget.DEFAULT_TOKENIZER,
+                max_tokens=8192,
+            ),
+            sender=sender,
+        )
 
         embeddings = asyncio.run(client.aencode([Content.from_text("a")], EncodeRole.DOCUMENT))
         assert embeddings.vectors.shape == (2, 4)
@@ -153,7 +177,18 @@ class TestConcurrency:
     def test_batch_requests_overlap_up_to_the_configured_concurrency(self) -> None:
         vectors = {f"d{i}": np.ones((1, 2), dtype=np.float16) for i in range(6)}
         sender = _GatedSender(PoolingServer(vectors))
-        client = PoolingClient(PoolingEndpoint(model="m", dim=2, batch_size=1, concurrency=2), sender=sender)
+        client = PoolingClient(
+            PoolingEndpoint(
+                model="m",
+                base_url="http://engine:8000/v1",
+                dim=2,
+                batch_size=1,
+                concurrency=2,
+                tokenizer=_budget.DEFAULT_TOKENIZER,
+                max_tokens=8192,
+            ),
+            sender=sender,
+        )
 
         embeddings = asyncio.run(client.aencode([Content.from_text(f"d{i}") for i in range(6)], EncodeRole.DOCUMENT))
 
@@ -164,18 +199,38 @@ class TestConcurrency:
     def test_concurrency_one_serialises(self) -> None:
         vectors = {f"d{i}": np.ones((1, 2), dtype=np.float16) for i in range(3)}
         sender = _GatedSender(PoolingServer(vectors))
-        client = PoolingClient(PoolingEndpoint(model="m", dim=2, batch_size=1, concurrency=1), sender=sender)
+        client = PoolingClient(
+            PoolingEndpoint(
+                model="m",
+                base_url="http://engine:8000/v1",
+                dim=2,
+                batch_size=1,
+                concurrency=1,
+                tokenizer=_budget.DEFAULT_TOKENIZER,
+                max_tokens=8192,
+            ),
+            sender=sender,
+        )
 
         asyncio.run(client.aencode([Content.from_text(f"d{i}") for i in range(3)], EncodeRole.DOCUMENT))
         assert sender.peak == 1
 
 
 class TestRefusals:
-    def test_max_tokens_is_refused_not_ignored(self) -> None:
-        """A budget silently ignored would change the vectors; until the budget lane wires the mechanism,
-        a config that sets one cannot build a client at all."""
-        with pytest.raises(ConfigError, match=r"^max_tokens needs the text-budget mechanism, which is not wired yet$"):
-            PoolingClient(PoolingEndpoint(model="m", max_tokens=8192), sender=_GatedSender(PoolingServer({})))
+    def test_max_tokens_is_the_budget_the_client_fits_to(self) -> None:
+        """The text-budget mechanism is wired: a declared budget is the item fit's (test_client_budget.py
+        pins the cuts and the census); a client is built."""
+        client = PoolingClient(
+            PoolingEndpoint(
+                model="colbert",
+                base_url="http://engine:8000/v1",
+                dim=2,
+                tokenizer=_budget.DEFAULT_TOKENIZER,
+                max_tokens=8192,
+            ),
+            sender=_GatedSender(PoolingServer({})),
+        )
+        assert client.config.max_tokens == 8192
 
     def test_an_unaligned_answer_is_refused(self) -> None:
         """One item for two inputs is a refusal from the adapter, never a short result."""
@@ -205,3 +260,21 @@ def _png_bytes() -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", (1, 1), (255, 0, 0)).save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def _media_chunk_client(sender: Any) -> PoolingClient:
+    """A pooling client whose config declares chunk overflow (refused at construction: vectors do not pool);
+    the media-fit refusal for chunk must be reachable before that."""
+    return PoolingClient(
+        PoolingEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="colqwen",
+            dim=2,
+            tokenizer=_budget.DEFAULT_TOKENIZER or "test/tokenizer",
+            max_tokens=60,
+            image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            max_images=4,
+            on_overflow="fail",
+        ),
+        sender=sender,
+    )

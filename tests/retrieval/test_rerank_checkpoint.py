@@ -21,10 +21,14 @@ from rcp_ndcg.retrieval import _api as retrieval_api
 from rcp_ndcg.retrieval import rerank
 from rcp_ndcg.retrieval.config import ServedReranker
 from rcp_ndcg.support.identity import hash_payload, short
+from tests.conftest import SESSION_TOKENIZER
+
+_SERVED_BUDGET: dict[str, Any] = {"tokenizer": str(SESSION_TOKENIZER), "max_tokens": 8192}
+_SERVED_RERANK_BUDGET: dict[str, Any] = {**_SERVED_BUDGET, "use_activation": False}
 
 
 def _config(**kwargs: Any) -> ServedReranker:
-    return ServedReranker(base_url="fake://seed/1", **{"model": "stub-reranker", **kwargs})
+    return ServedReranker(base_url="fake://seed/1", **{"model": "stub-reranker", **_SERVED_RERANK_BUDGET, **kwargs})
 
 
 def _examples() -> list[RankingExample]:
@@ -153,7 +157,7 @@ def test_the_rerank_step_folds_the_instruction_exactly_once(tmp_path: Any, monke
     def patched(endpoint: Any, **kwargs: Any) -> Any:
         return real(endpoint, httpx_transport=httpx.MockTransport(handler))
 
-    monkeypatch.setattr("rcp_ndcg.inference.clients.rerank.Transport", patched)
+    monkeypatch.setattr("rcp_ndcg.inference.clients._base.Transport", patched)
 
     root = tmp_path / "beir"
     (root / "qrels").mkdir(parents=True)

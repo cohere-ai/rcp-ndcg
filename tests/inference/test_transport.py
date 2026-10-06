@@ -23,7 +23,7 @@ from rcp_ndcg.errors import (
     ProviderError,
     RequestRejectedError,
 )
-from rcp_ndcg.inference import Call, Endpoint, TokenCount, Transport
+from rcp_ndcg.inference import Call, EncodeRole, Endpoint, TokenCount, Transport
 from rcp_ndcg.inference.types import Reply
 
 #: A minimal JSON answer, for the 200s the scripts serve.
@@ -476,17 +476,18 @@ class TestSyncBridge:
         transport = _transport(script)
         transport.run(transport.send([Call("POST", "/a", {})]))
         assert transport._pool is not None
-        transport.aclose()
+        asyncio.run(transport.aclose())  # the true async close (R15)
         assert transport._pool is None
         assert transport.run(transport.send([Call("POST", "/b", {})]))[0].status == 200
 
     def test_aclose_after_its_loop_closed_drops_the_pool_without_raising(self) -> None:
         """The judge client replaces its config after a pass's `asyncio.run` closed the loop the pool rode on;
-        closing the wire then must drop the dead pool, not raise `Event loop is closed`."""
+        closing the wire then must drop the dead pool, not raise `Event loop is closed` (R15: `close()` is
+        the synchronous twin; an async caller awaits `aclose()`)."""
         script = ReplicaScript(200, 200)
         transport = _transport(script)
         asyncio.run(transport.send([Call("POST", "/a", {})]))  # builds the pool on a loop that then closes
-        transport.aclose()
+        transport.close()
         assert transport._pool is None
         assert asyncio.run(transport.send([Call("POST", "/b", {})]))[0].status == 200
 
@@ -518,3 +519,190 @@ class TestEndpointUrls:
     def test_an_endpoint_without_a_url_sends_nowhere(self) -> None:
         with pytest.raises(ConfigError, match="base_url"):
             Transport(Endpoint(model="m"))
+
+
+class TestAdapterAuth:
+    """Auth in the transport (R6): the adapter profile's credential facts are the transport's input, and the
+    key is resolved and sent there -- never in a client, and never in a log or an error message."""
+
+    @staticmethod
+    def _role_answer(path: str) -> dict[str, Any]:
+        """One 2xx body per wire path, so the adapters read the auth tests' replies."""
+        if path.endswith("/embeddings"):
+            return {"data": [{"index": 0, "embedding": [0.0, 0.0]}]}
+        if path.endswith("/embed"):
+            return {"embeddings": {"float": [[0.0, 0.0]]}}
+        if "batchEmbedContents" in path:
+            return {"embeddings": [{"values": [0.0, 0.0]}]}
+        return {"results": [{"index": 0, "relevance_score": 0.5}]}
+
+    @classmethod
+    def _client(cls, api: str, tokenizer_json: str, **config: Any) -> tuple[Any, ReplicaScript]:
+        """A role client sending through a real transport over a recording mock endpoint."""
+        script = ReplicaScript()
+        from rcp_ndcg.inference import EmbeddingClient, RerankClient
+        from rcp_ndcg.inference.config import EmbeddingEndpoint, RerankEndpoint
+
+        def answer(request: httpx.Request) -> httpx.Response:
+            script.requests.append(request)  # the recording mock answers each role's shape
+            return httpx.Response(200, json=cls._role_answer(request.url.path))
+
+        if api.endswith("_rerank"):
+            endpoint: Any = RerankEndpoint(
+                api=api[: -len("_rerank")],
+                model="m",
+                base_url="http://judge.test/v1",
+                use_activation=None,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                **config,
+            )
+            client: Any = RerankClient(
+                endpoint, sender=Transport(endpoint, httpx_transport=httpx.MockTransport(answer))
+            )
+        else:
+            endpoint = EmbeddingEndpoint(
+                api=api, model="m", base_url="http://judge.test/v1", tokenizer=tokenizer_json, max_tokens=8192, **config
+            )
+            client = EmbeddingClient(endpoint, sender=Transport(endpoint, httpx_transport=httpx.MockTransport(answer)))
+        return client, script
+
+    @staticmethod
+    def _send(client: Any) -> None:
+        from rcp_ndcg_core.content import Content
+
+        from rcp_ndcg.inference import RerankClient
+
+        if isinstance(client, RerankClient):
+            client.rerank("q", ["a"])
+        else:
+            client.encode([Content.from_text("x")], EncodeRole.DOCUMENT)
+
+    @pytest.mark.parametrize(
+        ("api", "variable", "header", "value"),
+        [
+            ("openai_embeddings", "OPENAI_API_KEY", "Authorization", "Bearer fake-openai"),
+            ("cohere", "CO_API_KEY", "Authorization", "Bearer fake-cohere"),
+            ("voyage", "VOYAGE_API_KEY", "Authorization", "Bearer fake-voyage"),
+            ("gemini", "GEMINI_API_KEY", "x-goog-api-key", "fake-gemini"),
+            ("cohere_rerank", "CO_API_KEY", "Authorization", "Bearer fake-cohere"),
+            ("voyage_rerank", "VOYAGE_API_KEY", "Authorization", "Bearer fake-voyage"),
+        ],
+        # the variable's value is the key; the header carries `Bearer <key>` where the profile declares no
+        # AUTH_HEADER (Gemini's is its own header, value verbatim).
+    )
+    def test_a_profile_header_is_sent_from_its_default_variable(
+        self,
+        api: str,
+        variable: str,
+        header: str,
+        value: str,
+        tokenizer_json: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(variable, value.removeprefix("Bearer "))
+        client, script = self._client(api, tokenizer_json)
+        self._send(client)
+        assert script.requests[0].headers[header] == value
+
+    def test_the_second_profile_variable_is_tried_in_order(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # noqa: E501 -> None:
+        monkeypatch.delenv("CO_API_KEY", raising=False)
+        monkeypatch.setenv("COHERE_API_KEY", "fake-cohere-second")
+        client, script = self._client("cohere", tokenizer_json)
+        self._send(client)
+        assert script.requests[0].headers["Authorization"] == "Bearer fake-cohere-second"
+
+    def test_the_config_api_key_env_is_resolved_first(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # noqa: E501 -> None:
+        monkeypatch.setenv("RCP_NDCG_TEST_KEY", "fake-from-config")
+        client, script = self._client("cohere", tokenizer_json, api_key_env="RCP_NDCG_TEST_KEY")
+        self._send(client)
+        assert script.requests[0].headers["Authorization"] == "Bearer fake-from-config"
+
+    def test_an_unset_config_api_key_env_is_a_credentials_error(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("RCP_NDCG_TEST_KEY", raising=False)
+        monkeypatch.setenv("CO_API_KEY", "fake-fallback")  # the profile's variable must NOT paper over it
+        client, script = self._client("cohere", tokenizer_json, api_key_env="RCP_NDCG_TEST_KEY")
+        with pytest.raises(CredentialsError, match="RCP_NDCG_TEST_KEY"):
+            self._send(client)
+        assert script.requests == []
+
+    def test_a_required_key_missing_names_the_profile_variables(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("CO_API_KEY", raising=False)
+        monkeypatch.delenv("COHERE_API_KEY", raising=False)
+        client, _ = self._client("cohere", tokenizer_json)
+        with pytest.raises(CredentialsError) as caught:
+            self._send(client)
+        assert "CO_API_KEY" in (caught.value.hint or "")
+        assert "COHERE_API_KEY" in (caught.value.hint or "")
+
+    def test_a_served_wire_sends_no_key_without_a_variable(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        client, script = self._client("openai_embeddings", tokenizer_json)
+        self._send(client)
+        assert "Authorization" not in script.requests[0].headers
+
+    def test_no_key_value_reaches_logs_or_errors(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setenv("CO_API_KEY", "fake-sekrit-value")
+        client, script = self._client("cohere", tokenizer_json, wait_on_outage_s=0)  # a set-aside logs; no outage wait
+        with caplog.at_level("WARNING", logger="rcp_ndcg"):
+            self._send(client)
+        assert all("fake-sekrit-value" not in record.getMessage() for record in caplog.records)
+        monkeypatch.delenv("CO_API_KEY", raising=False)
+        monkeypatch.delenv("COHERE_API_KEY", raising=False)  # the profile's second variable must not paper over it
+        with pytest.raises(CredentialsError) as caught:
+            self._send(client)
+        assert "fake-sekrit-value" not in str(caught.value)
+        assert "fake-sekrit-value" not in str(caught.value.hint)
+
+
+class TestSyncBridgeLoop:
+    """The sync bridge's private loop is part of the transport's lifecycle: closed with the transport
+    (never leaked as an un-closed event loop), rebuilt by a later run."""
+
+    def test_close_closes_the_own_loop_and_a_later_run_builds_a_fresh_one(self) -> None:
+        script = ReplicaScript(200, 200)
+        transport = _transport(script)
+        transport.run(transport.send([Call("POST", "/a", {})]))
+        own = transport._own_loop
+        assert own is not None and not own.is_closed()
+        transport.close()
+        assert transport._own_loop is None and own.is_closed()
+        assert transport.run(transport.send([Call("POST", "/b", {})]))[0].status == 200
+        rebuilt = transport._own_loop
+        assert rebuilt is not None and rebuilt is not own
+        transport.close()
+        assert rebuilt.is_closed() and transport._own_loop is None
+
+
+class TestCloseInsideTheBridgeCall:
+    """A close requested from inside the bridge's own call drains: the scheduled pool close completes and
+    the loop closes when the call returns (no destroyed-pending task, no abandoned pool)."""
+
+    def test_close_from_within_the_bridged_coroutine(self) -> None:
+        script = ReplicaScript()
+        transport = _transport(script)
+
+        async def caller() -> None:
+            transport.run(transport.send([Call("POST", "/a", {})])) if False else None
+            transport.close()  # from inside the coroutine the bridge serves
+
+        async def run() -> None:
+            await caller()
+
+        asyncio.run(run())
+        transport._close_own_loop()  # the next close (or the caller's cleanup) finishes the close
+        own = transport._own_loop
+        assert own is None or own.is_closed()
+        assert transport._pool is None

@@ -127,6 +127,13 @@ class VllmPooling:
     name: ClassVar[str] = "vllm_pooling"
     role: ClassVar[AdapterRole] = "multi_vector"
 
+    #: The auth facts of a served pooling wire (R6): the engine takes no key (the transport resolves the
+    #: config's ``api_key_env``, for a gateway in front of it, into ``Authorization: Bearer``).
+    HOSTED: ClassVar[bool] = False
+    API_KEY_ENV: ClassVar[tuple[str, ...]] = ()
+    KEY_REQUIRED: ClassVar[bool] = False
+    AUTH_HEADER: ClassVar[str | None] = None
+
     _PATH: Final = "/pooling"
 
     def calls(self, request: PoolRequest, *, model: str) -> Sequence[Call]:
@@ -404,7 +411,8 @@ class VllmPooling:
         if reply.status in (400, 422) and any(phrase in message.lower() for phrase in _OVERLENGTH_PHRASES):
             return CapabilityError(
                 f"the pooling endpoint rejected an input longer than its context: {message}",
-                hint="shrink the inputs; the text-budget mechanism (which applies max_tokens) is not wired yet",
+                hint="declare the endpoint config's text budget (tokenizer and max_tokens), so the client cuts "
+                "the content before sending; the inputs it shipped exceeded the served context",
             )
         return RequestRejectedError(f"the pooling endpoint refused the request (HTTP {reply.status}): {message}")
 

@@ -87,7 +87,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -194,6 +194,40 @@
           "title": "Headers Env",
           "type": "object"
         },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
         "max_retries": {
           "default": 2,
           "description": "Retries of a transient failure before it counts as an outage.",
@@ -212,8 +246,14 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole. Content. Refused by the client until the text-budget mechanism is wired into it (EmbeddingClient raises a ``ConfigError``).",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
           "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -314,6 +354,17 @@
           "default": null,
           "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
           "title": "Tokenizer"
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "wait_on_outage_s": {
           "anyOf": [
@@ -402,7 +453,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -509,6 +560,40 @@
           "title": "Headers Env",
           "type": "object"
         },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
         "max_retries": {
           "default": 2,
           "description": "Retries of a transient failure before it counts as an outage.",
@@ -527,8 +612,14 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole. Content. Refused by the client until the text-budget mechanism is wired into it (EmbeddingClient raises a ``ConfigError``).",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
           "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -630,6 +721,17 @@
           "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
           "title": "Tokenizer"
         },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "wait_on_outage_s": {
           "anyOf": [
             {
@@ -649,6 +751,60 @@
         "model"
       ],
       "title": "GeminiEmbedding",
+      "type": "object"
+    },
+    "ImagePolicy": {
+      "additionalProperties": false,
+      "description": "The pixel budget every page image and video frame is resized to, and the processor whose resize is used.\n\nBudget both or neither: without one, images go at their stored size and the engine's processor decides\n(native), so their token cost cannot be counted. With a known processor the budget must lie within\nthe engines' default budget for it (PROCESSORS), so the engine keeps the prepared size.",
+      "properties": {
+        "max_px": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The most pixels an image is scaled down to.",
+          "title": "Max Px"
+        },
+        "min_px": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The fewest pixels an image is scaled up to.",
+          "title": "Min Px"
+        },
+        "processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge's image processor family (ImageProcessor). Left unset in a declared policy: the judging pass takes it from the judge config's ``image_processor`` (for_processor), so the recorded policy names it. ``None`` in an effective policy means the family is unknown, and images are sent unchanged.",
+          "title": "Processor"
+        }
+      },
+      "title": "ImagePolicy",
       "type": "object"
     },
     "LateInteractionConfig": {
@@ -707,7 +863,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -814,6 +970,40 @@
           "title": "Headers Env",
           "type": "object"
         },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
         "max_retries": {
           "default": 2,
           "description": "Retries of a transient failure before it counts as an outage.",
@@ -832,8 +1022,14 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole. Content. Refused by the client until the text-budget mechanism is wired into it (EmbeddingClient raises a ``ConfigError``).",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
           "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -935,6 +1131,17 @@
           "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
           "title": "Tokenizer"
         },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "wait_on_outage_s": {
           "anyOf": [
             {
@@ -984,7 +1191,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -1115,6 +1322,40 @@
           "title": "Headers Env",
           "type": "object"
         },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
         "max_retries": {
           "default": 2,
           "description": "Retries of a transient failure before it counts as an outage.",
@@ -1133,8 +1374,14 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole. Content. Refused by the client until the text-budget mechanism is wired into it (EmbeddingClient raises a ``ConfigError``).",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
           "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -1236,6 +1483,17 @@
           "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
           "title": "Tokenizer"
         },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "wait_on_outage_s": {
           "anyOf": [
             {
@@ -1325,7 +1583,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -1432,6 +1690,40 @@
           "title": "Headers Env",
           "type": "object"
         },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
         "max_retries": {
           "default": 2,
           "description": "Retries of a transient failure before it counts as an outage.",
@@ -1450,8 +1742,14 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole. Content. Refused by the client until the text-budget mechanism is wired into it (EmbeddingClient raises a ``ConfigError``).",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
           "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -1553,6 +1851,17 @@
           "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
           "title": "Tokenizer"
         },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "wait_on_outage_s": {
           "anyOf": [
             {
@@ -1603,7 +1912,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -1734,6 +2043,40 @@
           "title": "Headers Env",
           "type": "object"
         },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
         "max_retries": {
           "default": 2,
           "description": "Retries of a transient failure before it counts as an outage.",
@@ -1752,8 +2095,14 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole. Content. Refused by the client until the text-budget mechanism is wired into it (EmbeddingClient raises a ``ConfigError``).",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
           "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -1854,6 +2203,17 @@
           "default": null,
           "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
           "title": "Tokenizer"
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "wait_on_outage_s": {
           "anyOf": [
@@ -1969,6 +2329,49 @@
       "title": "TemplateSpec",
       "type": "object"
     },
+    "VideoPolicy": {
+      "additionalProperties": false,
+      "description": "Which frames of a video the judge is shown, and which videos it may be shown at all.\n\nOne sampling rule: ``num_frames`` frames at uniformly spaced indices over the\nwhole clip (uniform_frame_indices), the rule both serving engines apply\nto a decoded container. It is the only rule whose realised frame count is fixed\nby the policy -- a frames-per-second rule shows a 10-second clip 20 frames and a\n10-minute clip 1200, so two runs \"at 2 fps\" would share a judgement family while\nshowing the judge different amounts of video.\n\nA clip with fewer frames than ``num_frames`` is refused, not shown whole: the\nengines disagree about it (SGLang rejects the request, vLLM resamples at its\nprocessor's own rate), so no single number of frames could be recorded for it.\nA container's frame count must therefore be recorded at ingest\n(``hash_media=True``) before it can be judged over ``video_url``.\n\n``wire`` is how the judge receives the frames, and it is part of the\ninstrument. ``frames`` (client-sampled, the default and the exact one): the\nclient picks the frames from the corpus's pre-extracted frames and sends each,\nsized by the image policy, as its own image, which any OpenAI-compatible\nendpoint accepts -- so the frames counted are the frames sent.\n``video_url`` (engine-sampled, an opt-in for models with a native video encoder):\nthe container is sent unchanged and the engine decodes and samples it (Qwen-VL\ntowers then merge frame pairs in time and see timestamps). A stock engine samples\nits own default number of frames (32 on vLLM), so ``video_url`` is refused unless\nengine_video_pinning declares the engine pinned to ``num_frames`` -- and\nthe same clips judged both ways are different measurements, so the wire is part\nof the policy and a corpus whose videos do not match it is refused.\n\n``max_duration_s`` is a refusal, not a cut: uniform sampling of a long clip\nspreads the same frame budget ever thinner, so a corpus that declares it refuses\nany video whose recorded duration exceeds it -- or whose duration was never\nrecorded -- rather than judging it at a density nobody chose.",
+      "properties": {
+        "engine_video_pinning": {
+          "default": false,
+          "title": "Engine Video Pinning",
+          "type": "boolean"
+        },
+        "max_duration_s": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Duration S"
+        },
+        "num_frames": {
+          "exclusiveMinimum": 0,
+          "title": "Num Frames",
+          "type": "integer"
+        },
+        "wire": {
+          "enum": [
+            "frames",
+            "video_url"
+          ],
+          "title": "Wire",
+          "type": "string"
+        }
+      },
+      "required": [
+        "num_frames",
+        "wire"
+      ],
+      "title": "VideoPolicy",
+      "type": "object"
+    },
     "VoyageEmbedding": {
       "additionalProperties": false,
       "description": "Voyage AI's public API (``voyage-3-large``, ...). The key is read from ``api_key_env``, else\n``VOYAGE_API_KEY``; ``base_url`` is omitted unless it names a proxy.",
@@ -1998,7 +2401,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -2105,6 +2508,40 @@
           "title": "Headers Env",
           "type": "object"
         },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
         "max_retries": {
           "default": 2,
           "description": "Retries of a transient failure before it counts as an outage.",
@@ -2123,8 +2560,14 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole. Content. Refused by the client until the text-budget mechanism is wired into it (EmbeddingClient raises a ``ConfigError``).",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
           "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -2225,6 +2668,17 @@
           "default": null,
           "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
           "title": "Tokenizer"
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "wait_on_outage_s": {
           "anyOf": [
