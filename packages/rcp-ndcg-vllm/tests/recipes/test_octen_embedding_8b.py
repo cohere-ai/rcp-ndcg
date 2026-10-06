@@ -214,7 +214,7 @@ def test_stage1_on_cpu_passes_token_equality_and_the_anchor_check(tmp_path: Path
 
     At least 20 sampled inputs with at least 5 over-length ones: the pairs file's 16 rows plus 5
     over-length samples per declared shape (query and document). The reference runs as a subprocess
-    (its render mode is stdlib-only); the engine /tokenize check is reported not_run without an
+    (its render mode needs no torch and no transformers); the engine /tokenize check is reported not_run without an
     engine, never passed.
     """
     recipe = _local_recipe(_recipe(), _tokenizer_dir(tmp_path))
@@ -356,6 +356,29 @@ def _reference_module() -> Any:
     return module
 
 
+def test_reference_imports_no_torch_transformers_or_numpy_at_module_level() -> None:
+    """Importing the reference module pulls in none of the heavy stacks (checked in a fresh python).
+
+    The module runs as a subprocess in its own environment (requirements-reference.txt: torch and
+    transformers), and its render mode is the harness's stage-1 side; a module-level numpy import
+    would tie even the render mode to a numpy-capable python. torch and transformers are imported
+    lazily inside the embed/score paths only.
+    """
+    reference_path = str(RECIPE_DIR / "reference.py")
+    probe = (
+        "import importlib.util, sys\n"
+        f"spec = importlib.util.spec_from_file_location('octen_reference', {reference_path!r})\n"
+        "module = importlib.util.module_from_spec(spec)\n"
+        "spec.loader.exec_module(module)\n"
+        "heavy = [name for name in ('torch', 'transformers', 'numpy') if name in sys.modules]\n"
+        "print(','.join(heavy))\n"
+    )
+    completed = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, timeout=120)
+    assert completed.returncode == 0, completed.stderr[-500:]
+    imported = completed.stdout.strip().split(",") if completed.stdout.strip() else []
+    assert imported == [], f"the reference module imported at import time: {imported}"
+
+
 def test_reference_constants_equal_the_paper_code() -> None:
     """The reference's constants are the paper path's, not the model card's."""
     from rcp_ndcg.retrieval.encoder import l2_normalize
@@ -380,7 +403,7 @@ def test_reference_constants_equal_the_paper_code() -> None:
 
 
 def test_reference_render_mode_emits_the_paper_strings(tmp_path: Path) -> None:
-    """The reference's render mode (a stdlib subprocess) emits exactly the paper's prompt strings."""
+    """The reference's render mode (a subprocess free of torch and transformers) emits the paper's strings."""
     reference = RECIPE_DIR / "reference.py"
     pairs = _write_pairs(tmp_path)
     out = tmp_path / "reference.json"

@@ -34,8 +34,8 @@ released together.
   `endoftext`, id 151643) declared via `add_special_tokens: true` and reserved by the 8192-token budget
   (`on_overflow: cut`), `max_model_len: 8192` defense in depth, `chat_template: null` (the checkpoint's ChatML
   template would change every prompt; the /v2/embed route is a trap: it auto-applies the checkpoint's ST prompts).
-  `reference.py` is the paper-exact in-process path (bf16, left padding, last token, float32 L2) with a
-  stdlib-only render mode; the recipe directory carries its `requirements-reference.txt`.
+  `reference.py` is the paper-exact in-process path (bf16, left padding, last token, float32 L2) whose render
+  mode needs no torch and no transformers; the recipe directory carries its `requirements-reference.txt`.
 
 - New package `rcp-ndcg-vllm` (`packages/rcp-ndcg-vllm/`, outside the root uv workspace and lock; version
   0.0.1, depends on `rcp-ndcg==0.0.1` — a hard dependency, and pinned by the release workflow's version

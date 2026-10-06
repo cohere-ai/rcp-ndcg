@@ -7,7 +7,9 @@
 # torch and transformers: the paper's in-process path (hf_dense.py) loads AutoModel in bfloat16
 # and AutoTokenizer with left padding. transformers>=4.51 is the first line with Qwen3 (the
 # checkpoint is a bare Qwen3Model); the tokenizer-level behaviour was verified on 5.17.0.
-# The reference's render mode needs neither (it builds prompt strings only), so stage 1 on CPU
-# runs with any python.
+# The reference's render mode needs neither (it builds prompt strings only; its only third-party
+# imports are numpy, lazily in the embed/score paths, and PyYAML, to read the recipe's declared
+# shapes -- both arrive with the torch/transformers install above), so stage 1 on CPU runs with
+# the harness's own python.
 torch>=2.0
 transformers>=4.51

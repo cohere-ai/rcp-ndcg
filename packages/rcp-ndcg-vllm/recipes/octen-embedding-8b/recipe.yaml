@@ -96,9 +96,12 @@ notes: >-
   "- " prefix, the content and the appended end-of-text anchor together, in the pinned tokenizer's
   tokens. The content is cut on the client (on_overflow: cut) and the frame is re-attached, so every
   over-length input keeps the prefix at the head and the anchor at the tail. The paper path makes the
-  same cut (hf_dense.py:21,59: truncation=True, max_length=8192, right side; HF reserves the
-  post-processor's token -- the research's truncation check verified 8191 content ids + the appended
-  anchor), so reference.known_deviations stays empty. Wiring status (audit-synth correction, applied):
+  same anchor-preserving cut (hf_dense.py:21,59: truncation=True, max_length=8192, right side; HF reserves
+  the post-processor's token -- the research's truncation check verified 8191 content ids + the appended
+  anchor), so reference.known_deviations stays empty; the cut BOUNDARY on an over-length input can differ
+  by a token between the two paths (fit cuts at content-token boundaries of the original text and re-renders,
+  the paper cuts the assembled ids), which stage 1 deliberately does not compare and stage 2's vector gate
+  decides on the GPU wave. Wiring status (audit-synth correction, applied):
   the dense embeddings path has no client-side truncation today -- the product's budget mechanism
   (rcp_ndcg.data.preprocess.fit) is what these fields declare, the served role clients refuse a
   budget until the clients-final wiring lands, and until then the only enforced guard is the engine's
@@ -114,6 +117,8 @@ notes: >-
   "- " prefix; omit_zero would score it 0.0 without sending, which the paper does not do. The
   reference runs as a subprocess in its own environment (its requirements-reference.txt: torch,
   transformers>=4.51 for Qwen3; tokenizer-level behaviour verified on transformers 5.17.0); the
-  harness process imports no torch, and the reference's render mode is stdlib-only. Stage 2 compares
-  L2-normalised float32 vectors with the cosine gate; the reference applies the same last-token
-  pooling and the same 1e-12-clamped float32 normalisation as hf_dense.py:62.
+  harness process imports no torch, and the reference module imports none of them at import time
+  (its render mode needs no torch and no transformers; its only third-party imports are numpy,
+  lazily in the embed/score paths, and PyYAML, to read the recipe's declared shapes). Stage 2
+  compares L2-normalised float32 vectors with the cosine gate; the reference applies the same
+  last-token pooling and the same 1e-12-clamped float32 normalisation as hf_dense.py:62.

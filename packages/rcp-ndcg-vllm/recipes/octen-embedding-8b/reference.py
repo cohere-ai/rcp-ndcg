@@ -54,9 +54,10 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import numpy as np
+if TYPE_CHECKING:
+    import numpy as np
 
 MODEL = "Octen/Octen-Embedding-8B"
 REVISION = "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
@@ -140,6 +141,8 @@ def _l2_normalize(vectors: np.ndarray) -> np.ndarray:
     The same expression as the paper path's ``l2_normalize`` (``hf_dense.py:62`` via
     ``rcp_ndcg.retrieval.encoder``): norms clamped at 1e-12, cast to float32.
     """
+    import numpy as np
+
     norms = np.linalg.norm(vectors, axis=1, keepdims=True)
     return (vectors / np.maximum(norms, 1e-12)).astype(np.float32, copy=False)
 
@@ -165,6 +168,7 @@ def embed(
     if model is None or tokenizer is None:
         model, tokenizer, device = load(device)
 
+    import numpy as np
     import torch
 
     prompts = [render_prompt(text, role) for text in texts]
