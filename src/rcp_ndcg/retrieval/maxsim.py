@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.inference.types import Embeddings
 
 #: Score-tile budget in bytes for one ``(query_tokens x doc_tokens)`` block.
@@ -75,28 +76,35 @@ def _f32_block(vectors: np.ndarray) -> np.ndarray:
 def _grouped_max(scores: np.ndarray, starts: np.ndarray, lengths: np.ndarray) -> np.ndarray:
     """Max over each item's columns: ``(rows, num_items)``.
 
-    ``np.maximum.reduceat`` returns ``scores[:, start]`` verbatim for a
-    zero-length group rather than the identity, so empty items are zeroed here
-    and given their real score (:data:`_EMPTY_DOC_SCORE`) once, after the sum -- summing infinities
-    per query token overflows instead.  Without this, a document with no vectors
-    would score as whatever document happened to follow it. An empty item at the
-    very end would put its start index one past the last column, where reduceat
-    raises, so the indices are clamped and the empty groups overwritten below.
+    ``np.maximum.reduceat`` returns ``scores[:, start]`` verbatim for a zero-length group rather than the
+    identity, and raises when a trailing empty item puts its start one past the last column -- so the
+    reduction runs over the non-empty items' starts only (an empty group between two real ones is bounded by
+    the next real start, and the last real group runs to the array end, which is exactly its end), and the
+    empty items' columns are zeroed here and given their real score (:data:`_EMPTY_DOC_SCORE`) once, after
+    the sum -- summing infinities per query token overflows instead. Without this, a document with no vectors
+    would score as whatever document happened to follow it.
     """
-    reduced = np.maximum.reduceat(scores, np.minimum(starts, scores.shape[1] - 1), axis=1)
-    empty = lengths == 0
-    if empty.any():
-        reduced[:, empty] = 0.0
-    return reduced
+    if lengths.size == 0:
+        return np.zeros((scores.shape[0], 0), dtype=scores.dtype)
+    keep = np.flatnonzero(lengths)
+    if keep.size == lengths.size:
+        return np.maximum.reduceat(scores, starts, axis=1)
+    out = np.zeros((scores.shape[0], lengths.size), dtype=scores.dtype)
+    out[:, keep] = np.maximum.reduceat(scores, starts[keep], axis=1)
+    return out
 
 
 def _grouped_sum(values: np.ndarray, starts: np.ndarray, lengths: np.ndarray) -> np.ndarray:
-    """Sum over each item's rows: ``(num_items, cols)``. Same reduceat caveat, clamped the same way."""
-    reduced = np.add.reduceat(values, np.minimum(starts, values.shape[0] - 1), axis=0)
-    empty = lengths == 0
-    if empty.any():
-        reduced[empty, :] = 0.0
-    return reduced
+    """Sum over each item's rows: ``(num_items, cols)``. Same empty-group handling as :func:`_grouped_max`:
+    the reduction runs over the non-empty items' starts, the empty items' rows come back zero."""
+    if lengths.size == 0:
+        return np.zeros((0, values.shape[1]), dtype=values.dtype)
+    keep = np.flatnonzero(lengths)
+    if keep.size == lengths.size:
+        return np.add.reduceat(values, starts, axis=0)
+    out = np.zeros((lengths.size, values.shape[1]), dtype=values.dtype)
+    out[keep, :] = np.add.reduceat(values, starts[keep], axis=0)
+    return out
 
 
 def maxsim_topk(
@@ -121,21 +129,29 @@ def maxsim_topk(
     Returns:
         ``(scores, indices)``, both ``(num_queries, min(k, num_docs))``, scores float32, sorted
         by score descending with ties broken toward the lower document index --
-        so a run is reproducible across machines.
+        so a run is reproducible across machines. An empty document scores
+        :data:`_EMPTY_DOC_SCORE` (it ranks below every real one), an empty query 0 against every
+        real document; every returned index is a document index.
+
+    Raises:
+        ConfigError: ``k`` is not positive.
+        DataError: Either side is not multi-vector, or the vector widths differ.
     """
     from rcp_ndcg.retrieval.topk import select_topk
 
     if k <= 0:
-        raise ValueError(f"k must be positive, got {k}")
-    if not doc_embeddings.is_multi_vector or not query_embeddings.is_multi_vector:
-        raise ValueError(
+        raise ConfigError(f"k must be positive, got {k}", hint="pass the number of documents per query")
+    doc_offsets, query_offsets = doc_embeddings.offsets, query_embeddings.offsets
+    if doc_offsets is None or query_offsets is None:
+        raise DataError(
             "maxsim_topk needs multi-vector embeddings on both sides "
             f"(docs multi_vector={doc_embeddings.is_multi_vector}, "
             f"queries multi_vector={query_embeddings.is_multi_vector}). "
-            "Single-vector embeddings score with numpy_topk instead."
+            "Single-vector embeddings score with numpy_topk instead.",
+            hint="score_topk dispatches on the layout, single-vector embeddings to numpy_topk",
         )
     if doc_embeddings.num_items and query_embeddings.num_items and doc_embeddings.dim != query_embeddings.dim:
-        raise ValueError(f"dimension mismatch: docs {doc_embeddings.dim}, queries {query_embeddings.dim}")
+        raise DataError(f"dimension mismatch: docs {doc_embeddings.dim}, queries {query_embeddings.dim}")
 
     num_docs = doc_embeddings.num_items
     num_queries = query_embeddings.num_items
@@ -143,9 +159,8 @@ def maxsim_topk(
     if num_queries == 0 or kk == 0:
         return np.zeros((num_queries, kk), dtype=np.float32), np.zeros((num_queries, kk), dtype=np.int64)
 
-    assert doc_embeddings.offsets is not None and query_embeddings.offsets is not None
-    doc_starts, doc_lengths = _spans(doc_embeddings.offsets)
-    query_starts, query_lengths = _spans(query_embeddings.offsets)
+    doc_starts, doc_lengths = _spans(doc_offsets)
+    query_starts, query_lengths = _spans(query_offsets)
     # Kept in the stored dtype (float16 or float32): the float32 working set is
     # what each block below materialises, never the whole corpus.
     docs = doc_embeddings.vectors
@@ -169,12 +184,12 @@ def maxsim_topk(
 
     for q_start in range(0, num_queries, query_block_items):
         q_stop = min(q_start + query_block_items, num_queries)
-        q_slice = slice(int(query_embeddings.offsets[q_start]), int(query_embeddings.offsets[q_stop]))
+        q_slice = slice(int(query_offsets[q_start]), int(query_offsets[q_stop]))
         # The float32 the scoring runs in, one query block at a time (budgeted
         # at _QUERY_BLOCK_TOKENS rows by the mean token counts).
         q_block = _f32_block(queries[q_slice])
         # Re-base the query offsets to this block's local token indexing.
-        local_query_starts = query_starts[q_start:q_stop] - int(query_embeddings.offsets[q_start])
+        local_query_starts = query_starts[q_start:q_stop] - int(query_offsets[q_start])
         local_query_lengths = query_lengths[q_start:q_stop]
 
         rows = q_stop - q_start
@@ -183,13 +198,16 @@ def maxsim_topk(
 
         for d_start in range(0, num_docs, doc_block_items):
             d_stop = min(d_start + doc_block_items, num_docs)
-            d_slice = slice(int(doc_embeddings.offsets[d_start]), int(doc_embeddings.offsets[d_stop]))
-            if q_block.shape[0] == 0 or d_slice.start == d_slice.stop:
-                continue
+            d_slice = slice(int(doc_offsets[d_start]), int(doc_offsets[d_stop]))
 
             token_scores = q_block @ _f32_block(docs[d_slice]).T
             block_doc_lengths = doc_lengths[d_start:d_stop]
-            local_doc_starts = doc_starts[d_start:d_stop] - int(doc_embeddings.offsets[d_start])
+            local_doc_starts = doc_starts[d_start:d_stop] - int(doc_offsets[d_start])
+            # A block with no tokens to multiply (every document in it empty, or every query) still
+            # scores: the grouped reductions return zeros for the empty groups, so an empty query
+            # scores 0 against every real document and an empty document's column is overwritten with
+            # the sentinel below -- the block's items rank with real indices, never with the running
+            # -inf/-1 placeholders.
             per_token_best = _grouped_max(token_scores, local_doc_starts, block_doc_lengths)
             pair_scores = _grouped_sum(per_token_best, local_query_starts, local_query_lengths)
             # A max over no vectors matches nothing, so a document with none ranks

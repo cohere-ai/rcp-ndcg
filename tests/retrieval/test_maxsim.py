@@ -8,9 +8,12 @@ the neighbouring document, which no shape assertion would catch.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 import pytest
 
+from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.inference.types import Embeddings
 from rcp_ndcg.retrieval import maxsim
 from rcp_ndcg.retrieval.maxsim import maxsim_topk
@@ -42,6 +45,42 @@ def _reference_scores(docs: Embeddings, queries: Embeddings) -> np.ndarray:
         ],
         dtype=np.float64,
     )
+
+
+def _expected_scores(docs: Embeddings, queries: Embeddings) -> np.ndarray:
+    """The full expected score matrix, including the empty-item policy: a document with no vectors scores the
+    sentinel (strictly below every real score, so it ranks last), an empty query scores 0 like the definition."""
+    out = np.zeros((queries.num_items, docs.num_items), dtype=np.float64)
+    for qi in range(queries.num_items):
+        for di in range(docs.num_items):
+            query_vectors, doc_vectors = _item(queries, qi), _item(docs, di)
+            if len(doc_vectors) == 0:
+                out[qi, di] = maxsim._EMPTY_DOC_SCORE
+            elif len(query_vectors) == 0:
+                out[qi, di] = 0.0
+            else:
+                out[qi, di] = _maxsim(query_vectors, doc_vectors)
+    return out
+
+
+def _assert_matches_reference(docs: Embeddings, queries: Embeddings, k: int | None = None) -> None:
+    """The scorer's output equals the two-line reference, ordered by score then lower index, including where
+    empty items sit -- the reference encodes the empty-item policy, so a neighbour's stolen token shows up."""
+    k = docs.num_items if k is None else k
+    expected = _expected_scores(docs, queries)
+    scores, indices = maxsim_topk(docs, queries, k)
+    for qi in range(queries.num_items):
+        order = np.lexsort((np.arange(docs.num_items), -expected[qi]))
+        np.testing.assert_array_equal(indices[qi], order[:k])
+        np.testing.assert_allclose(scores[qi], expected[qi][order[:k]], rtol=1e-5, atol=1e-5)
+
+
+def _ragged_explicit(lengths: Sequence[int], dim: int) -> Embeddings:
+    """A set whose every item is empty keeps its declared width: ``Embeddings.ragged`` gives one of width 0
+    by design, and the scorer's width check (rightly) refuses a 0-width side against a real one."""
+    if any(lengths):
+        return Embeddings.ragged([np.zeros((length, dim), dtype=np.float32) for length in lengths])
+    return Embeddings(vectors=np.zeros((0, dim)), offsets=np.zeros(len(lengths) + 1, dtype=np.int64))
 
 
 class TestMaxSimTopk:
@@ -96,17 +135,93 @@ class TestMaxSimTopk:
         assert scores[0][0] == pytest.approx(2.0)
         assert np.isfinite(scores[0][1]) and scores[0][1] < -1e30
 
-    def test_a_trailing_empty_document_or_query_does_not_crash(self) -> None:
-        """An empty item at the END of either side sits past the last column/row, where reduceat's index goes
-        out of bounds; it is an ordinary empty item, not a crash."""
-        docs = Embeddings.ragged([np.array([[1.0, 0.0]]), np.zeros((0, 2))])
-        queries = Embeddings.ragged([np.array([[1.0, 0.0]]), np.zeros((0, 2))])
+    def test_a_trailing_empty_item_does_not_truncate_its_predecessor(self) -> None:
+        """An empty item at the END of either side sits past the last column/row, where reduceat's index would
+        go out of bounds. The old clamp for that (``np.minimum(start, size - 1)``) stole the predecessor's last
+        token instead: a two-token item followed by an empty one scored over all but its last token. With exact
+        float inputs, both axes must come out at the full item's score."""
+        # Doc axis: doc0 = [[1, 0], [0, 1]] followed by an empty doc; query = [[0, 1]].
+        # The clamp computed max over doc0's FIRST column only: 0.0 instead of 1.0.
+        docs = Embeddings.ragged([np.array([[1.0, 0.0], [0.0, 1.0]]), np.zeros((0, 2))])
+        queries = Embeddings.ragged([np.array([[0.0, 1.0]])])
+        scores, indices = maxsim_topk(docs, queries, k=2)
+        assert indices[0].tolist() == [0, 1]
+        np.testing.assert_allclose(scores[0][0], 1.0)
+
+        # Query axis: query0 = two tokens followed by an empty query; doc = [[0, 1]].
+        # The clamp dropped query0's last token row: 0.0 instead of 0.0 + 1.0.
+        queries = Embeddings.ragged([np.array([[1.0, 0.0], [0.0, 1.0]]), np.zeros((0, 2))])
+        docs = Embeddings.ragged([np.array([[0.0, 1.0]])])
+        scores, _ = maxsim_topk(docs, queries, k=1)
+        np.testing.assert_allclose(scores[0][0], 1.0)
+
+    @pytest.mark.parametrize(
+        "doc_lengths",
+        [(2, 0, 3), (0, 3, 2), (3, 0, 0), (0, 0), (4, 0, 1, 0, 2)],
+    )
+    def test_empty_documents_score_like_the_reference_at_any_position(
+        self, monkeypatch: pytest.MonkeyPatch, doc_lengths: tuple[int, ...]
+    ) -> None:
+        """Empty documents first, between, and after real ones, with the blocking forced small: every item's
+        score is the reference's, so neither the reduceat clamp nor a skipped block can attribute one item's
+        score to its neighbour."""
+        rng = np.random.default_rng(11)
+        docs = _ragged_explicit(list(doc_lengths), 4)
+        queries = Embeddings.ragged(
+            [rng.standard_normal((2, 4)).astype(np.float32), rng.standard_normal((1, 4)).astype(np.float32)]
+        )
+        monkeypatch.setattr(maxsim, "_TILE_BYTES", 128)
+        monkeypatch.setattr(maxsim, "_QUERY_BLOCK_TOKENS", 1)
+
+        _assert_matches_reference(docs, queries)
+
+    @pytest.mark.parametrize("query_lengths", [(2, 0), (0, 2), (3, 0, 0), (0, 0)])
+    def test_empty_queries_score_like_the_reference_at_any_position(
+        self, monkeypatch: pytest.MonkeyPatch, query_lengths: tuple[int, ...]
+    ) -> None:
+        rng = np.random.default_rng(12)
+        docs = Embeddings.ragged([rng.standard_normal((3, 4)).astype(np.float32) for _ in range(4)])
+        queries = _ragged_explicit(list(query_lengths), 4)
+        monkeypatch.setattr(maxsim, "_TILE_BYTES", 128)
+        monkeypatch.setattr(maxsim, "_QUERY_BLOCK_TOKENS", 1)
+
+        _assert_matches_reference(docs, queries)
+
+    def test_an_all_empty_query_set_scores_zero_with_real_indices(self) -> None:
+        """Every query empty: the old block skip left the running ``-inf``/``-1`` placeholders in the output;
+        the definition scores an empty query 0 against every real document, with real document indices."""
+        docs = Embeddings.ragged([np.array([[1.0, 0.0]])])
+        queries = Embeddings(vectors=np.zeros((0, 2)), offsets=np.zeros(3, dtype=np.int64))
+
+        scores, indices = maxsim_topk(docs, queries, k=1)
+
+        np.testing.assert_allclose(scores, [[0.0], [0.0]])
+        np.testing.assert_array_equal(indices, [[0], [0]])
+
+    def test_an_all_empty_corpus_ranks_its_documents_with_the_sentinel(self) -> None:
+        """Every document empty: both slots carry the designed sentinel and a real index, never ``-inf``/``-1``."""
+        docs = Embeddings(vectors=np.zeros((0, 2)), offsets=np.zeros(3, dtype=np.int64))
+        queries = Embeddings.ragged([np.array([[1.0, 0.0]])])
 
         scores, indices = maxsim_topk(docs, queries, k=2)
 
-        assert indices[0].tolist() == [0, 1]
+        assert indices[0].tolist() == [0, 1], "real document indices, never the -1 placeholder"
+        assert np.isfinite(scores[0]).all() and (scores[0] < -1e30).all(), "the sentinel, not -inf"
+
+    def test_an_empty_item_at_a_block_boundary_keeps_a_real_index(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A block whose every document is empty was skipped whole, leaving its slots at the running
+        placeholders whenever ``k`` reached them; it is scored with the sentinel instead."""
+        monkeypatch.setattr(maxsim, "_TILE_BYTES", 8)  # one document per block
+        # Item 0 is empty; items 1 and 2 are single-token documents.
+        docs = Embeddings(vectors=np.array([[1.0, 0.0], [0.0, 1.0]]), offsets=np.array([0, 0, 1, 2], dtype=np.int64))
+        queries = Embeddings.ragged([np.array([[1.0, 0.0]])])
+
+        scores, indices = maxsim_topk(docs, queries, k=3)
+
+        assert indices[0].tolist() == [1, 2, 0], "no -1 anywhere: the empty item ranks last with its own index"
         np.testing.assert_allclose(scores[0][0], 1.0)
-        np.testing.assert_allclose(scores[1][0], 0.0)  # an empty query scores 0, like the reference definition
+        np.testing.assert_allclose(scores[0][1], 0.0)
+        assert scores[0][2] < -1e30
 
     def test_ties_break_toward_the_lower_index(self) -> None:
         vector = np.array([[1.0, 0.0]])
@@ -130,16 +245,20 @@ class TestMaxSimTopk:
         """Silently pooling would report late-interaction numbers that are not."""
         flat = Embeddings.single(np.ones((2, 3), dtype=np.float32))
         ragged = Embeddings.ragged([np.ones((1, 3))])
-        with pytest.raises(ValueError, match="needs multi-vector embeddings"):
+        with pytest.raises(DataError, match="needs multi-vector embeddings"):
             maxsim_topk(flat, ragged, k=1)
 
     def test_dimension_mismatch_is_refused(self) -> None:
-        with pytest.raises(ValueError, match="dimension mismatch"):
+        with pytest.raises(DataError, match="dimension mismatch"):
             maxsim_topk(
                 Embeddings.ragged([np.ones((1, 4))]),
                 Embeddings.ragged([np.ones((1, 3))]),
                 k=1,
             )
+
+    def test_non_positive_k_is_refused(self) -> None:
+        with pytest.raises(ConfigError, match="k must be positive"):
+            maxsim_topk(Embeddings.ragged([np.ones((1, 4))]), Embeddings.ragged([np.ones((1, 4))]), k=0)
 
 
 class TestTransferPrecision:
@@ -234,6 +353,19 @@ class TestTransferPrecision:
         assert max(copied) < doc_embeddings.vectors.nbytes
 
 
+class TestTiesAtTheCut:
+    """The tie rule decides the cut as well as the order: ``argpartition``'s pick among the candidates tied at
+    the k-th score is implementation-defined, so a tie class straddling the cut is re-selected by index."""
+
+    def test_maxsim_ties_straddling_the_cut_break_toward_the_lower_index(self) -> None:
+        docs = Embeddings.ragged([np.array([[9.0, 0.0]]), *([np.array([[5.0, 0.0]])] * 4)])
+        queries = Embeddings.ragged([np.array([[1.0, 0.0]])])
+
+        _, indices = maxsim_topk(docs, queries, k=3)
+
+        assert indices[0].tolist() == [0, 1, 2], "the tied documents keep the cut's slots in index order"
+
+
 class TestScoreTopkDispatch:
     def test_flat_embeddings_use_the_inner_product_path(self) -> None:
         from rcp_ndcg.retrieval.topk import numpy_topk, score_topk
@@ -260,5 +392,5 @@ class TestScoreTopkDispatch:
     def test_numpy_topk_points_at_maxsim_when_given_a_3d_array(self) -> None:
         from rcp_ndcg.retrieval.topk import numpy_topk
 
-        with pytest.raises(ValueError, match="maxsim_topk"):
+        with pytest.raises(DataError, match="maxsim_topk"):
             numpy_topk(np.zeros((2, 3, 4), dtype=np.float32), np.zeros((1, 4), dtype=np.float32), 1)
