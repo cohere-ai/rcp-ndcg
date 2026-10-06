@@ -344,9 +344,7 @@ class TestDocumentSkipIds:
         image = tmp_path / "page.png"
         image.write_bytes(_png_bytes())
         sender = _GatedSender(
-            PoolingServer(
-                {}, default=np.ones((1, 2), dtype=np.float16), media_vector=np.ones((1, 2), dtype=np.float16)
-            )
+            PoolingServer({}, default=np.ones((1, 2), dtype=np.float16), media_vector=np.ones((1, 2), dtype=np.float16))
         )
         client = self._client(
             sender,
@@ -355,7 +353,6 @@ class TestDocumentSkipIds:
         )
         with pytest.raises(CapabilityError, match="media"):
             asyncio.run(client.aencode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT))
-
 
     def test_token_ids_travel_as_the_input_and_skip_ids_still_apply(self) -> None:
         """3 (pplx): the pooling wire sends the ids the fit tokenised, and the document skip drops the same

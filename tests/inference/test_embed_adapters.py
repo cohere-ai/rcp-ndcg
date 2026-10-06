@@ -229,9 +229,7 @@ class TestRequestShapes:
 
     def test_a_messages_request_lowers_each_item_to_content_parts(self, tmp_path: Any) -> None:
         image = self._png(tmp_path, "a", (1, 2, 3))
-        content = Content.from_parts(
-            [TextPart(text="the caption"), ImagePart(ref=MediaRef(uri=image.media[0].uri))]
-        )
+        content = Content.from_parts([TextPart(text="the caption"), ImagePart(ref=MediaRef(uri=image.media[0].uri))])
         call = self.adapter.calls(
             EmbedRequest(contents=(content,), role=EncodeRole.DOCUMENT, request_shape="messages"), model="m"
         )[0]

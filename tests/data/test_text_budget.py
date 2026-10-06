@@ -270,8 +270,11 @@ class TestDeclaredNormalisation:
 
     def test_a_per_shape_mapping_must_name_every_declared_shape(self) -> None:
         with pytest.raises(ValueError, match="document"):
-            TemplateSpec(query=(Segment(content="query"),), document=(Segment(content="document"),),
-                         normalize={"query": ("strip",)})
+            TemplateSpec(
+                query=(Segment(content="query"),),
+                document=(Segment(content="document"),),
+                normalize={"query": ("strip",)},
+            )
         with pytest.raises(ValueError, match="pair"):
             TemplateSpec(query=(Segment(content="query"),), normalize={"pair": ("strip",), "query": ()})
 
@@ -280,8 +283,9 @@ class TestDeclaredNormalisation:
             pair=(Segment(content="query"), Segment(fixed="\n"), Segment(content="document")),
             normalize=("strip", "lowercase"),
         )
-        result = fit([("  The QUERY  ", "  The DOCUMENT ")], shape="pair", budget=budget(spec, max_tokens=64),
-                     tokenizer=FRAMED)
+        result = fit(
+            [("  The QUERY  ", "  The DOCUMENT ")], shape="pair", budget=budget(spec, max_tokens=64), tokenizer=FRAMED
+        )
         assert result.contents[0] == ("the query", "the document")
         assert result.texts[0] == "the query\nthe document"
 
@@ -615,9 +619,7 @@ class TestPerShapeBudget:
         assert rows and rows[0]["budget_tokens"] == 10 and rows[0]["shape"] == "query"
         document_census = TextTruncationCensus()
         fit([LONG], shape="document", budget=split, tokenizer=FRAMED, census=document_census, ids=["d"])
-        document_rows = [
-            cut.as_row() for cut in document_census.cuts(mechanism=TextTruncationCensus.TEXT_BUDGET)
-        ]
+        document_rows = [cut.as_row() for cut in document_census.cuts(mechanism=TextTruncationCensus.TEXT_BUDGET)]
         assert document_rows[0]["budget_tokens"] == 64
 
     def test_a_query_shape_refuses_a_budget_the_frame_alone_fills(self) -> None:

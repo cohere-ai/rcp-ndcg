@@ -25,6 +25,64 @@ released together.
 
 ### Public surface
 
+- **Per-shape budgets for the embedding roles**: `EmbeddingEndpoint` and `PoolingEndpoint` take
+  `query_max_tokens` (CONTENT) -- the `query` shape's WHOLE budget there (a late-interaction or asymmetric
+  embedder caps its two sides differently, e.g. topk-embed-v1-small: query 1024, document 8192), while
+  `max_tokens` keeps capping the `document` shape; `fit` honours it, and every `text_budget` census row names
+  its shape's budget in the new `budget_tokens` field. `query_max_tokens` above `max_tokens` is refused (on a
+  `RerankEndpoint` the field keeps its pair-share meaning, and its existing at-or-over refusal stands).
+- **`TemplateSpec.anchor` gains `last_content`** (jina-embeddings-v5): the model reads the last kept content
+  token -- no fixed tail exists, the shape may end on a content span (which `last` refuses), and the fixed
+  segments (a head marker) stay reserved and audited.
+- **Declared content normalisation**: `TemplateSpec.normalize` (CONTENT), per request shape, the ops
+  `"strip"` and `"lowercase"` in order (a tuple for every declared shape, or a mapping naming every declared
+  shape); `fit` applies it to the content spans before measuring, so the reference and the engine see the
+  same text. The census rows keep the raw input on their original side. The new `ContentNormalizer` type is
+  exported from `rcp_ndcg.data.templates`.
+- **Late-interaction skip ids**: `PoolingEndpoint.document_skip_token_ids` (CONTENT, default `()`): the
+  pooling client drops document vectors at the positions whose token id is listed -- the ids it sent,
+  tokenised from the fitted render -- checks the returned vector count against them (a mismatch is a typed
+  `ProviderError`, never a silent misalignment), keeps query vectors whole, and refuses a media batch under
+  skip ids (its positions are the server's chat-template render).
+- **The client-side Matryoshka cut**: `PoolingEndpoint.mrl_dim` (CONTENT, below `dim`) slices the model's
+  token vectors to the MRL output size and renormalises -- cut-then-renormalise, the card's order, because
+  `/pooling` refuses per-request `dimensions`.
+- **Per-chunk multi-output models**: `PoolingEndpoint.outputs` (CONTENT): `"per_chunk"` declares a model that
+  answers several outputs per input (one slice of chunk vectors per input), so the pooling adapter's
+  one-vector-per-prompt-token usage cross-check is skipped; the `PoolRequest` it rides on carries the new
+  `outputs` field.
+- **Per-side media**: every role config takes `media_sides` (CONTENT, default both sides): media on a side it
+  does not name is refused with a typed error naming the field, before the media is fetched; a config that
+  declares media fields with no allowed side is refused.
+- **`empty_query` on the rerank role** (CONTENT): `refuse` (the default) refuses an empty query with a typed
+  error naming the query id; `send` keeps today's empty string.
+- **`request_shape` is implemented end to end**: `openai_embeddings` sends the chat-style embeddings input
+  (`messages`: one user message per item, content parts, image parts and video parts -- sampled frames as
+  image parts, a `video_url` container per the role's `video_policy`), and the embedding and pooling clients
+  send `token_ids` (the ids their fit tokenised; vLLM accepts token-id prompts), refused without a tokenizer.
+  A shape a wire does not implement is refused at construction (the adapters declare their shapes); a media
+  item on a text or token-ids route is refused by the adapter. `EmbedRequest`/`PoolRequest` carry
+  `request_shape` and `token_ids`.
+- **Template specials resolve their names exactly** (whitespace included, so a token named `"[Q] "` is
+  writable), and an unknown name's hint names the nearest ones before the full list.
+- A prompt prefix has one home: `query_prompt`/`doc_prompt` beside a `template` is refused with a
+  `ConfigError` naming the template segment to use instead (the fields stay for template-less configs).
+
+### Fixed
+
+- **A tokenizer file's embedded truncation and padding no longer cap the counts** (G5): a `tokenizer.json`
+  can ship `truncation: {max_length: 1024}` (topk-embed-v1-small does) or fixed-length padding, and an
+  un-reset backend silently topped every count and id list at those lengths, so no budget above them could
+  cut. `TextTokenizer.from_json` resets both at load -- the one construction site in the package
+  (`load_tokenizer` and `from_backend` funnel through it), the load-time equivalent of transformers'
+  per-call reset.
+- The text-budget census rows name their shape's budget (`budget_tokens`), and the per-shape budget cuts the
+  query shape against `query_max_tokens` exactly as a pair splits it.
+- The QA mutation survivors' boundaries are pinned: a cut that fits nothing is empty (never the whole text),
+  `smart_resize` accepts an aspect ratio exactly at 200 and keeps a snapped area exactly at `max_pixels`, a
+  one-token chunk sits over the cap when its token re-tokenizes longer alone; the suite runs each test under
+  a per-test timeout (`RCP_NDCG_TEST_TIMEOUT`, 60s default) so a hang fails fast.
+
 - **`JobSpec` takes exactly one of `argv` and `phases`** (`rcp_ndcg.runners`): a job without phases runs its
   `argv`; a phased job's commands are its phases' `argv`, and it carries no `argv` of its own — both or neither
   are refused with a message naming which. `JobSpec.argv` is optional (`tuple[str, ...] | None`); phased jobs

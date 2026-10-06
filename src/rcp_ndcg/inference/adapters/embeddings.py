@@ -49,15 +49,13 @@ def _refuse_media(contents: Sequence[Content], *, adapter: str) -> None:
         for part in content.parts:
             if isinstance(part, ImagePart):
                 raise CapabilityError(
-                    f"the {adapter} adapter takes text only on this route, but item {index} carries an image "
-                    "part",
+                    f"the {adapter} adapter takes text only on this route, but item {index} carries an image part",
                     hint="declare request_shape: messages on the role config (the chat-embed form carries "
                     "image parts), or embed a text rendering of the media",
                 )
             if isinstance(part, VideoPart):
                 raise CapabilityError(
-                    f"the {adapter} adapter takes text only on this route, but item {index} carries a video "
-                    "part",
+                    f"the {adapter} adapter takes text only on this route, but item {index} carries a video part",
                     hint="declare request_shape: messages on the role config (the chat-embed form lowers "
                     "sampled frames and video_url containers), or embed a text rendering of the media",
                 )

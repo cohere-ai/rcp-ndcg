@@ -1067,9 +1067,11 @@ def fit(
     if ops:
         raw_items = list(items)  # the inputs as given, for the census rows' original side
         if shape == "pair":
-            items = [(normalised(query), normalised(document)) for query, document in items]
+            pairs = [(query, document) for query, document in items]
+            items = [(normalised(query), normalised(document)) for query, document in pairs]
         else:
-            items = [normalised(item) for item in items]
+            assert all(isinstance(item, str) for item in items)  # validated at the top, for the type
+            items = [normalised(str(item)) for item in items]
     else:
         raw_items = items
     # The engine's behaviour for the route: declared on the template; a raw-text request gets the pooling

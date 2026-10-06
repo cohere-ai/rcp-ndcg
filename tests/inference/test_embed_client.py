@@ -46,10 +46,11 @@ def input_texts(api: str, call: Call) -> list[str]:
     """The texts one call carries, per profile (a token-ids item by its ids, stringified)."""
     body = call.json
     if api in ("openai_embeddings", "voyage"):
-        items = body["input"] if "input" in body else [
-            " ".join(part["text"] for part in m["content"] if part["type"] == "text")
-            for m in body["messages"]
-        ]
+        items = (
+            body["input"]
+            if "input" in body
+            else [" ".join(part["text"] for part in m["content"] if part["type"] == "text") for m in body["messages"]]
+        )
         return [text if isinstance(text, str) else " ".join(str(i) for i in text) for text in items]
     if api == "cohere":
         return list(body["texts"])
