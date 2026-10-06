@@ -114,7 +114,10 @@ def _data(request: EvalScoreRequest | ReportInputs) -> dict[str, Any]:
     from rcp_ndcg.data import load_dataset
 
     if (request.suite is None) == (request.dataset is None):
-        raise UsageError("pass exactly one of --suite and --dataset")
+        raise UsageError(
+            "pass exactly one of --suite and --dataset",
+            hint="score a public suite with --suite nanobeir, or a dataset URI with --dataset jsonl:rows.jsonl",
+        )
     if request.suite is not None:
         return {"dataset": load_dataset(f"suite:{request.suite}", subset=request.subset, revision=request.revision)}
     assert request.dataset is not None
@@ -295,7 +298,10 @@ def eval_compare(request: EvalCompareRequest) -> Comparison:
     from rcp_ndcg.eval import compare
 
     if (request.report is None) == (request.run is None):
-        raise UsageError("pass exactly one of --report and --run")
+        raise UsageError(
+            "pass exactly one of --report and --run",
+            hint="compare a report written by `eval score --out` with --report, or a run directory with --run",
+        )
     systems = None
     if request.run is not None:
         from rcp_ndcg.runs.inspect import evaluation_report
@@ -422,7 +428,10 @@ def eval_explain(request: EvalExplainRequest) -> ExplainedQuery:
     """Explain one query of a run or a saved report: each system's top k with theta, gain and per-criterion
     probabilities, and the gaps between systems split into selection and ordering."""
     if (request.report is None) == (request.run is None):
-        raise UsageError("pass exactly one of --run and --report")
+        raise UsageError(
+            "pass exactly one of --run and --report",
+            hint="explain a query of a run directory with --run, or of a saved report with --report",
+        )
     if request.run is not None:
         if request.system:
             raise UsageError(

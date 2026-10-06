@@ -166,9 +166,15 @@ class RunJudgeFields(BaseModel):
             )
         if self.judge_url is not None:
             if self.judge is not None:
-                raise UsageError("pass --judge or --judge-url, not both")
+                raise UsageError(
+                    "pass --judge or --judge-url, not both",
+                    hint="drop --judge, or point a judge config at the endpoint with --set judge.base_url=...",
+                )
             if self.judge_model is None:
-                raise UsageError("--judge-url needs --judge-model (the served model name)")
+                raise UsageError(
+                    "--judge-url needs --judge-model (the served model name)",
+                    hint="pass the endpoint and its model: --judge-url .../v1 --judge-model ID",
+                )
             return ["judge=" + json.dumps({"base_url": self.judge_url, "model": self.judge_model})]
         if self.judge is not None:
             return [f"judge={json.dumps(self.judge)}"]

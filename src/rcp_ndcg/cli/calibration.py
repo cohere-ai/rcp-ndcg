@@ -283,7 +283,10 @@ def calibration_insert(request: CalibrationInsertRequest) -> InsertResult:
         from rcp_ndcg.llm.store import JudgementStore
 
         if request.query is None or request.doc is None:
-            raise UsageError("--dry-run needs --query and --doc")
+            raise UsageError(
+                "--dry-run needs --query and --doc",
+                hint="name the new document: --query q1 --doc doc1",
+            )
         schedule = JudgementStore(_judgement_store(request.judgements)).schedule("tournament") if (
             request.judgements
         ) else None  # fmt: skip
@@ -305,7 +308,10 @@ def calibration_insert(request: CalibrationInsertRequest) -> InsertResult:
             Path(request.out).write_text(planned.model_dump_json(indent=2) + "\n", encoding="utf-8")
         return InsertResult(plan=planned, out=request.out)
     if request.judgements is None or request.out is None:
-        raise UsageError("inserting needs --judgements and --out (or --dry-run to choose opponents first)")
+        raise UsageError(
+            "inserting needs --judgements and --out (or --dry-run to choose opponents first)",
+            hint="pass the tournament store and where the extended calibration goes: --judgements store --out extended",
+        )
     extension = insert_documents(
         calibration,
         read_judgements(_judgement_store(request.judgements)),

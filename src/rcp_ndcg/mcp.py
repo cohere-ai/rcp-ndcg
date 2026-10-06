@@ -236,7 +236,13 @@ def call_tool(name: str, arguments: Any = None) -> dict[str, Any]:
     spec = _tool_spec(tool, specs)
     unknown = sorted(set(arguments) - set(_input_schema(tool, spec)["properties"]))
     if unknown:
-        return _error_result(UsageError(f"{name} takes no argument {unknown[0]!r}", details={"unknown": unknown}))
+        return _error_result(
+            UsageError(
+                f"{name} takes no argument {unknown[0]!r}",
+                hint="the tool's input schema lists what it takes: tools/list, or `tool_manifest` in Python",
+                details={"unknown": unknown},
+            )
+        )
     outcome = execute(spec, {**arguments, **tool.fixed})
     for warning in outcome.warnings:  # the MCP analogue of the CLI's stderr line; the envelope has no warnings
         logger.warning(f"{warning['code']}: {warning['message']}")

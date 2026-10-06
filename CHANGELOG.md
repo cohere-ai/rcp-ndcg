@@ -450,6 +450,11 @@ released together.
   `UsageError` (exit 2), the class of every other unknown command-line value on these commands (`--fields`,
   `--metrics`), not a `ConfigError` (exit 3): there is no config file to fix. The message and the systems
   list are unchanged; the library keeps its own `ConfigError` for `systems=`/`baseline=` Python callers.
+- Every refusal the command layer raises carries its `hint` (the machine-readable next step was null at 24
+  raise sites of `rcp_ndcg.cli` and the MCP `call_tool`), and so do the evaluation refusals a command can
+  reach (unknown `--k`/`--metrics`/data-source combinations in `evaluate`, unknown `--metric`/`--baseline`/
+  one-system reports and shared-query checks in `compare`, the `--k` of a multi-cutoff report). The Python
+  wording keeps its `cli_hint` where the two differ.
 
 - `run status`, `run list` and `run show` no longer fail when they read a running job's judgement store while
   the job claims or reports a stage: the store's `identity.json` is written through a temp file and renamed (as

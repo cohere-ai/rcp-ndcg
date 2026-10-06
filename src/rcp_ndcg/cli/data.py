@@ -112,7 +112,10 @@ def _fetch_example(request: DataFetchRequest) -> DataFetch:
     from rcp_ndcg import examples
 
     if request.subset is not None or request.revision is not None:
-        raise UsageError("the packaged example has no subsets or revisions")
+        raise UsageError(
+            "the packaged example has no subsets or revisions",
+            hint="copy it with --dataset tiny --out DIR and read its files",
+        )
     source = examples.tiny()
     target = source
     if request.out is not None:
@@ -302,7 +305,10 @@ def _options(pairs: list[str], *, flag: str) -> dict[str, Any]:
     for pair in pairs:
         key, separator, raw = pair.partition("=")
         if not separator or not key.strip():
-            raise UsageError(f"{flag} expects KEY=VALUE, got {pair!r}")
+            raise UsageError(
+                f"{flag} expects KEY=VALUE, got {pair!r}",
+                hint="pass one pair per option: --opt KEY=VALUE",
+            )
         options[key.strip()] = _scalar(raw.strip())
     return options
 
@@ -318,11 +324,13 @@ def _target_shape(requested: str | None, reader: Any, writer: Any) -> Any:
         target = DataShape.CORPUS
     if target not in reader.shapes:
         raise UsageError(
-            f"reader {reader.name!r} cannot serve the {target} shape (it declares {sorted(reader.shapes)})"
+            f"reader {reader.name!r} cannot serve the {target} shape (it declares {sorted(reader.shapes)})",
+            hint="pass a shape both sides take, or pass --shape",
         )
     if target not in writer.shapes:
         raise UsageError(
-            f"writer {writer.name!r} cannot write the {target} shape (it declares {sorted(writer.shapes)})"
+            f"writer {writer.name!r} cannot write the {target} shape (it declares {sorted(writer.shapes)})",
+            hint="pass a shape both sides take, or pass --shape",
         )
     return target
 
