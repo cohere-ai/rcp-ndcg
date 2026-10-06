@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import os
+import signal
 import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 # Keep a test run out of the user's cache: caches (media, remote-object and calibration
 # caches) go to a per-session temporary directory.
@@ -64,6 +66,47 @@ def _hub_is_offline_and_empty(
     resolve_revision.cache_clear()
     yield
     resolve_revision.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# Per-test timeout: a hang fails its test instead of hanging the suite
+# ---------------------------------------------------------------------------
+
+#: Seconds one test may run before its SIGALRM raises. A mutant's infinite loop (the chunk resolver's
+#: one-token boundary) or a wedged wait fails its own test within this budget, on every worker, instead of
+#: stalling the whole run to the harness's own outer timeout.
+TEST_TIMEOUT_S = float(os.environ.get("RCP_NDCG_TEST_TIMEOUT", "60"))
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line("markers", "no_timeout: opt this test out of the per-test timeout")
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_call(item: pytest.Item) -> Any:
+    """Arm one real-time timer per test body; the timer's SIGALRM fails the test when it fires.
+
+    The timer runs on the main thread (pytest's, and each xdist worker's), so a pure-Python hang -- the
+    case that actually happens -- is caught; a test that manages its own alarm opts out with the
+    ``no_timeout`` marker.
+    """
+    if TEST_TIMEOUT_S <= 0 or item.get_closest_marker("no_timeout") is not None or not hasattr(signal, "setitimer"):
+        yield
+        return
+
+    def _on_timeout(signum: int, frame: Any) -> None:
+        raise TimeoutError(f"the test exceeded its {TEST_TIMEOUT_S:g}s per-test timeout (a hang fails fast)")
+
+    previous_handler = signal.signal(signal.SIGALRM, _on_timeout)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, TEST_TIMEOUT_S)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer != (0.0, 0.0):
+            # A session-scoped alarm the suite itself armed (none today) survives the test untouched.
+            signal.setitimer(signal.ITIMER_REAL, previous_timer[0], previous_timer[1])
 
 
 # ---------------------------------------------------------------------------
