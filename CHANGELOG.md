@@ -116,6 +116,17 @@ released together.
   template would change every prompt; the /v2/embed route is a trap: it auto-applies the checkpoint's ST prompts).
   `reference.py` is the paper-exact in-process path (bf16, left padding, last token, float32 L2) whose render
   mode needs no torch and no transformers; the recipe directory carries its `requirements-reference.txt`.
+- New serving recipe `rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/` (`Qwen/Qwen3-VL-Embedding-2B` at revision
+  `9f2f7e71…`, role `embed`, stock `vllm/vllm-openai:v0.31.0`, no plugin): the chat frame declared as product
+  `TemplateSpec` data with the model's default instruction pinned as fixed text, the template file shipped
+  (`serve.chat_template: template.jinja`, R10), the media pixel budget pinned on both sides
+  (`serve.mm_processor_kwargs` `images_kwargs` min 4096 / max 1843200, mirrored in `client.recipe`, R20),
+  explicit `client.tokenizer` + `max_tokens: 8192` with `on_overflow: cut`, `empty_doc: send_text "NULL"`
+  (the card's NULL rule), and the subprocess reference running the card's `Qwen3VLEmbedder` (vendored
+  verbatim, sha256-pinned; the render mode mirrors the anchor-preserving cut, and the card's whole-prompt
+  right cut is the declared `anchor_drop_over_cap` deviation). The recipe's tests run stage 1 on CPU against
+  the pinned tokenizer (offline: skipped with a clear reason) and prove the over-cap cut and the query-side
+  frame byte-identical.
 
 - New package `rcp-ndcg-vllm` (`packages/rcp-ndcg-vllm/`, outside the root uv workspace and lock; version
   0.0.1, depends on `rcp-ndcg==0.0.1` — a hard dependency, and pinned by the release workflow's version
