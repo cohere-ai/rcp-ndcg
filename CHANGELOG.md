@@ -25,6 +25,18 @@ released together.
 
 ### Public surface
 
+- New served recipe `octen-embedding-8b` (`packages/rcp-ndcg-vllm/recipes/octen-embedding-8b/`): the paper's
+  first-stage retriever Octen/Octen-Embedding-8B @ `5adcfa292e712091dfc30f0e97f0b2282e6cc66c` on stock
+  `vllm/vllm-openai:v0.31.0` (`--runner pooling`; last-token pooling and the normalize activation come from the
+  checkpoint's own sentence-transformers configs). The client block is an `EmbeddingEndpoint` with the product's
+  template as data: documents render as the one string `"- " + text` (the paper's prefix, a fixed head segment;
+  never separately tokenised ids), queries as they are, the appended end-of-text anchor (added-token name
+  `endoftext`, id 151643) declared via `add_special_tokens: true` and reserved by the 8192-token budget
+  (`on_overflow: cut`), `max_model_len: 8192` defense in depth, `chat_template: null` (the checkpoint's ChatML
+  template would change every prompt; the /v2/embed route is a trap: it auto-applies the checkpoint's ST prompts).
+  `reference.py` is the paper-exact in-process path (bf16, left padding, last token, float32 L2) with a
+  stdlib-only render mode; the recipe directory carries its `requirements-reference.txt`.
+
 - New package `rcp-ndcg-vllm` (`packages/rcp-ndcg-vllm/`, outside the root uv workspace and lock; version
   0.0.1, depends on `rcp-ndcg==0.0.1` — a hard dependency, and pinned by the release workflow's version
   check): serving recipes for vLLM as data. The recipe's `client` block **is**
