@@ -248,10 +248,6 @@ def _render_check(
     if recipe_dir is None:  # pragma: no cover - load_recipe sets it
         raise HarnessError(f"recipe {recipe.id} was not loaded from a directory; use load_recipe")
     entry = str(recipe_dir / recipe.reference.entry)
-    recipe_dir = recipe._dir
-    if recipe_dir is None:  # pragma: no cover - load_recipe sets it
-        raise HarnessError(f"recipe {recipe.id} was not loaded from a directory; use load_recipe")
-    entry = str(recipe_dir / recipe.reference.entry)
     in_budget = [row for row in sampled if "shape" not in row]
     served_by_key = _fit_texts_by_row(recipe, in_budget, tokenizer)
     with tempfile.TemporaryDirectory() as work:

@@ -76,7 +76,7 @@ def run_reference(
         "--device",
         device,
     ]
-    completed = subprocess.run(argv, capture_output=True, text=True, timeout=3600.0)
+    completed = subprocess.run(argv, capture_output=True, text=True, timeout=_TIMEOUT_S)
     if completed.returncode != 0:
         raise HarnessError(
             f"the reference subprocess ({mode}) failed with exit code {completed.returncode}: "

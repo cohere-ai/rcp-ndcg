@@ -33,9 +33,6 @@ __all__ = [
     "tokenizer_of",
 ]
 
-DEFAULT_SHAPE_OF_ROLE: dict[str, str] = {"embed": "document", "multi_vector": "document", "rerank": "pair"}
-"""The shape a role's requests are fitted as, when the pairs file does not name one."""
-
 
 def tokenizer_of(recipe: Recipe) -> Any:
     """The recipe's loaded :class:`~rcp_ndcg.data.tokenizer.TextTokenizer`.
