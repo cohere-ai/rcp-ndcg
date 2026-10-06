@@ -48,11 +48,11 @@ client:
                            # sending: the engine's truncate_prompt_tokens right-cuts the composed
                            # prompt and loses the assistant tail (research case 12)
   query_max_tokens: 4096   # the query's share of the pair budget; the product's own served
-                           # reranker caps the query at 4096 (cross_encoder.py:46
-                           # MAX_QUERY_LENGTH, sent as max_tokens_per_query); the document gets
-                           # the rest. The reference caps the whole pair, not the query alone,
-                           # but a declared share is required so an over-long query never eats
-                           # the document's budget
+                           # reranker caps the query at 4096 (src/rcp_ndcg/retrieval/
+                           # cross_encoder.py:46 MAX_QUERY_LENGTH, sent as max_tokens_per_query);
+                           # the document gets the rest. The reference caps the whole pair, not
+                           # the query alone, but a declared share is required so an over-long
+                           # query never eats the document's budget
   template:
     pair:
       - {fixed: "{special:im_start}system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \"yes\" or \"no\".{special:im_end}\n{special:im_start}user\n<Instruct>: Given a search query, retrieve relevant candidates that answer the query.<Query>:"}
@@ -118,7 +118,8 @@ sources:
      (num_labels=1) and :473-552 load_weights_using_from_2_way_softmax with the fp32 head
      W[true] - W[false] at :532-539; vllm/config/model.py:1950 (the ForSequenceClassification
      suffix -> pooling/classify); model_executor/layers/pooler/activations.py:118-141
-     (PoolerClassify, num_labels<2 -> sigmoid); interfaces_base.py:160 (default LAST pooling)"
+     (PoolerClassify, num_labels<2 -> sigmoid); model_executor/models/interfaces_base.py:160
+     (default LAST pooling)"
   - "research/r-qwen3vl-rer/out/{report.md,digest.md,check_template.py,reference-draft.py,
      recipe-draft.yaml}: the 12-case CPU template-equivalence check (28/28), the served-vs-card
      render equality for text, instruction, image, video and media-both-sides shapes, and the
