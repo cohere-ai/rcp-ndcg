@@ -104,7 +104,7 @@ def pass_probabilities(theta: float | ArrayLike, items: Any) -> NDArray[np.float
     """
     gammas, betas = item_arrays(items, weighted=False)
     if np.ndim(theta) == 0:
-        scalar = float(theta)  # a 0-d theta: computed in float64, like the array path
+        scalar = float(np.asarray(theta))  # a 0-d theta: computed in float64, like the array path
         weights = [float(g) for g in gammas]
         return np.array([sigmoid(g * (scalar - float(b))) for g, b in zip(weights, betas, strict=True)])
     arr = np.asarray(theta, dtype=float)
@@ -137,7 +137,7 @@ def gain(theta: float | ArrayLike, items: Any) -> float | NDArray[np.float64]:
     """
     gammas, betas = item_arrays(items)
     if np.ndim(theta) == 0:
-        scalar = float(theta)  # a 0-d theta: computed in float64, like the array path
+        scalar = float(np.asarray(theta))  # a 0-d theta: computed in float64, like the array path
         weights = [float(g) for g in gammas]
         probs = [sigmoid(g * (scalar - float(b))) for g, b in zip(weights, betas, strict=True)]
         total = sum(weights)
