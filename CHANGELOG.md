@@ -25,6 +25,24 @@ released together.
 
 ### Public surface
 
+- **`JobSpec` takes exactly one of `argv` and `phases`** (`rcp_ndcg.runners`): a job without phases runs its
+  `argv`; a phased job's commands are its phases' `argv`, and it carries no `argv` of its own — both or neither
+  are refused with a message naming which. `JobSpec.argv` is optional (`tuple[str, ...] | None`); phased jobs
+  build one command per phase with the new `JobSpec.with_argv(argv)`. `job_for` hands a runner that renders no
+  phases the whole-run command as the job's `argv` (as before), and the local runner renders a phased job's
+  phases in order instead of an `argv` that covered them.
+- **Every runner takes an install source** for the coordinator's release, where the job installs it from a
+  staged wheelhouse: `runner.options.wheelhouse` (a directory of wheels, or an `http(s)://`/`gs://` URL of one,
+  rendered as `uvx --find-links <wheelhouse> --no-index` — nothing is asked of PyPI or the torch index) and
+  `runner.options.constraints` (a constraints file path or URL replacing the release's). A local path is
+  recorded absolute, a URL kept as it is. Refused where nothing installs (the local runner — the coordinator
+  runs in this host's environment — and SLURM with `container_runtime: none` — the node's environment provides
+  the release); rendered for the Kubernetes pod and the SLURM containers. `install_argv` takes `wheelhouse` and
+  `constraints`; its default rendering is unchanged.
+- The engines overlay (`RCP_NDCG_ENGINES`, `run resume --engine`) rebuilds the role config through its model, so
+  an overlaid config passes every validator a configured one does; an invalid overlay (e.g. a `fake://` replica
+  list) is refused with the typed `ConfigError` where it is applied, never half-applied.
+
 - **The retrieval API runs on the role clients, and its configs select the wire with `api`** (the unified-inference
   design, sections 4.1, 7.1 and 7.2):
   - `rcp_ndcg.retrieval`'s configs are the inference role configs, by `api`: an encoder is the served
@@ -417,6 +435,11 @@ released together.
 
 ### Fixed
 
+- `run status`, `run list` and `run show` no longer fail when they read a running job's judgement store while
+  the job claims or reports a stage: the store's `identity.json` is written through a temp file and renamed (as
+  the run manifest's save is) instead of rewritten in place, so a concurrent reader sees the old or the new
+  file, never a truncated one. An MCP e2e poll lost this race (a `JSONDecodeError` on `identity.json`, whose
+  `run_status` error result has no `jobs` key) and failed the test intermittently under `-n 4`.
 - `_hub_absent` no longer crashes when huggingface_hub drops its private `_CACHED_NO_EXIST` sentinel: without
   the sentinel the cache cannot tell "absent upstream" from "not cached", so the file is treated as not cached
   (the load refuses with the offline hint and one debug line records it; an optional table is never silently
