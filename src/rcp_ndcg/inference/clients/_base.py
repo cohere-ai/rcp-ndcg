@@ -494,13 +494,16 @@ class RoleClient[C: Endpoint]:
         media_tokens: Sequence[int] | None = None,
         instruction: str | None = None,
         record: bool = True,
+        ids: Sequence[str] | None = None,
     ) -> FitResult:
         """One :func:`~rcp_ndcg.data.preprocess.fit` call for this client's budget: the shared mechanism the
-        brief wires into every ``_prepare``. ``corpus`` is the client's role name; ids are positional. The
-        ``instruction`` reserves the instruction's tokens in the fixed overhead where the declared template
-        frames it (the reranker's ``instruction: field`` and ``system`` modes -- the instruction is then
-        engine-rendered into the frame, never inside the cut spans); ``record=False`` makes a probe call,
-        whose spans are decided without recording census rows."""
+        brief wires into every ``_prepare``. ``corpus`` is the client's role name; ids are positional (the
+        caller's ``ids`` when given -- the census rows then name the caller's own inputs, so an omitted
+        document's position is never taken by a later one). The ``instruction`` reserves the instruction's
+        tokens in the fixed overhead where the declared template frames it (the reranker's ``instruction:
+        field`` and ``system`` modes -- the instruction is then engine-rendered into the frame, never inside
+        the cut spans); ``record=False`` makes a probe call, whose spans are decided without recording census
+        rows."""
         budget, tokenizer = self._budget, self._tokenizer
         assert budget is not None  # callers only fit when a budget is declared
         return fit(
@@ -508,7 +511,7 @@ class RoleClient[C: Endpoint]:
             shape,
             budget,
             tokenizer,
-            ids=[str(index) for index in range(len(inputs))],
+            ids=list(ids) if ids is not None else [str(index) for index in range(len(inputs))],
             instruction=instruction,
             media_tokens=media_tokens,
             corpus=self.ROLE,

@@ -33,6 +33,8 @@ nav:
       - "Calibrate your benchmark": tutorials/calibrate-your-benchmark.md
       - "MTEB integration": tutorials/mteb-integration.md
       - "Reproduce the paper": tutorials/reproduce-the-paper.md
+  - How-to:
+      - "Add a model": how-to/add-a-model.md
   - Reference:
       - "Command line": reference/cli.md
       - "rcp_ndcg_core": api/metric.md

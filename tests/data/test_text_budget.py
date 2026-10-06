@@ -148,6 +148,18 @@ class TestTemplateSpec:
         with pytest.raises(ValueError, match="exactly one"):
             Segment()
 
+    def test_an_empty_fixed_segment_is_refused(self) -> None:
+        """A fixed segment that renders no tokens is a workaround marker, not a frame piece: it is refused.
+
+        The declared-end-token escape hatch needs no marker: a shape that ends in content with
+        ``add_special_tokens: true`` has the post-processor's own token as its anchor, and the audit expects
+        the post-processor's tail alone there.
+        """
+        with pytest.raises(ValueError, match="empty"):
+            Segment(fixed="")
+        with pytest.raises(ValueError, match="empty"):
+            TemplateSpec(query=(Segment(fixed="q: "), Segment(content="query"), Segment(fixed="")))
+
     def test_an_anchor_of_marker_declares_markers_and_nothing_else_does(self) -> None:
         with pytest.raises(ValueError, match="anchor_markers"):
             TemplateSpec(query=(Segment(content="query"),), anchor="marker")
