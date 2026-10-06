@@ -183,7 +183,9 @@ class RerankClient(RoleClient):
             documents=tuple(wire_documents),
             instruction=instruction if self.config.instruction == "field" else None,
         )
-        replies = await self._send(self._adapter.calls(request, model=self.config.model))
+        calls = self._adapter.calls(request, model=self.config.model)
+        self._gate_media_calls(calls)
+        replies = await self._send(calls)
         # The scores pool back through `origin` (fit output -> original document index), so chunking and
         # `empty_doc: omit_zero` compose: the pooled score lands on the document it was scored for, and an
         # omitted document scores 0.0 at its position.

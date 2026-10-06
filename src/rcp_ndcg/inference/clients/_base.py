@@ -59,7 +59,6 @@ from rcp_ndcg.data.templates import RequestShape
 from rcp_ndcg.errors import CapabilityError, ConfigError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
 from rcp_ndcg.inference.adapters.base import AdapterRole, get_adapter
-from rcp_ndcg.inference.adapters.chat import media_counts
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.transport import AuthProfile, Sender, Transport
 from rcp_ndcg.inference.types import Call, Reply, TokenCount
@@ -282,6 +281,60 @@ class RoleClient[C: Endpoint]:
         """The effective media policies of this client's config (the one shared rule, no per-client code)."""
         return media_policies_for(self.config)
 
+    def _gate_media_calls(self, calls: Sequence[Call]) -> None:
+        """The per-request media gates, as the judge's: each wire CALL's image and video parts against the
+        config's ``max_images``/``max_videos``, refused before the call is sent. The gate runs over the
+        request the engine actually sees -- the pooling wire's one media item per call, the rerank call's
+        query plus that chunk's documents.
+
+        Raises:
+            CapabilityError: a call carries more images or videos than the config declares the model to
+                read, or any at all when it reads none.
+        """
+        max_images = getattr(self.config, "max_images", 0)
+        max_videos = getattr(self.config, "max_videos", 0)
+
+        def count(value: Any) -> tuple[int, int]:
+            images = videos = 0
+            if isinstance(value, str):
+                return 0, 0
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    if key in ("image_url", "video_url") and isinstance(item, dict):
+                        images += 1
+                    elif key in ("video_url",) and isinstance(item, str):
+                        videos += 1
+                    elif key == "video_url":
+                        videos += 1
+                    else:
+                        sub_images, sub_videos = count(item)
+                        images, videos = images + sub_images, videos + sub_videos
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict) and item.get("type") == "image_url":
+                        images += 1
+                    elif isinstance(item, dict) and item.get("type") == "video_url":
+                        videos += 1
+                    else:
+                        sub_images, sub_videos = count(item)
+                        images, videos = images + sub_images, videos + sub_videos
+            return images, videos
+
+        for call in calls:
+            images, videos = count(call.json)
+            for kind, count_, limit in (("images", images, max_images), ("videos", videos, max_videos)):
+                if count_ and not limit:
+                    raise CapabilityError(
+                        f"{self.config.model} is not declared to read {kind} (max_{kind}: 0), but this "
+                        f"request carries {count_}. Declare max_{kind} for a checkpoint that reads them, or "
+                        "drop the media parts from the corpus."
+                    )
+                if count_ > limit:
+                    raise CapabilityError(
+                        f"this request carries {count_} {kind} and the endpoint accepts {limit} per request "
+                        f"(max_{kind}). Split the request, or raise the limit on the server and here."
+                    )
+
     def _prepare_request(self, contents: Sequence[Content]) -> PreparedRequest:
         """The one preparation call for a request's contents: media sized exactly as the judge's, the
         request's media token counts.
@@ -336,31 +389,16 @@ class RoleClient[C: Endpoint]:
             ``(contents, tokens)``: the contents to send (the kept media in place, possibly shrunk, drops
             removed, text untouched) and the request's media token count after the fit -- what the caller's
             :func:`~rcp_ndcg.data.preprocess.fit` call subtracts from the budget, never cutting media.
+            The media gates are the wire call's (see :meth:`_gate_media_calls`), not this method's.
 
         Raises:
+            CapabilityError: the wire request carries more images or videos than the config's
+                ``max_images``/``max_videos`` allow (the per-request gate).
             TextBudgetExceededError: ``on_overflow: fail`` and media alone fill the budget.
             ConfigError: ``on_overflow: chunk`` and media alone fill the budget.
         """
         image, video = self._media_policies()
         prepared = prepare_request(contents, image, video)
-        # The per-request media gates, as the judge's: this wire request's images and videos against the
-        # config's declared limits, refused before anything is sent.
-        counts = media_counts(Content.from_parts([part for content in prepared.contents for part in content.parts]))
-        for kind, count, limit in (
-            ("images", counts.images, getattr(self.config, "max_images", 0)),
-            ("videos", counts.videos, getattr(self.config, "max_videos", 0)),
-        ):
-            if count and not limit:
-                raise CapabilityError(
-                    f"{self.config.model} is not declared to read {kind} (max_{kind}: 0), but this request "
-                    f"carries {count}. Declare max_{kind} for a checkpoint that reads them, or drop the "
-                    "media parts from the corpus."
-                )
-            if count > limit:
-                raise CapabilityError(
-                    f"this request carries {count} {kind} and the endpoint accepts {limit} per request "
-                    f"(max_{kind}). Split the request, or raise the limit on the server and here."
-                )
         media = prepared.media
         tokens = prepared.tokens.tokens
         if self._budget is not None and tokens > self._budget.max_tokens:
@@ -385,12 +423,17 @@ class RoleClient[C: Endpoint]:
                 )
             fit = fit_media_to_budget(media, image=image, video=video, text_budget_tokens=self._budget.max_tokens)
             contents = list(apply_media_fit(contents, fit))
+            # The dropped items are the original prepared items at their positions; each position's
+            # doc_id is its owning content's (doc_ids expanded per media item, in part order).
+            media_doc_ids = [
+                doc_id
+                for doc_id, content in zip(doc_ids, contents, strict=True)
+                for _ in range(sum(len(part.media_refs()) for part in content.parts))
+            ]
             for position in fit.dropped_positions:
-                # The dropped item is the ORIGINAL prepared item at that position (the fit refused it
-                # whole, possibly after a shrink attempt failed); recorded under ITS input's doc_id.
                 self.media_census.record(
                     corpus=self.ROLE,
-                    doc_id=doc_ids[position] if position < len(doc_ids) else self.ROLE,
+                    doc_id=media_doc_ids[position] if position < len(media_doc_ids) else self.ROLE,
                     media=[media[position]],
                     dropped=True,
                 )
@@ -479,13 +522,11 @@ class RoleClient[C: Endpoint]:
             prepared = self._prepare_request([probe])
             # The counted number must cover the same request the engine's report covers (the contract in
             # :func:`~rcp_ndcg.data.resolution.engine_media_check`): the media block plus every text token
-            # the probe request carries, in the declared tokenizer's tokens (the render the engine reads
-            # is the client's own here -- the declared budget counts the client's render, not a server
-            # template the client cannot see).
+            # the probe calls carry (the role's query, a text part), in the declared tokenizer's tokens --
+            # what the declared budget counts; a server-side chat template beyond it is the recipe's
+            # responsibility.
             assert self._tokenizer is not None, "an image_processor implies a declared budget tokenizer"
             calls = list(self._probe_calls(prepared.contents[0]))
-            # The counted number must cover the same request the engine's report covers: the media block
-            # plus every text token the probe calls carry (the role's query, a text part).
             counted = sum(count.tokens for count in self._media_counts_of(prepared.contents)) + self._text_tokens_of(
                 calls
             )
@@ -526,7 +567,11 @@ class RoleClient[C: Endpoint]:
             if isinstance(value, str):
                 return value
             if isinstance(value, dict):
-                texts = [walk(item) for key, item in value.items() if key in ("query", "text")]
+                texts = [
+                    walk(item)
+                    for key, item in value.items()
+                    if key in ("query", "text", "input", "messages", "documents")
+                ]
                 content = value.get("content")
                 if isinstance(content, list):
                     texts.extend(part.get("text", "") for part in content if isinstance(part, dict))

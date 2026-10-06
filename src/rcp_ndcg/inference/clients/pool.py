@@ -194,8 +194,10 @@ class PoolingClient(RoleClient):
         """The contents as they are sent: the role's prompt prepended, the media prepared, then the budget.
 
         This is the one place a content decision applies -- the role's prompt, the one media preparation
-        call (:meth:`RoleClient._prepare_request`: media sized as the judge's, the ``max_images``/
-        ``max_videos`` gates, the budget's media fit with every drop recorded), and the fit: only the text's
+        call (:meth:`RoleClient._prepare_request`), the budget's media fit per wire request with every drop
+        recorded (:meth:`RoleClient._fit_media_for_request`), and the text fit: only the text's content span
+        is cut (the template re-attached, every cut recorded), and media tokens are reserved whole and
+        never cut.
         content span is cut (the template re-attached, every cut recorded), media tokens reserved whole and
         never cut. The client cuts nothing else: a model-side change without a config field is a silent
         change to the vectors.
@@ -259,6 +261,7 @@ class PoolingClient(RoleClient):
             dim=self.config.dim,
         )
         calls = self._adapter.calls(request, model=self.config.model)
+        self._gate_media_calls(calls)
         replies = await self._sender.send(calls)
         embeddings = self._adapter.interpret(request, replies)
         if embeddings.num_items != len(contents):
