@@ -15,6 +15,7 @@ from rcp_ndcg.llm import TournamentSchedule
 from rcp_ndcg.runs import Pipeline, RunManifest, RunStatus, StepStatus
 from rcp_ndcg.support.identity import check_declarations, identity_payload
 from rcp_ndcg.testing import TINY_TOURNAMENT, tiny_rows
+from tests._tokenizers import byte_bpe_tokenizer
 from tests.runs.conftest import STEPS, tiny_config
 
 
@@ -313,15 +314,19 @@ class TestEstimateAndRetrieve:
     def test_a_rerank_step_reorders_the_pools_the_judge_reads(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        def reverse(examples, cfg, **kwargs):
-            # The reranker scores in the pool's order; here it prefers the pool's last documents.
-            return [e.model_copy(update={"scores": [float(i) for i in range(len(e.doc_ids))]}) for e in examples]
+        def score_by_position(self, examples, *, checkpoint=None):
+            # The stub client scores each document by its pool position: it prefers the pool's last documents.
+            for example in examples:
+                scores = tuple(float(i) for i in range(len(example.doc_ids)))
+                if checkpoint is not None:
+                    checkpoint(str(example.id), scores)
+            return []
 
-        monkeypatch.setattr("rcp_ndcg.retrieval.cross_encoder.rerank_examples", reverse)
+        monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", score_by_position)
         config = tiny_config(
             data,
             candidates={
-                "rerank": {"provider": "openai_compatible", "model": "stub", "base_url": "http://stub:8000"},
+                "rerank": {"api": "rerank", "model": "stub", "base_url": "http://stub:8000"},
                 "depth": 4,
             },
             steps=["rerank", "tournament"],
@@ -357,18 +362,18 @@ class TestTheRetrieveAndRerankIdentities:
         served = {"model": "embedder", "base_url": "http://engine.test/v1", **encoder}
         return {
             "from": "retrieval",
-            "retrieval": {"kind": "dense", "encoder": {"provider": "openai_compatible", **served}},
+            "retrieval": {"kind": "dense", "encoder": {"api": "openai_embeddings", **served}},
         }
 
     @staticmethod
     def _cohere(**encoder: Any) -> dict[str, Any]:
         hosted = {"model": "embed-v4.0", **encoder}
-        return {"from": "retrieval", "retrieval": {"kind": "dense", "encoder": {"provider": "cohere", **hosted}}}
+        return {"from": "retrieval", "retrieval": {"kind": "dense", "encoder": {"api": "cohere", **hosted}}}
 
     @staticmethod
     def _rerank(**reranker: Any) -> dict[str, Any]:
         served = {"model": "reranker", "base_url": "http://engine.test:8000", **reranker}
-        return {"rerank": {"provider": "openai_compatible", **served}}
+        return {"rerank": {"api": "rerank", **served}}
 
     def _two(self, data: Path, tmp_path: Path, candidates_a: dict, candidates_b: dict, step: str):
         """Two pipelines on one run directory whose candidates sections differ as given."""
@@ -459,10 +464,10 @@ class TestTheRetrieveAndRerankIdentities:
     @pytest.mark.parametrize(
         "reranker",
         [
-            {"provider": "cohere", "model": "rerank-v4.0-pro"},
-            {"provider": "local", "model": "a-local-reranker"},
+            {"api": "cohere", "model": "rerank-v4.0-pro"},
+            {"api": "rerank", "model": "a-served-reranker", "base_url": "http://h:8000/v1"},
         ],
-        ids=["cohere", "local"],
+        ids=["cohere", "served"],
     )
     def test_a_rerankers_batch_size_does_not_rekey_the_rerank_step(
         self, data: Path, tmp_path: Path, reranker: dict
@@ -473,10 +478,10 @@ class TestTheRetrieveAndRerankIdentities:
     @pytest.mark.parametrize(
         "reranker",
         [
-            {"provider": "cohere", "model": "rerank-v4.0-pro"},
-            {"provider": "local", "model": "a-local-reranker"},
+            {"api": "cohere", "model": "rerank-v4.0-pro"},
+            {"api": "rerank", "model": "a-served-reranker", "base_url": "http://h:8000/v1"},
         ],
-        ids=["cohere", "local"],
+        ids=["cohere", "served"],
     )
     @pytest.mark.parametrize("field, value", [("model", "another"), ("revision", "20260101")])
     def test_a_rerankers_content_fields_rekey_the_rerank_step(
@@ -485,25 +490,56 @@ class TestTheRetrieveAndRerankIdentities:
         one, two = self._two(data, tmp_path, {"rerank": reranker}, {"rerank": {**reranker, field: value}}, "rerank")
         assert one != two
 
+    def test_the_tokenizer_sha_splices_into_the_step_identities(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The endpoint's tokenizer digest (``identity_extra()``) is spliced in at the encoder and the reranker:
+        two tokenizers with the same bytes (different names) share an identity, different bytes do not, and a
+        URL change still never re-keys."""
+        from tests._tokenizers import save, word_tokenizer
+
+        def config_with(reranker: dict[str, Any]) -> dict[str, Any]:
+            return {"rerank": reranker}
+
+        for directory in ("one", "two", "other"):
+            (tmp_path / directory).mkdir()
+        first = save(word_tokenizer(), tmp_path / "one")
+        second = save(word_tokenizer(), tmp_path / "two")  # same bytes, different path
+        other = save(byte_bpe_tokenizer(), tmp_path / "other")
+
+        def identity(reranker: dict[str, Any]) -> dict[str, Any]:
+            return Pipeline(
+                tiny_config(data, candidates={"rerank": reranker}, steps=["rerank"]), runs_dir=str(tmp_path / "runs")
+            )._identity("rerank")
+
+        named = {"api": "rerank", "model": "rr", "base_url": "http://h:8000/v1", "tokenizer": str(first)}
+        same_sha = {**named, "tokenizer": str(second)}  # same bytes, different path
+        moved = {**named, "base_url": "http://moved:8000/v1"}
+        other_sha = {**named, "tokenizer": str(other)}
+
+        base = identity({"api": "rerank", "model": "rr", "base_url": "http://h:8000/v1"})
+        with_digest = identity(named)
+
+        assert "tokenizer" not in base, "the name is runtime"
+        assert "tokenizer_sha256" in with_digest["rerank"], "the digest is spliced in"
+        assert identity(same_sha) == with_digest, "the same tokenizer bytes (any path) share the identity"
+        assert identity(moved) == with_digest, "a moved URL does not re-key"
+        assert identity(other_sha) != with_digest, "different tokenizer bytes re-key"
+
     def test_the_encoders_pooling_rekeys_the_retrieve_step(self, data: Path, tmp_path: Path) -> None:
         """``pooling: token`` is the late-interaction route (``/pooling``), not the one-vector one."""
         dense = {
             "from": "retrieval",
             "retrieval": {
                 "kind": "dense",
-                "encoder": {"provider": "openai_compatible", "model": "m", "base_url": "http://engine.test/v1"},
+                "encoder": {"api": "openai_embeddings", "model": "m", "base_url": "http://engine.test/v1"},
             },
         }
         token = {
             "from": "retrieval",
             "retrieval": {
                 "kind": "late_interaction",
-                "encoder": {
-                    "provider": "openai_compatible",
-                    "model": "m",
-                    "base_url": "http://engine.test/v1",
-                    "pooling": "token",
-                },
+                "encoder": {"api": "vllm_pooling", "model": "m", "base_url": "http://engine.test/v1"},
             },
         }
         one, two = self._two(data, tmp_path, dense, token, "retrieve")
@@ -530,51 +566,34 @@ class TestTheRetrieveAndRerankIdentities:
             {"from": "retrieval", "retrieval": {"kind": "bm25"}},
             {
                 "from": "retrieval",
-                "retrieval": {"kind": "dense", "encoder": {"provider": "cohere", "model": "embed-v4.0"}},
+                "retrieval": {"kind": "dense", "encoder": {"api": "cohere", "model": "embed-v4.0"}},
             },
             {
                 "from": "retrieval",
-                "retrieval": {"kind": "dense", "encoder": {"provider": "voyage", "model": "voyage-3-large"}},
+                "retrieval": {"kind": "dense", "encoder": {"api": "voyage", "model": "voyage-3-large"}},
             },
             {
                 "from": "retrieval",
-                "retrieval": {"kind": "dense", "encoder": {"provider": "gemini", "model": "gemini-embedding-001"}},
-            },
-            {
-                "from": "retrieval",
-                "retrieval": {"kind": "dense", "encoder": {"provider": "local", "model": "m", "pooling": "last"}},
+                "retrieval": {"kind": "dense", "encoder": {"api": "gemini", "model": "gemini-embedding-001"}},
             },
             {
                 "from": "retrieval",
                 "retrieval": {
                     "kind": "dense",
-                    "encoder": {"provider": "openai_compatible", "model": "m", "base_url": "http://engine.test/v1"},
+                    "encoder": {"api": "openai_embeddings", "model": "m", "base_url": "http://engine.test/v1"},
                 },
             },
             {
                 "from": "retrieval",
                 "retrieval": {
                     "kind": "late_interaction",
-                    "encoder": {"provider": "local", "model": "m", "pooling": "token", "engine": "vllm"},
-                },
-            },
-            {
-                "from": "retrieval",
-                "retrieval": {
-                    "kind": "late_interaction",
-                    "encoder": {
-                        "provider": "openai_compatible",
-                        "model": "m",
-                        "base_url": "http://engine.test/v1",
-                        "pooling": "token",
-                    },
+                    "encoder": {"api": "vllm_pooling", "model": "m", "base_url": "http://engine.test/v1"},
                 },
             },
             {"from": "rankings", "rankings": "rankings.jsonl", "system": "bm25"},
-            {"rerank": {"provider": "local", "model": "m"}},
-            {"rerank": {"provider": "openai_compatible", "model": "m", "base_url": "http://engine.test:8000"}},
-            {"rerank": {"provider": "cohere", "model": "rerank-v4.0-pro"}},
-            {"rerank": {"provider": "voyage", "model": "rerank-2.5"}},
+            {"rerank": {"api": "rerank", "model": "m", "base_url": "http://engine.test:8000"}},
+            {"rerank": {"api": "cohere", "model": "rerank-v4.0-pro"}},
+            {"rerank": {"api": "voyage", "model": "rerank-2.5"}},
         ],
     )
     def test_every_model_the_candidates_payload_reaches_declares_its_roles(self, candidates: dict) -> None:
@@ -586,19 +605,17 @@ class TestTheRetrieveAndRerankIdentities:
     @pytest.mark.parametrize(
         "klass",
         [
-            "Endpoint",
-            "_Hosted",
-            "OpenAICompatible",
-            "Local",
-            "LocalEncoder",
-            "OpenAICompatibleEncoder",
-            "OpenAICompatibleReranker",
-            "Cohere",
-            "Voyage",
-            "Gemini",
             "BM25Config",
             "DenseConfig",
             "LateInteractionConfig",
+            "ServedEmbedding",
+            "ServedPooling",
+            "ServedReranker",
+            "CohereEmbedding",
+            "VoyageEmbedding",
+            "GeminiEmbedding",
+            "CohereReranker",
+            "VoyageReranker",
         ],
     )
     def test_every_retrieval_config_class_declares_its_roles(self, klass: str) -> None:
@@ -615,12 +632,16 @@ class TestTheRetrieveAndRerankIdentities:
     def test_a_changed_reranker_url_skips_a_completed_rerank_step(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        def reverse(examples, cfg, **kwargs):
-            return [e.model_copy(update={"scores": [float(i) for i in range(len(e.doc_ids))]}) for e in examples]
+        def score_by_position(self, examples, *, checkpoint=None):
+            for example in examples:
+                scores = tuple(float(i) for i in range(len(example.doc_ids)))
+                if checkpoint is not None:
+                    checkpoint(str(example.id), scores)
+            return []
 
-        monkeypatch.setattr("rcp_ndcg.retrieval.cross_encoder.rerank_examples", reverse)
+        monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", score_by_position)
         candidates = {
-            "rerank": {"provider": "openai_compatible", "model": "stub", "base_url": "http://stub.test:8000"},
+            "rerank": {"api": "rerank", "model": "stub", "base_url": "http://stub.test:8000"},
             "depth": 4,
         }
         pipeline = Pipeline(tiny_config(data, candidates=candidates, steps=["rerank"]), runs_dir=str(tmp_path / "runs"))
@@ -645,7 +666,7 @@ class TestTheEnginesOverlay:
         served = {"model": "embedder", "base_url": "http://engine.test/v1", **encoder}
         return {
             "from": "retrieval",
-            "retrieval": {"kind": "dense", "encoder": {"provider": "openai_compatible", **served}},
+            "retrieval": {"kind": "dense", "encoder": {"api": "openai_embeddings", **served}},
         }
 
     def test_the_encoder_overlay_reaches_the_step_and_never_the_config(
@@ -664,6 +685,38 @@ class TestTheEnginesOverlay:
         assert plain.config.resolved() == overlaid.config.resolved()
         for step in plain.config.ordered_steps:
             assert plain._identity(step) == overlaid._identity(step)
+
+    def test_the_reranker_overlay_reaches_the_client_and_never_the_config_or_an_identity(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The rerank step builds its client from the overlaid config: the engine's URL is in the client's
+        config, the recorded config keeps the placeholder-free shape, and the identity never moves."""
+        candidates = {"rerank": {"api": "rerank", "model": "stub-reranker"}, "depth": 4}
+        plain = Pipeline(tiny_config(data, candidates=candidates, steps=["rerank"]), runs_dir=str(tmp_path / "runs"))
+        assert plain._overlaid_reranker().base_url is None
+        identity_before = plain._identity("rerank")
+
+        seen: dict[str, Any] = {}
+
+        def score_by_position(self, examples, *, checkpoint=None):
+            seen["base_url"] = self.config.base_url
+            seen["wait_on_outage_s"] = self.config.wait_on_outage_s
+            for example in examples:
+                checkpoint(str(example.id), tuple(float(i) for i in range(len(example.doc_ids))))
+            return []
+
+        monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", score_by_position)
+        monkeypatch.setenv(
+            "RCP_NDCG_ENGINES", json.dumps({"reranker": {"urls": ["http://node:8000/v1"], "wait_on_outage_s": 60}})
+        )
+        overlaid = Pipeline(tiny_config(data, candidates=candidates, steps=["rerank"]), runs_dir=str(tmp_path / "runs"))
+        assert overlaid._overlaid_reranker().base_url == "http://node:8000/v1"
+
+        overlaid.run()
+
+        assert seen == {"base_url": "http://node:8000/v1", "wait_on_outage_s": 60.0}, "the overlay reached the client"
+        assert "base_url" not in overlaid.config.resolved()["candidates"]["rerank"], "the config is untouched"
+        assert overlaid._identity("rerank") == identity_before, "the identity is untouched"
 
     def test_the_judge_overlay_reaches_the_client_and_never_the_config(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -764,7 +817,7 @@ class TestTheEnginesOverlay:
     @staticmethod
     def _rerank(**reranker: Any) -> dict[str, Any]:
         served = {"model": "reranker", "base_url": "http://engine.test:8000", **reranker}
-        return {"rerank": {"provider": "openai_compatible", **served}}
+        return {"rerank": {"api": "rerank", **served}}
 
 
 class TestTheEvaluateIdentity:

@@ -34,7 +34,8 @@ rcp-ndcg --version
 or, without installing anything, `uvx rcp-ndcg --version`. `rcp-ndcg-core`, which comes with it, is the metric, the
 gains, the scoring protocols and the IRT estimators, with numpy and pydantic only (`pip install rcp-ndcg-core`).
 The extras add the Hugging Face Hub (`hf`), torch for the calibration fit (`calibrate`; the CPU build from the
-PyTorch index above is enough), MTEB (`mteb`) and local GPU retrieval and reranking (`local`). Until the release is
+PyTorch index above is enough) and MTEB (`mteb`). Every retrieval model is served now, so no extra carries
+in-process model code. Until the release is
 up, or to work from the repository, install from source instead: from a checkout, `uv sync --extra hf --extra
 calibrate` (or `pip install ./packages/rcp-ndcg-core ".[hf,calibrate]"`) sets up the same environment, and straight
 from git, the release tag installs both packages (pip needs the core in the same command, because `rcp-ndcg` pins

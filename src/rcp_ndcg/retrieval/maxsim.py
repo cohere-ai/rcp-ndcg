@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from rcp_ndcg.retrieval.encoder import Embeddings
+from rcp_ndcg.inference.types import Embeddings
 
 #: Score-tile budget in bytes for one ``(query_tokens x doc_tokens)`` block.
 #: 64 MiB: large enough that the per-block Python overhead vanishes, small

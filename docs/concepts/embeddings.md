@@ -4,11 +4,9 @@ Dense embeddings cross one wire shape: OpenAI `POST {base_url}/embeddings`. The 
 SGLang, TEI, Infinity) and the OpenAI API answer it as is; the hosted APIs (Cohere, Voyage, Gemini) are profiles
 of the same adapters. A config selects the wire with `api`, and one role client owns every content decision --
 the prompts, the normalisation, the batching -- so no engine's defaults (silent truncation, unprompted
-pooling changes) ever reach your vectors.
-
-This page describes the inference layer's embedding path as it ships today. The retrieval commands still use
-the older hosted path (`provider:` in the retrieval config); they move onto this layer with the retrieval
-rewiring.
+pooling changes) ever reach your vectors. This is the one embedding path: the retrieval commands
+(`rcp-ndcg retrieval index|search`, a run's `retrieve` step) build their `EmbeddingClient` or `PoolingClient`
+from a retriever config's `encoder` on exactly this layer.
 
 ## The config
 
@@ -115,11 +113,10 @@ and the credentials change where and how fast, and are runtime.
 Two runs share an index only if they computed the same vectors. Which model, checkpoint and wire adapter
 computed them (`api`, `model`, `revision`, `recipe`, the prompts, `normalize`, `dimensions`) is content and
 enters the identity; where and how fast (`base_url`, `batch_size`, `concurrency`, the timeouts) is runtime and
-never does. The tokenizer's name is runtime too: the config inherits `Endpoint.identity_extra()`, which
-returns the SHA-256 of
-its `tokenizer.json` (`{"tokenizer_sha256": ...}`), which is what a retrieval step identity will carry instead
-of the name once the retrieval wiring moves onto this layer -- the same rule the judge applies to its
-`tokenizer`. Every role config with a `tokenizer` (the judge's, the embedding, pooling and rerank configs)
+never does. The tokenizer's name is runtime: the config inherits `Endpoint.identity_extra()`, which returns the SHA-256 of
+its `tokenizer.json` (`{"tokenizer_sha256": ...}`) under that one key. The `retrieve`/`rerank` step identities
+splice the digest in at the encoder and the reranker -- the same rule the judge applies to its `tokenizer` --
+and the index identity carries it too. Every role config with a `tokenizer` (the judge's, the embedding, pooling and rerank configs)
 carries the digest under this one key, from the one helper in `rcp_ndcg.data.tokenizer`.
 
 ## Text limits

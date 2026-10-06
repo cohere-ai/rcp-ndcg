@@ -270,7 +270,7 @@ class TestRunnersAndServe:
         fields = {
             "candidates": {
                 "from": "retrieval",
-                "retrieval": {"kind": "dense", "encoder": {"provider": "openai_compatible", "model": "e"}},
+                "retrieval": {"kind": "dense", "encoder": {"api": "openai_embeddings", "model": "e"}},
             },
             "steps": ["retrieve"],
             "serve": {"encoder": {"command": ["vllm", "serve", "e", "--host", "0.0.0.0", "--port", "8000"]}},

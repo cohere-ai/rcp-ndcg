@@ -99,11 +99,10 @@ Environment variables:
 | `RCP_NDCG_LOG_LEVEL` | the log level when no `-v` or `-q` is given |
 | `RCP_NDCG_MAX_VIDEO_BYTES` | the largest video inlined into a judge request (default 64 MiB) |
 | `RCP_NDCG_IMAGE_CACHE_SIZE`, `RCP_NDCG_VIDEO_CACHE_SIZE` | encoded images and videos kept in memory per worker while judging |
-| `RCP_NDCG_PG_TIMEOUT_MIN` | the process-group timeout of a multi-GPU `accelerate launch`, in minutes (default 240) |
 
-Credentials are read only under the name a config declares (`api_key_env`), except that the hosted retrieval
-providers fall back to their vendors' usual variables: `CO_API_KEY` or `COHERE_API_KEY`, `VOYAGE_API_KEY`, and
-`GEMINI_API_KEY` or `GOOGLE_API_KEY`.
+Credentials are read only under the name a config declares (`api_key_env`); when a hosted retrieval profile
+(`api: cohere`, `voyage`, `gemini`) names none, its adapter reads the vendor's usual variables: `CO_API_KEY` or
+`COHERE_API_KEY`, `VOYAGE_API_KEY`, and `GEMINI_API_KEY` or `GOOGLE_API_KEY`.
 
 ## Machine output
 

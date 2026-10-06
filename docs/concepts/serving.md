@@ -289,8 +289,8 @@ overridden:
 judge: gpt_oss_120b
 candidates:
   from: retrieval
-  retrieval: {kind: dense, encoder: {provider: openai_compatible, model: octen-embedding-8b}}
-  rerank: {provider: openai_compatible, model: qwen3-reranker-8b}
+  retrieval: {kind: dense, encoder: {api: openai_embeddings, model: octen-embedding-8b}}
+  rerank: {api: rerank, model: qwen3-reranker-8b}
 steps: [retrieve, rerank, tournament, rubric, calibrate, evaluate]
 serve:
   encoder:
@@ -317,8 +317,8 @@ Every engine has the same fields (`image`, `command`, `env`, `resources`, `repli
 verbatim (an argv list or one string): it must serve the role config's `model` name on `port`, on all interfaces
 when there are several replicas. `nodes_per_replica` must be 1: a replica that spans several nodes is not
 implemented, and another value fails when the config is read. A served encoder or reranker runs one replica (this
-release's retrieval clients address one URL); the judge may run several. A hosted model (Cohere, Voyage, Gemini) or
-one that runs in this process (`[local]`) is not served by a job's engine at all — drop the role. The `image` is
+release's retrieval clients address one URL); the judge may run several. A hosted model (Cohere, Voyage, Gemini) is
+not served by a job's engine at all — drop the role. The `image` is
 required on Kubernetes and with the SLURM runner's `container_runtime: apptainer` or `pyxis`. With
 `container_runtime: none` (the SLURM default) the command runs on the node itself, so the role's `image` is refused
 there: set a container runtime to run the engine in its image, or drop `image` to run the command on the node. The

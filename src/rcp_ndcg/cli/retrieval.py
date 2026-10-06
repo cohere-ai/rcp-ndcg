@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 import click
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field
 
 from rcp_ndcg.cli._args import DatasetInput, load_yaml_config
 from rcp_ndcg.cli.command import command
@@ -43,18 +43,9 @@ class IndexBuild(BaseModel):
 
 
 def _retriever(path: str, overrides: list[str]) -> Any:
-    from pydantic import ValidationError
+    from rcp_ndcg.retrieval import validate_retriever
 
-    from rcp_ndcg.retrieval import RetrieverConfig
-
-    adapter = TypeAdapter(RetrieverConfig)
-    try:
-        return adapter.validate_python(load_yaml_config(path, overrides))
-    except ValidationError as exc:
-        from rcp_ndcg.support.config import config_error
-
-        hint = "a retriever config names its kind (bm25, dense, late_interaction), e.g. `kind: bm25`"
-        raise config_error(exc, model=adapter, source=path, overrides=overrides, hint=hint) from exc
+    return validate_retriever(load_yaml_config(path, overrides))
 
 
 def _written(rankings: Any, out: str) -> RankingsFile:
@@ -82,7 +73,8 @@ def retrieval_index(request: RetrievalIndexRequest) -> IndexBuild:
     """Build a sparse, dense or late-interaction index of a dataset's corpus."""
     from rcp_ndcg.retrieval import index
 
-    built = index(request.load(), _retriever(request.retriever, request.set), out=request.out)
+    retriever = _retriever(request.retriever, request.set)  # config errors before the dataset loads
+    built = index(request.load(), retriever, out=request.out)
     return IndexBuild(
         index=built.path, dataset=built.dataset, num_documents=built.num_documents, identity=built.identity
     )
@@ -125,7 +117,7 @@ def retrieval_search(request: RetrievalSearchRequest) -> RankingsFile:
 class RetrievalRerankRequest(DatasetInput):
     rankings: str = Field(description="Rankings file to rerank (parquet, TREC, JSONL or CSV).")
     system: str | None = Field(default=None, description="The system of a rankings file that holds several.")
-    reranker: str = Field(description="Reranker YAML (RerankerConfig: provider and model).")
+    reranker: str = Field(description="Reranker YAML (RerankerConfig: api and model).")
     set: list[str] = Field(
         default_factory=list, description=_RERANKER_SET_HELP + " E.g. --set base_url=http://host:8000."
     )
@@ -138,19 +130,11 @@ class RetrievalRerankRequest(DatasetInput):
 
 @command("retrieval rerank", request=RetrievalRerankRequest, result=RankingsFile, read_only=False)
 def retrieval_rerank(request: RetrievalRerankRequest) -> RankingsFile:
-    """Rescore rankings with a cross-encoder, a served /rerank endpoint or a hosted rerank API."""
-    from pydantic import ValidationError
-
+    """Rescore rankings with a served /rerank endpoint or a hosted rerank API."""
     from rcp_ndcg.data import load_rankings
-    from rcp_ndcg.retrieval import RerankerConfig, rerank
+    from rcp_ndcg.retrieval import rerank, validate_reranker
 
-    adapter = TypeAdapter(RerankerConfig)
-    try:
-        reranker = adapter.validate_python(load_yaml_config(request.reranker, request.set))
-    except ValidationError as exc:
-        from rcp_ndcg.support.config import config_error
-
-        raise config_error(exc, model=adapter, source=request.reranker, overrides=request.set) from exc
+    reranker = validate_reranker(load_yaml_config(request.reranker, request.set))
     rankings = rerank(
         request.load(),
         load_rankings(request.rankings),

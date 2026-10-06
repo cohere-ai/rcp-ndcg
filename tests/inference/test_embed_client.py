@@ -145,7 +145,7 @@ class TestContentDecisions:
         assert sender.calls == []
 
     def test_empty_input_needs_no_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """An empty call makes no request, so a missing key must not fail it (api_dense's behaviour)."""
+        """An empty call makes no request, so a missing key must not fail it (the hosted path's behaviour)."""
         monkeypatch.delenv("CO_API_KEY", raising=False)
         monkeypatch.delenv("COHERE_API_KEY", raising=False)
         client = EmbeddingClient(endpoint("cohere"), sender=FakeSender(handler("cohere", {})))

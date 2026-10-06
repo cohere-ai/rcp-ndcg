@@ -1607,7 +1607,7 @@
       },
       "RerankerConfig": {
         "kind": "type_alias",
-        "type": "rcp_ndcg.retrieval.config.Local | rcp_ndcg.retrieval.config.OpenAICompatibleReranker | rcp_ndcg.retrieval.config.Cohere | rcp_ndcg.retrieval.config.Voyage"
+        "type": "rcp_ndcg.retrieval.config.ServedReranker | rcp_ndcg.retrieval.config.CohereReranker | rcp_ndcg.retrieval.config.VoyageReranker | rcp_ndcg.retrieval.config.PluginReranker"
       },
       "RetrieverConfig": {
         "kind": "type_alias",
@@ -11228,19 +11228,20 @@
         "frozen": true,
         "kind": "pydantic_model"
       },
-      "Cohere": {
+      "CohereEmbedding": {
         "bases": [
-          "rcp_ndcg.retrieval.config._Hosted"
+          "rcp_ndcg.retrieval.config._ApiSelected",
+          "rcp_ndcg.inference.config.EmbeddingEndpoint"
         ],
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
           "api": {
             "alias": null,
-            "default": null,
+            "default": "cohere",
             "frozen": false,
             "required": false,
-            "type": "str | None"
+            "type": "Literal['cohere']"
           },
           "api_key_env": {
             "alias": null,
@@ -11254,7 +11255,151 @@
             "default": null,
             "frozen": false,
             "required": false,
+            "type": "str | list[str] | None"
+          },
+          "batch_size": {
+            "alias": null,
+            "default": 32,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "concurrency": {
+            "alias": null,
+            "default": 64,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "connect_timeout_s": {
+            "alias": null,
+            "default": 5.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "dimensions": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "doc_prompt": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
+          "max_retries": {
+            "alias": null,
+            "default": 2,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "model": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "normalize": {
+            "alias": null,
+            "default": true,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
+          "query_prompt": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
             "type": "str | None"
+          },
+          "revision": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "timeout_s": {
+            "alias": null,
+            "default": 600.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "CohereReranker": {
+        "bases": [
+          "rcp_ndcg.retrieval.config._HostedReranker"
+        ],
+        "defined_in": "rcp_ndcg.retrieval.config",
+        "extra": "forbid",
+        "fields": {
+          "api": {
+            "alias": null,
+            "default": "cohere",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['cohere']"
+          },
+          "api_key_env": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "base_url": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | list[str] | None"
           },
           "batch_size": {
             "alias": null,
@@ -11284,12 +11429,33 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "instruction": {
+            "alias": null,
+            "default": "fold",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['none', 'field', 'fold']"
+          },
+          "listwise": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
           "max_retries": {
             "alias": null,
-            "default": 8,
+            "default": 2,
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "model": {
             "alias": null,
@@ -11298,12 +11464,19 @@
             "required": true,
             "type": "str"
           },
-          "provider": {
+          "query_max_tokens": {
             "alias": null,
-            "default": "cohere",
+            "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['cohere']"
+            "type": "int | None"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "revision": {
             "alias": null,
@@ -11314,10 +11487,24 @@
           },
           "timeout_s": {
             "alias": null,
-            "default": 120.0,
+            "default": 600.0,
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "use_activation": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "bool | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -11332,7 +11519,7 @@
       },
       "DenseConfig": {
         "bases": [
-          "pydantic.main.BaseModel"
+          "rcp_ndcg.retrieval.config._ApiSelected"
         ],
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
@@ -11342,7 +11529,7 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "rcp_ndcg.retrieval.config.LocalEncoder | rcp_ndcg.retrieval.config.OpenAICompatibleEncoder | rcp_ndcg.retrieval.config.Cohere | rcp_ndcg.retrieval.config.Voyage | rcp_ndcg.retrieval.config.Gemini"
+            "type": "rcp_ndcg.retrieval.config.ServedEmbedding | rcp_ndcg.retrieval.config.CohereEmbedding | rcp_ndcg.retrieval.config.VoyageEmbedding | rcp_ndcg.retrieval.config.GeminiEmbedding | rcp_ndcg.retrieval.config.PluginEmbedding"
           },
           "kind": {
             "alias": null,
@@ -11521,21 +11708,22 @@
       },
       "EncoderConfig": {
         "kind": "type_alias",
-        "type": "rcp_ndcg.retrieval.config.LocalEncoder | rcp_ndcg.retrieval.config.OpenAICompatibleEncoder | rcp_ndcg.retrieval.config.Cohere | rcp_ndcg.retrieval.config.Voyage | rcp_ndcg.retrieval.config.Gemini"
+        "type": "rcp_ndcg.retrieval.config.ServedEmbedding | rcp_ndcg.retrieval.config.CohereEmbedding | rcp_ndcg.retrieval.config.VoyageEmbedding | rcp_ndcg.retrieval.config.GeminiEmbedding | rcp_ndcg.retrieval.config.PluginEmbedding"
       },
-      "Gemini": {
+      "GeminiEmbedding": {
         "bases": [
-          "rcp_ndcg.retrieval.config._Hosted"
+          "rcp_ndcg.retrieval.config._ApiSelected",
+          "rcp_ndcg.inference.config.EmbeddingEndpoint"
         ],
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
           "api": {
             "alias": null,
-            "default": null,
+            "default": "gemini",
             "frozen": false,
             "required": false,
-            "type": "str | None"
+            "type": "Literal['gemini']"
           },
           "api_key_env": {
             "alias": null,
@@ -11549,14 +11737,14 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "str | None"
+            "type": "str | list[str] | None"
           },
           "batch_size": {
             "alias": null,
-            "default": null,
+            "default": 32,
             "frozen": false,
             "required": false,
-            "type": "int | None"
+            "type": "int"
           },
           "concurrency": {
             "alias": null,
@@ -11572,6 +11760,20 @@
             "required": false,
             "type": "float"
           },
+          "dimensions": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "doc_prompt": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -11581,10 +11783,17 @@
           },
           "max_retries": {
             "alias": null,
-            "default": 8,
+            "default": 2,
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "model": {
             "alias": null,
@@ -11593,12 +11802,26 @@
             "required": true,
             "type": "str"
           },
-          "provider": {
+          "normalize": {
             "alias": null,
-            "default": "gemini",
+            "default": true,
             "frozen": false,
             "required": false,
-            "type": "Literal['gemini']"
+            "type": "bool"
+          },
+          "query_prompt": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "revision": {
             "alias": null,
@@ -11609,10 +11832,17 @@
           },
           "timeout_s": {
             "alias": null,
-            "default": 120.0,
+            "default": 600.0,
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -11680,7 +11910,7 @@
       },
       "LateInteractionConfig": {
         "bases": [
-          "pydantic.main.BaseModel"
+          "rcp_ndcg.retrieval.config._ApiSelected"
         ],
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
@@ -11690,7 +11920,7 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "rcp_ndcg.retrieval.config.LocalEncoder | rcp_ndcg.retrieval.config.OpenAICompatibleEncoder"
+            "type": "rcp_ndcg.retrieval.config.ServedPooling | rcp_ndcg.retrieval.config.PluginPooling"
           },
           "kind": {
             "alias": null,
@@ -11703,53 +11933,57 @@
         "frozen": true,
         "kind": "pydantic_model"
       },
-      "Local": {
+      "PluginEmbedding": {
         "bases": [
-          "pydantic.main.BaseModel"
+          "rcp_ndcg.retrieval.config._ApiSelected",
+          "rcp_ndcg.inference.config.EmbeddingEndpoint"
         ],
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
-          "batch_size": {
+          "api": {
             "alias": null,
-            "default": null,
+            "default": "openai_embeddings",
             "frozen": false,
             "required": false,
-            "type": "int | None"
-          },
-          "model": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
             "type": "str"
           },
-          "provider": {
-            "alias": null,
-            "default": "local",
-            "frozen": false,
-            "required": false,
-            "type": "Literal['local']"
-          },
-          "revision": {
+          "api_key_env": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "str | None"
-          }
-        },
-        "frozen": true,
-        "kind": "pydantic_model"
-      },
-      "LocalEncoder": {
-        "bases": [
-          "rcp_ndcg.retrieval.config.Local"
-        ],
-        "defined_in": "rcp_ndcg.retrieval.config",
-        "extra": "forbid",
-        "fields": {
+          },
+          "base_url": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | list[str] | None"
+          },
           "batch_size": {
+            "alias": null,
+            "default": 32,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "concurrency": {
+            "alias": null,
+            "default": 64,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "connect_timeout_s": {
+            "alias": null,
+            "default": 5.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "dimensions": {
             "alias": null,
             "default": null,
             "frozen": false,
@@ -11758,105 +11992,10 @@
           },
           "doc_prompt": {
             "alias": null,
-            "default": null,
+            "default": "",
             "frozen": false,
             "required": false,
-            "type": "str | None"
-          },
-          "engine": {
-            "alias": null,
-            "default": "hf",
-            "frozen": false,
-            "required": false,
-            "type": "Literal['hf', 'vllm']"
-          },
-          "model": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
             "type": "str"
-          },
-          "pooling": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "Literal['mean', 'cls', 'last', 'token']"
-          },
-          "provider": {
-            "alias": null,
-            "default": "local",
-            "frozen": false,
-            "required": false,
-            "type": "Literal['local']"
-          },
-          "query_prompt": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "str | None"
-          },
-          "revision": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "str | None"
-          }
-        },
-        "frozen": true,
-        "kind": "pydantic_model"
-      },
-      "OpenAICompatible": {
-        "bases": [
-          "rcp_ndcg.retrieval.config._Hosted"
-        ],
-        "defined_in": "rcp_ndcg.retrieval.config",
-        "extra": "forbid",
-        "fields": {
-          "api": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "str | None"
-          },
-          "api_key_env": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "str | None"
-          },
-          "base_url": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "str | None"
-          },
-          "batch_size": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "int | None"
-          },
-          "concurrency": {
-            "alias": null,
-            "default": 8,
-            "frozen": false,
-            "required": false,
-            "type": "int"
-          },
-          "connect_timeout_s": {
-            "alias": null,
-            "default": 5.0,
-            "frozen": false,
-            "required": false,
-            "type": "float"
           },
           "headers_env": {
             "alias": null,
@@ -11867,10 +12006,17 @@
           },
           "max_retries": {
             "alias": null,
-            "default": 4,
+            "default": 2,
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "model": {
             "alias": null,
@@ -11879,12 +12025,26 @@
             "required": true,
             "type": "str"
           },
-          "provider": {
+          "normalize": {
             "alias": null,
-            "default": "openai_compatible",
+            "default": true,
             "frozen": false,
             "required": false,
-            "type": "Literal['openai_compatible']"
+            "type": "bool"
+          },
+          "query_prompt": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "revision": {
             "alias": null,
@@ -11900,6 +12060,13 @@
             "required": false,
             "type": "float"
           },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "wait_on_outage_s": {
             "alias": null,
             "default": null,
@@ -11911,19 +12078,20 @@
         "frozen": true,
         "kind": "pydantic_model"
       },
-      "OpenAICompatibleEncoder": {
+      "PluginPooling": {
         "bases": [
-          "rcp_ndcg.retrieval.config.OpenAICompatible"
+          "rcp_ndcg.retrieval.config._ApiSelected",
+          "rcp_ndcg.inference.config.PoolingEndpoint"
         ],
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
           "api": {
             "alias": null,
-            "default": null,
+            "default": "vllm_pooling",
             "frozen": false,
             "required": false,
-            "type": "str | None"
+            "type": "str"
           },
           "api_key_env": {
             "alias": null,
@@ -11937,18 +12105,18 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "str | None"
+            "type": "str | list[str] | None"
           },
           "batch_size": {
             "alias": null,
-            "default": null,
+            "default": 32,
             "frozen": false,
             "required": false,
-            "type": "int | None"
+            "type": "int"
           },
           "concurrency": {
             "alias": null,
-            "default": 8,
+            "default": 64,
             "frozen": false,
             "required": false,
             "type": "int"
@@ -11959,13 +12127,34 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "dim": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "dimensions": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "doc_prompt": {
             "alias": null,
-            "default": null,
+            "default": "",
             "frozen": false,
             "required": false,
-            "type": "str | None"
+            "type": "str"
+          },
+          "embed_dtype": {
+            "alias": null,
+            "default": "float16",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['float16', 'float32']"
           },
           "headers_env": {
             "alias": null,
@@ -11976,127 +12165,18 @@
           },
           "max_retries": {
             "alias": null,
-            "default": 4,
+            "default": 2,
             "frozen": false,
             "required": false,
             "type": "int"
           },
-          "model": {
-            "alias": null,
-            "default": "<required>",
-            "frozen": false,
-            "required": true,
-            "type": "str"
-          },
-          "pooling": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "Literal['token'] | None"
-          },
-          "provider": {
-            "alias": null,
-            "default": "openai_compatible",
-            "frozen": false,
-            "required": false,
-            "type": "Literal['openai_compatible']"
-          },
-          "query_prompt": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "str | None"
-          },
-          "revision": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "str | None"
-          },
-          "timeout_s": {
-            "alias": null,
-            "default": 600.0,
-            "frozen": false,
-            "required": false,
-            "type": "float"
-          },
-          "wait_on_outage_s": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "float | None"
-          }
-        },
-        "frozen": true,
-        "kind": "pydantic_model"
-      },
-      "OpenAICompatibleReranker": {
-        "bases": [
-          "rcp_ndcg.retrieval.config.OpenAICompatible"
-        ],
-        "defined_in": "rcp_ndcg.retrieval.config",
-        "extra": "forbid",
-        "fields": {
-          "api": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "str | None"
-          },
-          "api_key_env": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "str | None"
-          },
-          "base_url": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "str | None"
-          },
-          "batch_size": {
+          "max_tokens": {
             "alias": null,
             "default": null,
             "frozen": false,
             "required": false,
             "type": "int | None"
           },
-          "concurrency": {
-            "alias": null,
-            "default": 8,
-            "frozen": false,
-            "required": false,
-            "type": "int"
-          },
-          "connect_timeout_s": {
-            "alias": null,
-            "default": 5.0,
-            "frozen": false,
-            "required": false,
-            "type": "float"
-          },
-          "headers_env": {
-            "alias": null,
-            "default": "<factory dict>",
-            "frozen": false,
-            "required": false,
-            "type": "dict[str, str]"
-          },
-          "max_retries": {
-            "alias": null,
-            "default": 4,
-            "frozen": false,
-            "required": false,
-            "type": "int"
-          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -12104,12 +12184,26 @@
             "required": true,
             "type": "str"
           },
-          "provider": {
+          "normalize": {
             "alias": null,
-            "default": "openai_compatible",
+            "default": true,
             "frozen": false,
             "required": false,
-            "type": "Literal['openai_compatible']"
+            "type": "bool"
+          },
+          "query_prompt": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "revision": {
             "alias": null,
@@ -12125,6 +12219,13 @@
             "required": false,
             "type": "float"
           },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "wait_on_outage_s": {
             "alias": null,
             "default": null,
@@ -12136,27 +12237,20 @@
         "frozen": true,
         "kind": "pydantic_model"
       },
-      "RerankerConfig": {
-        "kind": "type_alias",
-        "type": "rcp_ndcg.retrieval.config.Local | rcp_ndcg.retrieval.config.OpenAICompatibleReranker | rcp_ndcg.retrieval.config.Cohere | rcp_ndcg.retrieval.config.Voyage"
-      },
-      "RetrieverConfig": {
-        "kind": "type_alias",
-        "type": "rcp_ndcg.retrieval.config.BM25Config | rcp_ndcg.retrieval.config.DenseConfig | rcp_ndcg.retrieval.config.LateInteractionConfig"
-      },
-      "Voyage": {
+      "PluginReranker": {
         "bases": [
-          "rcp_ndcg.retrieval.config._Hosted"
+          "rcp_ndcg.retrieval.config._ApiSelected",
+          "rcp_ndcg.inference.config.RerankEndpoint"
         ],
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
           "api": {
             "alias": null,
-            "default": null,
+            "default": "rerank",
             "frozen": false,
             "required": false,
-            "type": "str | None"
+            "type": "str"
           },
           "api_key_env": {
             "alias": null,
@@ -12170,7 +12264,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "str | None"
+            "type": "str | list[str] | None"
           },
           "batch_size": {
             "alias": null,
@@ -12200,12 +12294,33 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "instruction": {
+            "alias": null,
+            "default": "fold",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['none', 'field', 'fold']"
+          },
+          "listwise": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
           "max_retries": {
             "alias": null,
-            "default": 8,
+            "default": 2,
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "model": {
             "alias": null,
@@ -12214,12 +12329,19 @@
             "required": true,
             "type": "str"
           },
-          "provider": {
+          "query_max_tokens": {
             "alias": null,
-            "default": "voyage",
+            "default": null,
             "frozen": false,
             "required": false,
-            "type": "Literal['voyage']"
+            "type": "int | None"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "revision": {
             "alias": null,
@@ -12230,10 +12352,770 @@
           },
           "timeout_s": {
             "alias": null,
-            "default": 120.0,
+            "default": 600.0,
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "use_activation": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "bool | None"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "RerankerConfig": {
+        "kind": "type_alias",
+        "type": "rcp_ndcg.retrieval.config.ServedReranker | rcp_ndcg.retrieval.config.CohereReranker | rcp_ndcg.retrieval.config.VoyageReranker | rcp_ndcg.retrieval.config.PluginReranker"
+      },
+      "RetrieverConfig": {
+        "kind": "type_alias",
+        "type": "rcp_ndcg.retrieval.config.BM25Config | rcp_ndcg.retrieval.config.DenseConfig | rcp_ndcg.retrieval.config.LateInteractionConfig"
+      },
+      "ServedEmbedding": {
+        "bases": [
+          "rcp_ndcg.retrieval.config._ApiSelected",
+          "rcp_ndcg.inference.config.EmbeddingEndpoint"
+        ],
+        "defined_in": "rcp_ndcg.retrieval.config",
+        "extra": "forbid",
+        "fields": {
+          "api": {
+            "alias": null,
+            "default": "openai_embeddings",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['openai_embeddings']"
+          },
+          "api_key_env": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "base_url": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | list[str] | None"
+          },
+          "batch_size": {
+            "alias": null,
+            "default": 32,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "concurrency": {
+            "alias": null,
+            "default": 64,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "connect_timeout_s": {
+            "alias": null,
+            "default": 5.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "dimensions": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "doc_prompt": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
+          "max_retries": {
+            "alias": null,
+            "default": 2,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "model": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "normalize": {
+            "alias": null,
+            "default": true,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
+          "query_prompt": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "revision": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "timeout_s": {
+            "alias": null,
+            "default": 600.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "ServedPooling": {
+        "bases": [
+          "rcp_ndcg.retrieval.config._ApiSelected",
+          "rcp_ndcg.inference.config.PoolingEndpoint"
+        ],
+        "defined_in": "rcp_ndcg.retrieval.config",
+        "extra": "forbid",
+        "fields": {
+          "api": {
+            "alias": null,
+            "default": "vllm_pooling",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['vllm_pooling']"
+          },
+          "api_key_env": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "base_url": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | list[str] | None"
+          },
+          "batch_size": {
+            "alias": null,
+            "default": 32,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "concurrency": {
+            "alias": null,
+            "default": 64,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "connect_timeout_s": {
+            "alias": null,
+            "default": 5.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "dim": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "dimensions": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "doc_prompt": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "embed_dtype": {
+            "alias": null,
+            "default": "float16",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['float16', 'float32']"
+          },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
+          "max_retries": {
+            "alias": null,
+            "default": 2,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "model": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "normalize": {
+            "alias": null,
+            "default": true,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
+          "query_prompt": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "revision": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "timeout_s": {
+            "alias": null,
+            "default": 600.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "ServedReranker": {
+        "bases": [
+          "rcp_ndcg.retrieval.config._ApiSelected",
+          "rcp_ndcg.inference.config.RerankEndpoint"
+        ],
+        "defined_in": "rcp_ndcg.retrieval.config",
+        "extra": "forbid",
+        "fields": {
+          "api": {
+            "alias": null,
+            "default": "rerank",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['rerank']"
+          },
+          "api_key_env": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "base_url": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | list[str] | None"
+          },
+          "batch_size": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "concurrency": {
+            "alias": null,
+            "default": 64,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "connect_timeout_s": {
+            "alias": null,
+            "default": 5.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
+          "instruction": {
+            "alias": null,
+            "default": "fold",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['none', 'field', 'fold']"
+          },
+          "listwise": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
+          "max_retries": {
+            "alias": null,
+            "default": 2,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "model": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "revision": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "timeout_s": {
+            "alias": null,
+            "default": 600.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "use_activation": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "bool | None"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "VoyageEmbedding": {
+        "bases": [
+          "rcp_ndcg.retrieval.config._ApiSelected",
+          "rcp_ndcg.inference.config.EmbeddingEndpoint"
+        ],
+        "defined_in": "rcp_ndcg.retrieval.config",
+        "extra": "forbid",
+        "fields": {
+          "api": {
+            "alias": null,
+            "default": "voyage",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['voyage']"
+          },
+          "api_key_env": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "base_url": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | list[str] | None"
+          },
+          "batch_size": {
+            "alias": null,
+            "default": 32,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "concurrency": {
+            "alias": null,
+            "default": 64,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "connect_timeout_s": {
+            "alias": null,
+            "default": 5.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "dimensions": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "doc_prompt": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
+          "max_retries": {
+            "alias": null,
+            "default": 2,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "model": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "normalize": {
+            "alias": null,
+            "default": true,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
+          "query_prompt": {
+            "alias": null,
+            "default": "",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "revision": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "timeout_s": {
+            "alias": null,
+            "default": 600.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "wait_on_outage_s": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "VoyageReranker": {
+        "bases": [
+          "rcp_ndcg.retrieval.config._HostedReranker"
+        ],
+        "defined_in": "rcp_ndcg.retrieval.config",
+        "extra": "forbid",
+        "fields": {
+          "api": {
+            "alias": null,
+            "default": "voyage",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['voyage']"
+          },
+          "api_key_env": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "base_url": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | list[str] | None"
+          },
+          "batch_size": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "concurrency": {
+            "alias": null,
+            "default": 64,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "connect_timeout_s": {
+            "alias": null,
+            "default": 5.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "headers_env": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, str]"
+          },
+          "instruction": {
+            "alias": null,
+            "default": "fold",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['none', 'field', 'fold']"
+          },
+          "listwise": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
+          "max_retries": {
+            "alias": null,
+            "default": 2,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "model": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "recipe": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "revision": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "timeout_s": {
+            "alias": null,
+            "default": 600.0,
+            "frozen": false,
+            "required": false,
+            "type": "float"
+          },
+          "tokenizer": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "use_activation": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "bool | None"
           },
           "wait_on_outage_s": {
             "alias": null,
@@ -12438,6 +13320,36 @@
           },
           {
             "returns": "Rankings"
+          }
+        ]
+      },
+      "validate_reranker": {
+        "defined_in": "rcp_ndcg.retrieval.config",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "data"
+          },
+          {
+            "returns": "RerankerConfig"
+          }
+        ]
+      },
+      "validate_retriever": {
+        "defined_in": "rcp_ndcg.retrieval.config",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "data"
+          },
+          {
+            "returns": "RetrieverConfig"
           }
         ]
       }

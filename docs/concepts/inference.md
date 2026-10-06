@@ -99,6 +99,25 @@ is down, requests wait and are re-sent until one answers, or until `wait_on_outa
 servers parks instead of turning the outage into missing results. A request that keeps failing on a replica
 that answers other requests is that request's failure: it is refused (`RequestRejectedError`).
 
+## Third-party adapters (C2)
+
+Every role's registry accepts a third-party adapter, shipped in the `rcp_ndcg.adapters` entry-point group with
+entries named `<role>.<name>` (e.g. `embed.bedrock`, one entry per role; a name may repeat across roles). A
+config selects one with `api: <name>`:
+
+* the retrieval roles resolve a non-shipped `api` against the role's registry where the config is read (the
+  CLI's YAML loading, a run config, `validate_retriever`/`validate_reranker`): it builds the role's generic
+  endpoint config, exposed from `rcp_ndcg.retrieval` as `PluginEmbedding`, `PluginPooling` and
+  `PluginReranker` (the shipped names -- `openai_embeddings`, `cohere`, `voyage`, `gemini`, `vllm_pooling`,
+  `rerank` -- keep selecting their own classes). A name that is not registered for that role -- unknown, or
+  registered for another role -- is refused with the registry's hint, and the adapters the retrieval steps
+  build (`EmbeddingClient`, `PoolingClient`, `RerankClient`) then run the third-party wire like a shipped one.
+* the judge resolves its `api` lazily, at the first judging call (the refusal still precedes any wire
+  traffic); its config validates any name.
+* the adapter name is content: a step (and an index) identity keys on it, so two wires never share an index or
+  a cache. Everything else about the identity (model, revision, recipe, prompts, budgets, the tokenizer's
+  SHA-256) is unchanged.
+
 ## The sync bridge
 
 The retrieval API is synchronous. `Transport.run(coroutine)` runs a coroutine to completion on a private event

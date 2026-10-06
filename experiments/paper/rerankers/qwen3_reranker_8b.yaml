@@ -1,5 +1,16 @@
-# Qwen/Qwen3-Reranker-8B: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
-# `rcp-ndcg retrieval rerank --reranker <this file>`. Runs in process (the [local] extra); the model family is picked from the model id.
-provider: local
-model: Qwen/Qwen3-Reranker-8B
-batch_size: 4
+# Qwen/Qwen3-Reranker-8B, served: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
+# `rcp-ndcg retrieval rerank --reranker <this file>`. Served by recipe `qwen3-reranker-8b`
+# (the hf_overrides, score template and budgets of packages/rcp-ndcg-vllm; reference:
+# experiments/paper/rerankers/reference/qwen3.py). `base_url` is the placeholder the runner's
+# engines overlay (serve.reranker) replaces; `model` is the --served-model-name.
+# Budgets are the paper's: the 8192-token pair budget (MAX_SEQ_LENGTH), queries capped at 4096
+# (MAX_QUERY_LENGTH); the release's in-process path passed the bare query, hence `instruction: none`.
+api: rerank
+base_url: http://127.0.0.1:8000/v1
+model: qwen3-reranker-8b
+revision: 77d193c791ed757ca307ee72715aa132723da912
+recipe: qwen3-reranker-8b
+tokenizer: Qwen/Qwen3-Reranker-8B@77d193c791ed757ca307ee72715aa132723da912
+max_tokens: 8192
+query_max_tokens: 4096
+instruction: none

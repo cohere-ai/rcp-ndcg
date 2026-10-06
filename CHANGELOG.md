@@ -25,6 +25,35 @@ released together.
 
 ### Public surface
 
+- **The retrieval API runs on the role clients, and its configs select the wire with `api`** (the unified-inference
+  design, sections 4.1, 7.1 and 7.2):
+  - `rcp_ndcg.retrieval`'s configs are the inference role configs, by `api`: an encoder is the served
+    `ServedEmbedding` (`api: openai_embeddings`) or the hosted `CohereEmbedding`, `VoyageEmbedding` and
+    `GeminiEmbedding`; a late-interaction encoder is the served `ServedPooling` (`api: vllm_pooling`); a
+    reranker is the served `ServedReranker` (`api: rerank`) or the hosted `CohereReranker` and
+    `VoyageReranker`. `api` replaces `provider` as the discriminator; a hosted profile omits `base_url` (its
+    adapter declares the public root), a served one names the engine's URL. Every role client —
+    `EmbeddingClient`, `PoolingClient`, `RerankClient` — runs over the shared transport, so every retrieval
+    role gains replica routing, outage parking, the provenance probe and typed errors.
+  - `validate_retriever(data)` / `validate_reranker(data)` read a config from parsed YAML and refuse an old
+    shape (`provider:`, `engine:`, an encoder `pooling`) with a `ConfigError` whose hint shows the new shape.
+    The CLI's `--retriever`/`--reranker` YAML loading goes through them (and validates the retriever before
+    the dataset loads).
+  - The per-query rerank checkpoint moves to `rcp_ndcg.retrieval._api`: the record format (`{"q", "k", "s"}`),
+    the per-record fsync, the file (`rank000.jsonl`) and the key payload are the served path's historical ones,
+    so a resumed rerank reads a checkpoint an earlier release wrote.
+  - **Plugin adapters reach retrieval**: a non-shipped `api` is resolved against the role's registry where the
+    config is read (an unregistered or wrong-role name is refused with the registry's hint) and builds the
+    role's generic endpoint config — `PluginEmbedding`, `PluginPooling` (a late-interaction encoder may also be
+    one) and `PluginReranker`, exported from `rcp_ndcg.retrieval`. The adapter name is content, so a
+    step (and an index) identity keys on it, as the judge's does for its third-party adapters; the retrieval
+    steps run the third-party wire like a shipped one.
+  - Every paper config's `recipe:` id is the checkpoint's lowercased Hub repo name, never a short Hub redirect
+    (`zerank-1-reranker`, `zerank-1-small-reranker`, not `zerank-1`/`zerank-1-small`); pinned by a test over
+    every config with a `recipe:`.
+  - `EncoderConfig` is `ServedEmbedding | CohereEmbedding | VoyageEmbedding | GeminiEmbedding`,
+    `RerankerConfig` is `ServedReranker | CohereReranker | VoyageReranker` (both plain unions, so old shapes
+    reach the members' refusals); `RetrieverConfig` stays a `kind`-discriminated union.
 - `rcp_ndcg.data.revisions.is_commit(revision)` is the public form of the commit-shape check (exactly 40
   lowercase hex characters, ``False`` for ``None`` or any other revision); no other module reads the private
   pattern, and the resolve paths use the same strict check: a 40-hex revision with trailing whitespace is no
@@ -406,11 +435,37 @@ released together.
 - The fake judge's deterministic draws (`_uniform`, `_hidden_ability` in `rcp_ndcg.llm._fake`) now come from
   `rcp_ndcg.inference.fake` (`fake_uniform`, `hidden_ability`): one home for the mechanism the fakes share;
   identical values, and both names stay importable from `rcp_ndcg.llm._fake`.
+- The offline fakes' `POST /pooling` payload key is `data`, the wire's real shape (vLLM's
+  `PoolingResponseData`): the fake answered `embedding`, which no client reads. Its `/embeddings` route keeps
+  OpenAI's `embedding` key.
 - `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/run-config.v1.json`)
   regenerated for the transport, the fakes and the status map (new names and members, `Endpoint.base_url`
   widened, and the retrieval configs' `base_url` described per its type: one URL, required for the served
   ones, optional for the hosted ones); `tests/test_errors.py` now requires one *root* class per exit code,
   since the moved outage and refusal types are `ProviderError` subclasses and exit codes do not change.
+- `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/run-config.v1.json`)
+  regenerated for the retrieval rewiring: the configs by `api`, the deleted `provider:` variants gone, and the
+  `retrieve`/`rerank` step identities spliced with the endpoint's `identity_extra()` (the tokenizer's SHA-256).
+  The paper's reranker configs are served (`recipe:`, `tokenizer:`, the paper's budgets, `instruction: none`,
+  `listwise` for Jina v3) and their hosted siblings omit `base_url`.
+
+### Removed
+
+- **Every in-process model path** (the unified-inference design's paths 3–9; the owner's option 1): the package
+  carries no model that loads weights. Deleted from `rcp_ndcg.retrieval`: the `local` provider and its variants
+  (`Local`, `LocalEncoder`, the `engine` and `pooling` fields, `TorchDenseEncoder`, `VllmEncoder`, the
+  `hf` and in-process `vllm` engines), the HTTP path (`_http.py`, `api_dense.py`, `vllm_http.py`, `encoders/`),
+  the in-process and hosted rerankers (`external_rerankers.py` and its `RerankSettings`, `hf_dense.py`,
+  `accel.py` and the multi-GPU `AccelState` sharding), and the `Encoder` ABC with them
+  (`retrieval/encoder.py`; `Embeddings`, `EncodeRole` and `l2_normalize` are re-exported from
+  `rcp_ndcg.inference.types`). The hidden budgets (`MAX_SEQ_LENGTH`, `MAX_QUERY_LENGTH`) leave with the
+  module: budgets are config fields (`max_tokens`, `query_max_tokens`) that the clients refuse until the
+  text-budget mechanism wires the client-side cut. Indexes built by an earlier release (whose `index.json`
+  names `provider:` variants) must be rebuilt. The paper's in-process implementations move unchanged to
+  `experiments/paper/rerankers/reference/` (one module per family, plus `octen.py`), importable on their own
+  with a pinned `requirements.txt`; nothing in the package imports them. The `[local]` and `[vllm]` extras
+  themselves leave `pyproject.toml` in a later lane; nothing under `src/` imports from them any more
+  (`tests/test_no_inprocess_models.py` pins it).
 - **The judge's retry delays are the transport's** (the one visible change of the port): within-request
   retries back off 1 s doubling capped at 60 s, or the server's `Retry-After`, where the OpenAI SDK used its
   own delays; the set-aside and parking numbers (5 s doubling to 60 s) are unchanged. `requirements-constraints.txt`
