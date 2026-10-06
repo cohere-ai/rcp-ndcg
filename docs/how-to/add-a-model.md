@@ -7,7 +7,8 @@ workspace; it is installed into the engine image, which carries its own vLLM and
 
 ## The recipe directory
 
-One directory per model, `packages/rcp-ndcg-vllm/recipes/<id>/`, with three files:
+One directory per model, `packages/rcp-ndcg-vllm/recipes/<id>/`, with three core files (a recipe may ship
+more beside them - a vendored card script the reference runs verbatim, its own `requirements-reference.txt`):
 
 ```text
 recipes/<id>/
@@ -34,8 +35,10 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
   applies to the content spans only, inside a budget computed after reserving every fixed template token, and
   the template is re-attached after the cut. Engine-side truncation of a rendered prompt cannot honour this in
   either direction, so the schema has no engine-truncation field at all: a recipe whose reference deliberately
-  drops anchors declares `reference.known_deviations: [anchor_drop_over_cap]` and the harness reports those
-  pairs separately, outside the gates. The declared shape's `anchor` is `last`, `first`, `mean` or `marker`
+  drops anchors declares `reference.known_deviations: [anchor_drop_over_cap]`; the rerank stage reports those
+  pairs separately, outside the gates, while the vector stage implements no exclusion (an over-cap pair fails
+  its cosine gate loudly, so a vector recipe's stage-2 pairs must sit under the budget). The declared shape's
+  `anchor` is `last`, `first`, `mean` or `marker`
   (with `anchor_markers`), and stage 1 samples over-length inputs (at least 20 per shape) and asserts every
   anchor survived — reported as `anchor_check`, separately from token-id mismatches.
 - **Segments: `fixed` and `content`, nothing else.** A shape is an ordered list of segments with exactly two
@@ -110,7 +113,7 @@ reference:
   kind: transformers             # transformers | sentence_transformers | remote_code | stored_scores
   score_scale: probability       # probability | logit | cosine; vectors compare per vector
   entry: reference.py
-  known_deviations: []           # e.g. [anchor_drop_over_cap]: stage 2 gates under-cap pairs only
+  known_deviations: []           # e.g. [anchor_drop_over_cap]: the rerank stage gates under-cap pairs only; the vector stage has no exclusion (an over-cap pair fails its gate loudly)
 gates: {}                        # overrides of the stage-2 defaults for this score_scale
 status: {state: unverified, image: null, date: null, report: null}
 sources: []                      # URLs and path:line references the recipe rests on
@@ -192,8 +195,9 @@ Stage 2 scores or embeds the same pairs against the served engine (plain `httpx`
 `/pooling`) and applies the gates: probability |Δ| ≤ 0.02 for 99% of documents and ≤ 0.05 for all; logit |Δ| ≤
 0.05·(1 + |s|); cosine scores |Δ| ≤ 0.01; vectors cosine ≥ 1 − 1e-3 per vector (per token, after the same
 float16 cast); median per-query Kendall τ ≥ 0.98. A recipe's `gates` section overrides any of these. With
-`reference.known_deviations: [anchor_drop_over_cap]`, pairs whose uncut prompt exceeds `client.max_tokens` are
-reported in a separate, non-gating table and the gates run on the under-cap pairs only.
+`reference.known_deviations: [anchor_drop_over_cap]`, the rerank stage reports pairs whose uncut prompt exceeds
+`client.max_tokens` in a separate, non-gating table and gates the under-cap pairs only; the vector stage
+implements no exclusion and fails an over-cap pair's gate, so its stage-2 pairs sit under the budget.
 
 Stage 3 (optional) scores rankings per subset with `rcp-ndcg eval score` as a subprocess (the package depends
 on `rcp-ndcg`, so the command is always available) and requires the mean |Δ nDCG@10| over subsets ≤ 2e-3.
