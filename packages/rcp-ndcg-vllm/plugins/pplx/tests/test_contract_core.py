@@ -18,15 +18,18 @@ import types
 
 import pytest
 import torch
-from rcp_vllm_pplx import PLUGIN_ARCHITECTURE, PLUGIN_NAME  # noqa: E402  (conftest inserts src/)
-from rcp_vllm_pplx.pooling_core import (  # noqa: E402
+
+# Imported after the pytest block: conftest.py has already put this package's
+# src/ tree on sys.path, so no in-file statement precedes these imports.
+from rcp_vllm_pplx import PLUGIN_ARCHITECTURE, PLUGIN_NAME
+from rcp_vllm_pplx.pooling_core import (
     BOUNDARY_TOKEN_ID,
     DOCUMENT_PREFIX_TOKEN_IDS,
     QUERY_PREFIX_TOKEN_ID,
     PplxInt8Projection,
     pool_sequence,
 )
-from rcp_vllm_pplx.version_guard import (  # noqa: E402
+from rcp_vllm_pplx.version_guard import (
     SUPPORTED_VLLM_MAX,
     SUPPORTED_VLLM_MIN,
     checked_vllm_version,
