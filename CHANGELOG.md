@@ -43,6 +43,21 @@ released together.
   are public with package tests covering each; `metrics.py` shells out to `rcp-ndcg eval score` (the product is
   a dependency, so no extra is needed for stage 3).
 
+- New package `rcp-ndcg-vllm-topk` (`packages/rcp-ndcg-vllm/plugins/topk/`, outside the root uv workspace and
+  lock; version 0.0.1, no dependencies): the `vllm.general_plugins` wheel that serves
+  `topk-io/topk-embed-v1-small` (multimodal late interaction) on the stock `vllm/vllm-openai:v0.31.0` image
+  after `pip install --no-deps`. The model class `TopkEmbedModel` subclasses the native `ColQwen3_5Model` and
+  overrides only the checkpoint-name mapping (`head.` → `custom_text_proj.`; the Qwen3-VL naming convention
+  restored): the checkpoint's own `text_config.is_causal: false` drives the stock `Qwen3NextAttention` to
+  bidirectional ENCODER_ONLY attention on the six full-attention layers, so no attention code is copied. The
+  entry point (`rcp_ndcg_vllm_topk.plugin:register`) registers the architecture in every engine process; the
+  version guard refuses vLLM outside `>=0.31,<0.32` with the tested range named; the pure-torch pooling chain
+  (`token_embed_pool`) and the mapping table (`weights`) are importable without vLLM for the CPU tests
+  (entry-point declaration, version guard, the 618-name census mapping, the tiny-config chain equivalence
+  against the reference chain, and the simulated `--no-deps` freeze check, which is also the GPU wave's
+  script). Skips name the environment: the registry effect and the served-class mapper cross-check need vLLM;
+  the full served-vs-reference equivalence on real weights is the GPU wave's.
+
 - `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
   larger than `adaptive_window` runs one batch, not one per batch: every adaptive window of such a pool holds
   the whole pool, so a further batch asks the same documents again (in the refit order) and covers only what
