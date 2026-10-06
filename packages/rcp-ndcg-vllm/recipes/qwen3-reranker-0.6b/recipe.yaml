@@ -113,5 +113,6 @@ notes: >-
   divergence is structural (research risk R5): the served path cuts the query to its share while
   the reference keeps the whole query and truncates the pair string, so stage 1 fails loudly on
   such rows too; the pairs files of the waves must keep queries well within the share (the paper's
-  datasets do) and drop any row stage 1 goes red on. Serving uses no --pooler-config (the
-  conversion defaults: task classify, 1-label head, sigmoid) and no plugin.
+  datasets do) and drop any row stage 1 goes red on. Serving sets no pooler overrides
+  (`--pooler-config {}` renders empty, the engine's own defaults: task classify, 1-label head,
+  sigmoid) and uses no plugin.
