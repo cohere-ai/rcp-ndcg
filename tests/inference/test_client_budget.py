@@ -18,6 +18,7 @@ from PIL import Image as PILImage
 from rcp_ndcg_core._records import RankingExample
 from rcp_ndcg_core.content import Content, ImagePart
 
+from rcp_ndcg.data.prepare import apply_media_fit
 from rcp_ndcg.data.preprocess import TextBudgetExceededError, TextTruncationCensus
 from rcp_ndcg.data.resolution import ImagePolicy, content_media_tokens
 from rcp_ndcg.data.templates import Segment, TemplateSpec
@@ -639,42 +640,63 @@ class TestEmbedEmptyDocuments:
 
 
 class TestMediaGates:
-    def test_a_request_over_max_images_is_refused_before_sending(self, tokenizer_json: str, tmp_path: Any) -> None:
-        from rcp_ndcg.errors import CapabilityError
+    """``max_images``/``max_videos`` gate per wire request (as the judge's per-request gate): the pooling
+    wire sends one media item per call, so per item; two single-image items with ``max_images: 1`` are
+    two compliant calls. Media the model does not read is still refused, before anything is sent."""
 
-        sender = RecordingSender()
-        client = PoolingClient(
+    @staticmethod
+    def _pool_client(tokenizer_json: str, *, max_images: int) -> PoolingClient:
+        return PoolingClient(
             PoolingEndpoint(
                 base_url="http://127.0.0.1:9000/v1",
                 model="colqwen",
                 dim=2,
-                tokenizer=str(SESSION_TOKENIZER),
+                tokenizer=tokenizer_json,
                 max_tokens=8192,
                 image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
-                max_images=1,
+                max_images=max_images,
             ),
-            sender=sender,
+            sender=RecordingSender(),
         )
-        pages = [_png_content(tmp_path, index) for index in range(2)]
-        with pytest.raises(CapabilityError, match="max_images"):
-            asyncio.run(client.aencode(pages, EncodeRole.DOCUMENT))
-        assert sender.bodies == [], "the gate refuses before anything is sent"
+
+    def test_per_item_gate_allows_one_image_per_wire_call(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """The pooling wire sends one media item per call: two single-image items are two compliant
+        requests under ``max_images: 1``."""
+        client = self._pool_client(tokenizer_json, max_images=1)
+        result = asyncio.run(
+            client.aencode([_png_content(tmp_path, 0), _png_content(tmp_path, 1)], EncodeRole.DOCUMENT)
+        )
+        assert result.num_items == 2
+
+    def test_one_request_over_the_limit_is_refused(self, tokenizer_json: str, tmp_path: Any) -> None:
+        from rcp_ndcg.errors import CapabilityError
+
+        client = self._pool_client(tokenizer_json, max_images=1)
+        page = tmp_path / "two.png"
+        from PIL import Image as PILImage
+
+        PILImage.new("RGB", (300, 300), (10, 10, 200)).save(page, format="PNG")
+        content = Content.from_parts(
+            [
+                __import__("rcp_ndcg_core.content", fromlist=["ImagePart"]).ImagePart(
+                    ref=__import__("rcp_ndcg_core.content", fromlist=["MediaRef"]).MediaRef(
+                        uri=page.as_uri(), mime="image/png"
+                    )
+                ),
+                __import__("rcp_ndcg_core.content", fromlist=["ImagePart"]).ImagePart(
+                    ref=__import__("rcp_ndcg_core.content", fromlist=["MediaRef"]).MediaRef(
+                        uri=page.as_uri(), mime="image/png"
+                    )
+                ),
+            ]
+        )
+        with pytest.raises(CapabilityError, match="accepts 1"):
+            asyncio.run(client.aencode([content], EncodeRole.DOCUMENT))
 
     def test_media_for_a_model_that_reads_none_is_refused(self, tokenizer_json: str, tmp_path: Any) -> None:
         from rcp_ndcg.errors import CapabilityError
 
-        sender = RecordingSender()
-        client = PoolingClient(
-            PoolingEndpoint(
-                base_url="http://127.0.0.1:9000/v1",
-                model="colqwen",
-                dim=2,
-                tokenizer=str(SESSION_TOKENIZER),
-                max_tokens=8192,
-                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
-            ),
-            sender=sender,
-        )
+        client = self._pool_client(tokenizer_json, max_images=0)
         with pytest.raises(CapabilityError, match="max_images"):
             asyncio.run(client.aencode([_png_content(tmp_path, 0)], EncodeRole.DOCUMENT))
 
@@ -1020,3 +1042,77 @@ class _ChunkScoreSender(RecordingSender):
         documents = calls[0].json["documents"]
         rows = [{"index": i, "relevance_score": i / 10} for i in range(len(documents))]
         return [Reply(200, {"results": rows[::-1]}, {})]
+
+
+class TestVideoContainerFit:
+    """A ``wire: video_url`` container is one prepared item: the media fit decides it whole (shrink does
+    not apply to a container), and ``apply_media_fit`` consumes its decision -- a drop removes the part,
+    a keep rides as prepared."""
+
+    @staticmethod
+    def _rerank_client(sender: Any, *, max_tokens: int) -> RerankClient:
+        return RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=str(SESSION_TOKENIZER),
+                max_tokens=max_tokens,
+                on_overflow="cut",
+                use_activation=False,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                image_processor="qwen2_vl",
+                max_images=2,
+                video_policy={"num_frames": 4, "wire": "video_url", "engine_video_pinning": True},
+                max_videos=2,
+            ),
+            sender=sender,
+        )
+
+    @staticmethod
+    def _container_content(tmp_path: Any) -> Any:
+        from rcp_ndcg_core.content import VideoPart
+
+        from rcp_ndcg.data.media import MediaRef
+
+        container = tmp_path / "clip.mp4"
+        container.write_bytes(b"mp4-bytes")
+        return Content.from_parts(
+            [
+                VideoPart(
+                    frames=[],
+                    ref=MediaRef(
+                        uri=container.as_uri(),
+                        mime="video/mp4",
+                        width=64,
+                        height=64,
+                        num_frames=64,
+                    ),
+                )
+            ]
+        )
+
+    def test_a_container_in_the_media_fit_consumes_its_decision(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """``apply_media_fit`` consumes one decision per prepared item: a container is kept whole when the
+        budget allows, dropped whole when it does not -- never a spurious DataError."""
+        from PIL import Image as PILImage
+
+        from rcp_ndcg.data.prepare import fit_media_to_budget, prepare_request
+
+        client = self._rerank_client(RecordingSender(), max_tokens=60)
+        image, video = client._media_policies()
+        big = tmp_path / "page.png"
+        PILImage.new("RGB", (900, 900), (10, 10, 200)).save(big, format="PNG")
+        request = prepare_request([self._container_content(tmp_path), Content.from_image(big.as_uri())], image, video)
+        fit = fit_media_to_budget(request.media, image=image, video=video, text_budget_tokens=10)
+        out = apply_media_fit(request.contents, fit)
+        assert len(out) == 2
+
+    def test_a_container_that_cannot_fit_is_dropped_whole(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """A container cannot shrink: under ``cut`` the fit drops it whole, recorded under its doc_id."""
+        from rcp_ndcg.data.prepare import fit_media_to_budget, prepare_request
+
+        client = self._rerank_client(RecordingSender(), max_tokens=5)
+        image, video = client._media_policies()
+        request = prepare_request([self._container_content(tmp_path)], image, video)
+        fit = fit_media_to_budget(request.media, image=image, video=video, text_budget_tokens=5)
+        assert fit.dropped_positions == (0,) and fit.decisions == (None,)

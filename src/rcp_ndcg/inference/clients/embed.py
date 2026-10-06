@@ -199,10 +199,10 @@ class EmbeddingClient(RoleClient):
                 request shape follows it).
 
         Returns:
-            The items to send (each with the side's prompt, the media prepared, the text fitted -- only
-            content spans cut, the template re-attached, cuts recorded), each with its original position,
-            and the positions ``empty_doc: omit_zero`` never sends (they score 0.0). Media is never cut;
-            a media-only request that overflows the budget follows the declared overflow policy.
+            The items to send (each with the side's prompt and -- when the config declares a budget -- the
+            content fitted to it: only content spans cut, the template re-attached, cuts recorded), each
+            with its original position, and the positions ``empty_doc: omit_zero`` never sends (they score
+            0.0). Media is refused before it is fetched: this role's wires are text-only.
         """
         prompt = self.config.query_prompt if role is EncodeRole.QUERY else self.config.doc_prompt
         prepared = tuple(content.with_text_prefix(prompt) for content in contents)

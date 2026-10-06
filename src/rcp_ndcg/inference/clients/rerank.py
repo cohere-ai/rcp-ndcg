@@ -272,7 +272,8 @@ class RerankClient(RoleClient):
         # The media fit runs per (query, document) pair -- the wire request the engine sees -- and the
         # fitted contents (both images possibly shrunk to the policy minimum) are what ships. The query
         # rides every pair, so its media is reserved on every pair and the FITTED query is what the wire
-        # carries (the pairs agree on the query's fit -- one query, one policy).
+        # carries (the pairs agree on the query's fit while no pair drops query media; a query-item drop
+        # ships fewer tokens than budgeted and is recorded under QUERY_DOC_ID).
         pairs_after_media = [
             self._fit_media_for_request([query, document], doc_ids=[QUERY_DOC_ID, str(original_index)])
             for original_index, document in enumerate(documents)

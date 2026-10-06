@@ -458,15 +458,22 @@ def apply_media_fit(contents: Sequence[Content], fit: MediaFit) -> list[Content]
             if not part.media_refs():
                 parts.append(part)
                 continue
-            if isinstance(part, VideoPart) and part.frames:
-                kept_frames: list[Any] = []
-                for _ in part.frames:
-                    decision = fit.decisions[applied]
-                    applied += 1
-                    if decision is not None:
-                        kept_frames.append(decision)
-                if kept_frames:
-                    parts.append(part.model_copy(update={"frames": kept_frames}))
+            if isinstance(part, VideoPart):
+                if part.frames:
+                    kept_frames: list[Any] = []
+                    for _ in part.frames:
+                        decision = fit.decisions[applied]
+                        applied += 1
+                        if decision is not None:
+                            kept_frames.append(decision)
+                    if kept_frames:
+                        parts.append(part.model_copy(update={"frames": kept_frames}))
+                    continue
+                # A ref-only container (``wire: video_url``): one prepared item, sent or dropped whole.
+                decision = fit.decisions[applied]
+                applied += 1
+                if decision is not None:
+                    parts.append(part.model_copy(update={"ref": decision}))
                 continue
             if isinstance(part, ImagePart):
                 decision = fit.decisions[applied]

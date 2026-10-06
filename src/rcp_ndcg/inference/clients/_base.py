@@ -72,10 +72,6 @@ the base's own transport checks must not break when it does."""
 if TYPE_CHECKING:
     from rcp_ndcg.data.tokenizer import TextTokenizer
 
-
-"""The transport class, captured at import: a test may patch the module attribute (an offline wire), and
-the base's own transport checks must not break when it does."""
-
 T = TypeVar("T")
 """The result type of a coroutine the fan-out runs."""
 
@@ -288,37 +284,15 @@ class RoleClient[C: Endpoint]:
 
     def _prepare_request(self, contents: Sequence[Content]) -> PreparedRequest:
         """The one preparation call for a request's contents: media sized exactly as the judge's, the
-        request's media token counts, and the per-request media gates before anything is sent.
+        request's media token counts.
 
-        The gates run over one wire request's contents (the unit the judge's own per-request gate uses: the
-        pool adapter sends one media item per call, the rerank pair per pair), so a limit the server
-        enforces per prompt is checked against what one prompt will carry.
-
-        Raises:
-            CapabilityError: the wire request carries more images or videos than the config's
-                ``max_images``/``max_videos`` allow (as the judge's per-request gate).
+        The media gates are the wire request's (see :meth:`_fit_media_for_request`, the unit the judge's own
+        per-request gate uses), not this call's.
         """
         if not self.MEDIA_ON_WIRE and any(content.has_media for content in contents):
             self._refuse_media_before_preparation(contents)
         image, video = self._media_policies()
-        prepared = prepare_request(contents, image, video)
-        counts = media_counts(Content.from_parts([part for content in prepared.contents for part in content.parts]))
-        for kind, count, limit in (
-            ("images", counts.images, getattr(self.config, "max_images", 0)),
-            ("videos", counts.videos, getattr(self.config, "max_videos", 0)),
-        ):
-            if count and not limit:
-                raise CapabilityError(
-                    f"{self.config.model} is not declared to read {kind} (max_{kind}: 0), but this request "
-                    f"carries {count}. Declare max_{kind} for a checkpoint that reads them, or drop the "
-                    "media parts from the corpus."
-                )
-            if count > limit:
-                raise CapabilityError(
-                    f"this request carries {count} {kind} and the endpoint accepts {limit} per request "
-                    f"(max_{kind}). Split the request, or raise the limit on the server and here."
-                )
-        return prepared
+        return prepare_request(contents, image, video)
 
     def _refuse_media_before_preparation(self, contents: Sequence[Content]) -> None:
         """Refuse media for a text-only role before the media is fetched, sized or counted.
@@ -343,17 +317,6 @@ class RoleClient[C: Endpoint]:
                         hint="embed a text rendering of the media; video embedding is wired with the "
                         "media-preparation mechanism",
                     )
-
-    def _media_slices(self, prepared: PreparedRequest) -> list[list[Any]]:
-        """The request's prepared media, sliced per content (the same part order ``prepare_request``
-        flattened them in)."""
-        slices: list[list[Any]] = []
-        cursor = 0
-        for content in prepared.contents:
-            count = sum(len(part.media_refs()) for part in content.parts)
-            slices.append(prepared.media[cursor : cursor + count])
-            cursor += count
-        return slices
 
     def _fit_media_for_request(
         self, contents: Sequence[Content], *, doc_ids: Sequence[str]
@@ -380,6 +343,24 @@ class RoleClient[C: Endpoint]:
         """
         image, video = self._media_policies()
         prepared = prepare_request(contents, image, video)
+        # The per-request media gates, as the judge's: this wire request's images and videos against the
+        # config's declared limits, refused before anything is sent.
+        counts = media_counts(Content.from_parts([part for content in prepared.contents for part in content.parts]))
+        for kind, count, limit in (
+            ("images", counts.images, getattr(self.config, "max_images", 0)),
+            ("videos", counts.videos, getattr(self.config, "max_videos", 0)),
+        ):
+            if count and not limit:
+                raise CapabilityError(
+                    f"{self.config.model} is not declared to read {kind} (max_{kind}: 0), but this request "
+                    f"carries {count}. Declare max_{kind} for a checkpoint that reads them, or drop the "
+                    "media parts from the corpus."
+                )
+            if count > limit:
+                raise CapabilityError(
+                    f"this request carries {count} {kind} and the endpoint accepts {limit} per request "
+                    f"(max_{kind}). Split the request, or raise the limit on the server and here."
+                )
         media = prepared.media
         tokens = prepared.tokens.tokens
         if self._budget is not None and tokens > self._budget.max_tokens:
@@ -404,11 +385,13 @@ class RoleClient[C: Endpoint]:
                 )
             fit = fit_media_to_budget(media, image=image, video=video, text_budget_tokens=self._budget.max_tokens)
             contents = list(apply_media_fit(contents, fit))
-            for position, item in zip(fit.dropped_positions, fit.dropped, strict=True):
+            for position in fit.dropped_positions:
+                # The dropped item is the ORIGINAL prepared item at that position (the fit refused it
+                # whole, possibly after a shrink attempt failed); recorded under ITS input's doc_id.
                 self.media_census.record(
                     corpus=self.ROLE,
                     doc_id=doc_ids[position] if position < len(doc_ids) else self.ROLE,
-                    media=[item],
+                    media=[media[position]],
                     dropped=True,
                 )
         else:
@@ -500,10 +483,12 @@ class RoleClient[C: Endpoint]:
             # is the client's own here -- the declared budget counts the client's render, not a server
             # template the client cannot see).
             assert self._tokenizer is not None, "an image_processor implies a declared budget tokenizer"
-            counted = sum(count.tokens for count in self._media_counts_of(prepared.contents)) + sum(
-                self._tokenizer.count(content.text) for content in prepared.contents
-            )
             calls = list(self._probe_calls(prepared.contents[0]))
+            # The counted number must cover the same request the engine's report covers: the media block
+            # plus every text token the probe calls carry (the role's query, a text part).
+            counted = sum(count.tokens for count in self._media_counts_of(prepared.contents)) + self._text_tokens_of(
+                calls
+            )
             replies = await self._sender.send(calls)
             tokens = self._probe_usage(replies[0])
             if tokens is None or tokens.input_tokens is None:
@@ -531,6 +516,26 @@ class RoleClient[C: Endpoint]:
     def _probe_calls(self, content: Content) -> Sequence[Call]:
         """The calls one prepared probe item is sent as (the role's wire)."""
         raise NotImplementedError
+
+    def _text_tokens_of(self, calls: Sequence[Call]) -> int:
+        """The text tokens the probe calls' bodies carry (the query, or the text parts) -- the part of the
+        request's prompt the client can count exactly, beside the media block."""
+        assert self._tokenizer is not None
+
+        def walk(value: Any) -> str:
+            if isinstance(value, str):
+                return value
+            if isinstance(value, dict):
+                texts = [walk(item) for key, item in value.items() if key in ("query", "text")]
+                content = value.get("content")
+                if isinstance(content, list):
+                    texts.extend(part.get("text", "") for part in content if isinstance(part, dict))
+                return " ".join(text for text in texts if text)
+            if isinstance(value, list):
+                return " ".join(walk(item) for item in value)
+            return ""
+
+        return sum(self._tokenizer.count(walk(call.json)) for call in calls)
 
     def _probe_usage(self, reply: Reply) -> TokenCount | None:
         """The reply's prompt-token report (``None``: the engine reported none)."""
