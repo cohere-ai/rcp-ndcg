@@ -198,7 +198,13 @@ def test_reference_resolves_the_hub_tokenizer_spec_without_the_revision_suffix()
 
     module_spec = importlib.util.spec_from_file_location("ctxl_reference", RECIPE_DIR / "reference.py")
     module = importlib.util.module_from_spec(module_spec)
-    module_spec.loader.exec_module(module)
+    # exec_module would drop a __pycache__ into the recipe directory; tests write only to tmp_path.
+    bytecode = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        module_spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
     assert module._tokenizer_dir(f"{MODEL_ID}@{REVISION}") == MODEL_ID
     assert module._tokenizer_dir(MODEL_ID) == MODEL_ID
     assert "@" not in module._tokenizer_dir(f"{MODEL_ID}@{REVISION}")
