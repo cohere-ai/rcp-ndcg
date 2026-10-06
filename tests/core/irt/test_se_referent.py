@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import math
 
+import pytest
 import torch
 from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
 
@@ -37,7 +38,7 @@ def _se(est, doc_id: str = "d0") -> float:
 # ---------------------------------------------------------------------------
 
 
-def _bt_fit(n_padding_pairs: int, l2_reg: float = 1e-4) -> BradleyTerryEstimator:
+def _bt_fit(n_padding_pairs: int, l2_reg: float) -> BradleyTerryEstimator:
     """d0 vs d1 balanced (2 wins each way); padding docs form independent
     balanced pairs. Every pair is symmetric, so d0's optimum is the same
     interior point (theta = 0) at every fit size."""
@@ -56,9 +57,10 @@ def _bt_fit(n_padding_pairs: int, l2_reg: float = 1e-4) -> BradleyTerryEstimator
     return est
 
 
-def test_bt_se_matches_per_document_referent() -> None:
+@pytest.mark.parametrize("l2_reg", [1e-4, 1.0])
+def test_bt_se_matches_per_document_referent(l2_reg: float) -> None:
     for n_pairs in (0, 5, 25):
-        est = _bt_fit(n_pairs)
+        est = _bt_fit(n_pairs, l2_reg)
         idx = est.doc_to_idx["d0"]
         winners, losers, weights, _ = est._prepare_observation_tensors()
         p = torch.sigmoid(est.theta[winners].detach() - est.theta[losers].detach())
@@ -66,11 +68,24 @@ def test_bt_se_matches_per_document_referent() -> None:
         info_own = float(contrib[winners == idx].sum() + contrib[losers == idx].sum())
         want = 1.0 / math.sqrt(info_own + est.l2_reg)
         got = _se(est)
-        assert abs(got - want) < 1e-3, (n_pairs, got, want)
+        # theta_se is float32, so the referent comparison stops at its precision.
+        assert abs(got - want) < 1e-5, (n_pairs, got, want)
+
+
+def test_bt_se_matches_the_hand_computed_value_at_a_visible_ridge() -> None:
+    """The ridge is pinned against a hand-computed value, not only the estimator's own formula.
+
+    d0's evidence is 4 balanced comparisons, so its optimum is theta = 0 and its own
+    information is 4 * 1 * sigmoid(0) * (1 - sigmoid(0)) = 1. With l2_reg = 1.0 the SE is
+    1 / sqrt(2) -- a dropped ridge (SE 1.0) is 0.29 away, far outside the tolerance.
+    """
+    est = _bt_fit(n_padding_pairs=0, l2_reg=1.0)
+    got = _se(est)
+    assert abs(got - 1.0 / math.sqrt(2.0)) < 1e-3, got
 
 
 def test_bt_se_invariant_to_unrelated_comparisons() -> None:
     """d0's evidence is 4 balanced comparisons throughout. A global
     weight denominator grew 4 -> 104 and would inflate the SE ~3.1x at n=25."""
-    ses = [_se(_bt_fit(n)) for n in (0, 5, 25)]
+    ses = [_se(_bt_fit(n, 1e-4)) for n in (0, 5, 25)]
     assert max(ses) - min(ses) < 1e-3, ses

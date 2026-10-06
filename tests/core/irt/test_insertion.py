@@ -95,6 +95,35 @@ class TestConditionalInsertion:
         assert abs(result.se - expected) < 1e-9
 
 
+class TestInformationReferent:
+    """The insertion SE's ridge term, pinned against hand-written values (not the function under test)."""
+
+    def test_incident_information_matches_the_hand_written_referent(self) -> None:
+        """Fixed thetas, no fit: the referent is ``sum w*p*(1-p)`` over incident comparisons + l2.
+
+        theta_d = theta_a = theta_c = 0 and theta_b = ln(3), so the three incident
+        comparisons contribute 2*1/4, 1*3/16 and 4*1/4 = 1.6875, and the non-incident
+        pair (a, b) contributes nothing. With l2 = 0.3125 the total is exactly 2.
+        """
+        from rcp_ndcg_core.irt._insertion import incident_information
+
+        theta = {"d": 0.0, "a": 0.0, "b": math.log(3.0), "c": 0.0}
+        comps = [("d", "a", 2.0, 0.9), ("b", "d", 1.0, 0.8), ("c", "d", 4.0, 0.6), ("a", "b", 9.0, 0.5)]
+        assert incident_information("d", comps, theta, 0.3125) == pytest.approx(2.0, abs=1e-12)
+        assert incident_information("d", comps, theta, 0.0) == pytest.approx(1.6875, abs=1e-12)
+
+    def test_conditional_insert_theta_reports_the_hand_computed_information(self) -> None:
+        """One comparison with soft label 0.5: dL/dt = w(p - 0.5) + l2*t has its optimum at t = 0,
+
+        so the returned information is ``w * 1/4 + l2`` = 1.0 -- a dropped ridge returns 0.5.
+        """
+        from rcp_ndcg_core.irt._insertion import conditional_insert_theta
+
+        theta_hat, info = conditional_insert_theta("d", [("a", "d", 2.0, 0.5)], {"a": 0.0}, l2_reg=0.5)
+        assert abs(theta_hat) < 1e-6, theta_hat
+        assert abs(info - 1.0) < 1e-6, info
+
+
 class TestIdentifiabilityPredicates:
     def test_disconnected_insertion_refused_and_reported(self) -> None:
         docs, true, comparisons = _dense_world(seed=11)
