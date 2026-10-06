@@ -10,7 +10,8 @@ There are two ways to run the tasks:
 - **Stock mteb.** Each dataset on the Hugging Face Hub ships a `rcp_ndcg_tasks.py` that defines its tasks for mteb
   ≥ 2.0.1 (≥ 2.10.5 for ViDoRe v3). The dataset cards show how to use it.
 - **This package.** `rcp_ndcg.eval.mteb.get_tasks(suite)` returns the same tasks (the `mteb` extra). When the
-  installed mteb already ships a task at the same data revision, `get_tasks` returns mteb's own.
+  installed mteb already ships a task at the same data revision, `get_tasks` returns mteb's own (the reranking
+  view; the `.retrieval` tasks are always built locally, as their names cannot match mteb's).
 
 <!-- snippet: network -->
 ```python
