@@ -22,8 +22,9 @@ serve:
   runner: pooling
   convert: null                  # no stock conversion reaches the trained head or the non-causal masking
   hf_overrides: {}               # none: the plugin registers the architecture; head_dtype defaults
-                                 # to fp32 for pooling models (config/model.py:2492-2519 at the tag),
-                                 # matching the reference's fp32 head
+                                 # to fp32 for pooling models (config/model.py:2447-2468, pooling
+                                 # branch 2464-2465, at the tag) -- the reference's head matmul runs
+                                 # bf16, so that rounding delta is stage-2's R6, not a serve field
   chat_template: null            # the checkpoint ships chat_template.jinja at the pinned revision and
                                  # vLLM resolves it through AutoProcessor for the pooling-chat (media)
                                  # path; see the notes, 'Why chat_template is null', for why this is
@@ -82,10 +83,14 @@ client:
     add_special_tokens: true     # the /pooling route's behaviour; a measured no-op for this tokenizer
                                  # (no BOS, no appended specials: ids("x", True) == ids("x", False))
   on_overflow: cut
-  empty_doc: omit_zero           # the reference's empty-document fallback renders the end-of-turn
-                                 # token (id 248046), which is itself in scoring_skip_ids -- zero kept
-                                 # vectors, i.e. no contribution; omit_zero (never sent, scores 0.0)
-                                 # is that behaviour as the schema expresses it
+  empty_doc: omit_zero           # a declared approximation for the empty-document edge, with eyes
+                                 # open: the reference's empty document renders as "Document:" (the
+                                 # wrapper's eos fallback never fires -- the stripped render is
+                                 # non-empty), one kept token, one vector, a positive MaxSim. The
+                                 # schema's alternatives diverge differently (send renders
+                                 # "Document: ", two kept tokens), so the recipe declares omit_zero
+                                 # (never sent, scores 0.0); the wave's pairs must not sample empty
+                                 # documents (see notes, 'Empty documents')
   normalize: true                # the server L2-normalizes per token (PoolerNormalize); normalizing
                                  # again client-side is a no-op and keeps the pipeline's rule uniform
   embed_dtype: float16           # the owner's transfer precision (Q11); MaxSim accumulates in float32
@@ -112,10 +117,10 @@ sources:
   - "vllm v0.31.0 vllm/model_executor/layers/pooler/tokwise/methods.py StepPool.returned_token_ids slices the embedding dimension, not token positions -- it is not a document keep-mask; the AllPool token_embed answer has one vector per prompt token, so the skip-id mask can only be applied client-side"
   - "vllm v0.31.0 vllm/renderers/hf.py resolve_chat_template (2nd priority: AutoProcessor chat template) and vllm/renderers/base.py warmup -- a chat-like pooling request without any resolvable template raises ChatTemplateResolutionError per request (loud), unlike the scoring io-processor's silent pair-encode fallback (pooling/scoring/io_processor.py:677-678)"
   - "vllm v0.31.0 vllm/entrypoints/launchers/cli_args.py:364 enable_flash_late_interaction = True (the tag-side knob for late-interaction scoring; the PoolerConfig field of the same name is main-only)"
-  - "research: /root/repos/rcp-ndcg-lanes/research/r-topk/out/ (report.md per-model table, the three stock-vLLM blockers, client settings, risks R1-R11; recipe-draft.yaml; reference-draft.py; check_prompts.py)"
-  - "corrections applied: /root/repos/rcp-ndcg-lanes/research/audit-synth/out/corrections.md, r-topk table (G5 is not an exit-1 gate; the research check pins only the image wrapper, not the text prompt paths -- this recipe's template and the stage-1 render check pin them; the param/byte magnitudes are derived from the Hub file listing, not the census; 11/12 bit-identical with the qwen3_5.py caveat; stale line cites corrected: README.md:2/:3, topk_embed_st.py:29, :121-122, hf_backbone.py:111-115)"
+  - "research: the r-topk research lane's out/ artifacts (report.md per-model table, the three stock-vLLM blockers, client settings, risks R1-R11; recipe-draft.yaml; reference-draft.py; check_prompts.py)"
+  - "corrections applied: the audit-synth corrections record, r-topk table (G5 is not an exit-1 gate; the research check pins only the image wrapper, not the text prompt paths -- this recipe's template and the stage-1 render check pin them; the param/byte magnitudes are derived from the Hub file listing, not the census; 11/12 bit-identical with the qwen3_5.py caveat; stale line cites corrected: README.md:2/:3, topk_embed_st.py:29, :121-122, hf_backbone.py:111-115)"
   - "tokenizer.json at the pinned revision embeds truncation {direction: Right, max_length: 1024, strategy: LongestFirst} and no padding; transformers 5.9.0 tokenization_utils_tokenizers.py:782-820 set_truncation_and_padding resets an embedded strategy to no_truncation() on every plain encode (DO_NOT_TRUNCATE default), so the ENGINE reads full prompts while a raw-tokenizers counter caps at 1024 -- the G5 divergence; vLLM v0.31.0 truncates a served prompt only on an explicit per-request truncate_prompt_tokens (vllm/renderers/base.py:990-1037), which the pooling adapter never sends"
-  - "truncation/anchor rule: /root/repos/rcp-ndcg-lanes/research/ANCHOR-FINDING.md (mmmv 302b1c9d); review findings R10 and R20 of /root/repos/rcp-ndcg-lanes/REVIEW-LOG.md"
+  - "truncation/anchor rule: the research ANCHOR-FINDING (mmmv commit 302b1c9d, truncation must never cut a model's anchors); review findings R10 and R20 of the lanes' review log"
 notes: |
   What the model is. A multimodal late-interaction (multi-vector) retriever: one L2-normalized
   2048-dim vector per kept token, retrieval score = fp32 MaxSim, client-side. Text prompts are NOT
@@ -170,10 +175,12 @@ notes: |
     `input: [text, image]` is the model-level list and cannot scope it per role. The serving path has
     no guard: an image query would be served and scored with semantics the reference never produces.
     The pipeline must never send one.
-  - G4 content-strip: the model's wrapper strips the query text and the whole document render
-    (topk_embed_st.py:56-60); TemplateSpec has no per-span strip rule. Normalized inputs agree
-    byte-for-byte; the recipe's stage-1 comparison flags any raw input with leading/trailing
-    whitespace, which is the honest signal that the served prompt would diverge from the reference's.
+  - G4 content-strip: the model's wrapper strips the query text on both sides and the whole document
+    render (topk_embed_st.py:56-60); TemplateSpec has no per-span strip rule. Normalized inputs agree
+    byte-for-byte; the recipe's stage-1 comparison flags exactly the divergent cases -- a query with
+    leading or trailing whitespace, and a document with trailing whitespace (a document's LEADING
+    whitespace renders identically on both sides, since the strip keeps the frame's own leading
+    text). The flag is the honest signal that the served prompt would diverge from the reference's.
   - G5 counting ceiling: the checkpoint's tokenizer.json embeds truncation {Right, max_length 1024}
     and the product's TextTokenizer wraps the raw `tokenizers` backend as loaded, so every count, id
     list and offset caps at 1024 tokens. Consequences: (a) no budget above 1024 can ever fire a cut --
@@ -196,6 +203,14 @@ notes: |
   embedded truncation of G5 the over-length audit measures at the tokenizer file's own 1024-token
   ceiling; the engine-side reading of the same texts is not capped, which is exactly what the wave's
   /tokenize check must surface.
+
+  Empty documents: the reference renders an empty document as "Document:" -- exactly one kept token
+  (the colon is a skip id), so the wrapper's `or eos or "."` fallback is dead code for this
+  checkpoint (the stripped render is never empty), and the reference scores MaxSim against that one
+  vector. The schema cannot express that render (the frame's trailing space cannot be stripped), and
+  the alternatives diverge differently (`empty_doc: send` renders "Document: ", two kept tokens),
+  so the recipe declares `empty_doc: omit_zero` -- never sent, scored 0.0 -- as a recorded
+  approximation, and the wave's pairs must not sample empty documents.
 
   Media (R20): serve.mm_processor_kwargs pins min_pixels 65536 / max_pixels 1310720 -- the reference's
   image budget (topk_embed_st.py:36-37: shortest_edge and image_token_budget 1280 * (16*2)^2). The
@@ -228,6 +243,9 @@ notes: |
     do (see G5); the wave's /tokenize equality fails on them by design until the product resets the
     embedded truncation when counting. Sampled inputs up to 1024 tokens verify normally.
   - R11: never send an image query (G3); assert the negative case.
+  - The empty-document edge: omit_zero (never sent, 0.0) vs the reference's one-kept-vector
+    "Document:" render -- a declared approximation (see 'Empty documents'); the wave's pairs must
+    not sample empty documents.
   - The plugin wheel loads (T0), and the wave's pip freeze before/after differs by exactly that wheel
     (node runtime item 11 of the GPU validation plan).
 

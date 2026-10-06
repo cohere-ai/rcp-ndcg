@@ -244,6 +244,36 @@ def format_uncut(text: str, shape: str) -> str:
     return DOCUMENT_HEAD + text
 
 
+def test_reference_empty_document_keeps_one_token(tmp_path: Path, tokenizer, checkpoint) -> None:
+    """The reference's empty document renders as 'Document:' -- one kept token, not the eos fallback.
+
+    The wrapper's `or eos or "."` chain is dead code for this checkpoint (the stripped render of an
+    empty document is non-empty), so the reference scores MaxSim against exactly one vector. The
+    recipe declares empty_doc omit_zero (never sent, 0.0) as a recorded approximation of that edge,
+    never reference equivalence; this pins the fact the declaration rests on.
+    """
+    from rcp_ndcg_vllm.equivalence.reference import run_reference
+
+    work = tmp_path / "empty"
+    pairs_path = work / "pairs.jsonl"
+    pairs_path.parent.mkdir(parents=True)
+    pairs_path.write_text(json.dumps({"query": "q", "documents": [""]}) + "\n", encoding="utf-8")
+    reference = run_reference(
+        sys.executable,
+        str(RECIPE_DIR / "reference.py"),
+        mode="render",
+        pairs_path=pairs_path,
+        out_path=work / "reference.json",
+        tokenizer_spec=TOKENIZER_SPEC,
+    )
+    document_text = next(row["text"] for row in reference["rows"] if row["shape"] == "document")
+    assert document_text == DOCUMENT_HEAD.rstrip()  # "Document:": the eos fallback never fired
+    config = checkpoint["config"]
+    skip = {int(value) for value in config["scoring_skip_ids"]}
+    kept = [value for value in tokenizer.ids(document_text, add_special_tokens=True) if value not in skip]
+    assert len(kept) == 1  # exactly one kept vector for an empty document in the reference
+
+
 def test_image_wrapper_is_pinned(tokenizer, checkpoint) -> None:
     """The chat template's image-only user message renders the exact wrapper ids; a text part diverges.
 
