@@ -240,46 +240,64 @@ CLIENT_ARGS=(uvx --from "$CLIENT_SPEC" --with "$CLIENT_WITH"
   --constraints "$STAGE_DIR/requirements-constraints.txt"
   --find-links "$STAGE_DIR/wheelhouse" --no-index)
 install_start="$(now_s)"
-"${CLIENT_ARGS[@]}" python - <<'PYEOF' >"$STATE/client-versions.json"
+# The CUDA-lock wheels (nvidia-*, triton) ride in the wheelhouse for the engine; the CLIENT environment
+# must never install them (its specs pull no torch, and the manifest marks them inert). The probe runs
+# IN the client environment - under the client mechanism, not this shell's python (the engine
+# environment legitimately carries them on the stock image).
+INERT_NAMES="$(python3 - "$STAGE_DIR/manifest.json" <<'INERTPY'
 import json
-from importlib.metadata import version
+import re
+import sys
+
+manifest = json.load(open(sys.argv[1]))
+names = sorted({
+    re.sub(r"[-_.]+", "-", wheel.rsplit("/", 1)[-1].split("-")[0]).lower()
+    for wheel in manifest.get("cpu_inert_wheels", [])
+})
+print(" ".join(names))
+INERTPY
+)"
+# shellcheck disable=SC2086  # INERT_NAMES is a deliberate word list
+"${CLIENT_ARGS[@]}" python - "$STAGE_DIR/requirements-constraints.txt" $INERT_NAMES <<'PYEOF' >"$STATE/client-versions.json"
+import json
+import sys
+from importlib.metadata import PackageNotFoundError, version
 
 import rcp_ndcg
 import rcp_ndcg_core
 import rcp_ndcg_vllm
 
-print(json.dumps({
-    "rcp-ndcg": rcp_ndcg.__version__,
-    "rcp-ndcg-core": version("rcp-ndcg-core"),
-    "rcp-ndcg-vllm": version("rcp-ndcg-vllm"),
-}))
-PYEOF
-client_install_s="$(( $(now_s) - install_start ))"
-python3 - "$STATE/client-versions.json" "$VERSION" <<'VCHK' || exit 1
-import json
-import sys
-from importlib.metadata import PackageNotFoundError, version
 
-versions = json.load(open(sys.argv[1]))
-expected = sys.argv[2]
-bad = {name: seen for name, seen in versions.items() if seen != expected}
-if bad:
-    print(f"bootstrap: the client installed {bad}, not the manifest's {expected}", file=sys.stderr)
-    raise SystemExit(1)
-# The CUDA-lock wheels (nvidia-*, triton) ride in the wheelhouse for the engine; a CPU client must
-# never install them (its specs pull no torch, and the manifest marks them inert).
-
-
-def _installed(dist):
+def installed(dist):
     try:
         return version(dist)
     except PackageNotFoundError:
         return None
 
 
-inert = {dist: seen for dist in ("triton", "nvidia-cublas", "nvidia-cuda-runtime") if (seen := _installed(dist))}
-if inert:
-    print(f"bootstrap: the client environment gained CUDA-lock wheels it must not have: {inert}", file=sys.stderr)
+print(json.dumps({
+    "rcp-ndcg": rcp_ndcg.__version__,
+    "rcp-ndcg-core": version("rcp-ndcg-core"),
+    "rcp-ndcg-vllm": version("rcp-ndcg-vllm"),
+    "inert_present": {dist: installed(dist) for dist in sys.argv[2:]},
+}))
+PYEOF
+client_install_s="$(( $(now_s) - install_start ))"
+python3 - "$STATE/client-versions.json" "$VERSION" <<'VCHK' || exit 1
+import json
+import sys
+
+versions = json.load(open(sys.argv[1]))
+expected = sys.argv[2]
+inert = versions.pop("inert_present", {})
+bad = {name: seen for name, seen in versions.items() if seen != expected}
+if bad:
+    print(f"bootstrap: the client installed {bad}, not the manifest's {expected}", file=sys.stderr)
+    raise SystemExit(1)
+# The client environment is checked for the CUDA-lock wheels the manifest marks inert: none may be there.
+present = {dist: seen for dist, seen in inert.items() if seen}
+if present:
+    print(f"bootstrap: the client environment gained CUDA-lock wheels it must not have: {present}", file=sys.stderr)
     raise SystemExit(1)
 VCHK
 

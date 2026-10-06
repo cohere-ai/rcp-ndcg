@@ -133,6 +133,10 @@ kjobs-go submit -f "$RCP_KJOBS_CONFIG" \
   files.wave0.mount_path=/etc/rcp/files/wave0/wave0.sh \
   files.wave0host.from_file=packages/rcp-ndcg-vllm/jobs/wave0_host.py \
   files.wave0host.mount_path=/etc/rcp/files/wave0host/wave0_host.py \
+  files.gcshelper.from_file=packages/rcp-ndcg-vllm/jobs/gcs.sh \
+  files.gcshelper.mount_path=/etc/rcp/files/gcshelper/gcs.sh \
+  files.gcspy.from_file=packages/rcp-ndcg-vllm/jobs/gcs.py \
+  files.gcspy.mount_path=/etc/rcp/files/gcshelper/gcs.py \
   files.bootstrap.from_file=packages/rcp-ndcg-vllm/jobs/bootstrap.sh \
   files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh \
   files.report.from_file=packages/rcp-ndcg-vllm/jobs/report.py \

@@ -11,7 +11,8 @@ disk and the model's Hub size and fails the recipe early when it measurably cann
 model no later recipe reuses, the model's weights are evicted from the HF cache.  It writes
 ``<out>/<id>/{serve.log, equivalence.json, EQUIVALENCE.md, status.json}``, a wave summary
 (``wave.json`` and ``WAVE.md``), and with ``--upload`` copies ``<out>`` to the URI after each recipe
-(``gcloud storage cp -r`` with a ``gsutil -m cp -r`` fallback).
+(``gcloud storage cp -r``, then a ``gsutil -m cp -r`` fallback, then the product's own
+:mod:`rcp_ndcg.storage` - the stock engine image ships neither CLI).
 
 Test mode: ``--vllm-cmd "python tests/stub_engine.py"`` replaces the ``vllm serve`` launcher with that command
 (the rest of the rendered argv is appended, so a stub engine receives the real flags and may ignore them), and

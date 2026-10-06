@@ -29,8 +29,10 @@ vLLM and torch.
   schema), and `plugins.py` (the plugin wheels a wave's recipes install into the engine environment).
 - `jobs/` — the node and operator scripts: `rc_build.sh` (build a release candidate exactly as `release.yml`
   does, stage it with the wheelhouse and a hash manifest), `bootstrap.sh` (the node's three environments),
-  `submit.sh` (one job per wave, priority class, shared memory, the token as a secret), `wave0_host.py` and
-  `report.py` (wave 0's stdlib helpers, mounted onto the node).
+  `submit.sh` (one job per wave, priority class, shared memory, the token as a secret), `gcs.sh` and
+  `gcs.py` (the gs:// transfer: the CLIs when the image has one, else gcsfs into a tools directory
+  outside the engine environment), and `wave0_host.py` and `report.py` (wave 0's stdlib helpers,
+  mounted onto the node).
 - `schema/recipe.schema.json` and `schema/wave0-report.schema.json` — the exported JSON Schemas of `Recipe`
   and of the wave-0 report.
 

@@ -22,7 +22,7 @@
 #
 # Environment: RCP_GCS_AUTH_FILE (mounted auth script; executed, never printed), HF_TOKEN (the job's
 # secret; never printed), RCP_IMAGE / RCP_IMAGE_DIGEST (recorded), WAVE0_DRY=1 (print the plan, run
-# nothing), RCP_REPORT_PY / RCP_HOST_PY / RCP_BOOTSTRAP_SH / RCP_GCS_SH / RCP_GCS_HELPER_PY (the mounted
+# nothing), RCP_REPORT_PY / RCP_HOST_PY / RCP_BOOTSTRAP_SH / RCP_GCS_HELPER_SH / RCP_GCS_HELPER_PY (the mounted
 # helpers) and the WAVE0_* knobs. The transfer runs gcloud or gsutil when either is present, else the
 # python helper (gcsfs into a tools directory outside the engine environment, ADC); the auth script runs
 # before anything else and the transfer path is recorded in the report's host fragment.
@@ -234,7 +234,13 @@ with open(sys.argv[1], "w", encoding="utf-8") as handle:
     handle.write(json.dumps(document, indent=2) + "\n")
 PYEOF
 report merge --file "$REPORT" --key bootstrap --fragment "$STATE/bootstrap.json" >/dev/null
-export GCS_WHEELHOUSE="$STATE/stage/wheelhouse"  # the helper prefers the staged gcsfs from here on
+# The helper prefers a staged gcsfs wheel from here on: the downloaded stage's wheelhouse, or the
+# local stage's when the operator pointed wave 0 at a local directory.
+if [[ -d "$STATE/stage/wheelhouse" ]]; then
+  export GCS_WHEELHOUSE="$STATE/stage/wheelhouse"
+else
+  export GCS_WHEELHOUSE="$RC_STAGE_URI/wheelhouse"
+fi
 
 # --- (c) reachability: the Hub with the token secret, and the GCS round-trip through the product ------
 

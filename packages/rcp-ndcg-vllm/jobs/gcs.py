@@ -42,10 +42,6 @@ def _split(uri: str) -> str:
     return uri[len("gs://") :] if _is_gcs(uri) else uri
 
 
-def _remote(fs: Any, uri: str) -> bool:
-    return _is_gcs(uri)
-
-
 def gcs_copy(src: str, dst: str, *, fs: Any = None) -> list[str]:
     """Copy one file or directory between gs:// and the local filesystem (either side either way).
 
@@ -60,14 +56,27 @@ def gcs_copy(src: str, dst: str, *, fs: Any = None) -> list[str]:
 
     written: list[str] = []
     if not src_is_directory:
-        target = dst_path
         if _is_gcs(dst):
+            target = dst_path
             if fs.isdir(_split(dst).rstrip("/")) or dst.endswith("/"):
                 target = f"{dst_path.rstrip('/')}/{os.path.basename(src_path)}"
-            fs.put_file(src_path, target)
+            if src_remote:
+                # gcsfs's put_file opens the source with a local open: a remote source goes through a
+                # temporary local file (the CLI branches of gcloud/gsutil copy remote->remote natively).
+                import tempfile
+
+                with tempfile.TemporaryDirectory() as work:
+                    local = Path(work) / os.path.basename(src_path)
+                    fs.get_file(src_path, str(local))
+                    fs.put_file(str(local), target)
+            else:
+                fs.put_file(src_path, target)
             return [f"gs://{target}"]
-        Path(target).parent.mkdir(parents=True, exist_ok=True)
-        fs.get_file(src_path, target)
+        target = Path(dst_path)
+        if target.is_dir() or dst.endswith("/"):
+            target = target / os.path.basename(src_path)  # cp semantics: a directory dest keeps the name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        fs.get_file(src_path, str(target))
         return [str(target)]
 
     prefix = src_path.rstrip("/") + "/"
