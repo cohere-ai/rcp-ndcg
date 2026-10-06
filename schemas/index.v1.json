@@ -255,6 +255,21 @@
           "title": "Max Videos",
           "type": "integer"
         },
+        "media_sides": {
+          "default": [
+            "query",
+            "document"
+          ],
+          "items": {
+            "enum": [
+              "query",
+              "document"
+            ],
+            "type": "string"
+          },
+          "title": "Media Sides",
+          "type": "array"
+        },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
           "minLength": 1,
@@ -634,6 +649,21 @@
           "minimum": 0,
           "title": "Max Videos",
           "type": "integer"
+        },
+        "media_sides": {
+          "default": [
+            "query",
+            "document"
+          ],
+          "items": {
+            "enum": [
+              "query",
+              "document"
+            ],
+            "type": "string"
+          },
+          "title": "Media Sides",
+          "type": "array"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -1059,6 +1089,21 @@
           "title": "Max Videos",
           "type": "integer"
         },
+        "media_sides": {
+          "default": [
+            "query",
+            "document"
+          ],
+          "items": {
+            "enum": [
+              "query",
+              "document"
+            ],
+            "type": "string"
+          },
+          "title": "Media Sides",
+          "type": "array"
+        },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
           "minLength": 1,
@@ -1424,6 +1469,21 @@
           "minimum": 0,
           "title": "Max Videos",
           "type": "integer"
+        },
+        "media_sides": {
+          "default": [
+            "query",
+            "document"
+          ],
+          "items": {
+            "enum": [
+              "query",
+              "document"
+            ],
+            "type": "string"
+          },
+          "title": "Media Sides",
+          "type": "array"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -1807,6 +1867,21 @@
           "title": "Max Videos",
           "type": "integer"
         },
+        "media_sides": {
+          "default": [
+            "query",
+            "document"
+          ],
+          "items": {
+            "enum": [
+              "query",
+              "document"
+            ],
+            "type": "string"
+          },
+          "title": "Media Sides",
+          "type": "array"
+        },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
           "minLength": 1,
@@ -2173,6 +2248,21 @@
           "minimum": 0,
           "title": "Max Videos",
           "type": "integer"
+        },
+        "media_sides": {
+          "default": [
+            "query",
+            "document"
+          ],
+          "items": {
+            "enum": [
+              "query",
+              "document"
+            ],
+            "type": "string"
+          },
+          "title": "Media Sides",
+          "type": "array"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",
@@ -2683,6 +2773,21 @@
           "minimum": 0,
           "title": "Max Videos",
           "type": "integer"
+        },
+        "media_sides": {
+          "default": [
+            "query",
+            "document"
+          ],
+          "items": {
+            "enum": [
+              "query",
+              "document"
+            ],
+            "type": "string"
+          },
+          "title": "Media Sides",
+          "type": "array"
         },
         "model": {
           "description": "The served model name, sent as the request's ``model``.",

@@ -25,6 +25,9 @@ from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.support.identity import FieldRole
 
+MediaSide = Literal["query", "document"]
+"""A side of the retrieval pair that may or may not carry media."""
+
 SELF_HOSTED_APIS = frozenset({"openai_embeddings", "vllm_pooling", "rerank"})
 """The wire adapters a self-hosted engine speaks. A role config with one of these ``api`` values must declare
 its text budget explicitly -- ``tokenizer`` and ``max_tokens`` -- because the package does the cutting itself;
@@ -141,6 +144,22 @@ def _use_activation_is_explicit_on_a_served_wire(config: RerankEndpoint) -> None
         )
 
 
+def _media_sides_and_the_media_fields(config: _MediaEndpoint) -> None:
+    """Media declared where no side may carry it would be silently inert (2b); refused, never ignored."""
+    media_declared = (
+        config.image_policy is not None
+        or config.video_policy is not None
+        or bool(config.max_images)
+        or bool(config.max_videos)
+    )
+    if media_declared and not config.media_sides:
+        raise ValueError(
+            "media_sides is empty, so no side may carry media, and the declared media fields "
+            "(image_policy, video_policy, max_images, max_videos) would be inert: declare a side in "
+            "media_sides, or drop the media fields"
+        )
+
+
 class _MediaEndpoint(Endpoint):
     """The media fields every retrieval role shares: what it declares about the media it sends.
 
@@ -154,6 +173,7 @@ class _MediaEndpoint(Endpoint):
         "image_processor": FieldRole.CONTENT,
         "image_policy": FieldRole.CONTENT,
         "video_policy": FieldRole.CONTENT,
+        "media_sides": FieldRole.CONTENT,
         "max_images": FieldRole.RUNTIME,
         "max_videos": FieldRole.RUNTIME,
     }
@@ -184,6 +204,12 @@ class _MediaEndpoint(Endpoint):
     max_videos: int = Field(default=0, ge=0)
     """Video containers one request may carry; 0 (the default) means the model reads none. There is no
     "unlimited". Runtime: like :attr:`max_images`."""
+
+    media_sides: tuple[MediaSide, ...] = ("query", "document")
+    """Which sides of the retrieval pair may carry media (2b, G3: the topk reference rejects image
+    queries -- images and video are documents-only there). The clients refuse media on a side this field
+    does not name, with a typed error naming the field, before the media is fetched or counted. The
+    default allows both sides, today's behaviour. Content: it decides what the model reads."""
 
 
 class EmbeddingEndpoint(_MediaEndpoint):
@@ -305,6 +331,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
         _no_inert_overflow_policies(self)
         _chunk_geometry_matches_overflow(self)
         _empty_doc_pairing(self)
+        _media_sides_and_the_media_fields(self)
         _one_home_for_a_prompt_prefix(self)
         if (
             self.query_max_tokens is not None
@@ -455,6 +482,7 @@ class RerankEndpoint(_MediaEndpoint):
         _no_inert_overflow_policies(self)
         _use_activation_is_explicit_on_a_served_wire(self)
         _chunk_geometry_matches_overflow(self)
+        _media_sides_and_the_media_fields(self)
         if (
             self.query_max_tokens is not None
             and self.max_tokens is not None

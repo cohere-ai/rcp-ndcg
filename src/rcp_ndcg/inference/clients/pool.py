@@ -202,6 +202,7 @@ class PoolingClient(RoleClient):
         """
         prefix = self.config.query_prompt if role is EncodeRole.QUERY else self.config.doc_prompt
         prompted = [content.with_text_prefix(prefix) for content in contents]
+        self._refuse_media_off_its_side(role.value, prompted)
         request = self._prepare_request(prompted)
         # The media fit runs per wire request: the pooling wire sends one media item per call, so one
         # item's fit bounds that item's media (drops recorded under the input's position).

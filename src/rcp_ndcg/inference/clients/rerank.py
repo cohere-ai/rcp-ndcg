@@ -267,7 +267,13 @@ class RerankClient(RoleClient):
         # The request's media, per wire request: the pooling of one query's candidate set is one
         # RerankRequest (the adapter splits pointwise by batch_size, each call still one query's
         # documents), so the fit runs per (query, document) pair -- the query's media reserved with the
-        # document's on every pair (the query rides every pair). The gates run per pair.
+        # document's on every pair (the query rides every pair). The gates run per pair. Media on a side
+        # the config does not allow (2b) is refused here, before anything is prepared.
+        self._refuse_media_off_its_side("query", [query])
+        document_contents = [
+            document if isinstance(document, Content) else Content.from_text(document) for document in documents
+        ]
+        self._refuse_media_off_its_side("document", document_contents)
         request_prepared = self._prepare_request([query, *documents])
         query = request_prepared.contents[0]
         documents = list(request_prepared.contents[1:])

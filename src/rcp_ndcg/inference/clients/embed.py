@@ -206,6 +206,7 @@ class EmbeddingClient(RoleClient):
         """
         prompt = self.config.query_prompt if role is EncodeRole.QUERY else self.config.doc_prompt
         prepared = tuple(content.with_text_prefix(prompt) for content in contents)
+        self._refuse_media_off_its_side(role.value, prepared)
         if self._budget is None:
             kept, omitted = list(prepared), []
             return PreparedItems(

@@ -724,6 +724,78 @@ class TestEmbedEmptyDocuments:
         assert client.media_census._seen, "the drop is recorded"
 
 
+class TestPerSideMedia:
+    """Per-side media (2b, G3): ``media_sides`` names which sides of the retrieval pair may carry media
+    (the topk reference rejects image queries); a client refuses media on a side that may not, with a
+    typed error naming the field."""
+
+    @staticmethod
+    def _pool_client(tokenizer_json: str, **overrides: Any) -> PoolingClient:
+        settings: dict[str, Any] = {
+            "base_url": "http://127.0.0.1:9000/v1",
+            "model": "colqwen",
+            "dim": 2,
+            "tokenizer": tokenizer_json,
+            "max_tokens": 8192,
+            "image_policy": {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            "max_images": 2,
+        }
+        settings.update(overrides)
+        return PoolingClient(PoolingEndpoint(**settings), sender=RecordingSender())
+
+    def test_media_on_a_forbidden_side_is_refused_naming_the_field(self, tokenizer_json: str, tmp_path: Any) -> None:
+        from rcp_ndcg.errors import CapabilityError
+
+        client = self._pool_client(tokenizer_json, media_sides=["document"])
+        with pytest.raises(CapabilityError, match="media_sides"):
+            asyncio.run(client.aencode([_png_content(tmp_path, 0)], EncodeRole.QUERY))
+        # The allowed side goes out whole.
+        result = asyncio.run(client.aencode([_png_content(tmp_path, 0)], EncodeRole.DOCUMENT))
+        assert result.num_items == 1
+
+    def test_media_on_the_rerank_query_is_refused_naming_the_field(self, tokenizer_json: str, tmp_path: Any) -> None:
+        from rcp_ndcg.errors import CapabilityError
+
+        config = RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=8192,
+            use_activation=False,
+            image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            max_images=2,
+            media_sides=["document"],
+        )
+        client = RerankClient(config, sender=RecordingSender())
+        with pytest.raises(CapabilityError, match="media_sides"):
+            client.rerank(_png_content(tmp_path, 0), ["the document"])
+        # The same config, media on the document side: refused by nothing (the fake answers it).
+        scores = client.rerank("the query", [_png_content(tmp_path, 1)])
+        assert len(scores.scores) == 1
+
+    def test_media_sides_default_to_both_sides(self, tokenizer_json: str) -> None:
+        config = RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=8192,
+            use_activation=False,
+        )
+        assert config.media_sides == ("query", "document")
+
+    def test_declaring_media_fields_with_no_allowed_side_is_refused(self, tokenizer_json: str) -> None:
+        with pytest.raises(ValueError, match="media_sides"):
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                use_activation=False,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                media_sides=[],
+            )
+
+
 class TestMediaGates:
     """``max_images``/``max_videos`` gate per wire request (as the judge's per-request gate): the pooling
     wire sends one media item per call, so per item; two single-image items with ``max_images: 1`` are

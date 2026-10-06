@@ -9246,6 +9246,16 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -10123,6 +10133,16 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -10588,6 +10608,16 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -10837,6 +10867,20 @@
               },
               {
                 "returns": "list[T]"
+              }
+            ]
+          },
+          "media_sides": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "frozenset[str]"
               }
             ]
           }
@@ -12809,6 +12853,16 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -13043,6 +13097,16 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
           },
           "model": {
             "alias": null,
@@ -13466,6 +13530,16 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -13780,6 +13854,16 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -14030,6 +14114,16 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -14265,6 +14359,16 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
           },
           "model": {
             "alias": null,
@@ -14502,6 +14606,16 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
           },
           "model": {
             "alias": null,
@@ -14753,6 +14867,16 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -14989,6 +15113,16 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -15217,6 +15351,16 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
           },
           "model": {
             "alias": null,
@@ -15452,6 +15596,16 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
           },
           "model": {
             "alias": null,

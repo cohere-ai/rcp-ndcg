@@ -281,6 +281,30 @@ class RoleClient[C: Endpoint]:
         """The effective media policies of this client's config (the one shared rule, no per-client code)."""
         return media_policies_for(self.config)
 
+    def media_sides(self) -> frozenset[str]:
+        """The sides this config allows media on: the config's ``media_sides`` field (the default: both)."""
+        return frozenset(getattr(self.config, "media_sides", ()) or ("query", "document"))
+
+    def _refuse_media_off_its_side(self, side: str, contents: Sequence[Content]) -> None:
+        """Media on a side the config does not allow (2b, G3) is refused naming the ``media_sides`` field,
+        before the media is fetched, sized or counted.
+
+        Raises:
+            CapabilityError: an item of ``contents`` carries media and ``side`` is not in the config's
+                ``media_sides``.
+        """
+        allowed = self.media_sides()
+        if side in allowed:
+            return
+        sides = " and ".join(sorted(allowed)) if allowed else "no"
+        for index, content in enumerate(contents):
+            if content.has_media:
+                raise CapabilityError(
+                    f"item {index} of this request's {side} side carries media, but {self.config.model} takes "
+                    f"media on the {sides} side(s) only (media_sides)",
+                    hint=f"declare {side!r} in media_sides on the role config, or drop the media from the {side}",
+                )
+
     def _gate_media_calls(self, calls: Sequence[Call]) -> None:
         """The per-request media gates, as the judge's: each wire CALL's image and video parts against the
         config's ``max_images``/``max_videos``, refused before the call is sent. The gate runs over the
