@@ -22,7 +22,9 @@ Runs in its own reference environment, never inside the harness process:
   recipe's test). The checkpoint is resolved with ``huggingface_hub.snapshot_download`` at the recipe's
   revision, so model and processor load the same pinned snapshot. Media equivalence is not exercised
   here: the pairs file carries text (the media checks are the research's token-level checks and the GPU
-  wave's probe-image check).
+  wave's probe-image check). The vector path's stage 2 implements no over-cap exclusion (the deviation
+  table is wired for the rerank path only): an over-cap stage-2 pair fails the cosine gate loudly, so
+  the stage-2 pairs must sit under the recipe's budget.
 
 Reference environment (``requirements-reference.txt`` in this directory, installed into the reference
 python): torch (the card pins 2.8.0), transformers>=4.57 (Qwen3VL), qwen-vl-utils>=0.0.14, pyyaml,
