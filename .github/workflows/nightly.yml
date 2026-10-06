@@ -1,0 +1,74 @@
+# The nightly shuffled single-process run (qa-tests-early): once a day the whole suite runs in one
+# process, in an order no one chose, so an ordering dependence between tests surfaces here instead of in
+# a release. The run uploads the seed and the failure list as artifacts, so the order is reproducible:
+#   pytest tests/ -p no:xdist @ids.txt          (ids.txt is the artifact's shuffled order)
+# The per-test timeout of tests/conftest.py (RCP_NDCG_TEST_TIMEOUT) fails a hang fast, single-process
+# included.
+
+name: Nightly
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shuffled:
+    name: pytest (shuffled, single process)
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+      - run: .github/scripts/cpu-env.sh dev
+      - name: collect the ids and shuffle them with a dated seed
+        run: |
+          seed=$(date +%Y%m%d)
+          echo "SEED=$seed" >> "$GITHUB_ENV"
+          uv run --no-sync pytest tests/ --collect-only -q -p no:cacheprovider | grep '::' | sort > ids.all
+          uv run --no-sync python - "$seed" <<'PY'
+          import random
+          import sys
+
+          ids = open("ids.all", encoding="utf-8").read().splitlines()
+          random.Random(int(sys.argv[1])).shuffle(ids)
+          with open("ids.txt", "w", encoding="utf-8") as handle:
+              handle.write("\n".join(ids) + "\n")
+          print(f"{len(ids)} test ids, shuffled with seed {sys.argv[1]}")
+          PY
+      - name: pytest (shuffled, single process)
+        run: |
+          set +e
+          uv run --no-sync pytest -p no:xdist -q -p no:cacheprovider --junitxml=nightly-report.xml @ids.txt
+          status=$?
+          set -e
+          uv run --no-sync python - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse("nightly-report.xml").getroot()
+          failures = [
+              case.get("classname", "") + "::" + (case.get("name") or "")
+              for case in root.iter("testcase")
+              if case.find("failure") is not None or case.find("error") is not None
+          ]
+          with open("failures.txt", "w", encoding="utf-8") as handle:
+              handle.write("\n".join(failures) + ("\n" if failures else ""))
+          print(f"{len(failures)} failing test id(s)")
+          PY
+          exit $status
+        env:
+          RCP_NDCG_TEST_TIMEOUT: "300"
+      - name: upload the seed and the failure list
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nightly-shuffled-${{ env.SEED }}
+          path: |
+            ids.txt
+            failures.txt
+          if-no-files-found: error
