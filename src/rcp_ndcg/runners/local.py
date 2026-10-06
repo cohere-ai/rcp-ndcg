@@ -86,8 +86,6 @@ class LocalRunner:
         """
         for job in jobs:
             serving = sorted(role for phase in job.phases for role in phase.engines)
-            if job.serve is not None:  # the pre-phase shape; the phased rendering removes the field
-                serving = ["(serve:)"]
             if serving:
                 raise ConfigError(
                     f"job {job.name!r} starts engine(s) for role(s) {', '.join(serving)}, and the local runner "

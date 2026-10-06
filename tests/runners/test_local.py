@@ -118,13 +118,6 @@ def test_render_is_the_script_that_runs(tmp_path: Path) -> None:
     assert script.splitlines()[-2:] == ["export K='v w'", "exec echo 'a b'"]
 
 
-def test_the_local_runner_starts_no_engine() -> None:
-    engine = ServeConfig(image="vllm/vllm-openai:v0.30.0", command=["vllm", "serve", "m"])
-    with pytest.raises(ConfigError, match="starts no engine") as caught:
-        LocalRunner().render([JobSpec(name="j", argv=("true",), serve=engine)])
-    assert "--engine" in (caught.value.hint or "")
-
-
 def test_a_phase_that_starts_an_engine_is_refused() -> None:
     """The local runner runs engine-free phases (its argv covers them) and refuses the ones with engines."""
     from rcp_ndcg.runners import JobPhase

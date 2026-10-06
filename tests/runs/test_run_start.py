@@ -253,17 +253,21 @@ class TestRunnersAndServe:
             assert error["exit_code"] == 3 and "starts no engine" in error["message"], extra
         assert not (tmp_path / "runs").exists()
 
-    def test_a_serving_run_is_refused_on_a_runner_that_does_not_render_phases(self, data: Path, tmp_path: Path) -> None:
-        """Until the runners render phases (RFC-0001 L4b), a serving run on them is refused, never degraded."""
+    def test_a_serving_run_is_refused_on_a_runner_that_does_not_render_phases(
+        self, data: Path, tmp_path: Path, fake_runner: list
+    ) -> None:
+        """A serving run is refused on a runner that renders no phases (a plugin), never degraded."""
         config = tmp_path / "run.yaml"
         config.write_text(
-            yaml.safe_dump(tiny_config(data, judge=SERVED_JUDGE, serve=SERVE, runner=SLURM_PYXIS).resolved())
+            yaml.safe_dump(tiny_config(data, judge=SERVED_JUDGE, serve=SERVE, runner={"name": "fake"}).resolved())
         )
         error = _failed("start", str(config), "--runs-dir", str(tmp_path / "runs"), "--dry-run")
-        assert error["exit_code"] == 3 and "does not start a phase's engines yet" in error["message"]
+        assert error["exit_code"] == 3 and "does not start a phase's engines" in error["message"]
         assert "--engine" in error["hint"] and not (tmp_path / "runs").exists()
 
-    def test_a_served_encoder_run_reaches_the_refusal_through_prepare(self, data: Path, tmp_path: Path) -> None:
+    def test_a_served_encoder_run_reaches_the_refusal_through_prepare(
+        self, data: Path, tmp_path: Path, fake_runner: list
+    ) -> None:
         """`run start` of a served-encoder run (no judge) reaches the runners' phase refusal — not the recorded
         config's re-validation of its own defaults."""
         config = tmp_path / "run.yaml"
@@ -274,15 +278,82 @@ class TestRunnersAndServe:
             },
             "steps": ["retrieve"],
             "serve": {"encoder": {"command": ["vllm", "serve", "e", "--host", "0.0.0.0", "--port", "8000"]}},
-            "runner": SLURM_PYXIS,
         }
-        config.write_text(yaml.safe_dump(tiny_config(data, **fields).resolved()), encoding="utf-8")
+        config.write_text(
+            yaml.safe_dump(tiny_config(data, **{"runner": {"name": "fake"}, **fields}).resolved()), encoding="utf-8"
+        )
         error = _failed("start", str(config), "--runs-dir", str(tmp_path / "runs"), "--dry-run")
-        assert error["exit_code"] == 3 and "does not start a phase's engines yet" in error["message"]
+        assert error["exit_code"] == 3 and "does not start a phase's engines" in error["message"]
+        assert not (tmp_path / "runs").exists()
+
+    def test_a_served_multi_role_run_renders_phases_for_the_job_runners(self, data: Path, tmp_path: Path) -> None:
+        """The path users take: a served encoder and judge run through `job_for` -> `JobSpec(phases)` and both
+        job renderers - the SLURM script (shellcheck-clean) and the Kubernetes objects (schema-checked)."""
+        import subprocess
+
+        import fsspec
+
+        from rcp_ndcg.runs.config import RunConfig
+        from rcp_ndcg.runs.execution import job_for
+        from rcp_ndcg.runs.run import prepare
+        from tests.runners.k8s_schema import check_objects
+        from tests.runners.shell import assert_shellcheck_clean
+
+        fsspec.filesystem("memory").pipe("/data/rows.jsonl", data.read_bytes())
+        fields = {
+            "label": "multi-role",
+            "dataset": "jsonl:memory://data/rows.jsonl",
+            "judge": {"base_url": "http://unused/v1", "model": "m"},
+            "candidates": {
+                "from": "retrieval",
+                "retrieval": {"kind": "dense", "encoder": {"provider": "openai_compatible", "model": "embedder"}},
+            },
+            "steps": ["retrieve", "tournament", "rubric", "calibrate", "evaluate"],
+            "serve": {
+                "encoder": {
+                    "image": "org/encoder:v2",
+                    "command": ["python3", "-m", "enc", "--host", "0.0.0.0", "--port", "8001"],
+                    "resources": {"gpus": 1},
+                },
+                "judge": {
+                    "image": "vllm/vllm-openai:v0.30.0",
+                    "command": ["vllm", "serve", "org/model", "--host", "0.0.0.0", "--port", "8000"],
+                    "resources": {"gpus": 8},
+                },
+            },
+            "runner": {"name": "slurm", "options": {"container_runtime": "pyxis"}},
+        }
+        config = RunConfig.model_validate({**tiny_config(data).resolved(), **fields})
+        pipeline = prepare(config, runs_dir=str(tmp_path / "runs"))
+        backend, job, _ = job_for(pipeline, "slurm")
+        # The phase plan: retrieve (encoder), the judging steps (judge), then calibrate+evaluate (no engine).
+        assert [[*sorted(p.engines)] for p in job.phases] == [["encoder"], ["judge"], []]
+        assert "--only retrieve" in " ".join(job.phases[0].argv)
+        assert "--only tournament" in " ".join(job.phases[1].argv) and "--only rubric" in " ".join(job.phases[1].argv)
+        (rendered,) = backend.render([job]).values()
+        assert rendered.startswith("#!/usr/bin/env bash\n#SBATCH --job-name=rcp-")
+        assert "ENGINE_ENCODER" in rendered and "ENGINE_JUDGE" in rendered
+        assert "RCP_NDCG_ENGINES=" in rendered  # each phase's engine URLs, as the runtime overlay
+        assert_shellcheck_clean(rendered)
+        assert subprocess.run(["bash", "-n", "-c", rendered], capture_output=True).returncode == 0
+
+        kubernetes = RunConfig.model_validate(
+            {
+                **config.resolved(),
+                "runner": {"name": "kubernetes", "options": {"namespace": "eval"}},
+                "mirror": "memory://runs/multi-role",
+            }
+        )
+        pipeline = prepare(kubernetes, runs_dir=str(tmp_path / "runs"))
+        backend, job, _ = job_for(pipeline, "kubernetes")
+        (rendered,) = backend.render([job]).values()
+        objects = list(yaml.safe_load_all(rendered))
+        check_objects(objects)
+        assert [c["name"] for c in objects[0]["spec"]["template"]["spec"]["initContainers"]] == ["phase-1", "phase-2"]
+        assert [c["name"] for c in objects[0]["spec"]["template"]["spec"]["containers"]] == ["phase-3"]
         assert not (tmp_path / "runs").exists()
 
     def test_a_replica_over_several_nodes_is_a_config_error(self, data: Path, tmp_path: Path) -> None:
-        """It failed as INTERNAL (exit 1, 'this is a bug')."""
         config = tmp_path / "run.yaml"
         config.write_text(
             yaml.safe_dump(tiny_config(data, judge=SERVED_JUDGE, serve=SERVE, runner=SLURM_PYXIS).resolved())

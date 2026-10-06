@@ -101,8 +101,8 @@ released together.
   rerank configs). `RerankEndpoint.tokenizer_identity()` is removed; the judge's identity payload keeps its
   existing keys (the judgement family's tokenizer digest and the preprocessing record's `sha256`) and is
   byte-identical for every shipped judge preset, so no judgement family re-keys.
-- `JobSpec` gains `phases` (a tuple of `JobPhase`: the engines one phase starts, by role, and the command it runs
-  while they serve); a job sets `phases` or `serve`, not both.
+- `JobSpec` runs its work through `phases` (a tuple of `JobPhase`: the engines one phase starts, by role, and the
+  command it runs while they serve); the phases replace `argv`.
 - **`rcp_ndcg.inference` gains the embedding wire adapters and the embedding role client** (dense embeddings over
   one wire shape; no transport behaviour yet, so the client is exercised with a `Sender` a caller supplies):
   - `inference.adapters.embeddings`: four registered adapters of role `embed` — `openai_embeddings` (OpenAI
@@ -365,6 +365,37 @@ released together.
   `wait_on_outage_s` travels in `RCP_NDCG_ENGINES` per role now. A runner that neither renders nor runs phases
   refuses a job that would start engines; the local runner runs the engine-free phases and refuses the ones with
   engines. `rcp_ndcg.runners` exports `JobPhase`, the per-phase engine set and coordinator command.
+- **The `slurm` and `kubernetes` runners render a job's phases** (`renders_phases`), so a serving run submits
+  instead of being refused. A job with phases runs them in order in one allocation: each phase that starts engines
+  runs one supervision block — it starts the phase's engines once (no restart), waits until every role has a
+  replica answering its readiness path, exports their URLs in `RCP_NDCG_ENGINES`, runs the phase's coordinator,
+  stops and reaps its engines, and only then starts the next phase; a phase without engines runs its command
+  directly. Any failure ends the job with the single-engine semantics (`ENGINE_FAILED`, fail-fast supervision,
+  `SIGTERM`/`SIGKILL` cleanup, and an engine that ends non-zero before the coordinator's exit is observed fails
+  the phase even where `wait -n` would miss it).
+  - `runners.script`: `supervise(engines, *, coordinator, engines_env, uv)` renders one phase; the engines are
+    `EngineStep(serve, role, start, hosts)` entries, and a `start` of `None` waits for replicas that are already
+    running elsewhere (a Kubernetes StatefulSet). New `engines_env_value` (the phase's JSON) and, for hosts the
+    script only learns when the job starts, `engines_env_spec`/`engines_env_command`; the readiness probe
+    (`wait_for_replicas`, whose signature gains `pid_var`) is parameterised by the engine's pid variable.
+  - SLURM: one `sbatch` asks for the maximum nodes and GPUs over the phases; each role's engines run as one
+    `srun --overlap` step pinned to its slice of the allocation's nodes; a one-node allocation answers on
+    `localhost`. GPUs are partitioned among the engines of a phase (below, [serving](docs/concepts/serving.md)).
+  - Kubernetes: each engine phase is an init container whose engines run in one container of the (single)
+    engine's image (a phase's engines share one image and, if several, need distinct ports), the last phase the
+    main container; several-replica engines are StatefulSets owned by the Job as before, run-scoped, named
+    `<job>-engine-<role>`. A phase that starts one engine names its role in the failure message; with several,
+    the message says an engine exited.
+  - The single-engine `serve:` rendering (the `RCP_NDCG_JUDGE_URLS` export) is gone, with the deprecated
+    `support.serve.JUDGE_URLS_ENV` alias; a run's `serve:` reaches the job only as phases.
+  - Co-located engines partition a node's or container's GPUs (RFC review R31): a node's request is the **sum** of
+    what runs on it — the coordinator's own `resources.gpus` plus each engine's, per replica — and the job asks for
+    the maximum of that over the phases; every co-located engine process gets a disjoint `CUDA_VISIBLE_DEVICES`
+      `device_slices`), the coordinator's devices reserved first, and an engine without GPUs gets the empty slice.
+    On SLURM the engine steps are pinned to disjoint node slices (one replica per node) and each step's `--gres`
+    is its own engine's count, so SLURM's per-step device assignment — which `srun --overlap` may let overlap —
+    never co-locates two engines; the coordinator's task claims its own `--gres` (its reservation) instead of
+    srun's default all-of-the-job GRES.
 - **`RCP_NDCG_ENGINES` is the runtime overlay that carries the engines' URLs to the steps.** The coordinator
   applies each role's `urls` and `wait_on_outage_s` to the role config in memory — never written into `run.yaml`,
   never in a step identity, so a run is byte-identical with and without the variable; the

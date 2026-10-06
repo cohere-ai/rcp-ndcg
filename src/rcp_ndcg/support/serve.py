@@ -1,10 +1,11 @@
 """The engines a run starts beside its job, by role: :class:`ServeByRole`, the phase plan, and the
 ``RCP_NDCG_ENGINES`` runtime overlay that carries the engines' URLs to the steps.
 
-A leaf model, like :class:`~rcp_ndcg.support.resources.Resources`: the run config declares it (``serve:``) and the
-job runners render it, without the run layer importing the runners.
+A leaf model, like :class:`~rcp_ndcg.support.resources.Resources`: a job's phases declare their engines
+(``JobPhase.engines``, built from the run config's ``serve:`` by :func:`plan_phases`) and the job runners render
+them, without the run layer importing the runners.
 
-rcp-ndcg's contract with a model is one OpenAI-compatible URL. ``serve:`` does not change that: the package never
+rcp-ndcg's contract with a model is one OpenAI-compatible URL. An engine does not change that: the package never
 builds, translates or reads an engine's flags. It starts the user's image with the user's command, waits until
 ``GET <readiness_path>`` answers, and hands the replicas' URLs to the run's step through the environment
 (:data:`ENGINES_ENV`), which applies them as a runtime overlay on the role's config.
@@ -32,13 +33,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.support.resources import Environment, Resources
-
-#: The environment variable a single-engine job exports to the judge's replica URLs (comma-separated).
-#:
-#: Deprecated: the phased runners export :data:`ENGINES_ENV` instead, and ``rcp-ndcg run resume`` reads no URL
-#: variable any more (``--engine role=url[,url]`` is its command-line spelling). It remains only for the
-#: single-engine SLURM and Kubernetes rendering, which the phased rendering replaces.
-JUDGE_URLS_ENV = "RCP_NDCG_JUDGE_URLS"
 
 #: The environment variable a phase's runner sets to the engines of the current phase, as JSON
 #: ``{"encoder": {"urls": [...], "wait_on_outage_s": 900}, ...}``; the coordinator
@@ -262,7 +256,6 @@ __all__ = [
     "EngineConfig",
     "EngineRole",
     "EngineURLs",
-    "JUDGE_URLS_ENV",
     "Phase",
     "ServeByRole",
     "ServeConfig",

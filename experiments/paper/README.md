@@ -26,8 +26,7 @@ rcp-ndcg judge tournament --dataset <uri> --judge qwen35_397b_nvfp4 --out store/
 ```
 
 `IMAGE=<tag>` overrides the pinned image. For a job runner, copy the script's image and its `ENGINE` array into a
-run config's `serve:` section under the judge role ([serving](../../docs/concepts/serving.md); a serving run is
-refused on a job runner until the runners render phases, which that page notes):
+run config's `serve:` section under the judge role ([serving](../../docs/concepts/serving.md)):
 
 ```yaml
 judge: qwen35_397b_nvfp4

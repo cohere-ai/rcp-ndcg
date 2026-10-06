@@ -13651,13 +13651,6 @@
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.support.resources.Resources"
-          },
-          "serve": {
-            "alias": null,
-            "default": null,
-            "frozen": false,
-            "required": false,
-            "type": "rcp_ndcg.support.serve.ServeConfig | None"
           }
         },
         "frozen": true,

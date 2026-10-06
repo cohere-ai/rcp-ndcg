@@ -160,10 +160,8 @@ local runner): add a `serve:` section to the run config, one engine per role —
 resources, replicas}}`, `encoder` for the retrieval encoder, `reranker` for its reranker (a served
 `api: rerank` or `api: openai_embeddings` model without `base_url`: the job's URLs for it reach the step at runtime) — check what would
 be submitted, then submit. On SLURM the image needs `container_runtime: apptainer` or `pyxis`; with the default
-`none` the command runs on the node and `image` is refused. The job runs the steps in phases, each starting only
-the engines its steps use and handing their URLs to the coordinator in `RCP_NDCG_ENGINES`; `run logs` shows both.
-Until the runners render phased jobs, handing a serving run to them is refused: start the engines yourself and
-`run resume --engine <role>=<url>`. A job that failed (`run status`: `failed`, with a `note` when the job ended
+`none` the command runs on the node and `image` is refused. The job runs the steps in phases, each starting only the engines its steps use and handing their URLs to the
+coordinator in `RCP_NDCG_ENGINES`; `run logs` shows both. A job that failed (`run status`: `failed`, with a `note` when the job ended
 without recording it) is submitted again, engines included, with `run resume --runner`; it asks only for the
 windows its stores lack.
 

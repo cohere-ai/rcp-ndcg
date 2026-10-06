@@ -1,8 +1,9 @@
 """The job-execution interface: :class:`JobSpec` in, :class:`JobRunner` out.
 
 A :class:`JobSpec` is *what* to run: one command line (argv) with its image,
-environment and resource request, and optionally the engine replicas to start
-beside it (:class:`~rcp_ndcg.support.serve.ServeConfig`). A :class:`JobRunner` decides
+environment and resource request, or the phases to run in order
+(:class:`JobPhase`, each with the engine replicas to start by role and the
+command to run while they serve). A :class:`JobRunner` decides
 *where*: the calling host (:class:`~rcp_ndcg.runners.local.LocalRunner`), a SLURM
 cluster (:class:`~rcp_ndcg.runners.slurm.SlurmRunner`) or Kubernetes
 (:class:`~rcp_ndcg.runners.kubernetes.KubernetesRunner`). Further runners are
@@ -25,7 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from rcp_ndcg.errors import ConfigError, ProviderError
 from rcp_ndcg.support.resources import Environment, EnvName, Resources
-from rcp_ndcg.support.serve import EngineConfig, EngineRole, ServeConfig
+from rcp_ndcg.support.serve import EngineConfig, EngineRole
 
 #: An opaque job reference returned by :meth:`JobRunner.submit` (a SLURM job id,
 #: ``<namespace>/<job>`` on Kubernetes, the job name locally).
@@ -83,23 +84,19 @@ class JobSpec(BaseModel):
     resources: Resources = Resources()
     env: Mapping[EnvName, str] = Field(default_factory=dict)
     """Environment for the command; each name a shell identifier."""
-    serve: ServeConfig | None = None
-    """Engine replicas the runner starts beside the command; their URLs reach it as ``RCP_NDCG_JUDGE_URLS``."""
     phases: tuple[JobPhase, ...] = ()
-    """The job's phases, run in order in one allocation; when set, they replace ``argv`` and ``serve``."""
+    """The job's phases, run in order in one allocation; when set, they replace ``argv``.
+
+    Each phase starts its engines, waits until each role has a replica answering its readiness path, exports
+    their URLs to the phase's command in ``RCP_NDCG_ENGINES`` (:data:`~rcp_ndcg.support.serve.ENGINES_ENV`), runs
+    it, and stops the engines before the next phase starts; a phase without engines runs its command directly.
+    """
 
     @field_validator("argv")
     @classmethod
     def _non_empty(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         if not value:
             raise ValueError("argv must not be empty")
-        return value
-
-    @field_validator("phases")
-    @classmethod
-    def _phases_replace_serve(cls, value: tuple[JobPhase, ...], info: Any) -> tuple[JobPhase, ...]:
-        if value and info.data.get("serve") is not None:
-            raise ValueError("a job with phases names its engines per phase: set phases or serve, not both")
         return value
 
 
@@ -186,6 +183,7 @@ def tail_lines(text: str, tail: int | None) -> str:
 __all__ = [
     "JobHandle",
     "JobOptions",
+    "JobPhase",
     "JobRunner",
     "JobSpec",
     "JobStatus",
