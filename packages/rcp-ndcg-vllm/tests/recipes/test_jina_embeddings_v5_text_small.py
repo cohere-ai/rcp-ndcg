@@ -314,10 +314,10 @@ def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
 def test_reference_load_resolves_the_pinned_snapshot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """load() must resolve the whole pinned snapshot and load everything from it.
 
-    The checkpoint's remote code never forwards the revision to its inner loads: on a repo-id
-    load the adapters and the tokenizer resolve at Hub HEAD (modeling_jina_embeddings_v5.py:37-41,
-    :57-60) and the config/base weights only stay pinned via transformers' config-commit-hash
-    inheritance - so load() must resolve the whole snapshot itself. Behavioural and offline: the
+    On a repo-id load the checkpoint's remote code leaves the adapters and the tokenizer at Hub
+    HEAD and the base weights at HEAD on a cache miss (modeling_jina_embeddings_v5.py:37-41,
+    :57-60; measured on transformers 5.17.0, cold cache) - only the config rides the caller's
+    revision - so load() must resolve the whole snapshot itself. Behavioural and offline: the
     three heavy modules are stubbed, so the harness process imports no torch and touches no
     network; the full embed/score path still runs only in the reference environment (the GPU
     wave)."""

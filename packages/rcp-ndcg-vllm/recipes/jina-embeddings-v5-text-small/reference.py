@@ -47,15 +47,16 @@ The harness's contract (``rcp_ndcg_vllm.equivalence.reference``):
 loads its own tokenizer with the checkpoint (the card path — the ids equality is stage 1's
 zero-tolerance comparison on the harness side, against this same file).
 
-**Pinning:** the checkpoint's remote code never forwards the ``revision`` to its inner loads: on
-a repo-id load the four adapters resolve at Hub HEAD (an unversioned ``snapshot_download``,
-``modeling_jina_embeddings_v5.py:37-41``) and so does the tokenizer (``:57-60``), while the
-config and base weights only stay pinned through transformers' own config-commit-hash
-inheritance (the vendor's loads at ``:25-32`` drop the kwarg; verified on transformers 5.17.0).
-:func:`load` therefore resolves the whole snapshot at the pinned revision
-(``snapshot_download(HF_REPO, revision=HF_REVISION)``) and loads from it: the vendor code's
-local-dir branch takes the adapters from the snapshot too, so every tensor comes from the
-pinned revision whatever transformers inherits. ``--mode render`` downloads nothing.
+**Pinning:** on a repo-id load the checkpoint's remote code never forwards the ``revision`` to
+its inner loads: the four adapters (an unversioned ``snapshot_download``,
+``modeling_jina_embeddings_v5.py:37-41``) and the tokenizer (``:57-60``) resolve at Hub HEAD, and
+so do the base weights on a cache miss — transformers' commit-hash inheritance only serves a
+commit already in the cache and downloads at ``main`` otherwise (measured on transformers 5.17.0
+with a cold cache); only the config rides the caller's revision (the auto factory passes it,
+``models/auto/auto_factory.py:386-390``). :func:`load` therefore resolves the whole snapshot at
+the pinned revision (``snapshot_download(HF_REPO, revision=HF_REVISION)``) and loads from it:
+the vendor code's local-dir branch takes the adapters from the snapshot too, so every tensor
+comes from the pinned revision whatever the cache holds. ``--mode render`` downloads nothing.
 """
 
 from __future__ import annotations
@@ -118,10 +119,10 @@ class _CardModel:
 
 
 def _pinned_snapshot_path() -> str:
-    """The pinned snapshot directory: the model card's path leaves the adapters and the tokenizer
-    at Hub HEAD on a repo-id load (the vendor remote code never forwards the revision — see the
-    module docstring), so the snapshot is resolved once at the pinned revision and everything
-    loads from it."""
+    """The pinned snapshot directory: on a repo-id load the card path leaves the adapters and the
+    tokenizer at Hub HEAD and the base weights at HEAD on a cache miss (the vendor code never
+    forwards the revision — see the module docstring), so the snapshot is resolved once at the
+    pinned revision and everything loads from it."""
     from huggingface_hub import snapshot_download
 
     return snapshot_download(

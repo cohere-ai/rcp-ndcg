@@ -122,13 +122,16 @@ notes: >-
   server start (an offline serve without the file cached, a mirror that strips adapters/, a
   rate limit), vLLM logs "No adapter found for task 'retrieval' ... Loading raw base
   weights" (jina.py:243) and serves UNADAPTED embeddings with no error; the wave's smoke must
-  assert that warning is absent. And the checkpoint's remote code fetches the adapters WITHOUT
-  a revision (snapshot_download, modeling_jina_embeddings_v5.py:37-41): a repo-id load pins the
-  base weights but takes the adapters from Hub HEAD - the reference resolves the whole snapshot
-  at the pinned revision to pin them, and the wave's smoke should record the adapters' commit
-  (a drifted adapter set would surface in the stage-2 gates, never as an error). Never dodge
-  trust_remote_code by overriding model_type to
-  qwen3 - that also serves raw base weights silently (no adapter is loaded). trust_remote_code
+  assert that warning is absent. And on a repo-id load the checkpoint's remote code fetches the
+  adapters WITHOUT a revision (snapshot_download, modeling_jina_embeddings_v5.py:37-41) and the
+  tokenizer without one too (:57-60), and the base weights at HEAD on a cache miss (transformers'
+  commit-hash inheritance only serves an already-cached commit; measured on transformers 5.17.0,
+  cold cache) - the reference resolves the whole snapshot at the pinned revision, which is what
+  actually pins everything, and the wave's smoke should record the adapters' commit (a drifted
+  adapter set would surface in the stage-2 gates, never as an error). Never dodge
+  trust_remote_code by rewriting the config's remote-code block: a rewrite that also changes
+  architectures would serve raw base weights silently (jina.py:243), and a bare model_type
+  override is unmeasured and off-recipe. trust_remote_code
   itself is needed only for config parsing (measured: AutoConfig raises without it); the
   served class is vLLM-native. Template: none is served. The prompts go to /v1/embeddings as
   raw rendered text; the client template above declares the frame as data and stage 1 proves
