@@ -58,7 +58,9 @@ def test_reranker_configs_load(path: Path) -> None:
 
 @pytest.mark.parametrize("path", sorted((PAPER / "serve").glob("*.sh")), ids=lambda p: p.name)
 def test_the_papers_engine_scripts_are_valid_bash_and_name_the_presets_model(path: Path) -> None:
-    """Each script pins its image and serves the model name of the judge preset it is named after."""
+    """Each script pins its image and its weights revision, and serves the model name of the judge preset it is
+    named after."""
+    import re
     import subprocess
 
     from tests.runners.shell import assert_shellcheck_clean
@@ -70,5 +72,6 @@ def test_the_papers_engine_scripts_are_valid_bash_and_name_the_presets_model(pat
     assert f"--served-model-name {judge.model}\n" in script
     image = next(line for line in script.splitlines() if line.startswith("IMAGE="))
     assert ":latest" not in image and ":v" in image  # a pinned release tag
+    assert re.search(r"--revision [0-9a-f]{40}", script), "the weights are pinned to a Hub revision, not to a branch"
     if judge.context_tokens is not None:
         assert f" {judge.context_tokens}\n" in script  # the served context is the preset's
