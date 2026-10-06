@@ -206,6 +206,13 @@ def _resolve(recipe: Recipe, target: Target, base_url: str | None, fake_engine: 
             "through the role client, which would prepend query_prompt/doc_prompt a second time; a recipe "
             "with per-side prompts needs the budget wired into the client (clients-final) first"
         )
+    if client.on_overflow != "cut":
+        raise ConformanceError(
+            f"recipe {recipe.id}: on_overflow {client.on_overflow!r} is not supported by the "
+            "conformance runner yet -- chunked documents would be sent as if they were documents (their "
+            "scores are never max-pooled back); declare on_overflow: cut, or run the chunk aggregation "
+            "through the product's retrieval path"
+        )
     runtime = {"recipe": recipe.id, "max_retries": 0, "wait_on_outage_s": 0.0}
     if target == "engine":
         if base_url is None:
@@ -392,6 +399,13 @@ def _send_rerank(resolved: _Resolved, case: Case, endpoint: Any) -> Any:
     return results
 
 
+def _fitter(recipe: Recipe) -> tuple[Any, Any]:
+    """The recipe's (tokenizer, budget) pair -- the cases module's shared bridge (one home)."""
+    from .cases import recipe_fitter
+
+    return recipe_fitter(recipe)
+
+
 def _fit_side(recipe: Recipe, texts: list[str], shape: str, case: Case) -> list[str]:
     """One side's rendered (and cut) strings, through the product's :func:`fit`."""
     from rcp_ndcg.data.preprocess import fit
@@ -435,32 +449,11 @@ def _fit_pair(recipe: Recipe, query: str, case: Case) -> tuple[str, list[str], b
     return cut_query, documents, query_cut
 
 
-def _fitter(recipe: Recipe) -> tuple[Any, Any]:
-    """The recipe's (tokenizer, budget) pair, loaded once per process: the product's tokenizer loader
-    and the budget its client block declares (the harness's own bridge, reused, not copied)."""
-    cached = _FITTERS.get(recipe.id)
-    if cached is not None:
-        return cached
-    from rcp_ndcg_vllm.equivalence.fitting import budget_of, tokenizer_of
-
-    tokenizer = tokenizer_of(recipe)
-    cached = (tokenizer, budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name}))
-    _FITTERS[recipe.id] = cached
-    return cached
-
-
-_FITTERS: dict[str, tuple[Any, Any]] = {}
-
-
 def _fold_query(recipe: Recipe, query: str, instruction: str | None) -> str:
-    """The query as the client folds it for ``instruction: fold`` (the product's own render)."""
-    from rcp_ndcg.inference.config import RerankEndpoint
+    """The query as the client folds it for ``instruction: fold`` (the cases module's shared render)."""
+    from .cases import pair_fold_query
 
-    if not isinstance(recipe.client, RerankEndpoint) or recipe.client.instruction != "fold" or not instruction:
-        return query
-    from rcp_ndcg_core._records import Query
-
-    return str(Query(query_id="", query=query, instruction=instruction).format_query())
+    return pair_fold_query(recipe, query, instruction)
 
 
 def _budget_fields_cleared(endpoint: Any) -> Any:

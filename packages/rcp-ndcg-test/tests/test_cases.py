@@ -142,6 +142,17 @@ def test_a_model_card_url_is_a_huggingface_url(tmp_path: Path) -> None:
         load_case(write_case(tmp_path, "fake-embed", "short", body))
 
 
+def test_a_model_card_case_states_its_notes(tmp_path: Path) -> None:
+    """The card's rounding, the declared margin and (for none/ranking) the derivation live in notes."""
+    provenance = (
+        'source: {kind: model_card, url: "https://huggingface.co/org/model", revision: "' + "0" * 40 + '", '
+        'section: "Usage", quote: "x = 1"}'
+    )
+    body = VALID.replace("source: {kind: generated}", provenance)
+    with pytest.raises(CaseError, match="notes"):
+        load_case(write_case(tmp_path, "fake-embed", "short", body))
+
+
 def test_a_generated_case_carries_no_card_provenance(tmp_path: Path) -> None:
     body = VALID.replace(
         "source: {kind: generated}",
@@ -387,15 +398,35 @@ def test_a_mixed_length_case_declares_a_mixed_length_batch(tmp_path: Path) -> No
 
 
 def test_long_under_must_measure_within_five_percent_under(tmp_path: Path) -> None:
-    """63 tokens is 49% of the fixture recipe's 128-token budget: not the long_under stratum."""
+    """57 rendered tokens is 45% of the fixture recipe's 128-token budget: not the long_under stratum."""
     write_length_case(tmp_path, "length-long-under", "long_under", " ".join(["budgetpad"] * 7))
     with pytest.raises(CaseError, match="within 5% under"):
         load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
 
 
+def test_long_under_must_not_be_cut_by_the_products_fit(tmp_path: Path) -> None:
+    """The budget bounds the rendered input the engine sees: a span near the budget whose render (with the
+    recipe's template and specials) overflows is cut by the fit and refuses the long_under claim."""
+    body = LENGTH_CASE.format(slug="length-long-under", length="long_under", text=" ".join(["budgetpad"] * 14))
+    # 126 raw tokens (>= 95% of 128) but the render is 134: the product's fit cuts it, so the case is a
+    # mislabel -- the long_under stratum's "(no cut)" is what the render must satisfy.
+    write_case(tmp_path, "fake-embed", "length-long-under", body)
+    with pytest.raises(CaseError, match="long_under"):
+        load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
+
+
+def test_a_long_over_case_must_actually_be_cut(tmp_path: Path) -> None:
+    """long_over means the fit cuts: a render under the budget is refused as the wrong stratum."""
+    body = LENGTH_CASE.format(slug="length-long-over", length="long_over", text=" ".join(["budgetpad"] * 13))
+    # 117 raw tokens; the render is 125 <= 128: nothing is cut, so this is long_under, not long_over
+    write_case(tmp_path, "fake-embed", "length-long-over", body)
+    with pytest.raises(CaseError, match="no input renders over the budget"):
+        load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
+
+
 def test_a_long_under_input_over_the_budget_is_the_wrong_stratum(tmp_path: Path) -> None:
     write_length_case(tmp_path, "length-long-under", "long_under", " ".join(["budgetpad"] * 15))  # 135 tokens
-    with pytest.raises(CaseError, match="long_over stratum"):
+    with pytest.raises(CaseError, match="the product's fit cuts"):
         load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
 
 
@@ -406,9 +437,10 @@ def test_a_short_case_must_not_measure_over_the_budget(tmp_path: Path) -> None:
         load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
 
 
-def test_a_long_over_input_must_measure_over(tmp_path: Path) -> None:
-    write_length_case(tmp_path, "length-long-over", "long_over", " ".join(["budgetpad"] * 14))  # 126 tokens
-    with pytest.raises(CaseError, match="measures over the budget"):
+def test_a_long_over_input_must_render_over_the_budget(tmp_path: Path) -> None:
+    """126 raw tokens render to 125 with the template: whole, so the long_over label is wrong."""
+    write_length_case(tmp_path, "length-long-over", "long_over", " ".join(["budgetpad"] * 13))
+    with pytest.raises(CaseError, match="no input renders over the budget"):
         load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
 
 

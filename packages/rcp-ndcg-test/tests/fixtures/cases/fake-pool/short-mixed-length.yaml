@@ -17,15 +17,16 @@ inputs:
   - id: d2
     text: one vector per token of a somewhat longer document
   - id: d3
-    text: budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
+    text: budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
 expected:
   kind: similarity_matrix
   values:
   - - 5.67724419
     - 10.12248516
-    - 10.9276619
+    - 11.20751476
   tolerance:
     abs: 0.0001
   origin: engine
   status: reproduced
-notes: A mixed-length batch over /pooling; the MaxSim matrix covers documents of 1, 9 and 63 tokens.
+notes: A mixed-length batch over /pooling; the MaxSim matrix covers documents of 1, 9 and 54 tokens (rendered
+  whole at 57 of the 64-token budget).

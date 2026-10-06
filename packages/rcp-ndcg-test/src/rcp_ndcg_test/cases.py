@@ -288,6 +288,12 @@ class Case(BaseModel):
             missing = [name for name in ("url", "revision", "section", "quote") if getattr(source, name) is None]
             if missing:
                 raise ValueError(f"a model_card case must name its card: missing {', '.join(missing)}")
+            if not self.notes.strip():
+                raise ValueError(
+                    "a model_card case states its notes: the card's rounding and the declared margin (and, "
+                    "for a card with no printed outputs, which of kind 'none' or 'ranking' the case derives "
+                    "and why)"
+                )
         elif any(getattr(source, name) is not None for name in ("url", "revision", "section", "quote")):
             raise ValueError("a generated case carries no card provenance: drop url, revision, section and quote")
         expected = self.expected
@@ -595,15 +601,97 @@ def _check_template_shapes(recipe: Recipe, case: Case) -> None:
         )
 
 
-def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
-    """The long inputs of every long_under / long_over case, measured with the product tokenizer.
+def recipe_fitter(recipe: Recipe) -> tuple[Any, Any]:
+    """The recipe's (tokenizer, budget) pair, the one bridge to the product's budget mechanism.
 
-    A ``long_under`` case: no text input measures over ``client.max_tokens``, and at least one measures
-    within 5% under it (``>= 0.95 * max_tokens``) -- the stratum is only real if it is near the budget.
-    A ``long_over`` case: at least one text input measures over ``client.max_tokens``; a ``short`` case
-    measures none over it (a short case whose input would be cut is a mislabel). Media carry no text and
-    are not measured (their token counts are the engine's, not the tokenizer's).
+    The tokenizer comes from the recipe's ``client.tokenizer`` through the harness's loader, the
+    :class:`~rcp_ndcg.data.preprocess.TextBudget` from its ``client`` block. Cached per recipe *content*
+    (the client block's canonical JSON), never by id alone: a caller may pass two different configs under
+    one recipe id, and a budget shared between them would silently fit with the wrong template.
+
+    Raises:
+        CaseError: the tokenizer cannot be loaded (a Hub spec needs the cache or a network run;
+            ``load_cases(..., check_lengths=False)`` records the length checks as skipped instead).
     """
+    import hashlib
+
+    key = hashlib.sha256(recipe.client.model_dump_json().encode()).hexdigest()
+    cached = _FITTER_CACHE.get(key)
+    if cached is None:
+        from rcp_ndcg_vllm.equivalence.fitting import budget_of, tokenizer_of
+
+        try:
+            tokenizer = tokenizer_of(recipe)
+        except Exception as error:
+            raise CaseError(
+                f"recipe {recipe.id}: loading its tokenizer ({recipe.client.tokenizer!r}) failed: {error}; a "
+                "recipe whose tokenizer lives on the Hub needs it cached or a network run (load_cases(..., "
+                "check_lengths=False) records the check as skipped instead)"
+            ) from error
+        cached = (tokenizer, budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name}))
+        _FITTER_CACHE[key] = cached
+    return cached
+
+
+_FITTER_CACHE: dict[str, tuple[Any, Any]] = {}
+
+
+def pair_fold_query(recipe: Recipe, query: str, instruction: str | None) -> str:
+    """The query as the product folds it for ``instruction: fold`` (the role client's own render)."""
+    from rcp_ndcg.inference.config import RerankEndpoint
+
+    if not isinstance(recipe.client, RerankEndpoint) or recipe.client.instruction != "fold" or not instruction:
+        return query
+    from rcp_ndcg_core._records import Query
+
+    return str(Query(query_id="", query=query, instruction=instruction).format_query())
+
+
+def _fit_outcome(recipe: Recipe, case: Case) -> tuple[int, list[int]]:
+    """One case through the product's ``fit``, exactly as the conformance send fits it.
+
+    Returns the number of cuts the fit recorded and every rendered input's token count (with the
+    tokenizer's post-processor specials, as the engine sees the render). The budget bounds the rendered
+    input -- the recipe's template, its specials and the content together -- so this is what the length
+    strata measure.
+    """
+    from rcp_ndcg.data.preprocess import fit
+
+    tokenizer, budget = recipe_fitter(recipe)
+    cuts, renders = 0, []
+    if recipe.role == "rerank":
+        instruction = case.inputs.instruction
+        folded = pair_fold_query(recipe, case.inputs.queries[0].text, instruction)
+        inputs = [(folded, document.text or "") for document in case.inputs.documents]
+        result = fit(
+            inputs,
+            "pair",
+            budget,
+            tokenizer,
+            ids=[document.id for document in case.inputs.documents],
+            instruction=instruction,
+        )
+        cuts += len(result.cuts)
+        renders.extend(tokenizer.count(text, add_special_tokens=True) for text in result.texts)
+        return cuts, renders
+    for shape, texts in (
+        ("query", [query.text for query in case.inputs.queries]),
+        ("document", [document.text or "" for document in case.inputs.documents]),
+    ):
+        fitted = fit(texts, shape, budget, tokenizer, ids=[str(index) for index in range(len(texts))])  # type: ignore[arg-type]  # the literal shapes are RequestShape values
+        cuts += len(fitted.cuts)
+        renders.extend(tokenizer.count(text, add_special_tokens=True) for text in fitted.texts)
+    return cuts, renders
+
+
+def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
+    """The length strata, measured the way the engine sees the inputs: through the product's ``fit``.
+
+    A ``long_under`` case is rendered whole (the fit records no cut) and at least one of its rendered
+    inputs measures within 5% under ``client.max_tokens`` -- the stratum is only real near the budget. A
+    ``long_over`` case is cut by the fit (at least one render over the budget). A ``short`` case is sent
+    whole. Media carry no text and are not measured (their token counts are the engine's, not the
+    tokenizer's)."""
     if recipe.client.max_tokens is None:
         return  # recorded as skipped by the caller: a hosted profile declares no client-side budget
     max_tokens = recipe.client.max_tokens
@@ -638,24 +726,32 @@ def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
                     f"case {case.id!r}: short, but {label} {item_id!r} measures {count} tokens over the "
                     f"budget ({max_tokens}); that is the long_over stratum"
                 )
+            cuts, _ = _fit_outcome(recipe, case)
+            if cuts:
+                raise CaseError(
+                    f"case {case.id!r}: short, but the product's fit cuts {cuts} input(s) -- the recipe's "
+                    f"template and specials push the render over the budget ({max_tokens}); that is the "
+                    "long_over stratum"
+                )
             continue
+        cuts, renders = _fit_outcome(recipe, case)
         if case.strata.length == "long_under":
-            over = next(((label, item_id, count) for label, item_id, count in measured if count > max_tokens), None)
-            if over is not None:
-                label, item_id, count = over
+            if cuts:
                 raise CaseError(
-                    f"case {case.id!r}: long_under, but {label} {item_id!r} measures {count} tokens over the "
-                    f"budget ({max_tokens}); that is the long_over stratum"
+                    f"case {case.id!r}: long_under, but the product's fit cuts {cuts} input(s): the recipe's "
+                    f"render (template and specials included) exceeds the budget of {max_tokens} tokens; "
+                    "shrink the input so the rendered input fits whole"
                 )
-            if not any(count >= _LONG_UNDER_SHARE * max_tokens for count in counts):
+            if not any(render >= _LONG_UNDER_SHARE * max_tokens for render in renders):
                 raise CaseError(
-                    f"case {case.id!r}: long_under, but no input measures within 5% under the budget "
-                    f"(>= {int(_LONG_UNDER_SHARE * max_tokens)} of {max_tokens} tokens); measured {counts}"
+                    f"case {case.id!r}: long_under, but no rendered input measures within 5% under the "
+                    f"budget (>= {int(_LONG_UNDER_SHARE * max_tokens)} of {max_tokens} tokens, template and "
+                    f"specials included); rendered {renders}"
                 )
-        elif not any(count > max_tokens for count in counts):
+        elif not cuts:
             raise CaseError(
-                f"case {case.id!r}: long_over, but no input measures over the budget ({max_tokens} tokens); "
-                f"measured {counts}"
+                f"case {case.id!r}: long_over, but no input renders over the budget ({max_tokens} tokens, "
+                f"template and specials included); rendered {renders}"
             )
 
 

@@ -30,7 +30,7 @@ serve:
 client:
   api: rerank
   tokenizer: ../../tokenizer.json
-  max_tokens: 160
+  max_tokens: 224
   query_max_tokens: 48
   template:
     pair:

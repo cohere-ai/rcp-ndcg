@@ -13,7 +13,7 @@ inputs:
     text: long document under the budget
   documents:
   - id: d1
-    text: budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
+    text: overrun overrun overrun overrun overrun overrun overrun overrun overrun overrun
 expected:
   kind: similarity_matrix
   values: null
@@ -21,6 +21,7 @@ expected:
     abs: 0.005
   origin: reference
   status: pending_gpu
-notes: The long document is the word 'budgetpad' joined by single spaces, 7 repeats, measured 63 tokens
-  with the fixture tokenizer (within 5% under max_tokens 64, never cut). values stay null until a real
-  engine's wave fills them.
+notes: 'The long document is the word ''overrun'' joined by single spaces, 10 repeats: 60 tokens as a
+  raw span, rendered whole at 63 of the 64-token budget (the recipe''s template and the tokenizer''s specials
+  included, >= 95%), never cut by the product''s fit. values stay null until a real engine''s wave fills
+  them.'

@@ -243,6 +243,30 @@ def test_kind_none_exercises_the_path_without_comparing() -> None:
     assert result.detail is not None and "exercises the path" in result.detail
 
 
+def test_a_chunking_recipe_is_refused_with_a_named_gap() -> None:
+    """The runner never max-pools chunk scores: a chunking recipe is refused at resolve, not at compare."""
+    recipe = load_recipe(RECIPES / "fake-rerank")
+    from rcp_ndcg.data.preprocess import ChunkPolicy
+
+    chunked = recipe.model_copy(
+        update={
+            "client": recipe.client.model_copy(
+                update={
+                    "on_overflow": "chunk",
+                    "chunk": ChunkPolicy(max_tokens=48, overlap_tokens=8),
+                }
+            )
+        }
+    )
+    with pytest.raises(ConformanceError, match="on_overflow"):
+        run_suite(
+            chunked,
+            load_cases(CASES, chunked, recipes_root=RECIPES).cases,
+            target="fake",
+            fake_engine=FakeRerankEngine(),
+        )
+
+
 def test_a_recipe_with_side_prompts_is_refused() -> None:
     recipe = packaged_recipe()
     prompted = recipe.model_copy(update={"client": recipe.client.model_copy(update={"query_prompt": "Q: "})})

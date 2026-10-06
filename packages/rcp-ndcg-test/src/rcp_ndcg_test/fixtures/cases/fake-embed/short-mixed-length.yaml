@@ -20,7 +20,7 @@ inputs:
     text: graded gains and a rank-sensitive metric
   - id: d3
     text: budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
-      budgetpad budgetpad budgetpad budgetpad
+      budgetpad budgetpad budgetpad
 expected:
   kind: similarity_matrix
   tolerance:
@@ -30,9 +30,9 @@ expected:
   values:
   - - -0.06773625
     - 0.22013411
-    - -0.05351645
+    - 0.05359928
   - - 0.48138377
     - 0.31906667
-    - -0.01295907
-notes: 'A mixed-length batch: documents of 9, 7 and 126 tokens in one request; the long one stays under
-  the budget (max_tokens 128).'
+    - 0.61389256
+notes: 'A mixed-length batch: documents of 9, 7 and 117 raw tokens (rendered whole at 125 of the 128-token
+  budget) in one request; the batch mixes lengths and never crosses the budget.'

@@ -151,7 +151,10 @@ def _assert_one_environment_per_package(workflow: dict) -> None:
     # workspace); --all-packages is refused so a future workspace member (rcp-ndcg-test) is never swept
     # into the release build.
     assert "--all-packages" not in build, "the release builds the three published packages by name"
-    assert "--package rcp-ndcg --package rcp-ndcg-core" in build and "packages/rcp-ndcg-vllm" in build, (
+    # One --package per invocation (uv refuses a repeated --package): the build names the two workspace
+    # members it publishes, so the unpublished test package -- also a member -- can never be swept in.
+    assert "--package rcp-ndcg --out-dir dist" in build and "--package rcp-ndcg-core --out-dir dist" in build
+    assert "packages/rcp-ndcg-vllm" in build, (
         "rcp-ndcg-vllm is outside the uv workspace: the build job must build it from its own directory"
     )
     assert "twine check" in build and "requirements-constraints.txt" in build

@@ -61,7 +61,10 @@ cannot satisfy the grid.
 Generated cases start `origin: reference, status: pending_gpu, values: null`; the GPU waves fill them from
 the reference implementation and the engine. Long inputs are deterministic (their construction is
 recorded in `notes`), measured with the recipe's tokenizer; media files live under the recipe's
-`media/` directory, and nothing is fetched at test time.
+`media/` directory, and nothing is fetched at test time. The length strata are measured as the engine
+sees the inputs — the product's `fit` renders each case (the recipe's template and the tokenizer's
+specials included) and the stratum is judged on the rendered input: `long_under` must render whole within
+5% under `client.max_tokens`, `long_over` must be cut by it, `short` must render whole.
 
 ### How to add one
 
@@ -161,9 +164,12 @@ def test_conformance(run):
     run.assert_passes()
 ```
 
-`conformance_params(target, *, recipes_root, cases_root, base_url)` builds one param per case (id
-`<recipe>/<case-slug>`). A skipped case (pending values) becomes `pytest.skip` with its reason; a failed
-case an `AssertionError` with the detail. Against a live engine from the CI job's environment variable:
+`conformance_params(target, *, recipes_root=None, cases_root=None, base_url=None, check_lengths=False)`
+builds one param per case (id `<recipe>/<case-slug>`). A recipe whose target is not wired is silently
+absent from the list (no fake registered for the recipe, or no recipe at the recipes root yet) — a suite
+that must not collect green against a half-merged tree asserts on `load_cases`'s bundle instead. A
+skipped case (pending values) becomes `pytest.skip` with its reason; a failed case an `AssertionError`
+with the detail. Against a live engine from the CI job's environment variable:
 
 <!-- snippet: skip (needs a live engine's URL) -->
 ```python

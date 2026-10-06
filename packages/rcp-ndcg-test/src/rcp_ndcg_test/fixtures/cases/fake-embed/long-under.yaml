@@ -14,7 +14,7 @@ inputs:
   documents:
   - id: d1
     text: budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
-      budgetpad budgetpad budgetpad budgetpad
+      budgetpad budgetpad budgetpad
 expected:
   kind: similarity_matrix
   tolerance:
@@ -22,6 +22,7 @@ expected:
   origin: reference
   status: pending_gpu
   values: null
-notes: The long document is the word 'budgetpad' joined by single spaces, 14 repeats, measured 126 tokens
-  with the packaged tokenizer (within 5% under max_tokens 128, never cut). values stay null until a real
-  engine's wave fills them.
+notes: 'The long document is the word ''budgetpad'' joined by single spaces, 13 repeats: 117 tokens as
+  a raw span, rendered whole at 125 of the 128-token budget (the recipe''s template and the tokenizer''s
+  specials included, >= 95%), never cut by the product''s fit -- the budget bounds the rendered input
+  the engine sees. values stay null until a real engine''s wave fills them.'

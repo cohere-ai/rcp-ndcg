@@ -23,7 +23,7 @@ expected:
   values:
   - - 0.70599461
     - 0.95616683
-    - 0.04007725
+    - 0.90308115
   tolerance:
     abs: 0.0001
   origin: engine

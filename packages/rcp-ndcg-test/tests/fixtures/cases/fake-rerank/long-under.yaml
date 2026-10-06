@@ -14,7 +14,7 @@ inputs:
   documents:
   - id: d1
     text: budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
-      budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
+      budgetpad budgetpad budgetpad
 expected:
   kind: scores
   values: null
@@ -22,6 +22,7 @@ expected:
     abs: 0.005
   origin: reference
   status: pending_gpu
-notes: The long document is the word 'budgetpad' joined by single spaces, 17 repeats, measured 153 tokens
-  with the fixture tokenizer (within 5% under max_tokens 160). values stay null until a real engine's
-  wave fills them; the pair fit then reserves the template and the query first.
+notes: 'The pair renders at 216 of the 224-token budget (the recipe''s SYSTEM frame, the tokenizer''s
+  specials, the bare 22-token query and the 117-token document together, >= 95%), never cut by the product''s
+  fit: the long input is the rendered pair, which is what the budget bounds. values stay null until a
+  real engine''s wave fills them.'

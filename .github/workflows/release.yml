@@ -32,9 +32,10 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - name: build rcp-ndcg, rcp-ndcg-core and rcp-ndcg-vllm
         run: |
-          # The three published packages, by name (never a glob of all workspace members: the
-          # unpublished test package under packages/ is a member and must never be built or published).
-          uv build --package rcp-ndcg --package rcp-ndcg-core --out-dir dist
+          # The three published packages, one --package per invocation (uv refuses a repeated flag), so
+          # the unpublished test package under packages/ -- a workspace member -- is never built here.
+          uv build --package rcp-ndcg --out-dir dist
+          uv build --package rcp-ndcg-core --out-dir dist
           # rcp-ndcg-vllm is deliberately outside the uv workspace: build it from its own directory.
           (cd packages/rcp-ndcg-vllm && uv build --out-dir ../../dist)
       - name: the versions are the tag's

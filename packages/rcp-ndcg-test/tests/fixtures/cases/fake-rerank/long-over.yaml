@@ -14,13 +14,13 @@ inputs:
   documents:
   - id: d1
     text: budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
-      budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
+      budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
   - id: d2
     text: a short companion document
 expected:
   kind: scores
   values:
-  - - 0.47938559
+  - - 0.17785467
     - 0.83409627
   tolerance:
     abs: 0.0001
