@@ -1,0 +1,14 @@
+# The reference environment for THIS recipe's reference.py, in ITS OWN python (never the
+# harness's process, never the engine image). Install with the reference python:
+# pip install -r requirements-reference.txt
+#
+# The reference follows the model card's transformers snippet (README.md:148-178 at the pinned
+# revision): AutoModel + trust_remote_code — the checkpoint's remote code is a PeftMixedModel
+# (modeling_jina_embeddings_v5.py:11,15), so peft is required. render mode imports none of
+# these (pure string work), so stage 1 of the equivalence check runs on CPU without the
+# weights. flash-attention is deliberately NOT pinned: the card marks it "Recommended but
+# optional" and the r-jina5 audit flags its GPU kwargs as unmeasured.
+
+torch>=2.0
+transformers>=4.57
+peft>=0.13
