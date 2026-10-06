@@ -22,8 +22,10 @@
    there, so the first branch runs;
  - the harness's stage-1 template check renders this same file from the request's plain texts
    (`query`, `document`, `instruction`): `messages` is undefined there, so the final branch
-   runs. It must be byte-identical to the recipe's declared pair shape, and stage 1 asserts
-   that (template_render_check, zero tolerance).
+   runs, and stage 1 asserts that branch byte-identical to the recipe's declared pair shape
+   (template_render_check, zero tolerance). The engine branch cannot be rendered on CPU (no
+   engine); the recipe's tests render it with the serving environment's jinja settings and
+   assert the same bytes, and stage 2 on the GPU wave exercises it end to end.
 
  The fallback branch (plain system/user/assistant roles, tools handling) is the checkpoint's own
  chat template verbatim: it never executes on the score route, and it keeps this file a drop-in

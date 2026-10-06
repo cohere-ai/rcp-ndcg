@@ -263,6 +263,48 @@ def test_stage1_anchor_check_survives_over_length_inputs(tmp_path: Path, zerank_
     assert document["anchor_check"]["checked"] == 7
 
 
+def test_the_served_template_renders_identically_for_the_engine_and_the_harness(
+    tmp_path: Path, zerank_tokenizer: Path
+) -> None:
+    """The served file's two branches and the declared pair shape render byte-identically, per row.
+
+    The engine's score route renders the file over query/document `messages` (tools=None) with
+    transformers' serving environment (trim_blocks/lstrip_blocks, NOT StrictUndefined); the
+    harness's stage-1 check renders it from the plain texts under StrictUndefined; the declared
+    shape is what the product's fit assembles. All three must agree for every sampled row - the
+    harness's own check sees only the plain-text branch on CPU (no engine), so this test pins
+    the engine branch too.
+    """
+    import jinja2
+    from jinja2.sandbox import ImmutableSandboxedEnvironment
+    from rcp_ndcg_vllm.equivalence.fitting import budget_of
+
+    from rcp_ndcg.data.preprocess import fit
+    from rcp_ndcg.data.tokenizer import load_tokenizer
+
+    recipe = with_local_tokenizer(zerank_tokenizer)
+    tokenizer = load_tokenizer(str(zerank_tokenizer))
+    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    template_text = (RECIPE_DIR / TEMPLATE).read_text(encoding="utf-8")
+    engine_env = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True)
+    harness_env = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True, undefined=jinja2.StrictUndefined)
+    flag = recipe.client.template.adds_special_tokens("pair")
+    for index, row in enumerate(sample_pairs()):
+        result = fit([(row["query"], row["documents"][0])], "pair", budget, tokenizer, ids=[str(index)])
+        fitted = result.texts[0]
+        cut_query, cut_document = result.contents[0]  # what the client sends; the engine renders these
+        plain = harness_env.from_string(template_text).render(query=cut_query, document=cut_document, instruction="")
+        engine = engine_env.from_string(template_text).render(
+            messages=[
+                {"role": "query", "content": cut_query},
+                {"role": "document", "content": cut_document},
+            ],
+            tools=None,
+        )
+        assert plain == engine == fitted, index
+        assert tokenizer.ids(engine, add_special_tokens=flag) == tokenizer.ids(fitted, add_special_tokens=flag), index
+
+
 def test_reference_cli_renders_the_anchor_preserving_prompt_and_refuses_embed(
     tmp_path: Path, zerank_tokenizer: Path
 ) -> None:

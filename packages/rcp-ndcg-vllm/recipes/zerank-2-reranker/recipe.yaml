@@ -105,8 +105,12 @@ notes: >
   re-gating the generation prompt fails). This recipe declares that template and adds the
   `messages is defined` guard so the harness's stage-1 template check (which renders the file from
   the plain request texts) and the engine's score route (which renders it over query/document
-  messages) execute different branches that produce the same prompt - stage 1 asserts the equality.
-  Known served-vs-reference differences, all inherited from the paper's served path and recorded in
+  messages) execute different branches that produce the same prompt: stage 1 asserts the
+  plain-text branch against the declared shape (template_render_check, zero tolerance), the
+  recipe's tests additionally render the engine's messages context with the serving
+  environment's jinja settings and assert byte-identity with it and with the declared shape's
+  render for every sampled row, and stage 2 on the GPU wave exercises the engine branch end to
+  end. Known served-vs-reference differences, all inherited from the paper's served path and recorded in
   the research report section 6: (1) the reference strips query and document before rendering, the
   served path renders the client's text as sent - whitespace-padded inputs tokenize differently;
   (2) the reference truncates only the whole rendered prompt at 8192 (declared known_deviations:
