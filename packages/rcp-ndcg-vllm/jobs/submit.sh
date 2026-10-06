@@ -177,6 +177,7 @@ for wave in "${WAVES[@]}"; do
 done
 
 if $ECHO_ONLY; then
+  rmdir "$OUT_DIR" 2>/dev/null || true  # the plan wrote nothing into it
   echo "submit.sh: KJOBS=echo printed the plan; nothing was submitted"
 else
   echo "submit.sh: $SUBMITTED job(s) submitted; the job CLI's outputs are under $OUT_DIR (grep them, never echo them)"

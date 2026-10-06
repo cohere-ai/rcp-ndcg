@@ -107,9 +107,11 @@ uv venv "$WORK/dl" --python 3.12 >/dev/null
 uv pip install --python "$WORK/dl/bin/python" pip >/dev/null
 "$WORK/dl/bin/python" -m pip download --quiet \
   -r stage/"$RC_NAME"/requirements-constraints.txt \
+  -r packages/rcp-ndcg-vllm/requirements-reference.txt \
   -c stage/"$RC_NAME"/requirements-constraints.txt \
   "rcp-ndcg-vllm[test]==${VERSION}" "rcp-ndcg[hf]==${VERSION}" \
   --dest stage/"$RC_NAME"/wheelhouse \
+  --find-links stage/"$RC_NAME"/wheelhouse \
   --only-binary :all: \
   --index-url "$CPU_INDEX" --extra-index-url "$PYPI_INDEX"
 

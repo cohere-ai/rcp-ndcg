@@ -125,6 +125,7 @@ which prints, in dry run, the submission the operator runs (`secret.HF_TOKEN` is
 `RCP_HF_TOKEN_FILE` by command substitution inside the script, never printed):
 
 ```bash
+# the from_file paths are absolute where submit.sh runs (its own checkout); shown shortened here
 kjobs-go submit -f "$RCP_KJOBS_CONFIG" \
   app=rcp-wave0 priority_class=dev-high worker.shared_memory=128Gi \
   worker.command='/bin/bash /etc/rcp/files/wave0/wave0.sh '"$RCP_STAGE_PREFIX"'/rc0 gs://YOUR-BUCKET/waves/wave0' \
@@ -132,6 +133,8 @@ kjobs-go submit -f "$RCP_KJOBS_CONFIG" \
   files.wave0.mount_path=/etc/rcp/files/wave0/wave0.sh \
   files.wave0host.from_file=packages/rcp-ndcg-vllm/jobs/wave0_host.py \
   files.wave0host.mount_path=/etc/rcp/files/wave0host/wave0_host.py \
+  files.bootstrap.from_file=packages/rcp-ndcg-vllm/jobs/bootstrap.sh \
+  files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh \
   files.report.from_file=packages/rcp-ndcg-vllm/jobs/report.py \
   files.report.mount_path=/etc/rcp/files/report/report.py \
   files.gcsauth.from_file="$RCP_GCS_AUTH_FILE" files.gcsauth.mount_path=/etc/rcp/gcs_auth.sh \

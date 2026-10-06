@@ -153,13 +153,22 @@ def test_bootstrap_freeze_guard_fires_on_an_upgrade_beyond_the_plugin(bootstrap_
     assert completed.returncode == 1
 
 
-def test_wheel_freeze_name_parses_wheel_names(bootstrap_functions: str) -> None:
-    completed = subprocess.run(
-        ["bash", "-c", f'source "{bootstrap_functions}" && wheel_freeze_name "My_Plugin-1.2.3-py3-none-any.whl"'],
-        capture_output=True,
-        text=True,
-    )
-    assert completed.stdout.strip() == "my-plugin"
+def test_freeze_name_of_parses_wheel_names_and_specs(bootstrap_functions: str) -> None:
+    """A wheel filename, a plain name, a versioned spec and a staged path all give the canonical name."""
+    cases = [
+        ("My_Plugin-1.2.3-py3-none-any.whl", "my-plugin"),  # a wheel filename: the first dash splits
+        ("/opt/staged/fixture-plug/plugin_wheel-1.0.0-py3-none-any.whl", "plugin-wheel"),
+        ("some-plugin", "some-plugin"),  # a pip spec keeps its dashes
+        ("my-plugin==1.2.3", "my-plugin"),
+        ("/staged/org/pkg-2.0", "pkg-2-0"),  # consistent with how its freeze line canonicalises
+    ]
+    for argument, expected in cases:
+        completed = subprocess.run(
+            ["bash", "-c", f'source "{bootstrap_functions}" && freeze_name_of "$1"', "bash", argument],
+            capture_output=True,
+            text=True,
+        )
+        assert completed.stdout.strip() == expected, argument
 
 
 # --- submit.sh: the operator's submission, KJOBS=echo prints the plan ----------------------------------

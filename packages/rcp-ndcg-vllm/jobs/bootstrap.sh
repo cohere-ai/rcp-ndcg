@@ -69,14 +69,18 @@ now_s() { date +%s; }
 # freeze_of PYTHON: the engine environment's pip freeze, one package per line.
 freeze_of() { "$1" -m pip freeze --disable-pip-version-check 2>/dev/null; }
 
-# wheel_freeze_name WHEEL_FILE: the canonical distribution name a wheel installs (PEP 503: lowercase,
-# runs of '-_.' to one '-'). pip reports a wheel installed from a local path as a PEP 610 direct URL
-# ('Name @ file://...') or as 'name==version' depending on the pip; the guard matches by canonical
-# name, and both forms collapse to it.
-wheel_freeze_name() {
+# freeze_name_of PATH_OR_SPEC: the canonical distribution name of an installed plugin, from a wheel
+# filename (dashes escaped to underscores; the first dash separates name and version) or from a pip
+# spec (a name, with or without a version specifier; its dashes are part of the name). Both normalize
+# PEP 503 (lowercase, runs of '-_.' to one '-'), which is what pip's freeze line collapses to.
+freeze_name_of() {
   local stem="${1##*/}"
-  stem="${stem%.whl}"
-  stem="${stem%%-*}"  # the wheel name is escaped ('-' -> '_'), so the first dash separates name and version
+  if [[ "$stem" == *.whl ]]; then
+    stem="${stem%.whl}"
+    stem="${stem%%-*}"  # a wheel filename's name part carries no dashes (they are escaped to '_')
+  else
+    stem="${stem%%[<>=!~; \[ ]*}"  # a version specifier or extras bracket keeps only the name
+  fi
   printf '%s\n' "$(printf '%s' "$stem" | sed -E 's/[-_.]+/-/g' | tr '[:upper:]' '[:lower:]')"
 }
 
@@ -224,6 +228,7 @@ CLIENT_ARGS=(uvx --from "$CLIENT_SPEC" --with "$CLIENT_WITH"
 install_start="$(now_s)"
 "${CLIENT_ARGS[@]}" python - <<'PYEOF' >"$STATE/client-versions.json"
 import json
+from importlib.metadata import version
 
 import rcp_ndcg
 import rcp_ndcg_core
@@ -231,8 +236,8 @@ import rcp_ndcg_vllm
 
 print(json.dumps({
     "rcp-ndcg": rcp_ndcg.__version__,
-    "rcp-ndcg-core": rcp_ndcg_core.__version__,
-    "rcp-ndcg-vllm": rcp_ndcg_vllm.__version__,
+    "rcp-ndcg-core": version("rcp-ndcg-core"),
+    "rcp-ndcg-vllm": version("rcp-ndcg-vllm"),
 }))
 PYEOF
 client_install_s="$(( $(now_s) - install_start ))"
@@ -291,7 +296,9 @@ if [[ "$MODE" == "wave" ]]; then
       ln -sfn "$(realpath "$recipe_dir")" "$RECIPES_ROOT/$(basename "$recipe_dir")"
     done
   done
-  RECIPES_DIR="${RECIPES_DIR:-$STAGE_DIR/recipes}"
+elif [[ -n "${RECIPES_DIR:-}" ]]; then
+  # Envs mode with the plugins' recipes named explicitly: the given directory is the root.
+  RECIPES_ROOT="$RECIPES_DIR"
 fi
 
 # --- the engine's plugin wheels (none in wave 0), under the freeze-diff guard ------------------------
@@ -321,7 +328,7 @@ if [[ -n "$PLUGINS" ]]; then
       echo "bootstrap: the recipe's plugin $plugin is not staged; installing it as named" >&2
       "$ENGINE_PYTHON" -m pip install --quiet --no-deps "$plugin"
     fi
-    wheel_freeze_name "${plugin_path:-$plugin}" >>"$STATE/plugin-allowed.txt"
+    freeze_name_of "${plugin_path:-$plugin}" >>"$STATE/plugin-allowed.txt"
   done <<<"$PLUGINS"
 fi
 freeze_of "$ENGINE_PYTHON" >"$STATE/engine-freeze-after.txt"

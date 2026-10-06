@@ -311,7 +311,10 @@ uv build --out-dir /shared/wheelhouse/0.0.1rc1 packages/rcp-ndcg-vllm   # built 
 uv export --frozen --no-hashes --no-emit-workspace --no-dev --extra calibrate --extra hf --extra s3 --extra azure \
   -o /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt
 pip download -r /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
-  --dest /shared/wheelhouse/0.0.1rc1 --only-binary :all: \
+  -c /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
+  'rcp-ndcg-vllm[test]==<version>' 'rcp-ndcg[hf]==<version>' \
+  -r packages/rcp-ndcg-vllm/requirements-reference.txt \
+  --dest /shared/wheelhouse/0.0.1rc1 --find-links /shared/wheelhouse/0.0.1rc1 --only-binary :all: \
   --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
 ```
 

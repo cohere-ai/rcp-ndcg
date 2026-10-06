@@ -203,23 +203,27 @@ def _engines_start(spec_path: Path, state_path: Path, report: Path) -> dict[str,
 def _engines_stop(state_path: Path, report: Path) -> dict[str, Any]:
     """Stop the engines' process groups, then assert that no engine process remains (step g).
 
-    The scan covers every live process that looks like a vLLM engine, minus the ones already running
-    before this job started anything (its baseline): a shared machine's other engines are not this
-    wave's. The free disk on the HF cache is re-measured here - the eviction's freed space shows once
-    the engine that mapped the weights is gone.
+    The assert is scoped to what this job added: every live process that looks like a vLLM engine and
+    belongs to one of the engines' sessions (a survivor of what this job started), and the engines' own
+    pids. A machine-wide scan of every vLLM-shaped cmdline is recorded (``scan_all``) for the operator,
+    without gating: a shared machine runs other jobs' engines, and they are not this wave's. The free
+    disk on the HF cache is re-measured here - the eviction's freed space shows once the engine that
+    mapped the weights is gone.
     """
 
     state = json.loads(state_path.read_text(encoding="utf-8"))
     pids = [engine["pid"] for engine in state.get("engines", [])]
-    baseline = set(state.get("baseline_pids", []))
     for pid in pids:
         _stop_group(pid)
-    scan = _engine_process_scan(exclude_pids=baseline)
-    all_stopped = all(not _alive(pid) for pid in pids) and not scan
+    leaked = _engine_leaks(set(pids))
+    scan_all = _engine_process_scan(exclude_pids=set(pids))
+    all_stopped = all(not _alive(pid) for pid in pids) and not leaked
     free_disk_after_stop = weights_free_disk()
     fragment = {
         "pids": pids,
-        "scan_found": scan,
+        "leaked": leaked,
+        "scan_found": leaked,
+        "scan_all": scan_all,
         "all_stopped": all_stopped,
         "free_disk_after_stop_bytes": free_disk_after_stop,
         "passed": all_stopped,
@@ -265,8 +269,39 @@ def _alive(pid: int) -> bool:
         return False
 
 
+def _engine_leaks(engine_pids: set[int]) -> list[str]:
+    """The live processes that still belong to this job's engines: their own pids and every process of
+    their sessions (each engine runs in its own session, so a surviving child shares its session id)."""
+    found: list[str] = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        if pid in engine_pids or _session_of(pid) in engine_pids:
+            try:
+                cmdline = (entry / "cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", errors="replace")
+            except OSError:
+                continue
+            found.append(f"{pid}: {cmdline[:120]}")
+    return found
+
+
+def _session_of(pid: int) -> int:
+    """The session id of ``pid`` (field 6 of ``/proc/<pid>/stat``), 0 when it cannot be read."""
+    try:
+        stat = (Path("/proc") / str(pid) / "stat").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return 0
+    tail = stat.rpartition(")")[2].split()
+    try:
+        return int(tail[2])  # the fields after the comm: state, ppid, pgrp, session
+    except (IndexError, ValueError):
+        return 0
+
+
 def _engine_process_scan(*, exclude_pids: set[int] | None = None) -> list[str]:
-    """The cmdlines of every live process that looks like a vLLM engine (the assert of step g)."""
+    """The cmdlines of every live process that looks like a vLLM engine, machine-wide (recorded for the
+    operator, never the assert: a shared machine's other jobs' engines are not this wave's)."""
     excluded = exclude_pids or set()
     found: list[str] = []
     for entry in Path("/proc").iterdir():

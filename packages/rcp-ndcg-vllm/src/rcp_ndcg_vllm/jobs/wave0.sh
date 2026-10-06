@@ -107,7 +107,7 @@ report init --file "$REPORT" --schema rcp-ndcg.wave0-report.v1 >/dev/null
 fragment_error() { # fragment_error FILE: the fragment's one-line error, or a fallback
   python3 -c 'import json, sys
 document = json.load(open(sys.argv[1]))
-print(document.get("error") or ("" if document.get("passed", True) else "the probe recorded passed: false"))' "$1" 2>/dev/null || echo "the step failed (no fragment)"
+print(document.get("error") or "the step recorded passed: false")' "$1" 2>/dev/null || echo "the step failed (no fragment)"
 }
 
 fail_step() { # fail_step STEP REASON: one line, the report, the engines stopped, the uploads, out
@@ -163,12 +163,12 @@ run_probe() { # run_probe REPORT_KEY PROBE_ARGS...: run the probe in the client 
   if ! "$STATE/client" python -m rcp_ndcg_vllm.jobs.wave0_probe "$@" \
     >"$WORK/$key.json" 2>"$WORK/$key.err"; then
     tail -3 "$WORK/$key.err" >&2 || true
-    fail_step "$key" "$(fragment_error "$WORK/$key.json" "the probe failed")"
+    fail_step "$key" "$(fragment_error "$WORK/$key.json")"
   fi
   report merge --file "$REPORT" --key "$key" --fragment "$WORK/$key.json" >/dev/null
   if ! python3 -c 'import json, sys
 raise SystemExit(0 if json.load(open(sys.argv[1])).get("passed", True) else 1)' "$WORK/$key.json"; then
-    fail_step "$key" "$(fragment_error "$WORK/$key.json" "the step recorded passed: false")"
+    fail_step "$key" "$(fragment_error "$WORK/$key.json")"
   fi
 }
 

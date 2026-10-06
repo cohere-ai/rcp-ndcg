@@ -91,6 +91,7 @@ def run_wave(
                     json.dumps(results[recipe.id], indent=2) + "\n", encoding="utf-8"
                 )
                 pending.remove(recipe)
+                progressed = True
                 continue
             if len(used_gpus) + need <= gpus:
                 # Node-runtime item 8: the pod has no persistent volume; a model that measurably cannot
@@ -115,7 +116,7 @@ def run_wave(
                 assigned = _lowest_free(used_gpus, need)
                 used_gpus.update(assigned)
                 try:
-                    run = _start(recipe, assigned, slot, out, vllm_cmd, port_base)
+                    run = _start(recipe, assigned, slot, out, vllm_cmd, port_base, disk=disk)
                 except HarnessError as start_error:
                     # An engine that cannot even start (no vllm binary) fails that recipe only.
                     results[recipe.id] = _status(
@@ -277,7 +278,16 @@ def _lowest_free(used: set[int], count: int) -> list[int]:
     return free
 
 
-def _start(recipe: Recipe, gpus: list[int], slot: int, out: Path, vllm_cmd: str | None, port_base: int) -> _EngineRun:
+def _start(
+    recipe: Recipe,
+    gpus: list[int],
+    slot: int,
+    out: Path,
+    vllm_cmd: str | None,
+    port_base: int,
+    *,
+    disk: dict[str, Any] | None = None,
+) -> _EngineRun:
     """Start one engine on the given GPUs; the port is ``port_base + slot``, or 0 (announced) in test mode.
 
     Node-runtime item 7: every slot gets its own ``CUDA_VISIBLE_DEVICES``, HTTP port, ``VLLM_PORT`` (the
@@ -310,7 +320,7 @@ def _start(recipe: Recipe, gpus: list[int], slot: int, out: Path, vllm_cmd: str 
         popen,
         directory / "serve.log",
         directory,
-        disk=_disk_check(recipe),
+        disk=disk,
     )
     run.status["serve_argv"] = argv
     run.status["steps"]["serve"] = {"state": "running", "port": port, "gpus": gpus}
