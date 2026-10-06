@@ -18,7 +18,6 @@ arrive in.
 from __future__ import annotations
 
 import asyncio
-import json
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -990,6 +989,9 @@ def _plan(
         docs = {query: list(dict.fromkeys(doc for window in rows for doc in window)) for query, rows in windows.items()}
     client = judge_cfg if isinstance(judge_cfg, JudgeClient) else JudgeClient.from_config(judge_cfg)
     effective = _effective_preprocessing(preprocessing, client.config)
+    # The pass's effective pixel policy, for the client's engine media check: the probe runs when the pass
+    # declares one (and the judge declares an image_processor), with exactly the policy the windows send.
+    client.image_policy = effective.image
     tokenizer = _judge_tokenizer(client.config)
     if tokenizer is None and client.config.context_tokens is not None:
         logger.warning(

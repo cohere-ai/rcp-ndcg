@@ -1137,8 +1137,7 @@
                 "returns": "JudgeConfig"
               }
             ]
-          },
-          "urls": "property"
+          }
         }
       },
       "JudgementSet": {
@@ -11407,7 +11406,9 @@
         "kind": "pydantic_model"
       },
       "JudgeClient": {
-        "bases": [],
+        "bases": [
+          "rcp_ndcg.inference.clients._base.RoleClient"
+        ],
         "defined_in": "rcp_ndcg.llm.client",
         "init": [
           {
@@ -11714,8 +11715,7 @@
                 "returns": "JudgeConfig"
               }
             ]
-          },
-          "urls": "property"
+          }
         }
       },
       "JudgementStore": {
