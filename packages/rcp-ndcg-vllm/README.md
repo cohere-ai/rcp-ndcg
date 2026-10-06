@@ -1,49 +1,99 @@
 # rcp-ndcg-vllm
 
-Serving recipes, the equivalence harness, the engine recorder and the GPU wave runner for
-[rcp-ndcg](https://github.com/cohere-ai/rcp-ndcg) models served with [vLLM](https://docs.vllm.ai).
+The serving half of RCP-nDCG: the vetted serving recipes for retrieval models, the `rcp-ndcg-vllm serve`
+command that turns one into a `vllm serve` command for the stock `vllm/vllm-openai` image, and the model
+plugins that make two released checkpoints serveable on it. The engine is reached over HTTP only; this
+package never imports `rcp-ndcg`, torch or vLLM at import time (its dependencies are pydantic and PyYAML).
+A recipe's `client` block is plain data, validated when `rcp-ndcg` reads it.
 
-This package is **outside the root uv workspace and lock** on purpose: it is installed into an engine image that
-already carries vLLM, torch and transformers, and a torch pin here would fight every vLLM release. The harness
-imports `rcp-ndcg` (the recipe's `client` block constructs the product's endpoint configs, stage 1 runs the
-product's `fit`); only the engine is reached over HTTP, and the reference runs as a subprocess so the harness
-process never imports torch.
+## Install
 
-Install it standalone with `pip install rcp-ndcg-vllm` (or, from a checkout of the repository,
-`pip install packages/rcp-ndcg-vllm`), which pulls in the pinned `rcp-ndcg`; inside the engine image use
-`pip install --no-deps rcp-ndcg-vllm` together with the already-installed product, which keeps the image's own
-vLLM and torch.
+Three contexts, three lines:
 
-## Layout
+- **The engine environment** (the stock vLLM image): `python3 -m pip install --no-deps rcp-ndcg-vllm` -- the
+  wheel's only dependencies are pydantic and PyYAML, which the image ships; a `pip freeze` before and after
+  differs by exactly this wheel.
+- **The client environment**: `pip install rcp-ndcg rcp-ndcg-vllm` -- the second package resolves `recipe:<id>`
+  and runs `serve`.
+- **Recipe data only**: `import rcp_ndcg_vllm` reads the recipes; it never imports vLLM or torch.
 
-- `src/rcp_ndcg_vllm/recipe.py` — the recipe schema (frozen pydantic models, `extra="forbid"`), its validators,
-  `load_recipe`, `iter_recipes`, `serve_argv` and `client_config`.
-- `recipes/<id>/` — one directory per served model: `recipe.yaml`, an optional `template.jinja` chat template,
-  `reference.py` (the subprocess reference) and an optional `requirements-reference.txt` (the reference's own environment, installed by the node's
-  bootstrap instead of the package's shared one). The recipe lanes write these.
-- `src/rcp_ndcg_vllm/equivalence/` — the three-stage equivalence check of the design's section on in-process
-  scoring, as functions and a CLI (`python -m rcp_ndcg_vllm.equivalence`), driven through the product's role
-  clients and audited on the captured wire.
-- `src/rcp_ndcg_vllm/record.py` — records one fixed request/response exchange per engine route under
-  `<out>/<engine>-<version>/<recipe-id>/`, the fixtures the engine adapters' contract tests replay.
-- `src/rcp_ndcg_vllm/jobs/` — `run_wave.py` (packs recipes onto one node's GPUs, with per-slot isolation and
-  the free-disk check and eviction), `wave0_probe.py` and `wave0_report.py` (wave 0's probes and the report
-  schema), and `plugins.py` (the plugin wheels a wave's recipes install into the engine environment).
-- `jobs/` — the node and operator scripts: `rc_build.sh` (build a release candidate exactly as `release.yml`
-  does, stage it with the wheelhouse and a hash manifest), `bootstrap.sh` (the node's three environments),
-  `submit.sh` (one job per wave, priority class, shared memory, the token as a secret), `gcs.sh` and
-  `gcs.py` (the gs:// transfer: the CLIs when the image has one, else gcsfs into a tools directory
-  outside the engine environment), and `wave0_host.py` and `report.py` (wave 0's stdlib helpers,
-  mounted onto the node).
-- `schema/recipe.schema.json` and `schema/wave0-report.schema.json` — the exported JSON Schemas of `Recipe`
-  and of the wave-0 report.
-
-## Validate a recipe on CPU (stage 1 only)
+## Serve a recipe
 
 ```bash
-pip install rcp-ndcg-vllm            # pulls the pinned rcp-ndcg (stage 1 runs the product's fit)
-python -m rcp_ndcg_vllm.equivalence --recipe recipes/<id> --pairs pairs.jsonl --out /tmp/equiv --stages 1
+rcp-ndcg-vllm serve <recipe-id> [--port PORT] [--dry-run]
 ```
 
-See `docs/how-to/add-a-model.md` in the repository for the guide, and the recipe schema's docstrings for every
-field.
+builds the `vllm serve` argv from the recipe's package data (the chat template file path, the media flags, the
+pooler config) and runs it (`--dry-run` prints the argv and exits). A checkpoint that needs its model plugin is
+refused with the exact install line. Example, on the stock image:
+
+```bash
+python3 -m pip install --no-deps rcp-ndcg-vllm
+rcp-ndcg-vllm serve qwen3-embedding-0.6b --port 8000
+```
+
+The [recipe guide](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/serve-a-model.md) walks through
+the client side (`recipe: <id>` in the retriever config), and [validate a recipe on
+GPUs](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/validate-a-recipe.md) through the waves every
+recipe passes before the release.
+
+## The recipes
+
+Every recipe in this table is validated end to end on GPU against its reference implementation before v0.0.1
+(equivalence, quality and end-to-end waves); each `recipe.yaml` records its model revision and `sources`, and
+`status.state` (`unverified`, `verified`, `failed`) records the outcome beside the engine `image`, the `date`
+and the report. The states below are copied from each recipe's `status.state`; the tag ships none unverified.
+
+| id | model | role | input | plugin | status |
+|---|---|---|---|---|---|
+| `qwen3-embedding-0.6b` | Qwen/Qwen3-Embedding-0.6B | embed | text | — | unverified |
+| `qwen3-vl-embedding-2b` | Qwen/Qwen3-VL-Embedding-2B | embed | text, image, video | — | unverified |
+| `jina-embeddings-v5-text-small` | jinaai/jina-embeddings-v5-text-small | embed | text | — | unverified |
+| `octen-embedding-8b` | Octen/Octen-Embedding-8B | embed | text | — | unverified |
+| `zembed-1-embedding` | zeroentropy/zembed-1-embedding | embed | text | — | unverified |
+| `pplx-embed-v2-context-9b-preview` | perplexity-ai/pplx-embed-v2-context-9b-preview | multi_vector | text | the pplx model plugin | unverified |
+| `topk-embed-v1-small` | topk-io/topk-embed-v1-small | multi_vector | text, image | the topk model plugin | unverified |
+| `qwen3-reranker-0.6b` | Qwen/Qwen3-Reranker-0.6B | rerank | text | — | unverified |
+| `qwen3-reranker-4b` | Qwen/Qwen3-Reranker-4B | rerank | text | — | unverified |
+| `qwen3-reranker-8b` | Qwen/Qwen3-Reranker-8B | rerank | text | — | unverified |
+| `qwen3-vl-reranker-2b` | Qwen/Qwen3-VL-Reranker-2B | rerank | text, image | — | unverified |
+| `zerank-1-reranker` | zeroentropy/zerank-1-reranker | rerank | text | — | unverified |
+| `zerank-1-small-reranker` | zeroentropy/zerank-1-small-reranker | rerank | text | — | unverified |
+| `zerank-2-reranker` | zeroentropy/zerank-2-reranker | rerank | text | — | unverified |
+| `ctxl-rerank-v2-instruct-multilingual-1b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b | rerank | text | — | unverified |
+| `ctxl-rerank-v2-instruct-multilingual-2b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b | rerank | text | — | unverified |
+| `ctxl-rerank-v2-instruct-multilingual-6b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b | rerank | text | — | unverified |
+| `jina-reranker-v3` | jinaai/jina-reranker-v3 | rerank | text | — | unverified |
+
+The `id` is the lowercased canonical Hub repository name; the `role` is what `rcp-ndcg` reads through it
+(`embed`, `multi_vector`, `rerank`); the `input` is what the checkpoint reads. Budgets are explicit per recipe:
+every recipe declares `client.tokenizer`, `client.max_tokens` and (where the reference caps queries)
+`query_max_tokens`; over-budget content is cut client-side at token boundaries with the template's anchors
+preserved, and every cut is recorded.
+
+## Use a recipe from `rcp-ndcg`
+
+A role config that names `recipe: <id>` takes its whole client block (api, tokenizer, budgets, template, media,
+instruction mode) from the recipe; `base_url` and the other run-time fields stay on the config, and an explicit
+content field must equal the recipe's or the config is refused naming both values. `--retriever recipe:<id>` and
+`--reranker recipe:<id>` are command-line shorthands. Recipes are resolved lazily, so `rcp-ndcg-vllm` must be
+installed beside `rcp-ndcg`; without it the refusal is typed and its hint is the install line
+([recipes and serving models](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/recipes.md)).
+
+## Model plugins
+
+`topk-embed-v1-small` and `pplx-embed-v2-context-9b-preview` fold into `rcp_ndcg_vllm/models/` under one
+`vllm.general_plugins` entry point. Registration is lazy (`"module:Class"` strings): importing this package
+never imports vLLM or torch. A version guard pins the tested vLLM line and refuses others loudly.
+
+## Validation
+
+The equivalence harness, the recorder, the reference cases and the GPU job tooling live in the unpublished
+`rcp-ndcg-test` package ([its page](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/rcp-ndcg-test.md));
+authors of new recipes start at [add a serving
+recipe](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/add-a-model.md). The judging pipeline and
+the metric are `rcp-ndcg` and `rcp-ndcg-core`.
+
+## License
+
+Apache-2.0: `LICENSE` and `NOTICE` ship in every wheel and sdist.

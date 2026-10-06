@@ -5,7 +5,7 @@ stored rankings of the 14 rerankers the paper compares. This example scores thos
 with the paper's NanoBEIR protocol. Your own system works the same way: a Parquet, CSV, TREC or JSONL file with
 query ids, document ids and scores (`rcp.load_rankings`), or `rcp-ndcg eval score --rankings FILE --suite nanobeir`.
 
-    pip install ".[hf]"
+    pip install "rcp-ndcg[hf]"
     python examples/01_score_released_suite.py
 """
 
