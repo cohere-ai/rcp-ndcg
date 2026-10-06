@@ -111,7 +111,9 @@ sync bridge, `close()`/`await aclose()`, and the fan-out under one `asyncio.Task
 * the role's prompt (`query_prompt`/`doc_prompt`) is prepended by `_prepare`, and then -- when the config
   declares a budget (`tokenizer` + `max_tokens`, explicit for a self-hosted role) -- every item's text is
   fitted through the one text-budget mechanism: only the content span is cut, the template re-attached with
-  its anchor, every cut recorded in the census. A config without `max_tokens` sends every item whole. Media
+  its anchor, every cut recorded in the census. A config without `max_tokens` sends every item whole. Per-shape
+  budgets: `query_max_tokens` caps the query shape whole (a late-interaction embedder caps its two sides
+  differently), `max_tokens` caps the document shape, and a query budget above `max_tokens` is refused. Media
   items keep their parts beside the fitted text; a config with `dim` unset is refused at construction (the
   base64 frame needs the width -- a refusal at construction keeps the GPU idle-time free), and so is
   `on_overflow: chunk` (chunks pool scores by max, and token vectors have none to pool -- a

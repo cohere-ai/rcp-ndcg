@@ -581,10 +581,48 @@ class TestVendorBudget:
         with pytest.raises(ConfigError, match="template"):
             TextBudget(tokenizer=None, max_tokens=4096, template=document_template())
 
-    def test_query_max_tokens_is_refused_for_a_non_pair_shape(self) -> None:
-        """The share splits a pair budget; on a query or document shape it would be silently inert."""
-        split = TextBudget(tokenizer="test/framed-bpe", max_tokens=64, query_max_tokens=6, template=query_template())
-        with pytest.raises(ConfigError, match="pair"):
+
+# ---------------------------------------------------------------------------------------------------------------
+# Per-shape budgets: query_max_tokens caps the query shape on the embedding roles
+# ---------------------------------------------------------------------------------------------------------------
+
+
+class TestPerShapeBudget:
+    def test_query_max_tokens_is_the_query_shapes_whole_budget(self) -> None:
+        """Per-shape budgets (the topk hand-off): on the query shape ``query_max_tokens`` IS the budget (its
+        whole budget there), and ``max_tokens`` keeps capping the document shape."""
+        spec = TemplateSpec(
+            query=(Segment(fixed="Q: "), Segment(content="query")),
+            document=(Segment(fixed="D: "), Segment(content="document")),
+        )
+        split = TextBudget(tokenizer="test/framed-bpe", max_tokens=64, query_max_tokens=10, template=spec)
+        query = fit([LONG], shape="query", budget=split, tokenizer=FRAMED)
+        assert len(engine_ids(query.texts[0], spec, "query")) <= 10
+        assert FRAMED.count(query.contents[0]) < FRAMED.count(LONG)
+        document = fit([LONG], shape="document", budget=split, tokenizer=FRAMED, ids=["d"])
+        # The same budget, document shape: capped at max_tokens (64), not at the query's 10.
+        assert 10 < len(engine_ids(document.texts[0], spec, "document")) <= 64
+
+    def test_the_census_rows_name_the_shapes_budget(self) -> None:
+        census = TextTruncationCensus()
+        spec = TemplateSpec(
+            query=(Segment(fixed="Q: "), Segment(content="query")),
+            document=(Segment(fixed="D: "), Segment(content="document")),
+        )
+        split = TextBudget(tokenizer="test/framed-bpe", max_tokens=64, query_max_tokens=10, template=spec)
+        fit([LONG], shape="query", budget=split, tokenizer=FRAMED, census=census)
+        rows = [cut.as_row() for cut in census.cuts(mechanism=TextTruncationCensus.TEXT_BUDGET)]
+        assert rows and rows[0]["budget_tokens"] == 10 and rows[0]["shape"] == "query"
+        document_census = TextTruncationCensus()
+        fit([LONG], shape="document", budget=split, tokenizer=FRAMED, census=document_census, ids=["d"])
+        document_rows = [
+            cut.as_row() for cut in document_census.cuts(mechanism=TextTruncationCensus.TEXT_BUDGET)
+        ]
+        assert document_rows[0]["budget_tokens"] == 64
+
+    def test_a_query_shape_refuses_a_budget_the_frame_alone_fills(self) -> None:
+        split = TextBudget(tokenizer="test/framed-bpe", max_tokens=64, query_max_tokens=4, template=query_template())
+        with pytest.raises(ConfigError, match="4"):
             fit([LONG], shape="query", budget=split, tokenizer=FRAMED)
 
     def test_an_undeclared_shape_is_a_typed_error_even_with_a_per_shape_flag(self) -> None:

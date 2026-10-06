@@ -246,7 +246,7 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document side); the ``query`` shape is capped by query_max_tokens when that is declared, by this budget when it is not.",
           "title": "Max Tokens"
         },
         "max_videos": {
@@ -277,6 +277,20 @@
           ],
           "title": "On Overflow",
           "type": "string"
+        },
+        "query_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape budgets: a late-interaction or asymmetric embedder caps queries and documents differently -- topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's WHOLE budget there: the fixed frame is reserved out of it exactly as max_tokens reserves the document shape's. Must not exceed max_tokens -- the model's whole input budget, which no shape's render can be sent over. ``None`` (the default): both shapes are capped by max_tokens. On a RerankEndpoint the field keeps its pair-share meaning instead. Content.",
+          "title": "Query Max Tokens"
         },
         "query_prompt": {
           "default": "",
@@ -612,7 +626,7 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document side); the ``query`` shape is capped by query_max_tokens when that is declared, by this budget when it is not.",
           "title": "Max Tokens"
         },
         "max_videos": {
@@ -643,6 +657,20 @@
           ],
           "title": "On Overflow",
           "type": "string"
+        },
+        "query_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape budgets: a late-interaction or asymmetric embedder caps queries and documents differently -- topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's WHOLE budget there: the fixed frame is reserved out of it exactly as max_tokens reserves the document shape's. Must not exceed max_tokens -- the model's whole input budget, which no shape's render can be sent over. ``None`` (the default): both shapes are capped by max_tokens. On a RerankEndpoint the field keeps its pair-share meaning instead. Content.",
+          "title": "Query Max Tokens"
         },
         "query_prompt": {
           "default": "",
@@ -1022,7 +1050,7 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document side); the ``query`` shape is capped by query_max_tokens when that is declared, by this budget when it is not.",
           "title": "Max Tokens"
         },
         "max_videos": {
@@ -1053,6 +1081,20 @@
           ],
           "title": "On Overflow",
           "type": "string"
+        },
+        "query_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape budgets: a late-interaction or asymmetric embedder caps queries and documents differently -- topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's WHOLE budget there: the fixed frame is reserved out of it exactly as max_tokens reserves the document shape's. Must not exceed max_tokens -- the model's whole input budget, which no shape's render can be sent over. ``None`` (the default): both shapes are capped by max_tokens. On a RerankEndpoint the field keeps its pair-share meaning instead. Content.",
+          "title": "Query Max Tokens"
         },
         "query_prompt": {
           "default": "",
@@ -1374,7 +1416,7 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document side); the ``query`` shape is capped by query_max_tokens when that is declared, by this budget when it is not.",
           "title": "Max Tokens"
         },
         "max_videos": {
@@ -1405,6 +1447,20 @@
           ],
           "title": "On Overflow",
           "type": "string"
+        },
+        "query_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape budgets: a late-interaction or asymmetric embedder caps queries and documents differently -- topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's WHOLE budget there: the fixed frame is reserved out of it exactly as max_tokens reserves the document shape's. Must not exceed max_tokens -- the model's whole input budget, which no shape's render can be sent over. ``None`` (the default): both shapes are capped by max_tokens. On a RerankEndpoint the field keeps its pair-share meaning instead. Content.",
+          "title": "Query Max Tokens"
         },
         "query_prompt": {
           "default": "",
@@ -1742,7 +1798,7 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document side); the ``query`` shape is capped by query_max_tokens when that is declared, by this budget when it is not.",
           "title": "Max Tokens"
         },
         "max_videos": {
@@ -1773,6 +1829,20 @@
           ],
           "title": "On Overflow",
           "type": "string"
+        },
+        "query_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape budgets: a late-interaction or asymmetric embedder caps queries and documents differently -- topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's WHOLE budget there: the fixed frame is reserved out of it exactly as max_tokens reserves the document shape's. Must not exceed max_tokens -- the model's whole input budget, which no shape's render can be sent over. ``None`` (the default): both shapes are capped by max_tokens. On a RerankEndpoint the field keeps its pair-share meaning instead. Content.",
+          "title": "Query Max Tokens"
         },
         "query_prompt": {
           "default": "",
@@ -2095,7 +2165,7 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document side); the ``query`` shape is capped by query_max_tokens when that is declared, by this budget when it is not.",
           "title": "Max Tokens"
         },
         "max_videos": {
@@ -2126,6 +2196,20 @@
           ],
           "title": "On Overflow",
           "type": "string"
+        },
+        "query_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape budgets: a late-interaction or asymmetric embedder caps queries and documents differently -- topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's WHOLE budget there: the fixed frame is reserved out of it exactly as max_tokens reserves the document shape's. Must not exceed max_tokens -- the model's whole input budget, which no shape's render can be sent over. ``None`` (the default): both shapes are capped by max_tokens. On a RerankEndpoint the field keeps its pair-share meaning instead. Content.",
+          "title": "Query Max Tokens"
         },
         "query_prompt": {
           "default": "",
@@ -2591,7 +2675,7 @@
             }
           ],
           "default": null,
-          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content.",
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document side); the ``query`` shape is capped by query_max_tokens when that is declared, by this budget when it is not.",
           "title": "Max Tokens"
         },
         "max_videos": {
@@ -2622,6 +2706,20 @@
           ],
           "title": "On Overflow",
           "type": "string"
+        },
+        "query_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape budgets: a late-interaction or asymmetric embedder caps queries and documents differently -- topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's WHOLE budget there: the fixed frame is reserved out of it exactly as max_tokens reserves the document shape's. Must not exceed max_tokens -- the model's whole input budget, which no shape's render can be sent over. ``None`` (the default): both shapes are capped by max_tokens. On a RerankEndpoint the field keeps its pair-share meaning instead. Content.",
+          "title": "Query Max Tokens"
         },
         "query_prompt": {
           "default": "",

@@ -205,6 +205,42 @@ class TestEmbedBudget:
         with pytest.raises(CapabilityError, match="image"):
             client.encode([page], EncodeRole.DOCUMENT)
 
+    def test_query_max_tokens_above_max_tokens_is_refused(self) -> None:
+        """On the embedding roles ``max_tokens`` is the document shape's budget and the model's whole input
+        budget; a query budget above it cannot fit the served context."""
+        with pytest.raises(ValueError, match="whole input budget"):
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer="test/word-level",
+                max_tokens=1024,
+                query_max_tokens=1025,
+            )
+
+    def test_the_query_shape_budget_caps_the_query_not_the_document(self, tokenizer_json: str) -> None:
+        """The per-shape budget (the topk hand-off: query 1024, document 8192): ``query_max_tokens`` caps
+        the query shape whole; ``max_tokens`` keeps capping the document shape; the census rows name the
+        shape's budget."""
+        sender = RecordingSender()
+        census = TextTruncationCensus()
+        config = EmbeddingEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=8,
+            query_max_tokens=3,
+        )
+        client = EmbeddingClient(config, sender=sender, census=census)
+        long_text = " ".join(["evidence"] * 30)
+        client.encode(texts(long_text), EncodeRole.QUERY)
+        query_sent = sender.bodies[-1]["input"][0]
+        assert word_tokenizer().count(query_sent) <= 3
+        client.encode(texts(long_text), EncodeRole.DOCUMENT)
+        document_sent = sender.bodies[-1]["input"][0]
+        assert 3 < word_tokenizer().count(document_sent) <= 8
+        rows = [cut.as_row() for cut in census.cuts(mechanism=TextTruncationCensus.TEXT_BUDGET)]
+        assert [(row["shape"], row["budget_tokens"]) for row in rows] == [("query", 3), ("document", 8)]
+
 
 class TestPoolBudget:
     def test_a_pool_config_cuts_its_text(self, tokenizer_json: str) -> None:
@@ -261,6 +297,24 @@ class TestPoolBudget:
                 ),
                 sender=RecordingSender(),
             )
+
+    def test_the_pooling_config_honours_the_per_shape_budget_too(self, tokenizer_json: str) -> None:
+        """``query_max_tokens`` on a :class:`PoolingEndpoint` caps the query shape (its whole budget there)."""
+        sender = RecordingSender()
+        census = TextTruncationCensus()
+        config = PoolingEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=64,
+            query_max_tokens=4,
+            dim=2,
+        )
+        client = PoolingClient(config, sender=sender, census=census)
+        client.encode(texts(" ".join(["evidence"] * 30)), EncodeRole.QUERY)
+        assert word_tokenizer().count(sender.bodies[0]["input"][0]) <= 4
+        client.encode(texts(" ".join(["evidence"] * 30)), EncodeRole.DOCUMENT)
+        assert 4 < word_tokenizer().count(sender.bodies[-1]["input"][0]) <= 64
 
 
 class TestRerankBudget:

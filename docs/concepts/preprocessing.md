@@ -231,10 +231,14 @@ policy, not a cut.
 ### The budget and the fit
 
 The budget names the tokenizer, the `max_tokens` (the model's whole input sequence, in that tokenizer's tokens),
-optionally `query_max_tokens` (the query's share of a pair budget: when a pair overflows, the query is cut to it
-first and the document gets the rest -- an input under budget goes out unchanged, so within `fit` the share
-binds on overflow), `on_overflow` (`cut` by default, `chunk` or `fail` opt-in), the chunk geometry, and
-`aggregation: max`. `fit` then, per input:
+optionally `query_max_tokens`, `on_overflow` (`cut` by default, `chunk` or `fail` opt-in), the chunk geometry, and
+`aggregation: max`. `query_max_tokens` has a meaning per role: on a reranker's `pair` budget it is the query's
+share (when a pair overflows, the query is cut to it first and the document gets the rest -- an input under budget
+goes out unchanged, so within `fit` the share binds on overflow); on an embedder's or a late-interaction encoder's
+`query` shape it is that shape's WHOLE budget -- per-shape budgets, for the asymmetric and late-interaction
+embedders that cap queries and documents differently (topk-embed-v1-small reads 1024 tokens of query, 8192 of
+document) -- while `max_tokens` keeps capping the `document` shape. A query budget above `max_tokens` is refused
+(on a reranker, one at or over it is refused: the document would keep nothing). `fit` then, per input:
 
 1. measures the fixed overhead once per (template, shape): the template rendered with every content span empty,
    counted as the engine reads it (the shape's `add_special_tokens` flag included);
@@ -243,7 +247,8 @@ binds on overflow), `on_overflow` (`cut` by default, `chunk` or `fail` opt-in), 
 3. on `chunk`, splits the document into verbatim chunks and renders **every chunk with the full template** --
    engine-side chunking of a framed render keeps the frame only on the first and last chunk, so chunking is
    always client-side here;
-4. records every cut in the census under the `text_budget` mechanism.
+4. records every cut in the census under the `text_budget` mechanism, each row naming the shape's own budget
+   (`budget_tokens`: the query rows a declared `query_max_tokens`, the document rows `max_tokens`).
 
 An input under budget comes back byte-identical to the uncut render -- within `fit`, which settles a pair's
 query span per pair. The rerank wire carries one query per request, so the rerank client settles the shared

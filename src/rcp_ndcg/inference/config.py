@@ -193,7 +193,17 @@ class EmbeddingEndpoint(_MediaEndpoint):
             anchors always survive. The cut is never left to the engine: an engine-side truncation of the
             rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which
             a self-hosted role config refuses (declare the budget); a hosted vendor profile with no
-            tokenizer sends content uncut. Content.
+            tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document
+            side); the ``query`` shape is capped by :attr:`query_max_tokens` when that is declared, by this
+            budget when it is not.
+        query_max_tokens: The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape
+            budgets: a late-interaction or asymmetric embedder caps queries and documents differently --
+            topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's
+            WHOLE budget there: the fixed frame is reserved out of it exactly as :attr:`max_tokens`
+            reserves the document shape's. Must not exceed :attr:`max_tokens` -- the model's whole input
+            budget, which no shape's render can be sent over. ``None`` (the default): both shapes are
+            capped by :attr:`max_tokens`. On a :class:`RerankEndpoint` the field keeps its pair-share
+            meaning instead. Content.
         template: The request template as data
             (:class:`~rcp_ndcg.data.templates.TemplateSpec`): per request shape (``query``, ``document``,
             ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens
@@ -229,6 +239,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
         "recipe": FieldRole.CONTENT,
         "tokenizer": FieldRole.RUNTIME,
         "max_tokens": FieldRole.CONTENT,
+        "query_max_tokens": FieldRole.CONTENT,
         "template": FieldRole.CONTENT,
         "on_overflow": FieldRole.CONTENT,
         "chunk": FieldRole.CONTENT,
@@ -247,6 +258,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
     recipe: str | None = Field(default=None, min_length=1)
     tokenizer: str | None = Field(default=None, min_length=1)
     max_tokens: int | None = Field(default=None, ge=1)
+    query_max_tokens: int | None = Field(default=None, ge=1)
     template: TemplateSpec | None = None
     on_overflow: Literal["cut", "chunk", "fail"] = "cut"
     chunk: ChunkPolicy | None = None
@@ -263,11 +275,21 @@ class EmbeddingEndpoint(_MediaEndpoint):
     @model_validator(mode="after")
     def _explicit_budget_and_empty_documents(self) -> EmbeddingEndpoint:
         """A self-hosted role declares its budget (tokenizer and max_tokens); ``send_text`` names its text; a
-        chunk geometry belongs to ``on_overflow: chunk`` only."""
+        chunk geometry belongs to ``on_overflow: chunk`` only; a query budget above the model's whole input
+        budget cannot fit the served context."""
         _require_explicit_budget(self)
         _no_inert_overflow_policies(self)
         _chunk_geometry_matches_overflow(self)
         _empty_doc_pairing(self)
+        if (
+            self.query_max_tokens is not None
+            and self.max_tokens is not None
+            and self.query_max_tokens > self.max_tokens
+        ):
+            raise ValueError(
+                f"query_max_tokens ({self.query_max_tokens}) must not exceed max_tokens ({self.max_tokens}): "
+                "the query shape's budget would be over the model's whole input budget"
+            )
         return self
 
 

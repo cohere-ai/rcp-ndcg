@@ -24,7 +24,7 @@ An embedding endpoint is an `EmbeddingEndpoint` (`rcp_ndcg.inference.config`): t
 | `dimensions` | The Matryoshka cut, sent only when set |
 | `batch_size` | Texts per request, refused above the profile's published cap (Cohere 96, Voyage 128, Gemini 100, the OpenAI route 128) |
 | `concurrency` | Batch requests in flight at once |
-| `recipe`, `tokenizer`, `max_tokens` | Declared for the served engine's settings and the client-side text budget (below): a self-hosted config must declare both `tokenizer` and `max_tokens`, and the client cuts the content spans itself (`on_overflow: cut`, the default; `chunk` pools scores by max, and an embedding has none to pool, so it is refused). The hosted profiles take no `dimensions` (their APIs fix the output dimension); a config that sets `dimensions` on one is refused |
+| `recipe`, `tokenizer`, `max_tokens`, `query_max_tokens` | Declared for the served engine's settings and the client-side text budget (below): a self-hosted config must declare both `tokenizer` and `max_tokens`, and the client cuts the content spans itself (`on_overflow: cut`, the default; `chunk` pools scores by max, and an embedding has none to pool, so it is refused). The hosted profiles take no `dimensions` (their APIs fix the output dimension); a config that sets `dimensions` on one is refused. `max_tokens` caps the document shape; `query_max_tokens` (per-shape budgets) caps the query shape whole -- an asymmetric or late-interaction embedder caps queries and documents differently -- and must not exceed `max_tokens` |
 
 Two hosted shortcuts: a config with no `base_url` points at the profile's public URL
 (`https://api.cohere.com/v2` for Cohere, and so on), and a profile that requires a key raises a

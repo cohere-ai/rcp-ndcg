@@ -6079,6 +6079,12 @@
             "name": "shape"
           },
           {
+            "annotation": "int | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "budget_tokens"
+          },
+          {
             "returns": "None"
           }
         ],
@@ -6242,6 +6248,12 @@
                 "default": null,
                 "kind": "keyword_only",
                 "name": "shape"
+              },
+              {
+                "annotation": "int | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "budget_tokens"
               },
               {
                 "returns": "TextCutRecord"
@@ -9255,6 +9267,13 @@
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
           },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "query_prompt": {
             "alias": null,
             "default": "",
@@ -10124,6 +10143,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "query_prompt": {
             "alias": null,
@@ -12804,6 +12830,13 @@
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
           },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "query_prompt": {
             "alias": null,
             "default": "",
@@ -13454,6 +13487,13 @@
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
           },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "query_prompt": {
             "alias": null,
             "default": "",
@@ -13761,6 +13801,13 @@
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
           },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "query_prompt": {
             "alias": null,
             "default": "",
@@ -14003,6 +14050,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "query_prompt": {
             "alias": null,
@@ -14470,6 +14524,13 @@
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
           },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "query_prompt": {
             "alias": null,
             "default": "",
@@ -14712,6 +14773,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "query_prompt": {
             "alias": null,
@@ -15170,6 +15238,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "query_prompt": {
             "alias": null,
