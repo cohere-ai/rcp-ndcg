@@ -12,7 +12,7 @@ max_output_tokens: 16384
 tokenizer: Qwen/Qwen3.6-27B-FP8
 concurrency: 256
 # The server constrains each answer to the stage's JSON schema (response_format json_schema). Serve the model with
-# its reasoning parser, so the schema applies to the answer, not the reasoning (docs/concepts/serving.md).
+# its reasoning parser, so the schema applies to the answer, not the reasoning (docs/concepts/judges.md).
 decoding: json_schema
 # The checkpoint's image processor (patch 16 x merge 2): the client sizes every image and video frame as it does,
 # so the engine needs no media flags. Set max_images (and max_videos) to judge page-image or video corpora.

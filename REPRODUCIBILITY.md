@@ -40,7 +40,7 @@ Each benchmark dataset holds the judged candidate pools, the human qrels and the
 - this package: `rcp-ndcg eval score --rankings <file> --suite <suite>`, or `rcp_ndcg.eval.evaluate`, with the
   paper's per-suite scoring protocol ([scoring protocols](docs/concepts/protocols.md));
 - stock [mteb](https://github.com/embeddings-benchmark/mteb): `ndcg_float_at_10` through the `rcp_ndcg_tasks.py`
-  shipped with each dataset ([MTEB integration](docs/tutorials/mteb-integration.md)).
+  shipped with each dataset ([MTEB integration](docs/how-to/mteb-integration.md)).
 
 mteb credits tied scores with their group's mean gain on every suite. The paper's NanoBEIR, BRIGHT and TREC-DL
 numbers break ties by a fixed order instead. On untied scores the two conventions agree.
@@ -53,8 +53,8 @@ judge model and the benchmark corpora. The paper's primary judges were Qwen3.5-3
 v3; text only) and Qwen3.6-27B (TREC-DL); gpt-oss-120b was the second judge on NanoBEIR, BRIGHT and TREC-DL.
 
 - The judge configs ship in the package (`src/rcp_ndcg/llm/judges/`, loaded by name), and the paper's engine
-  commands, with their images pinned, are in `experiments/paper/serve/` ([serving](docs/concepts/serving.md)).
-- [Calibrate your benchmark](docs/tutorials/calibrate-your-benchmark.md) walks through a run.
+  commands, with their images pinned, are in `experiments/paper/serve/` ([serving](docs/concepts/judges.md)).
+- [Calibrate your benchmark](docs/how-to/calibrate-your-benchmark.md) walks through a run.
 - The schedules are specified in placements per document, so their window counts scale with the pool. At the
   paper's pool of 150 candidates the defaults give exactly its counts: 53 random, 27 stratified (both mirrored) and
   7 x 8 adaptive tournament windows of 10 (216 calls), and 100 rubric windows of 10, 50 of them random. The page-image
