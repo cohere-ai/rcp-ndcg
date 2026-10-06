@@ -478,9 +478,9 @@ released together.
   retries back off 1 s doubling capped at 60 s, or the server's `Retry-After`, where the OpenAI SDK used its
   own delays; the set-aside and parking numbers (5 s doubling to 60 s) are unchanged. `requirements-constraints.txt`
   regenerated without `openai` (and without `httpx2`, its transport, and `jiter`): the judge sends over `httpx`
-  through the shared transport. `openai` and `httpx2` remain in `uv.lock` only as the `[vllm]` extra's engine
-  package's own dependency (vLLM's server speaks the OpenAI protocol with its own client); the `rcp-ndcg`
-  package itself declares and resolves neither.
+  through the shared transport. `openai` and `httpx2` remained in `uv.lock` only as the `[vllm]` extra's engine
+  package's own dependency (vLLM's server speaks the OpenAI protocol with its own client), and left the lock with
+  that extra (below); the `rcp-ndcg` package itself declares and resolves neither.
 - `tests/contract` snapshots and the exported schemas (`schemas/judge-config.v1.json`,
   `schemas/run-config.v1.json`) regenerated for the judge port: `OpenAIChat` exported from
   `rcp_ndcg.inference`, `Reply.url`, `JudgeClient`'s `httpx_transport` keyword and its `config`/`usage`
@@ -495,7 +495,8 @@ released together.
   usage), the judgement family keys do not move, and the only visible difference is the retry delays, which
   now follow the transport's policy. One reading edge, declared: the adapter reads an answer's **first**
   choice, where the SDK era read the last; the judge never sends a `n` above 1, so no shipped answer moves. `requirements-constraints.txt` no longer carries `openai`, `httpx2` or
-  `jiter`; in `uv.lock` the two remain only as the `[vllm]` extra's engine package's own dependency.
+  `jiter`; in `uv.lock` the two remained only as the `[vllm]` extra's engine package's own dependency, until the
+  extras left with the served-only package (above).
 - The release workflow publishes three packages, one GitHub environment each: the build job builds `rcp-ndcg`,
   `rcp-ndcg-core` and `rcp-ndcg-vllm` (the last from its own directory, outside the uv workspace), checks each
   version against the tag, `rcp-ndcg`'s exact `rcp-ndcg-core` pin and the constraints file against the lock, runs

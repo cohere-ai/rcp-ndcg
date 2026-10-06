@@ -257,6 +257,8 @@ def test_the_release_workflow_checks_the_vllm_packages_rcp_ndcg_pin(tmp_path) ->
     assert check(exact).returncode == 0, "an exact pin must pass"
     assert check('[project]\ndependencies = ["rcp-ndcg[calibrate]==0.0.1"]\n').returncode == 0
     assert check('[project]\ndependencies = ["rcp_ndcg==0.0.1"]\n').returncode == 0, "a _ name normalises"
+    assert check('[project]\ndependencies = ["rcp-ndcg == 0.0.1"]\n').returncode == 0, "spaces normalise"
+    assert check('[project]\ndependencies = ["rcp-ndcg (==0.0.1)"]\n').returncode == 0, "parentheses normalise"
     assert check(None).returncode == 0, "no package, nothing to check"
     assert check('[project]\ndependencies = ["numpy"]\n').returncode == 0, "no dependency, nothing to check"
     for wrong in ("rcp-ndcg>=0.0.1", "rcp-ndcg", "rcp-ndcg[calibrate]", "rcp-ndcg==0.0.2"):
