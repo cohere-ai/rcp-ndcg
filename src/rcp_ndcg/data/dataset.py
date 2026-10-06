@@ -126,7 +126,8 @@ class QueryRow(BaseModel):
 
     Attributes:
         query_id: The query id.
-        text: The query text (the text view of ``content``; empty for a pure image query).
+        text: The query text as given; the parts of ``content`` are authoritative when it is set, and
+            :attr:`as_content` reads them (a text query's ``text`` is its one part's text).
         instruction: A task instruction the query is asked under (BRIGHT), or ``None``.
         content: The query as parts when it carries media; ``None`` for text.
     """
@@ -160,7 +161,8 @@ class DocumentRow(BaseModel):
 
     Attributes:
         doc_id: The document id.
-        text: The document text (title and body; the text view of ``content``).
+        text: The document text (title and body) as given; the parts of ``content`` are authoritative when
+            it is set, and :attr:`as_content` reads them.
         content: The document as parts when it carries media; ``None`` for text.
     """
 
@@ -357,7 +359,7 @@ class Dataset(BaseModel):
         return self._cache[key]
 
 
-def _unique[Keyed: (QueryRow, DocumentRow)](rows: list[Keyed], key: str, what: str) -> dict[str, Keyed]:
+def _unique[Keyed: QueryRow | DocumentRow](rows: list[Keyed], key: str, what: str) -> dict[str, Keyed]:
     table: dict[str, Keyed] = {}
     for row in rows:
         value = getattr(row, key)

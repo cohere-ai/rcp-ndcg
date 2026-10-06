@@ -73,12 +73,26 @@ Three places take a Hugging Face address, each in its own form:
 The same datasets also run through stock `mteb`, with the `rcp_ndcg_tasks.py` file each dataset ships, or through
 `rcp_ndcg.eval.mteb` ([the MTEB tutorial](tutorials/mteb-integration.md)).
 
+## Revisions and identities
+
+A revision such as `main` is a moving pointer, so identities record the commit it resolved to. `rcp_ndcg.data.revisions`
+is the public module for that: `resolve_revision(repo_id, revision)` resolves a revision to the exact commit (the
+Hub once per process, then the local cache when offline), `is_commit(revision)` says whether a revision is already
+a full 40-character lowercase hex commit (so it resolves to itself), and `dataset_uri_revision(uri, revision)`
+reduces a dataset URI and revision to the identity payload's `{repo, commit, verified}`. A commit the resolution
+could not find is `None` with a typed `UNPINNED_REVISION` warning — never an invented value.
+
 ## Other data sources
 
 `load_dataset` also reads a BEIR directory (`beir:<dir>`), JSONL files (`jsonl:<dir>`), and directories of page
 images, video clips or pre-extracted frames. `rcp-ndcg data convert` ingests such a source, or PDFs rendered to page
 images, into JSONL (a
 directory with `corpus.jsonl`, `queries.jsonl` and `qrels.jsonl`, or with `--shape ranking` one file of queries with
-their candidates) or a BEIR directory, which `load_dataset` reads back (`jsonl:<dir>`, `beir:<dir>`). How page
+their candidates) or a BEIR directory, which `load_dataset` reads back (`jsonl:<dir>`, `beir:<dir>`); the BEIR
+round trip keeps grades exactly (`repr`, not six significant digits) and carries a query's `instruction` through.
+A reader refuses what it would otherwise drop silently: a row without an id, a `(query, doc)` pair labelled twice,
+a qrels grade that is not a finite number, a qrels split with no recognisable grade column, a corpus row whose keys
+the record does not declare. The frames reader records each frame's number in its file name in
+`frame_indices`, so a clip sampled at real frame numbers says which frames of the source it showed. How page
 images and video are sized for a judge is a judging setting (`preprocessing` in a run config), not part of the data.
 `rcp-ndcg data inspect` summarises a dataset.

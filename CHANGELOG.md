@@ -434,6 +434,79 @@ released together.
 
 ### Fixed
 
+- **The storage layer's containment, `file://` handling and cache freshness**: `storage.relative` checked
+  containment with a raw string prefix, so `..` escaped it
+  (`relative('/base/root/../../etc/passwd', '/base/root')` returned `'../../etc/passwd'` instead of the
+  documented `DataError`) — both sides are normalised first and an escape is a `DataError`. The local fast
+  paths answered `file://` URIs literally (`Path('file:///x')` is a relative directory named `file:`), so
+  `exists` was `False` for a live file, `info`/`get` raised `FileNotFoundError` naming the literal `file:/...`
+  string, and `makedirs` grew a junk `file:` tree in the working directory while never creating the real one;
+  they strip the scheme through `local_path` now. The remote-object cache re-downloads when a same-length
+  remote overwrite changes a freshness field it had not listed (`created` on the in-memory backend, say) and
+  never reuses an object whose backend exposes no comparable identity (with a warning) — size alone served old
+  bytes forever; the payload and its identity sidecar are renamed under one exclusive lock, so two writers of
+  different identities cannot interleave their renames and leave a torn pair the staleness check validates
+  forever; a missing remote object is a `MissingInputError`; and the cache file name (and its error texts) no
+  longer carry a presigned URL's query string.
+- **The readers refuse what they would have silently dropped or last-won**: a BEIR row without an id (or with
+  an empty one) vanished without a message and is now refused with its file and line; a missing corpus,
+  queries or qrels file raises `MissingInputError` instead of a bare `FileNotFoundError`; a `(query, doc)` pair
+  labelled twice silently took the last label in the BEIR tsv, the HF reader, the sidecar format (whose image,
+  video and frame readers crashed with `AttributeError` where `jsonl` refused — one shared reader now) and the
+  hub loader, and is refused everywhere; a qrels split whose grade column is none of `score`/`relevance`/
+  `label`/`grade` silently labelled every row 1.0 in `HfReader` and is refused with the column list. The hub
+  loader refuses duplicate query ids (it silently kept the last row), a non-finite or out-of-range `gain`, a
+  non-finite `theta`, and names a missing `top_ranked`/`excluded`/`queries` column like the qrels path does.
+- **The BEIR writer keeps what it wrote**: qrels labels are written with `repr` (round-trip exact) instead of
+  `%g`'s six significant digits (a grade of 0.123456789 came back 0.123457); a query's `instruction` is written
+  (the reader restores it) instead of dropped; a media-bearing query is refused like a media-bearing document
+  instead of being written as an empty-text query; and a headerless qrels file no longer loses its first row
+  when the last cell merely fails the digit check (only a row naming the columns is a header).
+- **Estimator inputs are refused, not dropped or misread**: `BradleyTerryEstimator.add_comparison` discarded any
+  comparison naming a document outside `doc_ids` and every self-pair with no error, count or record (an
+  id-format mismatch silently weakened the fit and its standard errors) — it now refuses them, and refuses a
+  non-positive/non-finite weight or a `soft_label` outside `[0, 1]`. `Criteria2PL`'s validator checked only
+  `0 <= s_k <= n`, which a NaN count passes on both sides, so a NaN or fractional pass count flowed into
+  `eap`/`score_document` as `theta=nan` behind a clean-looking `DocumentEstimate`; counts must be finite whole
+  numbers. `Tournament2PLCalibrator.add_observation` likewise refuses a non-finite `theta_bt` (it NaN'd the
+  whole fit), `calibrate_2pl_from_results` records its skips in the new `FitDiagnostics` fields, and a rubric
+  observation row of length not 2 or 3 is refused instead of having its tail silently ignored.
+- **The public records refuse non-finite and naive values**: `QueryParams(tau=inf)` passed `Field(gt=0)` and
+  `alpha=nan` calibrated every ability to NaN; a NaN `Placement.score` made a `valid=True` tournament judgement
+  whose NaN flowed into the fits; `DocumentEstimate` accepted non-finite scalars; `recorded_at` accepted a naive
+  datetime although the store and `supersedes` order windows by it across hosts (mixing naive with aware
+  crashed `supersedes` with a bare `TypeError`). One NaN ranking score also silently disabled the descending
+  sort (a NaN comparison is always False): `descending_score_order` refuses it.
+- **The metric and the gains stop returning wrong numbers at the edges**: inf/NaN gains flowed through
+  `ndcg`'s sums and returned NaN with no error, and a negative gain made it return 1.163 against its own
+  `[0, 1]` contract — gains and ideal gains are finite-checked like scores. `count_gain` returned 9.0 for
+  passes `[9, 9]` at placements 1 and -0.5 for a negative count; pass counts must be whole numbers in
+  `[0, placements]`. `qrel_gain("exponential")` escaped with a bare `OverflowError` (an OS errno string) for
+  grades >= 1024 and accepted NaN grades. `discount(0)` was a bare `ZeroDivisionError`. `gain` overflowed
+  `sum(gammas)` to inf on huge finite gammas and returned 0.0 instead of the weighted mean, and its scalar
+  paths computed in the caller's dtype (a float32 item set returned an `np.float32` ~6e-8 off the same input
+  as floats); scalars now compute in float64 and the weighted mean normalises before summing.
+  `candidate_docs` deduplicates its entering ids (first occurrence) instead of returning a list `ndcg` refuses
+  and `score_query` silently dedupes.
+- **One concept, one field**: `RankingExample.query` duplicated the aliased `text` and could disagree with it
+  in one written line (built with `text=`, `query` stayed empty and both keys were serialised); the field is
+  gone, `query` is only the alias of `text`, and the readers take `example.text`. `Content.truncated` broke its
+  verbatim-prefix contract when a content held an empty text part (the empty part spent the join newline's
+  budget on the next part and was then dropped) and silently cut everything for a negative `max_chars` (a
+  caller bug; `0` legitimately cuts to nothing); it now walks the parts against the joined text. The temp-file
+  + rename publication the media cache and the PDF page render each grew their own copy of now lives in
+  `storage.publish`/`publish_bytes`.
+- `jsonl:`'s dataset name is the file's stem (everything before `.jsonl`), not everything before the first dot:
+  `nfcorpus.v2.jsonl` loaded as `nfcorpus` and two versioned files collided under one name. Its corpus rows are
+  read strictly (an unknown key is refused, not read past — a BEIR-shaped `title` silently vanished into the
+  text). A rankings file of one JSON array of otherwise-valid rows raised a raw `AttributeError` past
+  `load_rankings`' promised `DataError`. `frame_indices` of a frames-reader clip records the frames' own file
+  numbers (which frame of the source it is) instead of their positions in the directory, which cannot say that
+  once the numbering has gaps. `configure_logging("SPAM")` raises the `ConfigError` `paths.log_level()` raises,
+  not a bare `ValueError` from three frames inside `logging`. `join_title` treats a non-string (e.g. NaN) title
+  as no title instead of joining the literal text `nan` in front of the body. The 2PL's `_unique` TypeVar is
+  bounded by the row union, not their tuple.
+
 - `run status`, `run list` and `run show` no longer fail when they read a running job's judgement store while
   the job claims or reports a stage: the store's `identity.json` is written through a temp file and renamed (as
   the run manifest's save is) instead of rewritten in place, so a concurrent reader sees the old or the new

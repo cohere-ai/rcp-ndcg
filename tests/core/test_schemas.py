@@ -1,4 +1,5 @@
-"""Tests for rcp_ndcg_core.schemas — data model invariants."""
+"""Tests for ``rcp_ndcg_core._records`` (the pipeline's records; the public records have their
+own suite in ``test_public_records.py``)."""
 
 from __future__ import annotations
 
