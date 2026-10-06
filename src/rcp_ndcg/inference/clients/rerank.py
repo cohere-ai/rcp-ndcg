@@ -107,7 +107,12 @@ class RerankClient(RoleClient):
 
     # -- the synchronous API -------------------------------------------------
     def rerank(
-        self, query: str | Content, documents: Sequence[str | Content], *, instruction: str | None = None
+        self,
+        query: str | Content,
+        documents: Sequence[str | Content],
+        *,
+        instruction: str | None = None,
+        query_id: str = "",
     ) -> RerankResult:
         """Relevance scores for *documents* against *query*, in the order the documents were given.
 
@@ -118,19 +123,23 @@ class RerankClient(RoleClient):
                 server returns; ``omit_zero`` never sends it and scores 0.0; ``send_text`` sends the
                 placeholder).
             instruction: The task instruction, folded or sent per the config's ``instruction`` mode.
+            query_id: The query's id, for the empty-query refusal's message (``arerank_many`` passes the
+                example's id); ``""`` names it ``<unnamed>``.
 
         Returns:
             One relevance score per document, aligned to the input order (never the server's ranking order).
 
         Raises:
             ConfigError: The config cannot serve this request (see :meth:`__init__`).
+            DataError: the query is empty and the config's ``empty_query: refuse`` (the default) declines
+                it, naming the query id.
             TextBudgetExceededError: ``on_overflow: fail`` and a pair over budget, or a query that fills the
                 budget with no split declared.
             CapabilityError: The endpoint refused the request as too long.
             RequestRejectedError: The endpoint refused this one request.
             ProviderError: The endpoint failed after its retries, or its answer was unusable.
         """
-        return self._run(self.arerank(query, documents, instruction=instruction))
+        return self._run(self.arerank(query, documents, instruction=instruction, query_id=query_id))
 
     def rerank_many(
         self, examples: Sequence[RankingExample], *, checkpoint: Checkpoint | None = None
@@ -389,6 +398,9 @@ class RerankClient(RoleClient):
                     mechanism=TextTruncationCensus.TEXT_BUDGET,
                     budget_source="tokenizer",
                     shape="pair",
+                    # The row names the budget that bounded the settlement, exactly as fit's pair rows do:
+                    # the pair budget (the settled share applies inside it).
+                    budget_tokens=self._budget.max_tokens,
                 )
             pairs = [(settled, document.text) for document in kept_documents]
             result = self._fit(

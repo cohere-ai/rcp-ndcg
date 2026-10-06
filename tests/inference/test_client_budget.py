@@ -271,6 +271,21 @@ class TestEmbedBudget:
         rows = [cut.as_row() for cut in census.cuts(mechanism=TextTruncationCensus.TEXT_BUDGET)]
         assert [(row["shape"], row["budget_tokens"]) for row in rows] == [("query", 3), ("document", 8)]
 
+    def test_query_max_tokens_equal_to_max_tokens_is_a_legal_per_shape_budget(self, tokenizer_json: str) -> None:
+        """The == boundary: both shapes capped the same is a legal per-shape budget -- the client constructs
+        (the budget layer refuses only a share ABOVE the whole budget) and the query shape honours it."""
+        sender = RecordingSender()
+        config = EmbeddingEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=6,
+            query_max_tokens=6,
+        )
+        client = EmbeddingClient(config, sender=sender)
+        client.encode(texts(" ".join(["evidence"] * 30)), EncodeRole.QUERY)
+        assert word_tokenizer().count(sender.bodies[-1]["input"][0]) <= 6
+
 
 class TestPoolBudget:
     def test_a_pool_config_cuts_its_text(self, tokenizer_json: str) -> None:
@@ -358,6 +373,15 @@ class TestRerankBudget:
         }
         settings.update(overrides)
         return RerankEndpoint(**settings)
+
+    def test_request_shape_other_than_text_is_refused(self, tokenizer_json: str) -> None:
+        """The rerank wires implement text only; a declared messages/token_ids shape would be silently inert
+        (the field is CONTENT, so two configs would hash differently and behave identically) -- refused,
+        naming where the other routes do land."""
+        with pytest.raises(ValueError, match="request_shape"):
+            self._config(tokenizer=tokenizer_json, request_shape="token_ids")
+        with pytest.raises(ValueError, match="rerank wires"):
+            self._config(tokenizer=tokenizer_json, request_shape="messages")
 
     def test_a_budget_cuts_the_pair_spans_and_records_the_census(self, tokenizer_json: str) -> None:
         sender = RecordingSender()
@@ -833,6 +857,9 @@ class TestEmptyQuery:
         assert client.config.empty_query == "refuse"
         with pytest.raises(DataError, match="empty_query"):
             asyncio.run(client.arerank("", ["the document"]))
+        # The synchronous path names the id too, through its own query_id argument.
+        with pytest.raises(DataError, match="q42"):
+            client.rerank("", ["the document"], query_id="q42")
 
     def test_send_keeps_todays_empty_string(self, tokenizer_json: str) -> None:
         client = self._client(tokenizer_json, empty_query="send")

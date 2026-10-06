@@ -833,7 +833,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default), ``messages`` or ``token_ids``; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default and the only shape the rerank wires implement today -- any other value is refused, the field exists so a rerank config stays shape-shaped with its siblings). Content.",
           "enum": [
             "text",
             "messages",
@@ -3055,7 +3055,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default), ``messages`` or ``token_ids``; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default and the only shape the rerank wires implement today -- any other value is refused, the field exists so a rerank config stays shape-shaped with its siblings). Content.",
           "enum": [
             "text",
             "messages",
@@ -4611,7 +4611,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default), ``messages`` or ``token_ids``; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default and the only shape the rerank wires implement today -- any other value is refused, the field exists so a rerank config stays shape-shaped with its siblings). Content.",
           "enum": [
             "text",
             "messages",
@@ -5842,7 +5842,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default), ``messages`` or ``token_ids``; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default and the only shape the rerank wires implement today -- any other value is refused, the field exists so a rerank config stays shape-shaped with its siblings). Content.",
           "enum": [
             "text",
             "messages",

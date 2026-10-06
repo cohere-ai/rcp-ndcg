@@ -463,8 +463,9 @@ class RerankEndpoint(_MediaEndpoint):
             request with a typed :class:`~rcp_ndcg.errors.DataError` naming the query id -- the reference
             wrapper refuses an empty query, and silently scoring one against every candidate would rank by
             nothing; ``send`` sends the empty string, today's behaviour. Content.
-        request_shape: How a request crosses the wire: ``text`` (the default), ``messages`` or ``token_ids``;
-            the adapters implement it. Content.
+        request_shape: How a request crosses the wire: ``text`` (the default and the only shape the rerank
+            wires implement today -- any other value is refused, the field exists so a rerank config stays
+            shape-shaped with its siblings). Content.
         instruction: How the reranker's instruction reaches the model: ``"fold"`` folds it into the query text
             (``Task: ...\\nQuery: ...``, today's served behaviour), ``"field"`` sends the engine's own
             ``instruction`` request field (vLLM), ``"system"`` sends it as a system message (the shape some
@@ -525,6 +526,12 @@ class RerankEndpoint(_MediaEndpoint):
         _use_activation_is_explicit_on_a_served_wire(self)
         _chunk_geometry_matches_overflow(self)
         _media_sides_and_the_media_fields(self)
+        if self.request_shape != "text":
+            raise ValueError(
+                f"request_shape {self.request_shape!r} is declared, but the rerank wires send rendered text "
+                "(only the embedding and pooling roles implement the messages and token_ids routes): drop "
+                "request_shape (the default) until the rerank wires land those routes",
+            )
         if (
             self.query_max_tokens is not None
             and self.max_tokens is not None

@@ -416,11 +416,13 @@ class TestPairSplit:
         with pytest.raises(TextBudgetExceededError, match="query_max_tokens"):
             fit([(LONG, "the document")], shape="pair", budget=split, tokenizer=FRAMED)
 
-    def test_query_max_tokens_at_or_over_max_tokens_is_refused(self) -> None:
-        with pytest.raises(ValueError, match="max_tokens"):
-            TextBudget(tokenizer="t", max_tokens=40, query_max_tokens=40)
-        with pytest.raises(ValueError, match="max_tokens"):
+    def test_query_max_tokens_above_max_tokens_is_refused_and_equal_is_legal(self) -> None:
+        """A share above the whole budget is refused; EQUAL is legal -- the per-shape budgets cap both shapes
+        the same (the rerank config refuses an at-or-over pair share one layer up)."""
+        with pytest.raises(ValueError, match="whole input budget"):
             TextBudget(tokenizer="t", max_tokens=40, query_max_tokens=41)
+        equal = TextBudget(tokenizer="t", max_tokens=40, query_max_tokens=40)
+        assert equal.query_max_tokens == 40
 
 
 # ---------------------------------------------------------------------------------------------------------------

@@ -36,9 +36,10 @@ released together.
   segments (a head marker) stay reserved and audited.
 - **Declared content normalisation**: `TemplateSpec.normalize` (CONTENT), per request shape, the ops
   `"strip"` and `"lowercase"` in order (a tuple for every declared shape, or a mapping naming every declared
-  shape); `fit` applies it to the content spans before measuring, so the reference and the engine see the
-  same text. The census rows keep the raw input on their original side. The new `ContentNormalizer` type is
-  exported from `rcp_ndcg.data.templates`.
+  shape); `fit` applies it to the content spans before measuring (through the new `TemplateSpec.normalisers`
+  and `TemplateSpec.normalize_text`), so the reference and the engine see the same text. The census rows keep
+  the raw input on their original side. The new `ContentNormalizer` type is exported from
+  `rcp_ndcg.data.templates`.
 - **Late-interaction skip ids**: `PoolingEndpoint.document_skip_token_ids` (CONTENT, default `()`): the
   pooling client drops document vectors at the positions whose token id is listed -- the ids it sent,
   tokenised from the fitted render -- checks the returned vector count against them (a mismatch is a typed
@@ -56,13 +57,14 @@ released together.
   declares media fields with no allowed side is refused.
 - **`empty_query` on the rerank role** (CONTENT): `refuse` (the default) refuses an empty query with a typed
   error naming the query id; `send` keeps today's empty string.
-- **`request_shape` is implemented end to end**: `openai_embeddings` sends the chat-style embeddings input
-  (`messages`: one user message per item, content parts, image parts and video parts -- sampled frames as
-  image parts, a `video_url` container per the role's `video_policy`), and the embedding and pooling clients
-  send `token_ids` (the ids their fit tokenised; vLLM accepts token-id prompts), refused without a tokenizer.
-  A shape a wire does not implement is refused at construction (the adapters declare their shapes); a media
-  item on a text or token-ids route is refused by the adapter. `EmbedRequest`/`PoolRequest` carry
-  `request_shape` and `token_ids`.
+- **`request_shape` is implemented end to end on the embedding and pooling roles**: `openai_embeddings`
+  sends the chat-style embeddings input (`messages`: one user message per item, content parts, image parts
+  and video parts -- sampled frames as image parts, a `video_url` container per the role's `video_policy`),
+  and both clients send `token_ids` (the ids their fit tokenised; vLLM accepts token-id prompts), refused
+  without a tokenizer. A shape a wire does not implement is refused at construction (the adapters declare
+  their shapes), and a rerank config that declares a non-text shape is refused at the config (the rerank
+  wires send rendered text today); a media item on a text or token-ids route is refused by the adapter.
+  `EmbedRequest`/`PoolRequest` carry `request_shape` and `token_ids`.
 - **Template specials resolve their names exactly** (whitespace included, so a token named `"[Q] "` is
   writable), and an unknown name's hint names the nearest ones before the full list.
 - A prompt prefix has one home: `query_prompt`/`doc_prompt` beside a `template` is refused with a
@@ -76,8 +78,12 @@ released together.
   cut. `TextTokenizer.from_json` resets both at load -- the one construction site in the package
   (`load_tokenizer` and `from_backend` funnel through it), the load-time equivalent of transformers'
   per-call reset.
-- The text-budget census rows name their shape's budget (`budget_tokens`), and the per-shape budget cuts the
-  query shape against `query_max_tokens` exactly as a pair splits it.
+- Every `text_budget` census row names the budget that bounded it (`budget_tokens`) -- the rows `fit`
+  records (the query rows a declared `query_max_tokens`, the document and pair rows `max_tokens`), the
+  hosted-vendor `<budget>` row, and the rerank client's shared-query settlement row -- and the per-shape
+  budget cuts the query shape against `query_max_tokens` exactly as a pair splits it. A query share EQUAL to
+  `max_tokens` is a legal per-shape budget (both shapes capped the same); only a share ABOVE it is refused,
+  and the rerank config keeps refusing an at-or-over pair share.
 - The QA mutation survivors' boundaries are pinned: a cut that fits nothing is empty (never the whole text),
   `smart_resize` accepts an aspect ratio exactly at 200 and keeps a snapped area exactly at `max_pixels`, a
   one-token chunk sits over the cap when its token re-tokenizes longer alone; the suite runs each test under

@@ -353,6 +353,7 @@ class TestDocumentSkipIds:
         )
         with pytest.raises(CapabilityError, match="media"):
             asyncio.run(client.aencode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT))
+        assert sender.sent == []  # refused before anything is sent
 
     def test_token_ids_travel_as_the_input_and_skip_ids_still_apply(self) -> None:
         """3 (pplx): the pooling wire sends the ids the fit tokenised, and the document skip drops the same

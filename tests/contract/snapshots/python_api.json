@@ -10493,6 +10493,12 @@
                 "name": "instruction"
               },
               {
+                "annotation": "str",
+                "default": "",
+                "kind": "keyword_only",
+                "name": "query_id"
+              },
+              {
                 "returns": "RerankResult"
               }
             ]

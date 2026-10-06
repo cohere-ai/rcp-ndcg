@@ -843,12 +843,16 @@ class TextBudget(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _the_split_must_leave_a_document_budget(self) -> TextBudget:
-        """A query share at or over the budget would leave the document nothing to read."""
-        if self.query_max_tokens is not None and self.query_max_tokens >= self.max_tokens:
+    def _a_share_above_the_budget_is_meaningless(self) -> TextBudget:
+        """A query share above the whole budget leaves the document nothing and the query over the served
+        context. Equal is legal: on the embedding roles ``query_max_tokens`` is the query shape's WHOLE
+        budget, and both shapes may be capped the same; on a pair budget an equal share is refused one layer
+        up (the rerank config), and ``fit``'s pair cut refuses a query that would leave the document nothing
+        at runtime."""
+        if self.query_max_tokens is not None and self.query_max_tokens > self.max_tokens:
             raise ValueError(
-                f"query_max_tokens ({self.query_max_tokens}) must be smaller than max_tokens ({self.max_tokens}): "
-                "the document's share of the pair budget would be zero or negative"
+                f"query_max_tokens ({self.query_max_tokens}) must not exceed max_tokens ({self.max_tokens}): "
+                "the query budget would be over the model's whole input budget"
             )
         return self
 
@@ -925,6 +929,7 @@ def _fit_vendor(
             mechanism=TextTruncationCensus.TEXT_BUDGET,
             budget_source="vendor",
             shape=shape,
+            budget_tokens=budget.max_tokens,
         )
     contents: list[ContentParts] = [item if shape != "pair" else (item[0], item[1]) for item in items]
     texts: tuple[str, ...] = () if shape == "pair" else tuple(part for part in contents if isinstance(part, str))
@@ -1053,25 +1058,21 @@ def fit(
 
     template = budget.template
     instr = instruction or ""
-    # The declared content normalisation: the template's per-shape strip/lowercase, applied to the content
-    # spans before anything is measured (the reference and the engine see the same text). Without a
-    # template there is no declaration, so nothing is normalised.
-    ops = template.normalisers(shape) if template is not None else ()
-
-    def normalised(text: str) -> str:
-        """The content span as the engine reads it: the template's declared normalisers, in order."""
-        for op in ops:
-            text = text.strip() if op == "strip" else text.lower()
-        return text
-
-    if ops:
+    # The declared content normalisation: the template's per-shape strip/lowercase (the one call,
+    # :meth:`TemplateSpec.normalize_text`), applied to the content spans before anything is measured (the
+    # reference and the engine see the same text). Without a template there is no declaration, so nothing
+    # is normalised.
+    if template is not None and template.normalisers(shape):
         raw_items = list(items)  # the inputs as given, for the census rows' original side
         if shape == "pair":
             pairs = [(query, document) for query, document in items]
-            items = [(normalised(query), normalised(document)) for query, document in pairs]
+            items = [
+                (template.normalize_text(shape, query), template.normalize_text(shape, document))
+                for query, document in pairs
+            ]
         else:
             assert all(isinstance(item, str) for item in items)  # validated at the top, for the type
-            items = [normalised(str(item)) for item in items]
+            items = [template.normalize_text(shape, str(item)) for item in items]
     else:
         raw_items = items
     # The engine's behaviour for the route: declared on the template; a raw-text request gets the pooling

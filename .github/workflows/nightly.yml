@@ -29,6 +29,7 @@ jobs:
       - name: collect the ids and shuffle them with a dated seed
         run: |
           seed=$(date +%Y%m%d)
+          echo "$seed" > seed.txt
           echo "SEED=$seed" >> "$GITHUB_ENV"
           uv run --no-sync pytest tests/ --collect-only -q -p no:cacheprovider | grep '::' | sort > ids.all
           uv run --no-sync python - "$seed" <<'PY'
@@ -51,11 +52,14 @@ jobs:
           import xml.etree.ElementTree as ET
 
           root = ET.parse("nightly-report.xml").getroot()
-          failures = [
-              case.get("classname", "") + "::" + (case.get("name") or "")
-              for case in root.iter("testcase")
-              if case.find("failure") is not None or case.find("error") is not None
-          ]
+          failures = []
+          for case in root.iter("testcase"):
+              if case.find("failure") is None and case.find("error") is None:
+                  continue
+              # junit writes the class name dotted; a rerunnable id names the file path.
+              module = (case.get("classname") or "").replace(".", "/")
+              path = f"{module}.py" if module and not module.endswith(".py") else module
+              failures.append(f"{path}::{case.get('name') or ''}")
           with open("failures.txt", "w", encoding="utf-8") as handle:
               handle.write("\n".join(failures) + ("\n" if failures else ""))
           print(f"{len(failures)} failing test id(s)")
@@ -69,6 +73,7 @@ jobs:
         with:
           name: nightly-shuffled-${{ env.SEED }}
           path: |
+            seed.txt
             ids.txt
             failures.txt
           if-no-files-found: error

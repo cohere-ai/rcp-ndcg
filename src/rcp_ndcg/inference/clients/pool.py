@@ -155,6 +155,15 @@ class PoolingClient(RoleClient):
             per item, which the adapter refuses when the reply reports usage.
         """
         prepared = self._prepare(contents, role)
+        if (
+            role is EncodeRole.DOCUMENT
+            and self.config.document_skip_token_ids
+            and any(content.has_media for content in prepared.items)
+        ):
+            # Refused before anything is sent: a media request's positions are the server's chat-template
+            # render, which the client cannot tokenise (the same typed refusal _apply_document_skips keeps
+            # as a belt).
+            self._refuse_a_media_batch_under_skip_ids()
         if not prepared.items:
             if not contents:
                 return Embeddings.empty(0, multi_vector=True, dtype=self.config.embed_dtype)
@@ -329,6 +338,21 @@ class PoolingClient(RoleClient):
         assert self.config.mrl_dim is not None
         cut = np.ascontiguousarray(embeddings.vectors[:, : self.config.mrl_dim])
         return Embeddings(vectors=cut, offsets=embeddings.offsets)
+
+    def _refuse_a_media_batch_under_skip_ids(self) -> None:
+        """The typed refusal of a media batch under declared ``document_skip_token_ids``, before anything is
+        sent (the same message :meth:`_apply_document_skips` keeps as a belt).
+
+        Raises:
+            CapabilityError: always (the caller checked the precondition).
+        """
+        raise CapabilityError(
+            f"{self.config.model} declares document_skip_token_ids, but this batch carries media: a media "
+            "request's vector positions are the server's chat-template render, which the client cannot "
+            "tokenise, so the skip positions cannot be found there",
+            hint="encode the text documents with the skip list and the media documents separately (the "
+            "media policy's keep-rule is the engine's), or drop document_skip_token_ids",
+        )
 
     def _apply_document_skips(
         self, contents: Sequence[Content], embeddings: Embeddings, batch_ids: tuple[tuple[int, ...], ...]
