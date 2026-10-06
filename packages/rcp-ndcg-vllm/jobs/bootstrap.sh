@@ -36,9 +36,9 @@ usage() {
        bootstrap.sh wave <STAGE_URI> <OUT_URI> --wave <NAME>" >&2
 }
 
-AUTH_SCRIPT="${RCP_GCS_AUTH_FILE:-/etc/rcp/gcs_auth.sh}"
-
-# The auth script is executed, never printed, and its output is never echoed here.
+# The mounted auth script is executed FIRST - never printed, its output never echoed - because it sets
+# up the credentials every transfer path uses (gcloud, gsutil, or the python gcsfs helper when the
+# image ships neither CLI; see jobs/gcs.sh, which owns that dispatch).
 auth() {
   if [[ ! -f "$AUTH_SCRIPT" ]]; then
     echo "bootstrap: no auth script at $AUTH_SCRIPT (set RCP_GCS_AUTH_FILE); GCS steps cannot run" >&2
@@ -52,14 +52,6 @@ auth() {
     return 1
   fi
   rm -f "$out"
-}
-
-fetch() { # one copy, gcloud first and gsutil as the fallback; $1 source, $2 destination
-  if command -v gcloud >/dev/null; then
-    gcloud storage cp -r "$1" "$2"
-  else
-    gsutil -m cp -r "$1" "$2"
-  fi
 }
 
 now_s() { date +%s; }
@@ -102,6 +94,21 @@ freeze_diff_guard() {
 }
 
 main() {
+# The auth script runs before anything else (credentials first; then the transfer path is chosen -
+# gcloud, gsutil, or the python helper when the image ships neither CLI - and recorded).
+export AUTH_SCRIPT="${RCP_GCS_AUTH_FILE:-/etc/rcp/gcs_auth.sh}"
+GCS_SH="${RCP_GCS_HELPER_SH:-/etc/rcp/files/gcshelper/gcs.sh}"
+GCS_HELPER_PY="${RCP_GCS_HELPER_PY:-/etc/rcp/files/gcshelper/gcs.py}"
+[[ -f "$GCS_SH" && -f "$GCS_HELPER_PY" ]] || {
+  echo "bootstrap: the mounted GCS helpers are missing (gcs.sh: $GCS_SH, gcs.py: $GCS_HELPER_PY)" >&2
+  exit 1
+}
+auth || exit 1
+# shellcheck disable=SC1090  # the helper is mounted at a job-specific path
+source "$GCS_SH"
+export GCS_PY="${GCS_PY:-$(command -v python3)}"
+export GCS_WHEELHOUSE=""  # set once the stage is local; the helper prefers the staged gcsfs wheel
+
 MODE="${1:-}"
 [[ "$MODE" == "envs" || "$MODE" == "wave" ]] || { usage; exit 2; }
 shift
@@ -122,6 +129,10 @@ if [[ "$MODE" == "wave" ]]; then
   done
   [[ -n "$WAVE_NAME" ]] || { echo "bootstrap: wave mode needs --wave <NAME>" >&2; exit 2; }
   STATE="$(mktemp -d "${TMPDIR:-/tmp}/rcp-bootstrap.XXXXXX")"
+  export GCS_TOOLS_DIR="${GCS_TOOLS_DIR:-$STATE/gcs-tools}"
+  TRANSFER="$(gcs_transfer_detect)"
+  export TRANSFER
+  echo "bootstrap: GCS transfer path: $TRANSFER" >&2
 else
   STAGE_URI=""
   STATE=""
@@ -136,6 +147,10 @@ else
     esac
   done
   [[ -n "$STAGE_URI" && -n "$STATE" ]] || { usage; exit 2; }
+  export GCS_TOOLS_DIR="${GCS_TOOLS_DIR:-$STATE/gcs-tools}"
+  TRANSFER="$(gcs_transfer_detect)"
+  export TRANSFER
+  echo "bootstrap: GCS transfer path: $TRANSFER" >&2
   if [[ -n "$WAVE_LIST_FILE" || -n "$RECIPES_DIR" ]]; then
     [[ -n "$WAVE_LIST_FILE" && -n "$RECIPES_DIR" ]] || {
       echo "bootstrap: --wave-list and --recipes go together (the plugins of the listed recipes)" >&2
@@ -152,12 +167,11 @@ if [[ "$STAGE" == "$STAGE_URI" ]]; then
   [[ -d "$STAGE_URI" ]] || { echo "bootstrap: not a stage directory: $STAGE_URI" >&2; exit 1; }
   STAGE_DIR="$STAGE_URI"
 else
-  auth
   STAGE_DIR="$STATE/stage"
   mkdir -p "$STAGE_DIR"
   fetch_start="$(now_s)"
-  fetch "gs://$STAGE" "$STAGE_DIR/"
-  echo "bootstrap: stage downloaded in $(( $(now_s) - fetch_start ))s" >&2
+  gcs_cp "gs://$STAGE" "$STAGE_DIR/"
+  echo "bootstrap: stage downloaded in $(( $(now_s) - fetch_start ))s via $TRANSFER" >&2
 fi
 [[ -f "$STAGE_DIR/manifest.json" ]] || {
   echo "bootstrap: $STAGE_DIR holds no manifest.json (not an rc_build.sh stage)" >&2
@@ -244,12 +258,28 @@ client_install_s="$(( $(now_s) - install_start ))"
 python3 - "$STATE/client-versions.json" "$VERSION" <<'VCHK' || exit 1
 import json
 import sys
+from importlib.metadata import PackageNotFoundError, version
 
 versions = json.load(open(sys.argv[1]))
 expected = sys.argv[2]
 bad = {name: seen for name, seen in versions.items() if seen != expected}
 if bad:
     print(f"bootstrap: the client installed {bad}, not the manifest's {expected}", file=sys.stderr)
+    raise SystemExit(1)
+# The CUDA-lock wheels (nvidia-*, triton) ride in the wheelhouse for the engine; a CPU client must
+# never install them (its specs pull no torch, and the manifest marks them inert).
+
+
+def _installed(dist):
+    try:
+        return version(dist)
+    except PackageNotFoundError:
+        return None
+
+
+inert = {dist: seen for dist in ("triton", "nvidia-cublas", "nvidia-cuda-runtime") if (seen := _installed(dist))}
+if inert:
+    print(f"bootstrap: the client environment gained CUDA-lock wheels it must not have: {inert}", file=sys.stderr)
     raise SystemExit(1)
 VCHK
 
@@ -334,6 +364,18 @@ fi
 freeze_of "$ENGINE_PYTHON" >"$STATE/engine-freeze-after.txt"
 ENGINE_MEASURE_S="$(( $(now_s) - ENVS_START ))"
 freeze_diff_guard "$STATE/engine-freeze-before.txt" "$STATE/engine-freeze-after.txt" "$STATE/plugin-allowed.txt"
+if [[ ! -s "$STATE/plugin-allowed.txt" ]]; then
+  # The plugin canary (wave 0): with no plugin wheel installed, the plugin ecosystem's own dependency
+  # (fla) must not be importable in the engine environment - a leak the freeze guard cannot name.
+  if "$ENGINE_PYTHON" -c 'import fla' >/dev/null 2>&1; then
+    echo "bootstrap: the plugin canary failed: fla is importable in the untouched engine environment" >&2
+    exit 1
+  fi
+  PLUGIN_CANARY="fla not importable"
+else
+  PLUGIN_CANARY="skipped: this wave installs plugin wheels"
+fi
+export PLUGIN_CANARY
 
 # --- the reference environment: the image's torch, read through --system-site-packages ---------------
 
@@ -382,16 +424,22 @@ REPORT_PY="${RCP_REPORT_PY:-/etc/rcp/files/report/report.py}"
 REPORT="$STATE/bootstrap.json"
 python3 "$REPORT_PY" init --file "$REPORT" --schema rcp-ndcg.bootstrap-report.v1 --started "$STARTED"
 python3 "$REPORT_PY" merge --file "$REPORT" --key engine --fragment <(
-  python3 - "$STATE/plugin-allowed.txt" "$ENGINE_PYTHON_VERSION" "$ENGINE_VLLM_VERSION" "$ENGINE_MEASURE_S" <<'PYEOF'
+  python3 - "$STATE/plugin-allowed.txt" "$ENGINE_PYTHON_VERSION" "$ENGINE_VLLM_VERSION" "$ENGINE_MEASURE_S" \
+    "$STATE/engine-freeze-after.txt" "$STAGE_DIR/wheelhouse" "$PLUGIN_CANARY" <<'PYEOF'
 import json
 import sys
 from pathlib import Path
 
-allowed, python_version, vllm_version, measure_s = sys.argv[1:5]
+allowed, python_version, vllm_version, measure_s, freeze_file, wheelhouse, canary = sys.argv[1:8]
 plugins = [line.strip() for line in Path(allowed).read_text(encoding="utf-8").splitlines() if line.strip()]
+freeze = [
+    line.strip()
+    for line in Path(freeze_file).read_text(encoding="utf-8").splitlines()
+    if line.strip()
+]
 print(json.dumps({
     "python": python_version, "vllm": vllm_version, "freeze_unchanged": True, "plugins": plugins,
-    "measure_s": int(measure_s),
+    "measure_s": int(measure_s), "freeze": freeze, "wheelhouse": wheelhouse, "plugin_canary": canary,
 }))
 PYEOF
 )

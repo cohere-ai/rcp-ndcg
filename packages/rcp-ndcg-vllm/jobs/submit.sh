@@ -148,6 +148,8 @@ for wave in "${WAVES[@]}"; do
   fi
   args+=(
     "files.report.from_file=$HERE/report.py" "files.report.mount_path=/etc/rcp/files/report/report.py"
+    "files.gcshelper.from_file=$HERE/gcs.sh" "files.gcshelper.mount_path=/etc/rcp/files/gcshelper/gcs.sh"
+    "files.gcspy.from_file=$HERE/gcs.py" "files.gcspy.mount_path=/etc/rcp/files/gcshelper/gcs.py"
     "files.gcsauth.from_file=$RCP_GCS_AUTH_FILE" "files.gcsauth.mount_path=/etc/rcp/gcs_auth.sh"
     "${TOKEN_OVERRIDE[@]}"
   )

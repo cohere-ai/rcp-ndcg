@@ -39,9 +39,11 @@ def test_every_script_parses(script: Path) -> None:
 
 
 def test_bootstrap_without_arguments_prints_usage_and_fails() -> None:
-    completed = subprocess.run(["bash", str(BOOTSTRAP)], capture_output=True, text=True)
-    assert completed.returncode == 2
-    assert "usage" in completed.stderr
+    """No arguments: no mode. (Without the mounted helpers it refuses earlier, equally loudly.)"""
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(Path(__file__).parent), "RCP_GCS_AUTH_FILE": "/nonexistent"}
+    completed = subprocess.run(["bash", str(BOOTSTRAP)], capture_output=True, text=True, env=env)
+    assert completed.returncode == 1
+    assert "GCS helpers" in completed.stderr
 
 
 # --- the freeze-diff guard (the engine environment may gain exactly the declared plugins) --------------

@@ -101,6 +101,15 @@ echo "rc_build: building the wheelhouse (this downloads the locked dependencies;
 mkdir -p stage/"$RC_NAME"/wheelhouse
 cp -r dist stage/"$RC_NAME"/dist
 cp dist/* stage/"$RC_NAME"/wheelhouse/
+# The public plugin packages (the plugin lanes write packages/rcp-ndcg-vllm/plugins/<name>/), built
+# beside the release wheels so a staged plugin installs from the wheelhouse under --no-deps.
+if [[ -d packages/rcp-ndcg-vllm/plugins ]]; then
+  for plugin_dir in packages/rcp-ndcg-vllm/plugins/*/; do
+    [[ -d "$plugin_dir" ]] || continue
+    echo "rc_build: building the plugin wheel from $plugin_dir"
+    uv build --out-dir stage/"$RC_NAME"/wheelhouse "$plugin_dir"
+  done
+fi
 cp requirements-constraints.txt stage/"$RC_NAME"/requirements-constraints.txt
 cp packages/rcp-ndcg-vllm/requirements-reference.txt stage/"$RC_NAME"/requirements-reference.txt
 uv venv "$WORK/dl" --python 3.12 >/dev/null
@@ -171,6 +180,16 @@ for path in sorted(stage.rglob("*")):
 commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=src).stdout.strip()
 py = subprocess.run([dl_python, "-c", "import sys; print('%d.%d.%d' % sys.version_info[:3])"], capture_output=True, text=True).stdout.strip()
 uv_v = subprocess.run(["uv", "--version"], capture_output=True, text=True).stdout.strip()
+# The CUDA-lock wheels (nvidia-*, triton) ride along because the constraints file pins them on Linux;
+# a CPU client never installs them (the client specs pull no torch at all). The manifest names them so
+# a reviewer can tell the inert bulk from what the node actually reads.
+_INERT_PREFIXES = ("nvidia-", "nvidia_", "triton")
+cpu_inert = sorted(
+    entry["path"].rsplit("/", 1)[-1]
+    for entry in files
+    if entry["path"].endswith(".whl")
+    and entry["path"].rsplit("/", 1)[-1].lower().startswith(_INERT_PREFIXES)
+)
 manifest = {
     "schema": "rcp-ndcg.rc-manifest.v1",
     "rc_name": rc_name,
@@ -178,10 +197,11 @@ manifest = {
     "commit": commit,
     "created": datetime.now(UTC).isoformat(timespec="seconds"),
     "built_with": {"python": py, "uv": uv_v},
+    "cpu_inert_wheels": cpu_inert,
     "files": files,
 }
 (stage / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-print(f"rc_build: manifest lists {len(files)} files")
+print(f"rc_build: manifest lists {len(files)} files ({len(cpu_inert)} inert on a CPU client)")
 PYEOF
 
 echo "rc_build: staging to ${RCP_STAGE_PREFIX%/}/$RC_NAME/"

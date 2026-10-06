@@ -543,7 +543,9 @@ def _load_one(root: Path, recipe_id: str) -> Recipe:
 
 
 def _upload(out: Path, uri: str) -> None:
-    """Copy ``<out>``'s contents to ``uri``: gcloud first, gsutil as the fallback; failures only warn."""
+    """Copy ``<out>``'s contents to ``uri``: gcloud, gsutil, then the product's own storage; failures
+    only warn (the stock engine image ships neither CLI, and the client environment carries the
+    product's gcsfs, so the third path is the node's usual one)."""
     if not any(out.iterdir()):
         return
     for argv in (
@@ -556,7 +558,29 @@ def _upload(out: Path, uri: str) -> None:
             continue
         if completed.returncode == 0:
             return
-    print(f"[wave] upload to {uri} failed (gcloud and gsutil); the wave continues", file=sys.stderr)
+    if _upload_storage(out, uri):
+        return
+    print(
+        f"[wave] upload to {uri} failed (gcloud, gsutil and the python transfer); the wave continues", file=sys.stderr
+    )
+
+
+def _upload_storage(out: Path, uri: str) -> bool:
+    """The product's own storage as the last fallback: every local file under ``out`` written to
+    ``uri`` through :mod:`rcp_ndcg.storage` (the one home for gs:// paths; gcsfs via ADC)."""
+    try:
+        from rcp_ndcg import storage
+    except ImportError:
+        return False
+    try:
+        storage.makedirs(f"{uri.rstrip('/')}/")
+        for path in sorted(out.rglob("*")):
+            if path.is_file():
+                storage.write_bytes(f"{uri.rstrip('/')}/{path.relative_to(out)}", path.read_bytes())
+    except Exception as error:  # noqa: BLE001 - the upload warns, never fails the wave
+        print(f"[wave] the python upload failed: {type(error).__name__}: {error}", file=sys.stderr)
+        return False
+    return True
 
 
 def _now() -> str:

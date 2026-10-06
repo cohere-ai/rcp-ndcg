@@ -30,8 +30,16 @@ released together.
   does — the three distributions, the version and pin checks, the constraints-file check against the
   lock, `twine check`, and a fresh-venv install smoke from the wheelhouse — and stages the six files
   with the wheelhouse (every locked dependency beside the release wheels, the CPU torch build included,
-  `uv export` + `pip download`), the recipes, the plugins, the wave lists and any `EXTRA_DIRS` entries
-  to `<RCP_STAGE_PREFIX>/<name>/`, with a hash manifest (`rcp-ndcg.rc-manifest.v1`). `bootstrap.sh`
+  the plugin wheels under `packages/rcp-ndcg-vllm/plugins/*` built beside them), the recipes, the wave
+  lists and any `EXTRA_DIRS` entries to `<RCP_STAGE_PREFIX>/<name>/`, with a hash manifest
+  (`rcp-ndcg.rc-manifest.v1`) that names the CUDA-lock wheels (`nvidia-*`, `triton`) riding along inert
+  on a CPU client — the client install refuses them. `bootstrap.sh` copies the staged wheelhouse and
+  constraints from the stage prefix to a local directory on the node first (the install source reads
+  only what uv reads: a local directory, `file://` or an `http(s)://` URL — a bucket scheme is refused
+  at config time), executes the mounted auth script before anything else, and moves everything over
+  `gcloud` or `gsutil` when either is on PATH, else the python helper (`jobs/gcs.py` over `gcsfs`,
+  installed with `pip --target` into a tools directory outside the engine environment, with
+  Application Default Credentials); the path that ran is recorded in the wave-0 report. `bootstrap.sh`
   replaces the superseded stub: it verifies the staged files against the manifest, installs `uv` with
   `pip --target` (the product's `bootstrap_uv` location), leaves the engine environment untouched except
   recipe plugin wheels with `--no-deps` (a `pip freeze` diff beyond exactly those wheels fails it),
@@ -46,7 +54,9 @@ released together.
   states printed, and `--script wave0` mounting and running the node test. Wave 0 (`wave0.sh`):
   preflight assumptions, the host facts, the three environments with an unchanged engine freeze, the
   Hub (metadata with the token secret) and a gs:// round-trip through `rcp_ndcg.storage` from the
-  client, two engines on two isolated slots at once, the product's `fit` and embedding client over 20
+  client, the plugin canary (`fla` must not be importable in the untouched engine environment) with
+  the wheelhouse path and every installed engine version recorded, two engines on two isolated slots
+  at once, the product's `fit` and embedding client over 20
   texts (5 over the explicit budget) with the engine's `/tokenize` per input, the HF-cache eviction
   with the disk before/after, and the no-engine assert — fail-fast, with one JSON report
   (`rcp-ndcg.wave0-report.v1`, schema at `packages/rcp-ndcg-vllm/schema/wave0-report.schema.json`) and

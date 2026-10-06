@@ -22,7 +22,10 @@
 #
 # Environment: RCP_GCS_AUTH_FILE (mounted auth script; executed, never printed), HF_TOKEN (the job's
 # secret; never printed), RCP_IMAGE / RCP_IMAGE_DIGEST (recorded), WAVE0_DRY=1 (print the plan, run
-# nothing), RCP_REPORT_PY / RCP_HOST_PY / RCP_BOOTSTRAP_SH (the mounted helpers) and the WAVE0_* knobs.
+# nothing), RCP_REPORT_PY / RCP_HOST_PY / RCP_BOOTSTRAP_SH / RCP_GCS_SH / RCP_GCS_HELPER_PY (the mounted
+# helpers) and the WAVE0_* knobs. The transfer runs gcloud or gsutil when either is present, else the
+# python helper (gcsfs into a tools directory outside the engine environment, ADC); the auth script runs
+# before anything else and the transfer path is recorded in the report's host fragment.
 #
 # Assumes about the node (checked, not assumed): nvidia-smi and python3 on PATH; at least
 # WAVE0_MIN_GPUS GPUs; /dev/shm of at least WAVE0_MIN_SHM_GIB (submit sizes it); free disk above
@@ -58,10 +61,13 @@ AUTH_SCRIPT="${RCP_GCS_AUTH_FILE:-/etc/rcp/gcs_auth.sh}"
 REPORT_PY="${RCP_REPORT_PY:-/etc/rcp/files/report/report.py}"
 HOST_PY="${RCP_HOST_PY:-/etc/rcp/files/wave0host/wave0_host.py}"
 BOOTSTRAP_SH="${RCP_BOOTSTRAP_SH:-/etc/rcp/files/bootstrap/bootstrap.sh}"
+GCS_SH="${RCP_GCS_HELPER_SH:-/etc/rcp/files/gcshelper/gcs.sh}"
+GCS_HELPER_PY="${RCP_GCS_HELPER_PY:-/etc/rcp/files/gcshelper/gcs.py}"
 
 if [[ "${WAVE0_DRY:-0}" == "1" ]]; then
   echo "wave0 (dry): would run, in order, on one node, failing fast at the first failure:"
-  echo "  0. preflight  tools nvidia-smi, python3, gcloud|gsutil; env RCP_GCS_AUTH_FILE, HF_TOKEN;"
+  echo "  0. preflight  tools nvidia-smi, python3; env RCP_GCS_AUTH_FILE, HF_TOKEN; the transfer runs"
+  echo "                gcloud | gsutil | the python gcsfs helper (whichever the image has), recorded"
   echo "                >= $WAVE0_MIN_GPUS GPUs, /dev/shm >= ${WAVE0_MIN_SHM_GIB} GiB, free disk >= ${WAVE0_MIN_FREE_GIB} GiB"
   echo "  a. host       $HOST_PY: image (digest as passed), driver, GPUs, free disk, /dev/shm, pythons"
   echo "  b. bootstrap  $BOOTSTRAP_SH envs $RC_STAGE_URI --state <state>"
@@ -82,18 +88,33 @@ fi
 for tool in python3 nvidia-smi; do
   command -v "$tool" >/dev/null || { echo "wave0: $tool is not on PATH (an assumption of the node)"; exit 1; }
 done
-command -v gcloud >/dev/null || command -v gsutil >/dev/null || {
-  echo "wave0: neither gcloud nor gsutil is on PATH (the report uploads need one)"
-  exit 1
-}
 [[ -f "$AUTH_SCRIPT" ]] || { echo "wave0: no auth script at $AUTH_SCRIPT (set RCP_GCS_AUTH_FILE)"; exit 1; }
 [[ -n "${HF_TOKEN:-}" ]] || { echo "wave0: HF_TOKEN is not set (the job's secret); the Hub check needs it"; exit 1; }
-[[ -f "$REPORT_PY" && -f "$HOST_PY" && -f "$BOOTSTRAP_SH" ]] || {
-  echo "wave0: report.py ($REPORT_PY), wave0_host.py ($HOST_PY) or bootstrap.sh ($BOOTSTRAP_SH) is not mounted"
+[[ -f "$REPORT_PY" && -f "$HOST_PY" && -f "$BOOTSTRAP_SH" && -f "$GCS_SH" && -f "$GCS_HELPER_PY" ]] || {
+  echo "wave0: a mounted helper is missing (report.py: $REPORT_PY, wave0_host.py: $HOST_PY, bootstrap.sh:" \
+    "$BOOTSTRAP_SH, gcs.sh: $GCS_SH, gcs.py: $GCS_HELPER_PY)"
   exit 1
 }
 
+# The mounted auth script runs before anything else (executed, never printed): it sets up the
+# credentials every transfer path uses. Then the transfer path is chosen once, and recorded.
+set +e
+auth_out="$(mktemp)"
+"$AUTH_SCRIPT" >"$auth_out" 2>&1
+auth_status=$?
+rm -f "$auth_out"
+set -e
+if ((auth_status != 0)); then
+  echo "wave0: the GCS auth script failed; see the node's own logs (its output is not echoed)"
+  exit 1
+fi
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/rcp-wave0.XXXXXX")"
+# shellcheck disable=SC1090  # the helper is mounted at a job-specific path
+source "$GCS_SH"
+export GCS_PY="${GCS_PY:-$(command -v python3)}"
+export GCS_TOOLS_DIR="$WORK/gcs-tools"  # outside the engine environment (pip --target, like uv)
+TRANSFER="$(gcs_transfer_detect)"
+export GCS_WHEELHOUSE=""  # set once the stage is local: the helper prefers the staged gcsfs wheel
 REPORT="$WORK/wave0-report.json"
 STATE="$WORK/state"
 SPEC="$WORK/engines-spec.json"
@@ -119,24 +140,17 @@ fail_step() { # fail_step STEP REASON: one line, the report, the engines stopped
   exit 1
 }
 
-upload() { # upload LOCAL REMOTE: one copy, gcloud first; a failure is reported, not fatal
+upload() { # upload LOCAL REMOTE: one copy through the transfer dispatch; a failure is reported, not fatal
   local src="$1" dst="$2"
-  if command -v gcloud >/dev/null; then
-    gcloud storage cp "$src" "$dst" 2>/dev/null || echo "wave0: the upload of $src to $dst failed; continuing" >&2
-  else
-    gsutil cp "$src" "$dst" 2>/dev/null || echo "wave0: the upload of $src to $dst failed; continuing" >&2
-  fi
+  gcs_cp "$src" "$dst" 2>/dev/null || echo "wave0: the upload of $src to $dst failed; continuing" >&2
 }
 
 upload_artifacts() {
   upload "$REPORT" "${OUT_URI%/}/wave0-report.json"
   upload "$REPORT" "${RC_STAGE_URI%/}/reports/wave0-report-$STAMP.json"
   if [[ -d "$WORK/logs" ]]; then
-    if command -v gcloud >/dev/null; then
-      gcloud storage cp -r "$WORK/logs/*" "${OUT_URI%/}/logs/" 2>/dev/null || echo "wave0: the engine logs' upload failed; continuing" >&2
-    else
-      gsutil -m cp -r "$WORK/logs/*" "${OUT_URI%/}/logs/" 2>/dev/null || echo "wave0: the engine logs' upload failed; continuing" >&2
-    fi
+    gcs_cp "$WORK/logs" "${OUT_URI%/}/logs/" 2>/dev/null \
+      || echo "wave0: the engine logs' upload failed; continuing" >&2
   fi
 }
 
@@ -193,7 +207,7 @@ fi
 
 # --- (a) the node's facts -----------------------------------------------------------------------------
 
-python3 "$HOST_PY" --report "$WORK/host.json" --workdir "$WORK/engines" >/dev/null \
+python3 "$HOST_PY" host --report "$WORK/host.json" --workdir "$WORK/engines" --transfer "$TRANSFER" >/dev/null \
   || fail_step host "the host probe failed"
 report merge --file "$REPORT" --key host --fragment "$WORK/host.json" >/dev/null
 if [[ -z "$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["image_digest"] or "")' "$WORK/host.json")" ]]; then
@@ -220,6 +234,7 @@ with open(sys.argv[1], "w", encoding="utf-8") as handle:
     handle.write(json.dumps(document, indent=2) + "\n")
 PYEOF
 report merge --file "$REPORT" --key bootstrap --fragment "$STATE/bootstrap.json" >/dev/null
+export GCS_WHEELHOUSE="$STATE/stage/wheelhouse"  # the helper prefers the staged gcsfs from here on
 
 # --- (c) reachability: the Hub with the token secret, and the GCS round-trip through the product ------
 

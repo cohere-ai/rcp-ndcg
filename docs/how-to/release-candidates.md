@@ -33,7 +33,7 @@ under `<prefix>/rc0/` is what the node installs from:
 | `pairs/` | the stage-2 pairs files, when the checkout has any |
 | `requirements-reference.txt` | what the reference venv installs from the wheelhouse (the image's torch stays) |
 | `extra/<name>/` | the `EXTRA_DIRS` entries (private plugins, pairs, wave lists), as they are |
-| `manifest.json` | the commit, the version, the SHA-256 of every staged file |
+| `manifest.json` | the commit, the version, the CUDA-lock wheels inert on a CPU client (`nvidia-*`, `triton`), the SHA-256 of every staged file |
 
 The wheelhouse is what makes a node install exact and independent of PyPI's state that night: the node
 installs with `--find-links <wheelhouse> --no-index`, never asking an index (PyPI is only ever a

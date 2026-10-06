@@ -23,7 +23,7 @@ __all__ = ["collect", "hub_metadata", "main"]
 _SMI_TIMEOUT_S = 60
 
 
-def collect(workdir: Path) -> dict[str, Any]:
+def collect(workdir: Path, transfer: str | None = None) -> dict[str, Any]:
     """The host facts: image (and digest when the operator resolved one), driver, GPUs, disk, /dev/shm,
     the image python's version."""
     return {
@@ -44,6 +44,7 @@ def collect(workdir: Path) -> dict[str, Any]:
         "python": {"engine": _python_version(sys.executable)},
         "nvidia_smi_present": shutil.which("nvidia-smi") is not None,
         "collected": _now(),
+        "transfer": transfer or "unknown",
         "passed": True,
     }
 
@@ -177,13 +178,14 @@ def main(argv: list[str] | None = None) -> int:
     p_host = sub.add_parser("host", help="the node facts (image, driver, GPUs, disk, /dev/shm, pythons)")
     p_host.add_argument("--report", required=True, help="fragment path (JSON)")
     p_host.add_argument("--workdir", required=True, help="the filesystem whose free disk is measured")
+    p_host.add_argument("--transfer", default=None, help="which transfer path ran: gcloud, gsutil or python")
     p_hub = sub.add_parser("hub", help="one metadata call to the Hub with the token secret")
     p_hub.add_argument("--model", required=True)
     p_hub.add_argument("--revision", default=None, help="the pinned commit to compare the Hub's sha against")
     p_hub.add_argument("--report", required=True)
     args = parser.parse_args(argv)
     if args.command == "host":
-        fragment = collect(Path(args.workdir))
+        fragment = collect(Path(args.workdir), args.transfer)
     else:
         fragment = hub_metadata(args.model, args.revision)
     Path(args.report).parent.mkdir(parents=True, exist_ok=True)
