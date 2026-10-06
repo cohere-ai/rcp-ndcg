@@ -299,7 +299,12 @@ The local runner runs the coordinator in this host's environment and installs no
 refused); on SLURM the option applies with a container runtime — with `container_runtime: none` the node's own
 environment provides the release, and a wheelhouse is refused.
 
-Build the wheelhouse from the RC's checkout, with the same commands the release workflow runs, then download the
+`jobs/rc_build.sh` in `rcp-ndcg-vllm` does all of this in one command (build, checks, wheelhouse, stage,
+manifest) — see [Release candidates and the GPU waves](../how-to/release-candidates.md); the commands it runs
+are these:
+
+```bash
+
 locked dependencies beside the release wheels (for the node's platform; the coordinator installs with `--no-index`,
 so the wheelhouse must carry every package, the CPU torch build included):
 
