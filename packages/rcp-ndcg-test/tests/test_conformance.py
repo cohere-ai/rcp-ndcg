@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 from rcp_ndcg_test.cases import CaseTolerance, load_case, load_cases
-from rcp_ndcg_test.conformance import CaseResult, ConformanceReport, run_case, run_suite
+from rcp_ndcg_test.conformance import ConformanceReport, run_case, run_suite
 from rcp_ndcg_test.errors import CaseError, ConformanceError
 from rcp_ndcg_test.fakes import (
     FakeEmbedEngine,
@@ -327,10 +327,10 @@ def test_the_rerank_client_cuts_a_long_query_to_its_declared_share() -> None:
     """A rerank case with a declared query_max_tokens and a long query: the client cuts the query span
     on the wire (the runner pre-fits nothing)."""
     from rcp_ndcg_core._records import Query
+    from rcp_ndcg_test.cases import CaseDocument, CaseInputs, CaseQuery
+    from rcp_ndcg_test.cases import _recipe_fitter as recipe_fitter
 
     from rcp_ndcg.data.preprocess import fit
-
-    from rcp_ndcg_test.cases import CaseDocument, CaseInputs, CaseQuery, _recipe_fitter as recipe_fitter
 
     recipe = load_recipe(RECIPES / "fake-rerank")
     assert recipe.client.query_max_tokens is not None
@@ -371,7 +371,6 @@ def test_the_rerank_client_folds_the_instruction_itself() -> None:
     The probe query's fold fits the declared share, so the budget binds on overflow only and the wire
     query is the fold, uncut."""
     from rcp_ndcg_core._records import Query
-
     from rcp_ndcg_test.cases import CaseQuery
 
     recipe = load_recipe(RECIPES / "fake-rerank")
