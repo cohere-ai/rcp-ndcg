@@ -142,10 +142,7 @@ def cache(uri: str | Path) -> Path:
         uri: Local path or remote URI.
     """
     if not is_remote(uri):
-        local = local_path(uri)
-        if local is not None:
-            return local
-        return Path(uri)
+        return local_path(uri) or Path(uri)
 
     text = str(uri)
     cached_file = cache_path_for(text)

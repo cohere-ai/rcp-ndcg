@@ -388,12 +388,21 @@ class Judgement(BaseModel):
             if missing or not self.placements:
                 raise ValueError(f"a valid rubric judgement needs criteria on every placement (missing at {missing})")
             for placement in self.placements:
-                assert placement.criteria is not None
-                bad = {c: v for c, v in placement.criteria.items() if v not in (0, 1)}
+                if placement.score is not None:
+                    raise ValueError(
+                        f"placement {placement.position} of a rubric judgement carries a score {placement.score!r}: "
+                        "a rubric placement's verdicts are its criteria; a parser emitting both shapes is a bug"
+                    )
+                bad = {c: v for c, v in (placement.criteria or {}).items() if v not in (0, 1)}
                 if bad:
                     raise ValueError(f"criterion verdicts must be 0 or 1, got {bad}")
         elif not self.placements or any(p.score is None for p in self.placements):
             raise ValueError("a valid tournament judgement needs a score on every placement")
+        elif any(p.criteria is not None for p in self.placements):
+            raise ValueError(
+                "a tournament judgement's placements carry scores, not rubric criteria: a parser emitting "
+                "both shapes is a bug"
+            )
         if self.ranking is not None and sorted(self.ranking) != sorted(positions):
             raise ValueError(f"ranking {list(self.ranking)} is not a permutation of the positions {positions}")
         return self

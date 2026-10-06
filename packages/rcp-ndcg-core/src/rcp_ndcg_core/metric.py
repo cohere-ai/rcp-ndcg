@@ -174,7 +174,8 @@ def ndcg(
     else:
         _validate_ranking(scores)
         ranked_gains = [gains.get(doc_id, 0.0) for doc_id in scores[:k]]
-    ideal_values = list(gains.values() if ideal is None else ideal)
+    _validate_gains(gains.values())
+    ideal_values = list(ideal) if ideal is not None else list(gains.values())
     _validate_gains(ideal_values)
     normaliser = ideal_dcg(ideal_values, k)
     if not ranked_gains or normaliser == 0.0:
