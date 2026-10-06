@@ -862,30 +862,16 @@ class TestRerankChunkAndOmitCompose:
 
 
 class TestEngineMediaCheckPass:
-    """The passing path: an honest engine whose prompt-token report covers the same request the client
-    counted (media block + the probe's text tokens) passes the check."""
+    """The passing path: an honest engine whose media DELTA (its report with the image minus its report
+    without it) matches the counted media tokens. The counts are hand-verified from the request, not taken
+    from the client's own helpers: a 224x224 image under the qwen2_vl policy is 8x8 = 64 patches plus the
+    two vision wrapper markers = 66 tokens, whatever the client counts."""
 
-    def test_an_honest_engine_passes_and_leaks_no_temp_file(self, tokenizer_json: str) -> None:
+    TEMPLATE_TOKENS = 137  # a served chat template's cost, the same on both probe requests
 
-        counted_box: dict[str, int] = {}
-        client = None
-
-        class HonestSender(RecordingSender):
-            async def send(self, calls: Any) -> list[Any]:
-                from rcp_ndcg.inference.types import Reply
-
-                # An honest engine counts the same request the client counted: the probe's media block
-                # plus its text tokens, exactly as the client counted them.
-                tokens = counted_box["counted"]
-                return [
-                    Reply(
-                        200,
-                        {"data": [{"index": 0, "data": [[1.0, 1.0]]}], "usage": {"prompt_tokens": tokens}},
-                        {},
-                    )
-                ]
-
-        client = PoolingClient(
+    @staticmethod
+    def _client(sender: Any, *, tokenizer_json: str) -> PoolingClient:
+        return PoolingClient(
             PoolingEndpoint(
                 base_url="http://127.0.0.1:9000/v1",
                 model="colqwen",
@@ -896,14 +882,88 @@ class TestEngineMediaCheckPass:
                 image_processor="qwen2_vl",
                 max_images=4,
             ),
-            sender=_CountingSender(tokenizer_json),
+            sender=sender,
         )
+
+    @staticmethod
+    def _honest_pool_sender(media_tokens: int = 66, template_tokens: int = 137) -> Any:
+        """A served pooling engine: both probe requests ride the chat template (``template_tokens``), the
+        with-image one adds the media block (``media_tokens``) -- hand-verified, not the client's arithmetic."""
+
+        class HonestPoolingSender(RecordingSender):
+            async def send(self, calls: Any) -> list[Any]:
+                from rcp_ndcg.inference.types import Reply
+
+                replies = []
+                for call in calls:
+                    message = call.json.get("messages")
+                    carries_image = any(
+                        part.get("type") == "image_url"
+                        for item in message or []
+                        for part in item.get("content", [])
+                        if isinstance(part, dict)
+                    )
+                    tokens = (media_tokens if carries_image else 0) + template_tokens
+                    replies.append(
+                        Reply(200, {"data": [{"index": 0, "data": [[1.0, 1.0]]}], "usage": {"prompt_tokens": tokens}}, {})
+                    )
+                return replies
+
+        return HonestPoolingSender()
+
+    def test_a_served_chat_template_does_not_fail_the_check(self, tokenizer_json: str) -> None:
+        """An engine that renders a chat template around every probe request: its two reports differ by the
+        media block alone, the template cancels in the delta, and the check passes -- a template beyond the
+        client's counting never fails a correct engine."""
+        client = self._client(self._honest_pool_sender(), tokenizer_json=tokenizer_json)
+        asyncio.run(client.check_engine_media())  # the delta (66) matches the counted media tokens
+
+    def test_an_honest_engine_passes_and_leaks_no_temp_file(self, tokenizer_json: str) -> None:
         import tempfile
 
+        client = self._client(self._honest_pool_sender(), tokenizer_json=tokenizer_json)
         before = set(tempfile.gettempdir())
         asyncio.run(client.check_engine_media())
         leaked = {name for name in set(tempfile.gettempdir()) - before if name.endswith(".png")}
         assert not leaked, "the probe file is cleaned up"
+
+    def test_the_rerank_probes_the_same_delta(self, tokenizer_json: str) -> None:
+        """The rerank wire's baseline is its own body without the media: the honest engine's delta matches
+        the counted media tokens and the check passes on a served rerank engine with a chat template."""
+
+        class HonestRerankSender(RecordingSender):
+            async def send(self, calls: Any) -> list[Any]:
+                from rcp_ndcg.inference.types import Reply
+
+                replies = []
+                for call in calls:
+                    documents = call.json["documents"]
+                    carries_image = any(isinstance(document, dict) for document in documents)
+                    tokens = (66 if carries_image else 0) + self.template
+                    replies.append(
+                        Reply(200, {"results": [{"index": 0, "relevance_score": 0.5}], "usage": {"prompt_tokens": tokens}}, {})
+                    )
+                return replies
+
+        sender = HonestRerankSender()
+        sender.template = self.TEMPLATE_TOKENS
+        from rcp_ndcg.inference import RerankClient
+        from rcp_ndcg.inference.config import RerankEndpoint
+
+        client = RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                use_activation=False,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            sender=sender,
+        )
+        asyncio.run(client.check_engine_media())
 
 
 class _CountingSender(RecordingSender):

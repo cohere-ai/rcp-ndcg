@@ -49,6 +49,7 @@ from collections.abc import Sequence
 from typing import Any, ClassVar, Final
 
 import numpy as np
+from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError, RequestRejectedError
 from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
@@ -148,12 +149,7 @@ class VllmPooling:
             (media batches included) as its own ``messages`` request -- the only shape in which the server
             applies the model's chat template to image placeholders.
         """
-        wire = {
-            "task": _TASK,
-            "encoding_format": _ENCODING_FORMAT,
-            "embed_dtype": request.embed_dtype,
-            "endianness": _ENDIANNESS,
-        }
+        wire = self._wire(request.embed_dtype)
         if any(content.has_media for content in request.contents):
             from rcp_ndcg.data.media import content_parts_payload
 
@@ -176,6 +172,32 @@ class VllmPooling:
                 json={**wire, "model": model, "input": [content.text for content in request.contents]},
             )
         ]
+
+    def _wire(self, embed_dtype: str) -> dict[str, str]:
+        """The request fields every ``/pooling`` call of this adapter carries."""
+        return {
+            "task": _TASK,
+            "encoding_format": _ENCODING_FORMAT,
+            "embed_dtype": embed_dtype,
+            "endianness": _ENDIANNESS,
+        }
+
+    def media_probe_baseline(self, request: PoolRequest, *, model: str) -> Call:
+        """The media probe's baseline: the same ``messages`` request the media batch takes, with the media
+        parts replaced by one text part -- the engine's two prompt-token reports differ by the media block
+        alone (the chat template and the text cancel in the difference), which is what the client's media
+        check compares with the counted media tokens."""
+        from rcp_ndcg.data.media import content_parts_payload
+
+        return Call(
+            method="POST",
+            path=self._PATH,
+            json={
+                **self._wire(request.embed_dtype),
+                "model": model,
+                "messages": [{"role": "user", "content": content_parts_payload(Content.from_text(""))}],
+            },
+        )
 
     def interpret(self, request: PoolRequest, replies: Sequence[Reply]) -> Embeddings:
         """The ragged embeddings of ``request``, from the replies of :meth:`calls` (one per call, in order).

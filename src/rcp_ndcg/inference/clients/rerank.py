@@ -481,6 +481,16 @@ class RerankClient(RoleClient):
         )
         return self._adapter.calls(request, model=self.config.model)
 
+    def _probe_baseline_calls(self, content: Content) -> Sequence[Call] | None:
+        """The probe request without its media: the same body shape, the document as the plain text it
+        carries (the engine's two prompt-token reports differ by the media block alone)."""
+        request = RerankRequest(
+            query=Content.from_text("probe"),
+            documents=(Content.from_text(content.text),),
+            instruction=None,
+        )
+        return self._adapter.calls(request, model=self.config.model)
+
     async def probe(self) -> Any:
         """The role's startup probe: the transport's replica probe, plus -- when the config declares an
         ``image_processor`` -- the engine media check (never silent)."""

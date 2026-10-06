@@ -250,6 +250,22 @@ class PoolingClient(RoleClient):
         )
         return self._adapter.calls(request, model=self.config.model)
 
+    def _probe_baseline_calls(self, content: Content) -> Sequence[Call] | None:
+        """The probe request without its media, in the same ``messages`` shape the media request takes (the
+        pooling wire routes media through the chat template; the baseline must ride it too, or the delta
+        would carry the template). A wire adapter that offers no baseline form records the check
+        ``not_checked``."""
+        baseline = getattr(self._adapter, "media_probe_baseline", None)
+        if baseline is None:
+            return None
+        request = PoolRequest(
+            contents=(content,),
+            role=EncodeRole.DOCUMENT,
+            embed_dtype=self.config.embed_dtype,
+            dim=self.config.dim,
+        )
+        return [baseline(request, model=self.config.model)]
+
     async def probe(self) -> Any:
         """The role's startup probe: the transport's replica probe, plus -- when the config declares an
         ``image_processor`` -- the engine media check (one prepared probe image, the engine's prompt-token

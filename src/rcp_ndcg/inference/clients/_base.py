@@ -533,22 +533,23 @@ class RoleClient[C: Endpoint]:
         return Content.from_parts(parts)
 
     async def check_engine_media(self) -> None:
-        """The startup media probe: one prepared probe image to the engine, its prompt tokens compared
-        with the counted ones (never silent).
+        """The startup media probe: one prepared probe image beside its no-media baseline, the engine's
+        media DELTA compared with the counted media tokens (never silent).
 
         Runs when the role declares an ``image_processor``: the probe sends one prepared image through the
-        adapter, counts the request's prompt tokens exactly (the media block plus the probe's text tokens --
-        what the declared budget counts; a server-side chat template beyond it is the recipe's
-        responsibility), and :func:`~rcp_ndcg.data.resolution.engine_media_check` compares the engine's own
-        ``usage.prompt_tokens`` with it -- the counted number covers the same request (the media block
-        plus the probe's text tokens). A mismatch is a typed :class:`~rcp_ndcg.errors.ProviderError`
-        (the message names ``image_processor`` and the server's media flags); a reply without usage is
-        recorded in the media census as ``not_checked`` -- the check never passes silently.
+        adapter -- and the same request without its media -- and takes the DELTA of the engine's two
+        ``usage.prompt_tokens`` reports. The delta cancels everything the two requests share (a server-side
+        chat template, the route's special tokens, the probe's text), so it reports the media block alone;
+        :func:`~rcp_ndcg.data.resolution.engine_media_check` compares it with the counted media tokens of
+        the prepared probe. A mismatch is a typed :class:`~rcp_ndcg.errors.ProviderError` whose message
+        names ``image_processor`` and the server's media flags; a reply without usage is recorded in the
+        media census as ``not_checked`` -- the check never passes silently. A wire that offers no no-media
+        form of its probe request is recorded ``not_checked`` too.
 
         Raises:
-            CapabilityError: the engine refused the probe request, or the config's own media gate refused
+            CapabilityError: the engine refused a probe request, or the config's own media gate refused
                 the probe (the request's media against ``max_images``/``max_videos``).
-            ProviderError: the engine's prompt-token count disagrees with the counted one.
+            ProviderError: the engine's media delta disagrees with the counted media tokens.
         """
         image_policy, video_policy = self._media_policies()
         if image_policy is None or getattr(self.config, "image_processor", None) is None:
@@ -567,20 +568,11 @@ class RoleClient[C: Endpoint]:
                 probe_path = probe_file.name
             probe = Content.from_image(f"file://{probe_path}")
             prepared = self._prepare_request([probe])
-            # The counted number must cover the same request the engine's report covers (the contract in
-            # :func:`~rcp_ndcg.data.resolution.engine_media_check`): the media block plus every text token
-            # the probe calls carry (the role's query, a text part), in the declared tokenizer's tokens --
-            # what the declared budget counts; a server-side chat template beyond it is the recipe's
-            # responsibility.
-            assert self._tokenizer is not None, "an image_processor implies a declared budget tokenizer"
-            calls = list(self._probe_calls(prepared.contents[0]))
+            probe_content = prepared.contents[0]
+            calls = list(self._probe_calls(probe_content))
             self._gate_media_calls(calls)  # the probe's own request follows the config's limits too
-            counted = sum(count.tokens for count in self._media_counts_of(prepared.contents)) + self._text_tokens_of(
-                calls
-            )
-            replies = await self._sender.send(calls)
-            tokens = self._probe_usage(replies[0])
-            if tokens is None or tokens.input_tokens is None:
+            baseline_calls = self._probe_baseline_calls(probe_content)
+            if baseline_calls is None:
                 self.media_census.record(
                     corpus=self.ROLE,
                     doc_id="engine_media_check:not_checked",
@@ -588,47 +580,60 @@ class RoleClient[C: Endpoint]:
                     dropped=False,
                 )
                 get_logger(__name__).warning(
-                    "engine media check: the %s reply reported no usage, so the counted prompt tokens cannot "
-                    "be verified against the engine (recorded as not_checked); media counting proceeds on "
-                    "the declared %s policy",
+                    "engine media check: the %s adapter offers no no-media baseline for its probe request, "
+                    "so the engine's media delta cannot be taken (recorded as not_checked); media counting "
+                    "proceeds on the declared %s policy",
                     getattr(self._adapter_cls, "name", self.config.api),
                     getattr(self.config, "image_processor", None),
                 )
                 return
-            mismatch = engine_media_check(tokens.input_tokens, counted)
+            # The counted number is the prepared probe's media block alone (the engine's delta is exactly
+            # that: both probe requests carry the same text and whatever template the wire renders, so
+            # those cancel in the difference). The prepared reference carries its sizes, so the count is
+            # exact -- no bound is involved.
+            counted = self._media_counts_of([probe_content])[0].tokens
+            replies = await self._sender.send([*calls, *baseline_calls])
+            with_media = self._probe_usage(replies[0])
+            without_media = self._probe_usage(replies[-1])
+            if (
+                with_media is None
+                or without_media is None
+                or with_media.input_tokens is None
+                or without_media.input_tokens is None
+            ):
+                self.media_census.record(
+                    corpus=self.ROLE,
+                    doc_id="engine_media_check:not_checked",
+                    media=[prepared.media[0]],
+                    dropped=False,
+                )
+                get_logger(__name__).warning(
+                    "engine media check: the %s reply reported no usage, so the engine's media delta cannot "
+                    "be taken (recorded as not_checked); media counting proceeds on the declared %s policy",
+                    getattr(self._adapter_cls, "name", self.config.api),
+                    getattr(self.config, "image_processor", None),
+                )
+                return
+            mismatch = engine_media_check(with_media.input_tokens - without_media.input_tokens, counted)
             if mismatch is not None:
-                raise ProviderError(mismatch.message, hint=mismatch.message)
+                raise ProviderError(
+                    mismatch.message,
+                    hint="verify the served engine's media handling against the declared image_processor and "
+                    "image_policy (no engine-side media flags that resize again), or correct the declaration",
+                )
         finally:
             if probe_path:
                 Path(probe_path).unlink(missing_ok=True)
 
+    def _probe_baseline_calls(self, content: Content) -> Sequence[Call] | None:
+        """The probe request without its media -- the baseline the engine's media DELTA is taken against
+        (the same wire shape, the media parts gone). ``None``: this role's adapter offers no baseline form,
+        and the media check is recorded ``not_checked``."""
+        return None
+
     def _probe_calls(self, content: Content) -> Sequence[Call]:
         """The calls one prepared probe item is sent as (the role's wire)."""
         raise NotImplementedError
-
-    def _text_tokens_of(self, calls: Sequence[Call]) -> int:
-        """The text tokens the probe calls' bodies carry (the query, or the text parts) -- the part of the
-        request's prompt the client can count exactly, beside the media block."""
-        assert self._tokenizer is not None
-
-        def walk(value: Any) -> str:
-            if isinstance(value, str):
-                return value
-            if isinstance(value, dict):
-                texts = [
-                    walk(item)
-                    for key, item in value.items()
-                    if key in ("query", "text", "input", "messages", "documents")
-                ]
-                content = value.get("content")
-                if isinstance(content, list):
-                    texts.extend(part.get("text", "") for part in content if isinstance(part, dict))
-                return " ".join(text for text in texts if text)
-            if isinstance(value, list):
-                return " ".join(walk(item) for item in value)
-            return ""
-
-        return sum(self._tokenizer.count(walk(call.json)) for call in calls)
 
     def _probe_usage(self, reply: Reply) -> TokenCount | None:
         """The reply's prompt-token report (``None``: the engine reported none)."""

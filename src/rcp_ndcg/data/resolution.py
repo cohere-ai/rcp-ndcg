@@ -499,11 +499,14 @@ VISION_WRAPPER_TOKENS = 2
 
 
 class EngineMediaMismatch(NamedTuple):
-    """An engine's prompt-token count for one prepared probe image, against the client's counted one.
+    """An engine's media DELTA for one prepared probe image, against the client's counted media tokens.
 
-    The two numbers disagree when the engine was started with a media budget nobody declared, when its
-    processor family is not the one the client reproduced, or when the served model changed under the same
-    name: any of these means the counted tokens do not describe what the engine sees.
+    The delta is the engine's ``usage.prompt_tokens`` with the probe image minus its report for the same
+    request without it -- the chat template, the special tokens and the probe's text cancel, so the delta
+    reports the media block alone. The two numbers disagree when the engine was started with a media budget
+    nobody declared, when its processor family is not the one the client reproduced, or when the served
+    model changed under the same name: any of these means the counted tokens do not describe what the
+    engine sees.
     """
 
     reported: int
@@ -518,26 +521,28 @@ class EngineMediaMismatch(NamedTuple):
     def message(self) -> str:
         """What the mismatch means, for a person or a record."""
         return (
-            f"the engine reports {self.reported:,} prompt tokens for the probe, but the client counted "
-            f"{self.counted:,} ({self.difference:+,}): the served engine's media handling is not the one the "
-            "counted tokens describe. Check that the engine runs the declared image_processor without media "
-            "flags that resize again, and that its prompt-token report covers the same request as the probe."
+            f"the engine's media block costs {self.reported:,} prompt tokens for the probe (its report with "
+            f"the image minus its report without it), but the client counted {self.counted:,} "
+            f"({self.difference:+,}): the served engine's media handling is not the one the counted tokens "
+            "describe. Check that the engine runs the declared image_processor without media flags that "
+            "resize again, and that its prompt-token report covers the probe requests."
         )
 
 
 def engine_media_check(reported: int, counted: int) -> EngineMediaMismatch | None:
-    """Compare an engine's prompt-token count for one prepared probe image with the counted one.
+    """Compare an engine's media DELTA for one prepared probe image with the counted media tokens.
 
-    The probe is one prepared image whose prompt-token count the client has counted exactly -- as
-    :func:`content_media_tokens` does -- plus whatever template tokens the probe request carries; both numbers
-    must cover the same request. ``None`` when the engine counts exactly what the client counted; the typed
-    mismatch otherwise, which the caller records or raises: a mismatch means the engine's media handling is
-    not what the declared policy and the counted tokens describe (a reconfigured engine, a mis-declared
-    processor family), so every later count is suspect.
+    The delta is the engine's ``usage.prompt_tokens`` for the probe request WITH the prepared image minus
+    its report for the same request WITHOUT the media: everything the two requests share (a server-side
+    chat template, the route's special tokens, the probe's text) cancels, so the delta reports the media
+    block alone -- the same thing :func:`content_media_tokens` counts. ``None`` when the engine counts
+    exactly what the client counted; the typed mismatch otherwise, which the caller records or raises: a
+    mismatch means the engine's media handling is not what the declared policy and the counted tokens
+    describe (a reconfigured engine, a mis-declared processor family), so every later count is suspect.
 
     Args:
-        reported: The engine's ``usage.prompt_tokens`` for the probe request.
-        counted: The client's exact count of the same probe request's prompt tokens.
+        reported: The engine's media delta (its two prompt-token reports' difference).
+        counted: The client's exact count of the prepared probe's media tokens.
 
     Returns:
         ``None`` when the two agree; the :class:`EngineMediaMismatch` when they do not.
