@@ -335,6 +335,14 @@ released together.
   (`GET <url>/models`).
 - The `ServeConfig` fields' schema descriptions are role-neutral (the same engine shape serves the judge, the
   retrieval encoder and the reranker); no property changed.
+- New recipe `qwen3-vl-reranker-2b` (`packages/rcp-ndcg-vllm/recipes/qwen3-vl-reranker-2b/`, shipped in the sdist):
+  Qwen/Qwen3-VL-Reranker-2B as a pointwise reranker on the stock `vllm/vllm-openai:v0.31.0` pooling runner --
+  three-key `hf_overrides`, the served chat template as data plus a shipped template file (rewritten to the recipe
+  variable convention, byte-equal under the engine's render), the explicit 8192-token budget with a 4096 query
+  share, `instruction: none` (the card's default instruction pinned as fixed frame text), `use_activation: true`
+  (probability), `empty_doc: send_text "NULL"`, and `mm_processor_kwargs` min_pixels 4096 / max_pixels 1310720
+  (1280 tokens/image, R20). `reference.known_deviations: [anchor_drop_over_cap]`: the card's script truncates
+  over-cap pairs itself. Status `unverified` until the GPU waves run stages 2-3.
 
 ### Fixed
 
