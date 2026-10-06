@@ -290,6 +290,18 @@ def test_count_gains_matching_no_labelled_query_are_refused() -> None:
         evaluate(_oracle(divided=True), dataset=suite, metrics=["count_ndcg"], count_gains=stray, k=1, bootstrap=0)
 
 
+def test_gains_keyed_by_an_unknown_subset_prefix_are_refused() -> None:
+    """A typo'd subset prefix ('biolog/0' for 'biology') used to silently drop that subset's gains from the
+    aggregate -- one dataset's rows, no warning, and its gains' bounds unchecked; it is refused by name."""
+    suite = _bright_like()
+    typo = {"biolog/0": {"biology-a": 9.9}}
+    valid = {f"earth_science/{q}": docs for q, docs in (suite.subsets[1].gains or {}).items()}
+
+    with pytest.raises(DataError, match="no subset") as caught:
+        evaluate(_oracle(divided=True), dataset=suite, gains={**typo, **valid}, k=1, bootstrap=0)
+    assert "biolog" in caught.value.message
+
+
 def test_rcp_ndcg_never_falls_back_to_integer_qrels() -> None:
     with pytest.raises(DataError, match="integer qrels are not RCP gains"):
         evaluate(_rankings(), dataset=_dataset())

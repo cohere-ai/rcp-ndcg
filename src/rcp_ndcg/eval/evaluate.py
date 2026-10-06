@@ -302,12 +302,13 @@ def evaluate(
     selected = _selected_systems(rankings, systems)
 
     rcp_gains, source = _resolve_gains(gains, dataset) if "rcp_ndcg" in metrics else (None, "none")
-    if "count_ndcg" in metrics and count_gains is None:
-        raise DataError("count_ndcg needs count_gains= (the share of passed rubric criteria per document)")
-    if count_gains is not None:
+    if "count_ndcg" in metrics:
+        # The gains are validated where they are scored: a qrel-only run that carries count gains for a later
+        # run reads them as it left them, exactly as gains= on a qrel-only run reads the RCP ones.
+        if count_gains is None:
+            raise DataError("count_ndcg needs count_gains= (the share of passed rubric criteria per document)")
         _refuse_bare_keys(count_gains, dataset)
-    if count_gains is not None:
-        _refuse_bare_keys(count_gains, dataset)
+        _refuse_unknown_prefixes(count_gains, dataset)
         if not any(_gains_for(count_gains, part, dataset) for part in dataset.parts):
             raise DataError(
                 f"the count gains match no labelled query of {dataset.name!r}",
@@ -446,6 +447,7 @@ def _resolve_gains(gains: Any, dataset: Dataset) -> tuple[dict[str, Mapping[str,
         elif isinstance(gains, Mapping):
             resolved, source = dict.fromkeys((part.name for part in parts), gains), "gains"
             _refuse_bare_keys(gains, dataset)
+            _refuse_unknown_prefixes(gains, dataset)
         else:
             raise ConfigError(f"gains must be a mapping or have a gains() method, got {type(gains).__name__}")
         if not any(_gains_for(resolved[part.name], part, dataset) for part in parts):
@@ -491,9 +493,10 @@ def _gains_for(
     else:  # one dataset, no ambiguity: every bare key is its, unlabelled queries included
         bare = {q: docs for q, docs in gains.items() if not q.startswith(prefix)}
     if prefixed and bare:
+        first_prefixed = sorted(key for key in gains if key.startswith(prefix))[0]
         raise DataError(
             f"the gains of {part.name!r} mix '<subset>/<query_id>' keys with bare query ids (e.g. "
-            f"{sorted(prefixed)[0]!r} and {sorted(bare)[0]!r}): the prefixed ones would win and the "
+            f"{first_prefixed!r} and {sorted(bare)[0]!r}): the prefixed ones would win and the "
             "bare-keyed queries would silently lose their gains",
             hint="key every gain '<subset>/<query_id>' (a suite's parts may share query ids), or key them all "
             "by bare query id",
@@ -677,6 +680,29 @@ def _refuse_bare_keys(gains: Mapping[str, Any], dataset: Dataset) -> None:
             shared,
             "key them '<subset>/<query_id>', or pass the calibration of the subsets",
             "pass the calibration of the subsets, or score one subset with --subset",
+        )
+
+
+def _refuse_unknown_prefixes(gains: Mapping[str, Any], dataset: Dataset) -> None:
+    """Refuse gains keyed ``'<something>/<query_id>'`` where no subset of the suite has that name.
+
+    The mirror of :func:`_refuse_bare_keys`: a typo'd subset name would silently drop that subset's gains
+    from its part (one dataset's rows in the aggregate, no warning, and the gains' bounds unchecked). A key
+    that is a labelled query of some part is a bare id and reads as one, whatever slashes it carries.
+
+    Raises:
+        DataError: Naming the stray keys and the subsets the suite has.
+    """
+    if not dataset.subsets:
+        return
+    prefixes = tuple(f"{part.name}/" for part in dataset.parts)
+    labelled = {q for part in dataset.parts for q in set(part.qrels) | set(part.gains or {})}
+    strays = sorted(key for key in gains if "/" in key and not key.startswith(prefixes) and key not in labelled)
+    if strays:
+        raise DataError(
+            f"the gains are keyed '<{strays[0].split('/', 1)[0]}>/<query_id>' but no subset has that name "
+            f"(e.g. {strays[0]!r}); the subsets are {sorted(prefixes)}",
+            hint="key them '<subset>/<query_id>' with the exact subset names, or by bare query id",
         )
 
 

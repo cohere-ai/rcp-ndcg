@@ -298,6 +298,7 @@ def fuse(rankings: Sequence[Rankings], *, rrf_k: int = 60, depth: int = 150, sys
 
     Raises:
         DataError: No rankings to fuse, or two rankings that share a subset ranking different queries.
+        ConfigError: ``depth`` or ``rrf_k`` is not positive.
     """
     from rcp_ndcg_core._records import RankingExample
 

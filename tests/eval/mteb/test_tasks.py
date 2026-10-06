@@ -28,6 +28,9 @@ def test_ndcg_float_credits_tied_documents_their_group_mean(monkeypatch: pytest.
     with pytest.raises(DataError, match="q9") as caught:  # the docstring once promised ValueError, the code KeyError
         ndcg_float_scores({}, {"q9": {"a": 1.0}}, k_values=(2,))
     assert caught.value.hint or ""
+    with pytest.raises(DataError, match="finite") as caught:  # the score came from the model, not the gains
+        ndcg_float_scores({"q1": {"a": 1.0}}, {"q1": {"a": float("nan")}}, k_values=(2,))
+    assert caught.value.hint or ""
 
 
 def test_task_metadata_is_read_from_the_published_task_file_as_data() -> None:

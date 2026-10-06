@@ -2,9 +2,8 @@
 
 One inference layer for every model the package calls: where a model is served, the wire types its requests
 and answers travel in, the adapter that speaks its protocol, and one client per role. This page documents the
-rerank role: its wire adapter, its hosted profiles and its client. The transport's behaviour (routing, retries,
-parking) arrives with the transport work; a role client used without a sender builds a transport and fails
-until then, and a test or a third party can inject any `Sender`.
+rerank role: its wire adapter, its hosted profiles and its client. A role client used without a sender builds
+its own transport from the config, and a test or a third party can inject any `Sender` (a test double, say).
 
 ## The wire adapter: the Cohere-shaped rerank
 

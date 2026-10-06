@@ -490,9 +490,11 @@ released together.
 - **`retrieval fuse` fuses per-subset files**: one file per (system, subset), as a per-subset fan-out writes
   them, fuses each subset from the files that name it instead of failing with "no rankings of dataset" naming
   the wrong datasets; a ranking with no rows for a subset stays out of that subset's fusion, and no rankings
-  at all is refused before the loop. A search over an index directory written in the earlier build's pickle
-  format is refused with a rebuild hint instead of a bare file error, and so is an index whose `meta.json` is
-  missing or unreadable.
+  at all is refused before the loop.
+- **A BM25 index directory that cannot be searched is refused by name**: one written in the earlier build's
+  pickle format (loading it would run its code), one without the `meta.json` that names its stemmer, and one
+  whose `meta.json` is unreadable or stemmer-less are all `MissingInputError` with a rebuild hint (the last
+  two were bare file errors).
 
 - `run status`, `run list` and `run show` no longer fail when they read a running job's judgement store while
   the job claims or reports a stage: the store's `identity.json` is written through a temp file and renamed (as
