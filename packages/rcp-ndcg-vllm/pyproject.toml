@@ -52,3 +52,6 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "network: needs the public HuggingFace Hub; the test also skips itself unless RCP_NDCG_NETWORK_TESTS=1",
+]

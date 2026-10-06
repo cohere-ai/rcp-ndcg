@@ -42,6 +42,32 @@ released together.
   stage 3 (`stage3_metrics`), the wave runner (`run_wave`) and the subprocess reference runner (`run_reference`)
   are public with package tests covering each; `metrics.py` shells out to `rcp-ndcg eval score` (the product is
   a dependency, so no extra is needed for stage 3).
+- **The harness drives the product's role clients** (`rcp_ndcg.inference.clients.EmbeddingClient`,
+  `PoolingClient`, `RerankClient`, built from `client_config(recipe)` with the recipe's real budget): stage 2
+  pre-fits nothing and clears no budget field -- the client prompts, fits and settles exactly as the served
+  path does (a reranker's shared query span settles once per call). Stage 1 captures the clients' request
+  bodies through the product's own transport injection point (a capturing `httpx` transport handed to the
+  client's `Transport` as its `httpx_transport`; the product's offline fake answers when no engine is given)
+  and audits them: the anchor audit (the settle-once query included) and the engine's `/tokenize` (R29) read
+  the same captured bodies, the reference's `render` compares against them, and the served template file is
+  rendered against the declared template for every declared shape. Removed with the wiring: the harness's own
+  `fold_query`, `_fit_pair`, `_pair_tokens` and the pre-fit-then-send path (over-cap is decided on the
+  client's census; an uncut query could reach the engine before it, and the recorder hand-built bodies that
+  had already drifted from the adapters').
+- `record` drives the product's role client for the role route's fixture (the product's request, byte for
+  byte) and records the provenance `GET /v1/models` plus the role route's over-length and unknown-field 400s
+  (bare probes: the clients cut before an engine would refuse). The `/score` route is no longer recorded (no
+  product client speaks it); a failed `--record` step fails the wave recipe's verdict.
+- Recipe rules (at load, with the product's messages): a rerank recipe speaks `api: rerank` and takes no
+  `serve.convert`; an embed/multi_vector recipe's template cannot declare an `{content: instruction}` span
+  (the role's clients fill no instruction); `recipe.input` declaring an image or video must declare media
+  capacity on the client (`max_images`/`max_videos` > 0); `client_config()` keeps a declared `client.recipe`;
+  `engine.min_version` accepts release candidates. The product's `TemplateSpec` refuses an empty fixed
+  segment (a workaround marker for the anchor audit's old last-fixed-segment rule, which now falls to the
+  post-processor's tail when a shape ends in content).
+- Stage 1's report carries `checked` (the audited request count) for `EQUIVALENCE.md`; `tests/recipes/` is
+  the recipe lanes' network-gated home (`RCP_NDCG_NETWORK_TESTS=1`; downloads land in
+  `RCP_NDCG_VLLM_TOKENIZER_CACHE` or `tmp_path`, never the checkout).
 
 - **`JobSpec` takes exactly one of `argv` and `phases`** (`rcp_ndcg.runners`): a job without phases runs its
   `argv`; a phased job's commands are its phases' `argv`, and it carries no `argv` of its own — both or neither

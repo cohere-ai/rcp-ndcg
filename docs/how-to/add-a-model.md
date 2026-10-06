@@ -7,13 +7,14 @@ workspace; it is installed into the engine image, which carries its own vLLM and
 
 ## The recipe directory
 
-One directory per model, `packages/rcp-ndcg-vllm/recipes/<id>/`, with three files:
+One directory per model, `packages/rcp-ndcg-vllm/recipes/<id>/`, with four files:
 
 ```text
 recipes/<id>/
-  recipe.yaml      # the recipe (the Recipe schema; every field is listed in schema/recipe.schema.json)
-  template.jinja   # the chat template given to vllm serve --chat-template (only when the model needs one)
-  reference.py     # the reference implementation, run as a subprocess (see the reference interface)
+  recipe.yaml                  # the recipe (the Recipe schema; every field is listed in schema/recipe.schema.json)
+  template.jinja               # the chat template given to vllm serve --chat-template (only when the model needs one)
+  reference.py                 # the reference implementation, run as a subprocess (see the reference interface)
+  requirements-reference.txt   # optional: the reference environment; overrides the package's shared one
 ```
 
 The `id` equals the directory name, matches `^[a-z0-9][a-z0-9.-]*$`, and is also the `--served-model-name` the
@@ -62,12 +63,13 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
   up on the slot's GPUs first; the reference subprocess runs against the pairs file while the engine is up and
   releases its memory when it exits.
 
-Recipe YAML at a glance (abridged; the schema's docstrings define every field):
+Recipe YAML at a glance (a complete, loadable recipe — `tests/docs` runs `load_recipe` on it; the schema's
+docstrings define every field):
 
 ```yaml
-id: qwen3-reranker-0.6b
-model: Qwen/Qwen3-Reranker-0.6B
-revision: <40-hex commit>        # quoted: a bare commit can read as a number
+id: example-reranker-0-6b
+model: example-org/example-reranker
+revision: "0123456789abcdef0123456789abcdef01234567"   # quoted: a bare commit can read as a number
 role: rerank                     # embed | multi_vector | rerank
 input: [text]                    # subset of [text, image, video]
 scoring: pointwise               # rerank only: pointwise | listwise
@@ -76,41 +78,38 @@ engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0"}
 resources: {gpus: 1}             # tensor_parallel_size = gpus
 serve:                           # everything rendered into `vllm serve` argv; nothing implicit
   runner: pooling
-  hf_overrides: {"architectures": [...], "classifier_from_token": ["no", "yes"]}   # always quote strings!
+  convert: null
+  hf_overrides: {"architectures": ["ExampleForSequenceClassification"], "classifier_from_token": ["no", "yes"]}
+                                 # always quote strings YAML reads as booleans ("no", "yes", "on")!
   chat_template: template.jinja  # a file in this directory, or null
   pooler_config: {use_activation: true}   # keys must be PoolerConfig fields at the pinned engine
+  trust_remote_code: false
   max_model_len: 8192
   dtype: bfloat16
+  plugin: null
   extra_args: []                 # further flags, verbatim (one argv element per item)
-client:                          # the rcp-ndcg endpoint fields this recipe implies
-  api: rerank                    # openai_embeddings | vllm_pooling | rerank
-  request_shape: text            # text | messages | token_ids
-  add_special_tokens: null       # bool|null; true declares the post-processor end token as the anchor
-  template:                      # the request shapes as data; specials by name, never typed
-    pair:
-      - {special: im_start}      # resolved from the tokenizer's added tokens
-      - {text: "system\nJudge whether the document answers the query."}
-      - {special: im_end}
-      - {content: query}         # the cuttable span; fold mode puts the instruction text here
-      - {content: document}
-      - {text: "assistant-suffix-readonly"}   # sketch: a fixed tail the model reads - a real recipe
-                                              # writes the measured text or ids here
-    anchor: last
-    query_max_tokens: 1024       # the query's share of the pair budget; the document span gets the rest
-  instruction: fold              # rerank only: none | field | fold | system
-  default_instruction: "Judge whether the document answers the query."
-  tokenizer: "<repo>@<40-hex commit>"
+client:                          # the product's endpoint config for the role; the product validates it at load
+  api: rerank                    # the role's wire: openai_embeddings | vllm_pooling | rerank
+  tokenizer: "example-org/example-reranker@0123456789abcdef0123456789abcdef01234567"
   max_tokens: 8192               # explicit; there is no implicit budget
+  query_max_tokens: 1024         # the query's share of the pair budget; the document span gets the rest
+  template:                      # the request shapes as data: fixed and content segments only
+    pair:
+      - {fixed: "SYSTEM: Judge whether the Document answers the Query. USER: Query: "}
+      - {content: query}         # the cuttable span; fold mode puts the instruction text here
+      - {fixed: " Document: "}
+      - {content: document}
+      - {fixed: "{special:im_end} ASSISTANT"}   # specials by name, resolved from the tokenizer
+    anchor: last
+  instruction: fold              # rerank only: none | field | fold | system (fold is the default)
+  use_activation: true           # a served rerank wire must set it: the score's scale is content
   on_overflow: cut               # cut (default) | chunk | fail; cuts apply to content spans only
-  aggregation: null              # only with on_overflow: chunk; max is the only supported aggregation
-  empty_doc: omit_zero           # omit_zero | send | send_text
-  normalize: null                # embed and multi_vector only
-  embed_dtype: null              # multi_vector only; float16 by default, sent explicitly (engine default float32)
+  empty_doc: send                # omit_zero | send | send_text
 reference:
   kind: transformers             # transformers | sentence_transformers | remote_code | stored_scores
   score_scale: probability       # probability | logit | cosine; vectors compare per vector
   entry: reference.py
-  known_deviations: []           # e.g. [anchor_drop_over_cap]: stage 2 gates under-cap pairs only
+  known_deviations: []           # e.g. [anchor_drop_over_cap]: the over-cap pairs are reported non-gating
 gates: {}                        # overrides of the stage-2 defaults for this score_scale
 status: {state: unverified, image: null, date: null, report: null}
 sources: []                      # URLs and path:line references the recipe rests on
@@ -132,15 +131,22 @@ reference.py --mode <render|score|embed> --pairs <file> --out <file> \
              --tokenizer "<repo>@<revision>|path/to/tokenizer.json" --device <cpu|cuda:0>
 ```
 
-- `--mode render` — stage 1's reference side: `{"rows": [{"index", "shape", "text": str}]}`, the exact prompt
-  text the reference expects the engine to see for that pair's declared shape (the anchor-preserving render:
-  fixed segments reserved, content cut, template re-attached).
+- `--mode render` — stage 1's reference side. Embedding roles: `{"rows": [{"index", "shape", "text": str}]}` —
+  the exact prompt the engine reads for that pair's declared shape (the fixed frame around the content; the
+  post-processor's tokens are the engine's). Rerank: `{"rows": [{"index", "shape": "pair", "query": str,
+  "documents": [str, ...]}]}` — the spans the client ships (the query as the recipe's instruction mode folds
+  it, the documents as shipped; the frame is the engine's own template). One input per shape is rendered (the
+  row's query for the query shape, its first document for the document shape).
 - `--mode score` — rerank: `{"rows": [{"index", "scores": [float, ...]}]}` on the recipe's
-  `reference.score_scale` (probability | logit | cosine).
-- `--mode embed` — embedding roles: `{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[...]]}]}`
-  (dense: one vector per side; late interaction: one per token).
-- `packages/rcp-ndcg-vllm/requirements-reference.txt` pins the reference environment (torch, transformers,
-  sentence-transformers as needed); it is documented, not installed, by the harness.
+  `reference.score_scale` (probability | logit | cosine), one score per document in the order the pairs file
+  gives them.
+- `--mode embed` — embedding roles: `{"rows": [{"index", "query_vectors": [...], "document_vectors": [...]}]}` —
+  per text: one vector for a dense embedder, one per-token matrix for a late-interaction model (the same
+  nesting for query and document sides, for every text of the row).
+- The reference environment: `packages/rcp-ndcg-vllm/requirements-reference.txt` pins it for every recipe
+  (torch, transformers, sentence-transformers as needed); a recipe may ship its own
+  `recipes/<id>/requirements-reference.txt`, which overrides the shared one for that recipe. It is documented,
+  not installed, by the harness.
 
 ## Choosing how vLLM serves a model
 
@@ -154,8 +160,8 @@ no flag can express the model's scoring.
 A last-token-pooling embedder's anchor is its trailing end token: the wrapper renders `prefix + text + suffix`
 and the naive fix — truncating the whole string on the right — drops the token the model was trained to read
 out of. The correct cut reserves the suffix, cuts only the text, and re-attaches the template. The mechanism in
-ten dependency-free lines (the real implementation is the product's `fit` in `rcp_ndcg.data.preprocess`, checked
-against your reference in stage 1):
+ten dependency-free lines (the real implementation is the product's `fit` in `rcp_ndcg.data.preprocess` — the
+same call the role clients make, with the recipe's real budget — audited against the captured wire in stage 1):
 
 ```python
 # The template block of a last-token-pooling embedder, as segments:
@@ -178,22 +184,34 @@ over-length input, every declared anchor id sits at its declared position in the
 
 ## The three equivalence stages
 
-Stage 1 (CPU, zero tolerance) renders every sampled prompt the way the client renders it — a declared shape
-assembled from segments, or the `template.jinja` file under a jinja2 environment with `trim_blocks` and
-`lstrip_blocks` on, a stripped trailing newline and undefined variables refused (the instruction variable
-carrying the pairs row's instruction, empty when the row has none — in `fold` mode the query text already
-carries it) — tokenises with the recipe's tokenizer and requires exact equality with `reference.render`. Each
-declared shape is sampled on its own (at least 20 over-length inputs per shape, padded in that shape's own
-content span), and the audit asserts every anchor survived the cut on the served render of every shape. The
-result is reported as `anchor_check`, separately from the token-id mismatches; when `serve.chat_template` is
-set, stage 1 also proves the declared shapes render to the same token ids as the template file.
+Stage 1 probes the recipe's role client for every sampled input through the product's injection point (the
+engine when `--base-url` is given, the product's offline fake otherwise) and audits what the client actually
+sends — the harness re-derives no render, no cut and no settlement. Each declared shape is sampled on its own
+(at least 20 over-length inputs per shape, padded in that shape's own content span), and:
 
-Stage 2 scores or embeds the same pairs against the served engine (plain `httpx` to `/rerank`, `/v1/embeddings`,
-`/pooling`) and applies the gates: probability |Δ| ≤ 0.02 for 99% of documents and ≤ 0.05 for all; logit |Δ| ≤
-0.05·(1 + |s|); cosine scores |Δ| ≤ 0.01; vectors cosine ≥ 1 − 1e-3 per vector (per token, after the same
-float16 cast); median per-query Kendall τ ≥ 0.98. A recipe's `gates` section overrides any of these. With
-`reference.known_deviations: [anchor_drop_over_cap]`, pairs whose uncut prompt exceeds `client.max_tokens` are
-reported in a separate, non-gating table and the gates run on the under-cap pairs only.
+- `anchor_check` asserts every anchor survived the client's cut, on the captured requests of every shape —
+  the rendered prompt's edge for the embed roles, and for a reranker the settle-once query (one settled span
+  per row, identical across the row's pointwise requests, within its declared `query_max_tokens`, and no cut
+  on an in-budget pair);
+- `render_check` compares the reference subprocess's `render` output against the captured texts, zero
+  tolerance — every declared shape of every pairs-file row (a row carrying the per-row `shape` field is
+  compared too; the injected over-length samples are audited, not compared). Under a declared
+  `reference.known_deviations: [anchor_drop_over_cap]`, the rows the client had to cut are reported in a
+  separate non-gating table here as well (the reference renders them its own way by declaration);
+- `engine_tokenize_check` (R29, needs the engine) requires the engine's `/tokenize` ids and counts of every
+  captured text to equal the recipe tokenizer's; reported `not_run` without an engine, never as passed;
+- `template_render_check`, when `serve.chat_template` is set: the template file's jinja2 render (the engine's
+  settings) against the declared template's render, for every declared shape.
+
+Stage 2 sends the same pairs through the product's role clients (`EmbeddingClient`, `PoolingClient`,
+`RerankClient`) built from the recipe's real budget — the client prompts, fits and settles exactly as the
+served path does (for a reranker, the shared query span settles once per call) — and applies the gates:
+probability |Δ| ≤ 0.02 for 99% of documents and ≤ 0.05 for all; logit |Δ| ≤ 0.05·(1 + |s|); cosine scores
+|Δ| ≤ 0.01; vectors cosine ≥ 1 − 1e-3 per vector (per token, after the same float16 cast); median per-query
+Kendall τ ≥ 0.98. A recipe's `gates` section overrides any of these. With
+`reference.known_deviations: [anchor_drop_over_cap]`, the inputs the client had to cut (decided on the
+client's own census) are reported in a separate, non-gating table — in stage 2 for every role — and the gates
+run on the under-cap pairs only.
 
 Stage 3 (optional) scores rankings per subset with `rcp-ndcg eval score` as a subprocess (the package depends
 on `rcp-ndcg`, so the command is always available) and requires the mean |Δ nDCG@10| over subsets ≤ 2e-3.

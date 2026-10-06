@@ -315,9 +315,10 @@ def _finalise(
             if record:
                 run.status["steps"]["record"] = _record(run.recipe, base_url, out)
             steps = run.status["steps"]
+            record_ok = not record or steps["record"].get("state") == "passed"
             run.status["state"] = (
                 "verified"
-                if steps["smoke"].get("state") == "passed" and steps["equivalence"].get("passed")
+                if steps["smoke"].get("state") == "passed" and steps["equivalence"].get("passed") and record_ok
                 else "failed"
             )
         else:

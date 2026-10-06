@@ -112,7 +112,9 @@ class EngineSpec(BaseModel):
 
     name: Literal["vllm"]
     image: str = Field(min_length=1, description="repository:tag of the engine image")
-    min_version: str = Field(pattern=r"^\d+\.\d+\.\d+$", description="known-good engine version")
+    min_version: str = Field(
+        pattern=r"^\d+\.\d+\.\d+(rc\d+)?$", description="known-good engine version (a release candidate counts)"
+    )
     startup_timeout_s: int = Field(default=1800, gt=0)
 
 
@@ -340,6 +342,16 @@ class Recipe(BaseModel):
             raise ValueError(f"role=embed speaks api: openai_embeddings, got client.api={client.api!r}")
         if self.role == "multi_vector" and client.api != "vllm_pooling":
             raise ValueError(f"role=multi_vector speaks api: vllm_pooling, got client.api={client.api!r}")
+        if rerank and client.api != "rerank":
+            raise ValueError(
+                f"role=rerank speaks api: rerank, got client.api={client.api!r} -- the config would load and only "
+                "fail at client construction; name the role's wire"
+            )
+        if rerank and self.serve.convert is not None:
+            raise ValueError(
+                f"serve.convert ({self.serve.convert}) serves an embed or classify endpoint, not a reranker; "
+                "a rerank recipe declares the checkpoint's scorer through engine.hf_overrides instead"
+            )
         if isinstance(client, PoolingEndpoint) and client.template is not None and client.template.pair is not None:
             raise ValueError("a multi_vector recipe's template declares query and document shapes, not a pair")
         if self.role == "multi_vector" and not isinstance(client, PoolingEndpoint):
@@ -350,6 +362,27 @@ class Recipe(BaseModel):
             raise ValueError(
                 f"client.max_tokens ({self.client.max_tokens}) must not exceed engine.max_model_len "
                 f"({self.serve.max_model_len}): the engine would 400 the rendered prompt"
+            )
+        if self.role in ("embed", "multi_vector") and client.template is not None:
+            # The embed roles' clients fill no instruction span (their encode carries no instruction): a recipe
+            # declaring one would render it empty -- silently, so it is refused at load.
+            for shape in ("query", "document"):
+                segments = getattr(client.template, shape, None) or ()
+                if any(segment.content == "instruction" for segment in segments):
+                    raise ValueError(
+                        f"an {self.role} recipe's {shape!r} template declares an {{content: instruction}} span, "
+                        "but the role's client cannot fill one (its encode carries no instruction); fold the "
+                        "instruction into the query text, or serve the model as role=rerank"
+                    )
+        if "image" in self.input and getattr(self.client, "max_images", 0) == 0:
+            raise ValueError(
+                "recipe.input declares image but the client config carries max_images: 0 -- the client would "
+                "refuse every image before the engine saw one; declare max_images (or drop the modality)"
+            )
+        if "video" in self.input and getattr(self.client, "max_videos", 0) == 0:
+            raise ValueError(
+                "recipe.input declares video but the client config carries max_videos: 0; declare max_videos "
+                "(or drop the modality)"
             )
         return self
 
@@ -519,9 +552,13 @@ def client_config(recipe: Recipe, *, base_url: str) -> dict[str, Any]:
     model's dump (:class:`~rcp_ndcg.inference.config.EmbeddingEndpoint`,
     :class:`~rcp_ndcg.inference.config.PoolingEndpoint` or
     :class:`~rcp_ndcg.inference.config.RerankEndpoint`), with ``base_url`` set — the dict the product's own
-    config loader accepts unchanged, and what :func:`load_recipe` validated at load.
+    config loader accepts unchanged, and what :func:`load_recipe` validated at load.  A ``client.recipe`` the
+    recipe declared itself is kept as declared (never overwritten with the recipe id).
     """
-    endpoint = recipe.client.model_copy(update={"base_url": base_url, "recipe": recipe.id})
+    updates: dict[str, Any] = {"base_url": base_url}
+    if not recipe.client.recipe:
+        updates["recipe"] = recipe.id
+    endpoint = recipe.client.model_copy(update=updates)
     return endpoint.model_dump()
 
 

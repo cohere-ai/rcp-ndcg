@@ -9,7 +9,7 @@ engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0", s
 resources: {gpus: 1}
 serve:
   runner: pooling
-  convert: classify
+  convert: null
   hf_overrides: {}
   chat_template: template.jinja
   pooler_config: {}
@@ -22,15 +22,17 @@ client:
   api: rerank
   tokenizer: ../../tokenizer.json
   max_tokens: 160
+  query_max_tokens: 48
   template:
     pair:
-      - {fixed: "SYSTEM: Judge whether the Document answers the Query. Answer yes or no. USER: Query: "}
+      - {fixed: "SYSTEM: Judge whether the Document answers the Query. Answer yes or no.\nSYSTEM: Follow this instruction.\nUSER:\nQuery: "}
       - {content: query}
-      - {fixed: " Document: "}
+      - {fixed: "\nDocument: "}
       - {content: document}
-      - {fixed: " ASSISTANT"}
+      - {fixed: "\nASSISTANT:"}
     anchor: last
-  instruction: fold
+  instruction: field
+  use_activation: true
   on_overflow: cut
   empty_doc: send
   listwise: true

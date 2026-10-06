@@ -35,6 +35,7 @@ client:
       - {fixed: " ASSISTANT"}
     anchor: last
   instruction: fold
+  use_activation: true
   on_overflow: cut
   empty_doc: send
 reference:

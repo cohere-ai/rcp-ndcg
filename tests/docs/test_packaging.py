@@ -280,11 +280,19 @@ def test_the_release_workflow_check_fails_when_two_environments_are_swapped() ->
 
 
 def test_both_distributions_ship_the_license_and_the_notice() -> None:
-    """NOTICE attributes the third-party code (Apache-2.0 section 4(d)); each distribution carries the same copy."""
-    core = ROOT / "packages" / "rcp-ndcg-core"
-    for folder in (ROOT, core):
+    """NOTICE attributes the third-party code (Apache-2.0 section 4(d)); each distribution carries the same copy.
+
+    Three distributions today (``rcp-ndcg``, ``rcp-ndcg-core``, ``rcp-ndcg-vllm``), plus the vLLM plugin
+    distributions under ``packages/rcp-ndcg-vllm/plugins/*`` when the plugin lanes have landed them.
+    """
+    folders = [ROOT, ROOT / "packages" / "rcp-ndcg-core", ROOT / "packages" / "rcp-ndcg-vllm"]
+    plugins = ROOT / "packages" / "rcp-ndcg-vllm" / "plugins"
+    if plugins.is_dir():
+        folders += sorted(folder for folder in plugins.iterdir() if folder.is_dir() and (folder / "pyproject.toml").is_file())
+    for folder in folders:
         project = tomllib.loads((folder / "pyproject.toml").read_text(encoding="utf-8"))["project"]
-        assert project["license-files"] == ["LICENSE", "NOTICE"]
+        assert project["license-files"] == ["LICENSE", "NOTICE"], folder
     for name in ("LICENSE", "NOTICE"):
-        assert (core / name).read_bytes() == (ROOT / name).read_bytes(), f"packages/rcp-ndcg-core/{name} is stale"
+        for folder in folders[1:]:
+            assert (folder / name).read_bytes() == (ROOT / name).read_bytes(), f"{folder.relative_to(ROOT)}/{name} is stale"
     assert "smart_resize" in (ROOT / "NOTICE").read_text(encoding="utf-8")

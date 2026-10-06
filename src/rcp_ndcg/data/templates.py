@@ -90,6 +90,12 @@ class Segment(BaseModel):
             raise ValueError(
                 "a segment is exactly one of {fixed: <frame text>} or {content: <query|document|instruction>}"
             )
+        if self.fixed == "":
+            raise ValueError(
+                "a fixed segment carries no tokens -- an empty marker is refused: a shape whose anchor is the "
+                "tokenizer's end token ends in a content span with add_special_tokens (the audit expects the "
+                "post-processor's tail alone there)"
+            )
         return self
 
     def render(self, tokenizer: TextTokenizer, *, query: str = "", document: str = "", instruction: str = "") -> str:

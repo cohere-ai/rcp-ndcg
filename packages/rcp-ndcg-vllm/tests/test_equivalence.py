@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 from rcp_ndcg_vllm import load_recipe
@@ -38,11 +39,11 @@ def reference_python() -> str:
     ],
 )
 def test_stage1_passes_for_every_anchor_kind_with_the_reference_render(tmp_path: Path, recipe_id: str) -> None:
-    """fit's renders, the anchor audit, the reference subprocess render and the template check all agree."""
+    """The client's captured requests, the reference subprocess render and the template check all agree."""
     recipe = load(recipe_id)
     pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
     document = stage1_prompts(recipe, pairs, reference_python(), over_length_per_shape=3)
-    assert document["fit"], recipe_id
+    assert document["client"]["exchanges"] > 0, recipe_id
     assert document["anchor_check"]["passed"] is True, (recipe_id, document["anchor_check"]["failures"][:1])
     assert document["render_check"]["passed"] is True, (recipe_id, document["render_check"]["failures"][:1])
     if recipe.serve.chat_template is not None:
@@ -50,7 +51,10 @@ def test_stage1_passes_for_every_anchor_kind_with_the_reference_render(tmp_path:
 
 
 def test_engine_tokenize_check_runs_against_the_stub_and_fails_on_drift(tmp_path: Path) -> None:
-    """The engine's /tokenize must agree with fit's ids and counts (R29); without an engine: not_run."""
+    """The engine's /tokenize must agree with the recipe tokenizer's ids (R29); without an engine: not_run.
+
+    The drift direction is checked at the unit level below: the check fails when the engine's ids differ.
+    """
     recipe = load("fixture-embed")
     pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
     engine = start_stub("--tokenizer", str(TOKENIZER))
@@ -65,6 +69,29 @@ def test_engine_tokenize_check_runs_against_the_stub_and_fails_on_drift(tmp_path
     document = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)
     assert document["engine_tokenize_check"]["status"] == "not_run"
     assert document["engine_tokenize_check"]["passed"] is None  # not_run is neutral, never passed
+
+
+def test_engine_tokenize_check_fails_when_the_engine_tokenizes_differently(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A mutant engine whose /tokenize disagrees with the recipe tokenizer fails the check (R29)."""
+    import httpx
+    from rcp_ndcg_vllm.equivalence import stages as stages_module
+
+    from rcp_ndcg.data.tokenizer import load_tokenizer
+
+    recipe = load("fixture-embed")
+    tokenizer = load_tokenizer(str(TOKENIZER))
+    text = "doc: Paris is the capital of France. [END]"
+    real_ids = tokenizer.ids(text, add_special_tokens=True)
+
+    def drifted_post(url: str, **_: Any) -> Any:
+        return httpx.Response(200, json={"tokens": real_ids[:-1], "count": len(real_ids) - 1})
+
+    monkeypatch.setattr(httpx, "post", drifted_post)
+    probe = {"rows": [{"shapes": {"document": {"texts": [text]}}, "cuts": 0, "over_cap": False}]}
+    check = stages_module._engine_tokenize_check(recipe, probe, tokenizer, "http://engine")
+    assert check is not None and check["passed"] is False and check["failures"]
 
 
 def test_stage1_without_a_reference_python_reports_not_run(tmp_path: Path) -> None:

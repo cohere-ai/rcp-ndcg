@@ -1,9 +1,14 @@
 """The fixture reference, run as a subprocess in its own environment (never imported by the harness).
 
-The reference uses the product's own :func:`rcp_ndcg.data.preprocess.fit` for the anchor-preserving render --
-the same call the served path makes -- and the embedding model's vectors with the same deterministic numbers
-as the stub engine (tests/fixtures/deterministic.py).  It reads the pairs file and writes the mode's JSON to
---out.
+The reference is deliberately independent: it renders the prompt from its own constants -- never through the
+product's :func:`rcp_ndcg.data.preprocess.fit`, so stage 1's render check compares two implementations, not a
+function with itself.  The vectors come from the same deterministic numbers as the stub engine
+(``tests/fixtures/deterministic.py``).  It reads the pairs file and writes the mode's JSON to ``--out``.
+
+Render contract (embed roles): per pairs-file row and declared shape, a row of ``index``, ``shape`` and
+``text`` -- the exact prompt the engine reads (the fixed frame around the content; the post-processor's
+tokens are the engine's and are not part of the client's render).  One input per shape is rendered (the
+row's query for the query shape, its first document for the document shape).
 """
 
 from __future__ import annotations
@@ -13,11 +18,20 @@ import json
 import sys
 from pathlib import Path
 
-MAX_TOKENS = 128
+PREFIX = "doc: "
+"""The fixed frame before the document span (specials written ``{special:name}``, resolved from the tokenizer)."""
+
+SUFFIX = "{special:sep}"
+"""The fixed frame after the document (empty when the shape ends in content)."""
+
+QUERY_PREFIX = "query: "
+"""The query side's frame (only compared when the recipe declares the query shape)."""
+
+EMBED_TAG = "embed"
+"""The deterministic vectors' tag: the stub engine's own tag for the recipe's role."""
 
 
 def main() -> int:
-    from rcp_ndcg.data.preprocess import TextBudget, fit
     from rcp_ndcg.data.tokenizer import load_tokenizer
 
     parser = argparse.ArgumentParser(description="the fixture embed reference")
@@ -28,59 +42,42 @@ def main() -> int:
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
 
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+    from deterministic import token_vectors, vector
+
+    tokenizer = load_tokenizer(args.tokenizer)
+    prefix = PREFIX.replace("{special:cls}", tokenizer.special_text("cls"))
+    suffix = SUFFIX.replace("{special:sep}", tokenizer.special_text("sep"))
+
+    def assemble(document: str) -> str:
+        """The reference's own render of one document-side input."""
+        return prefix + document + suffix
+
     import yaml
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-    from deterministic import fold, vector  # noqa: F401
-
     recipe = yaml.safe_load((Path(__file__).parent / "recipe.yaml").read_text(encoding="utf-8"))
-    client = recipe["client"]
-    tokenizer = load_tokenizer(args.tokenizer)
-    budget = TextBudget(
-        tokenizer=args.tokenizer,
-        max_tokens=client["max_tokens"],
-        template=client.get("template"),
-        on_overflow=client.get("on_overflow", "cut"),
-    )
+    template = recipe["client"].get("template") or {}
+    shapes = [shape for shape in ("query", "document", "pair") if shape in template] or ["document"]
+    ragged = recipe["role"] == "multi_vector"
     pairs = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
-
-    def fit_one(shape: str, query: str, document: str, instruction: str | None) -> str:
-        """The product's fit render for one input."""
-        inputs = [(query, document)] if shape == "pair" else [query if shape == "query" else document]
-        result = fit(inputs, shape, budget, tokenizer, ids=["0"])
-        return result.texts[0]
 
     if args.mode == "render":
         rows = []
         for index, row in enumerate(pairs):
-            shapes = set(
-                shape for shape in ("query", "document", "pair") if shape in (client.get("template") or {})
-            ) or {"document"}
             for shape in shapes:
-                rendered = fit_one(shape, row["query"], row["documents"][0], row.get("instruction"))
+                rendered = QUERY_PREFIX + row["query"] if shape == "query" else assemble(row["documents"][0])
                 rows.append({"index": index, "shape": shape, "text": rendered})
         output_result = {"rows": rows}
     else:
-        from deterministic import vector
-
-        shapes = set(shape for shape in ("query", "document", "pair") if shape in (client.get("template") or {})) or {
-            "document"
-        }
         rows = []
         for index, row in enumerate(pairs):
             row_result: dict = {"index": index}
-            for shape in shapes:
-                texts_in = (
-                    [(row["query"], document) for document in row["documents"]]
-                    if shape == "pair"
-                    else [row["query"] if shape == "query" else document for document in row["documents"]]
-                )
-                fitted = [fit([inp], shape, budget, tokenizer, ids=[str(i)]).texts[0] for i, inp in enumerate(texts_in)]
-                vectors = [[float(x) for x in vector(text, "embed")] for text in fitted]
-                if shape == "query":
-                    row_result["query_vectors"] = vectors
-                else:
-                    row_result["document_vectors"] = vectors
+            encode = token_vectors if ragged else vector
+            if "query" in shapes:
+                row_result["query_vectors"] = [[float(x) for x in encode(QUERY_PREFIX + row["query"], EMBED_TAG)]]
+            row_result["document_vectors"] = [
+                [float(x) for x in encode(assemble(document), EMBED_TAG)] for document in row["documents"]
+            ]
             rows.append(row_result)
         output_result = {"rows": rows}
     Path(args.out).write_text(json.dumps(output_result, indent=1) + "\n", encoding="utf-8")

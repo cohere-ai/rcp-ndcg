@@ -31,8 +31,7 @@ def test_record_writes_exchanges_per_route(tmp_path: Path) -> None:
     documents = [json.loads(path.read_text(encoding="utf-8")) for path in written]
     routes = [(document["route"], document["status"]) for document in documents]
     assert ("http://engine/v1/models", 200) in routes
-    assert ("http://engine/v1/embeddings", 200) in routes  # the role route, with its path kept
-    assert ("http://engine/score", 200) in routes
+    assert ("http://engine/v1/embeddings", 200) in routes  # the role route, the product's own request
     # the over-length and unknown-field probes record the engine's 400 bodies on the role route, not 200s
     statuses_400 = [document for document in documents if document["status"] == 400]
     assert statuses_400, "the over-length and unknown-field probes must record the engine's 400"

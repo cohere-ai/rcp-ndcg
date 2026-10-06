@@ -2,9 +2,10 @@
 
 The recipe's ``client`` block is the product's endpoint config
 (:class:`rcp_ndcg.inference.config.EmbeddingEndpoint`, ``PoolingEndpoint`` or ``RerankEndpoint``): one schema,
-the product's. Stage 1 fits every sampled prompt with the product's
-:func:`rcp_ndcg.data.preprocess.fit`; stage 2 sends through the product's role clients
-(:mod:`rcp_ndcg.inference.clients`); the reference runs as a subprocess in its own environment.
+the product's. Stage 1 probes the product's role clients through their own transport injection point and
+audits what they actually send; stage 2 sends through the same clients with the recipe's real budget; the
+reference runs as a subprocess in its own environment. The harness never re-derives a render, a cut or a
+settlement.
 """
 
 from __future__ import annotations

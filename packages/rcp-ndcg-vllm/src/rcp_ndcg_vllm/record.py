@@ -1,18 +1,21 @@
-"""The recorder: one fixed request/response exchange per engine route, for the contract fixtures.
+"""The recorder: the product's role clients, observed through an ``httpx`` transport hook, for the contract
+fixtures.
 
-Against a served recipe it records the engine's routes with the requests the product's adapter builds for this
-recipe: the model list, the recipe's role route (``/embeddings``, ``/pooling`` or ``/rerank``), the rerank
-``/score`` route, and the error bodies the adapters map (an over-length prompt and an unknown field), each once,
-written under ``<out>/<engine>-<version>/<recipe-id>/``::
+Against a served recipe it drives the product's role client
+(:class:`~rcp_ndcg.inference.clients.EmbeddingClient`, ``PoolingClient`` or ``RerankClient``) built from
+:func:`~rcp_ndcg_vllm.recipe.client_config` with the recipe's real budget -- the client prompts, fits and
+settles, the adapter renders, the transport sends -- and records the engine behaviour the adapters must map:
+the provenance ``GET /v1/models``, and on the role route an over-length prompt (measured against the engine's
+own ``serve.max_model_len`` cap, sent bare: the client would cut it before the engine saw it) and an unknown
+request field.  Written under ``<out>/<engine>-<version>/<recipe-id>/``::
 
     {"route": "http://engine/v1/embeddings", "request": {"url": ..., "body": {...}}, "status": 200,
      "headers": {"content-type": ..., "server": ...}, "body": ...}
 
 Bytes bodies are base64-encoded with their framing headers kept.  No secret and no hostname is written: the URL
-carries the placeholder host ``http://engine``.  The role request goes over the same wire path the product's
-adapter builds (the product's role clients refuse a budget until the client-side budget wiring lands, so the
-recorder sends the fitted request itself — when the wiring lands it drives the clients over a recording
-transport instead).
+carries the placeholder host ``http://engine``.  The role route's request is the product's, byte for byte: it
+crosses the capturing transport the client's own transport wraps (the product's injection point), never a
+hand-built copy of the adapter's body.
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ from typing import Any
 
 import httpx
 
+from .equivalence.wire import role_client
 from .errors import HarnessError
 from .recipe import Recipe
 
@@ -33,14 +37,6 @@ _PLACEHOLDER = "http://engine"
 _TIMEOUT_S = 120.0
 _SNIPPET_TEXT = "What is the capital of France?"
 _SNIPPET_DOCUMENTS = ["Paris is the capital of France.", "Berlin is the capital of Germany."]
-
-
-def _placeholder(url: str) -> str:
-    """The engine URL with the placeholder host (no hostname is ever recorded); the path is kept."""
-    for scheme in ("https://", "http://"):
-        if url.startswith(scheme):
-            return _PLACEHOLDER + url[url.find("/", len(scheme)) :]
-    return _PLACEHOLDER + "/" + url.removeprefix("/")
 
 
 def _engine_root(base_url: str) -> str:
@@ -62,24 +58,17 @@ def record(
 
     Every exchange becomes ``<out>/<engine>-<version>/<recipe-id>/<method>-<route>-<status>.json``; a failed
     exchange is recorded like any other (its status and body are the fixture), except a connection error, which
-    stops the recording with :class:`HarnessError`.  The set: ``GET /v1/models``, the role route, the rerank
-    ``/score`` route (the adapters' other endpoint), the over-length 400 and the unknown-field 400.
+    stops the recording with :class:`HarnessError`.  The set: ``GET /v1/models``, the role route (the product's
+    request, through the role client), the over-length 400 and the unknown-field 400 on the role route.
     """
     root = _engine_root(base_url)
     out = Path(out_dir) / f"{recipe.engine.name}-{_version(recipe.engine.image)}" / recipe.id
     out.mkdir(parents=True, exist_ok=True)
     exchanges: list[dict[str, Any]] = []
-    with httpx.Client(base_url=root, timeout=timeout_s) as http:
-        _record_one(http, exchanges, "GET", "/v1/models", None)
-        _record_one(
-            http,
-            exchanges,
-            "POST",
-            "/score",
-            {"model": recipe.id, "queries": [_SNIPPET_TEXT], "documents": _SNIPPET_DOCUMENTS},
-        )
-        _record_role_requests(http, recipe, exchanges)
-        _record_errors(http, recipe, exchanges)
+    with httpx.Client(base_url=root, timeout=timeout_s) as bare:
+        _record_one(bare, exchanges, "GET", "/v1/models", None)
+        _record_role_request(recipe, base_url, exchanges, timeout_s=timeout_s)
+        _record_errors(bare, recipe, exchanges)
     return [
         _write_exchange(out / f"{index:02d}-{_slug(exchange)}.json", exchange)
         for index, exchange in enumerate(exchanges)
@@ -87,7 +76,11 @@ def record(
 
 
 def _record_one(http: httpx.Client, exchanges: list[dict[str, Any]], method: str, route: str | None, body: Any) -> None:
-    """One exchange against ``route``; a connection error stops the recording, a status does not."""
+    """One bare exchange against ``route``; a connection error stops the recording, a status does not.
+
+    The bare client records the engine-behaviour probes only (the provenance route and the error bodies): the
+    role route's request comes from the product's role client, never from a hand-built copy.
+    """
     if route is None:
         return
     try:
@@ -97,69 +90,44 @@ def _record_one(http: httpx.Client, exchanges: list[dict[str, Any]], method: str
     exchanges.append(_exchange(f"{_PLACEHOLDER}{route}", method, body, response))
 
 
-def _record_role_requests(http: httpx.Client, recipe: Recipe, exchanges: list[dict[str, Any]]) -> None:
-    """The role route with the request the product's adapter builds for this recipe (the wire path)."""
-    model = recipe.id
-    role_routes: dict[str, list[tuple[str, dict[str, Any]]]] = {
-        "embed": [
-            (
-                "/v1/embeddings",
-                {
-                    "model": model,
-                    "input": [
-                        getattr(recipe.client, "query_prompt", "") + _SNIPPET_TEXT,
-                        getattr(recipe.client, "doc_prompt", "") + _SNIPPET_DOCUMENTS[0],
-                    ],
-                    "encoding_format": "float",
-                },
-            )
-        ],
-        "multi_vector": [
-            (
-                "/pooling",
-                {"model": model, "input": [_SNIPPET_TEXT], "task": "token_embed", "encoding_format": "float"},
-            )
-        ],
-        "rerank": [
-            (
-                "/rerank",
-                {
-                    "model": model,
-                    "query": _SNIPPET_TEXT,
-                    "documents": _SNIPPET_DOCUMENTS,
-                    "top_n": len(_SNIPPET_DOCUMENTS),
-                },
-            )
-        ],
-    }
-    for route, body in role_routes.get(recipe.role, []):
-        _record_one(http, exchanges, "POST", route, body)
+def _record_role_request(recipe: Recipe, base_url: str, exchanges: list[dict[str, Any]], *, timeout_s: float) -> None:
+    """The role route through the product's role client: the captured exchange is the product's request."""
+    client, capture = role_client(recipe, base_url)
+    if recipe.role == "rerank":
+        client.rerank(_SNIPPET_TEXT, _SNIPPET_DOCUMENTS, instruction=_default_instruction(recipe))
+    else:
+        from rcp_ndcg_core.content import Content
+
+        from rcp_ndcg.inference.types import EncodeRole
+
+        role = EncodeRole.QUERY if "query" in _declared(recipe) else EncodeRole.DOCUMENT
+        text = _SNIPPET_TEXT if role is EncodeRole.QUERY else _SNIPPET_DOCUMENTS[0]
+        client.encode([Content.from_text(text)], role)
+    for exchange in capture.exchanges:
+        exchange["url"] = _placeholder(exchange["url"])
+        exchanges.append(exchange)
 
 
-def _exchange(url: str, method: str, request_body: Any, response: httpx.Response) -> dict[str, Any]:
-    """One recorded exchange from the raw httpx response."""
-    response.read()
-    raw = response.content
-    try:
-        response_json: Any = response.json()
-    except ValueError:
-        response_json = None
-    return {
-        "url": _placeholder(url),
-        "method": method,
-        "request_body": request_body,
-        "status": response.status_code,
-        "headers": {key: response.headers.get(key, "") for key in ("content-type", "server")},
-        "response_bytes": base64.b64encode(raw).decode("ascii"),
-        "response_json": response_json,
-    }
+def _default_instruction(recipe: Recipe) -> str | None:
+    """The recipe's default instruction, sent as the request field when the mode sends one."""
+    instruction = getattr(recipe.client, "default_instruction", None)
+    mode = getattr(recipe.client, "instruction", None)
+    return instruction if (mode == "field" and instruction) else None
+
+
+def _declared(recipe: Recipe) -> list[str]:
+    """The recipe's declared shapes (the side the recorder probes follows them)."""
+    template = recipe.client.template
+    return [str(shape) for shape in template.shapes()] if template is not None else ["document"]
 
 
 def _record_errors(http: httpx.Client, recipe: Recipe, exchanges: list[dict[str, Any]]) -> None:
     """The error bodies the adapters map, on the recipe's role route: an over-length prompt and an unknown field.
 
-    The over-length input is measured against the engine's own cap, ``serve.max_model_len`` — the number the
-    engine enforces — so the probe genuinely crosses it and records the engine's 400.
+    The over-length input is measured against the engine's own cap, ``serve.max_model_len`` -- the number the
+    engine enforces -- so the probe genuinely crosses it and records the engine's 400.  The probes go bare (a
+    deliberate refusal shape): the product's clients cut before the engine would refuse, and these fixtures
+    document exactly what the adapters must map.
     """
     over_length = "a " * (recipe.serve.max_model_len * 2)
     route, over_length_body = _role_request(recipe.role, recipe.id, over_length)
@@ -182,6 +150,33 @@ def _role_request(role: str, model: str, text: str) -> tuple[str, dict[str, Any]
         "rerank": ("/rerank", {"model": model, "query": text, "documents": _SNIPPET_DOCUMENTS}),
     }
     return routes[role]
+
+
+def _exchange(url: str, method: str, request_body: Any, response: httpx.Response) -> dict[str, Any]:
+    """One recorded exchange from the raw httpx response."""
+    response.read()
+    raw = response.content
+    try:
+        response_json: Any = response.json()
+    except ValueError:
+        response_json = None
+    return {
+        "url": _placeholder(url),
+        "method": method,
+        "request_body": request_body,
+        "status": response.status_code,
+        "headers": {key: response.headers.get(key, "") for key in ("content-type", "server")},
+        "response_bytes": base64.b64encode(raw).decode("ascii"),
+        "response_json": response_json,
+    }
+
+
+def _placeholder(url: str) -> str:
+    """The engine URL with the placeholder host (no hostname is ever recorded); the path is kept."""
+    for scheme in ("https://", "http://"):
+        if url.startswith(scheme):
+            return _PLACEHOLDER + url[url.find("/", len(scheme)) :]
+    return _PLACEHOLDER + "/" + url.removeprefix("/")
 
 
 def _version(image: str) -> str:
