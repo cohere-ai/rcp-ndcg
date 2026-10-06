@@ -11,9 +11,11 @@ the pinned hash keeps them runnable offline after the one download.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import shutil
 import sys
+import types
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -189,6 +191,19 @@ def stage1_recipe(path: Path) -> Recipe:
     return recipe.model_copy(update={"client": client})
 
 
+def _import_reference() -> Any:
+    """The shipped reference.py imported as a module: its module level is pure stdlib, so the
+    harness process can import it (torch and transformers load inside ``load`` only)."""
+
+    spec = importlib.util.spec_from_file_location(
+        "jina_embeddings_v5_text_small_reference", recipe_dir() / "reference.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _write_pairs(tmp_path: Path) -> Path:
     path = tmp_path / "pairs.jsonl"
     path.write_text("".join(json.dumps(row) + "\n" for row in PAIRS), encoding="utf-8")
@@ -295,16 +310,62 @@ def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
     assert tokenizer.ids(ref_by_key[(0, "document")], add_special_tokens=True) == DOCUMENT_IDS
 
 
-def test_reference_pins_the_snapshot_revision() -> None:
-    """The reference never loads anything at Hub HEAD: the vendor remote code drops the revision
-    kwarg for every inner load (config, base weights, adapters and tokenizer all resolve at HEAD,
-    modeling_jina_embeddings_v5.py:19-60), so load() must resolve the pinned snapshot itself.
+def test_reference_load_resolves_the_pinned_snapshot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """load() must resolve the whole pinned snapshot and load everything from it.
 
-    Source-level guard: the full embed/score path needs torch and the ~1.26 GiB snapshot, which
-    the harness process (and CI) must never touch - the GPU wave runs it in the reference env."""
-    source = (recipe_dir() / "reference.py").read_text(encoding="utf-8")
-    assert "snapshot_download" in source, "load() must resolve the pinned snapshot, not load at HEAD"
-    assert "revision=HF_REVISION" in source, "the snapshot must be resolved at the pinned revision"
+    The checkpoint's remote code drops the revision kwarg for every inner load (config, base
+    weights, adapters, tokenizer all resolve at Hub HEAD - modeling_jina_embeddings_v5.py:25-27,
+    :28-32, :37-41, :57-60), so a repo-id load pins nothing. Behavioural and offline: the three
+    heavy modules are stubbed, so the harness process imports no torch and touches no network;
+    the full embed/score path still runs only in the reference environment (the GPU wave)."""
+    reference = _import_reference()
+    calls: list[dict[str, Any]] = []
+    snapshot = tmp_path / "snapshot"
+
+    def fake_snapshot_download(repo_id: str, **kwargs: Any) -> str:
+        calls.append({"snapshot_download": {"repo_id": repo_id, **kwargs}})
+        return str(snapshot)
+
+    class _FakeModel:
+        def to(self, device: str) -> _FakeModel:
+            return self
+
+        def eval(self) -> _FakeModel:
+            return self
+
+    def fake_from_pretrained(name: str, **kwargs: Any) -> _FakeModel:
+        calls.append({"from_pretrained": name, **kwargs})
+        return _FakeModel()
+
+    monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(snapshot_download=fake_snapshot_download))
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        types.SimpleNamespace(
+            AutoModel=types.SimpleNamespace(from_pretrained=fake_from_pretrained),
+            AutoTokenizer=types.SimpleNamespace(from_pretrained=fake_from_pretrained),
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(bfloat16="bfloat16"))
+
+    reference.load(device="cpu")
+    assert calls[0] == {
+        "snapshot_download": {
+            "repo_id": MODEL,
+            "revision": REVISION,
+            "allow_patterns": ["*.json", "*.py", "*.txt", "*.jinja", "*.safetensors"],
+        }
+    }
+    loads = [entry for entry in calls[1:] if "from_pretrained" in entry]
+    assert len(loads) == 2, calls  # the model and the tokenizer, both from the snapshot
+    assert all(entry["from_pretrained"] == str(snapshot) for entry in loads)
+    assert all("revision" not in entry or entry["revision"] is None for entry in loads)
+
+    # An explicit --model-path bypasses the Hub resolution entirely.
+    calls.clear()
+    reference.load(device="cpu", model_path="/local/snapshot")
+    assert not any("snapshot_download" in entry for entry in calls)
+    assert all(entry["from_pretrained"] == "/local/snapshot" for entry in calls if "from_pretrained" in entry)
 
 
 def test_dropping_the_anchor_segment_turns_the_anchor_check_red(tmp_path: Path) -> None:

@@ -48,7 +48,7 @@ loads its own tokenizer with the checkpoint (the card path — the ids equality 
 zero-tolerance comparison on the harness side, against this same file).
 
 **Pinning:** the checkpoint's remote code drops the ``revision`` kwarg for every inner load — the
-config (``modeling_jina_embeddings_v5.py:19-23``), the base weights (``:25-31``), the adapters
+config (``modeling_jina_embeddings_v5.py:25-27``), the base weights (``:28-32``), the adapters
 (a ``snapshot_download`` without a revision, ``:37-41``) and the tokenizer (``:57-60``) all
 resolve at Hub HEAD when given a repo id. :func:`load` therefore resolves the pinned snapshot
 itself (``snapshot_download(HF_REPO, revision=HF_REVISION)``) and loads from it: the vendor
