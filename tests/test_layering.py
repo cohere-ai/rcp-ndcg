@@ -3,7 +3,7 @@
 ``AGENTS.md`` fixes the import order
 (``rcp_ndcg_core → support → storage → data → inference → retrieval → llm → calibration → eval → runners → runs
 → schemas | mcp → cli``, with ``errors`` below ``support``, the facade just above ``runs``, and ``testing`` and
-``examples`` above it). This module parses every module under ``src/rcp_ndcg/`` with :mod:`ast` and fails when an
+``examples`` above it). This module parses every module under ``rcp-ndcg/src/rcp_ndcg/`` with :mod:`ast` and fails when an
 eager import -- module-level, outside ``if TYPE_CHECKING:`` -- points outward in that order (toward a layer that
 typically imports this one).
 
@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-SRC = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg"
+SRC = Path(__file__).resolve().parents[1] / "rcp-ndcg/src/rcp_ndcg"
 
 #: The layers, from the one every module may import to the one that may import everything; the charter of
 #: ``AGENTS.md`` (Layout and layering), with the two single-file modules it does not name placed where the
@@ -134,7 +134,7 @@ def _is_type_checking(statement: ast.stmt) -> bool:
 
 
 def outward_imports() -> list[str]:
-    """Every eager import of ``src/rcp_ndcg`` that points outward in the charter order (allow-listed excepted)."""
+    """Every eager import of ``rcp-ndcg/src/rcp_ndcg`` that points outward in the charter order (allow-listed excepted)."""
     findings: list[str] = []
     for path in sorted(SRC.rglob("*.py")):
         module = ".".join(path.relative_to(SRC).with_suffix("").parts)
@@ -158,7 +158,7 @@ def outward_imports() -> list[str]:
                     continue
                 if target in _ALLOW_LIST.get(module, frozenset()):
                     continue
-                findings.append(f"src/rcp_ndcg/{path.relative_to(SRC)}:{line}: {layer} -> {target} (outward)")
+                findings.append(f"rcp-ndcg/src/rcp_ndcg/{path.relative_to(SRC)}:{line}: {layer} -> {target} (outward)")
     return findings
 
 
@@ -182,8 +182,8 @@ def test_a_relative_import_across_layers_is_checked(tmp_path: Path, monkeypatch:
     (tmp_path / "data" / "beyond.py").write_text("from ....retrieval import anything\n", encoding="utf-8")
     monkeypatch.setattr(sys.modules[__name__], "SRC", tmp_path)
 
-    # every finding is prefixed with the checkout's own src/rcp_ndcg, whatever SRC reads now
-    assert outward_imports() == ["src/rcp_ndcg/data/broken.py:1: data -> retrieval (outward)"]
+    # every finding is prefixed with the checkout's own rcp-ndcg/src/rcp_ndcg, whatever SRC reads now
+    assert outward_imports() == ["rcp-ndcg/src/rcp_ndcg/data/broken.py:1: data -> retrieval (outward)"]
 
 
 def test_a_top_level_module_that_is_not_placed_fails_loudly(monkeypatch: pytest.MonkeyPatch) -> None:

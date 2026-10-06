@@ -105,7 +105,7 @@ released together.
   small corpus. The `cli.v1` envelope schema changed description-only (`data` says which commands tag their
   data with a schema id). No payload changes shape except `run list`'s unreadable rows, which now carry the row's null
   fields explicitly; the payloads validate against the regenerated schemas.
-- New served recipe `octen-embedding-8b` (`packages/rcp-ndcg-vllm/recipes/octen-embedding-8b/`): the paper's
+- New served recipe `octen-embedding-8b` (`rcp-ndcg-vllm/recipes/octen-embedding-8b/`): the paper's
   first-stage retriever Octen/Octen-Embedding-8B @ `5adcfa292e712091dfc30f0e97f0b2282e6cc66c` on stock
   `vllm/vllm-openai:v0.31.0` (`--runner pooling`; last-token pooling and the normalize activation come from the
   checkpoint's own sentence-transformers configs). The client block is an `EmbeddingEndpoint` with the product's
@@ -128,12 +128,12 @@ released together.
   the pinned tokenizer (offline: skipped with a clear reason) and prove the over-cap cut and the query-side
   frame byte-identical.
 
-- **`rcp-ndcg-vllm` gains the release-candidate and wave scripts** (`packages/rcp-ndcg-vllm/jobs/`, and
+- **`rcp-ndcg-vllm` gains the release-candidate and wave scripts** (`rcp-ndcg-vllm/jobs/`, and
   `wave0.sh` with the package): `rc_build.sh <name> [<commit>]` builds an RC exactly as `release.yml`
   does — the three distributions, the version and pin checks, the constraints-file check against the
   lock, `twine check`, and a fresh-venv install smoke from the wheelhouse — and stages the six files
   with the wheelhouse (every locked dependency beside the release wheels, the CPU torch build included,
-  the plugin wheels under `packages/rcp-ndcg-vllm/plugins/*` built beside them), the recipes, the wave
+  the plugin wheels under `rcp-ndcg-vllm/plugins/*` built beside them), the recipes, the wave
   lists and any `EXTRA_DIRS` entries to `<RCP_STAGE_PREFIX>/<name>/`, with a hash manifest
   (`rcp-ndcg.rc-manifest.v1`) that names the CUDA-lock wheels (`nvidia-*`, `triton`) riding along inert
   on a CPU client — the client install refuses them. `bootstrap.sh` copies the staged wheelhouse and
@@ -162,7 +162,7 @@ released together.
   at once, the product's `fit` and embedding client over 20
   texts (5 over the explicit budget) with the engine's `/tokenize` per input, the HF-cache eviction
   with the disk before/after, and the no-engine assert — fail-fast, with one JSON report
-  (`rcp-ndcg.wave0-report.v1`, schema at `packages/rcp-ndcg-vllm/schema/wave0-report.schema.json`) and
+  (`rcp-ndcg.wave0-report.v1`, schema at `rcp-ndcg-vllm/schema/wave0-report.schema.json`) and
   a dry mode (`WAVE0_DRY=1`). The wave runner's wave gains per-slot `VLLM_PORT` and `TMPDIR`, the
   pre-serve disk check against the model's Hub size, the post-recipe eviction, and an upload fallback
   through the product's own `rcp_ndcg.storage` when the image has neither `gcloud` nor `gsutil`. Wave
@@ -173,7 +173,7 @@ released together.
   source's kind — `dir`, `file` or `auto` — and both gcs.py and the CLIs honour it), one retry covers
   a transient GCS error, and `submit.sh` resolves the image's digest (Docker Hub registry, then
   `gcloud container images describe`) into `env.RCP_IMAGE_DIGEST` so the report never says null.
-- New package `rcp-ndcg-vllm` (`packages/rcp-ndcg-vllm/`, outside the root uv workspace and lock; version
+- New package `rcp-ndcg-vllm` (`rcp-ndcg-vllm/`, outside the root uv workspace and lock; version
   0.0.1, depends on `rcp-ndcg==0.0.1` — a hard dependency, and pinned by the release workflow's version
   check): serving recipes for vLLM as data. The recipe's `client` block **is**
   the product's endpoint config (`EmbeddingEndpoint`, `PoolingEndpoint` or `RerankEndpoint`); the harness
@@ -186,7 +186,7 @@ released together.
   Public names: `Recipe`, `ClientEndpoint`, `EngineSpec`, `Gates`, `ReferenceSpec`, `Resources`, `ServeConfig`,
   `StatusSpec`, `RecipeError`, `HarnessError`, `load_recipe`, `iter_recipes`, `serve_argv`, `client_config`,
   `recipe_json_schema`, `default_recipes_root`, `PINNED_POOLER_CONFIG_FIELDS`; the JSON Schema of `Recipe` is
-  exported at `packages/rcp-ndcg-vllm/schema/recipe.schema.json`. The recorder (`record`),
+  exported at `rcp-ndcg-vllm/schema/recipe.schema.json`. The recorder (`record`),
   stage 3 (`stage3_metrics`), the wave runner (`run_wave`) and the subprocess reference runner (`run_reference`)
   are public with package tests covering each; `metrics.py` shells out to `rcp-ndcg eval score` (the product is
   a dependency, so no extra is needed for stage 3).
@@ -231,7 +231,7 @@ released together.
   `reference.known_deviations: [anchor_drop_over_cap]` (over-cap pairs gate on under-cap pairs only).
   Stage 1 passes on CPU against the real Hub tokenizer (tokenizer files only); state `unverified` until the
   GPU waves run.
-- The first serving recipe ships: `packages/rcp-ndcg-vllm/recipes/topk-embed-v1-small/` (recipe.yaml,
+- The first serving recipe ships: `rcp-ndcg-vllm/recipes/topk-embed-v1-small/` (recipe.yaml,
   reference.py; the recipe directory is grafted into the sdist with the rest of `recipes/`), serving
   `topk-io/topk-embed-v1-small` as a multi-vector model on `vllm/vllm-openai:v0.31.0` through a
   `vllm.general_plugins` wheel (`serve.plugin: topk-embed-vllm`, built by the plugin lane). Its tests pin
@@ -365,7 +365,7 @@ released together.
   saved rankings for the systems the report
   scored (its own, by default; `--system` narrows them further), so one broken system of the file does not
   kill the explanation, and `--system` with `--run` there is a `UsageError` (it has no effect on a run).
-- New package `rcp-ndcg-vllm-topk` (`packages/rcp-ndcg-vllm/plugins/topk/`, outside the root uv workspace and
+- New package `rcp-ndcg-vllm-topk` (`rcp-ndcg-vllm/plugins/topk/`, outside the root uv workspace and
   lock; version 0.0.1, no dependencies): the `vllm.general_plugins` wheel that serves
   `topk-io/topk-embed-v1-small` (multimodal late interaction) on the stock `vllm/vllm-openai:v0.31.0` image
   after `pip install --no-deps`, with no `--trust-remote-code`. Two registrations: a faithful local
@@ -385,7 +385,7 @@ released together.
   registry effects, the config-class parse and the served-class mapper cross-check need vLLM and
   transformers; the full served-vs-reference equivalence on real weights is the GPU wave's.
 
-- A served recipe in `packages/rcp-ndcg-vllm/recipes/`: `ctxl-rerank-v2-instruct-multilingual-2b`
+- A served recipe in `rcp-ndcg-vllm/recipes/`: `ctxl-rerank-v2-instruct-multilingual-2b`
   (ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b @ 6ffef5dc552583b8db58dc4a87f79f7aee78d2d9, pointwise
   rerank, paper-exact): `--runner pooling` with the `Qwen3ForSequenceClassification` conversion overrides
   (`classifier_from_token` ["!"] = the checkpoint's token id 0, `method: no_post_processing`) on the stock
@@ -400,7 +400,7 @@ released together.
   instruction fold the served client applies. Status `unverified` until the GPU waves run the harness's
   stages 2–3.
 
-- The first served recipe in `packages/rcp-ndcg-vllm/recipes/`: `qwen3-reranker-0.6b`
+- The first served recipe in `rcp-ndcg-vllm/recipes/`: `qwen3-reranker-0.6b`
   (Qwen/Qwen3-Reranker-0.6B @ e61197ed45024b0ed8a2d74b80b4d909f1255473, pointwise rerank,
   paper-exact): `--runner pooling` with the `Qwen3ForSequenceClassification` conversion overrides
   (`classifier_from_token` no/yes, `is_original_qwen3_reranker`) on the stock
@@ -811,7 +811,7 @@ released together.
   (`GET <url>/models`).
 - The `ServeConfig` fields' schema descriptions are role-neutral (the same engine shape serves the judge, the
   retrieval encoder and the reranker); no property changed.
-- New plugin distribution `rcp-ndcg-vllm-pplx` (`packages/rcp-ndcg-vllm/plugins/pplx/`, pure Python, dependency-free):
+- New plugin distribution `rcp-ndcg-vllm-pplx` (`rcp-ndcg-vllm/plugins/pplx/`, pure Python, dependency-free):
   registers the `PplxContextualModel` architecture (perplexity-ai/pplx-embed-v2-context-9b-preview,
   revision `b667039e`) with stock vLLM v0.31.x through the `vllm.general_plugins` entry point
   (`rcp_vllm_pplx:register`), so the unmodified `vllm/vllm-openai:v0.31.0` image serves it after
@@ -823,7 +823,7 @@ released together.
   product's `request_shape: token_ids`, which no adapter implements yet (product gap, recipe lane), and the
   recipe's chunker must not emit the `<|chunk_sep|>` marker as chunk content (the id wire cannot tell it from a
   boundary; declared in the plugin README).
-- The served recipe `jina-reranker-v3` (`packages/rcp-ndcg-vllm/recipes/jina-reranker-v3/`,
+- The served recipe `jina-reranker-v3` (`rcp-ndcg-vllm/recipes/jina-reranker-v3/`,
   jinaai/jina-reranker-v3 @ d7d7e73b6ea138ced340b83865931b5dfb6c97aa, listwise rerank, paper-exact):
   stock `vllm/vllm-openai:v0.31.0` with `--runner pooling` (the native `JinaForRanking`; no conversion,
   no plugin, and deliberately no chat-template file — the listwise prompt is built server-side by the
@@ -834,7 +834,7 @@ released together.
   (raw cosine in [-1, 1], empty documents 0.0, the checkpoint's 125-doc/2048-token blocking ported for
   the GPU waves). Stage 1 passes on CPU against the real tokenizer; the anchor mutation turns the
   audit red. Status `unverified` until the GPU waves run the harness's stages 2–3.
-- New recipe `qwen3-vl-reranker-2b` (`packages/rcp-ndcg-vllm/recipes/qwen3-vl-reranker-2b/`, shipped in the sdist):
+- New recipe `qwen3-vl-reranker-2b` (`rcp-ndcg-vllm/recipes/qwen3-vl-reranker-2b/`, shipped in the sdist):
   Qwen/Qwen3-VL-Reranker-2B as a pointwise reranker on the stock `vllm/vllm-openai:v0.31.0` pooling runner --
   three-key `hf_overrides`, the served chat template as data plus a shipped template file (rewritten to the recipe
   variable convention, byte-equal under the engine's render), the explicit 8192-token budget with a 4096 query

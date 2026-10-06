@@ -17,7 +17,7 @@ import pytest
 from tests.docs._markdown import ROOT, code_blocks
 
 MARKERS = {None, "skip", "network", "example"}
-PAGES = [*sorted((ROOT / "docs").rglob("*.md")), ROOT / "packages" / "rcp-ndcg-core" / "README.md"]
+PAGES = [*sorted((ROOT / "docs").rglob("*.md")), ROOT / "rcp-ndcg-core" / "README.md"]
 
 
 def _python_blocks(page: Path):
@@ -54,7 +54,7 @@ def test_network_snippets_run(page: Path, tmp_path: Path, monkeypatch: pytest.Mo
         exec(compile(block.text, f"{page.relative_to(ROOT)}:{block.line}", "exec"), {"__name__": "__doc_snippet__"})
 
 
-OTHER_PAGES = [ROOT / "README.md"]
+OTHER_PAGES = [ROOT / "rcp-ndcg" / "README.md"]
 
 
 @pytest.mark.parametrize("page", OTHER_PAGES, ids=lambda p: str(p.relative_to(ROOT)))

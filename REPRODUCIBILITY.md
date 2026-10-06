@@ -11,7 +11,7 @@ paper's leaderboards, the human contest study and the comparisons with external 
 and no credentials.
 
 ```bash
-pip install ./packages/rcp-ndcg-core .           # or: uv sync
+pip install ./rcp-ndcg-core .           # or: uv sync
 pip install -r experiments/requirements.txt
 python experiments/fetch_data.py                 # the public datasets, at pinned revisions (about 150 MB)
 python experiments/run_all.py
@@ -52,7 +52,7 @@ tournament, the Stage B criteria C1 to C5, and the 2PL fit. This needs an OpenAI
 judge model and the benchmark corpora. The paper's primary judges were Qwen3.5-397B (NanoBEIR, BRIGHT and ViDoRe
 v3; text only) and Qwen3.6-27B (TREC-DL); gpt-oss-120b was the second judge on NanoBEIR, BRIGHT and TREC-DL.
 
-- The judge configs ship in the package (`src/rcp_ndcg/llm/judges/`, loaded by name), and the paper's engine
+- The judge configs ship in the package (`rcp-ndcg/src/rcp_ndcg/llm/judges/`, loaded by name), and the paper's engine
   commands, with their images pinned, are in `experiments/paper/serve/` ([serving](docs/concepts/serving.md)).
 - [Calibrate your benchmark](docs/tutorials/calibrate-your-benchmark.md) walks through a run.
 - The schedules are specified in placements per document, so their window counts scale with the pool. At the

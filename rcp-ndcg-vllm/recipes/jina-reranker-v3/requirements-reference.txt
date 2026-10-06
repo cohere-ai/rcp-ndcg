@@ -1,0 +1,23 @@
+# The reference environment for recipes/jina-reranker-v3/reference.py, in ITS OWN python
+# (never the harness's process, never the engine image).  Install with the reference python:
+# pip install -r rcp-ndcg-vllm/recipes/jina-reranker-v3/requirements-reference.txt
+# The wave runner takes that interpreter via --reference-python; the reference subprocess runs while
+# the engine on that slot is up and releases its memory when it exits.
+#
+# Pinned to the versions the paper's [local] extra ran with (experiments/paper/rerankers/reference/
+# requirements.txt): torch 2.9.1 and transformers 4.57.6.  flash-attn and accelerate are NOT needed
+# here: the paper's JinaRerank loads AutoModel with dtype="auto" and default attention (sdpa).
+#
+#   render mode (stage 1, CPU): tokenizers + rcp-ndcg + huggingface_hub only -- no torch.
+#   score mode (stage 2): everything below; downloads the 1.19 GB bf16 weights at the pinned revision.
+#
+# NOTE on rcp-ndcg==0.0.1: it is not yet on PyPI (the package's first release has not shipped). Until
+# it is, install rcp-ndcg from the repository's build (the same commit the recipe package is checked
+# out at); the pin records the release version the wave environment must match.
+
+rcp-ndcg==0.0.1
+torch==2.9.1
+transformers==4.57.6
+tokenizers>=0.21
+numpy>=1.26
+huggingface_hub>=0.34

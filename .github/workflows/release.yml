@@ -34,7 +34,7 @@ jobs:
         run: |
           uv build --all-packages --out-dir dist
           # rcp-ndcg-vllm is deliberately outside the uv workspace: build it from its own directory.
-          (cd packages/rcp-ndcg-vllm && uv build --out-dir ../../dist)
+          (cd rcp-ndcg-vllm && uv build --out-dir ../../dist)
       - name: the versions are the tag's
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -46,7 +46,7 @@ jobs:
           ls -a dist
           for file in "${expected[@]}"; do test -f "$file" || { echo "missing $file: the tag is not the version"; exit 1; }; done
           test "$(find dist -type f -not -name '.*' | wc -l)" -eq "${#expected[@]}" || { echo "dist/ holds other versions"; exit 1; }
-          grep -qx "  \"rcp-ndcg-core==${version}\"," pyproject.toml || { echo "rcp-ndcg does not pin rcp-ndcg-core==${version}"; exit 1; }
+          grep -qx "  \"rcp-ndcg-core==${version}\"," rcp-ndcg/pyproject.toml || { echo "rcp-ndcg does not pin rcp-ndcg-core==${version}"; exit 1; }
       - name: rcp-ndcg-vllm pins rcp-ndcg exactly, when it depends on it
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -55,7 +55,7 @@ jobs:
           from pathlib import Path
 
           version = sys.argv[1]
-          manifest = Path("packages/rcp-ndcg-vllm/pyproject.toml")
+          manifest = Path("rcp-ndcg-vllm/pyproject.toml")
           if not manifest.is_file():
               print(f"{manifest} is not in this tree; nothing to check")
               raise SystemExit(0)

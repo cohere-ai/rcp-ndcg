@@ -1,163 +1,18 @@
-[build-system]
-requires = ["setuptools>=77", "wheel"]
-build-backend = "setuptools.build_meta"
+# The uv workspace root: the workspace members and the tooling config only. The distributions carry
+# their own manifests (rcp-ndcg/pyproject.toml and the project directories beside it); tools/
+# layout_move.py keeps this split and the member list current.
 
-[project]
-name = "rcp-ndcg"
-version = "0.0.1"
-description = "Calibrated relevance for retrieval evaluation: RCP-nDCG, listwise tournament + rubric, 2PL IRT, MTEB-compatible evaluator."
-readme = "README.md"
-license = "Apache-2.0"
-license-files = ["LICENSE", "NOTICE"]
-requires-python = ">=3.12"
-authors = [
-  { name = "RCP-nDCG contributors" },
-]
-keywords = ["information-retrieval", "evaluation", "ndcg", "irt", "rerank", "llm"]
-classifiers = [
-  "Development Status :: 4 - Beta",
-  "Intended Audience :: Science/Research",
-  "Programming Language :: Python :: 3.12",
-  "Topic :: Scientific/Engineering",
-]
-dependencies = [
-  # Deliberately without torch: it belongs to the ``[calibrate]`` extra below,
-  # so a client-only install stays small.  ``rcp-ndcg run`` names the extra in its
-  # error when the fit is reached without it.
-  # The core is released in lockstep with this package: the same version, pinned.
-  "rcp-ndcg-core==0.0.1",
-  "numpy>=1.26",
-  "pandas>=2.2",
-  # Parquet artifacts (calibration queries/thetas tables).
-  "pyarrow>=15.0",
-  "scipy>=1.15",
-  # BM25 (bm25s: numpy and scipy only) and its Snowball stemmers, so a keyword first stage runs on any install.
-  "bm25s==0.2.13",
-  "PyStemmer>=2.2",
-  "pydantic>=2.0",
-  "tqdm>=4.67",
-  "click>=8.1",
-  # Read only by ``rcp-ndcg --env-file``; the package never loads a .env file on its own.
-  "python-dotenv>=1.0",
-  # The judge client (llm/client.py) and the hosted embedding and rerank clients send their requests over
-  # httpx through the shared transport (rcp_ndcg.inference); there is no second HTTP stack.
-  "httpx>=0.27",
-  # Storage: fsspec is the universal path layer (rcp_ndcg.storage); gcsfs keeps
-  # gs:// URIs working out of the box.  Other protocols are extras below, so a
-  # laptop install stays small.
-  "fsspec>=2025.3.0",
-  "gcsfs>=2025.3.0",
-  "PyYAML>=6.0",
-  # Pillow is core: the judge-client environment -- which has no torch -- must
-  # decode and re-encode page images to send them to a vision judge, and ingest
-  # probes image dimensions to make token accounting exact.
-  "Pillow>=10.0",
-]
-
-[project.optional-dependencies]
-# A served-only package: every model is reached over HTTP (role clients over one
-# transport, `rcp_ndcg.inference`), so the package installs cleanly next to an
-# engine image without touching it. The only torch is ``[calibrate]``'s, for the
-# IRT fits on CPU.
-
-# Storage backends.  Each adds one fsspec implementation; `rcp_ndcg.storage`
-# names the missing extra when a URI arrives for a protocol that is absent.
-s3 = ["s3fs>=2025.3.0"]
-azure = ["adlfs>=2024.7.0"]
-# The Hugging Face Hub: hf:// paths, and the judge's tokenizer (`judge.tokenizer`), which sets text limits in tokens.
-hf = ["huggingface-hub>=0.34", "tokenizers>=0.21"]
-http = ["aiohttp>=3.10"]
-
-# MTEB: the public suites as mteb tasks (rcp_ndcg.eval.mteb), plus the
-# HuggingFace ``datasets`` loader stack that reads corpus / queries / qrels
-# splits.  Kept out of core ``[project.dependencies]`` because ``datasets``
-# is large and only these readers need it.
-mteb = [
-  # 2.10.5 is the first release with the ViDoRe v3 tasks; the integration imports mteb 2.x modules.
-  "mteb>=2.10.5",
-  "datasets>=4.1",
-]
-
-# 2PL / Bradley-Terry / Rasch IRT calibration and the judging client's
-# estimators.  Pure-PyTorch optimisers in ``rcp_ndcg_core.irt.*``; CPU-only is
-# fine (the rendered jobs install torch from PyTorch's CPU index).  The one
-# torch requirement in this manifest: models are served, not loaded.
-calibrate = [
-  "torch>=2.0",
-]
-
-# Data ingestion: the ``rcp-ndcg data convert`` readers ``hf`` and ``pdf``
-# (``images`` needs nothing extra).
-data = [
-  "huggingface-hub>=0.34",
-  # The Hub dataset loader behind the `hf` reader.
-  "datasets>=4.1",
-  # PDF -> page-image rendering for the `pdf` reader. pypdfium2 rather than
-  # pymupdf: permissive licence, no system poppler, and a stable render scale.
-  "pypdfium2>=4.30",
-]
-
-# Development & CI.  Includes ``[calibrate]``: the IRT fits are exercised by the
-# test suite, and a dev environment that skips them would let a calibration
-# regression through.  Includes ``[hf]``: the token-limit tests build a tokenizer.
-# Tests for the heavier extras (``[mteb]``, ``[data]``) skip themselves when
-# those are absent.
-dev = [
-  "rcp-ndcg[calibrate,hf]",
-  "pytest>=8.0",
-  "pytest-asyncio>=0.24",
-  "pytest-xdist>=3.5",
-  "ruff>=0.6",
-  "basedpyright>=1.18",
-  "shellcheck-py>=0.10",
-]
-
-# The local documentation preview and its CI build (mkdocs-material; the pages are plain Markdown).
-docs = [
-  "mkdocs>=1.6",
-  "mkdocs-material>=9.5",
-  "pymdown-extensions>=10",
-]
-
-[project.scripts]
-rcp-ndcg = "rcp_ndcg.cli.main:main"
-
-# The one extension seam: job runners. The public ones are registered here like any plugin would be.
-[project.entry-points."rcp_ndcg.runners"]
-local = "rcp_ndcg.runners.local:LocalRunner"
-slurm = "rcp_ndcg.runners.slurm:SlurmRunner"
-kubernetes = "rcp_ndcg.runners.kubernetes:KubernetesRunner"
-
-[project.urls]
-Homepage = "https://github.com/cohere-ai/rcp-ndcg"
-Repository = "https://github.com/cohere-ai/rcp-ndcg"
-Paper = "https://arxiv.org/abs/2609.35739"
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-# Package data: the prompts (rcp_ndcg/llm/prompts/*.txt) and the shipped judge configs (rcp_ndcg/llm/judges/*.yaml),
-# loaded through importlib.resources. The JSON Schemas under schemas/ are generated from the models that ship
-# (`rcp-ndcg schema export` writes them byte for byte), so the wheel carries them as models.
-[tool.setuptools.package-data]
-"*" = ["*.txt", "*.yaml"]
-"rcp_ndcg.examples" = ["tiny/*.jsonl", "tiny/*.json", "runs/*.yaml"]
-
-# The repository is a uv workspace.  ``rcp-ndcg`` (this manifest) is the
-# pipeline: storage, data, retrieval, judging, calibration, evaluation, runs and
-# the CLI.  ``packages/rcp-ndcg-core`` is the metric, the gains, the protocols,
-# the schemas and the IRT estimators (numpy + pydantic; the estimators need its
-# [irt] extra: torch, scipy), released in lockstep with this package.
-# ``packages/rcp-ndcg-vllm`` is deliberately outside the workspace: it installs
-# into an engine image that carries its own vLLM and torch, and a lock entry
-# would bring their conflict back.  See packages/rcp-ndcg-vllm/README.md.
 [tool.uv.workspace]
-members = ["packages/*"]
-exclude = ["packages/rcp-ndcg-vllm"]
+members = ["rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-vllm"]
 
 [tool.uv.sources]
+# An inter-member requirement resolves to the checkout, never to an index.
 rcp-ndcg = { workspace = true }
 rcp-ndcg-core = { workspace = true }
+rcp-ndcg-vllm = { workspace = true }
+
+[tool.ruff.lint.isort]
+known-first-party = ["rcp_ndcg"]
 
 [tool.pytest.ini_options]
 # Collect the test tree only (experiments/ and examples/ are exercised through tests/).
@@ -176,24 +31,25 @@ filterwarnings = ["error::rcp_ndcg.errors.RcpNdcgWarning"]
 [tool.ruff]
 line-length = 120
 target-version = "py312"
-# A recipe's vendored card script (packages/rcp-ndcg-vllm/recipes/*/qwen3_vl_embedding.py) is a model's
+# A recipe's vendored card script (rcp-ndcg-vllm/recipes/*/qwen3_vl_embedding.py) is a model's
 # published code, kept byte-identical to the Hub file and hash-pinned by the recipe's test: it is never
 # reformatted or linted. The pattern names that exact filename only (a differently named vendored file
 # would need its own entry), so nothing else can hide behind it; force-exclude keeps the exclusion
 # working when the file is named explicitly on the command line.
 force-exclude = true
-extend-exclude = ["packages/rcp-ndcg-vllm/recipes/*/qwen3_vl_embedding.py"]
+extend-exclude = ["rcp-ndcg-vllm/recipes/*/qwen3_vl_embedding.py"]
 
 [tool.ruff.format]
 # ruff >= 0.16 also formats fenced Python blocks inside Markdown. The snippets in
 # the docs are laid out for a reader; tests/docs runs them instead. `ruff check`
 # does not lint Markdown either way.
 exclude = ["*.md"]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 
 [tool.basedpyright]
-include = ["src", "packages/rcp-ndcg-core/src", "packages/rcp-ndcg-vllm/src", "packages/rcp-ndcg-vllm/plugins/*/src"]
+include = ["rcp-ndcg/src", "rcp-ndcg-core/src", "rcp-ndcg-vllm/src", "rcp-ndcg-vllm/plugins/*/src"]
 exclude = ["**/__pycache__"]
 # "standard" rather than basedpyright's default "all": the strict-adjacent rules
 # (reportAny, reportUnusedCallResult, reportMissingTypeArgument) fire thousands

@@ -2700,7 +2700,7 @@ wheels = [
 [[package]]
 name = "rcp-ndcg"
 version = "0.0.1"
-source = { editable = "." }
+source = { editable = "rcp-ndcg" }
 dependencies = [
     { name = "bm25s" },
     { name = "click" },
@@ -2793,8 +2793,8 @@ requires-dist = [
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.5" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rcp-ndcg", extras = ["calibrate", "hf"], marker = "extra == 'dev'", editable = "." },
-    { name = "rcp-ndcg-core", editable = "packages/rcp-ndcg-core" },
+    { name = "rcp-ndcg", extras = ["calibrate", "hf"], marker = "extra == 'dev'", editable = "rcp-ndcg" },
+    { name = "rcp-ndcg-core", editable = "rcp-ndcg-core" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "s3fs", marker = "extra == 's3'", specifier = ">=2025.3.0" },
     { name = "scipy", specifier = ">=1.15" },
@@ -2808,7 +2808,7 @@ provides-extras = ["s3", "azure", "hf", "http", "mteb", "calibrate", "data", "de
 [[package]]
 name = "rcp-ndcg-core"
 version = "0.0.1"
-source = { editable = "packages/rcp-ndcg-core" }
+source = { editable = "rcp-ndcg-core" }
 dependencies = [
     { name = "numpy" },
     { name = "pydantic" },

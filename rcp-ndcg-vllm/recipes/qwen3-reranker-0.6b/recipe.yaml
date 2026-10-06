@@ -1,0 +1,118 @@
+# Qwen/Qwen3-Reranker-0.6B served with stock vLLM, paper-exact.
+#
+# Paper reference: experiments/paper/rerankers/reference/qwen3.py (QwenOGRerank, moved unchanged
+# from the former rcp-ndcg/src/rcp_ndcg/retrieval/external_rerankers.py; on branch lane/l5-packaging at this
+# tree's HEAD - it lands with the unified-inference merge) with the paper config
+# experiments/paper/rerankers/qwen3_reranker_0_6b.yaml (batch_size 16) and the paper budgets
+# MAX_SEQ_LENGTH = 8192 (the pair budget) and MAX_QUERY_LENGTH = 4096 (retrieval/cross_encoder.py).
+# The served prompt is the model card's chat frame; the research lane (r-qwen3-rer) measured every
+# claim below on the tokenizer files alone.
+id: qwen3-reranker-0.6b
+model: Qwen/Qwen3-Reranker-0.6B
+revision: "e61197ed45024b0ed8a2d74b80b4d909f1255473"
+role: rerank
+input: [text]
+scoring: pointwise
+licence: apache-2.0
+engine:
+  name: vllm
+  image: "vllm/vllm-openai:v0.31.0"
+  # The first release line carrying is_original_qwen3_reranker was 0.30.1rc0 (measured by
+  # git log -S in the r-qwen3-rer lane); the schema's min_version is a release version.
+  min_version: "0.30.1"
+  startup_timeout_s: 1800
+resources: {gpus: 1}
+serve:
+  runner: pooling
+  convert: null
+  hf_overrides:
+    architectures: [Qwen3ForSequenceClassification]
+    # Quoted: YAML would read both as booleans (the two label tokens of the 2-way softmax head).
+    classifier_from_token: ["no", "yes"]
+    is_original_qwen3_reranker: true
+  chat_template: qwen3_reranker.jinja
+  # Defaults suffice: the conversion sets task=classify; a 1-label head scores sigmoid.
+  pooler_config: {}
+  trust_remote_code: false
+  # The model card's own serving value; must stay >= client.max_tokens (8192).
+  max_model_len: 10000
+  dtype: bfloat16
+  plugin: null
+  extra_args: []
+client:
+  api: rerank
+  recipe: "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + classifier_from_token [no,yes] + is_original_qwen3_reranker, --chat-template qwen3_reranker.jinja, pooler defaults (task classify, 1-label head -> sigmoid of W_yes - W_no in float32)"
+  tokenizer: "Qwen/Qwen3-Reranker-0.6B@e61197ed45024b0ed8a2d74b80b4d909f1255473"
+  max_tokens: 8192
+  query_max_tokens: 4096
+  template:
+    pair:
+      # The fixed frame: system turn, judge sentence, user turn, the instruction (fixed: the
+      # client's instruction mode is `none`, the template default is the paper default) and the
+      # query lead. Specials by name, resolved from the recipe tokenizer at render time.
+      - fixed: "{special:im_start}system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \"yes\" or \"no\".{special:im_end}\n{special:im_start}user\n<Instruct>: Given a web search query, retrieve relevant passages that answer the query\n<Query>: "
+      - {content: query}
+      - fixed: "\n<Document>: "
+      - {content: document}
+      # The anchor tail: the assistant turn and the empty think block the paper prompt ends with.
+      - fixed: "{special:im_end}\n{special:im_start}assistant\n{special:<think>}\n\n{special:</think>}\n\n"
+    anchor: last
+    add_special_tokens: {pair: true}
+  instruction: none
+  use_activation: true
+  on_overflow: cut
+  empty_doc: send
+reference:
+  kind: transformers
+  score_scale: probability
+  entry: reference.py
+  known_deviations: []
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources:
+  - "https://huggingface.co/Qwen/Qwen3-Reranker-0.6B (sha e61197ed45024b0ed8a2d74b80b4d909f1255473): README.md, config.json, config_sentence_transformers.json, 1_LogitScore/config.json (true_token_id 9693, false_token_id 2152), chat_template.jinja"
+  - "vLLM d0d6e5f3a26f484786e7f20490152e911fd4e220 (3 days after the v0.31.0 tag, 376 commits ahead): examples/pooling/score/qwen3_reranker_offline.py, examples/pooling/score/template/qwen3_reranker.jinja, vllm/model_executor/models/adapters.py:566-571 (score head, float32 diff of the yes/no rows) and :580-590 (bookkeeping), vllm/entrypoints/pooling/scoring/io_processor.py:460-469 (the no-chat-template warning; only warns, then concatenates), :697-698 (the concatenation fallback), vllm/entrypoints/pooling/scoring/protocol.py:69-74 (build_tok_params, add_special_tokens=True), vllm/renderers/hf.py:759-845 (safe_apply_chat_template, the renderer the engine calls). Every cited construct is unchanged between the v0.31.0 tag and this checkout; io_processor.py (+33 lines) and renderers/hf.py (+47/-5) carry unrelated late-interaction additions, and the anchors are the checkout's (the tag's copies sit lower: io_processor warning :432, concatenation :669; renderers call :824)"
+  - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/retrieval/cross_encoder.py:42,46 (MAX_SEQ_LENGTH 8192, MAX_QUERY_LENGTH 4096), :256-269 (the served call); experiments/paper/rerankers/qwen3_reranker_0_6b.yaml; experiments/paper/rerankers/reference/qwen3.py (the paper-exact QwenOGRerank this reference.py derives from; on branch lane/l5-packaging at this tree's HEAD - it lands with the unified-inference merge); .rfc/RFC-0001-unified-inference.md section 6.1 (the accepted design; branch rfc-0001)"
+  - "research lane r-qwen3-rer: research/r-qwen3-rer/out/ (report.md, digest.md, check_tokens.py, recipe-draft-qwen3-reranker-0.6b.yaml, qwen3_reranker.patched.jinja) with the audit-synth corrections for r-qwen3-rer (research/audit-synth/out/corrections.md)"
+notes: >-
+  Template: the shipped qwen3_reranker.jinja is the stock vLLM example template
+  (examples/pooling/score/template/qwen3_reranker.jinja) with one change: transformers'
+  apply_chat_template compiles with keep_trailing_newline=False and strips ONE trailing newline
+  from the template file, so the stock file (which ends with the think-close marker and two
+  newlines) renders a prompt one token short of the paper reference at the scored position
+  (single vs double newline token; measured on all probe pairs by the research lane). The shipped
+  file is dual-mode: it renders the reference-exact prompt from the query/document/instruction
+  variables the harness's stage-1 check passes, and otherwise falls through to the stock
+  messages-based body (what the engine's safe_apply_chat_template passes) with the two trailing
+  newlines preserved inside the branch, so the engine renders the paper prompt bit-exactly without
+  a newline patch. The template file MUST ship with the engine: served without --chat-template,
+  vLLM only logs a warning (scoring io_processor) and then concatenates query and documents with
+  no frame at all. R10: stage 1's template_render_check proves the declared shapes render to the
+  file's render; the wave's T0 smoke must assert the engine loaded it (a /tokenize probe of one
+  rendered prompt must carry the frame). Budget: max_tokens 8192 is the paper's MAX_SEQ_LENGTH,
+  counted as the engine sees the whole prompt (frame + query + document); query_max_tokens 4096 is
+  the client-side share that binds when a pair overflows the budget (fit then cuts the query to its
+  share and gives the document the rest). An under-budget pair with a longer query is sent whole:
+  fit's share does not bind under the budget, and the recipe's adapter sends no engine-side
+  truncation field, so served and reference agree (the research's R5 measured the paper's own
+  served path, which sent max_tokens_per_query=4096 to the engine - a field this recipe's adapter
+  never sends). The reference truncates the pair string (longest_first, at 8144 pair tokens) and
+  always re-attaches the prefix and the 9-token assistant suffix, so no anchor is ever dropped and
+  reference.known_deviations is empty. The instruction is fixed: the client's instruction mode is
+  `none` (the paper's served path passed the bare query and the class's default instruction), the
+  default instruction is hardcoded in the frame and equals the model card's
+  config_sentence_transformers.json prompt; instruction-bearing dataset rows would silently keep
+  the default (research risk R6 - the paper configs set none). For pairs whose query is within the
+  4096-token share and whose pair exceeds the 8192-token budget, the client cuts the document span
+  at document-token boundaries (fit's verified assembled cut) where the reference cuts the pair
+  string at pair-token boundaries - usually the same boundary (word-boundary cuts coincide), and
+  when the two cuts land differently (e.g. a multi-byte decomposition at the boundary) the renders
+  differ by a token or two and stage 1's byte-exact render check fails LOUDLY on such rows - a
+  stage-1 finding to resolve, never a silent stage-2 gate (research risk R4; over-cap pairs never
+  enter the Kendall tau). For an over-budget pair whose query also exceeds the 4096-token share the
+  divergence is structural (research risk R5): the served path cuts the query to its share while
+  the reference keeps the whole query and truncates the pair string, so stage 1 fails loudly on
+  such rows too; the pairs files of the waves must keep queries well within the share (the paper's
+  datasets do) and drop any row stage 1 goes red on. Serving sets no pooler overrides
+  (`--pooler-config {}` renders empty, the engine's own defaults: task classify, 1-label head,
+  sigmoid) and uses no plugin.

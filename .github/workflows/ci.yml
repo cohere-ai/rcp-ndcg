@@ -36,7 +36,7 @@ jobs:
         with:
           enable-cache: true
       - run: .github/scripts/cpu-env.sh dev
-      # src/ and the core package (pyproject.toml [tool.basedpyright] include): zero errors, and it stays that way.
+      # src/ and the core package (rcp-ndcg/pyproject.toml [tool.basedpyright] include): zero errors, and it stays that way.
       - run: uv run --no-sync basedpyright
 
   test:
@@ -96,7 +96,7 @@ jobs:
       # rcp-ndcg-core promises the metric with numpy and pydantic only: install it outside the workspace and check
       # that it computes RCP-nDCG without importing torch.
       - run: uv venv "$RUNNER_TEMP/core" --python 3.12
-      - run: uv pip install --python "$RUNNER_TEMP/core/bin/python" ./packages/rcp-ndcg-core
+      - run: uv pip install --python "$RUNNER_TEMP/core/bin/python" ./rcp-ndcg-core
       - run: |
           "$RUNNER_TEMP/core/bin/python" - <<'PY'
           import sys
@@ -126,8 +126,8 @@ jobs:
       - run: uv venv "$RUNNER_TEMP/vllm-pkg" --python 3.12
       - run: >-
           uv pip install --python "$RUNNER_TEMP/vllm-pkg/bin/python"
-          -e packages/rcp-ndcg-core -e . -e 'packages/rcp-ndcg-vllm[test]'
-      - run: '"$RUNNER_TEMP/vllm-pkg/bin/python" -m pytest packages/rcp-ndcg-vllm/tests -q'
+          -e rcp-ndcg-core -e . -e 'rcp-ndcg-vllm[test]'
+      - run: '"$RUNNER_TEMP/vllm-pkg/bin/python" -m pytest rcp-ndcg-vllm/tests -q'
 
   mteb:
     name: mteb tasks (non-blocking)

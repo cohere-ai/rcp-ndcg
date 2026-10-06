@@ -14,7 +14,7 @@ from packaging.version import Version
 
 from tests.docs._markdown import ROOT
 
-PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+PYPROJECT = tomllib.loads((ROOT / "rcp-ndcg" / "pyproject.toml").read_text(encoding="utf-8"))
 EXTRAS = PYPROJECT["project"]["optional-dependencies"]
 
 
@@ -69,7 +69,7 @@ def test_every_runtime_dependency_is_imported_somewhere() -> None:
     """A declared dependency nothing imports is weight on every install."""
     sources = "\n".join(
         path.read_text(encoding="utf-8")
-        for folder in ("src", "packages", "experiments", "examples")
+        for folder in ("rcp-ndcg/src", "rcp-ndcg-core", "rcp-ndcg-vllm", "experiments", "examples")
         for path in (ROOT / folder).rglob("*.py")
     )
     # distribution -> the module it provides, where the names differ; fsspec protocols load their backend lazily.
@@ -165,7 +165,7 @@ def _assert_one_environment_per_package(workflow: dict) -> None:
     assert workflow[True]["push"]["tags"] == ["v*"]  # YAML reads the key `on` as true
     assert set(jobs) == {"build", *RELEASE_PUBLISH_JOBS, "github-release"}
     build = str(jobs["build"])
-    assert "uv build --all-packages" in build and "packages/rcp-ndcg-vllm" in build, (
+    assert "uv build --all-packages" in build and "rcp-ndcg-vllm" in build, (
         "rcp-ndcg-vllm is outside the uv workspace: the build job must build it from its own directory"
     )
     assert "twine check" in build and "requirements-constraints.txt" in build
@@ -245,7 +245,7 @@ def test_the_release_workflow_checks_the_vllm_packages_rcp_ndcg_pin(tmp_path) ->
     def check(manifest: str | None, version: str = "0.0.1") -> subprocess.CompletedProcess[str]:
         tree = tmp_path / f"check-{check.calls:03d}-{version}"
         check.calls += 1
-        package = tree / "packages" / "rcp-ndcg-vllm"
+        package = tree / "rcp-ndcg-vllm"
         package.mkdir(parents=True)
         if manifest is not None:
             (package / "pyproject.toml").write_text(manifest, encoding="utf-8")
@@ -283,10 +283,10 @@ def test_both_distributions_ship_the_license_and_the_notice() -> None:
     """NOTICE attributes the third-party code (Apache-2.0 section 4(d)); each distribution carries the same copy.
 
     Three distributions today (``rcp-ndcg``, ``rcp-ndcg-core``, ``rcp-ndcg-vllm``), plus the vLLM plugin
-    distributions under ``packages/rcp-ndcg-vllm/plugins/*`` when the plugin lanes have landed them.
+    distributions under ``rcp-ndcg-vllm/plugins/*`` when the plugin lanes have landed them.
     """
-    folders = [ROOT, ROOT / "packages" / "rcp-ndcg-core", ROOT / "packages" / "rcp-ndcg-vllm"]
-    plugins = ROOT / "packages" / "rcp-ndcg-vllm" / "plugins"
+    folders = [ROOT, ROOT / "rcp-ndcg-core", ROOT / "rcp-ndcg-vllm"]
+    plugins = ROOT / "rcp-ndcg-vllm" / "plugins"
     if plugins.is_dir():
         folders += sorted(
             folder for folder in plugins.iterdir() if folder.is_dir() and (folder / "pyproject.toml").is_file()

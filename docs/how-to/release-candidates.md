@@ -16,7 +16,7 @@ smoke-installs from it in a fresh venv, stages everything, and writes a hash man
 ```bash
 export RCP_STAGE_PREFIX=gs://YOUR-BUCKET/stage            # private location; operator's command line only
 export EXTRA_DIRS="/path/to/private-plugins /path/to/private-pairs"
-packages/rcp-ndcg-vllm/jobs/rc_build.sh rc0                # or rc_build.sh rc0 <commit>
+rcp-ndcg-vllm/jobs/rc_build.sh rc0                # or rc_build.sh rc0 <commit>
 ```
 
 The build runs in a detached worktree of the given commit, so a dirty checkout is fine. The staged tree
@@ -76,7 +76,7 @@ Kueue priority class and the shared-memory size for eight engines:
 export RCP_KJOBS_CONFIG=/path/to/jobs-config.yaml    # the job CLI's -f config (required, no default)
 export RCP_GCS_AUTH_FILE=/path/to/gcs_auth.sh        # mounted at /etc/rcp/gcs_auth.sh; named, never read
 export RCP_HF_TOKEN_FILE=/path/to/token              # passed as a kjobs secret, never read or echoed
-packages/rcp-ndcg-vllm/jobs/submit.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves wave-a wave-b
+rcp-ndcg-vllm/jobs/submit.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves wave-a wave-b
 ```
 
 Options: `--max-jobs N` (default 1), `--priority dev-high|dev-medium` (the `priority_class=` override,
@@ -124,7 +124,7 @@ Run it through `submit.sh` (which mounts `wave0.sh` beside `bootstrap.sh`), or a
 
 ```bash
 export RCP_STAGE_PREFIX=gs://YOUR-BUCKET/stage
-packages/rcp-ndcg-vllm/jobs/submit.sh --script wave0 --priority dev-high \
+rcp-ndcg-vllm/jobs/submit.sh --script wave0 --priority dev-high \
   "$RCP_STAGE_PREFIX/rc0" gs://YOUR-BUCKET/waves wave0
 ```
 
@@ -138,17 +138,17 @@ kjobs-go submit -f "$RCP_KJOBS_CONFIG" \
   env.RCP_IMAGE=vllm/vllm-openai:v0.31.0 \
   env.RCP_IMAGE_DIGEST=sha256:0123...abcd \
   worker.command='/bin/bash /etc/rcp/files/wave0/wave0.sh '"$RCP_STAGE_PREFIX"'/rc0 gs://YOUR-BUCKET/waves/wave0' \
-  files.wave0.from_file=packages/rcp-ndcg-vllm/src/rcp_ndcg_vllm/jobs/wave0.sh \
+  files.wave0.from_file=rcp-ndcg-vllm/src/rcp_ndcg_vllm/jobs/wave0.sh \
   files.wave0.mount_path=/etc/rcp/files/wave0/wave0.sh \
-  files.wave0host.from_file=packages/rcp-ndcg-vllm/jobs/wave0_host.py \
+  files.wave0host.from_file=rcp-ndcg-vllm/jobs/wave0_host.py \
   files.wave0host.mount_path=/etc/rcp/files/wave0host/wave0_host.py \
-  files.gcshelper.from_file=packages/rcp-ndcg-vllm/jobs/gcs.sh \
+  files.gcshelper.from_file=rcp-ndcg-vllm/jobs/gcs.sh \
   files.gcshelper.mount_path=/etc/rcp/files/gcshelper/gcs.sh \
-  files.gcspy.from_file=packages/rcp-ndcg-vllm/jobs/gcs.py \
+  files.gcspy.from_file=rcp-ndcg-vllm/jobs/gcs.py \
   files.gcspy.mount_path=/etc/rcp/files/gcshelper/gcs.py \
-  files.bootstrap.from_file=packages/rcp-ndcg-vllm/jobs/bootstrap.sh \
+  files.bootstrap.from_file=rcp-ndcg-vllm/jobs/bootstrap.sh \
   files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh \
-  files.report.from_file=packages/rcp-ndcg-vllm/jobs/report.py \
+  files.report.from_file=rcp-ndcg-vllm/jobs/report.py \
   files.report.mount_path=/etc/rcp/files/report/report.py \
   files.gcsauth.from_file="$RCP_GCS_AUTH_FILE" files.gcsauth.mount_path=/etc/rcp/gcs_auth.sh \
   secret.HF_TOKEN="$(cat "$RCP_HF_TOKEN_FILE")"
@@ -157,4 +157,4 @@ kjobs-go submit -f "$RCP_KJOBS_CONFIG" \
 `WAVE0_DRY=1` prints the plan without running anything. The knobs (`WAVE0_MODEL`, `WAVE0_REVISION`,
 `WAVE0_SECOND_MODEL`, `WAVE0_BUDGET`, `WAVE0_PORT_BASE`, `WAVE0_STARTUP_TIMEOUT_S`, the minimums) are
 environment variables with the researched defaults; the report is `rcp-ndcg.wave0-report.v1`, its
-schema exported at `packages/rcp-ndcg-vllm/schema/wave0-report.schema.json`.
+schema exported at `rcp-ndcg-vllm/schema/wave0-report.schema.json`.
