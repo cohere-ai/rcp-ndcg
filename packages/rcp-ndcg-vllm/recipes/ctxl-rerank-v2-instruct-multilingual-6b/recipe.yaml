@@ -34,10 +34,6 @@ serve:
   # <s>), no trailing content after the " ??" the score is read from. R10: the file ships in the
   # recipe directory -- without it vLLM only warns and concatenates the raw prompts.
   chat_template: score-template-6b.jinja
-  # The score template vLLM serves: document before query, no bos line (the post-processor adds
-  # <s>), no trailing content after the " ??" the score is read from. R10: the file ships in the
-  # recipe directory -- without it vLLM only warns and concatenates the raw prompts.
-  chat_template: score-template-6b.jinja
   # The classify pooler's default activation for num_labels < 2 is sigmoid; the raw logit the
   # reference reads (logits[:, -1, 0]) is pinned twice: the client sends use_activation from this
   # config on the wire (inference/adapters/rerank.py:181-182), and this server-side default keeps

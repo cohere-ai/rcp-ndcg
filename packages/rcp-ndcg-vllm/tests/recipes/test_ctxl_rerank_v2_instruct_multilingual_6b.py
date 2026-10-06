@@ -2,13 +2,13 @@
 
 Stage 1 here is CPU-only: the recipe's tokenizer.json (the only Hub artifact it needs, ~11 MB) is
 downloaded once at the recipe's pinned revision into a cache directory -- the lane's scratch dir
-when it sits beside this checkout (so the download is fetched once per machine, never into the
-checkout), else pytest's own temp dir; set ``RCP_NDCG_VLLM_TOKENIZER_CACHE`` to override the
-location. The product's tokenizer load is then pinned to the fetched snapshot, so stage 1 counts
-in the checkpoint's tokens without a second download. Tests that need the download skip themselves
-with a clear reason when the Hub is unreachable (offline CI) or ``huggingface_hub`` is not
-installed. No weights, no engine: the score path belongs to the GPU wave (the recipe ships
-``status: unverified`` until it passes there).
+(``rec-<recipe id>/scratch`` beside this checkout, so the download is fetched once per machine,
+never into the checkout), else pytest's own temp dir; set ``RCP_NDCG_VLLM_TOKENIZER_CACHE`` to
+override the location. The product's tokenizer load is then pinned to the fetched snapshot, so
+stage 1 counts in the checkpoint's tokens without a second download. Tests that need the download
+skip themselves with a clear reason when the Hub is unreachable (offline CI) or
+``huggingface_hub`` is not installed. No weights, no engine: the score path belongs to the GPU
+wave (the recipe ships ``status: unverified`` until it passes there).
 
 The reference subprocess (``reference.py``, ``--mode render``) is stdlib-only, so the token-id
 (render) equality runs everywhere the package's tests run.
@@ -167,7 +167,7 @@ def tokenizer_snapshot(tmp_path_factory) -> Path:
         cache = Path(override)
         cache.mkdir(parents=True, exist_ok=True)
     else:
-        lane_scratch = Path(__file__).resolve().parents[4].parent / RECIPE_ID / "scratch"
+        lane_scratch = Path(__file__).resolve().parents[4].parent / f"rec-{RECIPE_ID}" / "scratch"
         cache = lane_scratch / "hf-home" if lane_scratch.is_dir() else tmp_path_factory.mktemp("tokenizer-cache")
     try:
         import huggingface_hub
