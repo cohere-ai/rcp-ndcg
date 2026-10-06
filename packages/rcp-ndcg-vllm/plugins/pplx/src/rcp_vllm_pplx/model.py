@@ -52,6 +52,12 @@ from vllm.model_executor.models.utils import (
 
 from rcp_vllm_pplx.pooler import build_pooler
 from rcp_vllm_pplx.pooling_core import PplxInt8Projection
+from rcp_vllm_pplx.version_guard import require_vllm_version
+
+# The guard's second import moment: the registry imports this module lazily through the
+# "module:Class" string, so a vLLM outside the validated range is refused even on the
+# path that bypasses register() (the first moment).
+require_vllm_version()
 
 
 @default_pooling_type(seq_pooling_type="CLS", tok_pooling_type="ALL")

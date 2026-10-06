@@ -60,8 +60,8 @@ normalisation is the request's `use_activation` (on by default, as the card's `n
 the unnormalized values, per the card.
 
 The role prefixes and the boundary marker are constants of the pinned revision's tokenizer
-(`query_prefix` / `document_prefix` / `boundary_marker` in the checkpoint config); the pooler asserts the
-document prefix renders as exactly `[62724, 60]` and refuses anything else loudly. If the Hub revision changes
+(`query_prefix` / `document_prefix` / `boundary_marker` in the checkpoint config); the pooler requires the
+ids to begin with exactly `[62724, 60]` and refuses anything else loudly. If the Hub revision changes
 its tokenizer, the ids change and this plugin must be re-pinned — by design, never silently.
 
 ## What the plugin registers

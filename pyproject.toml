@@ -246,7 +246,7 @@ exclude = ["*.md"]
 select = ["E", "F", "I", "B", "UP"]
 
 [tool.basedpyright]
-include = ["src", "packages/rcp-ndcg-core/src", "packages/rcp-ndcg-vllm/src"]
+include = ["src", "packages/rcp-ndcg-core/src", "packages/rcp-ndcg-vllm/src", "packages/rcp-ndcg-vllm/plugins/pplx/src"]
 exclude = ["**/__pycache__"]
 # "standard" rather than basedpyright's default "all": the strict-adjacent rules
 # (reportAny, reportUnusedCallResult, reportMissingTypeArgument) fire thousands
