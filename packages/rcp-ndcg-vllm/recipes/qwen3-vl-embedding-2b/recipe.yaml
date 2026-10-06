@@ -86,7 +86,9 @@ notes: >-
   NULL, hence empty_doc: send_text. Budgets: client.max_tokens is the declared policy, reserved
   frame-first with the content span cut (on_overflow: cut); the reference's own truncation (processor
   truncation=True) right-cuts the whole prompt on over-cap inputs, the declared anchor_drop_over_cap
-  deviation - stage-1 pairs must sit under the budget, and stage 2 gates under-cap pairs only. Until
+  deviation - stage-1 pairs must sit under the budget. On the vector path stage 2 implements no over-cap
+  exclusion today (the deviation table is wired for the rerank path only): an over-cap pair in a stage-2
+  pairs file fails the cosine gate loudly by design, so the stage-2 pairs must sit under the budget too. Until
   the text-budget wiring lands in the embed client (clients-final), the client refuses this config and
   the guard is the engine's loud HTTP 400 at max_model_len. Video is a model-level capability:
   rcp-ndcg's lowering never emits video_url today, and the served video sampling (checkpoint fps 2 /
@@ -95,4 +97,8 @@ notes: >-
   identical ids for text, image, image+text, video template, page image); the pairs file carries text,
   so the GPU wave must additionally run the R20 probe-image engine check (the served prompt-token count
   for one probe image at the pinned pixel budget) and the resize-divergence caveat holds only for
-  inputs with one dimension <= 16 px (check_resize_grid_out.json).
+  inputs with one dimension <= 16 px (check_resize_grid_out.json). The pairs files for both stages carry
+  plain non-empty text and no instruction field: the card renders the text NULL for an empty input (the
+  client-side empty_doc policy) while fit renders the empty span, and an instruction row is refused by
+  the reference (silently ignored by fit without a reference python - the harness gap named in the
+  report's open questions), so both are loud stage failures, never silent drifts.

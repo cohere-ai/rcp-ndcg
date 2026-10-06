@@ -96,7 +96,13 @@ def _pairs(path: Path, rows: list[dict[str, Any]]) -> Path:
 
 def _download_tokenizer(target_dir: Path) -> Path:
     """The pinned revision's tokenizer.json, fetched into a pytest-managed directory and hash-pinned;
-    offline (or any fetch failure) skips with a clear reason instead of failing the suite."""
+    offline (or any fetch failure) skips with a clear reason instead of failing the suite.
+
+    The recipe brief mandates this semantics - run when online, skip with a clear reason when offline -
+    the inverse of the root suite's RCP_NDCG_NETWORK_TESTS gate: stage 1 on the pinned tokenizer is the
+    test's point, so it must run by default in CI's networked vllm-recipes job and skip, never fail,
+    offline. The @pytest.mark.network marks name the network dependency in the root convention's
+    vocabulary; the offline skip is the guard."""
     target = target_dir / "tokenizer.json"
     if target.is_file():
         return target
@@ -189,6 +195,7 @@ def test_card_script_is_vendored_verbatim() -> None:
     assert digest == CARD_SHA256
 
 
+@pytest.mark.network
 def test_stage1_on_cpu(recipe_cpu: Any, tokenizer: Path, tmp_path: Path) -> None:
     """Stage 1 with the real tokenizer: fit's renders, the anchor audit (21 sampled rows, 5 over cap),
     the reference render, the template file and the stub engine's /tokenize all agree."""
@@ -218,6 +225,7 @@ def test_stage1_on_cpu(recipe_cpu: Any, tokenizer: Path, tmp_path: Path) -> None
     assert document["passed"] is True
 
 
+@pytest.mark.network
 def test_reference_cut_matches_fit_under_and_over_cap(recipe_cpu: Any, tmp_path: Path) -> None:
     """The reference's anchor-preserving render is byte-identical with the product's fit, under the cap
     (no cut) and over it (the content cut, the frame and the anchor re-attached) - including a query text
@@ -254,6 +262,7 @@ def test_reference_cut_matches_fit_under_and_over_cap(recipe_cpu: Any, tmp_path:
         assert ids[-1] == tokenizer.special_id("endoftext"), "the anchor sits at the tail of every render"
 
 
+@pytest.mark.network
 def test_stage1_anchor_mutation_is_red(recipe_cpu: Any, tmp_path: Path) -> None:
     """Dropping the template's trailing anchor segment turns the anchor check red: the rendered ids no
     longer end with the tail fixed segment plus the post-processor's anchor."""

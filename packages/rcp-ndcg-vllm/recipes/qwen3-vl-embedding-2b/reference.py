@@ -109,7 +109,8 @@ class _Tok:
 
 def _load_recipe() -> dict[str, Any]:
     """This recipe's YAML, read from the recipe.yaml beside this file (the fixture references read
-    theirs the same way). Only the anchor-preserving ``cut`` policy is implemented here."""
+    theirs the same way). Only the anchor-preserving ``cut`` policy is implemented here, and the frame
+    must still pin the card's default instruction (the drift check keeps the three copies tied)."""
     import yaml
 
     recipe: dict[str, Any] = yaml.safe_load(
@@ -119,6 +120,12 @@ def _load_recipe() -> dict[str, Any]:
     if client.get("on_overflow") != "cut" or client.get("max_tokens") is None:
         raise SystemExit(
             "reference.py implements on_overflow: cut with a max_tokens budget; the recipe declares something else"
+        )
+    head = ((client.get("template") or {}).get("document") or [{}])[0].get("fixed") or ""
+    if DEFAULT_INSTRUCTION not in head:
+        raise SystemExit(
+            "the recipe's declared frame no longer pins the card's default instruction "
+            f"({DEFAULT_INSTRUCTION!r}) as fixed text; the reference refuses to drift from it"
         )
     return recipe
 
