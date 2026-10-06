@@ -593,3 +593,101 @@ class TestUseActivationOnTheAdapter:
         finally:
             registry.base._BUILTINS.clear()
             registry.base._BUILTINS.update(saved)
+
+
+class TestUsageAccounting:
+    """Retrieval-role usage is forwarded and recorded (the judge's per-reply rule): each client folds its
+    replies' token reports into the transport's usage, and its ``usage`` property reads the same
+    accounting -- an embed/pool/rerank run records the tokens its replies reported, never zeros."""
+
+    @staticmethod
+    def _usage_mock(tokens: int) -> tuple[Any, list[Any]]:
+        import httpx
+
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            if request.url.path.endswith("/rerank"):
+                return httpx.Response(
+                    200, json={"results": [{"index": 0, "relevance_score": 0.5}], "usage": {"prompt_tokens": tokens}}
+                )
+            if request.url.path.endswith("/pooling"):
+                # a token_embed answer has one vector per prompt token: the report must match the frame
+                return httpx.Response(
+                    200, json={"data": [{"index": 0, "data": [[1.0, 1.0]]}], "usage": {"prompt_tokens": 1}}
+                )
+            return httpx.Response(
+                200, json={"data": [{"index": 0, "embedding": [0.0, 0.0]}], "usage": {"prompt_tokens": tokens}}
+            )
+
+        return httpx.MockTransport(handler), seen
+
+    def test_the_embed_client_folds_reply_tokens_into_the_transport(
+        self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+
+        from rcp_ndcg.inference.transport import Transport
+
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        config = EmbeddingEndpoint(
+            api="openai_embeddings",
+            base_url="http://127.0.0.1:8000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=8192,
+        )
+        mock, _seen = TestUsageAccounting._usage_mock(7)
+        client = EmbeddingClient(config, sender=Transport(config, httpx_transport=mock))
+        client.encode([Content.from_text("x")], EncodeRole.DOCUMENT)
+        client.close()
+
+        assert client.usage.requests == 1
+        assert client.usage.input_tokens == 7
+
+    def test_the_rerank_client_folds_reply_tokens_into_the_transport(self, tokenizer_json: str) -> None:
+
+        from rcp_ndcg.inference.transport import Transport
+
+        config = RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=8192,
+            use_activation=False,
+        )
+        mock, _seen = TestUsageAccounting._usage_mock(11)
+        client = RerankClient(config, sender=Transport(config, httpx_transport=mock))
+        client.rerank("q", ["d"])
+        client.close()
+
+        assert client.usage.requests == 1
+        assert client.usage.input_tokens == 11
+
+    def test_the_pool_client_folds_reply_tokens_into_the_transport(self, tokenizer_json: str) -> None:
+
+        from rcp_ndcg.inference.transport import Transport
+
+        config = PoolingEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="colqwen",
+            dim=2,
+            tokenizer=tokenizer_json,
+            max_tokens=8192,
+        )
+        mock, _seen = TestUsageAccounting._usage_mock(13)
+        client = PoolingClient(config, sender=Transport(config, httpx_transport=mock))
+        asyncio.run(client.aencode([Content.from_text("x")], EncodeRole.DOCUMENT))
+        client.close()
+
+        assert client.usage.requests == 1
+        assert client.usage.input_tokens == 1  # the /pooling cross-check pins the report to the frame
+
+    def test_the_embed_client_probes_the_transport(self, tokenizer_json: str) -> None:
+        """The embed role's startup probe is the transport's replica probe (its wires carry no media, so
+        there is no engine media check to run)."""
+        client = EmbeddingClient(
+            EmbeddingEndpoint(api="openai_embeddings", model="m", tokenizer=tokenizer_json, max_tokens=8192),
+            sender=RecordingSender(),
+        )
+        assert asyncio.run(client.probe()) == []

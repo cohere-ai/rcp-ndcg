@@ -538,16 +538,20 @@ class RerankClient(RoleClient):
 
         A profile with a pause (Voyage) sends its calls one at a time, sleeping before each as today's
         ``VoyageRerank`` does; otherwise the calls go in one ``send``, which the transport routes to one
-        replica without interleaving.
+        replica without interleaving. Every reply's token report is folded into the transport's usage
+        (:meth:`RoleClient._record_usage`), whichever way the calls went out.
         """
         sender = self._sender
         pause = getattr(self._adapter, "PAUSE_S", 0.0)
         if not pause:
-            return await sender.send(calls)
+            replies = await sender.send(calls)
+            self._record_usage(replies)
+            return replies
         replies: list[Any] = []
         for call in calls:
             await asyncio.sleep(pause)
             replies.extend(await sender.send([call]))
+        self._record_usage(replies)
         return replies
 
 

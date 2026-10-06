@@ -170,6 +170,7 @@ class EmbeddingClient(RoleClient):
         async def one(index: int) -> Embeddings:
             async with gate:
                 replies = await self._sender.send(calls[index])
+            self._record_usage(replies)
             return self._adapter.interpret(requests[index], replies)
 
         parts = await RoleClient.gather([one(index) for index in range(len(requests))])
@@ -236,6 +237,11 @@ class EmbeddingClient(RoleClient):
             raise ConfigError(f"batch_size must be at least 1, got {size}")
         _check_batch_size(self._adapter_cls, size)
         return size
+
+    async def probe(self) -> Any:
+        """The role's startup probe: the transport's replica probe. The embed role's wires carry no media,
+        so there is no engine media check to run (media is refused before it is fetched)."""
+        return await self._sender.probe()
 
 
 __all__ = ["EmbeddingClient"]

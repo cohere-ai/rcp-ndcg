@@ -905,7 +905,9 @@ class TestEngineMediaCheckPass:
                     )
                     tokens = (media_tokens if carries_image else 0) + template_tokens
                     replies.append(
-                        Reply(200, {"data": [{"index": 0, "data": [[1.0, 1.0]]}], "usage": {"prompt_tokens": tokens}}, {})
+                        Reply(
+                            200, {"data": [{"index": 0, "data": [[1.0, 1.0]]}], "usage": {"prompt_tokens": tokens}}, {}
+                        )
                     )
                 return replies
 
@@ -941,7 +943,11 @@ class TestEngineMediaCheckPass:
                     carries_image = any(isinstance(document, dict) for document in documents)
                     tokens = (66 if carries_image else 0) + self.template
                     replies.append(
-                        Reply(200, {"results": [{"index": 0, "relevance_score": 0.5}], "usage": {"prompt_tokens": tokens}}, {})
+                        Reply(
+                            200,
+                            {"results": [{"index": 0, "relevance_score": 0.5}], "usage": {"prompt_tokens": tokens}},
+                            {},
+                        )
                     )
                 return replies
 

@@ -289,6 +289,7 @@ class PoolingClient(RoleClient):
         calls = self._adapter.calls(request, model=self.config.model)
         self._gate_media_calls(calls)
         replies = await self._sender.send(calls)
+        self._record_usage(replies)
         embeddings = self._adapter.interpret(request, replies)
         if embeddings.num_items != len(contents):
             raise ProviderError(

@@ -61,7 +61,7 @@ from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa:
 from rcp_ndcg.inference.adapters.base import AdapterRole, get_adapter
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.transport import AuthProfile, Sender, Transport
-from rcp_ndcg.inference.types import Call, Reply, TokenCount
+from rcp_ndcg.inference.types import Call, Reply, TokenCount, Usage
 from rcp_ndcg.support.logging import get_logger
 
 _TRANSPORT_CLASS = Transport
@@ -668,6 +668,28 @@ class RoleClient[C: Endpoint]:
                     continue
             kept.append(content)  # "send": the empty string goes out, as today
         return kept, omitted
+
+    # -- usage (the judge's per-reply rule) ------------------------------------
+    @property
+    def usage(self) -> Usage:
+        """The sender's accounting (requests, failed requests, tokens): the role client folds every reply's
+        token report into it at send time (:meth:`_record_usage`), the way the judge client folds the
+        judge's -- an embed/pool/rerank run records the tokens its replies reported, never zeros."""
+        return self._sender.usage
+
+    def _record_usage(self, replies: Sequence[Any]) -> None:
+        """Fold each reply's token report into the transport's usage, once per reply, exactly as the judge's
+        client does: the adapter reads the tokens (the API's field names are its business), the transport
+        accumulates them. A sender without accounting (a bare fake) adds nothing."""
+        add_usage = getattr(self._sender, "add_usage", None)
+        if add_usage is None:
+            return
+        for reply in replies:
+            add_usage(self._adapter_usage_of(reply))
+
+    def _adapter_usage_of(self, reply: Any) -> TokenCount | None:
+        """The reply's token report, through the adapter (``None`` when its API reports none)."""
+        return self._adapter.usage(reply)
 
     # -- the fan-out, one rule (R7) --------------------------------------------
     @staticmethod
