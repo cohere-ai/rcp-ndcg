@@ -5667,7 +5667,7 @@
       "DEFAULT_MAX_TOKENS": {
         "kind": "constant",
         "type": "int",
-        "value": 20000
+        "value": 32768
       },
       "DEFAULT_TEXT_POLICY": {
         "kind": "constant",
