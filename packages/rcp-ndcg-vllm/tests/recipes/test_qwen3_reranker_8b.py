@@ -69,9 +69,9 @@ def tokenizer_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
             (target / "tokenizer.json").write_bytes(response.read())
     except OSError as error:
         pytest.skip(
-            f"offline: the {REPO} tokenizer is unavailable (set RCP_NDCG_NETWORK_TESTS=1 to "
-            f"download it into tmp_path, or RCP_QWEN3_RERANKER_8B_TOKENIZER_DIR to a directory "
-            f"holding its tokenizer.json): {error}"
+            f"offline: the {REPO} tokenizer is unavailable (name a directory holding its "
+            f"tokenizer.json in RCP_QWEN3_RERANKER_8B_TOKENIZER_DIR, or run with network access "
+            f"so it downloads into tmp_path): {error}"
         )
     return target
 

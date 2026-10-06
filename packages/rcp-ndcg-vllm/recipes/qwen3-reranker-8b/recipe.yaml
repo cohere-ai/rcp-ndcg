@@ -63,8 +63,8 @@ status: {state: unverified, image: null, date: null, report: null}
 sources:
   - "https://huggingface.co/Qwen/Qwen3-Reranker-8B (revision 77d193c791ed757ca307ee72715aa132723da912): README.md, config.json, config_sentence_transformers.json, 1_LogitScore/config.json, chat_template.jinja"
   - "https://huggingface.co/Qwen/Qwen3-Reranker-8B/commit/77d193c791ed757ca307ee72715aa132723da912 (the pinned revision, re-checked against the Hub API)"
-  - "vLLM checkout d0d6e5f3a (the .refs/vllm pin of the working copy; image vllm/vllm-openai:v0.31.0): examples/pooling/score/qwen3_reranker_online.py:26 (the serve flags this recipe renders), examples/pooling/score/template/qwen3_reranker.jinja (the stock template; template.jinja here is that file with the instruction baked and one trailing newline added)"
-  - "vLLM checkout d0d6e5f3a: vllm/model_executor/models/adapters.py:566-571 (the yes-no score head, float32 weight difference, sigmoid == softmax([no, yes])[yes]); vllm/model_executor/models/config.py:783-801 (is_original_qwen3_reranker); vllm/entrypoints/pooling/scoring/io_processor.py:460-469 (the startup warning when the chat template is missing), io_processor.py:1136-1160 (the /rerank route applies the chat template to query and document role messages); tests/models/language/pooling_mteb_test/test_qwen3_reranker.py"
+  - "vLLM checkout d0d6e5f3a (the .refs/vllm pin of the working copy; image vllm/vllm-openai:v0.31.0): examples/pooling/score/qwen3_reranker_online.py:25 (the serve flags this recipe renders), examples/pooling/score/template/qwen3_reranker.jinja (the stock template; template.jinja here is that file with the instruction baked and one trailing newline added)"
+  - "vLLM checkout d0d6e5f3a: vllm/model_executor/models/adapters.py:566-571 (the yes-no score head, float32 weight difference, sigmoid == softmax([no, yes])[yes]); vllm/model_executor/models/config.py:783-801 (is_original_qwen3_reranker); vllm/entrypoints/pooling/scoring/io_processor.py:460-469 (the startup warning when the chat template is missing), io_processor.py:706-736 (the /rerank route applies the chat template to query and document role messages); tests/models/language/pooling_mteb_test/test_qwen3_reranker.py"
   - "experiments/paper/rerankers/reference/qwen3.py (the paper-exact in-process reference, QwenOGRerank) and experiments/paper/rerankers/reference/requirements.txt (its pinned environment)"
   - "experiments/paper/rerankers/qwen3_reranker_8b.yaml (the paper's served-path config: batch_size 4)"
   - "src/rcp_ndcg/retrieval/cross_encoder.py:42,46,267-269 (MAX_SEQ_LENGTH 8192, MAX_QUERY_LENGTH 4096, the served truncate_prompt_tokens/max_tokens_per_query call)"
@@ -85,7 +85,7 @@ notes: >-
   suffix one newline short and the scored position lands on the wrong token (the research instrument measured
   last-token 'Ċ' vs 'ĊĊ' on every probe pair). The query and document read the engine's chat variables with a
   fallback: the /rerank route applies the template to [{role: query}, {role: document}] messages
-  (io_processor.py:1136-1160), while the recipe's declared shapes render query/document directly; the
+  (io_processor.py:706-736 at the pin), while the recipe's declared shapes render query/document directly; the
   conditional serves both, and stage 1's template_render_check proves the declared shapes byte-equal the file.
 
   Budget: max_tokens 8192 is MAX_SEQ_LENGTH (cross_encoder.py:42), the paper's pair budget. query_max_tokens
