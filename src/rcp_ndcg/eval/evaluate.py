@@ -287,16 +287,31 @@ def evaluate(
     """
     ks = sorted({k} if isinstance(k, int) else set(k))
     if not ks or ks[0] <= 0:
-        raise ConfigError(f"k must be positive cutoffs, got {k!r}")
+        raise ConfigError(
+            f"k must be positive cutoffs, got {k!r}",
+            hint="pass positive cutoffs (k=10, or several [1, 5, 10])",
+            cli_hint="pass positive cutoffs: --k 10 (repeatable)",
+        )
     unknown = sorted(set(metrics) - set(METRICS))
     if unknown or not metrics:
-        raise ConfigError(f"unknown metrics {unknown or list(metrics)}; expected some of {list(METRICS)}")
+        raise ConfigError(
+            f"unknown metrics {unknown or list(metrics)}; expected some of {list(METRICS)}",
+            hint=f"one of {', '.join(METRICS)}",
+        )
     if suite is not None and dataset is not None:
-        raise ConfigError("pass either suite= or dataset=, not both")
+        raise ConfigError(
+            "pass either suite= or dataset=, not both",
+            hint="one data source: suite='nanobeir', or dataset=<uri>",
+            cli_hint="one data source: --suite NAME, or --dataset URI",
+        )
     if suite is not None:
         dataset = load_dataset(f"suite:{suite}")
     if dataset is None:
-        raise ConfigError("evaluate needs the data to score against: suite= or dataset=")
+        raise ConfigError(
+            "evaluate needs the data to score against: suite= or dataset=",
+            hint="pass suite='nanobeir' or dataset=<uri>",
+            cli_hint="pass the data to score against: --suite NAME, or --dataset URI",
+        )
     rules = _protocol(protocol if protocol is not None else dataset.protocol or "plain")
     _refuse_undivided(rankings, dataset)
     selected = _selected_systems(rankings, systems)
@@ -306,7 +321,10 @@ def evaluate(
         # The gains are validated where they are scored: a qrel-only run that carries count gains for a later
         # run reads them as it left them, exactly as gains= on a qrel-only run reads the RCP ones.
         if count_gains is None:
-            raise DataError("count_ndcg needs count_gains= (the share of passed rubric criteria per document)")
+            raise DataError(
+                "count_ndcg needs count_gains= (the share of passed rubric criteria per document)",
+                hint="pass the count gains: the tournament store of a calibration holds them (read_judgements(store))",
+            )
         _refuse_bare_keys(count_gains, dataset)
         _refuse_unknown_prefixes(count_gains, dataset)
         if not any(_gains_for(count_gains, part, dataset) for part in dataset.parts):
@@ -402,7 +420,11 @@ def _selected_systems(rankings: Rankings, systems: Sequence[str] | None) -> list
             details={"unknown": unknown, "systems": held},
         )
     if not systems:
-        raise ConfigError("systems names no system; pass the systems to score, or None (the default) for all")
+        raise ConfigError(
+            "systems names no system; pass the systems to score, or None (the default) for all",
+            hint="drop the argument for every system the rankings hold, or name the ones to score",
+            cli_hint="drop --system for every system, or pass the ones to score: --system NAME",
+        )
     return [name for name in held if name in set(systems)]
 
 
@@ -836,7 +858,11 @@ def _one_k(report: EvalReport, k: int | None) -> int:
     if k is not None:
         return k
     if len(report.k) != 1:
-        raise DataError(f"the report has cutoffs {report.k}; pass k=")
+        raise DataError(
+            f"the report has cutoffs {report.k}; pass k=",
+            hint="the report scored several cutoffs; name one (k=...)",
+            cli_hint="name one of the report's cutoffs: --k 10",
+        )
     return report.k[0]
 
 

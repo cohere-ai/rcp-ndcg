@@ -417,8 +417,9 @@
       "type": "object"
     },
     "StepStatus": {
-      "description": "The state of one step.",
+      "description": "The state of one step (also what ``run status`` reports for it).",
       "enum": [
+        "pending",
         "running",
         "completed",
         "failed",

@@ -93,6 +93,14 @@ released together.
   `smart_resize` accepts an aspect ratio exactly at 200 and keeps a snapped area exactly at `max_pixels`, a
   one-token chunk sits over the cap when its token re-tokenizes longer alone; the suite runs each test under
   a per-test timeout (`RCP_NDCG_TEST_TIMEOUT`, 60s default) so a hang fails fast.
+- **The exported schemas carry the types they describe**: `run-summary.v1`'s `manifest` is the
+  `run-manifest.v1` model (it was `"type": "object"`), `run-list.v1`'s rows are a typed `RunListRow`, and
+  `calibration-summary.v1`'s `families`, `coverage` and `diagnostics` are the `Family`, `CalibrationCoverage`
+  and `Diagnostics` models instead of untyped dicts. `conversion.v1` gains `limit` (`int | null`): a
+  `data convert --limit` smoke conversion records the cap, so its record is not mistaken for a complete
+  small corpus. The `cli.v1` envelope schema changed description-only (`data` says which commands tag their
+  data with a schema id). No payload changes shape except `run list`'s unreadable rows, which now carry the row's null
+  fields explicitly; the payloads validate against the regenerated schemas.
 
 - **`JobSpec` takes exactly one of `argv` and `phases`** (`rcp_ndcg.runners`): a job without phases runs its
   `argv`; a phased job's commands are its phases' `argv`, and it carries no `argv` of its own — both or neither
@@ -215,8 +223,10 @@ released together.
   the scored dataset is still refused (exit 12; every score would be 0), but it no longer stops the healthy
   systems of a multi-system file: score them with `--system NAME`. The refusal's hint names the way out (drop
   the system's rows, or score the others) with `systems=` for Python callers and `--system` on the command
-  line, whenever the file holds several systems. An unknown name is a `ConfigError` (exit 3) listing the
-  systems the file names; `eval explain --report` re-scores the saved rankings for the systems the report
+  line, whenever the file holds several systems. An unknown name is refused with the systems the file names —
+  a `ConfigError` (exit 3) from the library call, a `UsageError` (exit 2) on the command line, where it is a
+  command-line mistake like an unknown `--fields` or `--metrics` name; `eval explain --report` re-scores the
+  saved rankings for the systems the report
   scored (its own, by default; `--system` narrows them further), so one broken system of the file does not
   kill the explanation, and `--system` with `--run` there is a `UsageError` (it has no effect on a run).
 - `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
@@ -755,6 +765,42 @@ released together.
   not a bare `ValueError` from three frames inside `logging`. `join_title` treats a non-string (e.g. NaN) title
   as no title instead of joining the literal text `nan` in front of the body. The 2PL's `_unique` TypeVar is
   bounded by the row union, not their tuple.
+- The `eval_score` MCP tool no longer claims `readOnlyHint: true`: it takes `out` and overwrites that path with
+  the full report, so the machine-readable contract now says the call leaves an artifact behind
+  (`readOnlyHint: false`). The false claim was pinned by the test suite, the skill text and the release notes;
+  all three follow the annotation.
+- `rcp-ndcg mcp serve` survives a malformed `tools/call`: arguments that are not a JSON object (a string, a
+  list, a number — the falsy ones included, which were silently coerced to `{}`) are answered as JSON-RPC
+  invalid params (`-32602`) or a typed `USAGE` tool error instead of killing the stdio loop, a request body
+  that is not an object is answered as `-32600`, and a failure raised inside the server is answered as
+  `-32603` — the next request is answered either way. `call_tool()` refuses non-object arguments the same way
+  for its direct (Python and SDK) callers.
+- An unknown `--system` (`eval score`, `eval explain --report`) or `--baseline` (`eval compare`) value is a
+  `UsageError` (exit 2), the class of every other unknown command-line value on these commands (`--fields`,
+  `--metrics`), not a `ConfigError` (exit 3): there is no config file to fix. The message and the systems
+  list are unchanged; the library keeps its own `ConfigError` for `systems=`/`baseline=` Python callers.
+- Every refusal the command layer raises carries its `hint` (the machine-readable next step was null at 24
+  raise sites of `rcp_ndcg.cli` and the MCP `call_tool`), and so do the evaluation refusals a command can
+  reach (unknown `--k`/`--metrics`/data-source combinations in `evaluate`, unknown `--metric`/`--baseline`/
+  one-system reports and shared-query checks in `compare`, the `--k` of a multi-cutoff report, an unknown
+  `--query-id` in `explain`) and the run manifest's refusal (`run status`/`run show`,
+  `eval compare/explain --run` with
+  a damaged run directory). The Python wording keeps its `cli_hint` where the two differ.
+- `details.errors` has one shape for every validation: the documented one (per problem the `field`, the given
+  `input`, the `problem`, the `expected` type when known, a `did_you_mean` for an unknown key, and the
+  `source`), built by one helper (`rcp_ndcg.support.config.validation_problems`) for config files and for the
+  command layer's argument refusals alike — which used to write `{field, message}`.
+- `eval explain --subset` with `--run` is refused as a `UsageError`, like `--system` there: the flag has no
+  effect on a run, and it was silently ignored.
+- `eval score --per-query` prints the per-query values in the text renderer too (one row per system, query,
+  metric and k), not only with `--json`.
+- The failure envelope's `command` field is the command path even when a global option's value precedes it
+  (`--env-file f.env data inspect` no longer reports `f.env data`): the root group's value-taking options are
+  skipped with their values on the paths that have no context (Ctrl-C, an unexpected failure).
+- The exit-code tables and `errors.py` say "an insertion whose anchor check failed" where they said "a scale
+  check" (the artifact is `data.extension.anchor_report`; no artifact named "scale check" exists).
+- The output contract's wording declares its one exception (`--help`/`--version` print plain text, no
+  envelope), and `CliEnvelope.data`'s description says which commands tag their data with a `schema` id.
 
 - `run status`, `run list` and `run show` no longer fail when they read a running job's judgement store while
   the job claims or reports a stage: the store's `identity.json` is written through a temp file and renamed (as
@@ -843,6 +889,24 @@ released together.
   input, a 3-D array into `numpy_topk`) instead of bare `ValueError`; `mteb._hub_text` raises
   `MissingInputError` instead of `FileNotFoundError`; the mteb task's cross-encoder and `skip_first_result`
   refusals are `CapabilityError`.
+- **The run/step/job status vocabularies are typed, one enum each, and the exported schema pins them**:
+  `RunState.status` is `RunStatus`, `StepState.status` is `StepStatus` and `JobState.status` is `JobStatus`
+  (they were bare `str` with the closed sets only in prose). `StepStatus` gains `PENDING` — `run status` lists
+  a step the run has not started as `pending`, which was a bare literal outside the enum. A finished-OK job now
+  reads `completed` like a finished-OK step and run (`JobStatus.SUCCEEDED` is renamed: `run status` used to say
+  `succeeded` for a job and `completed` for its steps in adjacent fields). `run list`'s rows are typed
+  (`RunListRow`), so `run-list.v1.json` pins the row shape, and a manifest that does not parse is listed with
+  `status: "unreadable"` — the one value outside `RunStatus`, validated and documented instead of invented per
+  call. `schemas/run-status.v1.json`, `run-list.v1.json`, `run-start.v1.json` and `run-manifest.v1.json`
+  (whose `StepStatus` enum gains `pending`) regenerated; nothing that reads a status by name changes value
+  except a finished-OK job: `succeeded` → `completed`.
+
+- **`--plan` means one thing in the CLI**: the plan file `judge tournament` asks exactly the windows of
+  (`judge tournament --plan PLAN.json`). The boolean on `calibration insert` — plan the opponent windows,
+  insert nothing — is now `--dry-run`, the no-side-effects switch every other command uses, so a script can
+  chain `calibration insert --dry-run --out PLAN.json` into `judge tournament --plan PLAN.json` without the
+  first `--plan` parsing as a flag. Everything that read the boolean follows: the request field, the flag
+  help, `InsertResult`'s schema description, the skill's insertion recipe and the primitives page.
 
 - **One lock for a served-only package**: with the `[local]` and `[vllm]` extras gone, `uv.lock` holds one torch
   (2.14.0, the version the coordinator's extras already resolved, CPU-index compatible) instead of the
@@ -921,6 +985,13 @@ released together.
   choice, where the SDK era read the last; the judge never sends a `n` above 1, so no shipped answer moves. `requirements-constraints.txt` no longer carries `openai`, `httpx2` or
   `jiter`; in `uv.lock` the two remained only as the `[vllm]` extra's engine package's own dependency, until the
   extras left with the served-only package (above).
+- **The `mcp tools` command** (owner decision): the shell fallback for calling one MCP tool without an MCP client
+  is gone; the command, its `McpToolsRequest` model and the `rcp-ndcg.mcp-manifest.v1` output-schema id
+  (`schemas/mcp-manifest.v1.json` deleted) leave with it, and the MCP surface is `rcp-ndcg mcp serve` alone.
+  The tool list and a tool call stay reachable in Python as `rcp_ndcg.mcp.tool_manifest()` and
+  `rcp_ndcg.mcp.call_tool()` (what the server itself answers through); tests that drove the CLI command use
+  them directly. The MCP tool surface remains the deliberate subset of the command line it always was
+  (`rcp_ndcg.mcp.TOOLS`); a plan (`--dry-run`) is CLI-only.
 - The release workflow publishes three packages, one GitHub environment each: the build job builds `rcp-ndcg`,
   `rcp-ndcg-core` and `rcp-ndcg-vllm` (the last from its own directory, outside the uv workspace), checks each
   version against the tag, `rcp-ndcg`'s exact `rcp-ndcg-core` pin and the constraints file against the lock, runs
@@ -1188,7 +1259,7 @@ that exports it.
 **Command line (`rcp-ndcg`).** `data` (fetch, inspect, validate, convert into a layout `load_dataset` reads, formats),
 `retrieval` (index, search, rerank, fuse), `judge` (tournament, rubric, reparse), `calibration` (fit, score, insert,
 show), `eval` (score, compare, explain), `run` (start, resume, status, logs, cancel, list, show), `schema` (list, show,
-export), `mcp` (serve, tools) and `doctor`. Every command except `mcp serve` takes `--json` and prints one
+export), `mcp` (serve) and `doctor`. Every command except `mcp serve` takes `--json` and prints one
 `rcp-ndcg.cli.v1` document; judging and runs take `--estimate` and `--dry-run`; `run start` takes
 `--runner` and `--detach`, and its `--dry-run` prints what a runner would submit; `run resume` takes
 `--judge-urls` (`RCP_NDCG_JUDGE_URLS`), the replica URLs a runner hands its job, and `--runner` to submit a failed
@@ -1199,7 +1270,7 @@ report, comparison, log and jobs. Each `retrieval` command documents its own `--
 `judge tournament` and `judge rubric` take `--mirror`. `--estimate` and `--dry-run` give the refusals of the real
 command (a judging identity that differs from the store's) and write nothing.
 `run resume --set` keeps its change only when the resume succeeds, and `run resume --only` never changes the run's
-recorded steps. `calibration insert --plan --judgements STORE --out PLAN` plans an insertion's windows with the
+recorded steps. `calibration insert --dry-run --judgements STORE --out PLAN` plans an insertion's windows with the
 store's schedule, and `judge tournament --plan PLAN` asks exactly those windows. `run start` takes a config file or
 a packaged config's name (`run start tiny`); `data fetch --dataset tiny --out DIR` copies the example data.
 `eval score --json` prints the summary, the per-dataset means and the warnings (`rcp-ndcg.eval-score.v1`), with
@@ -1215,17 +1286,17 @@ expected, did-you-mean, and whether `--set` or the file set it).
 the credentials (HTTP 401, 403) stops a pass with exit 5, and one without the route or model (HTTP 404) with exit 6.
 
 **MCP tools** (`rcp-ndcg mcp serve`). Read-only: `describe` (the command index), `schema_show`, `data_inspect`,
-`eval_score` (with `out`, `per_query`, `fields`), `eval_compare`, `eval_explain`, `calibration_show`, `run_list`,
-`run_show`, `run_status`, `estimate`. Destructive: `run_cancel`. `run_start` starts a run and returns its directory
-at once.
-`rcp-ndcg mcp tools --call TOOL --args JSON` calls one tool from the shell.
+`eval_compare`, `eval_explain`, `calibration_show`, `run_list`,
+`run_show`, `run_status`, `estimate`. `eval_score` is not read-only: it overwrites `out` with the full report when
+given (its `out`, `per_query`, `fields` are as on the command line). Destructive: `run_cancel`. `run_start` starts a
+run and returns its directory at once. The tool list and a call are Python calls too: `rcp_ndcg.mcp.tool_manifest()` and `rcp_ndcg.mcp.call_tool()`.
 
 **JSON Schemas** (`schemas/`, `rcp-ndcg schema export`): the configs `run-config` and `judge-config`; the artifacts
 `judgement`, `judgement-store` (a store's `identity.json`), `calibration` (a calibration's `items.json`),
 `calibration-coverage`, `calibration-identity`, `extension-record` (a line of a calibration's `extensions.jsonl`),
 `index`, `run-manifest`, `eval-report` and `comparison`; the output
 of every `--json` command (among them `cost-estimate` and `extension`), the `cli` envelope, the `commands` tree and
-the `command-index`; and the `mcp-manifest`. Every artifact names its schema in its `schema` field, and every
+the `command-index`. Every artifact names its schema in its `schema` field, and every
 property carries a description (a config field's is its model's documentation).
 
 ### Fixed: tournament answers the paper's code could not parse

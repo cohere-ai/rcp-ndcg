@@ -352,7 +352,7 @@
   "eval_score": {
     "annotations": {
       "destructiveHint": false,
-      "readOnlyHint": true
+      "readOnlyHint": false
     },
     "inputSchema": {
       "properties": {

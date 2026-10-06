@@ -1,5 +1,545 @@
 {
   "$defs": {
+    "AbilityPrior": {
+      "additionalProperties": false,
+      "description": "The ability prior of a rubric-only fit, on the reported scale (logits).",
+      "properties": {
+        "mean": {
+          "title": "Mean",
+          "type": "number"
+        },
+        "sd": {
+          "title": "Sd",
+          "type": "number"
+        }
+      },
+      "required": [
+        "mean",
+        "sd"
+      ],
+      "title": "AbilityPrior",
+      "type": "object"
+    },
+    "CalibrationCoverage": {
+      "additionalProperties": false,
+      "description": "What a calibration covers, and which of its windows it could not read.",
+      "properties": {
+        "degenerate_documents": {
+          "$ref": "#/$defs/DegenerateCounts",
+          "description": "Documents that failed, or passed, every criterion."
+        },
+        "documents": {
+          "description": "Documents with rubric verdicts.",
+          "title": "Documents",
+          "type": "integer"
+        },
+        "flagged_queries": {
+          "description": "The flagged queries and stages.",
+          "items": {
+            "$ref": "#/$defs/CoverageFlag"
+          },
+          "title": "Flagged Queries",
+          "type": "array"
+        },
+        "invalid_window_share": {
+          "description": "The share above which a query is flagged.",
+          "title": "Invalid Window Share",
+          "type": "number"
+        },
+        "invalid_windows": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "$ref": "#/$defs/StageWindows"
+            },
+            "type": "object"
+          },
+          "description": "``{query: {stage: StageWindows}}`` for the queries with an invalid window.",
+          "title": "Invalid Windows",
+          "type": "object"
+        },
+        "mode": {
+          "description": "The fit's mode.",
+          "enum": [
+            "tournament",
+            "rubric_only"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "per_dataset": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "Calibrated queries per dataset.",
+          "title": "Per Dataset",
+          "type": "object"
+        },
+        "queries": {
+          "$ref": "#/$defs/QueryCounts",
+          "description": "Queries per stage, and those calibrated."
+        },
+        "schema": {
+          "const": "rcp-ndcg.calibration-coverage.v1",
+          "default": "rcp-ndcg.calibration-coverage.v1",
+          "title": "Schema",
+          "type": "string"
+        },
+        "uncalibrated_documents": {
+          "description": "``<query>/<doc_id>`` of the documents with rubric verdicts but no calibrated ability (tournament mode: documents the tournament did not judge, whose verdicts the fit cannot use).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Uncalibrated Documents",
+          "type": "array"
+        },
+        "uncalibrated_queries": {
+          "description": "Queries judged but without calibrated abilities.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Uncalibrated Queries",
+          "type": "array"
+        },
+        "windows": {
+          "additionalProperties": {
+            "$ref": "#/$defs/WindowCount"
+          },
+          "description": "Windows per stage over every query.",
+          "title": "Windows",
+          "type": "object"
+        }
+      },
+      "required": [
+        "mode",
+        "queries",
+        "uncalibrated_queries",
+        "windows",
+        "invalid_windows",
+        "invalid_window_share",
+        "flagged_queries",
+        "documents",
+        "degenerate_documents",
+        "per_dataset"
+      ],
+      "title": "CalibrationCoverage",
+      "type": "object"
+    },
+    "CoverageFlag": {
+      "additionalProperties": false,
+      "description": "A query and stage whose invalid windows warrant a warning.",
+      "properties": {
+        "invalid": {
+          "description": "Of which invalid.",
+          "title": "Invalid",
+          "type": "integer"
+        },
+        "invalid_adaptive": {
+          "description": "Invalid adaptive windows.",
+          "title": "Invalid Adaptive",
+          "type": "integer"
+        },
+        "query": {
+          "description": "``<dataset>||<query_id>``.",
+          "title": "Query",
+          "type": "string"
+        },
+        "reasons": {
+          "description": "``\"share\"`` (more than INVALID_WINDOW_SHARE invalid) and/or ``\"adaptive\"``.",
+          "items": {
+            "enum": [
+              "share",
+              "adaptive"
+            ],
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "share": {
+          "description": "``invalid / windows``.",
+          "title": "Share",
+          "type": "number"
+        },
+        "stage": {
+          "description": "The stage.",
+          "enum": [
+            "tournament",
+            "rubric"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "windows": {
+          "description": "Its windows of the stage.",
+          "title": "Windows",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "query",
+        "stage",
+        "windows",
+        "invalid",
+        "share",
+        "invalid_adaptive",
+        "reasons"
+      ],
+      "title": "CoverageFlag",
+      "type": "object"
+    },
+    "DegenerateCounts": {
+      "additionalProperties": false,
+      "description": "Documents that failed, or passed, every criterion in every placement.",
+      "properties": {
+        "all_fail": {
+          "title": "All Fail",
+          "type": "integer"
+        },
+        "all_pass": {
+          "title": "All Pass",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "all_fail",
+        "all_pass"
+      ],
+      "title": "DegenerateCounts",
+      "type": "object"
+    },
+    "Diagnostics": {
+      "additionalProperties": false,
+      "description": "What a calibration's fit reports about itself.",
+      "properties": {
+        "fit": {
+          "$ref": "#/$defs/FitDiagnostics",
+          "description": "The estimator's own summary."
+        },
+        "reliability": {
+          "$ref": "#/$defs/FitReliability",
+          "description": "Predicted against observed verdicts."
+        },
+        "warnings": {
+          "description": "The fit's typed warnings (e.g. ``INVALID_WINDOWS``).",
+          "items": {
+            "$ref": "#/$defs/FitWarning"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "fit",
+        "reliability"
+      ],
+      "title": "Diagnostics",
+      "type": "object"
+    },
+    "Family": {
+      "additionalProperties": false,
+      "description": "The poolability token of a set of judgements.\n\nTwo judgements measure the same thing -- and may enter one fit -- only when\nevery field matches: the stage, the judge (model, checkpoint and tokenizer), the prompt,\nthe criteria, the parser, the decoding and the preprocessing that shaped\nwhat the judge saw. key digests them; rubric_key leaves out the judge, which\nis the precondition for pooling several judges with a severity term.",
+      "properties": {
+        "criteria": {
+          "default": [],
+          "description": "The rubric's criterion labels (``C1..C5``); empty for the tournament.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Criteria",
+          "type": "array"
+        },
+        "decoding": {
+          "default": "free",
+          "description": "``\"json_schema\"`` when the endpoint was made to answer in the stage's JSON schema, ``\"free\"`` when it answered in free text (Decoding).",
+          "enum": [
+            "json_schema",
+            "free"
+          ],
+          "title": "Decoding",
+          "type": "string"
+        },
+        "judge_model": {
+          "description": "The served model name (``\"fake\"`` for the offline fake judge).",
+          "title": "Judge Model",
+          "type": "string"
+        },
+        "judge_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge config's ``revision`` as configured (not resolved against the Hub), or ``None``.",
+          "title": "Judge Revision"
+        },
+        "parse_version": {
+          "description": "Version of the parser that reads the answers.",
+          "title": "Parse Version",
+          "type": "integer"
+        },
+        "preprocessing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Digest of the effective preprocessing policy (text caps, chunking, image and video policies), or ``None`` when nothing was declared.",
+          "title": "Preprocessing"
+        },
+        "prompt_hash": {
+          "description": "SHA-256 of the prompt template text.",
+          "title": "Prompt Hash",
+          "type": "string"
+        },
+        "stage": {
+          "description": "``\"tournament\"`` or ``\"rubric\"``.",
+          "enum": [
+            "tournament",
+            "rubric"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "SHA-256 of the judge's ``tokenizer.json``, in whose tokens the text limits and the window budget were counted, or ``None`` when the judge names no tokenizer. It is the judge's, so rubric_key leaves it out with the model.",
+          "title": "Tokenizer"
+        }
+      },
+      "required": [
+        "stage",
+        "judge_model",
+        "prompt_hash",
+        "parse_version"
+      ],
+      "title": "Family",
+      "type": "object"
+    },
+    "FamilyReliability": {
+      "additionalProperties": false,
+      "description": "One judgement family's reliability, overall and per criterion.",
+      "properties": {
+        "judge": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Judge"
+        },
+        "overall": {
+          "$ref": "#/$defs/Reliability"
+        },
+        "per_criterion": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Reliability"
+          },
+          "title": "Per Criterion",
+          "type": "object"
+        }
+      },
+      "required": [
+        "judge",
+        "overall",
+        "per_criterion"
+      ],
+      "title": "FamilyReliability",
+      "type": "object"
+    },
+    "FitDiagnostics": {
+      "additionalProperties": false,
+      "description": "The fit's own summary.",
+      "properties": {
+        "ability_prior": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AbilityPrior"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ability prior on the reported scale (rubric-only mode); a document scored from its rubric answers against the calibration uses it, so the fit's own evidence scores to the fit's ability."
+        },
+        "frac_passing_any": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Share of documents that passed any criterion (rubric-only mode).",
+          "title": "Frac Passing Any"
+        },
+        "gamma_saturated": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Every discrimination sits at its bound (rubric-only mode).",
+          "title": "Gamma Saturated"
+        },
+        "max_item_weight": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The largest criterion's share of the gain weight (rubric-only mode).",
+          "title": "Max Item Weight"
+        },
+        "mean_placements": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Placements per document (rubric-only mode).",
+          "title": "Mean Placements"
+        },
+        "n_documents": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Documents fitted (rubric-only mode).",
+          "title": "N Documents"
+        },
+        "n_observations": {
+          "description": "Rubric placements fitted.",
+          "title": "N Observations",
+          "type": "integer"
+        },
+        "n_queries": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Queries with a fitted scale map (tournament mode).",
+          "title": "N Queries"
+        },
+        "ordinal_only": {
+          "default": false,
+          "description": "The gains order documents but are not calibrated probabilities (rubric-only mode).",
+          "title": "Ordinal Only",
+          "type": "boolean"
+        },
+        "ordinal_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why, when ``ordinal_only``.",
+          "title": "Ordinal Reason"
+        }
+      },
+      "required": [
+        "n_observations"
+      ],
+      "title": "FitDiagnostics",
+      "type": "object"
+    },
+    "FitReliability": {
+      "additionalProperties": false,
+      "description": "A fit's reliability: overall and per criterion (every family pooled), and per family.",
+      "properties": {
+        "overall": {
+          "$ref": "#/$defs/Reliability"
+        },
+        "per_criterion": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Reliability"
+          },
+          "title": "Per Criterion",
+          "type": "object"
+        },
+        "per_family": {
+          "additionalProperties": {
+            "$ref": "#/$defs/FamilyReliability"
+          },
+          "title": "Per Family",
+          "type": "object"
+        }
+      },
+      "required": [
+        "overall",
+        "per_criterion",
+        "per_family"
+      ],
+      "title": "FitReliability",
+      "type": "object"
+    },
+    "FitWarning": {
+      "additionalProperties": false,
+      "description": "A typed warning of the fit (a RcpNdcgWarning's code and message).",
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "FitWarning",
+      "type": "object"
+    },
     "ItemSummary": {
       "description": "The criterion parameters: discrimination ``gamma`` (dimensionless) and difficulty ``beta`` (logits).",
       "properties": {
@@ -32,6 +572,189 @@
       ],
       "title": "ItemSummary",
       "type": "object"
+    },
+    "QueryCounts": {
+      "additionalProperties": false,
+      "description": "Queries with rubric judgements, with tournament judgements, and with calibrated abilities.",
+      "properties": {
+        "calibrated": {
+          "title": "Calibrated",
+          "type": "integer"
+        },
+        "rubric": {
+          "title": "Rubric",
+          "type": "integer"
+        },
+        "tournament": {
+          "title": "Tournament",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rubric",
+        "tournament",
+        "calibrated"
+      ],
+      "title": "QueryCounts",
+      "type": "object"
+    },
+    "Reliability": {
+      "additionalProperties": false,
+      "description": "Predicted against observed pass rates: the binned curve, the ECE and the Brier score (``None`` when empty).",
+      "properties": {
+        "bins": {
+          "items": {
+            "$ref": "#/$defs/ReliabilityBin"
+          },
+          "title": "Bins",
+          "type": "array"
+        },
+        "brier": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Brier"
+        },
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "ece": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ece"
+        }
+      },
+      "required": [
+        "count",
+        "ece",
+        "brier",
+        "bins"
+      ],
+      "title": "Reliability",
+      "type": "object"
+    },
+    "ReliabilityBin": {
+      "additionalProperties": false,
+      "description": "One bin of a reliability curve: predictions in ``[lower, upper)``; the rates are ``None`` for an empty bin.",
+      "properties": {
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "lower": {
+          "title": "Lower",
+          "type": "number"
+        },
+        "mean_predicted": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mean Predicted"
+        },
+        "observed_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Observed Rate"
+        },
+        "upper": {
+          "title": "Upper",
+          "type": "number"
+        }
+      },
+      "required": [
+        "lower",
+        "upper",
+        "count",
+        "mean_predicted",
+        "observed_rate"
+      ],
+      "title": "ReliabilityBin",
+      "type": "object"
+    },
+    "StageWindows": {
+      "additionalProperties": false,
+      "description": "One query's windows of one stage.",
+      "properties": {
+        "invalid": {
+          "description": "Of which invalid.",
+          "title": "Invalid",
+          "type": "integer"
+        },
+        "invalid_by_category": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "Invalid windows per failure category.",
+          "title": "Invalid By Category",
+          "type": "object"
+        },
+        "invalid_by_phase": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "Invalid windows per schedule phase (``planned`` for windows asked outside the phases).",
+          "title": "Invalid By Phase",
+          "type": "object"
+        },
+        "share": {
+          "description": "``invalid / windows``.",
+          "title": "Share",
+          "type": "number"
+        },
+        "windows": {
+          "description": "Windows judged.",
+          "title": "Windows",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "windows",
+        "invalid",
+        "share"
+      ],
+      "title": "StageWindows",
+      "type": "object"
+    },
+    "WindowCount": {
+      "additionalProperties": false,
+      "description": "Windows of one stage over every query, and how many were invalid.",
+      "properties": {
+        "invalid": {
+          "default": 0,
+          "title": "Invalid",
+          "type": "integer"
+        },
+        "windows": {
+          "default": 0,
+          "title": "Windows",
+          "type": "integer"
+        }
+      },
+      "title": "WindowCount",
+      "type": "object"
     }
   },
   "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/calibration-summary.v1.json",
@@ -44,9 +767,7 @@
       "type": "string"
     },
     "coverage": {
-      "additionalProperties": true,
-      "title": "Coverage",
-      "type": "object"
+      "$ref": "#/$defs/CalibrationCoverage"
     },
     "datasets": {
       "items": {
@@ -56,9 +777,7 @@
       "type": "array"
     },
     "diagnostics": {
-      "additionalProperties": true,
-      "title": "Diagnostics",
-      "type": "object"
+      "$ref": "#/$defs/Diagnostics"
     },
     "documents": {
       "description": "Documents with an ability, from the fit and from extensions.",
@@ -67,8 +786,7 @@
     },
     "families": {
       "additionalProperties": {
-        "additionalProperties": true,
-        "type": "object"
+        "$ref": "#/$defs/Family"
       },
       "description": "The judgement families fitted, by family key.",
       "title": "Families",

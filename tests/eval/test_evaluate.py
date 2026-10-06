@@ -670,12 +670,35 @@ def test_all_pairs_follow_the_report_order_and_list_sign_flips() -> None:
 
 
 def test_compare_refuses_what_it_cannot_do(report: EvalReport) -> None:
-    with pytest.raises(DataError, match="pass k="):
+    with pytest.raises(DataError, match="pass k=") as caught:
         compare(report)
-    with pytest.raises(ConfigError, match="baseline"):
+    assert caught.value.hint and caught.value.cli_hint
+    with pytest.raises(ConfigError, match="baseline") as caught:
         compare(report, baseline="nobody", k=2)
-    with pytest.raises(DataError, match="count_ndcg"):
+    assert caught.value.hint
+    with pytest.raises(DataError, match="count_ndcg") as caught:
         compare(report, metric="count_ndcg", k=2)
+    assert caught.value.hint
+
+
+def test_every_argument_refusal_names_the_next_step() -> None:
+    """The evaluation layer's argument refusals carry their ``hint`` (the CLI and the MCP server show it as
+    ``error.hint``); the ones the command line words differently carry a ``cli_hint`` too."""
+    with pytest.raises(ConfigError) as caught:
+        evaluate(_rankings(), dataset=_dataset(), k=0)
+    assert caught.value.hint and caught.value.cli_hint
+    with pytest.raises(ConfigError) as caught:
+        evaluate(_rankings(), dataset=_dataset(), metrics=["nope"])
+    assert caught.value.hint
+    with pytest.raises(ConfigError) as caught:
+        evaluate(_rankings(), suite="nanobeir", dataset=_dataset())
+    assert caught.value.hint and caught.value.cli_hint
+    with pytest.raises(ConfigError) as caught:
+        evaluate(_rankings())
+    assert caught.value.hint and caught.value.cli_hint
+    with pytest.raises(ConfigError) as caught:
+        evaluate(_rankings(), dataset=_dataset(), systems=[])
+    assert caught.value.hint and caught.value.cli_hint
 
 
 def test_a_cutoff_the_report_never_computed_is_refused_everywhere(report: EvalReport) -> None:
@@ -813,3 +836,14 @@ def test_explain_deltas_fall_back_to_the_qrel_grades() -> None:
     # good ranks [d1, d2, ...] (grades 2, 1, ...), bad reverses it: the qrel-nDCG@2 gap is 0 - 1, all selection.
     assert delta.total == pytest.approx(-1.0)
     assert delta.selection == pytest.approx(-1.0) and delta.ordering == pytest.approx(0.0)
+
+
+def test_explain_names_the_known_queries_when_it_refuses_one(report: EvalReport) -> None:
+    """An unknown `--query-id` names the next step (one of the report's query ids), on both explain paths."""
+    from rcp_ndcg.eval import explain
+
+    with pytest.raises(DataError) as caught:
+        explain(report, "nosuch")
+
+    assert caught.value.hint and caught.value.cli_hint
+    assert caught.value.details["known"][:1]

@@ -12,9 +12,8 @@
           "type": "string"
         },
         "status": {
-          "description": "pending, running, succeeded, failed, cancelled or unknown.",
-          "title": "Status",
-          "type": "string"
+          "$ref": "#/$defs/JobStatus",
+          "description": "pending, running, completed, failed, cancelled or unknown (a runner that cannot say)."
         }
       },
       "required": [
@@ -24,6 +23,18 @@
       ],
       "title": "JobState",
       "type": "object"
+    },
+    "JobStatus": {
+      "enum": [
+        "pending",
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+        "unknown"
+      ],
+      "title": "JobStatus",
+      "type": "string"
     },
     "MirrorState": {
       "description": "What a mirror last did (``run status`` shows it).",
@@ -76,6 +87,19 @@
       ],
       "title": "MirrorState",
       "type": "object"
+    },
+    "RunStatus": {
+      "description": "The state of the run.",
+      "enum": [
+        "submitted",
+        "running",
+        "completed",
+        "failed",
+        "partial",
+        "cancelled"
+      ],
+      "title": "RunStatus",
+      "type": "string"
     },
     "StepProgress": {
       "description": "How far a judging step has got, in judge windows.",
@@ -149,9 +173,8 @@
           "description": "Judge windows done and planned (judging steps)."
         },
         "status": {
-          "description": "pending, running, completed, failed or cancelled.",
-          "title": "Status",
-          "type": "string"
+          "$ref": "#/$defs/StepStatus",
+          "description": "pending (planned, not started), running, completed, failed or cancelled."
         }
       },
       "required": [
@@ -160,6 +183,18 @@
       ],
       "title": "StepState",
       "type": "object"
+    },
+    "StepStatus": {
+      "description": "The state of one step (also what ``run status`` reports for it).",
+      "enum": [
+        "pending",
+        "running",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "StepStatus",
+      "type": "string"
     }
   },
   "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/run-status.v1.json",
@@ -242,9 +277,8 @@
       "type": "string"
     },
     "status": {
-      "description": "submitted, running, completed, partial, failed or cancelled.",
-      "title": "Status",
-      "type": "string"
+      "$ref": "#/$defs/RunStatus",
+      "description": "submitted, running, completed, partial, failed or cancelled."
     },
     "steps": {
       "description": "Every planned step in run order; one not started yet is pending.",

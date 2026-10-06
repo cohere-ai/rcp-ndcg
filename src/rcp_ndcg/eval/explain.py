@@ -274,6 +274,8 @@ def _part(data: Dataset, dataset: str | None, query_id: str) -> Dataset:
         where = f"dataset {dataset!r}" if dataset is not None else "the report"
         raise DataError(
             f"query {query_id!r} is not in {where}; known: {shown or 'none'}",
+            hint="pass one of the known query ids (query_id=)",
+            cli_hint="pass one of the known query ids: --query-id q1",
             details={"query_id": query_id, "known": known[:50], "num_known": len(known)},
         )
     if len(parts) > 1:

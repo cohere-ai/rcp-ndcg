@@ -288,7 +288,7 @@
   },
   "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/insert-result.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "``insert --plan``: the opponent windows; otherwise the extension and the extended calibration.",
+  "description": "``insert --dry-run``: the opponent windows; otherwise the extension and the extended calibration.",
   "properties": {
     "extension": {
       "anyOf": [

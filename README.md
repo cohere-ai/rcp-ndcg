@@ -155,7 +155,8 @@ is proposed in [embeddings-benchmark/mteb#5516](https://github.com/embeddings-be
 - [examples/](https://github.com/cohere-ai/rcp-ndcg/blob/main/examples/): seven short scripts, five of which run offline.
 - [skills/rcp-ndcg/SKILL.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/skills/rcp-ndcg/SKILL.md): instructions for a coding agent that uses RCP-nDCG from
   another project. Every command except `mcp serve` takes `--json`; `rcp-ndcg schema show commands` describes the
-  command line, and `rcp-ndcg mcp serve` exposes it as MCP tools.
+  command line, and `rcp-ndcg mcp serve` serves a subset of it as MCP tools (the list is
+  `rcp_ndcg.mcp.tool_manifest()`; a plan, `--dry-run`, is CLI-only).
 - [AGENTS.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/AGENTS.md): for contributors to this repository. [CHANGELOG.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/CHANGELOG.md): the public surface.
 
 ## Citation

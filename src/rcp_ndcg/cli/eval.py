@@ -114,7 +114,10 @@ def _data(request: EvalScoreRequest | ReportInputs) -> dict[str, Any]:
     from rcp_ndcg.data import load_dataset
 
     if (request.suite is None) == (request.dataset is None):
-        raise UsageError("pass exactly one of --suite and --dataset")
+        raise UsageError(
+            "pass exactly one of --suite and --dataset",
+            hint="score a public suite with --suite nanobeir, or a dataset URI with --dataset jsonl:rows.jsonl",
+        )
     if request.suite is not None:
         return {"dataset": load_dataset(f"suite:{request.suite}", subset=request.subset, revision=request.revision)}
     assert request.dataset is not None
@@ -158,6 +161,24 @@ def _selected(fields: list[str], *, per_query: bool) -> set[str]:
     return {*_DEFAULT_FIELDS, *(("per_query",) if per_query else ())}
 
 
+def _systems_are_known(held: list[str], requested: list[str], *, what: str) -> None:
+    """Refuse an unknown ``--system``/``--baseline`` value as the command-line mistake it is (exit 2).
+
+    The library keeps its own ``ConfigError`` for its Python callers (``systems=`` is a config value there);
+    on the command line an unknown name is a usage error, like an unknown ``--fields`` or ``--metrics`` one.
+    The message and the systems list are the library's.
+    """
+    unknown = sorted(set(requested) - set(held))
+    if unknown:
+        if what == "systems":
+            message = f"systems {unknown} are not in the rankings; systems: {held}"
+            hint = "score one of the systems the rankings hold (--system, repeatable)"
+        else:
+            message = f"baseline {unknown[0]!r} is not a compared system; systems: {held}"
+            hint = "pass one of the compared systems (--baseline), or drop --baseline to compare every pair"
+        raise UsageError(message, hint=hint, details={"unknown": unknown, "systems": held})
+
+
 def _gains(calibration: str | None) -> Any:
     if calibration is None:
         return None
@@ -177,6 +198,11 @@ def _score_text(report: EvalScoreResult) -> str:
             f"[{row.ci_low:.4f}, {row.ci_high:.4f}]" if row.ci_low is not None and row.ci_high is not None else ""
         )
         lines.append(f"  {row.system:<28} {row.metric:<11} {row.k:>3}  {value:>7}  {interval}")
+    if report.per_query:
+        lines += ["", "  per query"]
+        for row in report.per_query:
+            value = f"{row.value:.4f}" if row.value is not None else "   -   "
+            lines.append(f"  {row.system:<28} {row.metric:<11} {row.k:>3}  {value:>7}  {row.dataset} {row.query_id}")
     for warning in report.warnings or []:
         lines.append(f"  warning [{warning.code}]: {warning.message}")
     if report.out is not None:
@@ -202,8 +228,11 @@ def eval_score(request: EvalScoreRequest) -> EvalScoreResult:
 
     selected = _selected(request.fields, per_query=request.per_query)
     data = _data(request)
+    rankings = load_rankings(request.rankings)
+    if request.system:
+        _systems_are_known(rankings.systems, request.system, what="systems")
     report = evaluate(
-        load_rankings(request.rankings),
+        rankings,
         **data,
         gains=_gains(request.calibration),
         protocol=request.protocol,
@@ -274,7 +303,10 @@ def eval_compare(request: EvalCompareRequest) -> Comparison:
     from rcp_ndcg.eval import compare
 
     if (request.report is None) == (request.run is None):
-        raise UsageError("pass exactly one of --report and --run")
+        raise UsageError(
+            "pass exactly one of --report and --run",
+            hint="compare a report written by `eval score --out` with --report, or a run directory with --run",
+        )
     systems = None
     if request.run is not None:
         from rcp_ndcg.runs.inspect import evaluation_report
@@ -292,6 +324,9 @@ def eval_compare(request: EvalCompareRequest) -> Comparison:
     else:
         assert request.report is not None
         report = _load_report(request.report)
+    if request.baseline is not None:
+        compared = systems if systems is not None else report.systems
+        _systems_are_known(list(compared), [request.baseline], what="baseline")
     return compare(
         report,
         baseline=request.baseline,
@@ -362,8 +397,11 @@ def _explain_report(request: EvalExplainRequest) -> tuple[QueryExplanation, Any]
             hint="write the report with `rcp-ndcg eval score --out` (which records its rankings, data and calibration)",
         )
     inputs = saved.inputs
+    rankings = load_rankings(inputs.rankings)
+    if request.system:
+        _systems_are_known(rankings.systems, request.system, what="systems")
     report = evaluate(
-        load_rankings(inputs.rankings),
+        rankings,
         **_data(inputs),
         gains=_gains(inputs.calibration),
         protocol=saved.protocol,
@@ -398,12 +436,20 @@ def eval_explain(request: EvalExplainRequest) -> ExplainedQuery:
     """Explain one query of a run or a saved report: each system's top k with theta, gain and per-criterion
     probabilities, and the gaps between systems split into selection and ordering."""
     if (request.report is None) == (request.run is None):
-        raise UsageError("pass exactly one of --run and --report")
+        raise UsageError(
+            "pass exactly one of --run and --report",
+            hint="explain a query of a run directory with --run, or of a saved report with --report",
+        )
     if request.run is not None:
         if request.system:
             raise UsageError(
                 "--system re-scores the rankings of a saved report and has no effect with --run",
                 hint="drop --system, or explain a report written by `eval score --out` (--report)",
+            )
+        if request.subset:
+            raise UsageError(
+                "--subset names the dataset of a saved report's query and has no effect with --run",
+                hint="drop --subset, or explain a report written by `eval score --out` (--report)",
             )
         from rcp_ndcg.runs.inspect import explain_query
 

@@ -18,7 +18,7 @@ rcp-ndcg judge        tournament  Stage A: listwise windows into the judgement s
                       reparse     read a store's stored answers again with the current parser, into a new store
 rcp-ndcg calibration  fit         judgements into a calibration (with or without the tournament; one or pooled judges)
                       score       score documents a calibration lacks, the items frozen
-                      insert      insert documents into a tournament calibration, with an anchor report; --plan picks opponents
+                      insert      insert documents into a tournament calibration, with an anchor report; --dry-run picks opponents
                       show        items, coverage, per-judge severity, diagnostics and provenance
 rcp-ndcg eval         score       RCP-nDCG and qrel-nDCG of rankings under a protocol
                       compare     difference (B minus A), paired t-test, bootstrap interval, sign flips
@@ -32,7 +32,7 @@ rcp-ndcg run          start       run a config (a YAML file or a packaged config
                       list        the runs under a runs directory
                       show        one run's manifest and artifacts
 rcp-ndcg schema       list | show NAME | export --out DIR
-rcp-ndcg mcp          serve | tools [--call TOOL --args JSON]
+rcp-ndcg mcp          serve       the commands as MCP tools over stdio
 rcp-ndcg doctor       [--endpoint URL] check the environment: versions, extras, credentials present, endpoint reachable
 rcp-ndcg --version
 ```
@@ -59,27 +59,25 @@ which installs with the package, and the stemmer is part of the index identity.
 
 ## Flags
 
-The same flag means the same thing on every command that has it:
-
 | Flag | Meaning |
 |---|---|
 | `--json` | machine output on stdout (below); human text otherwise |
-| `--set KEY=VALUE` | override one field of the command's config (dotted path); `VALUE` is a YAML literal (`5`, `true`, `[a, b]`, `{k: v}`); repeatable. On `run resume` the run keeps the change only if the resume succeeds. `--set judge.tokenizer=ID` names the judge's tokenizer (a Hugging Face repo id, optionally `@revision`, or a `tokenizer.json` path), in whose tokens text limits and estimates are counted |
+| `--set KEY=VALUE` | override one field of the command's config (dotted path); `VALUE` is a YAML literal (`5`, `true`, `[a, b]`, `{k: v}`); repeatable. On `run resume` the run keeps the change only if the resume succeeds. On `data convert` it is a reader option instead (plain `KEY=VALUE`, values coerced as `int`/`float`/`bool`/`null`). `--set judge.tokenizer=ID` names the judge's tokenizer (a Hugging Face repo id, optionally `@revision`, or a `tokenizer.json` path), in whose tokens text limits and estimates are counted |
 | `--out PATH` | the output file or directory |
 | `--dataset URI`, `--subset NAME`, `--revision REV` | a dataset (`hf://`, `suite:`, `beir:`, `jsonl:`, ...), one of its subsets, a Hub revision |
 | `--rankings PATH`, `--judgements DIR`, `--calibration DIR`, `--run DIR` | typed inputs |
 | `--suite NAME` | a public suite: its data and its protocol (`nanobeir`, `bright`, `vidore`, `trecdl`) |
 | `--protocol NAME` | override the protocol (`nanobeir`, `bright`, `vidore`, `trecdl`, `mteb`, `plain`) |
-| `--judge fake\|PATH\|NAME`, `--judge-url URL`, `--judge-model ID` | a judge config, or an ad-hoc OpenAI-compatible endpoint |
+| `--judge fake\|PATH\|NAME`, `--judge-url URL`, `--judge-model ID` | a judge config, or an ad-hoc OpenAI-compatible endpoint. On `judge` commands `--judge-model` overrides the model of any `--judge`; on `run start`/`run resume` it is refused without `--judge-url` |
 | `--engine ROLE=URL[,URL]` | `run resume`: point one role's model (`judge`, `encoder` or `reranker`) at the engine URLs instead of its config's `base_url`; repeatable, one role each. A runtime overlay: it never changes the run's recorded config ([serving](../concepts/serving.md#starting-the-engines-with-the-run)) |
 | `--docs QUERY_ID:DOC_ID` | judge only these documents (re-annotation, insertion) |
-| `--plan FILE` | `judge tournament`: ask exactly the windows of an insertion plan (`calibration insert --plan --out FILE`), with the `--out` store's schedule |
-| `--k INT` | a cutoff; repeatable |
-| `--system NAME` | `eval score` (and `eval explain --report`): score only these systems of the rankings file (repeatable); an unknown name is refused (exit 3) with the systems the file names. One system whose rankings match nothing of the dataset no longer has to stop the others |
-| `--per-query`, `--fields NAME` | `eval score --json`: add the per-query values; print only the named top-level fields (repeatable). The full report goes to `--out` |
+| `--plan FILE` | `judge tournament`: ask exactly the windows of an insertion plan (`calibration insert --dry-run --out FILE`), with the `--out` store's schedule |
+| `--k INT` | a cutoff; repeatable on `eval score` (several), one on `eval compare` and `eval explain` — where it is also the documents shown per system |
+| `--system NAME` | `eval score` (and `eval explain --report`): score only these systems of the rankings file (repeatable); an unknown name is refused (exit 2) with the systems the file names. One system whose rankings match nothing of the dataset no longer has to stop the others. On `judge tournament`/`judge rubric` and `retrieval rerank` it is a single selector for a multi-system candidates file |
+| `--per-query`, `--fields NAME` | `eval score --json`: add the per-query values (the text renderer prints them too); print only the named top-level fields (repeatable). The full report goes to `--out` |
 | `--include-text` | `eval explain`: add the query and document texts |
 | `--include-reference` | `eval compare --run`: also compare the run's reference systems `candidates` and `judge` |
-| `--depth INT`, `--limit INT` | candidate depth; the first N queries |
+| `--depth INT`, `--limit INT` | candidate depth; the first N — queries on `judge tournament\|rubric`, records on `data convert`, runs on `run list` |
 | `--estimate` | print calls, tokens (input tokens exact with the judge's `tokenizer`, approximate without) and wall time; call no judge |
 | `--dry-run` | print the plan; no side effects; refuses what the real command would refuse |
 | `--force` | judge into a store of another identity; the old records are moved aside |
@@ -106,7 +104,8 @@ Credentials are read only under the name a config declares (`api_key_env`); when
 
 ## Machine output
 
-With `--json`, stdout carries exactly one JSON document, and logs and progress go to stderr:
+With `--json`, stdout carries exactly one JSON document, and logs and progress go to stderr (`--help` and
+`--version` are the exception: they print plain text and exit 0):
 
 ```json
 {"schema": "rcp-ndcg.cli.v1", "command": "eval score", "ok": true,
@@ -132,8 +131,7 @@ A failure has `"ok": false` and an `error` object with `code`, `exit_code`, `mes
 and the `source`: `--set` when an override set the field, else the config file. `--set` values are YAML literals
 (`--set k=10`, `--set k=null`, `--set 'k=[1, 2]'`).
 
-`rcp-ndcg mcp tools --call <tool> --args '<json>' --json` calls one MCP tool from the shell and prints its result as
-`mcp serve` answers it (`structuredContent`, `isError`). `rcp-ndcg schema show commands` describes the whole command tree as JSON, and `rcp-ndcg schema list`
+`rcp-ndcg schema show commands` describes the whole command tree as JSON, and `rcp-ndcg schema list`
 lists every exported schema. A schema's `$id` is an identifier naming its committed copy under `schemas/`, not a URL
 to fetch; `rcp-ndcg schema show <name>` prints the schema.
 
@@ -151,7 +149,7 @@ to fetch; `rcp-ndcg schema show <name>` prints the schema.
 | 8 | `CAPABILITY` | the judge or endpoint cannot take what a request carries: an answer schema it refuses (serve with the reasoning parser, or set `decoding: free`), images or videos beyond its `max_images` / `max_videos`, a window whose media exceed its context, media for a text-only encoder; raised by the first such request |
 | 9 | `INTERRUPTED` | SIGINT or SIGTERM stopped the command; the state on disk is consistent; resume |
 | 10 | `DEPENDENCY` | a missing extra; the hint is the exact install command |
-| 11 | `IDENTITY` | refusing to mix: resume with a changed config, judgements from another family, a scale check failed on insertion; the hint names the differing fields and the way out (a new output directory or run; `--force` where the command has it) |
+| 11 | `IDENTITY` | refusing to mix: resume with a changed config, judgements from another family, an insertion whose anchor check failed (`data.extension.anchor_report`); the hint names the differing fields and the way out (a new output directory or run; `--force` where the command has it) |
 | 12 | `DATA` | input that would produce wrong numbers or does not parse: malformed or non-finite rankings, qrels or gains, gains that match no labelled query, ids that do not join, a document over its text cap with `on_overflow: fail`, a new document the evidence cannot identify, a query with invalid windows under `--strict`, a damaged mirror |
 
 Code 7 is retired: no command returns it, and it is not reused.

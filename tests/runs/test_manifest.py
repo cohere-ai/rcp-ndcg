@@ -71,6 +71,24 @@ class TestSteps:
         assert record.duration_s is not None and record.duration_s >= 0
         assert record.succeeded
 
+    def test_the_status_state_models_carry_the_enums(self) -> None:
+        """RunState/StepState/JobState status fields are the three vocabularies themselves (one enum each),
+        `StepStatus` covers `pending` (which `run status` emits for a step not started), and a finished-OK job
+        reads `completed` like a finished-OK step and run — one word per meaning."""
+        from rcp_ndcg.runners.base import JobStatus
+        from rcp_ndcg.runs.run import JobState, RunState, StepState
+
+        assert StepState.model_fields["status"].annotation is StepStatus
+        assert RunState.model_fields["status"].annotation is RunStatus
+        assert JobState.model_fields["status"].annotation is JobStatus
+        assert [status.value for status in StepStatus] == ["pending", "running", "completed", "failed", "cancelled"]
+        assert [status.value for status in JobStatus] == [
+            "pending", "running", "completed", "failed", "cancelled", "unknown",
+        ]  # fmt: skip
+        assert [status.value for status in RunStatus] == [
+            "submitted", "running", "completed", "failed", "partial", "cancelled",
+        ]  # fmt: skip
+
     def test_a_retry_reuses_one_record(self) -> None:
         manifest = _manifest()
         manifest.start_step("retrieve", identity={})
@@ -135,5 +153,8 @@ class TestPersistence:
         payload = json.loads(Path(layout.manifest).read_text(encoding="utf-8"))
         payload["schema"] = "rcp-ndcg.run-manifest.v99"
         Path(layout.manifest).write_text(json.dumps(payload), encoding="utf-8")
-        with pytest.raises(DataError, match="rcp-ndcg.run-manifest.v1"):
+        with pytest.raises(DataError) as caught:
             RunManifest.load(layout)
+
+        assert "rcp-ndcg.run-manifest.v1" in caught.value.message
+        assert caught.value.hint and "run" in caught.value.hint

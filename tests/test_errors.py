@@ -316,3 +316,10 @@ def test_the_cli_shows_the_command_line_hint_and_python_keeps_its_own(tmp_path: 
     assert "stage='rubric'" in (python.value.hint or "")
     assert result.exit_code == 12
     assert json.loads(result.stdout)["error"]["hint"] == "judge the candidates with `rcp-ndcg judge rubric` first"
+
+
+def test_the_success_exit_code_names_no_error_class() -> None:
+    """`error_class(0)` is None (a caller raises nothing for a child that succeeded), and every other code
+    maps to its class."""
+    assert errors.error_class(0) is None
+    assert errors.error_class(2) is errors.UsageError

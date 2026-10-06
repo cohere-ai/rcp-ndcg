@@ -1,4 +1,556 @@
 {
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "A file a stage read or wrote.\n\nThe hash is what makes resume trustworthy: a stage can be skipped only if\nits inputs are byte-identical to what the recorded output was produced\nfrom.  Comparing paths and mtimes would silently reuse stale work.",
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "CodeVersion": {
+      "additionalProperties": false,
+      "description": "Where the code came from, for reproduction.",
+      "properties": {
+        "git_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Git Commit"
+        },
+        "git_dirty": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Git Dirty"
+        },
+        "package_version": {
+          "title": "Package Version",
+          "type": "string"
+        },
+        "platform": {
+          "title": "Platform",
+          "type": "string"
+        },
+        "python_version": {
+          "title": "Python Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "package_version",
+        "python_version",
+        "platform"
+      ],
+      "title": "CodeVersion",
+      "type": "object"
+    },
+    "DatasetRef": {
+      "additionalProperties": false,
+      "description": "What was evaluated: the dataset's name and the revision each source resolved to.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "revisions": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revisions"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "DatasetRef",
+      "type": "object"
+    },
+    "EngineInfo": {
+      "additionalProperties": false,
+      "description": "What one replica says about itself, read best effort: runtime information, never part of an identity.\n\nRead from the standard ``GET <base_url>/models`` (the entry of the served model) and the response headers,\nand from the ``system_fingerprint`` of the replica's first completion; nothing engine-specific is asked.",
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why the endpoint could not be read; the other fields are then empty.",
+          "title": "Error"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The response's ``server`` header and any header naming a version.",
+          "title": "Headers",
+          "type": "object"
+        },
+        "max_model_len": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The served context in tokens, when the endpoint reports it.",
+          "title": "Max Model Len"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The served model id the endpoint lists (the judge's ``model`` when listed, else the first).",
+          "title": "Model"
+        },
+        "owned_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The entry's ``owned_by``; open-source engines put their own name there.",
+          "title": "Owned By"
+        },
+        "system_fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``system_fingerprint`` of the first completion, when the endpoint sends one (some engines put their version in it).",
+          "title": "System Fingerprint"
+        },
+        "url": {
+          "description": "The replica's base URL.",
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "EngineInfo",
+      "type": "object"
+    },
+    "Family": {
+      "additionalProperties": false,
+      "description": "The poolability token of a set of judgements.\n\nTwo judgements measure the same thing -- and may enter one fit -- only when\nevery field matches: the stage, the judge (model, checkpoint and tokenizer), the prompt,\nthe criteria, the parser, the decoding and the preprocessing that shaped\nwhat the judge saw. key digests them; rubric_key leaves out the judge, which\nis the precondition for pooling several judges with a severity term.",
+      "properties": {
+        "criteria": {
+          "default": [],
+          "description": "The rubric's criterion labels (``C1..C5``); empty for the tournament.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Criteria",
+          "type": "array"
+        },
+        "decoding": {
+          "default": "free",
+          "description": "``\"json_schema\"`` when the endpoint was made to answer in the stage's JSON schema, ``\"free\"`` when it answered in free text (Decoding).",
+          "enum": [
+            "json_schema",
+            "free"
+          ],
+          "title": "Decoding",
+          "type": "string"
+        },
+        "judge_model": {
+          "description": "The served model name (``\"fake\"`` for the offline fake judge).",
+          "title": "Judge Model",
+          "type": "string"
+        },
+        "judge_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge config's ``revision`` as configured (not resolved against the Hub), or ``None``.",
+          "title": "Judge Revision"
+        },
+        "parse_version": {
+          "description": "Version of the parser that reads the answers.",
+          "title": "Parse Version",
+          "type": "integer"
+        },
+        "preprocessing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Digest of the effective preprocessing policy (text caps, chunking, image and video policies), or ``None`` when nothing was declared.",
+          "title": "Preprocessing"
+        },
+        "prompt_hash": {
+          "description": "SHA-256 of the prompt template text.",
+          "title": "Prompt Hash",
+          "type": "string"
+        },
+        "stage": {
+          "description": "``\"tournament\"`` or ``\"rubric\"``.",
+          "enum": [
+            "tournament",
+            "rubric"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "SHA-256 of the judge's ``tokenizer.json``, in whose tokens the text limits and the window budget were counted, or ``None`` when the judge names no tokenizer. It is the judge's, so rubric_key leaves it out with the model.",
+          "title": "Tokenizer"
+        }
+      },
+      "required": [
+        "stage",
+        "judge_model",
+        "prompt_hash",
+        "parse_version"
+      ],
+      "title": "Family",
+      "type": "object"
+    },
+    "RunManifest": {
+      "additionalProperties": false,
+      "description": "Everything known about one run.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/CodeVersion"
+        },
+        "config": {
+          "additionalProperties": true,
+          "title": "Config",
+          "type": "object"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "dataset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DatasetRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "families": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Family"
+          },
+          "title": "Families",
+          "type": "object"
+        },
+        "layout": {
+          "const": "rcp-ndcg.run-layout.v1",
+          "default": "rcp-ndcg.run-layout.v1",
+          "title": "Layout",
+          "type": "string"
+        },
+        "metrics": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Metrics",
+          "type": "object"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema": {
+          "const": "rcp-ndcg.run-manifest.v1",
+          "default": "rcp-ndcg.run-manifest.v1",
+          "title": "Schema",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/RunStatus",
+          "default": "running"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/StepRecord"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        }
+      },
+      "required": [
+        "run_id",
+        "code"
+      ],
+      "title": "RunManifest",
+      "type": "object"
+    },
+    "RunStatus": {
+      "description": "The state of the run.",
+      "enum": [
+        "submitted",
+        "running",
+        "completed",
+        "failed",
+        "partial",
+        "cancelled"
+      ],
+      "title": "RunStatus",
+      "type": "string"
+    },
+    "StepRecord": {
+      "additionalProperties": false,
+      "description": "One step's execution: its identity, what it read and wrote, the judge calls it made, how long it took.",
+      "properties": {
+        "duration_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration S"
+        },
+        "ended_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ended At"
+        },
+        "engines": {
+          "items": {
+            "$ref": "#/$defs/EngineInfo"
+          },
+          "title": "Engines",
+          "type": "array"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "identity": {
+          "additionalProperties": true,
+          "title": "Identity",
+          "type": "object"
+        },
+        "identity_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Identity Hash"
+        },
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/ArtifactRef"
+          },
+          "title": "Inputs",
+          "type": "array"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "outputs": {
+          "items": {
+            "$ref": "#/$defs/ArtifactRef"
+          },
+          "title": "Outputs",
+          "type": "array"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Started At"
+        },
+        "status": {
+          "$ref": "#/$defs/StepStatus"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Usage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "name",
+        "status"
+      ],
+      "title": "StepRecord",
+      "type": "object"
+    },
+    "StepStatus": {
+      "description": "The state of one step (also what ``run status`` reports for it).",
+      "enum": [
+        "pending",
+        "running",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "StepStatus",
+      "type": "string"
+    },
+    "Usage": {
+      "description": "Requests and tokens accumulated by a transport or a role client; merge instances with\nmerged_with.\n\nOne type for every role: a role client's ``usage`` property is this shape, the run manifest serialises it\nper step and per run, and the transport accumulates it. Tokens and requests only -- the wire reports\nnothing else (an endpoint's cached-input detail is not tracked and stays 0).",
+      "properties": {
+        "cached_input_tokens": {
+          "default": 0,
+          "description": "The endpoint's cached-input detail, when it reports one; the shared transport's accounting does not track it and it stays 0.",
+          "title": "Cached Input Tokens",
+          "type": "integer"
+        },
+        "failed_requests": {
+          "default": 0,
+          "description": "Requests the transport raised on, sent or not; a parked-out request and one the rejection rule refuses are the outage's, not a request's. A role client folds its own refusals (a reply its adapter raised on) in on top.",
+          "title": "Failed Requests",
+          "type": "integer"
+        },
+        "input_tokens": {
+          "default": 0,
+          "description": "Prompt tokens summed over the requests that reported them.",
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "default": 0,
+          "description": "Completion tokens summed over the requests that reported them.",
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "requests": {
+          "default": 0,
+          "description": "Requests sent, as the transport counts them: one logical request however many retries it took; a reply the status map returns (even one the adapter refuses) counts as one.",
+          "title": "Requests",
+          "type": "integer"
+        }
+      },
+      "title": "Usage",
+      "type": "object"
+    }
+  },
   "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/run-summary.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "One run: its manifest and which artifacts exist.",
@@ -11,9 +563,7 @@
       "type": "object"
     },
     "manifest": {
-      "additionalProperties": true,
-      "title": "Manifest",
-      "type": "object"
+      "$ref": "#/$defs/RunManifest"
     },
     "run_dir": {
       "title": "Run Dir",

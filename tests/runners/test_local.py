@@ -25,7 +25,7 @@ def test_jobs_run_in_order_and_report_success(tmp_path: Path) -> None:
     ]
     assert runner.submit(specs) == ["first", "second"]
     assert log.read_text() == "12"
-    assert runner.status("first") is JobStatus.SUCCEEDED
+    assert runner.status("first") is JobStatus.COMPLETED
     assert runner.status("never-submitted") is JobStatus.UNKNOWN
 
 
@@ -58,7 +58,7 @@ def test_logs_are_kept_only_with_a_log_dir(tmp_path: Path) -> None:
         LocalRunner().logs("talk")
 
 
-TERMINAL = frozenset({JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED})
+TERMINAL = frozenset({JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED})
 
 
 def _wait(runner: LocalRunner, handle: str, *, until: frozenset[JobStatus] = TERMINAL) -> JobStatus:
@@ -84,8 +84,8 @@ class TestDetached:
         assert follower.status("first") in (JobStatus.PENDING, JobStatus.RUNNING)
         assert follower.status("second") is JobStatus.PENDING and not done.exists()
         gate.touch()
-        assert _wait(follower, "second") is JobStatus.SUCCEEDED
-        assert follower.status("first") is JobStatus.SUCCEEDED
+        assert _wait(follower, "second") is JobStatus.COMPLETED
+        assert follower.status("first") is JobStatus.COMPLETED
         assert follower.logs("first") == "first ran\n" and done.read_text() == "2"
 
     def test_a_failing_job_fails_and_stops_the_rest(self, tmp_path: Path) -> None:
@@ -109,7 +109,7 @@ class TestDetached:
 
 def test_a_finished_job_is_known_to_a_later_runner(tmp_path: Path) -> None:
     LocalRunner(log_dir=str(tmp_path)).submit([JobSpec(name="ok", argv=_py(""))])
-    assert LocalRunner(log_dir=str(tmp_path)).status("ok") is JobStatus.SUCCEEDED
+    assert LocalRunner(log_dir=str(tmp_path)).status("ok") is JobStatus.COMPLETED
 
 
 def test_render_is_the_script_that_runs(tmp_path: Path) -> None:
@@ -141,7 +141,7 @@ def test_engine_free_phases_run_in_order(tmp_path: Path) -> None:
     job = JobSpec(name="phased", phases=phases)
     runner = LocalRunner(log_dir=str(tmp_path))
     runner.submit([job])
-    assert runner.status("phased") is JobStatus.SUCCEEDED
+    assert runner.status("phased") is JobStatus.COMPLETED
     assert runner.logs("phased") == "one\ntwo\n"
 
 

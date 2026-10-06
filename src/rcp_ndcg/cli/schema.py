@@ -89,7 +89,10 @@ def schema_show(request: SchemaShowRequest) -> dict[str, Any]:
             return {"schema": "rcp-ndcg.commands.v1", **describe_commands(include_help=True).model_dump(mode="json")}
         return {"schema": "rcp-ndcg.command-index.v1", **command_index().model_dump(mode="json")}
     if request.full:
-        raise UsageError("--full applies to `schema show commands` only")
+        raise UsageError(
+            "--full applies to `schema show commands` only",
+            hint="show one schema plainly: schema show NAME (the tree is `schema show commands --full`)",
+        )
     return schemas.show(request.name)
 
 

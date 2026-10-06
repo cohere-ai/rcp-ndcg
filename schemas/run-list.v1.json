@@ -1,13 +1,149 @@
 {
+  "$defs": {
+    "RunListRow": {
+      "additionalProperties": false,
+      "description": "One run of ``run list``: the manifest's summary. A manifest that does not parse is listed with\n``status: \"unreadable\"`` (the one value outside RunStatus) and its error.",
+      "properties": {
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the run was created (a readable manifest).",
+          "title": "Created At"
+        },
+        "dataset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dataset"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why the manifest is unreadable (status 'unreadable').",
+          "title": "Error"
+        },
+        "judges": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Judges"
+        },
+        "metrics": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metrics"
+        },
+        "requests": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requests"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunStatus"
+            },
+            {
+              "const": "unreadable",
+              "type": "string"
+            }
+          ],
+          "title": "Status"
+        },
+        "steps": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Steps"
+        }
+      },
+      "required": [
+        "run_id",
+        "status"
+      ],
+      "title": "RunListRow",
+      "type": "object"
+    },
+    "RunStatus": {
+      "description": "The state of the run.",
+      "enum": [
+        "submitted",
+        "running",
+        "completed",
+        "failed",
+        "partial",
+        "cancelled"
+      ],
+      "title": "RunStatus",
+      "type": "string"
+    }
+  },
   "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/run-list.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The runs under a runs directory, newest first.",
   "properties": {
     "runs": {
-      "description": "Per run: run_id, status, created_at, dataset, judges, metrics, requests, steps.",
       "items": {
-        "additionalProperties": true,
-        "type": "object"
+        "$ref": "#/$defs/RunListRow"
       },
       "title": "Runs",
       "type": "array"

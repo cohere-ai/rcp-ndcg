@@ -157,3 +157,38 @@ def test_version(runner: CliRunner) -> None:
 
     assert result.exit_code == 0
     assert __version__ in result.stdout
+
+
+def test_argument_and_config_errors_share_the_problem_shape(runner: CliRunner, tmp_path: Path) -> None:
+    """`details.errors` has one key set — the documented one (field, input, problem, expected, did_you_mean,
+    source) — whether the value came from the command line or a config file."""
+    bad = runner.invoke(cli, ["run", "list", "--limit", "0", "--json"])
+
+    problem = _one_document(bad.stdout)["error"]["details"]["errors"][0]
+    assert {"field", "input", "problem", "source"} <= set(problem)
+    assert problem["source"] == "the arguments"
+
+
+def test_an_interrupted_command_is_exit_9_in_the_envelope(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SIGINT while a command runs is INTERRUPTED (9), the same envelope as any other failure."""
+
+    def interrupt():
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("rcp_ndcg.schemas.entries", interrupt)
+    result = runner.invoke(cli, ["schema", "list", "--json"])
+
+    document = _one_document(result.stdout)
+    assert result.exit_code == 9
+    assert document["error"]["code"] == "INTERRUPTED"
+
+
+def test_a_failure_envelope_names_the_command_not_an_option_value(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The `command` of a failure envelope is the command path: a global option's value is not a command word."""
+    from rcp_ndcg.cli.main import _command_of
+
+    assert _command_of(None, ["--env-file", "f.env", "data", "inspect"]) == "data inspect"
+    assert _command_of(None, ["--log-file=x", "-v", "schema", "list"]) == "schema list"
+    assert _command_of(None, ["--nope", "data", "inspect"]) == "data inspect"

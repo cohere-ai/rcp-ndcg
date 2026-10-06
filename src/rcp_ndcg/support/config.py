@@ -111,30 +111,20 @@ def _resolve(
     return deep_merge(base, data)
 
 
-def config_error(
+def validation_problems(
     exc: Any,
     *,
     model: Any = None,
     source: str = "config",
     overrides: Sequence[str] = (),
     prefix: str = "",
-    hint: str | None = None,
-) -> ConfigError:
-    """A pydantic ``ValidationError`` of a config as a :class:`~rcp_ndcg.errors.ConfigError` a caller can act on.
+) -> list[dict[str, Any]]:
+    """One entry per problem of a pydantic ``ValidationError`` — the one shape of ``details.errors``.
 
-    ``details.errors`` holds one entry per problem: ``field`` (the dotted path), ``problem``, ``input`` (the given
-    value; ``null`` for a missing field), ``expected`` (the type or the allowed values, when known),
-    ``did_you_mean`` (the closest known key, for an unknown one) and ``source`` (``"--set"`` when an override set
-    the field, else ``source``). The message names the first problem and where it came from.
-
-    Args:
-        exc: The ``pydantic.ValidationError``.
-        model: The model class (or ``TypeAdapter``) validated, for the expected types and the known keys.
-        source: What was validated (a file path, ``"run config"``), blamed for problems no override explains.
-        overrides: The ``dotted.key=value`` overrides applied before validating.
-        prefix: The dotted path of the validated value inside the overrides' namespace (``"judge"`` when
-            ``--set judge.x=...`` is validated as a judge config).
-        hint: The hint, instead of the default one (fix the field in the file, or the ``--set`` value).
+    Each entry carries ``field`` (the dotted path), ``problem``, ``input`` (the given value; ``null`` for a
+    missing field), ``expected`` (the type or the allowed values, when known), ``did_you_mean`` (the closest
+    known key, for an unknown one) and ``source`` (``"--set"`` when an override set the field, else *source*).
+    Config validation (:func:`config_error`) and the CLI's argument validation raise with this shape.
     """
     schema = _json_schema(model)
     set_keys = [override.partition("=")[0].strip() for override in overrides]
@@ -161,6 +151,33 @@ def config_error(
         by_set = any(field == key or field.startswith(f"{key}.") or key.startswith(f"{field}.") for key in set_keys)
         problem["source"] = "--set" if by_set else source
         problems.append(problem)
+    return problems
+
+
+def config_error(
+    exc: Any,
+    *,
+    model: Any = None,
+    source: str = "config",
+    overrides: Sequence[str] = (),
+    prefix: str = "",
+    hint: str | None = None,
+) -> ConfigError:
+    """A pydantic ``ValidationError`` of a config as a :class:`~rcp_ndcg.errors.ConfigError` a caller can act on.
+
+    ``details.errors`` holds one entry per problem, in the shape of :func:`validation_problems`. The message
+    names the first problem and where it came from.
+
+    Args:
+        exc: The ``pydantic.ValidationError``.
+        model: The model class (or ``TypeAdapter``) validated, for the expected types and the known keys.
+        source: What was validated (a file path, ``"run config"``), blamed for problems no override explains.
+        overrides: The ``dotted.key=value`` overrides applied before validating.
+        prefix: The dotted path of the validated value inside the overrides' namespace (``"judge"`` when
+            ``--set judge.x=...`` is validated as a judge config).
+        hint: The hint, instead of the default one (fix the field in the file, or the ``--set`` value).
+    """
+    problems = validation_problems(exc, model=model, source=source, overrides=overrides, prefix=prefix)
     first = problems[0]
     where = f"--set {first['field']}" if first["source"] == "--set" else f"{source}: {first['field']}"
     guess = f"; did you mean {first['did_you_mean']!r}?" if "did_you_mean" in first else ""
@@ -309,4 +326,4 @@ def _plain(value: Any) -> Any:
     return repr(value)
 
 
-__all__ = ["EXTENDS_KEY", "apply_overrides", "config_error", "deep_merge", "load_config"]
+__all__ = ["EXTENDS_KEY", "apply_overrides", "config_error", "deep_merge", "load_config", "validation_problems"]

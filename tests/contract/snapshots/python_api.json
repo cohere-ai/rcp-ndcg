@@ -16526,7 +16526,7 @@
         "values": [
           "pending",
           "running",
-          "succeeded",
+          "completed",
           "failed",
           "cancelled",
           "unknown"
@@ -18671,6 +18671,7 @@
         "defined_in": "rcp_ndcg.runs.manifest",
         "kind": "enum",
         "values": [
+          "pending",
           "running",
           "completed",
           "failed",

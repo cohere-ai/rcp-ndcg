@@ -131,7 +131,7 @@ class _FakeKubectl:
     [
         ({"active": 2}, JobStatus.RUNNING),
         ({}, JobStatus.PENDING),
-        ({"conditions": [{"type": "Complete", "status": "True"}]}, JobStatus.SUCCEEDED),
+        ({"conditions": [{"type": "Complete", "status": "True"}]}, JobStatus.COMPLETED),
         ({"conditions": [{"type": "Failed", "status": "True"}]}, JobStatus.FAILED),
     ],
 )

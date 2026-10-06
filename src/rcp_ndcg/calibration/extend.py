@@ -373,7 +373,8 @@ def insert_documents(
                     hint="plan more opponents (select_opponents(..., n=...)) and judge the new windows, or accept a "
                     "larger se_target; a query with few documents has no more opponents to plan, so only a larger "
                     "se_target helps there",
-                    cli_hint="plan more opponents (`calibration insert --plan --n N`) and judge the new windows with "
+                    cli_hint="plan more opponents (`calibration insert --dry-run --n N`) and judge the new "
+                    "windows with "
                     "`judge tournament --plan`, or accept a larger --se-target; a plan that reports capped: true "
                     "already holds every document of the query, so only a larger --se-target helps",
                     details=exc.report,
