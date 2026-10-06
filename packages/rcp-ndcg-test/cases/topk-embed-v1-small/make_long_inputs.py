@@ -327,13 +327,45 @@ LONG_UNDER_NOTE = (
     "long_under: the rendered prompt sits within 5% under the 8192-token budget, so no cut "
     "fires and every anchor (all-token pooling; the 3-token head plus the content) survives."
 )
-LONG_OVER_NOTE = (
+LONG_OVER_NOTE_HEAD = (
     "long_over: the client must cut to the 8192-token budget (on_overflow cut; the content "
     'span only, the 3-token "Document: " head reserved and re-attached). Caveats the wave '
     "must check: under today's G5 counting ceiling the client sees 1024 tokens, so an uncut "
-    "prompt reaches the engine -- {within} tokens still serve whole (count mismatch, no 400), "
-    "{above} exceeds max_model_len 8448 and the engine answers 400 (loud) -- until the product "
-    "resets the embedded truncation when counting."
+    "prompt reaches the engine --"
+)
+LONG_OVER_NOTE_TAIL = "-- until the product resets the embedded truncation when counting."
+
+
+def long_over_note(rendered: dict[str, int]) -> str:
+    """The long_over caveat with this case's measured engine behaviour filled in.
+
+    `rendered` maps document id to its measured rendered prompt token count. Documents in
+    (8192, 8448] still serve whole under the G5 ceiling (count mismatch, no 400); documents over
+    8448 exceed max_model_len and are answered 400 (loud) unless the client cut fires.
+    """
+    parts = []
+    within = [f"{k} ({v} tokens)" for k, v in sorted(rendered.items()) if 8192 < v <= 8448]
+    above = [f"{k} ({v} tokens)" for k, v in sorted(rendered.items()) if v > 8448]
+    if within:
+        s = "s" if len(within) == 1 else ""
+        parts.append(
+            f"{' and '.join(within)} land{s} in (8192, 8448] and still serve{s} whole (count mismatch, no 400)"
+        )
+    else:
+        parts.append("no document lands in (8192, 8448], the band that still serves whole under the bug")
+    if above:
+        parts.append(
+            f"{' and '.join(above)} exceed{'s' if len(above) == 1 else ''} max_model_len 8448 and "
+            "the engine answers 400 (loud)"
+        )
+    else:
+        parts.append("no document exceeds max_model_len 8448")
+    return f"{LONG_OVER_NOTE_HEAD} {', and '.join(parts)} {LONG_OVER_NOTE_TAIL}"
+
+
+UNIFORM_NOTE = (
+    "uniform batch: every document of the case sits in one length stratum (uniform does not mean "
+    "identical lengths; mixed_length marks cases that straddle strata)."
 )
 PUNCT_NOTE = (
     "The document-side keep-mask is load-bearing here: the recorded kept counts are the vector "
@@ -343,7 +375,7 @@ PUNCT_NOTE = (
     "reference's and the wave's per-token count check fails on this case by construction."
 )
 QUERY_CAP_NOTE = (
-    "The query renders to more tokens than the model's own query cap ({cap}, "
+    f"The query renders to more tokens than the model's own query cap ({QUERY_CAP}, "
     "sentence_bert_config.json) while staying far under the 8192 budget: the reference "
     "right-truncates the query at 1024, but the recipe schema has no query-cap field (recipe "
     "gap G2), so the served query is uncut. expected.kind none: the case observes the G2 "
@@ -393,11 +425,14 @@ def build_cases(tokenizer, skip: frozenset[int]) -> list[dict]:
         measured = [
             doc_line(f"query {x['id']}", None, None, measure(tokenizer, x["text"], QUERY_PREFIX, skip)) for x in queries
         ]
+        rendered_by_doc: dict[str, int] = {}
         for x in documents:
             if "text" in x:
                 m = measure(tokenizer, x["text"], DOCUMENT_PREFIX, skip)
+                rendered_by_doc[x["id"]] = m["tokens"]
                 measured.append(doc_line(f"doc {x['id']}", x.get("seed"), x.get("target"), m))
-        note = " ".join([RENDER_NOTE, *measured, *static, TOLERANCE_NOTE if kind != "none" else ""])
+        resolved = tuple(item(rendered_by_doc) if callable(item) else item for item in static)
+        note = " ".join([RENDER_NOTE, *measured, *resolved, TOLERANCE_NOTE if kind != "none" else ""])
         return {
             "slug": slug,
             "modality": modality,
@@ -436,6 +471,7 @@ def build_cases(tokenizer, skip: frozenset[int]) -> list[dict]:
                 text_doc("d3", d["short_f"]),
                 text_doc("d4", d["short_h"]),
             ],
+            static=(UNIFORM_NOTE,),
         ),
         case(
             "text-long-under-single",
@@ -453,7 +489,7 @@ def build_cases(tokenizer, skip: frozenset[int]) -> list[dict]:
             "uniform",
             [{"id": "q1", "text": q["rev"]}, {"id": "q2", "text": q["fer"]}],
             [text_doc("d1", long_under_a, 1201, 7850), text_doc("d2", long_under_b, 1202, 8120)],
-            static=(LONG_UNDER_NOTE,),
+            static=(LONG_UNDER_NOTE, UNIFORM_NOTE),
         ),
         case(
             "text-long-over-single",
@@ -462,7 +498,7 @@ def build_cases(tokenizer, skip: frozenset[int]) -> list[dict]:
             "single",
             [{"id": "q1", "text": q["rot"]}],
             [text_doc("d1", long_over_single, 1301, 8700)],
-            static=(LONG_OVER_NOTE,),
+            static=(long_over_note,),
         ),
         case(
             "text-long-over-uniform",
@@ -471,7 +507,7 @@ def build_cases(tokenizer, skip: frozenset[int]) -> list[dict]:
             "uniform",
             [{"id": "q1", "text": q["rev"]}],
             [text_doc("d1", long_over_a, 1401, 8350), text_doc("d2", long_over_b, 1402, 9100)],
-            static=(LONG_OVER_NOTE,),
+            static=(long_over_note, UNIFORM_NOTE),
         ),
         case(
             "text-mixed-length",
@@ -484,7 +520,7 @@ def build_cases(tokenizer, skip: frozenset[int]) -> list[dict]:
                 text_doc("d2", mixed_under, 1501, 7990),
                 text_doc("d3", mixed_over, 1502, 8700),
             ],
-            static=(LONG_UNDER_NOTE, LONG_OVER_NOTE),
+            static=(LONG_UNDER_NOTE, long_over_note),
         ),
         case(
             "text-skip-mask-punctuation",
@@ -493,7 +529,7 @@ def build_cases(tokenizer, skip: frozenset[int]) -> list[dict]:
             "uniform",
             [{"id": "q1", "text": PUNCT_QUERIES["punct_a"]}, {"id": "q2", "text": PUNCT_QUERIES["punct_b"]}],
             [text_doc("d1", PUNCT_DOCS["punct_a"]), text_doc("d2", PUNCT_DOCS["punct_b"])],
-            static=(PUNCT_NOTE,),
+            static=(PUNCT_NOTE, UNIFORM_NOTE),
         ),
         case(
             "query-cap-1024",
@@ -555,6 +591,7 @@ def build_cases(tokenizer, skip: frozenset[int]) -> list[dict]:
             ],
             static=(
                 IMAGE_RENDER_NOTE,
+                UNIFORM_NOTE,
                 "doc_small_1 is 256x256 px (64 patch tokens expected), doc_small_2 is "
                 "512x384 px (192 expected), doc_small_3 is 448x336 px (the processor "
                 "resizes to 32-px multiples; the T0 probe pins the exact count). "
@@ -590,7 +627,7 @@ def build_cases(tokenizer, skip: frozenset[int]) -> list[dict]:
                 text_doc("d3", final_over, 2602, 8700),
                 image_doc("d4", "media/doc_max_pixels.png"),
             ],
-            static=(LONG_UNDER_NOTE, LONG_OVER_NOTE, IMAGE_RENDER_NOTE, MEDIA_NOTE),
+            static=(LONG_UNDER_NOTE, long_over_note, IMAGE_RENDER_NOTE, MEDIA_NOTE),
         ),
     ]
 
