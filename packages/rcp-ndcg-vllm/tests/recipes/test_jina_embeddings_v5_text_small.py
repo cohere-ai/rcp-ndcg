@@ -40,8 +40,9 @@ TOKENIZER_SHA256 = "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492
 # The rendered prompts of the seed row, tokenized with the recipe's tokenizer at the pinned
 # revision (ids measured 2026-10-05 from the tokenizer.json above). Pinned so a template or
 # tokenizer drift moves the test, not the served numbers. Row 0 is also the seed the harness's
-# over-length sampling repeats past the cap: both of its units overflow 32768 when joined (the
-# junctions do not merge, unlike a seed ending in a bare sentence period).
+# over-length sampling repeats past the cap: both of its units overflow 32768 when joined
+# (measured 32784 and 32829 - the samples' junctions do not merge for these seeds, which the
+# pinned counts below assert).
 QUERY_IDS = [2859, 25, 2585, 4937, 1558, 3100, 5821, 304, 264, 28202, 30]
 DOCUMENT_IDS = [
     7524,
@@ -313,11 +314,13 @@ def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
 def test_reference_load_resolves_the_pinned_snapshot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """load() must resolve the whole pinned snapshot and load everything from it.
 
-    The checkpoint's remote code drops the revision kwarg for every inner load (config, base
-    weights, adapters, tokenizer all resolve at Hub HEAD - modeling_jina_embeddings_v5.py:25-27,
-    :28-32, :37-41, :57-60), so a repo-id load pins nothing. Behavioural and offline: the three
-    heavy modules are stubbed, so the harness process imports no torch and touches no network;
-    the full embed/score path still runs only in the reference environment (the GPU wave)."""
+    The checkpoint's remote code never forwards the revision to its inner loads: on a repo-id
+    load the adapters and the tokenizer resolve at Hub HEAD (modeling_jina_embeddings_v5.py:37-41,
+    :57-60) and the config/base weights only stay pinned via transformers' config-commit-hash
+    inheritance - so load() must resolve the whole snapshot itself. Behavioural and offline: the
+    three heavy modules are stubbed, so the harness process imports no torch and touches no
+    network; the full embed/score path still runs only in the reference environment (the GPU
+    wave)."""
     reference = _import_reference()
     calls: list[dict[str, Any]] = []
     snapshot = tmp_path / "snapshot"
