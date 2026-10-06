@@ -20,6 +20,7 @@ the runner's own fields), which a run config's ``runner.options`` is typed by.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from typing import Any, ClassVar, Protocol, Self
@@ -120,9 +121,11 @@ class JobSpec(BaseModel):
         resources and environment; no phases -- a phase's command lives in the job's ``phases``).
 
         Raises:
-            ValueError: ``argv`` is empty (a phase's command is never empty; ``model_copy`` would skip the
-                model's own check and the rendered script would crash instead).
+            ValueError: ``argv`` is empty, or a string (``model_copy`` would skip the model's own check: an
+                empty command would crash the rendered script, and a string would be char-split into words).
         """
+        if isinstance(argv, str):
+            raise ValueError("argv must be a sequence of words, not a string")
         if not argv:
             raise ValueError("argv must not be empty")
         return self.model_copy(update={"argv": tuple(argv), "phases": ()})
@@ -161,15 +164,25 @@ class JobOptions(BaseModel):
     @field_validator("wheelhouse", "constraints")
     @classmethod
     def _readable_by_uv(cls, value: str | None) -> str | None:
-        """Refuse a bucket scheme: ``uv`` reads ``--find-links``/``--constraints`` as a local directory, a
-        ``file://`` or an ``http(s)://`` URL -- anything else (``gs://``, ``s3://``) fails at job start, so the
-        config refuses it and names the fix."""
+        """Refuse what ``uv`` cannot read: ``--find-links`` and ``--constraints`` take a local path, a
+        ``file://`` URL or an ``http(s)://`` URL with a host -- a bucket scheme (``gs://``, ``s3://``, also
+        single-slashed like ``gs:/x``) is treated as a filesystem path and fails at job start, so the config
+        refuses it and names the fix."""
         if value is None:
             return value
-        if "://" in value and not value.startswith(("http://", "https://", "file://")):
+        if value != value.strip() or not value.strip():
+            raise ValueError(f"{value!r} is empty or has surrounding whitespace")
+        if re.match(r"[A-Za-z][A-Za-z0-9+.\-]*:/", value) and not value.lower().startswith(
+            ("http://", "https://", "file://")
+        ):
             raise ValueError(
                 f"{value!r} names a scheme uv cannot read: --find-links and --constraints take a local path, a "
                 "file:// URL or an http(s):// URL; stage the wheelhouse as an https URL, or mount it on the node",
+            )
+        if value.lower().startswith(("http://", "https://")) and not re.match(r"^https?://[^/]+", value, re.IGNORECASE):
+            raise ValueError(
+                f"{value!r} names no host: --find-links and --constraints take a local path, a file:// URL or an "
+                "http(s):// URL of one"
             )
         return value
 

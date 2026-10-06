@@ -284,10 +284,12 @@ access, the coordinator installs from a **wheelhouse** instead of PyPI: set the 
 `constraints` options (`runner.options.wheelhouse`, `runner.options.constraints`; the generic `--set
 runner.options.wheelhouse=...` overrides them from the command line) — on a node without any network access, name
 `constraints` too, since `uvx` fetches the default release URL at job start even under `--no-index`. The wheelhouse
-is a directory of staged wheels, readable on the node (on Kubernetes, mounted in), or an `http(s)://` URL of one:
-uv's `--find-links` and `--constraints` read local paths (or `file://` URLs) and http(s) URLs, and no bucket
-scheme — a GCS-staged wheelhouse is exposed through its `https://` URL or mounted; a `gs://`/`s3://` value is
-refused when the config is read, not at job start. The rendered
+is a directory of staged wheels, readable on the node, or an `http(s)://` URL of one: uv's `--find-links` and
+`--constraints` read local paths (or `file://` URLs) and http(s) URLs with a host, and no bucket scheme — a
+GCS-staged wheelhouse is exposed through its `https://` URL, or mounted where the job runs; a `gs://`/`s3://` value
+is refused when the config is read, not at job start. On Kubernetes a directory must reach the pod another way —
+bake it into the coordinator's `image:` or name the `https://` URL (the Kubernetes runner takes no volume mounts);
+on SLURM, `container_mounts` mounts a shared one. The rendered
 `uvx` then takes everything from the wheelhouse and asks no index, and the constraints file you name replaces the
 release's:
 
@@ -295,7 +297,7 @@ release's:
 runner:
   name: kubernetes
   options:
-    wheelhouse: https://storage.googleapis.com/my-bucket/wheelhouse/0.0.1rc1    # or /shared/wheelhouse
+    wheelhouse: https://storage.googleapis.com/my-bucket/wheelhouse/0.0.1rc1
     constraints: https://storage.googleapis.com/my-bucket/wheelhouse/0.0.1rc1/requirements-constraints.txt
 ```
 
@@ -488,6 +490,8 @@ judge (both paper judges are): its expert layers then synchronise every forward 
 that another installed package registers under the `rcp_ndcg.runners` entry-point group. A job is one command line
 with its image, resources and environment (`JobSpec.argv`), or the phases to run in order (`JobSpec.phases`) —
 exactly one of the two: a job without phases runs `argv`, a phased job's commands are its phases' `argv`.
+A plugin runner that renders a job's phases declares `renders_phases = True` and takes the phased job (a runner
+without it is handed the whole-run command as the job's `argv`, and a job whose phases start engines is refused).
 `render` shows what would be submitted without submitting anything:
 
 ```python

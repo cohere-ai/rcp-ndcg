@@ -140,16 +140,28 @@ def test_an_install_source_is_refused_where_nothing_installs() -> None:
     assert SlurmRunner(container_runtime="apptainer", constraints="/shared/c.txt").options.constraints
 
 
+def test_with_argv_refuses_an_empty_command() -> None:
+    """The per-phase builder validates what model_copy would skip: an empty phase command is refused, not
+    rendered into a script that crashes, and so is a string (which would be char-split into words)."""
+    job = JobSpec(name="j", phases=(JobPhase(argv=("echo", "hi")),))
+    with pytest.raises(ValueError, match="argv must not be empty"):
+        job.with_argv(())
+    with pytest.raises(ValueError, match="a sequence of words, not a string"):
+        job.with_argv("rcp-ndcg run resume")
+
+
 def test_a_wheelhouse_scheme_uv_cannot_read_is_refused_at_config_time() -> None:
     """uv's --find-links and --constraints read local directories and http(s) URLs: a bucket scheme would fail
     at job start, so the config refuses it and names the fix."""
     from rcp_ndcg.errors import ConfigError
 
-    for value in ("gs://bucket/wheels", "s3://bucket/wheels", "gcs://bucket/wheels"):
-        with pytest.raises(ConfigError, match="uv cannot read"):
+    for value in ("gs://bucket/wheels", "s3://bucket/wheels", "gcs://bucket/wheels", "gs:/bucket/wheels", "  ", " /x "):
+        with pytest.raises(ConfigError, match="uv cannot read|empty or has surrounding whitespace"):
             SlurmRunner(wheelhouse=value, container_runtime="pyxis")
-        with pytest.raises(ConfigError, match="uv cannot read"):
+        with pytest.raises(ConfigError, match="uv cannot read|empty or has surrounding whitespace"):
             SlurmRunner(constraints=value, container_runtime="pyxis")
+    with pytest.raises(ConfigError, match="names no host"):
+        SlurmRunner(wheelhouse="http://", container_runtime="pyxis")  # uv resolves no host from this
     # a local path, a file:// URL and an http(s):// URL are readable by uv
     assert SlurmRunner(wheelhouse="/shared/wheels", container_runtime="pyxis").options.wheelhouse
     assert SlurmRunner(wheelhouse="file:///shared/wheels", container_runtime="pyxis").options.wheelhouse
@@ -165,14 +177,6 @@ def test_a_local_wheelhouse_path_is_recorded_absolute_and_a_url_is_left_alone() 
     assert resolved["constraints"].endswith("/wheels/c.txt")
     remote = SlurmRunner(wheelhouse="https://storage.example/wheels", container_runtime="pyxis").options.resolved()
     assert remote["wheelhouse"] == "https://storage.example/wheels"
-
-
-def test_with_argv_refuses_an_empty_command() -> None:
-    """The per-phase builder validates what model_copy would skip: an empty phase command is refused, not
-    rendered into a script that crashes."""
-    job = JobSpec(name="j", phases=(JobPhase(argv=("echo", "hi")),))
-    with pytest.raises(ValueError, match="argv must not be empty"):
-        job.with_argv(())
 
 
 @pytest.mark.parametrize("name", ["HF HOME", "A;echo INJECTED;B", "1X", "", "X-Y"])
