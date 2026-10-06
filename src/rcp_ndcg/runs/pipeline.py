@@ -456,27 +456,21 @@ class Pipeline:
     def _inputs(self, step: str) -> list[ArtifactRef]:
         layout = self.layout
         paths: list[str] = []
-        supplied = (
-            self.config.candidates.source == "rankings"
-            and "retrieve" not in self.config.steps
-            and step in ("rerank", "tournament", "rubric")
-        )
-        if supplied:
-            # A `from: rankings` run without a retrieve step reads its pools straight from the rankings file:
-            # it is the step's input, so a resume notices the file changed (nothing else pins it -- the
-            # first-stage file is never written on this shape).
-            paths.append(str(self.config.candidates.rankings))
-        elif step == "retrieve" and self.config.candidates.source == "rankings":
+        if step == "retrieve" and self.config.candidates.source == "rankings":
             paths = [str(self.config.candidates.rankings)]
         elif step == "rerank":
-            paths = [self._first_stage]
+            if self.config.candidates.source == "rankings" and "retrieve" not in self.config.steps:
+                # The rerank step reads the rankings file itself on this shape (see _step_rerank).
+                paths = [str(self.config.candidates.rankings)]
+            else:
+                paths = [self._first_stage]
         elif step in ("tournament", "rubric"):
-            paths = [layout.candidates]
+            paths = [self._pools_source()]
         elif step == "calibrate":
             paths = [layout.path("judgements", f"{stage}.jsonl") for stage in ("tournament", "rubric")]
         elif step == "evaluate":
             paths = [
-                layout.candidates,
+                self._pools_source(),
                 layout.path("calibration", "items.json"),
                 layout.path("calibration", "thetas.parquet"),
                 *(location.partition("#")[0] for location in self.config.evaluation.systems.values()),
@@ -719,23 +713,35 @@ class Pipeline:
             return pools
         return dict(list(pools.items())[: self.config.limit])
 
+    def _pools_source(self) -> str:
+        """The file the steps that read the first-stage pools consume: the candidates file a rerank (or
+        retrieve) step writes -- or, when no configured step writes one, a `from: rankings` run's rankings
+        file itself (the dataset source's preamble writes the first stage)."""
+        if (
+            self.config.candidates.source == "rankings"
+            and "retrieve" not in self.config.steps
+            and "rerank" not in self.config.steps
+        ):
+            return str(self.config.candidates.rankings)
+        return self.layout.candidates
+
     def _judging_input(self) -> dict[str, list[str]]:
         """Each query's pool, best first, at the configured depth: what the judging steps judge.
 
         Raises:
-            MissingInputError: the candidates come from retrieval or rankings and the retrieve step has not
-                written them.
+            MissingInputError: the candidates come from retrieval or rankings and the step that writes them
+                (the retrieve step, or the rerank step when one is configured) has not run.
         """
-        path = self.layout.candidates
-        if self.config.candidates.source == "rankings" and "retrieve" not in self.config.steps:
-            # A `from: rankings` run without a retrieve step has no candidates file: the rankings file IS its
-            # first stage, so the pools are read straight from it -- always, never a leftover file's.
+        path = self._pools_source()
+        if self.config.candidates.source == "rankings" and path != self.layout.candidates:
+            # The rankings file IS the first stage here: read straight from it, never a leftover file's.
             pools = self._supplied_pools()
         elif not Path(path).exists():
             if self.config.candidates.source != "dataset":
+                writer = "rerank" if "rerank" in self.config.steps else "retrieve"
                 raise MissingInputError(
                     f"{path} does not exist yet: the candidates come from {self.config.candidates.source}",
-                    hint="run the retrieve step first",
+                    hint=f"run the {writer} step first",
                 )
             pools = self._dataset_pools()
         else:
