@@ -50,6 +50,11 @@ Repository = "https://github.com/cohere-ai/rcp-ndcg"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# The node script ships with the package (the sdist's graft covers it too); submit.sh mounts it from
+# the checkout at submission time.
+"rcp_ndcg_vllm.jobs" = ["*.sh"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [

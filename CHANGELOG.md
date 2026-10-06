@@ -105,6 +105,51 @@ released together.
   small corpus. The `cli.v1` envelope schema changed description-only (`data` says which commands tag their
   data with a schema id). No payload changes shape except `run list`'s unreadable rows, which now carry the row's null
   fields explicitly; the payloads validate against the regenerated schemas.
+- **`rcp-ndcg-vllm` gains the release-candidate and wave scripts** (`packages/rcp-ndcg-vllm/jobs/`, and
+  `wave0.sh` with the package): `rc_build.sh <name> [<commit>]` builds an RC exactly as `release.yml`
+  does — the three distributions, the version and pin checks, the constraints-file check against the
+  lock, `twine check`, and a fresh-venv install smoke from the wheelhouse — and stages the six files
+  with the wheelhouse (every locked dependency beside the release wheels, the CPU torch build included,
+  the plugin wheels under `packages/rcp-ndcg-vllm/plugins/*` built beside them), the recipes, the wave
+  lists and any `EXTRA_DIRS` entries to `<RCP_STAGE_PREFIX>/<name>/`, with a hash manifest
+  (`rcp-ndcg.rc-manifest.v1`) that names the CUDA-lock wheels (`nvidia-*`, `triton`) riding along inert
+  on a CPU client — the client install refuses them. `bootstrap.sh` copies the staged wheelhouse and
+  constraints from the stage prefix to a local directory on the node first (the install source reads
+  only what uv reads: a local directory, `file://` or an `http(s)://` URL — a bucket scheme is refused
+  at config time), executes the mounted auth script before anything else, and moves everything over
+  `gcloud` or `gsutil` when either is on PATH, else the python helper (`jobs/gcs.py` over `gcsfs`,
+  installed with `pip --target` into a tools directory outside the engine environment, with
+  Application Default Credentials); the path that ran is recorded in the wave-0 report. `bootstrap.sh`
+  replaces the superseded stub: it verifies the staged files against the manifest, installs `uv` with
+  `pip --target` (the product's `bootstrap_uv` location), leaves the engine environment untouched except
+  recipe plugin wheels with `--no-deps` (a `pip freeze` diff beyond exactly those wheels fails it),
+  builds the client through the product's install mechanism (`uvx --find-links <wheelhouse> --no-index`
+  with the staged constraints — the runners' install-source option, not a second installer) and the
+  reference venv with `--system-site-packages` over the image's torch, records the install times and
+  versions, and (mode `wave`) runs the wave runner with the staged recipes, wave lists and pairs.
+  `submit.sh <rc-stage-uri> <out-prefix> <wave>...` submits one job per wave: `priority_class=` per
+  wave, `worker.shared_memory` sized for eight engines (`RCP_SHARED_MEMORY`, default 128Gi), the HF
+  token from `RCP_HF_TOKEN_FILE` as a kjobs secret expanded inside the script and never printed, at
+  most `--max-jobs` jobs in flight via `depends_on`, the job CLI's output to a file with only names and
+  states printed, and `--script wave0` mounting and running the node test. Wave 0 (`wave0.sh`):
+  preflight assumptions, the host facts, the three environments with an unchanged engine freeze, the
+  Hub (metadata with the token secret) and a gs:// round-trip through `rcp_ndcg.storage` from the
+  client, the plugin canary (`fla` must not be importable in the untouched engine environment) with
+  the wheelhouse path and every installed engine version recorded, two engines on two isolated slots
+  at once, the product's `fit` and embedding client over 20
+  texts (5 over the explicit budget) with the engine's `/tokenize` per input, the HF-cache eviction
+  with the disk before/after, and the no-engine assert — fail-fast, with one JSON report
+  (`rcp-ndcg.wave0-report.v1`, schema at `packages/rcp-ndcg-vllm/schema/wave0-report.schema.json`) and
+  a dry mode (`WAVE0_DRY=1`). The wave runner's wave gains per-slot `VLLM_PORT` and `TMPDIR`, the
+  pre-serve disk check against the model's Hub size, the post-recipe eviction, and an upload fallback
+  through the product's own `rcp_ndcg.storage` when the image has neither `gcloud` nor `gsutil`. Wave
+  0's embed step runs the wired `EmbeddingClient` (the config's budget, fitted inside the client);
+  every upload attempt is recorded in the report's `uploads` section with its error (the second
+  durable report copy carries every attempt except its own; the stdout emit is complete), a directory
+  source copies its contents under the destination on every transfer path (the caller declares the
+  source's kind — `dir`, `file` or `auto` — and both gcs.py and the CLIs honour it), one retry covers
+  a transient GCS error, and `submit.sh` resolves the image's digest (Docker Hub registry, then
+  `gcloud container images describe`) into `env.RCP_IMAGE_DIGEST` so the report never says null.
 - New package `rcp-ndcg-vllm` (`packages/rcp-ndcg-vllm/`, outside the root uv workspace and lock; version
   0.0.1, depends on `rcp-ndcg==0.0.1` — a hard dependency, and pinned by the release workflow's version
   check): serving recipes for vLLM as data. The recipe's `client` block **is**
@@ -307,8 +352,6 @@ released together.
   rerank configs). `RerankEndpoint.tokenizer_identity()` is removed; the judge's identity payload keeps its
   existing keys (the judgement family's tokenizer digest and the preprocessing record's `sha256`) and is
   byte-identical for every shipped judge preset, so no judgement family re-keys.
-- `JobSpec` runs its work through `phases` (a tuple of `JobPhase`: the engines one phase starts, by role, and the
-  command it runs while they serve); the phases replace `argv`.
 - **One text-budget mechanism for every served role** (`rcp_ndcg.data.preprocess`): a declared `TextBudget`
   (frozen, content identity: `max_tokens`, `query_max_tokens`, `template`, `on_overflow` `cut|chunk|fail`,
   `chunk` geometry, `aggregation: max`) and one function `fit(inputs, shape, budget, tokenizer) -> FitResult`.
@@ -367,7 +410,8 @@ released together.
   `--mm-process-config`). Required for `wire: video_url`, refused under `wire: frames` (see below).
 
 - `JobSpec` gains `phases` (a tuple of `JobPhase`: the engines one phase starts, by role, and the command it runs
-  while they serve); a job sets `phases` or `serve`, not both.
+  while they serve); exactly one of `argv` and `phases`: a job without phases runs `argv`, a phased job takes no
+  `argv` of its own (its commands are its phases' `argv`).
 - **`rcp_ndcg.inference` gains the embedding wire adapters and the embedding role client** (dense embeddings over
   one wire shape; no transport behaviour yet, so the client is exercised with a `Sender` a caller supplies):
   - `inference.adapters.embeddings`: four registered adapters of role `embed` — `openai_embeddings` (OpenAI

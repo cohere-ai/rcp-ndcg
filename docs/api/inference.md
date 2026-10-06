@@ -143,3 +143,8 @@ result = client.rerank("what does rcp-ndcg measure", ["a metric", "a fruit"], in
 print(result.scores)  # aligned to the input documents, whatever order the server answered in
 client.close()
 ```
+
+
+A served endpoint's config must declare its text budget (`tokenizer` and `max_tokens`: the package cuts
+itself, never the engine) -- the client fits every request through `rcp_ndcg.data.preprocess.fit` and
+records the cuts in the census; the engine never truncates.
