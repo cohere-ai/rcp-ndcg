@@ -139,7 +139,7 @@ reference.py --mode <render|score|embed> --pairs <file> --out <file> \
   `reference.score_scale` (probability | logit | cosine).
 - `--mode embed` — embedding roles: `{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[...]]}]}`
   (dense: one vector per side; late interaction: one per token).
-- `requirements-reference.txt` in the recipe directory pins the reference environment (torch, transformers,
+- `packages/rcp-ndcg-vllm/requirements-reference.txt` pins the reference environment (torch, transformers,
   sentence-transformers as needed); it is documented, not installed, by the harness.
 
 ## Choosing how vLLM serves a model

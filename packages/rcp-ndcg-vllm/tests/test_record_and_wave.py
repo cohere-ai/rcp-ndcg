@@ -33,7 +33,7 @@ def test_record_writes_exchanges_per_route(tmp_path: Path) -> None:
     assert ("http://engine/v1/models", 200) in routes
     assert ("http://engine/v1/embeddings", 200) in routes  # the role route, with its path kept
     assert ("http://engine/score", 200) in routes
-    # the over-length and unknown-field probes record the engine's 400 bodies, not silent 200s
+    # the over-length and unknown-field probes record the engine's 400 bodies on the role route, not 200s
     statuses_400 = [document for document in documents if document["status"] == 400]
     assert statuses_400, "the over-length and unknown-field probes must record the engine's 400"
     assert {document["route"] for document in statuses_400} == {"http://engine/v1/embeddings"}
@@ -41,6 +41,25 @@ def test_record_writes_exchanges_per_route(tmp_path: Path) -> None:
         document = json.loads(path.read_text(encoding="utf-8"))
         assert "http://engine" in document["route"]
         assert "127.0.0.1" not in json.dumps(document)
+
+
+def test_record_over_length_probe_crosses_the_engine_cap(tmp_path: Path) -> None:
+    """The over-length probe is sized from serve.max_model_len and records the engine's over-length 400."""
+
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    engine = start_stub("--tokenizer", str(TOKENIZER))
+    try:
+        written = record(recipe, engine.base_url, tmp_path)
+    finally:
+        engine.stop()
+    documents = [json.loads(path.read_text(encoding="utf-8")) for path in written]
+    over_length = next(
+        document
+        for document in documents
+        if document["status"] == 400 and document["route"] == "http://engine/v1/embeddings"
+    )
+    message = over_length["body"]["error"]["message"]
+    assert str(recipe.serve.max_model_len) in message  # the engine refused the over-length prompt
 
 
 def test_record_exchanges_carry_the_product_shape(tmp_path: Path) -> None:

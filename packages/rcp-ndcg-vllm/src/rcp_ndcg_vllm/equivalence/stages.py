@@ -222,17 +222,36 @@ def _post_processor_tail(tokenizer: Any, text: str) -> list[int]:
     post-processor, the end token for the common append-only one.  When the text's own render is empty or
     displaced (a template literal that happens to contain the specials), the tail is measured on a sentinel.
     """
-    plain = list(tokenizer.ids(text, add_special_tokens=False))
-    full = list(tokenizer.ids(text, add_special_tokens=True))
-    index = _last_sublist(full, plain) if plain else None
+    plain, full, index = _aligned_ids(tokenizer, text)
     if index is None:
-        probe_plain = list(tokenizer.ids("x", add_special_tokens=False))
-        probe_full = list(tokenizer.ids("x", add_special_tokens=True))
-        probe_index = _last_sublist(probe_full, probe_plain)
+        probe_plain, probe_full, probe_index = _aligned_ids(tokenizer, "x")
         if probe_index is None:  # pragma: no cover - a post-processor that both displaces and reshapes
             return full[len(plain) :]
         return probe_full[probe_index + len(probe_plain) :]
     return full[index + len(plain) :]
+
+
+def _post_processor_prefix(tokenizer: Any, text: str) -> list[int]:
+    """The tokens ``add_special_tokens: true`` adds before the content, for the shape's tokenizer.
+
+    The mirror of :func:`_post_processor_tail`: the ids before the content's last occurrence — the leading
+    special (for example a CLS head's or the processor's bos) for a prepend-style post-processor, empty for an
+    append-only one.  Measured on a sentinel when the text's own render is empty or displaced.
+    """
+    plain, full, index = _aligned_ids(tokenizer, text)
+    if index is None:
+        probe_plain, probe_full, probe_index = _aligned_ids(tokenizer, "x")
+        if probe_index is None:  # pragma: no cover - a post-processor that both displaces and reshapes
+            return full[: len(full) - len(plain)]
+        return probe_full[:probe_index]
+    return full[:index]
+
+
+def _aligned_ids(tokenizer: Any, text: str) -> tuple[list[int], list[int], int | None]:
+    """The text's ids without and with the post-processor, plus where the plain ids end in the full render."""
+    plain = list(tokenizer.ids(text, add_special_tokens=False))
+    full = list(tokenizer.ids(text, add_special_tokens=True))
+    return plain, full, _last_sublist(full, plain) if plain else None
 
 
 def _last_sublist(haystack: list[int], needle: list[int]) -> int | None:
@@ -246,22 +265,35 @@ def _last_sublist(haystack: list[int], needle: list[int]) -> int | None:
 
 
 def _anchor_edge_ids(recipe: Recipe, tokenizer: Any, shape: Any) -> list[int]:
-    """The anchor ids of one shape: the tail (or, for ``anchor: first``, head) fixed segment's rendered ids,
-    plus the post-processor tokens the shape's ``add_special_tokens`` flag appends after them."""
+    """The anchor ids of one shape: the fixed segment's rendered ids at the anchor edge, plus the
+    post-processor tokens the shape's ``add_special_tokens`` flag puts on that edge.
+
+    The edge is whichever segment sits at it: the tail (or head) segment when it is fixed, else — the escape
+    hatch the product validator endorses, where the anchor IS the post-processor's own special token — the
+    post-processor's tail (or prefix) alone.
+    """
     template = recipe.client.template
     if template is None:
         return []
     segments = template.segments(shape)
-    if template.anchor == "first":
+    first = template.anchor == "first"
+    edge_segment = segments[0] if first else segments[-1] if segments else None
+    edge_fixed = edge_segment is not None and edge_segment.fixed is not None
+    if first:
         head = next((segment for segment in segments if segment.fixed is not None), None)
         text = head.render(tokenizer) if head is not None else ""
     else:
         fixed = [segment for segment in segments if segment.fixed is not None]
         text = fixed[-1].render(tokenizer) if fixed else ""
-    ids = list(tokenizer.ids(text, add_special_tokens=False))
+    ids = list(tokenizer.ids(text, add_special_tokens=False)) if edge_fixed else []
     if template.adds_special_tokens(shape):
-        ids += _post_processor_tail(tokenizer, text)
-    return ids
+        # The edge id sits on the edge the post-processor decorates: a fixed segment plus the processor's
+        # tokens on that side, or the processor's tokens alone when the fixed segment is not the edge.
+        if first:
+            ids = (*_post_processor_prefix(tokenizer, text), *ids)
+        else:
+            ids = (*ids, *_post_processor_tail(tokenizer, text))
+    return list(ids)
 
 
 def _render_check(
@@ -294,8 +326,10 @@ def _render_check(
             tokenizer_spec=_resolved_tokenizer_spec(recipe),
         )
     failures: list[dict[str, Any]] = []
+    seen: set[tuple[int, str]] = set()
     for row in reference.get("rows", []):
         key = (int(row["index"]), str(row.get("shape", "")))
+        seen.add(key)
         served = served_by_key.get(key)
         if served is None:
             failures.append({"row": row, "note": "the reference rendered a row the harness did not sample"})
@@ -309,6 +343,10 @@ def _render_check(
                     "text": str(row.get("query", ""))[:_SNIPPET],
                 }
             )
+    # Coverage: the reference contract renders every declared shape at each pairs-row index; an under-rendering
+    # reference (a silently missing shape) would make the comparison vacuous, so a missing row fails too.
+    for key in sorted(set(served_by_key) - seen):
+        failures.append({"index": key[0], "shape": key[1], "note": "the reference did not render this declared shape"})
     return {"status": "run", "rows": len(reference.get("rows", [])), "passed": not failures, "failures": failures}
 
 
@@ -509,23 +547,6 @@ def _resolved_tokenizer_spec(recipe: Recipe) -> str:
 def _write_rows(rows: list[dict[str, Any]], path: str | Path) -> None:
     """The sampled rows as the pairs file the reference subprocess reads."""
     Path(path).write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
-
-
-def _recording_transport(recipe: Recipe, base_url: str, recorder: Any | None) -> Any:
-    """The product's :class:`~rcp_ndcg.inference.transport.Transport` over a recording httpx transport.
-
-    The recorder observes the product's own wire path through an ``httpx`` transport hook (the event-hook seam
-    the transport accepts); there is no second request path.  Without a recorder the transport is the
-    product's own.
-    """
-    from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
-    from rcp_ndcg.inference.transport import Transport
-
-    classes: dict[str, type] = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
-    endpoint = classes[recipe.role](**client_config(recipe, base_url=base_url))
-    if recorder is None:
-        return Transport(endpoint)
-    return Transport(endpoint, httpx_transport=recorder)
 
 
 def _wire_vectors(
@@ -930,6 +951,13 @@ def _fit_texts_by_row(recipe: Recipe, sampled: list[dict[str, Any]], tokenizer: 
                 if shape == "pair"
                 else [query if shape == "query" else row["documents"][0]]
             )
-            result = fit(inputs, cast_shape(shape), budget, tokenizer, ids=[str(index)])
+            result = fit(
+                inputs,
+                cast_shape(shape),
+                budget,
+                tokenizer,
+                ids=[str(index)],
+                instruction=row.get("instruction"),
+            )
             out[(index, shape)] = result.texts[0]
     return out

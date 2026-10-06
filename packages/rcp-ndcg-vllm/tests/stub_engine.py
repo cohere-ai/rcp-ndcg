@@ -164,6 +164,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _pooling(self, body: dict[str, Any]) -> None:
         """One vector per whitespace token per input text, in float, base64 (with shape) or raw bytes."""
         inputs = _inputs(body)
+        self._check_length(inputs)
         fmt = body.get("encoding_format", "float")
         dtype = body.get("embed_dtype", "float16")
         code = {"float16": "<f2", "float32": "<f4"}.get(str(dtype))
@@ -198,6 +199,7 @@ class _Handler(BaseHTTPRequestHandler):
         documents = body.get("documents")
         if not isinstance(query, str) or not isinstance(documents, list):
             raise _BadRequest("rerank needs a query and documents")
+        self._check_length([query] + [str(document) for document in documents])
         scores = [score(query, str(document), noise=_ARGS.noise) for document in documents]
         order = sorted(range(len(documents)), key=lambda index: scores[index], reverse=True)
         results = [

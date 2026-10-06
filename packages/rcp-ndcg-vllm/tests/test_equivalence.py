@@ -28,7 +28,14 @@ def reference_python() -> str:
 
 @pytest.mark.parametrize(
     "recipe_id",
-    ["fixture-embed", "fixture-embed-cls", "fixture-embed-marker", "fixture-multi-vector", "fixture-rerank-pointwise"],
+    [
+        "fixture-embed",
+        "fixture-embed-cls",
+        "fixture-embed-edge",
+        "fixture-embed-marker",
+        "fixture-multi-vector",
+        "fixture-rerank-pointwise",
+    ],
 )
 def test_stage1_passes_for_every_anchor_kind_with_the_reference_render(tmp_path: Path, recipe_id: str) -> None:
     """fit's renders, the anchor audit, the reference subprocess render and the template check all agree."""

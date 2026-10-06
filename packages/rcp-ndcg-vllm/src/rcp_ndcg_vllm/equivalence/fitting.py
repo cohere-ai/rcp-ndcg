@@ -135,6 +135,12 @@ def fit_rows(
         by_shape.setdefault(str(shape), []).append((index, row))
     results: dict[str, Any] = {"per_shape": {}}
     for shape, items in by_shape.items():
+        instructions = {row.get("instruction") for _, row in items}
+        if len(instructions) > 1:
+            raise HarnessError(
+                f"recipe {recipe.id}: the {shape!r} shape group mixes per-row instructions; fit applies one "
+                "instruction per rendered batch, so group the rows by instruction (or fold it into the query)"
+            )
         inputs: list[Any] = []
         for _, row in items:
             query = fold_query(recipe, row["query"], row.get("instruction"))

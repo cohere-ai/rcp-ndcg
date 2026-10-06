@@ -56,7 +56,6 @@ def record(
     base_url: str,
     out_dir: str | Path,
     *,
-    served_model_name: str | None = None,
     timeout_s: float = _TIMEOUT_S,
 ) -> list[Path]:
     """Record the engine's request set for ``recipe``; return the written file paths.
@@ -157,26 +156,32 @@ def _exchange(url: str, method: str, request_body: Any, response: httpx.Response
 
 
 def _record_errors(http: httpx.Client, recipe: Recipe, exchanges: list[dict[str, Any]]) -> None:
-    """The error bodies the adapters map: an over-length prompt and an unknown request field.
+    """The error bodies the adapters map, on the recipe's role route: an over-length prompt and an unknown field.
 
     The over-length input is measured against the engine's own cap, ``serve.max_model_len`` — the number the
     engine enforces — so the probe genuinely crosses it and records the engine's 400.
     """
-    cap = recipe.serve.max_model_len or 8192
-    over_length = "a " * (cap * 2)
-    for route, body in (
-        ("/v1/embeddings", {"model": recipe.id, "input": [over_length], "encoding_format": "float"}),
-        (
+    over_length = "a " * (recipe.serve.max_model_len * 2)
+    route, over_length_body = _role_request(recipe.role, recipe.id, over_length)
+    _record_one(http, exchanges, "POST", route, over_length_body)
+    _, in_budget_body = _role_request(recipe.role, recipe.id, _SNIPPET_TEXT)
+    _record_one(http, exchanges, "POST", route, {**in_budget_body, "unknown_field": "map-the-error"})
+
+
+def _role_request(role: str, model: str, text: str) -> tuple[str, dict[str, Any]]:
+    """The role route and its request with ``text`` as the input (the route the role's adapter speaks)."""
+    routes: dict[str, tuple[str, dict[str, Any]]] = {
+        "embed": (
             "/v1/embeddings",
-            {
-                "model": recipe.id,
-                "input": [_SNIPPET_TEXT],
-                "encoding_format": "float",
-                "unknown_field": "map-the-error",
-            },
+            {"model": model, "input": [text], "encoding_format": "float"},
         ),
-    ):
-        _record_one(http, exchanges, "POST", route, body)
+        "multi_vector": (
+            "/pooling",
+            {"model": model, "input": [text], "task": "token_embed", "encoding_format": "float"},
+        ),
+        "rerank": ("/rerank", {"model": model, "query": text, "documents": _SNIPPET_DOCUMENTS}),
+    }
+    return routes[role]
 
 
 def _version(image: str) -> str:

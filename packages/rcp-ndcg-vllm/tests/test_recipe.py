@@ -38,6 +38,7 @@ def test_every_fixture_recipe_loads_against_the_product_endpoints() -> None:
     assert types == {
         "fixture-embed": "EmbeddingEndpoint",
         "fixture-embed-cls": "EmbeddingEndpoint",
+        "fixture-embed-edge": "EmbeddingEndpoint",
         "fixture-embed-marker": "EmbeddingEndpoint",
         "fixture-multi-vector": "PoolingEndpoint",
         "fixture-rerank-pointwise": "RerankEndpoint",

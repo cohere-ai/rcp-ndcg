@@ -404,7 +404,7 @@ def _pairs_path(recipe: Recipe, pairs_dir: str | Path | None) -> Path | None:
 def _record(recipe: Recipe, base_url: str, out: Path) -> dict[str, Any]:
     """The recorder's fixed request set, written under ``<out>/<engine>-<version>/<recipe-id>/``."""
     try:
-        written = record_exchanges(recipe, base_url, out, served_model_name=recipe.id)
+        written = record_exchanges(recipe, base_url, out)
     except HarnessError as error:
         return {"state": "failed", "error": str(error)}
     return {"state": "passed", "files": [str(path) for path in written]}
