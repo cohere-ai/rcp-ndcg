@@ -119,9 +119,10 @@ sources:
     (pooling defaults to an fp32 score head; --hf-overrides '{\"head_dtype\": \"model\"}' disables);
     vllm/config/pooler.py:98-109,140-141 (logit_mean/logit_sigma); vllm/model_executor/layers/pooler/
     activations.py:140 (num_labels < 2 -> sigmoid); .../seqwise/heads.py:170-200 (the /5, the per-request
-    use_activation); vllm/entrypoints/pooling/scoring/io_processor.py:655-668 (query/doc pre-truncation
-    hooks), :661-699 default_tokenizer_encode (the un-templated pair-encode fallback), :700-724
-    get_score_prompt (the chat-template render over query/document messages); vllm/entrypoints/pooling/
+    use_activation); vllm/entrypoints/pooling/scoring/io_processor.py (get_score_prompt def :634, the
+    chat-template render over query/document messages, :706-724; :654-668 the query/document
+    pre-truncation hooks; :661-699 default_tokenizer_encode, the un-templated pair-encode fallback taken
+    when the template file is missing, :706-710); vllm/entrypoints/pooling/
     scoring/protocol.py:69-74 (add_special_tokens=True on the score route); vllm/renderers/hf.py:780-845
     (safe_apply_chat_template, the renderer the engine calls); vllm/renderers/params.py get_encode_kwargs."
   - "rcp-ndcg: experiments/paper/rerankers/reference/zerank.py (the paper-exact ZerankRerank reference.py
