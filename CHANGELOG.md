@@ -54,8 +54,8 @@ released together.
   `on_overflow` decides (`cut` shrinks to the policy minimum then drops whole items, every drop recorded
   with `dropped=True` in `client.media_census`; `fail` refuses; `chunk` is refused -- a vision block is
   atomic); a document whose every media item was dropped is empty and follows `empty_doc` (which every role
-  client consumes, for an empty text document too). `max_images`/`max_videos` gate per request before
-  anything is sent; a role with an `image_processor` exposes `probe()`/`check_engine_media()` -- one
+  client consumes, for an empty text document too). `max_images`/`max_videos` gate per wire call (the pooling wire's one
+  media item per call; the rerank call's query plus that chunk's documents) before anything is sent; a role with an `image_processor` exposes `probe()`/`check_engine_media()` -- one
   prepared probe image, the engine's reported prompt tokens compared with the counted ones, a mismatch
   refused and a reply without usage recorded `not_checked` (never silent).
 - **Explicit budgets for the role clients**: a self-hosted role config must declare `tokenizer` +

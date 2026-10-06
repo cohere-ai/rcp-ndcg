@@ -197,8 +197,6 @@ class PoolingClient(RoleClient):
         call (:meth:`RoleClient._prepare_request`), the budget's media fit per wire request with every drop
         recorded (:meth:`RoleClient._fit_media_for_request`), and the text fit: only the text's content span
         is cut (the template re-attached, every cut recorded), and media tokens are reserved whole and
-        never cut.
-        content span is cut (the template re-attached, every cut recorded), media tokens reserved whole and
         never cut. The client cuts nothing else: a model-side change without a config field is a silent
         change to the vectors.
         """

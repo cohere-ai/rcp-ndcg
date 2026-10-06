@@ -25,6 +25,7 @@ from rcp_ndcg.data.templates import Segment, TemplateSpec
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.errors import CapabilityError, ConfigError
 from rcp_ndcg.inference import EmbeddingClient, PoolingClient, RerankClient
+from rcp_ndcg.inference.clients.rerank import QUERY_DOC_ID
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp_ndcg.inference.types import EncodeRole, Reply, Usage
 from tests._tokenizers import framed_bpe_tokenizer, save, word_tokenizer
@@ -1116,3 +1117,87 @@ class TestVideoContainerFit:
         request = prepare_request([self._container_content(tmp_path)], image, video)
         fit = fit_media_to_budget(request.media, image=image, video=video, text_budget_tokens=5)
         assert fit.dropped_positions == (0,) and fit.decisions == (None,)
+
+
+class TestDropCensusDocIds:
+    """Every drop census row records the ORIGINAL prepared item under ITS input's doc_id -- never the
+    role name, never another document's id (the re-fix round's shifts)."""
+
+    def test_rerank_pair_query_image_and_document_image_both_dropped(self, tokenizer_json: str, tmp_path: Any) -> None:
+
+        from rcp_ndcg.data.prepare import MediaCensus
+
+        census = MediaCensus()
+        client = RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=4,
+                use_activation=False,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            sender=RecordingSender(),
+            media_census=census,
+        )
+        query_image = _png_content(tmp_path, 10)
+        document_image = _png_content(tmp_path, 20)
+        client._fit_media_for_request([query_image, document_image], doc_ids=[QUERY_DOC_ID, "0"])
+        rows = {row_doc_id for _corpus, row_doc_id, _uri in census._seen}
+        assert rows == {QUERY_DOC_ID, "0"}, "each drop under its own input's doc_id, never the role name"
+
+    def test_a_document_with_two_images_both_dropped(self, tokenizer_json: str, tmp_path: Any) -> None:
+
+        from rcp_ndcg.data.prepare import MediaCensus
+
+        census = MediaCensus()
+        client = RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=4,
+                use_activation=False,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                image_processor="qwen2_vl",
+                max_images=4,
+            ),
+            sender=RecordingSender(),
+            media_census=census,
+        )
+        page = _png_content(tmp_path, 30)
+        document = Content.from_parts([page.parts[0], page.parts[0]])  # the same page twice
+
+        client._fit_media_for_request([Content.from_text("query"), document], doc_ids=[QUERY_DOC_ID, "0"])
+
+        rows = {row_doc_id for _corpus, row_doc_id, _uri in census._seen}
+        assert rows == {"0"}, "both drops under the document's id, never the role name"
+
+    def test_pool_content_with_two_images_both_dropped(self, tokenizer_json: str, tmp_path: Any) -> None:
+
+        from rcp_ndcg.data.prepare import MediaCensus
+
+        census = MediaCensus()
+        client = PoolingClient(
+            PoolingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="colqwen",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=4,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                image_processor="qwen2_vl",
+                max_images=4,
+            ),
+            sender=RecordingSender(),
+            media_census=census,
+        )
+        page = _png_content(tmp_path, 40)
+        document = Content.from_parts([page.parts[0], page.parts[0]])  # the same page twice
+
+        asyncio.run(client.aencode([document], EncodeRole.DOCUMENT))
+
+        rows = {row_doc_id for _corpus, row_doc_id, _uri in census._seen}
+        assert rows == {"0"}, "both drops under the item's id, never the role name"

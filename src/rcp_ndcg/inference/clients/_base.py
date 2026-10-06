@@ -300,10 +300,8 @@ class RoleClient[C: Endpoint]:
                 return 0, 0
             if isinstance(value, dict):
                 for key, item in value.items():
-                    if key in ("image_url", "video_url") and isinstance(item, dict):
+                    if key == "image_url":
                         images += 1
-                    elif key in ("video_url",) and isinstance(item, str):
-                        videos += 1
                     elif key == "video_url":
                         videos += 1
                     else:
@@ -339,8 +337,7 @@ class RoleClient[C: Endpoint]:
         """The one preparation call for a request's contents: media sized exactly as the judge's, the
         request's media token counts.
 
-        The media gates are the wire request's (see :meth:`_fit_media_for_request`, the unit the judge's own
-        per-request gate uses), not this call's.
+        The media gates are each wire call's (see :meth:`_gate_media_calls`), not this call's.
         """
         if not self.MEDIA_ON_WIRE and any(content.has_media for content in contents):
             self._refuse_media_before_preparation(contents)
@@ -392,8 +389,6 @@ class RoleClient[C: Endpoint]:
             The media gates are the wire call's (see :meth:`_gate_media_calls`), not this method's.
 
         Raises:
-            CapabilityError: the wire request carries more images or videos than the config's
-                ``max_images``/``max_videos`` allow (the per-request gate).
             TextBudgetExceededError: ``on_overflow: fail`` and media alone fill the budget.
             ConfigError: ``on_overflow: chunk`` and media alone fill the budget.
         """
@@ -422,12 +417,13 @@ class RoleClient[C: Endpoint]:
                     "whole items, every drop recorded), or a smaller image_policy",
                 )
             fit = fit_media_to_budget(media, image=image, video=video, text_budget_tokens=self._budget.max_tokens)
-            contents = list(apply_media_fit(contents, fit))
             # The dropped items are the original prepared items at their positions; each position's
-            # doc_id is its owning content's (doc_ids expanded per media item, in part order).
+            # doc_id is its owning content's (doc_ids expanded per media item over the PRE-fit contents,
+            # in the part order the fit's decisions index). Built before apply_media_fit, whose contents
+            # have the dropped media removed.
             media_doc_ids = [
                 doc_id
-                for doc_id, content in zip(doc_ids, contents, strict=True)
+                for doc_id, content in zip(doc_ids, prepared.contents, strict=True)
                 for _ in range(sum(len(part.media_refs()) for part in content.parts))
             ]
             for position in fit.dropped_positions:
@@ -437,6 +433,7 @@ class RoleClient[C: Endpoint]:
                     media=[media[position]],
                     dropped=True,
                 )
+            contents = list(apply_media_fit(contents, fit))
         else:
             contents = list(contents)
         counted = self._media_counts_of(contents)
@@ -527,6 +524,7 @@ class RoleClient[C: Endpoint]:
             # responsibility.
             assert self._tokenizer is not None, "an image_processor implies a declared budget tokenizer"
             calls = list(self._probe_calls(prepared.contents[0]))
+            self._gate_media_calls(calls)  # the probe's own request follows the config's limits too
             counted = sum(count.tokens for count in self._media_counts_of(prepared.contents)) + self._text_tokens_of(
                 calls
             )
