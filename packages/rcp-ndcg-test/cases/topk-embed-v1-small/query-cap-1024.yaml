@@ -11,74 +11,16 @@ inputs:
   instruction: null
   queries:
   - id: q1
-    text: 'The seasonal survey lists the shipping schedule between March and June. In February,
-      the schedule summarises the inspection budget and noted a change of 39 percent since the last
-      audit. A statutory inventory tracks insurance claims; the final figures appear in section
-      240. The estimate for November documents delivery delays, and the environmental totals differ
-      by 63 percent. Appendix 24 lists fuel consumption over the trailing twelve months, following
-      the internal inventory. Every inventory in the statutory series collects the training hours
-      within 118 days since the last audit. The structural invoice was revised after December; the
-      invoice now compares the inspection budget. Each chart in the report estimates customer complaints
-      across 92 sites since the policy changed. The final review documents delivery delays, which
-      the March survey had understated by 118 percent. The field team estimates the repair costs
-      each May, and the statutory contract reconciles the totals. The survey revises the maintenance
-      backlog for 92 consecutive quarters since the policy changed. A financial estimate records
-      vendor payments whenever the quarterly threshold of 24 units is crossed. The internal summary
-      records fuel consumption under the current framework. In August, the contract estimates the
-      maintenance backlog and noted a change of 58 percent since the policy changed. A comparative
-      summary lists delivery delays; the regional figures appear in section 58. The inventory for
-      May records the inspection findings, and the regional totals differ by 3 percent. Appendix
-      58 tracks the training hours under the current framework, following the financial ledger.
-      Every summary in the final series summarises customer complaints within 58 days for the northern
-      region. The annual schedule was revised after December; the schedule now collects delivery
-      delays. Each chart in the audit measures the staffing plan across 240 sites after the merger
-      closed. The independent review examines insurance claims, which the October report had understated
-      by 71 percent. The field team compares the shipping schedule each January, and the environmental
-      catalogue reconciles the totals. The estimate measures the staffing plan for 18 consecutive
-      quarters for the northern region. A structural estimate reviews the maintenance backlog whenever
-      the quarterly threshold of 58 units is crossed. The independent contract revises delivery
-      delays during the winter period. In November, the ledger measures the maintenance backlog
-      and noted a change of 84 percent in the pilot programme. A regional contract reviews the staffing
-      plan; the structural figures appear in section 7. The report for October records the inspection
-      findings, and the operational totals differ by 92 percent. Appendix 58 collects meter readings
-      for the second half of the year, following the comparative archive. Every contract in the
-      final series measures the staffing plan within 71 days since the last audit. The consolidated
-      register was revised after March; the register now describes vendor payments. Each chart in
-      the manifest describes the shipping schedule across 3 sites since the last audit. The financial
-      review lists warehouse capacity, which the September index had understated by 240 percent.
-      The field team collects delivery delays each April, and the environmental schedule reconciles
-      the totals. The summary confirms the staffing plan for 105 consecutive quarters since the
-      last audit. A financial archive measures the training hours whenever the structural threshold
-      of 58 units is crossed. The technical survey lists vendor payments under the current framework.
-      In August, the archive lists the inspection budget and noted a change of 3 percent over the
-      trailing twelve months. A regional invoice collects insurance claims; the independent figures
-      appear in section 12. The report for October revises regional revenue, and the environmental
-      totals differ by 39 percent. Appendix 24 revises insurance claims during the winter period,
-      following the seasonal index. Every schedule in the quarterly series tracks the inspection
-      findings within 58 days after the merger closed. The preliminary summary was revised after
-      January; the summary now summarises warehouse capacity. Each chart in the index lists the
-      shipping schedule across 512 sites over the trailing twelve months. The independent review
-      revises the inspection findings, which the September ledger had understated by 71 percent.
-      The field team collects energy usage each July, and the seasonal audit reconciles the totals.
-      The contract describes warehouse capacity for 63 consecutive quarters since the policy changed.
-      A comparative inventory reviews customer complaints whenever the internal threshold of 240
-      units is crossed. The seasonal index records fuel consumption under the current framework.
-      In January, the survey documents the inspection findings and noted a change of 118 percent
-      under the current framework. An operational schedule tracks the maintenance backlog; the seasonal
-      figures appear in section 7. The register for February describes the staffing plan, and the
-      technical totals differ by 512 percent. Appendix 3 documents the inspection budget in the
-      pilot programme, following the technical estimate. Every estimate in the internal series summarises
-      the inspection findings within 105 days over the trailing twelve months. The financial index
-      was revised after February; the index now describes warehouse capacity. Each chart in the
-      schedule records insurance claims across 39 sites since the last audit. The internal review
-      documents fuel consumption, which the July archive had understated by 84 percent. The field
-      team documents insurance claims each April, and the final inventory reconciles the totals.
-      The estimate examines the repair costs for 58 consecutive quarters since the policy changed.
-      An annual schedule measures vendor payments'
+    text_ref:
+      generator: topk_template@1
+      params:
+        seed: 2101
+        words: 883
+      sha256: 96029fcebf0cc57c987082e09d7605137e6bad62cd69e1cd23fd89a510e5de1c
   documents:
   - id: d1
-    text: 'The quarterly report covers revenue, headcount, and regional growth for the second half
-      of the year.'
+    text: The quarterly report covers revenue, headcount, and regional growth for the second half of the
+      year.
 expected:
   kind: none
   values: null
@@ -87,16 +29,15 @@ expected:
   status: pending_gpu
 notes: 'Generated by make_long_inputs.py (alongside; template bank + random.Random(seed), word-for-word
   trim onto the target). Lengths measured with tokenizer.json @ e54485ebab921f2c18c4d092b3f4c40dcca26781
-  (sha256 e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7), the embedded 1024-token
-  truncation reset before counting (recipe gap G5). Text prompts are raw, not chat: "Query: " +
-  text.strip() and "Document: " + text, whole render stripped. The fixed head encodes to 3 tokens
-  standalone (with its trailing space); in a rendered prompt the space merges into the first content
-  token, so the head contributes 2 there. Queries keep every token, documents drop scoring_skip_ids
-  positions (32 standalone-punctuation ids + 9 specials at the revision). query q1: rendered prompt
-  1091 tokens. doc d1: rendered prompt 22 tokens, 18 kept after the document-side scoring_skip_ids
-  mask. The query renders to more tokens than the model''s own query cap (1024, sentence_bert_config.json)
-  while staying far under the 8192 budget: the reference right-truncates the query at 1024, but
-  the recipe schema has no query-cap field (recipe gap G2), so the served query is uncut. expected.kind
-  none: the case observes the G2 divergence (query vector counts served vs reference) and is not
-  a score comparison. The wave must confirm the divergence and that a query of this length does
-  not 400.'
+  (sha256 e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7), the embedded 1024-token truncation
+  reset before counting (recipe gap G5). Text prompts are raw, not chat: "Query: " + text.strip() and
+  "Document: " + text, whole render stripped. The fixed head encodes to 3 tokens standalone (with its
+  trailing space); in a rendered prompt the space merges into the first content token, so the head contributes
+  2 there. Queries keep every token, documents drop scoring_skip_ids positions (32 standalone-punctuation
+  ids + 9 specials at the revision). query q1: rendered prompt 1091 tokens. doc d1: rendered prompt 22
+  tokens, 18 kept after the document-side scoring_skip_ids mask. The query renders to more tokens than
+  the model''s own query cap (1024, sentence_bert_config.json) while staying far under the 8192 budget:
+  the reference right-truncates the query at 1024, but the recipe schema has no query-cap field (recipe
+  gap G2), so the served query is uncut. expected.kind none: the case observes the G2 divergence (query
+  vector counts served vs reference) and is not a score comparison. The wave must confirm the divergence
+  and that a query of this length does not 400.'

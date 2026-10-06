@@ -25,6 +25,7 @@ not a weaker exercise.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any, Literal
 
@@ -44,9 +45,11 @@ __all__ = [
     "CaseSource",
     "CaseStrata",
     "CaseTolerance",
+    "TextRef",
     "default_cases_root",
     "load_case",
     "load_cases",
+    "text_of",
 ]
 
 _ID_PATTERN = r"^[a-z0-9][a-z0-9.-]*$"
@@ -115,12 +118,59 @@ class CaseStrata(BaseModel):
 
 
 class CaseQuery(BaseModel):
-    """One query of a case: its id and its text (the case format has text-only queries)."""
+    """One query of a case: its id and its text (literal or by reference).
+
+    The case format has text-only queries; ``text_ref`` names a generated query text (exactly one of
+    ``text`` and ``text_ref``).
+    """
 
     model_config = ConfigDict(**_closed())
 
     id: str = Field(min_length=1)
-    text: str
+    text: str | None = None
+    text_ref: TextRef | None = None
+
+    @model_validator(mode="after")
+    def _text_or_ref(self) -> CaseQuery:
+        """A query carries exactly one of a literal text and a text reference."""
+        if (self.text is None) == (self.text_ref is None):
+            raise ValueError(f"query {self.id!r} carries exactly one of text and text_ref")
+        return self
+
+
+class TextRef(BaseModel):
+    """A generated text by reference: the generator, its params, and the text's SHA-256.
+
+    Usable wherever a case document or query has ``text:`` (exactly one of the two). The loader
+    materializes the text with the named generator (:mod:`rcp_ndcg_test.generators`, stdlib only, no
+    network) and refuses a hash mismatch: a mutated parameter, a changed generator version or a
+    drifted word list fails the load instead of silently testing different bytes.
+    """
+
+    model_config = ConfigDict(**_closed())
+
+    generator: str = Field(min_length=1, pattern=r"^[a-z0-9_]+@[0-9]+$")
+    params: dict[str, Any] = Field(min_length=1)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    def materialize(self) -> str:
+        """The text the generator and params produce, verified against the reference's hash.
+
+        Raises:
+            CaseError: the generator or version is unknown, the params are malformed, or the produced
+                text's SHA-256 differs from the recorded one.
+        """
+        from .generators import materialize
+
+        text = materialize(self.generator, dict(self.params))
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        if digest != self.sha256:
+            raise CaseError(
+                f"text_ref {self.generator!r} produced {digest[:12]}... but the case records "
+                f"{self.sha256[:12]}...: the params or the generator no longer describe the text; "
+                "re-record the reference (the hash is the correctness check, never skipped)"
+            )
+        return text
 
 
 class CaseDocument(BaseModel):
@@ -134,14 +184,18 @@ class CaseDocument(BaseModel):
 
     id: str = Field(min_length=1)
     text: str | None = None
+    text_ref: TextRef | None = None
     image: str | None = Field(default=None, min_length=1)
     video: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def _one_part_at_least(self) -> CaseDocument:
-        """A document carries text, an image or a video; an image and a video never share one document."""
-        if self.text is None and self.image is None and self.video is None:
-            raise ValueError(f"document {self.id!r} carries no text, image or video")
+        """A document carries text (literal or by reference), an image or a video; text and text_ref
+        are exclusive; an image and a video never share one document."""
+        if self.text is not None and self.text_ref is not None:
+            raise ValueError(f"document {self.id!r}: text and text_ref are exclusive (the reference is the text)")
+        if self.text is None and self.image is None and self.video is None and self.text_ref is None:
+            raise ValueError(f"document {self.id!r} carries no text, text_ref, image or video")
         if self.image is not None and self.video is not None:
             raise ValueError(f"document {self.id!r} carries both an image and a video; one media kind per document")
         for field in ("image", "video"):
@@ -282,9 +336,10 @@ class Case(BaseModel):
         head, _, slug = self.id.partition("/")
         if head != self.recipe or not slug:
             raise ValueError(f"id {self.id!r} must be <recipe>/<case-slug> with recipe {self.recipe!r}")
-        if self.strata.length == "mixed" and self.strata.batch != "mixed_length":
+        if self.strata.length == "mixed" and self.strata.batch not in ("mixed_length", "mixed_modality"):
             raise ValueError(
-                f"length 'mixed' means the batch mixes lengths; declare batch: mixed_length, not {self.strata.batch!r}"
+                "length 'mixed' means the batch mixes lengths; declare batch: mixed_length (or "
+                f"mixed_modality, for a batch that mixes modalities too), not {self.strata.batch!r}"
             )
         self._check_strata_labels()
         source = self.source
@@ -307,8 +362,6 @@ class Case(BaseModel):
         if expected.kind == "none":
             if expected.values is not None or expected.tolerance is not None:
                 raise ValueError("expected.kind 'none' exercises a path only: no values and no tolerance")
-            if expected.status == "pending_gpu":
-                raise ValueError("a kind 'none' case runs now: pending_gpu is the generated cases' state")
             return self
         if expected.tolerance is None:
             raise ValueError(f"expected.kind {expected.kind!r} needs a tolerance (abs, rank_exact or spearman_min)")
@@ -344,6 +397,19 @@ class Case(BaseModel):
         _check_values(expected, n_queries, n_documents, [document.id for document in self.inputs.documents])
         return self
 
+    @model_validator(mode="after")
+    def _materialize_text_refs(self) -> Case:
+        """Every ``text_ref`` materializes at load, against its recorded hash (stdlib only, no network):
+        a mutated param, an unknown generator or a drifted word list fails the load instead of silently
+        testing different bytes at run time."""
+        for query in self.inputs.queries:
+            if query.text_ref is not None:
+                query.text_ref.materialize()
+        for document in self.inputs.documents:
+            if document.text_ref is not None:
+                document.text_ref.materialize()
+        return self
+
 
 def _check_values(expected: CaseExpected, n_queries: int, n_documents: int, doc_ids: list[str]) -> None:
     """The values' shape per kind: a query x document rectangle, or ranked document ids per query."""
@@ -372,6 +438,18 @@ def _check_values(expected: CaseExpected, n_queries: int, n_documents: int, doc_
                 raise ValueError(f"expected.values row {index} holds a non-numeric value: {value!r}")
             if value != value or value in (float("inf"), float("-inf")):
                 raise ValueError(f"expected.values row {index} holds a non-finite value")
+
+
+def text_of(item: CaseQuery | CaseDocument) -> str | None:
+    """The item's text: the literal ``text``, or the ``text_ref`` materialized and hash-verified.
+
+    Media-only documents return ``None`` (nothing to measure or send as text). Raises:
+        CaseError: a ``text_ref``'s hash does not match (see :meth:`TextRef.materialize`).
+    """
+    ref = getattr(item, "text_ref", None)
+    if ref is not None:
+        return ref.materialize()
+    return getattr(item, "text", None)
 
 
 class CaseBundle:
@@ -618,7 +696,6 @@ def _recipe_fitter(recipe: Recipe) -> tuple[Any, Any]:
         CaseError: the tokenizer cannot be loaded (a Hub spec needs the cache or a network run;
             ``load_cases(..., check_lengths=False)`` records the length checks as skipped instead).
     """
-    import hashlib
 
     # The key carries the recipe directory: a relative tokenizer spec resolves against it, so two
     # same-named recipes in different directories with identical client blocks still load their own files.
@@ -669,8 +746,8 @@ def _fit_outcome(recipe: Recipe, case: Case) -> tuple[int, list[int]]:
     if recipe.role == "rerank":
         instruction = case.inputs.instruction
         for query in case.inputs.queries:  # the send fits one pair set per query; measure every one
-            folded = _pair_fold_query(recipe, query.text, instruction)
-            inputs = [(folded, document.text or "") for document in case.inputs.documents]
+            folded = _pair_fold_query(recipe, text_of(query) or "", instruction)
+            inputs = [(folded, text_of(document) or "") for document in case.inputs.documents]
             result = fit(
                 inputs,
                 "pair",
@@ -708,8 +785,8 @@ def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
         if case.strata.batch == "mixed_length":
             measured_batch = [
                 tokenizer.count(text)
-                for text in [query.text for query in case.inputs.queries]
-                + [document.text or "" for document in case.inputs.documents]
+                for text in [text_of(query) or "" for query in case.inputs.queries]
+                + [text_of(document) or "" for document in case.inputs.documents]
             ]
             if len(set(measured_batch)) < 2:
                 raise CaseError(
@@ -722,7 +799,7 @@ def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
             (label, item.id, tokenizer.count(text))
             for label, items in (("query", case.inputs.queries), ("document", case.inputs.documents))
             for item in items
-            if (text := item.text) is not None
+            if (text := text_of(item)) is not None
         ]
         counts = [count for _, _, count in measured]
         if case.strata.length == "short":

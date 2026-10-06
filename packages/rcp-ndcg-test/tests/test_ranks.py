@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 
 import pytest
-
 from rcp_ndcg_test.errors import ConformanceError
 from rcp_ndcg_test.ranks import average_ranks, spearman
 

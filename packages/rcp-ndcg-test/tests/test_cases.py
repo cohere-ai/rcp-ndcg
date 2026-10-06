@@ -11,7 +11,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_test.cases import Case, CaseBundle, load_case, load_cases
+from rcp_ndcg_test.cases import Case, CaseBundle, load_case, load_cases, text_of
 from rcp_ndcg_test.errors import CaseError
 from rcp_ndcg_test.fakes import fixture_path
 from rcp_ndcg_vllm.recipe import load_recipe
@@ -165,7 +165,7 @@ def test_a_generated_case_carries_no_card_provenance(tmp_path: Path) -> None:
 
 def test_a_document_needs_a_part(tmp_path: Path) -> None:
     body = VALID.replace(DOCS_BLOCK, "      documents: [{id: d1}]")
-    with pytest.raises(CaseError, match="carries no text, image or video"):
+    with pytest.raises(CaseError, match="carries no text, text_ref, image or video"):
         load_case(write_case(tmp_path, "fake-embed", "short", body))
 
 
@@ -320,18 +320,6 @@ def test_origin_published_requires_a_card(tmp_path: Path) -> None:
         load_case(write_case(tmp_path, "fake-embed", "short", body))
 
 
-def test_a_kind_none_case_cannot_be_pending(tmp_path: Path) -> None:
-    """A path-exercise case runs now: pending_gpu is the generated cases' state, not a none case's."""
-    body = VALID.replace(
-        """      kind: similarity_matrix
-      values: [[0.5, 0.25]]
-      tolerance: {abs: 0.001}""",
-        "      kind: none",
-    ).replace("status: reproduced", "status: pending_gpu")
-    with pytest.raises(CaseError, match="pending_gpu"):
-        load_case(write_case(tmp_path, "fake-embed", "short", body))
-
-
 def test_a_kind_none_case_carries_nothing(tmp_path: Path) -> None:
     body = VALID.replace(
         """      kind: similarity_matrix
@@ -436,6 +424,114 @@ def test_a_short_case_must_not_measure_over_the_budget(tmp_path: Path) -> None:
     write_length_case(tmp_path, "short-over", "short", " ".join(["budgetpad"] * 15))  # 135 tokens
     with pytest.raises(CaseError, match="short, but document"):
         load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
+
+
+def test_a_text_ref_materializes_and_verifies(tmp_path: Path) -> None:
+    """text_ref produces the recorded bytes (the loader compares by hash), and any drift refuses."""
+    import hashlib
+
+    from rcp_ndcg_test.cases import TextRef
+
+    stored = " ".join(["budgetpad"] * 13)
+    digest = hashlib.sha256(stored.encode()).hexdigest()
+    ref = TextRef(generator="fake-embed-ledger@1" if False else "zembed_ledger@1", params={"blocks": 0}, sha256=digest)
+    # zembed_ledger with blocks=0 is the empty string, so this ref's hash is the empty text's
+    empty = hashlib.sha256(b"").hexdigest()
+    honest = TextRef(generator="zembed_ledger@1", params={"blocks": 0}, sha256=empty)
+    assert honest.materialize() == ""
+    with pytest.raises(CaseError, match="produced"):
+        ref.materialize()
+
+
+def test_a_case_with_a_text_ref_loads_and_materializes(tmp_path: Path) -> None:
+    """A document may carry text_ref instead of text: the loader verifies the hash at load."""
+    import hashlib
+
+    from rcp_ndcg_test.cases import load_case
+
+    text = " ".join(["budgetpad"] * 20)
+    digest = hashlib.sha256(text.encode()).hexdigest()
+    body = f"""
+        id: fake-embed/ref-case
+        recipe: fake-embed
+        role: embed
+        source: {{kind: generated}}
+        strata: {{modality: text, length: long_under, batch: single}}
+        inputs:
+          queries: [{{id: q1, text: a query}}]
+          documents:
+            - id: d1
+              text_ref:
+                generator: zembed_ledger@1
+                params: {{blocks: 0}}
+                sha256: "{digest}"
+        expected:
+          kind: similarity_matrix
+          values: null
+          tolerance: {{abs: 0.01}}
+          origin: reference
+          status: pending_gpu
+    """
+    path = write_case(tmp_path, "fake-embed", "ref-case", body.replace("text_ref:\n", "x"))  # placeholder
+    # the blocks=0 text is the empty string; give the ref the hash of the text the generator makes
+    empty = hashlib.sha256(b"").hexdigest()
+    body = body.replace(f'"{digest}"', f'"{empty}"')
+    path = write_case(tmp_path, "fake-embed", "ref-case", body)
+    case = load_case(path)
+    document = case.inputs.documents[0]
+    assert document.text_ref is not None and document.text is None
+    assert text_of(document) == ""
+
+
+def test_a_mutated_param_fails_the_hash(tmp_path: Path) -> None:
+    """The hash is the correctness check: a mutated param (or generator version) refuses the load."""
+    import hashlib
+
+    text = "Entry 00000 of the ledger."
+    digest = hashlib.sha256(text.encode()).hexdigest()
+    body = f"""
+        id: fake-embed/ref-case
+        recipe: fake-embed
+        role: embed
+        source: {{kind: generated}}
+        strata: {{modality: text, length: short, batch: single}}
+        inputs:
+          queries: [{{id: q1, text_ref:
+              {{generator: zembed_ledger@1, params: {{blocks: 2}}, sha256: "{digest}"}}}}]
+          documents: [{{id: d1, text: one}}]
+        expected:
+          kind: similarity_matrix
+          values: null
+          tolerance: {{abs: 0.01}}
+          origin: reference
+          status: pending_gpu
+    """
+    path = write_case(tmp_path, "fake-embed", "ref-case", body)
+    with pytest.raises(CaseError, match="produced"):
+        load_case(path)
+
+
+def test_an_unknown_generator_or_version_is_refused(tmp_path: Path) -> None:
+    body = f"""
+        id: fake-embed/ref-case
+        recipe: fake-embed
+        role: embed
+        source: {{kind: generated}}
+        strata: {{modality: text, length: short, batch: single}}
+        inputs:
+          queries: [{{id: q1, text_ref:
+              {{generator: no_such_gen@1, params: {{blocks: 1}}, sha256: "{"0" * 64}"}}}}]
+          documents: [{{id: d1, text: one}}]
+        expected:
+          kind: similarity_matrix
+          values: null
+          tolerance: {{abs: 0.01}}
+          origin: reference
+          status: pending_gpu
+    """
+    path = write_case(tmp_path, "fake-embed", "ref-case", body)
+    with pytest.raises(CaseError, match="does not implement"):
+        load_case(path)
 
 
 def test_a_multi_query_rerank_case_measures_every_query(tmp_path: Path) -> None:

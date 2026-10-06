@@ -370,10 +370,12 @@ def _send_rerank(resolved: _Resolved, case: Case) -> Any:
     client = RerankClient(resolved.endpoint, sender=resolved.sender)
     doc_ids = [document.id for document in case.inputs.documents]
     documents = _document_contents(case)
+    from .cases import text_of
+
     examples = [
         RankingExample(
             query_id=str(query.id),
-            query=query.text,
+            query=text_of(query) or "",
             docs=[content.text for content in documents],
             contents=documents,
             doc_ids=doc_ids,
@@ -393,10 +395,12 @@ def _send_rerank(resolved: _Resolved, case: Case) -> Any:
 
 
 def _query_contents(case: Case) -> list[Any]:
-    """The case's queries as the wire contents the role clients take (text-only by the case format)."""
+    """The case's queries as the wire contents the role clients take (text literal or text_ref)."""
     from rcp_ndcg_core.content import Content
 
-    return [Content.from_text(query.text) for query in case.inputs.queries]
+    from .cases import text_of
+
+    return [Content.from_text(text_of(query) or "") for query in case.inputs.queries]
 
 
 def _document_contents(case: Case) -> list[Any]:
@@ -407,11 +411,14 @@ def _document_contents(case: Case) -> list[Any]:
     """
     from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 
+    from .cases import text_of
+
     contents: list[Any] = []
     for document in case.inputs.documents:
         parts: list[Any] = []
-        if document.text is not None:
-            parts.append(TextPart(text=document.text))
+        text = text_of(document)
+        if text is not None:
+            parts.append(TextPart(text=text))
         if document.image is not None:
             parts.append(ImagePart(ref=MediaRef(uri=str(_media_path(case, document.image)))))
         if document.video is not None:

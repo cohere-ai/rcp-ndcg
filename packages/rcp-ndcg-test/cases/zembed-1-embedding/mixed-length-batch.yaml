@@ -18,103 +18,92 @@ inputs:
   - id: d1
     text: The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
   - id: d2
-    text: A quiet canal crossed the market district, carrying barges loaded with timber and slate. Every apprentice learned to mend the brass fittings before touching the clockwork itself. The committee agreed that the petition would be read aloud at the following assembly.
+    text: A quiet canal crossed the market district, carrying barges loaded with timber and slate. Every
+      apprentice learned to mend the brass fittings before touching the clockwork itself. The committee
+      agreed that the petition would be read aloud at the following assembly.
   - id: d3
-    text: |-
-      Entry 00000 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June. The committee agreed that the petition would be read aloud at the following assembly.
-      Entry 00001 of the ledger. A quiet canal crossed the market district, carrying barges loaded with timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
-      Entry 00002 of the ledger. Every apprentice learned to mend the brass fittings before touching the clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge.
-      Entry 00003 of the ledger. The committee agreed that the petition would be read aloud at the following assembly. The letter described a bridge of stone and timber spanning the river at its narrowest point.
-      Entry 00004 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
-      Entry 00005 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and slate.
-      Entry 00006 of the ledger. The letter described a bridge of stone and timber spanning the river at its narrowest point. Every apprentice learned to mend the brass fittings before touching the clockwork itself.
-      Entry 00007 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June. The committee agreed that the petition would be read aloud at the following assembly.
-      Entry 00008 of the ledger. A quiet canal crossed the market district, carrying barges loaded with timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
-      Entry 00009 of the ledger. Every apprentice learned to mend the brass fittings before touching the clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge.
-      Entry 00010 of the ledger. The committee agreed that the petition would be read aloud at the following assembly. The letter described a bridge of stone and timber spanning the river at its narrowest point.
-      Entry 00011 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
-      Entry 00012 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and slate.
-      Entry 00013 of the ledger. The letter described a bridge of stone and timber spanning the river at its narrowest point. Every apprentice learned to mend the brass fittings before touching the clockwork itself.
-      Entry 00014 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June. The committee agreed that the petition would be read aloud at the following assembly.
-      Entry 00015 of the ledger. A quiet canal crossed the market district, carrying barges loaded with timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
-      Entry 00016 of the ledger. Every apprentice learned to mend the brass fittings before touching the clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge.
-      Entry 00017 of the ledger. The committee agreed that the petition would be read aloud at the following assembly. The letter described a bridge of stone and timber spanning the river at its narrowest point.
-      Entry 00018 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
-      Entry 00019 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and slate.
+    text: 'Entry 00000 of the ledger. The harbour registrar recorded the arrival of forty crates of grain
+      on the fourth of June. The committee agreed that the petition would be read aloud at the following
+      assembly.
+
+      Entry 00001 of the ledger. A quiet canal crossed the market district, carrying barges loaded with
+      timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
+
+      Entry 00002 of the ledger. Every apprentice learned to mend the brass fittings before touching the
+      clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern
+      ridge.
+
+      Entry 00003 of the ledger. The committee agreed that the petition would be read aloud at the following
+      assembly. The letter described a bridge of stone and timber spanning the river at its narrowest
+      point.
+
+      Entry 00004 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb
+      until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of
+      June.
+
+      Entry 00005 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the
+      northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and
+      slate.
+
+      Entry 00006 of the ledger. The letter described a bridge of stone and timber spanning the river
+      at its narrowest point. Every apprentice learned to mend the brass fittings before touching the
+      clockwork itself.
+
+      Entry 00007 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on
+      the fourth of June. The committee agreed that the petition would be read aloud at the following
+      assembly.
+
+      Entry 00008 of the ledger. A quiet canal crossed the market district, carrying barges loaded with
+      timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
+
+      Entry 00009 of the ledger. Every apprentice learned to mend the brass fittings before touching the
+      clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern
+      ridge.
+
+      Entry 00010 of the ledger. The committee agreed that the petition would be read aloud at the following
+      assembly. The letter described a bridge of stone and timber spanning the river at its narrowest
+      point.
+
+      Entry 00011 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb
+      until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of
+      June.
+
+      Entry 00012 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the
+      northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and
+      slate.
+
+      Entry 00013 of the ledger. The letter described a bridge of stone and timber spanning the river
+      at its narrowest point. Every apprentice learned to mend the brass fittings before touching the
+      clockwork itself.
+
+      Entry 00014 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on
+      the fourth of June. The committee agreed that the petition would be read aloud at the following
+      assembly.
+
+      Entry 00015 of the ledger. A quiet canal crossed the market district, carrying barges loaded with
+      timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
+
+      Entry 00016 of the ledger. Every apprentice learned to mend the brass fittings before touching the
+      clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern
+      ridge.
+
+      Entry 00017 of the ledger. The committee agreed that the petition would be read aloud at the following
+      assembly. The letter described a bridge of stone and timber spanning the river at its narrowest
+      point.
+
+      Entry 00018 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb
+      until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of
+      June.
+
+      Entry 00019 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the
+      northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and
+      slate.'
   - id: d4
-    text: |-
-      Entry 00000 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June. The committee agreed that the petition would be read aloud at the following assembly.
-      Entry 00001 of the ledger. A quiet canal crossed the market district, carrying barges loaded with timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
-      Entry 00002 of the ledger. Every apprentice learned to mend the brass fittings before touching the clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge.
-      Entry 00003 of the ledger. The committee agreed that the petition would be read aloud at the following assembly. The letter described a bridge of stone and timber spanning the river at its narrowest point.
-      Entry 00004 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
-      Entry 00005 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and slate.
-      Entry 00006 of the ledger. The letter described a bridge of stone and timber spanning the river at its narrowest point. Every apprentice learned to mend the brass fittings before touching the clockwork itself.
-      Entry 00007 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June. The committee agreed that the petition would be read aloud at the following assembly.
-      Entry 00008 of the ledger. A quiet canal crossed the market district, carrying barges loaded with timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
-      Entry 00009 of the ledger. Every apprentice learned to mend the brass fittings before touching the clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge.
-      Entry 00010 of the ledger. The committee agreed that the petition would be read aloud at the following assembly. The letter described a bridge of stone and timber spanning the river at its narrowest point.
-      Entry 00011 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
-      Entry 00012 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and slate.
-      Entry 00013 of the ledger. The letter described a bridge of stone and timber spanning the river at its narrowest point. Every apprentice learned to mend the brass fittings before touching the clockwork itself.
-      Entry 00014 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June. The committee agreed that the petition would be read aloud at the following assembly.
-      Entry 00015 of the ledger. A quiet canal crossed the market district, carrying barges loaded with timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
-      Entry 00016 of the ledger. Every apprentice learned to mend the brass fittings before touching the clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge.
-      Entry 00017 of the ledger. The committee agreed that the petition would be read aloud at the following assembly. The letter described a bridge of stone and timber spanning the river at its narrowest point.
-      Entry 00018 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
-      Entry 00019 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and slate.
-      Entry 00020 of the ledger. The letter described a bridge of stone and timber spanning the river at its narrowest point. Every apprentice learned to mend the brass fittings before touching the clockwork itself.
-      Entry 00021 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June. The committee agreed that the petition would be read aloud at the following assembly.
-      Entry 00022 of the ledger. A quiet canal crossed the market district, carrying barges loaded with timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
-      Entry 00023 of the ledger. Every apprentice learned to mend the brass fittings before touching the clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge.
-      Entry 00024 of the ledger. The committee agreed that the petition would be read aloud at the following assembly. The letter described a bridge of stone and timber spanning the river at its narrowest point.
-      Entry 00025 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
-      Entry 00026 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and slate.
-      Entry 00027 of the ledger. The letter described a bridge of stone and timber spanning the river at its narrowest point. Every apprentice learned to mend the brass fittings before touching the clockwork itself.
-      Entry 00028 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June. The committee agreed that the petition would be read aloud at the following assembly.
-      Entry 00029 of the ledger. A quiet canal crossed the market district, carrying barges loaded with timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
-      Entry 00030 of the ledger. Every apprentice learned to mend the brass fittings before touching the clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge.
-      Entry 00031 of the ledger. The committee agreed that the petition would be read aloud at the following assembly. The letter described a bridge of stone and timber spanning the river at its narrowest point.
-      Entry 00032 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
-      Entry 00033 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and slate.
-      Entry 00034 of the ledger. The letter described a bridge of stone and timber spanning the river at its narrowest point. Every apprentice learned to mend the brass fittings before touching the clockwork itself.
-      Entry 00035 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June. The committee agreed that the petition would be read aloud at the following assembly.
-      Entry 00036 of the ledger. A quiet canal crossed the market district, carrying barges loaded with timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
-      Entry 00037 of the ledger. Every apprentice learned to mend the brass fittings before touching the clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge.
-      Entry 00038 of the ledger. The committee agreed that the petition would be read aloud at the following assembly. The letter described a bridge of stone and timber spanning the river at its narrowest point.
-      Entry 00039 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
-      Entry 00040 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and slate.
-      Entry 00041 of the ledger. The letter described a bridge of stone and timber spanning the river at its narrowest point. Every apprentice learned to mend the brass fittings before touching the clockwork itself.
-      Entry 00042 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June. The committee agreed that the petition would be read aloud at the following assembly.
-      Entry 00043 of the ledger. A quiet canal crossed the market district, carrying barges loaded with timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
-      Entry 00044 of the ledger. Every apprentice learned to mend the brass fittings before touching the clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge.
-      Entry 00045 of the ledger. The committee agreed that the petition would be read aloud at the following assembly. The letter described a bridge of stone and timber spanning the river at its narrowest point.
-      Entry 00046 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
-      Entry 00047 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and slate.
-      Entry 00048 of the ledger. The letter described a bridge of stone and timber spanning the river at its narrowest point. Every apprentice learned to mend the brass fittings before touching the clockwork itself.
-      Entry 00049 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June. The committee agreed that the petition would be read aloud at the following assembly.
-      Entry 00050 of the ledger. A quiet canal crossed the market district, carrying barges loaded with timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
-      Entry 00051 of the ledger. Every apprentice learned to mend the brass fittings before touching the clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge.
-      Entry 00052 of the ledger. The committee agreed that the petition would be read aloud at the following assembly. The letter described a bridge of stone and timber spanning the river at its narrowest point.
-      Entry 00053 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
-      Entry 00054 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and slate.
-      Entry 00055 of the ledger. The letter described a bridge of stone and timber spanning the river at its narrowest point. Every apprentice learned to mend the brass fittings before touching the clockwork itself.
-      Entry 00056 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June. The committee agreed that the petition would be read aloud at the following assembly.
-      Entry 00057 of the ledger. A quiet canal crossed the market district, carrying barges loaded with timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
-      Entry 00058 of the ledger. Every apprentice learned to mend the brass fittings before touching the clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge.
-      Entry 00059 of the ledger. The committee agreed that the petition would be read aloud at the following assembly. The letter described a bridge of stone and timber spanning the river at its narrowest point.
-      Entry 00060 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
-      Entry 00061 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and slate.
-      Entry 00062 of the ledger. The letter described a bridge of stone and timber spanning the river at its narrowest point. Every apprentice learned to mend the brass fittings before touching the clockwork itself.
-      Entry 00063 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June. The committee agreed that the petition would be read aloud at the following assembly.
-      Entry 00064 of the ledger. A quiet canal crossed the market district, carrying barges loaded with timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
-      Entry 00065 of the ledger. Every apprentice learned to mend the brass fittings before touching the clockwork itself. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge.
-      Entry 00066 of the ledger. The committee agreed that the petition would be read aloud at the following assembly. The letter described a bridge of stone and timber spanning the river at its narrowest point.
-      Entry 00067 of the ledger. Rain swept the valley overnight, and the surveyors delayed their climb until noon. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June.
-      Entry 00068 of the ledger. Merchants traded salt, wool and dyestuffs along the old road beyond the northern ridge. A quiet canal crossed the market district, carrying barges loaded with timber and slate.
-      Entry 00069 of the ledger. The letter described a bridge of stone and timber spanning the river at its narrowest point. Every apprentice learned to mend the brass fittings before touching the clockwork itself.
-      Entry 00070 of the ledger. The harbour registrar recorded the arrival of forty crates of grain on the fourth of June. The committee agreed that the petition would be read aloud at the following assembly.
-      Entry 00071 of the ledger. A quiet canal crossed the market district, carrying barges loaded with timber and slate. Rain swept the valley overnight, and the surveyors delayed their climb until noon.
+    text_ref:
+      generator: zembed_ledger@1
+      params:
+        blocks: 72
+      sha256: bdad83f60b77437cb84351fa5f5fee43dad35c66d93d615816c2f0e116102866
 expected:
   kind: similarity_matrix
   values: null
@@ -122,4 +111,8 @@ expected:
     abs: 0.002
   origin: reference
   status: pending_gpu
-notes: 'Mixed-length batch, all inputs well under the cap (rendered documents 28/58/900/3208 tokens, recipe tokenizer zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a); near-cap and over-cap paths live in long-under-single and long-over-single. Tolerance: bf16 serve (recipe dtype) vs bf16 sentence-transformers reference; expected cosine deviation ~1e-3 (research r-zembed1), headroom to 2e-3. Values are filled by the GPU wave (reference + engine recorded).'
+notes: 'Mixed-length batch, all inputs well under the cap (rendered documents 28/58/900/3208 tokens, recipe
+  tokenizer zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a); near-cap and over-cap
+  paths live in long-under-single and long-over-single. Tolerance: bf16 serve (recipe dtype) vs bf16 sentence-transformers
+  reference; expected cosine deviation ~1e-3 (research r-zembed1), headroom to 2e-3. Values are filled
+  by the GPU wave (reference + engine recorded).'

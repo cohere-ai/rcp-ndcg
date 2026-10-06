@@ -61,7 +61,15 @@ cannot satisfy the grid.
 Generated cases start `origin: reference, status: pending_gpu, values: null`; the GPU waves fill them from
 the reference implementation and the engine. Long inputs are deterministic (their construction is
 recorded in `notes`), measured with the recipe's tokenizer; media files live under the recipe's
-`media/` directory, and nothing is fetched at test time. The length strata are measured as the engine
+`media/` directory, and nothing is fetched at test time.
+
+A generated text may be stored **by reference** instead of literally: `text_ref:
+{generator: <name>@<version>, params: {...}, sha256: <hex of the UTF-8 text>}` — usable wherever a case
+has `text:` (the two are exclusive). The loader materializes the text with the named generator
+(`rcp_ndcg_test.generators` — the lanes' own constructions, stdlib only, no network) at load and refuses
+a hash mismatch with a typed error, so a mutated param or a changed generator fails the load instead of
+silently testing different bytes. The lanes' generators are ported verbatim; a construction change is a
+new generator version. `model_card` texts stay literal (the card's bytes are the case). The length strata are measured as the engine
 sees the inputs — the product's `fit` renders each case (the recipe's template and the tokenizer's
 specials included) and the stratum is judged on the rendered input: `long_under` must render whole within
 5% under `client.max_tokens`, `long_over` must be cut by it, `short` must render whole.
@@ -142,7 +150,7 @@ in the wheel), registered on import:
 ```python
 from rcp_ndcg_test.fakes import FakeEmbedEngine, fake_engine_for
 
-engine = fake_engine_for("fake-embed")   # the shipped one
+engine = fake_engine_for("fake-embed")  # the shipped one
 assert isinstance(engine, FakeEmbedEngine)
 ```
 
