@@ -203,7 +203,7 @@
             }
           ],
           "default": null,
-          "description": "The judge's wire adapter name, when the config named one (the default wire is left out, so families judged on it keep their key).",
+          "description": "The judge's wire adapter name, when the pass was given one other than its default wire (the judging pass normalizes the default wire's own name away, so families judged on the default keep their key whatever its spelling).",
           "title": "Api"
         },
         "context_tokens": {

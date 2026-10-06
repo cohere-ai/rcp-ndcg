@@ -6196,6 +6196,27 @@
           }
         }
       },
+      "append_census_rows": {
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "sink"
+          },
+          {
+            "annotation": "Sequence[Mapping[str, Any]]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "rows"
+          },
+          {
+            "returns": "None"
+          }
+        ]
+      },
       "apply_text_policy": {
         "defined_in": "rcp_ndcg.data.preprocess",
         "kind": "function",
@@ -6321,7 +6342,7 @@
             "name": "path"
           },
           {
-            "returns": "None"
+            "returns": "int"
           }
         ]
       },
@@ -6427,6 +6448,21 @@
           },
           {
             "returns": "dict[str, float]"
+          }
+        ]
+      },
+      "read_census_rows": {
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "returns": "Iterator[dict[str, Any]]"
           }
         ]
       },
