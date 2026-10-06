@@ -18,7 +18,7 @@ rcp-ndcg judge        tournament  Stage A: listwise windows into the judgement s
                       reparse     read a store's stored answers again with the current parser, into a new store
 rcp-ndcg calibration  fit         judgements into a calibration (with or without the tournament; one or pooled judges)
                       score       score documents a calibration lacks, the items frozen
-                      insert      insert documents into a tournament calibration, with an anchor report; --dry-run picks opponents
+                      insert      insert documents into a tournament calibration, with an insertion anchor report (the refit check); --dry-run picks opponents
                       show        items, coverage, per-judge severity, diagnostics and provenance
 rcp-ndcg eval         score       RCP-nDCG and qrel-nDCG of rankings under a protocol
                       compare     difference (B minus A), paired t-test, bootstrap interval, sign flips
@@ -69,11 +69,12 @@ which installs with the package, and the stemmer is part of the index identity.
 | `--suite NAME` | a public suite: its data and its protocol (`nanobeir`, `bright`, `vidore`, `trecdl`) |
 | `--protocol NAME` | override the protocol (`nanobeir`, `bright`, `vidore`, `trecdl`, `mteb`, `plain`) |
 | `--judge fake\|PATH\|NAME`, `--judge-url URL`, `--judge-model ID` | a judge config, or an ad-hoc OpenAI-compatible endpoint. On `judge` commands `--judge-model` overrides the model of any `--judge`; on `run start`/`run resume` it is refused without `--judge-url` |
-| `--engine ROLE=URL[,URL]` | `run resume`: point one role's model (`judge`, `encoder` or `reranker`) at the engine URLs instead of its config's `base_url`; repeatable, one role each. A runtime overlay: it never changes the run's recorded config ([serving](../concepts/serving.md#starting-the-engines-with-the-run)) |
+| `--engine ROLE=URL[,URL]` | `run resume`: point one role's model (`judge`, `encoder` or `reranker`) at the engine URLs instead of its config's `base_url`; repeatable, one role each. A runtime overlay: it never changes the run's recorded config ([serving](../concepts/runs.md#starting-the-engines-with-the-run)) |
 | `--docs QUERY_ID:DOC_ID` | judge only these documents (re-annotation, insertion) |
 | `--plan FILE` | `judge tournament`: ask exactly the windows of an insertion plan (`calibration insert --dry-run --out FILE`), with the `--out` store's schedule |
 | `--k INT` | a cutoff; repeatable on `eval score` (several), one on `eval compare` and `eval explain` — where it is also the documents shown per system |
 | `--system NAME` | `eval score` (and `eval explain --report`): score only these systems of the rankings file (repeatable); an unknown name is refused (exit 2) with the systems the file names. One system whose rankings match nothing of the dataset no longer has to stop the others. On `judge tournament`/`judge rubric` and `retrieval rerank` it is a single selector for a multi-system candidates file |
+| `--baseline NAME` | `eval compare`: compare every system against this one (the system a comparison compares against) |
 | `--per-query`, `--fields NAME` | `eval score --json`: add the per-query values (the text renderer prints them too); print only the named top-level fields (repeatable). The full report goes to `--out` |
 | `--include-text` | `eval explain`: add the query and document texts |
 | `--include-reference` | `eval compare --run`: also compare the run's reference systems `candidates` and `judge` |
@@ -83,7 +84,7 @@ which installs with the package, and the stemmer is part of the index identity.
 | `--force` | judge into a store of another identity; the old records are moved aside |
 | `--strict` | `calibration fit`: refuse (exit 12) a query with invalid windows (more than 5% in a stage, or an adaptive one) instead of warning |
 | `--runner NAME`, `--detach` | `local`, `slurm`, `kubernetes`, or an installed runner; return at once and follow with `run status` |
-| `--mirror URI` | `run start`, `run resume`, `judge tournament\|rubric`: mirror the run directory or store to a bucket while it runs, and restore what is missing from it first ([durability](../concepts/serving.md#durability-local-runs-and-a-mirror)) |
+| `--mirror URI` | `run start`, `run resume`, `judge tournament\|rubric`: mirror the run directory or store to a bucket while it runs, and restore what is missing from it first ([durability](../concepts/runs.md#durability-local-runs-and-a-mirror)) |
 | `-v`, `-vv`, `-q`, `--log-file PATH` | verbosity on stderr, and an optional log file (before the command) |
 | `--env-file PATH` | load environment variables from a file; never implicit (before the command) |
 
@@ -97,10 +98,15 @@ Environment variables:
 | `RCP_NDCG_LOG_LEVEL` | the log level when no `-v` or `-q` is given |
 | `RCP_NDCG_MAX_VIDEO_BYTES` | the largest video inlined into a judge request (default 64 MiB) |
 | `RCP_NDCG_IMAGE_CACHE_SIZE`, `RCP_NDCG_VIDEO_CACHE_SIZE` | encoded images and videos kept in memory per worker while judging |
+| `RCP_NDCG_ENGINES` | the engine overlay a job's phase hands its coordinator: JSON `{"<role>": {"urls": [...], "wait_on_outage_s": 900}, ...}`; applied at run time only, never recorded ([runs](../concepts/runs.md#starting-the-engines-with-the-run)) |
 
-Credentials are read only under the name a config declares (`api_key_env`); when a hosted retrieval profile
-(`api: cohere`, `voyage`, `gemini`) names none, its adapter reads the vendor's usual variables: `CO_API_KEY` or
-`COHERE_API_KEY`, `VOYAGE_API_KEY`, and `GEMINI_API_KEY` or `GOOGLE_API_KEY`.
+## Credentials
+
+Credentials are read only under the name a config declares (`api_key_env`), and a profile's default key
+variables apply **only when the request goes to the profile's own default host**. Any other `base_url` receives
+a key only from an explicit `api_key_env`. When a hosted retrieval profile (`api: cohere`, `voyage`, `gemini`)
+names none and the request goes to the profile's own URL, its adapter reads the vendor's usual variables:
+`CO_API_KEY` or `COHERE_API_KEY`, `VOYAGE_API_KEY`, and `GEMINI_API_KEY` or `GOOGLE_API_KEY`.
 
 ## Machine output
 
@@ -143,8 +149,8 @@ to fetch; `rcp-ndcg schema show <name>` prints the schema.
 | 1 | `INTERNAL` | a bug; report it |
 | 2 | `USAGE` | bad flags or arguments; fix the invocation |
 | 3 | `CONFIG` | invalid config value; fix the YAML or `--set` |
-| 4 | `MISSING_INPUT` | a file, run or dataset is absent; the hint names it |
-| 5 | `CREDENTIALS` | missing or rejected credentials; the hint names the variable, never its value |
+| 4 | `MISSING_INPUT` | a file, run or dataset is absent; the message or hint names it |
+| 5 | `CREDENTIALS` | missing or rejected credentials; the message or hint names the variable, never its value — a backend that rejects access below the transport layer may still surface as `INTERNAL`; treat a `Forbidden`/`denied` message as credentials |
 | 6 | `PROVIDER` | an endpoint or a scheduler failed after its retries (unreachable, timing out, rate limiting, an empty answer); resume later when `retryable` is true (it is false for a route or model the endpoint does not have, HTTP 404) |
 | 8 | `CAPABILITY` | the judge or endpoint cannot take what a request carries: an answer schema it refuses (serve with the reasoning parser, or set `decoding: free`), images or videos beyond its `max_images` / `max_videos`, a window whose media exceed its context, media for a text-only encoder; raised by the first such request |
 | 9 | `INTERRUPTED` | SIGINT or SIGTERM stopped the command; the state on disk is consistent; resume |

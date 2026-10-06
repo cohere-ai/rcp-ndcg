@@ -44,7 +44,7 @@ A judge configured with `decoding: json_schema` has each request carry the stage
 OpenAI-standard `response_format` (`json_schema`), which vLLM, SGLang and the OpenAI API enforce. The judgement
 family records this as `decoding: json_schema`, and as `decoding: free` otherwise, so the two never pool. The parse
 version is part of the family too: `rcp-ndcg judge reparse` reads a store's stored answers again with the current
-parser, into a new store, without calling the judge ([the judgement store](serving.md#the-judgement-store)).
+parser, into a new store, without calling the judge ([the judgement store](judges.md#the-judgement-store)).
 
 ## The Bradley-Terry fit
 
@@ -56,7 +56,8 @@ to this additive constant, and their spread depends on how decisive the judge wa
 
 ## The window schedule
 
-The schedule has three phases. `rcp_ndcg.llm.TournamentSchedule` holds it, specified in placements per document: a
+The schedule has three *schedule phases* (`random`, `stratified`, `adaptive`; unrelated to the job phases of a
+run on a cluster, [runs](runs.md#phases)). `rcp_ndcg.llm.TournamentSchedule` holds it, specified in placements per document: a
 phase with $p$ placements asks $\operatorname{round}(p\,n / w)$ windows of $w$ documents of a pool of $n$ (ties to
 even), so the calls scale with the pool. The window is the effective one, $w$ = `min(window, n)`, so the
 placements per document hold for any pool: a pool of 4 gets $\operatorname{round}(3.53) = 4$ random windows of all
@@ -106,7 +107,7 @@ refitted from these records when the calibration runs, and when a document is in
 
 The refit reads every stored window by one rule. A valid window scores every document it showed and contributes the
 soft pairs of its scores, each at the weight $2/w$ of a window of $w$ documents. A window without scores for all its
-documents is invalid and contributes nothing. See [the judgement store](serving.md#the-judgement-store) for resuming and identity.
+documents is invalid and contributes nothing. See [the judgement store](judges.md#the-judgement-store) for resuming and identity.
 
 ## Running it
 
@@ -120,4 +121,4 @@ judge(dataset, None, judge_cfg, stage="tournament", out="judgements/", schedule=
 ```
 
 On the command line, `rcp-ndcg judge tournament` runs this stage, with `--estimate` to count its calls and
-tokens first. A [run](serving.md#runs-and-job-runners) runs it as its `tournament` step.
+tokens first. A [run](runs.md#runs-and-job-runners) runs it as its `tournament` step.

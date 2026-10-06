@@ -1,5 +1,7 @@
 # The documentation is plain Markdown, read on GitHub. This file only serves a local preview
 # (`mkdocs serve`) and the CI check that every page is in the navigation and every link resolves.
+# The pages follow one three-tier structure: Concepts (what the machinery is), How-to (one task end to
+# end), Reference (an exact name, flag or id), entered through Home, Quickstart and Data.
 site_name: RCP-nDCG
 site_description: RCP-nDCG, nDCG with calibrated relevance gains from an LLM judge.
 repo_url: https://github.com/cohere-ai/rcp-ndcg
@@ -18,29 +20,35 @@ nav:
   - Quickstart: quickstart.md
   - Data: data.md
   - Concepts:
-      - "The metric": concepts/metric.md
+      - "The metric: RCP-nDCG": concepts/metric.md
       - "Scoring protocols and tie rules": concepts/protocols.md
       - "Stage A: the tournament": concepts/tournament.md
       - "Stage B: the rubric": concepts/rubric.md
       - "The calibration": concepts/calibration.md
-      - "Primitives": concepts/primitives.md
+      - "Primitives: re-annotation, insertion and several judges": concepts/primitives.md
       - "Preprocessing and chunking": concepts/preprocessing.md
+      - "Text budgets for served roles": concepts/text-budgets.md
       - "The inference layer: one transport for every role": concepts/inference.md
+      - "Retrieval and reranking": concepts/retrieval.md
       - "Embedding endpoints": concepts/embeddings.md
       - "Late interaction: pooling and MaxSim": concepts/late-interaction.md
-      - "Judges, serving and runners": concepts/serving.md
-  - Tutorials:
-      - "Calibrate your benchmark": tutorials/calibrate-your-benchmark.md
-      - "MTEB integration": tutorials/mteb-integration.md
-      - "Reproduce the paper": tutorials/reproduce-the-paper.md
+      - "Judges, the judgement store and estimates": concepts/judges.md
+      - "Runs, engines and runners": concepts/runs.md
   - How-to:
-      - "Add a model": how-to/add-a-model.md
+      - "Calibrate your benchmark": how-to/calibrate-your-benchmark.md
+      - "MTEB integration": how-to/mteb-integration.md
+      - "Reproduce the paper": how-to/reproduce-the-paper.md
+      - "Serve a retrieval model": how-to/serve-a-model.md
+      - "Add a serving recipe": how-to/add-a-model.md
+      - "Validate a recipe on GPUs": how-to/validate-a-recipe.md
       - "Release candidates and the GPU waves": how-to/release-candidates.md
   - Reference:
       - "Command line": reference/cli.md
+      - "Recipes and serving models": reference/recipes.md
+      - "The rcp-ndcg-test package": reference/rcp-ndcg-test.md
       - "rcp_ndcg_core": api/metric.md
       - "rcp_ndcg.eval": api/evaluate.md
-      - "rcp_ndcg.inference": api/inference.md
+      - "rcp_ndcg.inference (the rerank wire and client)": api/inference.md
 
 # Links to files outside docs/ (experiments/, the repository root) resolve on GitHub, not in the local preview.
 validation:
