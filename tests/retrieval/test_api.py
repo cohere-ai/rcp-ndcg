@@ -409,7 +409,7 @@ def test_retrieve_rebuilds_an_index_of_an_unreadable_shape(dataset, tmp_path: Pa
             }
         )
     )
-    config = DenseConfig(encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub"))
+    config = DenseConfig(encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub", **_SERVED_BUDGET))
 
     rankings = retrieve(dataset, config, depth=3, out=root)
 
@@ -547,7 +547,7 @@ def test_rerank_refuses_a_depth_like_search_does(dataset) -> None:
     """``depth`` is validated in ``rerank`` like in ``search``: zero collapses the candidates to nothing (and
     raised the unrelated 'rankings hold 0 systems'), and a negative one silently cut by pandas' ``head(-n)``."""
     candidates = Rankings.from_scores({"q1": {"d1": 3.0, "d2": 2.0, "d3": 1.0}}, system="bm25")
-    config = ServedReranker(base_url="fake://seed/1", model="stub-reranker")
+    config = ServedReranker(base_url="fake://seed/1", model="stub-reranker", **_SERVED_RERANK_BUDGET)
 
     for depth in (0, -1):
         with pytest.raises(ConfigError, match="depth must be positive"):
@@ -573,12 +573,17 @@ def test_tied_candidates_reach_the_reranker_in_the_rankings_order(dataset, monke
     real = transport_module.Transport
 
     def patched(endpoint: Any, **kwargs: Any) -> Any:
-        return real(endpoint, httpx_transport=httpx.MockTransport(handler))
+        return real(endpoint, httpx_transport=httpx.MockTransport(handler), **kwargs)
 
-    monkeypatch.setattr("rcp_ndcg.inference.clients.rerank.Transport", patched)
+    monkeypatch.setattr("rcp_ndcg.inference.clients._base.Transport", patched)
     tied = Rankings.from_scores({"q1": {"d1": 1.0, "d2": 1.0, "d3": 1.0}}, system="bm25")
 
-    rerank(dataset, tied, ServedReranker(base_url="http://rerank.test/v1", model="stub-reranker"), depth=3)
+    rerank(
+        dataset,
+        tied,
+        ServedReranker(base_url="http://rerank.test/v1", model="stub-reranker", **_SERVED_RERANK_BUDGET),
+        depth=3,
+    )
 
     assert sent[0]["documents"] == [DOCS["d3"], DOCS["d2"], DOCS["d1"]], "ties: document id descending"
 

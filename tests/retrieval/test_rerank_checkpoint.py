@@ -90,7 +90,7 @@ def test_the_key_covers_every_content_field_and_the_exact_texts() -> None:
 
     changed_configs = {
         "instruction": _config(instruction="none"),
-        "use_activation": _config(use_activation=False),
+        "use_activation": _config(use_activation=True),
         "recipe": _config(recipe="qwen3-v2"),
         "api": CohereReranker(model="stub-reranker"),
     }
@@ -126,13 +126,11 @@ def test_a_budget_change_re_keys_the_checkpoint(tmp_path: Any) -> None:
     second = save(word_tokenizer(), tmp_path / "two")  # same bytes, different path
     other = save(byte_bpe_tokenizer(), tmp_path / "other")
 
-    assert _checkpoint_key(_config(tokenizer=str(first)), example) != base, "a declared tokenizer re-keys"
-    assert _checkpoint_key(_config(tokenizer=str(second)), example) == _checkpoint_key(
-        _config(tokenizer=str(first)), example
-    ), "the digest, not the name"
-    assert _checkpoint_key(_config(tokenizer=str(other)), example) != _checkpoint_key(
-        _config(tokenizer=str(first)), example
-    ), "different tokenizer bytes re-key"
+    # The base config already declares the session's word tokenizer (a served config must): the same bytes
+    # under another path keep the key, other bytes re-key it.
+    assert _checkpoint_key(_config(tokenizer=str(first)), example) == base, "the digest, not the path"
+    assert _checkpoint_key(_config(tokenizer=str(second)), example) == base, "the digest, not the path"
+    assert _checkpoint_key(_config(tokenizer=str(other)), example) != base, "different tokenizer bytes re-key"
 
 
 def test_an_old_format_checkpoint_is_scored_again(tmp_path: Any) -> None:
