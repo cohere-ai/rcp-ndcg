@@ -2263,7 +2263,7 @@
       "__version__": {
         "kind": "constant",
         "type": "str",
-        "value": "0.1.0"
+        "value": "0.0.1"
       },
       "calibrate": {
         "defined_in": "rcp_ndcg.calibration.fit",
