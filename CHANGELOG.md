@@ -280,6 +280,26 @@ released together.
   saved rankings for the systems the report
   scored (its own, by default; `--system` narrows them further), so one broken system of the file does not
   kill the explanation, and `--system` with `--run` there is a `UsageError` (it has no effect on a run).
+- New package `rcp-ndcg-vllm-topk` (`packages/rcp-ndcg-vllm/plugins/topk/`, outside the root uv workspace and
+  lock; version 0.0.1, no dependencies): the `vllm.general_plugins` wheel that serves
+  `topk-io/topk-embed-v1-small` (multimodal late interaction) on the stock `vllm/vllm-openai:v0.31.0` image
+  after `pip install --no-deps`, with no `--trust-remote-code`. Two registrations: a faithful local
+  configuration class (`TopkEmbedConfig`, a line-for-line restatement of the checkpoint's remote
+  `TopkEmbedConfig` — whose module imports `flash-linear-attention`, absent from the engine image, so the
+  remote config load would die before any weight loads) registered with transformers' `AutoConfig`, which
+  takes the explicit-local-code path and never executes remote code; and the model class `TopkEmbedModel`,
+  a subclass of the native `ColQwen3_5Model` that overrides only the checkpoint-name mapping (`head.` →
+  `custom_text_proj.`; the Qwen3-VL naming convention restored): the checkpoint's own
+  `text_config.is_causal: false` drives the stock `Qwen3NextAttention` to bidirectional ENCODER_ONLY
+  attention on the six full-attention layers, so no attention code is copied. The version guard refuses vLLM
+  outside `>=0.31,<0.32` with the tested range named; the pure-torch pooling chain (`token_embed_pool`) and
+  the mapping table (`weights`) are importable without vLLM for the CPU tests (entry-point declaration,
+  version guard, the 618-name census mapping, the tiny-config chain equivalence against the reference chain,
+  and the simulated `--no-deps` freeze check, which also rejects forged wheels with a declared dependency, a
+  compiled artifact or a platform tag, and is the GPU wave's script). Skips name the environment: the
+  registry effects, the config-class parse and the served-class mapper cross-check need vLLM and
+  transformers; the full served-vs-reference equivalence on real weights is the GPU wave's.
+
 - `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
   larger than `adaptive_window` runs one batch, not one per batch: every adaptive window of such a pool holds
   the whole pool, so a further batch asks the same documents again (in the refit order) and covers only what
