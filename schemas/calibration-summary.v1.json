@@ -482,6 +482,18 @@
           "default": null,
           "description": "Why, when ``ordinal_only``.",
           "title": "Ordinal Reason"
+        },
+        "skipped_observations": {
+          "default": 0,
+          "description": "Rubric placements the fit skipped: rows whose document has no Bradley-Terry theta (tournament mode). Nothing is dropped silently: the skipped input is counted here.",
+          "title": "Skipped Observations",
+          "type": "integer"
+        },
+        "skipped_queries": {
+          "default": 0,
+          "description": "Queries whose observations the fit skipped: a query absent from ``bt_scores`` (tournament mode). Its rows count in ``skipped_observations`` too.",
+          "title": "Skipped Queries",
+          "type": "integer"
         }
       },
       "required": [
