@@ -12,8 +12,7 @@
           "enum": [
             "config",
             "artifact",
-            "cli-output",
-            "mcp"
+            "cli-output"
           ],
           "title": "Kind",
           "type": "string"

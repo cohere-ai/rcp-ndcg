@@ -32,7 +32,7 @@ rcp-ndcg run          start       run a config (a YAML file or a packaged config
                       list        the runs under a runs directory
                       show        one run's manifest and artifacts
 rcp-ndcg schema       list | show NAME | export --out DIR
-rcp-ndcg mcp          serve | tools [--call TOOL --args JSON]
+rcp-ndcg mcp          serve       the commands as MCP tools over stdio
 rcp-ndcg doctor       [--endpoint URL] check the environment: versions, extras, credentials present, endpoint reachable
 rcp-ndcg --version
 ```
@@ -132,8 +132,7 @@ A failure has `"ok": false` and an `error` object with `code`, `exit_code`, `mes
 and the `source`: `--set` when an override set the field, else the config file. `--set` values are YAML literals
 (`--set k=10`, `--set k=null`, `--set 'k=[1, 2]'`).
 
-`rcp-ndcg mcp tools --call <tool> --args '<json>' --json` calls one MCP tool from the shell and prints its result as
-`mcp serve` answers it (`structuredContent`, `isError`). `rcp-ndcg schema show commands` describes the whole command tree as JSON, and `rcp-ndcg schema list`
+`rcp-ndcg schema show commands` describes the whole command tree as JSON, and `rcp-ndcg schema list`
 lists every exported schema. A schema's `$id` is an identifier naming its committed copy under `schemas/`, not a URL
 to fetch; `rcp-ndcg schema show <name>` prints the schema.
 

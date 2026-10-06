@@ -29,13 +29,13 @@ def test_a_command_output_schema_requires_its_tag() -> None:
     assert schema["required"][0] == "schema"
 
 
-def test_the_kinds_cover_configs_artifacts_outputs_and_mcp() -> None:
+def test_the_kinds_cover_configs_artifacts_and_outputs() -> None:
     kinds = {entry.name: entry.kind for entry in schemas.entries()}
 
     assert kinds["run-config"] == "config"
     assert kinds["run-manifest"] == "artifact"
     assert kinds["cli"] == kinds["commands"] == kinds["dataset-summary"] == "cli-output"
-    assert kinds["mcp-manifest"] == "mcp"
+    assert set(kinds.values()) == {"config", "artifact", "cli-output"}
 
 
 def test_a_record_that_names_its_schema_names_its_entry() -> None:

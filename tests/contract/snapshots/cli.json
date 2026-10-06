@@ -2605,69 +2605,6 @@
     "output_schema": null,
     "params": {}
   },
-  "rcp-ndcg mcp tools": {
-    "deprecated": false,
-    "group": false,
-    "hidden": false,
-    "no_args_is_help": false,
-    "output_schema": "rcp-ndcg.mcp-manifest.v1",
-    "params": {
-      "args": {
-        "default": "{}",
-        "envvar": null,
-        "help": null,
-        "hidden": false,
-        "is_flag": false,
-        "multiple": false,
-        "nargs": 1,
-        "opts": [
-          "--args"
-        ],
-        "param_type_name": "option",
-        "required": false,
-        "secondary_opts": [],
-        "type": {
-          "name": "text"
-        }
-      },
-      "as_json": {
-        "default": null,
-        "envvar": null,
-        "help": null,
-        "hidden": false,
-        "is_flag": true,
-        "multiple": false,
-        "nargs": 1,
-        "opts": [
-          "--json"
-        ],
-        "param_type_name": "option",
-        "required": false,
-        "secondary_opts": [],
-        "type": {
-          "name": "boolean"
-        }
-      },
-      "call": {
-        "default": null,
-        "envvar": null,
-        "help": null,
-        "hidden": false,
-        "is_flag": false,
-        "multiple": false,
-        "nargs": 1,
-        "opts": [
-          "--call"
-        ],
-        "param_type_name": "option",
-        "required": false,
-        "secondary_opts": [],
-        "type": {
-          "name": "text"
-        }
-      }
-    }
-  },
   "rcp-ndcg retrieval": {
     "deprecated": false,
     "group": true,

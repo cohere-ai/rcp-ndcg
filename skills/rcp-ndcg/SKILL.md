@@ -194,5 +194,5 @@ rcp-ndcg eval explain --report report.json --query-id q1 --k 5 --json
 `rcp-ndcg mcp serve` exposes the commands as MCP tools over stdio. Read-only: `describe`, `schema_show`,
 `data_inspect`, `eval_score` (with `out`, `per_query` and `fields` as on the command line), `eval_compare`,
 `eval_explain`, `calibration_show`, `run_list`, `run_show`, `run_status`, `estimate`. Destructive: `run_cancel`.
-`run_start` starts a run and returns its directory at once; then poll `run_status`. Without an MCP client,
-`rcp-ndcg mcp tools --call <tool> --args '<json>' --json` calls one tool and prints its result as the server would.
+`run_start` starts a run and returns its directory at once; then poll `run_status`. The tool list is
+`rcp_ndcg.mcp.tool_manifest()`; a plan (`--dry-run`) is CLI-only.

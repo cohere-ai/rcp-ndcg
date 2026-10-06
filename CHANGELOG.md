@@ -553,6 +553,13 @@ released together.
   choice, where the SDK era read the last; the judge never sends a `n` above 1, so no shipped answer moves. `requirements-constraints.txt` no longer carries `openai`, `httpx2` or
   `jiter`; in `uv.lock` the two remained only as the `[vllm]` extra's engine package's own dependency, until the
   extras left with the served-only package (above).
+- **`rcp-ndcg mcp tools`** (owner decision): the shell fallback for calling one MCP tool without an MCP client
+  is gone; the command, its `McpToolsRequest` model and the `rcp-ndcg.mcp-manifest.v1` output-schema id
+  (`schemas/mcp-manifest.v1.json` deleted) leave with it, and the MCP surface is `rcp-ndcg mcp serve` alone.
+  The tool list and a tool call stay reachable in Python as `rcp_ndcg.mcp.tool_manifest()` and
+  `rcp_ndcg.mcp.call_tool()` (what the server itself answers through); tests that drove the CLI command use
+  them directly. The MCP tool surface remains the deliberate subset of the command line it always was
+  (`rcp_ndcg.mcp.TOOLS`); a plan (`--dry-run`) is CLI-only.
 - The release workflow publishes three packages, one GitHub environment each: the build job builds `rcp-ndcg`,
   `rcp-ndcg-core` and `rcp-ndcg-vllm` (the last from its own directory, outside the uv workspace), checks each
   version against the tag, `rcp-ndcg`'s exact `rcp-ndcg-core` pin and the constraints file against the lock, runs
