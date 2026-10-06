@@ -7,8 +7,8 @@ Published code path, per mode:
   (transformers ``AutoModel``/``AutoTokenizer`` at the pinned revision, ``padding_side='left'``,
   ``truncation=True, max_length=8192``, the card's ``last_token_pool`` over the attention mask, then
   ``F.normalize(p=2)``; bf16 tensors cast ``.float()`` before ``.numpy()``). Needs torch and
-  transformers (>=4.51 for the Qwen3 architecture; the card's floor) —
-  ``packages/rcp-ndcg-vllm/requirements-reference.txt``.
+  transformers (>=4.51 for the Qwen3 architecture; the card's floor) — the per-recipe
+  ``requirements-reference.txt`` next to this file (the package-level file names the general env).
 - ``--mode render`` — the checkpoint's own fast tokenizer (``tokenizer.json`` at the pinned revision,
   the exact file transformers' Qwen2TokenizerFast loads for this checkpoint; the render needs no
   weights and no torch, only ``tokenizers`` + ``huggingface_hub``). It emits the prompt TEXT the
@@ -83,35 +83,40 @@ def _load_tokenizer_path(spec: str) -> str:
     return hf_hub_download(MODEL, "tokenizer.json", revision=REVISION)
 
 
-def fitted_text(text: str, tokenizer: Any, *, max_ids: int = MAX_LENGTH) -> str:
-    """The prompt as the engine receives it for an over-budget ``text``: the card's truncation, as text.
+def fitted_text(content: str, tokenizer: Any, *, frame: str = "") -> str:
+    """The request text the engine receives for an over-budget ``content``: the served cut, as text.
 
     The card's HF truncation keeps the endoftext anchor inside the budget (8191 content+frame ids,
     then the post-processor's anchor at 8192: measured), and the served fit's cut is byte-identical
-    at the cap (measured). This reproduces that rule on the whole prompt: the longest verbatim
-    prefix whose encoding as the engine reads it (``add_special_tokens=True``) stays within
-    ``max_ids`` -- a byte-level merge at a cut boundary can re-tokenize longer, so the cut moves back
-    over token boundaries until the prefix fits, the same boundary search the product's fit applies.
+    at the cap (measured). This mirrors the product's boundary search on the CONTENT span, with the
+    request counted as the engine reads it (``add_special_tokens=True``, the frame included for the
+    query shape): the longest verbatim content prefix whose rendered request stays within
+    ``MAX_LENGTH`` ids. A byte-level merge at a cut boundary can re-tokenize the prefix longer or
+    SHORTER than its boundary count, so the search starts at the ``MAX_LENGTH``-th content boundary
+    and moves back until the render fits -- exactly the search the served fit applies (the reference
+    cannot import the product: it runs in its own torch/transformers environment, so it mirrors the
+    rule).
     """
-    if len(tokenizer.encode(text, add_special_tokens=True).ids) <= max_ids:
-        return text
-    offsets = tokenizer.encode(text, add_special_tokens=False).offsets
 
     def count(piece: str) -> int:
-        return len(tokenizer.encode(piece, add_special_tokens=True).ids)
+        return len(tokenizer.encode(frame + piece if frame else piece, add_special_tokens=True).ids)
+
+    if count(content) <= MAX_LENGTH:
+        return content
+    offsets = tokenizer.encode(content, add_special_tokens=False).offsets
 
     def piece(tokens: int) -> str:
-        return text[: offsets[tokens - 1][1]] if tokens > 0 else ""
+        return content[: offsets[tokens - 1][1]] if tokens > 0 else ""
 
-    over = max_ids - 1  # the post-processor's anchor takes the last slot
-    if count(piece(over)) <= max_ids:
+    over = min(MAX_LENGTH, len(offsets))
+    if count(piece(over)) <= MAX_LENGTH:
         return piece(over)
     fitting, step = over - 1, 1
-    while fitting > 0 and count(piece(fitting)) > max_ids:
+    while fitting > 0 and count(piece(fitting)) > MAX_LENGTH:
         over, fitting, step = fitting, max(fitting - step, 0), step * 2
     while over - fitting > 1:
         middle = (over + fitting) // 2
-        fitting, over = (middle, over) if count(piece(middle)) <= max_ids else (fitting, middle)
+        fitting, over = (middle, over) if count(piece(middle)) <= MAX_LENGTH else (fitting, middle)
     return piece(fitting)
 
 
@@ -119,19 +124,22 @@ def render_rows(pairs: list[dict[str, Any]], tokenizer_spec: str) -> dict[str, A
     """``--mode render``: the prompt text per row per declared shape, byte-exact with the served fit.
 
     The query shape carries the instruction frame; the document shape is the bare text (the
-    checkpoint's ``prompts.document`` is empty). Rows over the budget are emitted with the card's
-    anchor-preserving truncation (:func:`fitted_text`), the same cut the served fit makes at the cap
-    (measured byte-identical); the derived over-length samples the harness audits for anchors are a
-    harness concern, not compared token for token.
+    checkpoint's ``prompts.document`` is empty). Rows over the budget are emitted with the served
+    cut (:func:`fitted_text` -- the card's anchor-preserving truncation, byte-identical to the
+    served fit at the cap, measured); the derived over-length samples the harness audits for anchors
+    are a harness concern, not compared token for token.
     """
     from tokenizers import Tokenizer
 
     tokenizer = Tokenizer.from_file(_load_tokenizer_path(tokenizer_spec))
     rows: list[dict[str, Any]] = []
     for index, row in enumerate(pairs):
-        texts = (("query", get_detailed_instruct(str(row["query"]))), ("document", str(row["documents"][0])))
-        for shape, text in texts:
-            rows.append({"index": index, "shape": shape, "text": fitted_text(text, tokenizer)})
+        texts = (("query", str(row["query"])), ("document", str(row["documents"][0])))
+        for shape, content in texts:
+            frame = QUERY_PROMPT if shape == "query" else ""
+            # The cut applies to the content span only; the frame is re-attached after the cut (the
+            # contract the served fit honours too).
+            rows.append({"index": index, "shape": shape, "text": frame + fitted_text(content, tokenizer, frame=frame)})
     return {"rows": rows}
 
 
@@ -205,7 +213,7 @@ def main() -> int:
     parser.add_argument(
         "--tokenizer",
         required=True,
-        help=f"{MODEL}@{REVISION}, or a local path to the same tokenizer.json",
+        help=f"{MODEL}@{REVISION}, or a local path to the same tokenizer.json (render mode)",
     )
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()

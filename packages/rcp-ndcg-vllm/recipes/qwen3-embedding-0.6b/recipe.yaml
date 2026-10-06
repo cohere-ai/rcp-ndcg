@@ -26,9 +26,11 @@ serve:
   hf_overrides: {} # the checkpoint already declares the architecture vLLM converts
   chat_template: null # no template file ships: the served route renders no template over string
     # inputs (vllm/renderers/inputs/preprocess.py:129-132; io_processor.py:126-160), and the
-    # checkpoint's own chat template is the Qwen3 *instruct* template -- 13 ids vs the reference's 27
-    # for the same query (measured). R10 (ship the template) binds models whose route renders one;
-    # this route never does, so a template file would be inert or harmful.
+    # checkpoint's own chat template is the Qwen3 *instruct* template -- for the card's example
+    # query it renders 13 ids with the tokenizer specials on and no assistant generation prompt
+    # (12 without the specials, 15-16 with the generation prompt) vs the reference's 27 (measured).
+    # R10 (ship the template) binds models whose route renders one; this route never does, so a
+    # template file would be inert or harmful.
   pooler_config: {} # resolved from the checkpoint's own ST metadata (LAST + normalize); a user
     # --pooler-config would override it, so none is sent
   trust_remote_code: false # no remote code in the repo (no *.py among the Hub siblings)
