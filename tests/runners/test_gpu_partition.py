@@ -130,16 +130,32 @@ def test_a_gpu_less_engine_sees_no_device() -> None:
 
 
 def test_the_coordinators_gpus_are_reserved_on_slurm_too() -> None:
-    """The coordinator's task asks its own --gres and pins the reserved device prefix (0..res.gpus-1), so the
-    overlapping step cannot take a co-located engine's devices; the node's --gres carries the sum (2+4+1)."""
+    """The coordinator's task asks its own --gres: SLURM's per-step CUDA_VISIBLE_DEVICES is unique per step
+    (gres.html), so the disjoint remainder of the coordinator's node is its reservation -- the co-located
+    engine's step, launched with its own --gres, cannot take them."""
     phases = (JobPhase(engines={"judge": JUDGE_4, "encoder": ENCODER_1}, argv=("a",)),)
     job = JobSpec(name="j", argv=("x",), resources=_resources(2), phases=phases)
     script = SlurmRunner(container_runtime="pyxis").render([job])["j"]
-    # The per-node sums: the coordinator's node hosts it and the 4-GPU judge (2+4=6); the encoder is alone (1).
     assert "#SBATCH --gres=gpu:6" in script  # the maximum over the nodes
     assert "srun --overlap --nodes=1 --ntasks=1 --nodelist=${RCP_NDCG_HOSTS[0]} --gres=gpu:2 " in script
-    worker = [line for line in script.splitlines() if line.startswith("export CUDA_VISIBLE_DEVICES=")][0]
-    assert worker == "export CUDA_VISIBLE_DEVICES=0,1"  # the coordinator's own devices, before the engines'
+    # No CUDA export for the coordinator: the step's own grant names the disjoint remainder, and a hardcoded
+    # prefix would override it with a co-located engine's devices.
+
+
+def test_a_gpu_less_slurm_engine_sees_no_device() -> None:
+    """An engine without GPUs gets the empty CUDA_VISIBLE_DEVICES: its step carries no --gres, and srun(1)
+    allocates such a step all of the job's GRES -- never all of it, per the partitioning's contract."""
+    none = ServeConfig(image=None, command=["x", "--port", "8001"], resources=_resources(0), port=8001)
+    judge = ServeConfig(
+        image=None, command=["vllm", "serve", "m", "--port", "8000"], resources=_resources(4), port=8000
+    )
+    phases = (JobPhase(engines={"judge": judge, "encoder": none}, argv=("a",)),)
+    script = SlurmRunner().render([_phased_job(*phases)])["j"]
+    cuda = [line.split("=", 1)[1] for line in script.splitlines() if line.startswith("export CUDA_VISIBLE_DEVICES=")]
+    assert cuda == ["''"]  # the empty slice for the GPU-less engine; the judge keeps SLURM's per-step grant
+    assert (
+        "--gres=gpu:4 " in script and "CUDA_VISIBLE_DEVICES" not in script.split("ENGINE_JUDGE")[0].split("ENGINE_")[-1]
+    )
 
 
 def test_an_engine_free_phase_still_carries_the_coordinators_gpus() -> None:

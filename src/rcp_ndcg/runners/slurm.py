@@ -260,11 +260,7 @@ class SlurmRunner:
         roles = sorted(phase.engines, key=lambda role: (-phase.engines[role].resources.gpus, role))
         # On a one-node allocation every phase has at most one engine (the largest phase's replica total sizes the
         # allocation), so roles never share a port there; on larger ones each role gets its own node slice.
-        # The coordinator's own GPU request is reserved ahead of the engines' slices (device_slices on
-        # Kubernetes; an explicit --gres and CUDA_VISIBLE_DEVICES on the coordinator's task here), so an
-        # overlapping step does not take a co-located engine's devices.
-        cuda = ",".join(str(device) for device in range(job.resources.gpus)) if job.resources.gpus else None
-        lines = [*heredoc(worker_var, self._phase_worker(job, phase.argv, install=container, cuda=cuda))]
+        lines = [*heredoc(worker_var, self._phase_worker(job, phase.argv, install=container))]
         steps: list[EngineStep] = []
         offset = 0
         # The replicas are placed one per node (roles by descending GPU count), so no two engine processes share
@@ -283,7 +279,9 @@ class SlurmRunner:
             offset += serve.replicas
             start = self._engine_start(role, serve, nodelist)
             steps.append(EngineStep(serve=serve, role=role, start=start, hosts=hosts))
-            lines += heredoc(f"ENGINE_{upper}", engine_script(serve))
+            # An engine that declares no GPUs sees no device -- a step without --gres is allocated all of the
+            # job's GRES (srun(1)), which would hand it every device on its node.
+            lines += heredoc(f"ENGINE_{upper}", engine_script(serve, cuda="" if serve.resources.gpus == 0 else None))
         if one_node:
             engines_env = shlex.quote(
                 engines_env_value(
@@ -300,6 +298,9 @@ class SlurmRunner:
             # The coordinator's own GPU request is part of the first node's sum: pin it there.
             srun.append("--nodelist=${RCP_NDCG_HOSTS[0]}")
         if job.resources.gpus:
+            # Its devices are the node's first res.gpus (reserved ahead of the engines' slices on Kubernetes): the
+            # step asks for them itself, and SLURM's per-step CUDA_VISIBLE_DEVICES -- unique per step (gres.html,
+            # "GPU Management") -- then names the disjoint remainder, not a co-located engine's devices.
             srun.append(f"--gres=gpu:{job.resources.gpus}")
         coordinator = self._in_container(image, worker_var, srun=srun) if container else f'bash -c "${worker_var}"'
         return [*lines, *supervise(steps, coordinator=coordinator, engines_env=engines_env)]

@@ -230,9 +230,10 @@ runner:
 ```
 
 - **SLURM.** Resources become `--gres=gpu:N`, `--cpus-per-task`, `--mem` and `--time`, and `sbatch_args` passes
-  anything else through. With `serve:`, a phase holds its engine replica(s) and, on the first node, the
-  coordinator: the GPUs are the larger of the two requests, CPUs and memory add up, and an engine whose `memory_gb`
-  is unstated gets the node's whole memory (`--mem=0`), whatever the coordinator asks. The job runs in the node's
+  anything else through. With `serve:`, a phase holds its engine replica(s) and, on the phase's first node, the
+  coordinator: a node's GPUs are the sum of what runs on it (the coordinator's own request, plus each engine's —
+  the largest engine shares the coordinator's node), CPUs and memory add up, and an engine whose `memory_gb` is
+  unstated gets the node's whole memory (`--mem=0`), whatever the coordinator asks ([partitioning](#gpus-are-partitioned-per-node-not-shared)). The job runs in the node's
   environment (`setup`) or in a container
   (`container_runtime: apptainer` or `pyxis`, with `container_mounts`); a container runs the stock coordinator image
   below unless `image` names another. Runs, stores and caches live on the cluster's shared filesystem. A node without
@@ -244,9 +245,9 @@ runner:
   `--json` envelope's `warnings`). A file the online run never fetched is an error naming the fix, not an
   empty table.
 - **Kubernetes.** Each run is a `batch/v1` Job, applied with the `kubectl` on your `PATH` (and `context`, if set).
-  Resources become the coordinator's requests and limits (`nvidia.com/gpu`, `cpu`, `memory`) and the Job's
-  `activeDeadlineSeconds`. With one engine replica, its one container asks for the larger of the two GPU requests,
-  and for the engine's CPUs and memory plus the coordinator's; a CPU or memory amount the engine leaves unstated is
+  Resources become the containers' requests and limits (`nvidia.com/gpu`, `cpu`, `memory`) and the Job's
+  `activeDeadlineSeconds`. A phase container asks for the sum of its engines' GPU requests plus the coordinator's,
+  and for the engines' CPUs and memory plus the coordinator's; a CPU or memory amount the engine leaves unstated is
   left unlimited, whatever the coordinator asks, so the coordinator's share never caps the engine; `secrets` are exposed to every container as environment (an HF token, the mirror's
   credentials). The pod's disk is scratch, an `emptyDir` at `/scratch`, so a Kubernetes run needs a `mirror:`
   ([durability](#durability-local-runs-and-a-mirror)). The pod does not see the submitting host's files either,
@@ -363,10 +364,12 @@ the engines **partition**, per node:
 - **SLURM.** Each role's replicas are pinned to a disjoint slice of the allocation's nodes (one replica per node),
   so no two engine processes share a node; a step's `--gres` is its own engine's count, and SLURM's per-step
   `CUDA_VISIBLE_DEVICES` — set per step with unique devices (gres.html, "GPU Management") — could still overlap
-  across steps, because the engine steps run under `srun --overlap`, which srun(1) documents as allowing steps to
-  "share all resources (CPUs, memory, and GRES) with all other steps" (SLURM 26.05). The per-node `--gres` therefore
-  carries the sum, and the node pinning keeps the engine steps apart; a cluster that constrains devices per step
-  (`ConstrainDevices=yes`) should be checked against these slices.
+  across steps, because the engine steps run under `srun --overlap`, which srun(1) documents as allowing
+  steps to "share all resources (CPUs, memory, and GRES) with all other steps" (SLURM 26.05). The
+  coordinator's task therefore claims its own `--gres` (its reservation, with its `CUDA_VISIBLE_DEVICES`
+  prefix on the phase's first node), the node pinning keeps the engine steps apart, and a node's `--gres`
+  carries the sum of what runs on it; a cluster that constrains devices per step (`ConstrainDevices=yes`)
+  should be checked against these slices.
 
 What the runners submit:
 

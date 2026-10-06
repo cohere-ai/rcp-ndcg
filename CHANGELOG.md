@@ -362,9 +362,11 @@ released together.
   - Co-located engines partition a node's or container's GPUs (RFC review R31): a node's request is the **sum** of
     what runs on it — the coordinator's own `resources.gpus` plus each engine's, per replica — and the job asks for
     the maximum of that over the phases; every co-located engine process gets a disjoint `CUDA_VISIBLE_DEVICES`
-    slice (`device_slices`), the coordinator's devices reserved first, and an engine without GPUs gets the empty
-    slice. On SLURM the engine steps are pinned to disjoint node slices (one replica per node), so SLURM's per-step
-    device assignment — which `srun --overlap` may let overlap — never co-locates two engines.
+      `device_slices`), the coordinator's devices reserved first, and an engine without GPUs gets the empty slice.
+    On SLURM the engine steps are pinned to disjoint node slices (one replica per node) and each step's `--gres`
+    is its own engine's count, so SLURM's per-step device assignment — which `srun --overlap` may let overlap —
+    never co-locates two engines; the coordinator's task claims its own `--gres` (its reservation) instead of
+    srun's default all-of-the-job GRES.
 - **`RCP_NDCG_ENGINES` is the runtime overlay that carries the engines' URLs to the steps.** The coordinator
   applies each role's `urls` and `wait_on_outage_s` to the role config in memory — never written into `run.yaml`,
   never in a step identity, so a run is byte-identical with and without the variable; the
