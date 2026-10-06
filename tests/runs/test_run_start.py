@@ -260,11 +260,11 @@ class TestRunnersAndServe:
             str(config),
             "--runs-dir", str(tmp_path / "set-runs"),
             "--dry-run",
-            "--set", "runner.options.wheelhouse=gs://bucket/wheels",
-            "--set", "runner.options.constraints=gs://bucket/wheels/c.txt",
+            "--set", "runner.options.wheelhouse=https://storage.example/wheels",
+            "--set", "runner.options.constraints=https://storage.example/wheels/c.txt",
         )  # fmt: skip
         (script,) = overriden["rendered"].values()
-        assert "--find-links gs://bucket/wheels --no-index" in script
+        assert "--find-links https://storage.example/wheels --no-index" in script
         assert not (tmp_path / "runs").exists()
 
     def test_a_dry_run_on_a_runner_prints_what_it_would_submit(self, data: Path, tmp_path: Path) -> None:

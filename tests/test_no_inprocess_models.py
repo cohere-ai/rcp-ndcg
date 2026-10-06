@@ -3,8 +3,8 @@
 RFC-0001 (option 1, section 6.2): the package carries no model that loads weights. The only torch
 left is the core's IRT estimators, reached through the ``[calibrate]`` extra; nothing under
 ``src/rcp_ndcg/`` may import torch, transformers, accelerate or vllm, at module level or lazily.
-The ``[local]`` and ``[vllm]`` extras themselves leave ``pyproject.toml`` in a later lane; until
-then nothing in ``src/`` may depend on what they install.
+The ``[local]`` and ``[vllm]`` extras have left ``pyproject.toml``: every model is served, and the
+package installs cleanly next to an engine image without touching it.
 """
 
 from __future__ import annotations

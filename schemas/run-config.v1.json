@@ -1675,6 +1675,7 @@
             }
           ],
           "default": null,
+          "description": "not taken: the local runner installs nothing (it runs the coordinator in this host's environment)",
           "title": "Constraints"
         },
         "cwd": {
@@ -1736,6 +1737,7 @@
             }
           ],
           "default": null,
+          "description": "not taken: the local runner installs nothing (it runs the coordinator in this host's environment)",
           "title": "Wheelhouse"
         }
       },

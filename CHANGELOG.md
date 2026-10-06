@@ -69,6 +69,23 @@ released together.
   stage 3 (`stage3_metrics`), the wave runner (`run_wave`) and the subprocess reference runner (`run_reference`)
   are public with package tests covering each; `metrics.py` shells out to `rcp-ndcg eval score` (the product is
   a dependency, so no extra is needed for stage 3).
+- **`JobSpec` takes exactly one of `argv` and `phases`** (`rcp_ndcg.runners`): a job without phases runs its
+  `argv`; a phased job's commands are its phases' `argv`, and it carries no `argv` of its own — both or neither
+  are refused with a message naming which. `JobSpec.argv` is optional (`tuple[str, ...] | None`); phased jobs
+  build one command per phase with the new `JobSpec.with_argv(argv)`. `job_for` hands a runner that renders no
+  phases the whole-run command as the job's `argv` (as before), and the local runner renders a phased job's
+  phases in order instead of an `argv` that covered them.
+- **Every runner takes an install source** for the coordinator's release, where the job installs it from a
+  staged wheelhouse: `runner.options.wheelhouse` (a directory of wheels, a `file://` URL or an `http(s)://`
+  URL of one — what uv's `--find-links` reads; a bucket scheme is refused with the fix — rendered as `uvx
+  --find-links <wheelhouse> --no-index`: nothing is asked of PyPI or the torch index) and
+  `runner.options.constraints` (a constraints file path or URL replacing the release's). A relative local path
+  is recorded absolute by the runners whose job records read paths on the submitting host (slurm); a URL is
+  kept as it is. Refused where nothing installs (the local runner — the coordinator runs in this host's
+  environment — and SLURM with `container_runtime: none` — the node's environment provides the release);
+  rendered for the Kubernetes pod and the SLURM containers. `install_argv` takes `wheelhouse` and
+  `constraints`; its default rendering is unchanged.
+
 - **The retrieval API runs on the role clients, and its configs select the wire with `api`** (the unified-inference
   design, sections 4.1, 7.1 and 7.2):
   - `rcp_ndcg.retrieval`'s configs are the inference role configs, by `api`: an encoder is the served
@@ -499,6 +516,11 @@ released together.
 
 ### Fixed
 
+- `run status`, `run list` and `run show` no longer fail when they read a running job's judgement store while
+  the job claims or reports a stage: the store's `identity.json` is written through a temp file and renamed (as
+  the run manifest's save is) instead of rewritten in place, so a concurrent reader sees the old or the new
+  file, never a truncated one. An MCP e2e poll lost this race (a `JSONDecodeError` on `identity.json`, whose
+  `run_status` error result has no `jobs` key) and failed the test intermittently under `-n 4`.
 - `_hub_absent` no longer crashes when huggingface_hub drops its private `_CACHED_NO_EXIST` sentinel: without
   the sentinel the cache cannot tell "absent upstream" from "not cached", so the file is treated as not cached
   (the load refuses with the offline hint and one debug line records it; an optional table is never silently
@@ -535,6 +557,19 @@ released together.
   rewritten by the next online one instead of failing it.
 
 ### Changed
+
+- **One lock for a served-only package**: with the `[local]` and `[vllm]` extras gone, `uv.lock` holds one torch
+  (2.14.0, the version the coordinator's extras already resolved, CPU-index compatible) instead of the
+  conflict-fork pair 2.9.1/2.14.0, and drops 114 packages only the in-process stack needed (`vllm` and its engine
+  dependencies `openai`, `httpx2`, `anthropic`, `mcp`, `xgrammar`, `jiter`, `flash-attn`, `accelerate`, and the
+  4.57.6 transformers fork among them; transformers stays only through the `mteb` extra, at 5.17.0).
+  `requirements-constraints.txt` is regenerated with the command in its header; `oauthlib` moves 3.3.1 → 4.0.0 (the
+  first patched version of its open advisory). No other version the coordinator's extras install moved, and the
+  paper reproduction (`experiments/run_all.py`) is unchanged: 0 failed, 35 known deviations, same summary.
+- The engines overlay (`RCP_NDCG_ENGINES`, `run resume --engine`) rebuilds the role config through its model, so
+  an overlaid config passes every validator a configured one does (a URL is normalised as a configured one is);
+  an invalid overlay (e.g. a `fake://` replica list) is refused with the typed `ConfigError` where it is applied,
+  never half-applied.
 
 - `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/judge-config.v1.json`,
   `schemas/run-config.v1.json`) regenerated for the moved and new fields; `tests/test_errors.py` now requires
@@ -577,21 +612,19 @@ released together.
   names `provider:` variants) must be rebuilt. The paper's in-process implementations move unchanged to
   `experiments/paper/rerankers/reference/` (one module per family, plus `octen.py`), importable on their own
   with a pinned `requirements.txt`; nothing in the package imports them. The `[local]` and `[vllm]` extras
-  themselves leave `pyproject.toml` in a later lane; nothing under `src/` imports from them any more
+  themselves left `pyproject.toml` in this release (below); nothing under `src/` imports from them any more
   (`tests/test_no_inprocess_models.py` pins it).
 - **The judge's retry delays are the transport's** (the one visible change of the port): within-request
   retries back off 1 s doubling capped at 60 s, or the server's `Retry-After`, where the OpenAI SDK used its
   own delays; the set-aside and parking numbers (5 s doubling to 60 s) are unchanged. `requirements-constraints.txt`
   regenerated without `openai` (and without `httpx2`, its transport, and `jiter`): the judge sends over `httpx`
-  through the shared transport. `openai` and `httpx2` remain in `uv.lock` only as the `[vllm]` extra's engine
-  package's own dependency (vLLM's server speaks the OpenAI protocol with its own client); the `rcp-ndcg`
-  package itself declares and resolves neither.
+  through the shared transport. `openai` and `httpx2` remained in `uv.lock` only as the `[vllm]` extra's engine
+  package's own dependency (vLLM's server speaks the OpenAI protocol with its own client), and left the lock with
+  that extra (below); the `rcp-ndcg` package itself declares and resolves neither.
 - `tests/contract` snapshots and the exported schemas (`schemas/judge-config.v1.json`,
   `schemas/run-config.v1.json`) regenerated for the judge port: `OpenAIChat` exported from
   `rcp_ndcg.inference`, `Reply.url`, `JudgeClient`'s `httpx_transport` keyword and its `config`/`usage`
   properties, and the `api`/`extra_body` field descriptions.
-
-### Removed
 
 - **The OpenAI SDK dependency** (`openai` left `pyproject.toml`'s dependencies; the accepted design of the
   unified inference layer): the judge's chat completions go over `httpx` through the shared transport and the
@@ -600,7 +633,8 @@ released together.
   usage), the judgement family keys do not move, and the only visible difference is the retry delays, which
   now follow the transport's policy. One reading edge, declared: the adapter reads an answer's **first**
   choice, where the SDK era read the last; the judge never sends a `n` above 1, so no shipped answer moves. `requirements-constraints.txt` no longer carries `openai`, `httpx2` or
-  `jiter`; in `uv.lock` the two remain only as the `[vllm]` extra's engine package's own dependency.
+  `jiter`; in `uv.lock` the two remained only as the `[vllm]` extra's engine package's own dependency, until the
+  extras left with the served-only package (above).
 - The release workflow publishes three packages, one GitHub environment each: the build job builds `rcp-ndcg`,
   `rcp-ndcg-core` and `rcp-ndcg-vllm` (the last from its own directory, outside the uv workspace), checks each
   version against the tag, `rcp-ndcg`'s exact `rcp-ndcg-core` pin and the constraints file against the lock, runs
@@ -614,6 +648,29 @@ released together.
   the engines you started yourself). The single-engine `serve:` mapping (`serve: {image: ...}`) on a run
   config: `serve:` now maps roles to engines (`serve: {judge: {...}}`). The doctor's `--judge-url` flag is
   `--endpoint <url>`, which probes any role's endpoint.
+- **The `[local]` and `[vllm]` extras** (RFC L5, the served-only package): with every in-process model path gone
+  (above), the extras and their machinery left `pyproject.toml` — the `local` extra (torch 2.9.1, transformers,
+  accelerate, flash-attn 2.8.3), the `vllm` extra, the `[tool.uv] conflicts` pair that kept the two in separate
+  environments, and `[tool.uv.extra-build-dependencies]` (flash-attn's build-time torch). `EXTRA_FOR_MODULE`
+  (and with it `rcp-ndcg doctor`) no longer names `accelerate`, `transformers` or `vllm`; `torch` maps to
+  `[calibrate]`, the one torch requirement in the manifest (the core's `[irt]` extra still carries its own, for
+  standalone core installs). A test pins the one-home rule: the extras `EXTRA_FOR_MODULE` names are exactly the
+  runtime extras `pyproject.toml` declares.
+- Every `uses:` in `.github/workflows/*.yml` is pinned to a full 40-hex commit SHA (the action's own repository,
+  resolved through its tags), with the release tag in a trailing comment; a contract test refuses any `uses:`
+  that is not (R22).
+- The release workflow's build job additionally refuses a `rcp-ndcg-vllm` manifest that depends on `rcp-ndcg`
+  without pinning it exactly `==<tag version>` (the check passes without the dependency and without the package).
+
+### Security
+
+- Dependabot alerts on the default branch's lock (operator snapshot): every alert the lock could carry is
+  closed in this one. The `vllm` alerts (27 open when read, the operator's snapshot counted 11, highs among
+  them) and its engine-only dependencies (`xgrammar`, `diskcache`) leave the lock with the extras;
+  `transformers` stays only through the `mteb` extra at 5.17.0 (≥ the high advisory's first patched 5.10.0);
+  `torch` 2.14.0 and `setuptools` 84.0.0 are already at or past their first patched versions (2.13.0, 83.0.0);
+  `oauthlib` moves to 4.0.0. No pyproject floor was raised to hold any of them. The constraints file attached
+  to the release carries no alerted high advisory.
 
 ## 0.1.0
 

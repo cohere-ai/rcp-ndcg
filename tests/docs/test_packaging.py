@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import sys
 import tomllib
 
 import pytest
@@ -32,12 +33,29 @@ def test_the_mteb_extra_installs_an_mteb_the_integration_runs_on() -> None:
 def test_doctor_checks_the_packages_the_extras_install() -> None:
     from rcp_ndcg.cli.doctor import _EXTRAS
 
-    local = {Requirement(spec).name.lower() for spec in EXTRAS["local"]}
-    assert "faiss-cpu" not in local, "nothing imports faiss"
-    assert "faiss" not in _EXTRAS["local"]
+    declared = {Requirement(spec).name.lower() for specs in EXTRAS.values() for spec in specs}
+    assert "faiss-cpu" not in declared, "nothing imports faiss"
+    mapped = {module for modules in _EXTRAS.values() for module in modules}
+    assert "faiss" not in mapped
     core = {Requirement(spec).name.lower() for spec in PYPROJECT["project"]["dependencies"]}
     assert {"bm25s", "pystemmer"} <= core, "BM25 runs on any install"
-    assert {"bm25s", "Stemmer"}.isdisjoint(_EXTRAS["local"])
+    assert {"bm25s", "Stemmer"}.isdisjoint(mapped)
+
+
+def test_extra_names_have_one_home() -> None:
+    """The extras ``EXTRA_FOR_MODULE`` names are exactly the runtime extras ``pyproject.toml`` declares.
+
+    One home for the extra names: a module's install hint may not name an extra that does not exist, and a
+    declared runtime extra that no module maps to would never reach an install hint. ``dev`` and ``docs`` are
+    the tooling extras: nothing the package imports belongs to them, so no module maps to them.
+    """
+    from rcp_ndcg.errors import EXTRA_FOR_MODULE
+
+    named = set(EXTRA_FOR_MODULE.values())
+    tooling = {"dev", "docs"}
+    assert named == set(EXTRAS) - tooling, (
+        f"EXTRA_FOR_MODULE and pyproject.toml disagree: {sorted(named ^ (set(EXTRAS) - tooling))}"
+    )
 
 
 def test_no_extra_restates_a_core_dependency() -> None:
@@ -180,6 +198,77 @@ def test_the_release_workflow_publishes_three_packages_one_environment_each() ->
     workflow, text = _release_workflow()
     assert "secrets." not in text  # trusted publishing: no token anywhere
     _assert_one_environment_per_package(workflow)
+
+
+WORKFLOW_ACTIONS = {
+    "actions/checkout": "11d5960a326750d5838078e36cf38b85af677262",  # v4.4.0
+    "astral-sh/setup-uv": "d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86",  # v5.4.2
+    "actions/upload-artifact": "ea165f8d65b6e75b540449e92b4886f43607fa02",  # v4.6.2
+    "actions/download-artifact": "d3f86a106a0bac45b974a628896c90dbdf5c8093",  # v4.3.0
+    "pypa/gh-action-pypi-publish": "dc37677b2e1c63e2034f94d8a5b11f265b73ba33",  # v1.14.2 (release/v1)
+}
+
+
+def test_every_workflow_action_is_pinned_to_a_full_commit_sha() -> None:
+    """R22: every ``uses:`` is a full 40-hex commit SHA (a tag is mutable); its tag stays in a trailing comment."""
+    pinned = 0
+    for path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            stripped = line.strip()
+            if not (stripped.startswith("- uses:") or stripped.startswith("uses:")):
+                continue
+            uses = stripped.removeprefix("- ").removeprefix("uses:").strip()
+            action, comment = (uses.split(" #", 1) + [""])[:2]
+            name, _, sha = action.rpartition("@")
+            assert name, f"{path.name}:{number}: not an action: {stripped!r}"
+            assert re.fullmatch(r"[0-9a-f]{40}", sha), (
+                f"{path.name}:{number}: {name} is not pinned to a full 40-hex commit SHA ({sha!r})"
+            )
+            assert comment.strip().startswith("v"), (
+                f"{path.name}:{number}: {name} pins a SHA without its release tag in a trailing comment"
+            )
+            pinned += 1
+    assert pinned >= len(WORKFLOW_ACTIONS), "no workflow action found to pin"
+
+
+def test_the_release_workflow_checks_the_vllm_packages_rcp_ndcg_pin(tmp_path) -> None:
+    """When ``rcp-ndcg-vllm`` depends on ``rcp-ndcg``, the release check requires exactly ``==<tag version>``.
+
+    The check runs the workflow's own step against a manifest in ``tmp_path``; it must pass without the
+    dependency (and without the package), and refuse any other specifier.
+    """
+    workflow, _ = _release_workflow()
+    steps = workflow["jobs"]["build"]["steps"]
+    step = next(step for step in steps if "rcp-ndcg-vllm pins" in str(step.get("name", "")))
+    body = str(step["run"]).split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+
+    def check(manifest: str | None, version: str = "0.0.1") -> subprocess.CompletedProcess[str]:
+        tree = tmp_path / f"check-{check.calls:03d}-{version}"
+        check.calls += 1
+        package = tree / "packages" / "rcp-ndcg-vllm"
+        package.mkdir(parents=True)
+        if manifest is not None:
+            (package / "pyproject.toml").write_text(manifest, encoding="utf-8")
+        return subprocess.run([sys.executable, "-", version], input=body, capture_output=True, text=True, cwd=tree)
+
+    check.calls = 0
+
+    exact = '[project]\nname = "rcp-ndcg-vllm"\ndependencies = ["rcp-ndcg==0.0.1"]\n'
+    assert check(exact).returncode == 0, "an exact pin must pass"
+    assert check('[project]\ndependencies = ["rcp-ndcg[calibrate]==0.0.1"]\n').returncode == 0
+    assert check('[project]\ndependencies = ["rcp_ndcg==0.0.1"]\n').returncode == 0, "a _ name normalises"
+    assert check('[project]\ndependencies = ["rcp-ndcg == 0.0.1"]\n').returncode == 0, "spaces normalise"
+    assert check('[project]\ndependencies = ["rcp-ndcg (==0.0.1)"]\n').returncode == 0, "parentheses normalise"
+    dotted = check('[project]\ndependencies = ["rcp.ndcg==0.0.1"]\n')
+    assert dotted.returncode == 0 and "pins rcp-ndcg==0.0.1" in dotted.stdout, "a . name normalises (PEP 503)"
+    dotted_loose = check('[project]\ndependencies = ["RCP.NDCG==0.0.2"]\n')
+    assert dotted_loose.returncode == 1 and "==0.0.1" in dotted_loose.stderr, "a . name must still be checked"
+    assert check(None).returncode == 0, "no package, nothing to check"
+    assert check('[project]\ndependencies = ["numpy"]\n').returncode == 0, "no dependency, nothing to check"
+    for wrong in ("rcp-ndcg>=0.0.1", "rcp-ndcg", "rcp-ndcg[calibrate]", "rcp-ndcg==0.0.2"):
+        result = check(f'[project]\ndependencies = ["{wrong}"]\n')
+        assert result.returncode == 1, f"{wrong} must be refused"
+        assert "==0.0.1" in result.stderr
 
 
 def test_the_release_workflow_check_fails_when_two_environments_are_swapped() -> None:

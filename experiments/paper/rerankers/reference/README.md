@@ -8,8 +8,8 @@ the recipe lanes can derive each model's `reference.py` from them and the equiva
 **Not part of the package. Nothing in `src/rcp_ndcg/` imports this directory, and nothing here
 imports `rcp_ndcg`** (at most `rcp_ndcg_core` content types, and today not even those). The modules
 import torch and transformers; install their own environment with the pinned `requirements.txt`
-(torch 2.9.1, transformers 4.57.6, accelerate, flash-attn — the versions the paper's `[local]`
-extra pinned), outside the package's lock.
+(torch 2.9.1, transformers 4.57.6, accelerate, flash-attn — the versions the paper's former `[local]`
+extra pinned, before it left `pyproject.toml`), outside the package's lock.
 
 | Module | Model family | Was |
 | --- | --- | --- |

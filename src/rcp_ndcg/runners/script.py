@@ -58,9 +58,10 @@ def install_argv(
     Args:
         argv: The command; one that is not ``rcp-ndcg ...`` is returned unchanged.
         version: The release to install; default the installed package's, so a job runs what submitted it.
-        wheelhouse: A directory or ``http(s)://``/``gs://`` URL of staged wheels, readable where the command
-            runs: rendered as ``--find-links <wheelhouse> --no-index`` (a pre-release, or an air-gapped node --
-            the wheelhouse stages every wheel, the CPU torch build included, so no index is asked).
+        wheelhouse: A directory, a ``file://`` URL, or an ``http(s)://`` URL of staged wheels, readable where
+            the command runs: rendered as ``--find-links <wheelhouse> --no-index`` (a pre-release, or an
+            air-gapped node -- the wheelhouse stages every wheel, the CPU torch build included, so no index
+            is asked).
         constraints: A constraints file (path or URL) replacing the release's
             (:data:`CONSTRAINTS_URL`).
 

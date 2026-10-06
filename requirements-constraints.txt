@@ -219,7 +219,7 @@ nvidia-nvshmem-cu13==3.4.5 ; sys_platform == 'linux'
     # via torch
 nvidia-nvtx==13.0.85 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via cuda-toolkit
-oauthlib==3.3.1
+oauthlib==4.0.0
     # via requests-oauthlib
 opentelemetry-api==1.44.0
     # via google-api-core
@@ -280,7 +280,6 @@ requests==2.34.2
     #   gcsfs
     #   google-api-core
     #   google-cloud-storage
-    #   huggingface-hub
     #   msal
     #   requests-oauthlib
 requests-oauthlib==2.0.0

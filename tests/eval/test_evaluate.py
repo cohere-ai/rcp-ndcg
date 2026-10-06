@@ -17,6 +17,7 @@ from scipy.stats import ttest_rel
 from rcp_ndcg.data import Dataset, Rankings
 from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.eval import EvalReport, compare, evaluate, explain, sensitivity
+from rcp_ndcg.eval.evaluate import bootstrap_interval
 
 LOG2_3 = math.log2(3)
 ITEMS = {"gamma": [1.0, 1.2, 0.8, 1.1], "beta": [-1.0, -0.5, 0.0, 0.5]}
@@ -306,6 +307,14 @@ def test_the_summary_interval_is_seeded_and_brackets_the_value() -> None:
     assert first.summary == again.summary
     for row in first.summary:
         assert row.ci_low - 1e-12 <= row.value <= row.ci_high + 1e-12
+
+
+def test_the_bootstrap_interval_is_the_alpha_over_2_quantiles_of_the_draws() -> None:
+    """Hand-computed: ten datasets of two queries 0.0/1.0 resample to k/20 with k ~ Bin(20, 1/2), so
+    the 2.5% quantile is 6/20 and the 97.5% quantile is 14/20 -- the levels (alpha/2, 1 - alpha/2)
+    decide it (a different alpha splits the draws at neighbouring cells: 5/20 and 15/20)."""
+    datasets = {f"d{i}": [0.0, 1.0] for i in range(10)}
+    assert bootstrap_interval(datasets, resamples=500_000, seed=7, alpha=0.05) == pytest.approx((0.3, 0.7))
 
 
 def test_evaluate_reproduces_the_papers_per_query_values() -> None:

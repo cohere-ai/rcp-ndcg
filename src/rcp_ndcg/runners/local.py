@@ -27,7 +27,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Self
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 
 from rcp_ndcg.errors import ConfigError, ExitCode, RcpNdcgError, error_class
 from rcp_ndcg.runners.base import JobHandle, JobOptions, JobSpec, JobStatus, RunnerError, tail_lines
@@ -50,6 +50,19 @@ class LocalOptions(JobOptions):
     cwd: str | None = None
     log_dir: str | None = None
     detach: bool = False
+    # The install source is inherited but never accepted: the local runner installs nothing, so its schema
+    # carries the refusal instead of advertising the fields (a schema-driven client would emit configs that
+    # always fail).
+    wheelhouse: str | None = Field(
+        default=None,
+        min_length=1,
+        description="not taken: the local runner installs nothing (it runs the coordinator in this host's environment)",
+    )
+    constraints: str | None = Field(
+        default=None,
+        min_length=1,
+        description="not taken: the local runner installs nothing (it runs the coordinator in this host's environment)",
+    )
 
     @model_validator(mode="after")
     def _detached_jobs_are_followed_through_files(self) -> Self:

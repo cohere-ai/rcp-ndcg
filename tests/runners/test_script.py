@@ -9,7 +9,7 @@ import subprocess
 import pytest
 
 from rcp_ndcg import __version__
-from rcp_ndcg.runners import JobSpec
+from rcp_ndcg.runners import JobPhase, JobSpec
 from rcp_ndcg.runners.kubernetes import KubernetesRunner
 from rcp_ndcg.runners.local import LocalRunner
 from rcp_ndcg.runners.script import CONSTRAINTS_URL, TORCH_CPU_INDEX, install_argv, worker_script
@@ -104,9 +104,9 @@ def test_an_install_source_replaces_the_release_urls_in_the_uvx_command() -> Non
     assert "--constraints https://storage.example/c.txt" in " ".join(
         install_argv(("rcp-ndcg", "--help"), constraints="https://storage.example/c.txt")
     )
-    gs = " ".join(install_argv(("rcp-ndcg", "--help"), wheelhouse="gs://bucket/wheelhouse"))
-    assert "--find-links gs://bucket/wheelhouse --no-index" in gs
-    assert "--constraints https://github.com/cohere-ai/rcp-ndcg/releases/download/v" in gs  # the release URL stays
+    https = " ".join(install_argv(("rcp-ndcg", "--help"), wheelhouse="https://storage.example/wheels"))
+    assert "--find-links https://storage.example/wheels --no-index" in https
+    assert "--constraints https://github.com/cohere-ai/rcp-ndcg/releases/download/v" in https  # the release URL stays
 
 
 def test_a_wheelhouse_reaches_the_rendered_scripts_of_the_runners_that_install(tmp_path) -> None:
@@ -120,8 +120,10 @@ def test_a_wheelhouse_reaches_the_rendered_scripts_of_the_runners_that_install(t
     ).render([spec])["j"]
     assert "--find-links /shared/wheels --no-index" in slurm and "--constraints /shared/wheels/c.txt" in slurm
     assert_shellcheck_clean(slurm)
-    pod = KubernetesRunner(wheelhouse="gs://bucket/wheels", constraints="gs://bucket/wheels/c.txt").render([spec])["j"]
-    assert "--find-links gs://bucket/wheels --no-index" in pod
+    pod = KubernetesRunner(
+        wheelhouse="https://storage.example/wheels", constraints="https://storage.example/wheels/c.txt"
+    ).render([spec])["j"]
+    assert "--find-links https://storage.example/wheels --no-index" in pod
 
 
 def test_an_install_source_is_refused_where_nothing_installs() -> None:
@@ -138,6 +140,34 @@ def test_an_install_source_is_refused_where_nothing_installs() -> None:
     assert SlurmRunner(container_runtime="apptainer", constraints="/shared/c.txt").options.constraints
 
 
+def test_with_argv_refuses_an_empty_command() -> None:
+    """The per-phase builder validates what model_copy would skip: an empty phase command is refused, not
+    rendered into a script that crashes, and so is a string (which would be char-split into words)."""
+    job = JobSpec(name="j", phases=(JobPhase(argv=("echo", "hi")),))
+    with pytest.raises(ValueError, match="argv must not be empty"):
+        job.with_argv(())
+    with pytest.raises(ValueError, match="a sequence of words, not a string"):
+        job.with_argv("rcp-ndcg run resume")
+
+
+def test_a_wheelhouse_scheme_uv_cannot_read_is_refused_at_config_time() -> None:
+    """uv's --find-links and --constraints read local directories and http(s) URLs: a bucket scheme would fail
+    at job start, so the config refuses it and names the fix."""
+    from rcp_ndcg.errors import ConfigError
+
+    for value in ("gs://bucket/wheels", "s3://bucket/wheels", "gcs://bucket/wheels", "gs:/bucket/wheels", "  ", " /x "):
+        with pytest.raises(ConfigError, match="uv cannot read|empty or has surrounding whitespace"):
+            SlurmRunner(wheelhouse=value, container_runtime="pyxis")
+        with pytest.raises(ConfigError, match="uv cannot read|empty or has surrounding whitespace"):
+            SlurmRunner(constraints=value, container_runtime="pyxis")
+    with pytest.raises(ConfigError, match="names no host"):
+        SlurmRunner(wheelhouse="http://", container_runtime="pyxis")  # uv resolves no host from this
+    # a local path, a file:// URL and an http(s):// URL are readable by uv
+    assert SlurmRunner(wheelhouse="/shared/wheels", container_runtime="pyxis").options.wheelhouse
+    assert SlurmRunner(wheelhouse="file:///shared/wheels", container_runtime="pyxis").options.wheelhouse
+    assert SlurmRunner(wheelhouse="https://storage.example/wheels", container_runtime="pyxis").options.wheelhouse
+
+
 def test_a_local_wheelhouse_path_is_recorded_absolute_and_a_url_is_left_alone() -> None:
     """The job record re-creates the runner from any directory: a local wheelhouse or constraints path is
     absolute like the other PATHS; a URL already names its location."""
@@ -145,8 +175,8 @@ def test_a_local_wheelhouse_path_is_recorded_absolute_and_a_url_is_left_alone() 
     resolved = options.resolved()
     assert resolved["wheelhouse"].endswith("/wheels") and resolved["wheelhouse"].startswith("/")
     assert resolved["constraints"].endswith("/wheels/c.txt")
-    remote = SlurmRunner(wheelhouse="gs://b/w", container_runtime="pyxis").options.resolved()
-    assert remote["wheelhouse"] == "gs://b/w"
+    remote = SlurmRunner(wheelhouse="https://storage.example/wheels", container_runtime="pyxis").options.resolved()
+    assert remote["wheelhouse"] == "https://storage.example/wheels"
 
 
 @pytest.mark.parametrize("name", ["HF HOME", "A;echo INJECTED;B", "1X", "", "X-Y"])

@@ -20,6 +20,7 @@ the runner's own fields), which a run config's ``runner.options`` is typed by.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from typing import Any, ClassVar, Protocol, Self
@@ -117,7 +118,16 @@ class JobSpec(BaseModel):
 
     def with_argv(self, argv: Sequence[str]) -> JobSpec:
         """The same job running ``argv``: the spec a runner renders for one phase of this job (its image,
-        resources and environment; no phases -- a phase's command lives in the job's ``phases``)."""
+        resources and environment; no phases -- a phase's command lives in the job's ``phases``).
+
+        Raises:
+            ValueError: ``argv`` is empty, or a string (``model_copy`` would skip the model's own check: an
+                empty command would crash the rendered script, and a string would be char-split into words).
+        """
+        if isinstance(argv, str):
+            raise ValueError("argv must be a sequence of words, not a string")
+        if not argv:
+            raise ValueError("argv must not be empty")
         return self.model_copy(update={"argv": tuple(argv), "phases": ()})
 
 
@@ -138,16 +148,43 @@ class JobOptions(BaseModel):
     env: Environment = Field(default_factory=dict)
     wheelhouse: str | None = Field(default=None, min_length=1)
     """Where the coordinator installs the release from instead of PyPI: a directory of staged wheels, or an
-    ``http(s)://`` or ``gs://`` URL of one, readable on the node; rendered as ``uvx --find-links <wheelhouse>
-    --no-index`` -- every package comes from the wheelhouse (a pre-release, or an air-gapped node). A local
-    path is recorded absolute (a URL already names its location); a URL or path is also the rendered value, so
-    it must be readable where the job runs (a container: mounted in). Only runners that install the release
-    has it, setting one is refused. The wheels are built and staged as ``docs/concepts/serving.md``
-    ("The coordinator installs itself") describes.
+    ``http(s)://`` URL of one, readable on the node; rendered as ``uvx --find-links <wheelhouse> --no-index``
+    -- every package comes from the wheelhouse (a pre-release, or an air-gapped node). A relative local path is
+    recorded absolute by the runners whose job records read paths on the submitting host (slurm); the value is
+    always rendered verbatim, so it must be readable where the job runs (a container: mounted in). On an
+    air-gapped node set ``constraints`` too: the default release constraints URL is fetched at job start even
+    under ``--no-index``. Only runners that install the release take one (a container on SLURM, Kubernetes);
+    where the coordinator runs in an environment that already has it, setting one is refused. The wheels are
+    built and staged as ``docs/concepts/serving.md`` ("The coordinator installs itself") describes.
     """
     constraints: str | None = Field(default=None, min_length=1)
     """A constraints file (path or URL) replacing the release's, which pins every dependency to the version
     the release was tested with; default the release's own, attached to its GitHub release."""
+
+    @field_validator("wheelhouse", "constraints")
+    @classmethod
+    def _readable_by_uv(cls, value: str | None) -> str | None:
+        """Refuse what ``uv`` cannot read: ``--find-links`` and ``--constraints`` take a local path, a
+        ``file://`` URL or an ``http(s)://`` URL with a host -- a bucket scheme (``gs://``, ``s3://``, also
+        single-slashed like ``gs:/x``) is treated as a filesystem path and fails at job start, so the config
+        refuses it and names the fix."""
+        if value is None:
+            return value
+        if value != value.strip() or not value.strip():
+            raise ValueError(f"{value!r} is empty or has surrounding whitespace")
+        if re.match(r"[A-Za-z][A-Za-z0-9+.\-]*:/", value) and not value.lower().startswith(
+            ("http://", "https://", "file://")
+        ):
+            raise ValueError(
+                f"{value!r} names a scheme uv cannot read: --find-links and --constraints take a local path, a "
+                "file:// URL or an http(s):// URL; stage the wheelhouse as an https URL, or mount it on the node",
+            )
+        if value.lower().startswith(("http://", "https://")) and not re.match(r"^https?://[^/]+", value, re.IGNORECASE):
+            raise ValueError(
+                f"{value!r} names no host: --find-links and --constraints take a local path, a file:// URL or an "
+                "http(s):// URL of one"
+            )
+        return value
 
     def resolved(self) -> dict[str, Any]:
         """The options set away from their defaults, every local path among them absolute (:data:`PATHS`).

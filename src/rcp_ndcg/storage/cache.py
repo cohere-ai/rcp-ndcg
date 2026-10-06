@@ -6,7 +6,7 @@ backend exposes (GCS generation, S3/Azure etag, otherwise size + mtime).
 
 Both the payload and its metadata sidecar are written to a per-process
 temporary file and then atomically renamed.  Concurrent readers -- the N
-accelerate ranks that each resolve the same corpus at start-up are the usual
+worker ranks that each resolve the same corpus at start-up are the usual
 case -- would otherwise observe a half-written file.
 """
 
