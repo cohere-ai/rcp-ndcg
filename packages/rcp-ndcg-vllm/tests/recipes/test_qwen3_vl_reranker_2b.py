@@ -62,8 +62,9 @@ def _scratch_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
         path = Path(from_env)
         path.mkdir(parents=True, exist_ok=True)
         return path
-    lane = Path(__file__).resolve().parents[4].parent / "rec-qwen3-vl-reranker-2b" / "scratch"
-    if lane.parents[1].is_dir():
+    worktree = Path(__file__).resolve().parents[4]
+    lane = worktree.parent / "rec-qwen3-vl-reranker-2b" / "scratch"
+    if worktree.parent.name == "rcp-ndcg-lanes":
         lane.mkdir(parents=True, exist_ok=True)
         return lane
     return tmp_path_factory.mktemp("recipe-tokenizer-cache")

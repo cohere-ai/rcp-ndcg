@@ -41,6 +41,9 @@ Deviations from the card's script, all declared:
   ``MAX_LENGTH - specials`` non-special tokens, re-append the last 5 ids) is kept for ``score``
   unchanged; it is the recipe's declared ``anchor_drop_over_cap`` deviation (over-cap pairs are
   reported non-gating), not something the served path copies.
+- ``tokenize`` mirrors the card's vision-wiring fallback: when ``process_vision_info`` raises
+  (a media decode failure in score mode), the card re-renders the prompt as a NULL-only user
+  turn; the reference copies that behavior verbatim.
 """
 
 from __future__ import annotations
@@ -48,6 +51,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -229,12 +233,19 @@ class Qwen3VLRerankerReference:
         import torch
         from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
 
-        language_model = Qwen3VLForConditionalGeneration.from_pretrained(
-            self.model_name_or_path, torch_dtype=torch.bfloat16
-        ).to(device)
+        repo, revision = _repo_and_revision(self.model_name_or_path)
+        if revision is None:
+            language_model = Qwen3VLForConditionalGeneration.from_pretrained(repo, torch_dtype=torch.bfloat16).to(
+                device
+            )
+            self.processor = AutoProcessor.from_pretrained(repo, padding_side="left")
+        else:
+            language_model = Qwen3VLForConditionalGeneration.from_pretrained(
+                repo, revision=revision, torch_dtype=torch.bfloat16
+            ).to(device)
+            self.processor = AutoProcessor.from_pretrained(repo, revision=revision, padding_side="left")
         self.model = language_model.model
         self.model.eval()
-        self.processor = AutoProcessor.from_pretrained(self.model_name_or_path, padding_side="left")
         true_id, false_id = self._true_false_ids()
         weight_yes = language_model.lm_head.weight.data[true_id]
         weight_no = language_model.lm_head.weight.data[false_id]
@@ -264,9 +275,15 @@ class Qwen3VLRerankerReference:
             images, videos, video_kwargs = process_vision_info(
                 pairs, image_patch_size=16, return_video_kwargs=True, return_video_metadata=True
             )
-        except Exception:  # text-only input, or qwen-vl-utils unavailable: the card's fallback
+        except Exception as error:  # the card's fallback: drop the media, log, and score a NULL user turn
+            print(f"error in processing vision info: {error}", file=sys.stderr)
             images, videos = None, None
             video_kwargs = {"do_sample_frames": False}
+            text = self.processor.apply_chat_template(
+                [{"role": "user", "content": [{"type": "text", "text": "NULL"}]}],
+                add_generation_prompt=True,
+                tokenize=False,
+            )
         if videos is not None:
             videos, video_metadatas = zip(*videos, strict=True)
             videos, video_metadatas = list(videos), list(video_metadatas)
@@ -335,6 +352,18 @@ def render_pair(query: dict[str, Any], doc: dict[str, Any], instruction: str, to
     return render_pair_direct(query, doc, instruction)
 
 
+def _repo_and_revision(spec: str) -> tuple[str, str | None]:
+    """A tokenizer spec (``repo@revision`` or a local path) as ``(repo_or_dir, revision)``.
+
+    Hugging Face repo ids reject ``@``, so the harness's ``<repo>@<commit>`` spec must be split
+    before any ``from_pretrained`` call; a local snapshot directory carries no revision.
+    """
+    repo, _, revision = spec.partition("@")
+    if Path(repo).exists():
+        return repo, None
+    return repo, revision or None
+
+
 def _load_tokenizer_for_render(spec: str) -> Any:
     """The tokenizer the card's render path needs, from a snapshot dir or a repo@revision spec.
 
@@ -345,10 +374,8 @@ def _load_tokenizer_for_render(spec: str) -> Any:
         from transformers import AutoTokenizer
     except ModuleNotFoundError:
         return None
-    repo, _, revision = spec.partition("@")
-    if Path(repo).exists():
-        return AutoTokenizer.from_pretrained(repo)
-    return AutoTokenizer.from_pretrained(repo, revision=revision or None)
+    repo, revision = _repo_and_revision(spec)
+    return AutoTokenizer.from_pretrained(repo, revision=revision)
 
 
 def main() -> int:
@@ -381,7 +408,7 @@ def main() -> int:
             "render_path": "transformers-apply_chat_template" if tokenizer is not None else "direct-chatml-mirror",
         }
     else:
-        reference = Qwen3VLRerankerReference(_model_path(args.tokenizer)).load(args.device)
+        reference = Qwen3VLRerankerReference(args.tokenizer).load(args.device)
         for index, row in enumerate(rows_raw):
             query = {"text": str(row["query"]), "image": row.get("query_image")}
             doc_images = row.get("documents_images") or []
@@ -394,11 +421,6 @@ def main() -> int:
         document = {"rows": rows}
     Path(args.out).write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
     return 0
-
-
-def _model_path(tokenizer_spec: str) -> str:
-    """The weights location the score mode loads: the snapshot dir, or the repo id@revision."""
-    return tokenizer_spec
 
 
 if __name__ == "__main__":
