@@ -51,8 +51,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-DEFAULT_MAX_TOKENS = 20000
-"""The default cap of a ``truncate`` or ``fail`` text policy, in tokens of the judge's tokenizer."""
+DEFAULT_MAX_TOKENS = 32768
+"""The default cap of a ``truncate`` or ``fail`` text policy, in tokens of the judge's tokenizer (2**15)."""
 
 OnOverflow = Literal["keep", "truncate", "chunk", "fail"]
 """What a :class:`TextPolicy` does with a document longer than its ``max_tokens``.
