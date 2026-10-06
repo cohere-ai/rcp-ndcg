@@ -18,7 +18,7 @@ rcp-ndcg judge        tournament  Stage A: listwise windows into the judgement s
                       reparse     read a store's stored answers again with the current parser, into a new store
 rcp-ndcg calibration  fit         judgements into a calibration (with or without the tournament; one or pooled judges)
                       score       score documents a calibration lacks, the items frozen
-                      insert      insert documents into a tournament calibration, with an anchor report; --plan picks opponents
+                      insert      insert documents into a tournament calibration, with an anchor report; --dry-run picks opponents
                       show        items, coverage, per-judge severity, diagnostics and provenance
 rcp-ndcg eval         score       RCP-nDCG and qrel-nDCG of rankings under a protocol
                       compare     difference (B minus A), paired t-test, bootstrap interval, sign flips
@@ -73,7 +73,7 @@ The same flag means the same thing on every command that has it:
 | `--judge fake\|PATH\|NAME`, `--judge-url URL`, `--judge-model ID` | a judge config, or an ad-hoc OpenAI-compatible endpoint |
 | `--engine ROLE=URL[,URL]` | `run resume`: point one role's model (`judge`, `encoder` or `reranker`) at the engine URLs instead of its config's `base_url`; repeatable, one role each. A runtime overlay: it never changes the run's recorded config ([serving](../concepts/serving.md#starting-the-engines-with-the-run)) |
 | `--docs QUERY_ID:DOC_ID` | judge only these documents (re-annotation, insertion) |
-| `--plan FILE` | `judge tournament`: ask exactly the windows of an insertion plan (`calibration insert --plan --out FILE`), with the `--out` store's schedule |
+| `--plan FILE` | `judge tournament`: ask exactly the windows of an insertion plan (`calibration insert --dry-run --out FILE`), with the `--out` store's schedule |
 | `--k INT` | a cutoff; repeatable |
 | `--system NAME` | `eval score` (and `eval explain --report`): score only these systems of the rankings file (repeatable); an unknown name is refused (exit 2) with the systems the file names. One system whose rankings match nothing of the dataset no longer has to stop the others |
 | `--per-query`, `--fields NAME` | `eval score --json`: add the per-query values; print only the named top-level fields (repeatable). The full report goes to `--out` |

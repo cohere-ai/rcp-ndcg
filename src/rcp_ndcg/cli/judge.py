@@ -132,8 +132,8 @@ class JudgeRequest(JudgeSource, DatasetInput):
 class TournamentRequest(JudgeRequest):
     plan: list[str] = Field(
         default_factory=list,
-        description="Ask exactly the windows of these plan files (`calibration insert --plan --out FILE`), with the "
-        "schedule of the --out store (repeatable; no --docs, --set schedule.* or --seed).",
+        description="Ask exactly the windows of these plan files (`calibration insert --dry-run --out FILE`), with "
+        "the schedule of the --out store (repeatable; no --docs, --set schedule.* or --seed).",
     )
 
 

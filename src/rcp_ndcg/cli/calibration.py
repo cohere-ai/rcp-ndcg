@@ -5,7 +5,7 @@
 * ``score`` -- :func:`~rcp_ndcg.calibration.score_documents`: documents the calibration lacks, from their own rubric
   judgements, items frozen.
 * ``insert`` -- :func:`~rcp_ndcg.calibration.insert_documents`: new documents into a tournament calibration, the
-  anchor report included. ``insert --plan --query Q --doc D`` prints the opponent window to judge first
+  anchor report included. ``insert --dry-run --query Q --doc D`` prints the opponent window to judge first
   (:func:`~rcp_ndcg.calibration.select_opponents`).
 * ``show`` -- parameters, coverage and diagnostics of a calibration (or a run's).
 
@@ -232,7 +232,7 @@ class OpponentPlan(BaseModel):
 
 
 class InsertResult(BaseModel):
-    """``insert --plan``: the opponent windows; otherwise the extension and the extended calibration."""
+    """``insert --dry-run``: the opponent windows; otherwise the extension and the extended calibration."""
 
     plan: OpponentPlan | None = None
     out: str | None = None
@@ -243,24 +243,26 @@ class CalibrationInsertRequest(BaseModel):
     calibration: str = Field(description=_CALIBRATION_HELP)
     judgements: str | None = Field(
         default=None,
-        description="The tournament store with the fitted windows and the new documents' windows. With --plan: the "
-        "calibration's tournament store, whose schedule sizes the windows.",
+        description="The tournament store with the fitted windows and the new documents' windows. With --dry-run: "
+        "the calibration's tournament store, whose schedule sizes the windows.",
     )
     out: str | None = Field(
         default=None,
-        description="The extended calibration directory to write; with --plan, the plan file (JSON) to write for "
-        "`judge tournament --plan`.",
+        description="The extended calibration directory to write; with --dry-run, the plan file (JSON) to write "
+        "for `judge tournament --plan`.",
     )
-    plan: bool = Field(default=False, description="Plan the opponent windows for --query/--doc; insert nothing.")
-    query: str | None = Field(default=None, description="With --plan: the query of the new document.")
-    doc: str | None = Field(default=None, description="With --plan: the new document.")
-    dataset_name: str | None = Field(default=None, description="With --plan: the dataset, when several are calibrated.")
-    n: int = Field(default=9, ge=1, description="With --plan: opponents in all.")
+    dry_run: bool = Field(default=False, description="Plan the opponent windows for --query/--doc; insert nothing.")
+    query: str | None = Field(default=None, description="With --dry-run: the query of the new document.")
+    doc: str | None = Field(default=None, description="With --dry-run: the new document.")
+    dataset_name: str | None = Field(
+        default=None, description="With --dry-run: the dataset, when several are calibrated."
+    )
+    n: int = Field(default=9, ge=1, description="With --dry-run: opponents in all.")
     window: int | None = Field(
         default=None,
         ge=2,
-        description="With --plan: documents per window, the new one included. Default: the schedule.window of the "
-        "--judgements store, else one window.",
+        description="With --dry-run: documents per window, the new one included. Default: the schedule.window of "
+        "the --judgements store, else one window.",
     )
     max_gain_shift: float = Field(default=MAX_GAIN_SHIFT, ge=0, description="The anchor tolerance, gain units.")
     se_target: float = Field(
@@ -273,15 +275,15 @@ class CalibrationInsertRequest(BaseModel):
 
 @command("calibration insert", request=CalibrationInsertRequest, result=InsertResult, read_only=False)
 def calibration_insert(request: CalibrationInsertRequest) -> InsertResult:
-    """Insert new documents into a tournament calibration (anchor report included); --plan picks opponents."""
+    """Insert new documents into a tournament calibration (anchor report included); --dry-run picks opponents."""
     from rcp_ndcg.calibration import insert_documents, read_judgements, select_opponents
 
     calibration = _load(request.calibration)
-    if request.plan:
+    if request.dry_run:
         from rcp_ndcg.llm.store import JudgementStore
 
         if request.query is None or request.doc is None:
-            raise UsageError("--plan needs --query and --doc")
+            raise UsageError("--dry-run needs --query and --doc")
         schedule = JudgementStore(_judgement_store(request.judgements)).schedule("tournament") if (
             request.judgements
         ) else None  # fmt: skip
@@ -303,7 +305,7 @@ def calibration_insert(request: CalibrationInsertRequest) -> InsertResult:
             Path(request.out).write_text(planned.model_dump_json(indent=2) + "\n", encoding="utf-8")
         return InsertResult(plan=planned, out=request.out)
     if request.judgements is None or request.out is None:
-        raise UsageError("inserting needs --judgements and --out (or --plan to choose opponents first)")
+        raise UsageError("inserting needs --judgements and --out (or --dry-run to choose opponents first)")
     extension = insert_documents(
         calibration,
         read_judgements(_judgement_store(request.judgements)),

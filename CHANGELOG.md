@@ -493,6 +493,13 @@ released together.
 
 ### Changed
 
+- **`--plan` means one thing in the CLI**: the plan file `judge tournament` asks exactly the windows of
+  (`judge tournament --plan PLAN.json`). The boolean on `calibration insert` — plan the opponent windows,
+  insert nothing — is now `--dry-run`, the no-side-effects switch every other command uses, so a script can
+  chain `calibration insert --dry-run --out PLAN.json` into `judge tournament --plan PLAN.json` without the
+  first `--plan` parsing as a flag. Everything that read the boolean follows: the request field, the flag
+  help, `InsertResult`'s schema description, the skill's insertion recipe and the primitives page.
+
 - **One lock for a served-only package**: with the `[local]` and `[vllm]` extras gone, `uv.lock` holds one torch
   (2.14.0, the version the coordinator's extras already resolved, CPU-index compatible) instead of the
   conflict-fork pair 2.9.1/2.14.0, and drops 114 packages only the in-process stack needed (`vllm` and its engine
@@ -570,7 +577,7 @@ released together.
   choice, where the SDK era read the last; the judge never sends a `n` above 1, so no shipped answer moves. `requirements-constraints.txt` no longer carries `openai`, `httpx2` or
   `jiter`; in `uv.lock` the two remained only as the `[vllm]` extra's engine package's own dependency, until the
   extras left with the served-only package (above).
-- **`rcp-ndcg mcp tools`** (owner decision): the shell fallback for calling one MCP tool without an MCP client
+- **The `mcp tools` command** (owner decision): the shell fallback for calling one MCP tool without an MCP client
   is gone; the command, its `McpToolsRequest` model and the `rcp-ndcg.mcp-manifest.v1` output-schema id
   (`schemas/mcp-manifest.v1.json` deleted) leave with it, and the MCP surface is `rcp-ndcg mcp serve` alone.
   The tool list and a tool call stay reachable in Python as `rcp_ndcg.mcp.tool_manifest()` and
@@ -855,7 +862,7 @@ report, comparison, log and jobs. Each `retrieval` command documents its own `--
 `judge tournament` and `judge rubric` take `--mirror`. `--estimate` and `--dry-run` give the refusals of the real
 command (a judging identity that differs from the store's) and write nothing.
 `run resume --set` keeps its change only when the resume succeeds, and `run resume --only` never changes the run's
-recorded steps. `calibration insert --plan --judgements STORE --out PLAN` plans an insertion's windows with the
+recorded steps. `calibration insert --dry-run --judgements STORE --out PLAN` plans an insertion's windows with the
 store's schedule, and `judge tournament --plan PLAN` asks exactly those windows. `run start` takes a config file or
 a packaged config's name (`run start tiny`); `data fetch --dataset tiny --out DIR` copies the example data.
 `eval score --json` prints the summary, the per-dataset means and the warnings (`rcp-ndcg.eval-score.v1`), with
@@ -873,8 +880,7 @@ the credentials (HTTP 401, 403) stops a pass with exit 5, and one without the ro
 **MCP tools** (`rcp-ndcg mcp serve`). Read-only: `describe` (the command index), `schema_show`, `data_inspect`,
 `eval_score` (with `out`, `per_query`, `fields`), `eval_compare`, `eval_explain`, `calibration_show`, `run_list`,
 `run_show`, `run_status`, `estimate`. Destructive: `run_cancel`. `run_start` starts a run and returns its directory
-at once.
-`rcp-ndcg mcp tools --call TOOL --args JSON` calls one tool from the shell.
+at once. The tool list and a call are Python calls too: `rcp_ndcg.mcp.tool_manifest()` and `rcp_ndcg.mcp.call_tool()`.
 
 **JSON Schemas** (`schemas/`, `rcp-ndcg schema export`): the configs `run-config` and `judge-config`; the artifacts
 `judgement`, `judgement-store` (a store's `identity.json`), `calibration` (a calibration's `items.json`),

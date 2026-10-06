@@ -128,7 +128,7 @@ Insert a new document into a tournament calibration: plan its windows with the c
 must be in the dataset's corpus. `data.extension.anchor_report.ok` must be true.
 
 ```bash
-rcp-ndcg calibration insert --calibration <calibration> --judgements <store> --plan --query q1 --doc new-doc --n 36 --out plan.json --json
+rcp-ndcg calibration insert --calibration <calibration> --judgements <store> --dry-run --query q1 --doc new-doc --n 36 --out plan.json --json
 rcp-ndcg judge tournament --dataset <uri> --judge <judge> --plan plan.json --out <store> --estimate --json
 rcp-ndcg judge tournament --dataset <uri> --judge <judge> --plan plan.json --out <store>
 rcp-ndcg calibration insert --calibration <calibration> --judgements <store> --out <extended> --json

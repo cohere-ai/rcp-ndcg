@@ -313,6 +313,24 @@
           "name": "text"
         }
       },
+      "dry_run": {
+        "default": false,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": true,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--dry-run"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "boolean"
+        }
+      },
       "judgements": {
         "default": null,
         "envvar": null,
@@ -401,24 +419,6 @@
         "secondary_opts": [],
         "type": {
           "name": "text"
-        }
-      },
-      "plan": {
-        "default": false,
-        "envvar": null,
-        "help": null,
-        "hidden": false,
-        "is_flag": true,
-        "multiple": false,
-        "nargs": 1,
-        "opts": [
-          "--plan"
-        ],
-        "param_type_name": "option",
-        "required": false,
-        "secondary_opts": [],
-        "type": {
-          "name": "boolean"
         }
       },
       "query": {
