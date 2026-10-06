@@ -367,10 +367,6 @@ class CtxlRerankReference:
         flag = True  # add_special_tokens for the pair shape (the engine's route behaviour)
         cap = self.max_length
 
-        def count_rendered(piece: str, other: str, *, other_is_document: bool) -> int:
-            assembled = self.assemble(other, piece) if other_is_document else self.assemble(piece, other)
-            return tokenizer.count(assembled, add_special_tokens=flag)
-
         if tokenizer.count(self.assemble(query, document), add_special_tokens=flag) <= cap:
             return self.assemble(query, document)
         # Over budget: the query's span is settled first, to its declared share.
