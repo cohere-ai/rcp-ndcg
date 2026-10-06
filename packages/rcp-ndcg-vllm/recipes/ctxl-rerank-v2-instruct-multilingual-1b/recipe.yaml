@@ -8,10 +8,10 @@
 # load_weights_no_post_processing (:593) lifts the lm_head row of classifier_from_token[0] into the
 # 1-row score head (:637; SEQ_CLS_LOAD_METHODS at :659) — "!" is token id 0 of this checkpoint's
 # tokenizer. The classify pooler's default activation for num_labels < 2 is sigmoid
-# (vllm/layers/pooler/activations.py), so serve.pooler_config pins use_activation: false as the
-# server-side default every /rerank request is merged with (vllm/entrypoints/pooling/
-# pooling_params.py _merge_default_parameters), and client.use_activation: false sends the field on
-# the wire as well. /rerank renders its two messages (roles query and document) through the
+# (vllm/model_executor/layers/pooler/activations.py), so serve.pooler_config pins
+# use_activation: false as the server-side default every /rerank request is merged with
+# (vllm/pooling_params.py _merge_default_parameters), and client.use_activation: false sends the
+# field on the wire as well. /rerank renders its two messages (roles query and document) through the
 # serve.chat_template file (vllm/entrypoints/pooling/scoring/io_processor.py:605 get_score_prompt;
 # without the file the engine falls back to un-templated pair encoding at :632) and tokenizes the
 # rendered string with add_special_tokens=True (vllm/entrypoints/pooling/scoring/protocol.py:72);
@@ -49,9 +49,10 @@ serve:
     method: no_post_processing
   chat_template: template.jinja
   # Server-side raw-logit default: the classify pooler's default activation for a 1-label head is
-  # sigmoid, and _merge_default_parameters fills the unset per-request field from the pooler config,
-  # so every /rerank score is a raw logit for any client. client.use_activation below sends the same
-  # value on the wire (the product's rerank adapter carries it when the config sets it).
+  # sigmoid, and _merge_default_parameters fills the unset per-request field from the pooler config
+  # (vllm/pooling_params.py at the v0.31.0 tag), so every /rerank score is a raw logit for any
+  # client. client.use_activation below sends the same value on the wire (the product's rerank
+  # adapter carries it when the config sets it).
   pooler_config: {use_activation: false}
   trust_remote_code: false
   max_model_len: 32768       # the card's context claim (config max_position_embeddings 40960);
@@ -127,4 +128,7 @@ notes: >
   logit at token id 0, final position). GPU wave must check: the fp32 score head against the
   reference's all-bf16 model (bounded by the logit gate; --hf-overrides head_dtype "model" is the
   closer-to-reference option if the gate ever fails), and the engine's /tokenize agreement (stage 1
-  reports it not_run on CPU).
+  reports it not_run on CPU). Pairs-file rows must be under client.max_tokens for stage 1's render
+  check: the reference renders the paper's uncut prompt (it truncates only at encode), so an
+  over-budget pairs row fails stage 1 loudly; stage 2 reports over-cap pairs in its non-gating
+  table under the declared deviation.

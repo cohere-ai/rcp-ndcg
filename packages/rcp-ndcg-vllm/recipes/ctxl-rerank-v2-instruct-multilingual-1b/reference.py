@@ -10,7 +10,11 @@ exposed through the harness's subprocess CLI:
 
 - ``--mode render`` (stage 1): ``{"rows": [{"index", "shape", "text"}]}`` — the exact prompt text the
   reference expects the engine to see for each pairs row, pure string work, no weights and no
-  imports beyond the standard library.
+  imports beyond the standard library. Byte-identical to the served render for every pair under
+  ``MAX_SEQ_LEN`` (the paper constructs the prompt text and truncates only at encode); a pairs-file
+  row over the budget is a declared stage-1 failure (the reference keeps the paper's uncut prompt;
+  the served path renders the client's anchor-preserving cut) — keep the wave's pairs rows under
+  ``client.max_tokens``, and let stage 2's non-gating over-cap table carry the over-budget ones.
 - ``--mode score`` (stage 2, GPU): ``{"rows": [{"index", "scores": [...]}]}`` — one raw relevance
   logit per document (vocabulary position 0 at the final position; no sigmoid/softmax), the paper's
   quantity.
@@ -19,11 +23,11 @@ Three declared adaptations, none of which touches a score the paper measured:
 
 1. The harness's CLI shell wraps the scorer; ``load`` is idempotent and ``render`` is
    tokenizer-free, so stage 1 runs without the weights (stored ~3.28 GB; bf16-equivalent ~2.65 GB).
-2. The pairs row's instruction is folded into the query in the product's fold format
-   (``Task: <instruction>\\nQuery: <text>``, both fields stripped — ``rcp_ndcg_core``
-   ``Query.format_query``, what ``instruction: fold`` sends on the wire). The paper's in-process
-   path never sends an instruction (its ``instruction`` attribute stays ``None``), so this affects
-   only instruction-bearing rows, and only to match the served prompt.
+2. The pairs row's instruction is folded into the query as the served path folds it (only when
+   the row carries one; ``Task: <instruction>\\nQuery: <text>`` with both fields stripped, per the
+   product's fold). The paper's in-process path never sends an instruction (its ``instruction``
+   attribute stays ``None``), so this affects only instruction-bearing rows, and only to match the
+   served prompt.
 3. ``score`` keeps the paper's whole-prompt right truncation at 8192 tokens, which for a pair whose
    document alone pushes the prompt over the cap drops the query block and the trailing `` ??``
    anchor the last-position score reads. The recipe's served path never drops an anchor (the
@@ -70,18 +74,20 @@ _loaded: CtxlRerankReference | None = None
 
 
 def fold(query: str, instruction: str | None) -> str:
-    """The product's fold render for ``instruction: fold``: ``Task: <instruction>\\nQuery: <text>``.
+    """The served path's fold for ``instruction: fold``: ``Task: <instruction>\\nQuery: <text>``.
 
-    The served client folds the run's instruction into the query text exactly like this
-    (``rcp_ndcg_core`` ``Query.format_query``: both fields stripped, the bare text when no
-    instruction); the reference folds the pairs row's instruction the same way, so the compared
-    prompts match byte for byte.
+    Byte-exact with the wire: the client folds only when the row carries an instruction (the
+    harness's ``fold_query`` and the rerank client both short-circuit on the raw value), and the
+    fold itself strips both fields (``rcp_ndcg_core`` ``Query.format_query`` — a whitespace-only
+    instruction therefore folds to the stripped bare query). The reference folds the pairs row's
+    instruction the same way, so the compared prompts match byte for byte.
     """
-    text = query.strip()
-    task = (instruction or "").strip()
+    if not instruction:
+        return query
+    task = instruction.strip()
     if task:
-        return f"Task: {task}\nQuery: {text}"
-    return text
+        return f"Task: {task}\nQuery: {query.strip()}"
+    return query.strip()
 
 
 def prompt_text(query: str, doc: str) -> str:

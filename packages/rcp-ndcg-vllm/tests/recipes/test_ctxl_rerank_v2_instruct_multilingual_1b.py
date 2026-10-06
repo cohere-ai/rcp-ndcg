@@ -87,7 +87,12 @@ def _pin_tokenizer(monkeypatch: pytest.MonkeyPatch, snapshot: Path) -> None:
 
 
 def _pairs(path: Path) -> Path:
-    """16 short pairs (all under the 8192-token budget), half of them instruction-bearing."""
+    """18 short pairs (all under the 8192-token budget): half instruction-bearing, two padded.
+
+    The padded rows pin the fold's two directions against the served path: a no-instruction row
+    keeps its raw query (the wire sends it unstripped), an instruction row folds the stripped
+    fields (``Task: <instruction>\nQuery: <text>``).
+    """
     words = (
         "paris river model retrieval document query score ranking europe capital bank token context "
         "rerank multilingual instruction evidence passage neural archive"
@@ -96,9 +101,14 @@ def _pairs(path: Path) -> Path:
     for index in range(16):
         query = f"what does ranking {index} say about the {words[index]} of europe"
         document = " ".join(words[(index + offset) % len(words)] for offset in range(24))
+        if index == 7:  # no instruction: the served path sends the raw query, whitespace and all
+            query = f"  {query}  "
         row: dict[str, object] = {"query": query, "documents": [document]}
         if index % 2 == 0:
             row["instruction"] = f"Follow retrieval task {index}."
+        if index == 9:  # instruction-bearing: both fields are stripped by the fold
+            row["query"] = f"  {query}  "
+            row["instruction"] = f"  Follow retrieval task {index}.  "
         rows.append(row)
     path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
     return path
