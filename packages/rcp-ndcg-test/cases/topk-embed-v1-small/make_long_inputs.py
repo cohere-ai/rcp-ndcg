@@ -327,11 +327,11 @@ TOLERANCE_NOTE = (
 )
 LONG_UNDER_NOTE = (
     "long_under: the rendered prompt sits within 5% under the 8192-token budget, so no cut "
-    "fires and every anchor (all-token pooling; the 3-token head plus the content) survives."
+    "fires and every anchor (all-token pooling; the fixed head plus the content) survives."
 )
 LONG_OVER_NOTE_HEAD = (
     "long_over: the client must cut to the 8192-token budget (on_overflow cut; the content "
-    'span only, the 3-token "Document: " head reserved and re-attached). Caveats the wave '
+    'span only, the "Document: " head reserved and re-attached). Caveats the wave '
     "must check: under today's G5 counting ceiling the client sees 1024 tokens, so an uncut "
     "prompt reaches the engine --"
 )
@@ -575,8 +575,10 @@ def build_cases(tokenizer, skip: frozenset[int]) -> list[dict]:
                 "batch and the processor's per-image resize in one request. The T0 probe "
                 "check pins the exact usage.prompt_tokens against the client count. "
                 "Image prompts are always short of the 8192 budget: the 1280-patch cap "
-                "bounds them at about 1287 tokens, so image x long_over is not an "
-                "applicable cell.",
+                "bounds them at about 1287 tokens, so neither image x long_under nor "
+                "image x long_over is an applicable cell. length mixed here refers to the "
+                "image patch counts (every image prompt is short of the text-length "
+                "strata).",
                 MEDIA_NOTE,
             ),
         ),
@@ -598,8 +600,8 @@ def build_cases(tokenizer, skip: frozenset[int]) -> list[dict]:
                 "512x384 px (192 expected), doc_small_3 is 448x336 px (the processor "
                 "resizes to 32-px multiples; the T0 probe pins the exact count). "
                 "Image prompts are always short here: the 1280-patch budget caps them at "
-                "about 1287 tokens, far under the 8192 budget, so image x long_over is "
-                "not an applicable cell.",
+                "about 1287 tokens, far under the 8192 budget, so neither image x long_under "
+                "nor image x long_over is an applicable cell.",
                 MEDIA_NOTE,
             ),
         ),
