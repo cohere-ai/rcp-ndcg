@@ -283,3 +283,5 @@ def test_mutation_dropping_the_anchor_segment_turns_the_anchor_check_red(tmp_pat
     assert document["anchor_check"]["passed"] is False
     assert document["anchor_check"]["failures"]
     assert all(failure["check"] == "tail" for failure in document["anchor_check"]["failures"])
+    # The declared shape no longer ends with the header the file emits: the template check is red too.
+    assert document["template_render_check"]["passed"] is False

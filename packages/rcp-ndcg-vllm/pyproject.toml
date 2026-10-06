@@ -52,3 +52,8 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Same registration as the root repo's pyproject: the recipe tests' network-marked stage-1 tests
+# (recipe tokenizer files from the Hub) must not warn as unknown marks.
+markers = [
+  "network: needs the public HuggingFace Hub; the test also skips itself unless RCP_NDCG_NETWORK_TESTS=1",
+]

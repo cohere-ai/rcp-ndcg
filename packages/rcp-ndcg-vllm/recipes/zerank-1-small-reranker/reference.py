@@ -1,9 +1,11 @@
 """Reference implementation for zeroentropy/zerank-1-small-reranker (== zeroentropy/zerank-1-small, one repository).
 
-Ported unchanged in behaviour from the paper's in-process code,
-``experiments/paper/rerankers/reference/zerank.py`` (``ZerankRerank``, adapted from the vendor's
-zerank-1 code, Apache-2.0), as the paper config instantiated it: max_seq_len=8192, bfloat16,
-right padding. Where the model card and the paper code disagree, the paper code wins:
+Ported unchanged in behaviour from the paper's in-process code, the ``ZerankRerank`` framework
+(``experiments/paper/rerankers/reference/zerank.py`` on the unified-inference line -- this recipe's
+base still carries the same code as ``ZerankRerank`` in ``src/rcp_ndcg/retrieval/external_rerankers.py``;
+Apache-2.0, adapted from the vendor's zerank-1 code), as the paper config instantiated it:
+max_seq_len=8192, bfloat16, right padding. Where the model card and the paper code disagree, the
+paper code wins:
 
 * score scale: ``sigmoid(yes_logit / 5)`` (probability in [0, 1]).
 * context budget: the whole rendered prompt truncates at 8192 tokens from the right; the card
@@ -57,7 +59,8 @@ QUERY_MAX_TOKENS = 4096  # the served path's query share, the recipe's client.qu
 BATCH_SIZE_TOKENS = 15_000  # the paper's char-length batching budget (class default)
 DTYPE = "bfloat16"  # the paper's dtype; the checkpoint config agrees
 YES_TOKEN = "Yes"
-YES_TOKEN_ID = 9454  # 1_LogitScore/config.json true_token_id; measured on this revision's tokenizer.json
+YES_TOKEN_ID = 9454  # a single token of this tokenizer: measured on the pinned tokenizer.json
+# ("Yes" -> [9454], convert_tokens_to_ids agrees); the recipe tests pin it
 
 TOKENIZER_FILE = "tokenizer.json"
 #: Whether the scoring route counts the tokenizer's post-processor tokens. The engine adds them

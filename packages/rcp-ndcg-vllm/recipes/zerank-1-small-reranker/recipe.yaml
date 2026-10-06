@@ -106,8 +106,10 @@ sources:
   - "https://huggingface.co/zeroentropy/zerank-1-small-reranker @ a65fd51c450e9b47fdddab98e31166ecad21af8d
     (card README; config.json: Qwen3ForCausalLM, bfloat16, hidden 2048, 28 layers, tie_word_embeddings,
     max_position_embeddings 40960, auto_map; tokenizer.json + tokenizer_config.json: chat template,
-    pad '...' set, padding right; 1_LogitScore/config.json: true_token_id 9454). https://huggingface.co/
-    zeroentropy/zerank-1-small 307-redirects to it (live check at recipe time; same sha)."
+    pad '...' set, padding right; the tree at that revision holds exactly 13 files - no 1_LogitScore
+    directory, that one is zerank-2's). https://huggingface.co/zeroentropy/zerank-1-small 307-redirects
+    to it (live check at recipe time; same sha). The Yes token is id 9454, a single token, measured on
+    the pinned tokenizer.json (the recipe tests pin it)."
   - "https://huggingface.co/Qwen/Qwen3-1.7B — the base checkpoint by config match: 25/26 shared keys equal
     (27 keys vs 26; the extra key is auto_map; transformers_version 4.51.3 vs 4.51.0 differs). The card's
     'Base Model: Qwen/Qwen3-4B' row is wrong (audit-synth correction for r-zerank1)."
@@ -126,10 +128,13 @@ sources:
     scoring/protocol.py:69-74 (add_special_tokens=True on the score route); vllm/renderers/hf.py:780-845
     (safe_apply_chat_template, the renderer the engine calls); vllm/renderers/params.py get_encode_kwargs."
   - "rcp-ndcg: experiments/paper/rerankers/reference/zerank.py (the paper-exact ZerankRerank reference.py
-    derives from) with experiments/paper/rerankers/reference/requirements.txt (its environment);
+    derives from; that reference/ split lands on the unified-inference line ahead of the recipes - this
+    lane's base still carries the same code at src/rcp_ndcg/retrieval/external_rerankers.py:168 ZerankRerank)
+    with experiments/paper/rerankers/reference/requirements.txt (its environment);
     experiments/paper/rerankers/zerank_1_small.yaml (the paper's served-path config: provider local,
     model zeroentropy/zerank-1-small); src/rcp_ndcg/retrieval/cross_encoder.py:42,46 (MAX_SEQ_LENGTH 8192,
-    MAX_QUERY_LENGTH 4096), :268-269 (the former served call: max_tokens_per_query, truncate_prompt_tokens);
+    MAX_QUERY_LENGTH 4096; post-merge the same constants live in src/rcp_ndcg/retrieval/_api.py),
+    :268-269 (the former served call: max_tokens_per_query, truncate_prompt_tokens);
     src/rcp_ndcg/data/templates.py (TemplateSpec: the pair frame, the anchor, add_special_tokens);
     src/rcp_ndcg/data/preprocess.py:205 token_prefix, :933 fit (the content-only cut that reserves the
     frame); src/rcp_ndcg/inference/config.py RerankEndpoint (the client block IS this model)."
