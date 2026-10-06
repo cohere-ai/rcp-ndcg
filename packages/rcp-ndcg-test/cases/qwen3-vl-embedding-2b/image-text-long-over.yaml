@@ -1,0 +1,445 @@
+id: qwen3-vl-embedding-2b/image-text-long-over
+recipe: qwen3-vl-embedding-2b
+role: embed
+source:
+  kind: generated
+strata:
+  modality: mixed
+  length: long_over
+  batch: single
+inputs:
+  instruction: Represent the user's input.
+  queries:
+    - id: q1
+      text: What does this page show?
+  documents:
+  - id: d1
+    image: media/page.png
+    text: >-
+      student number history problem member kind team school year kind information eye Right. study system
+      health face room law study result party word thing work Word. law level question law country force
+      issue head force fact work air Name. side friend lot area life study air word hand service lot fact
+      Information. reason end word game study program woman part minute question kid part Government. line
+      result night air woman service result side student side fact office President. year war car
+      government life power history country side case woman mother Research. mother face health state eye
+      research state back morning home money reason Reason. game health world head world money year story
+      name month world kid Room. body kid thing year car woman student eye force person company power Eye.
+      side law day work world father area minute month door member friend Week. job result story business
+      power service service community power air world problem Month. right child party day end force word
+      reason eye system fact story Moment. idea water community teacher story place eye morning study
+      morning result side Name. head hour system community job service office war lot guy hand war Kid.
+      story hour world work education issue back book president house hand hour Home. level power job
+      system art result health information information head government system Place. mother person art
+      party air morning eye country history country air moment Study. head level end research name kid
+      money head state back president party School. team name back research story student line change air
+      power team problem Week. head face history people history student woman hand game government study
+      research Time. education work right kid area problem people history idea woman kid back War.
+      education point body work man life right force kid parent result information Change. power part
+      child child service house book end research business child air Right. law point member reason idea
+      issue business change power world body reason Company. result teacher time work door family morning
+      way car history family lot Year. body woman hand information friend point side back way part change
+      health Book. team room community line family power girl face lot night father mother Family. point
+      change office business community right health end result place issue office Level. end name system
+      company car life system father back history night others System. water school lot party service
+      level month mother work hand name mother Car. week person year day person job game people country
+      office end head Part. girl level force power week program name minute body moment night business
+      Head. city group law day book end hour state family eye father case Friend. eye case guy thing air
+      family force way friend word week room Reason. information point people father side result guy end
+      program back eye idea Guy. child idea war area month information right kid woman money law community
+      Place. others idea level air history education face place back force part kid Service. country
+      mother school education area lot others state woman system room world Person. week morning power
+      number force study people student service study child book War. number back door moment kid law
+      company room parent family teacher level Law. money hour lot father body mother information
+      government mother president fact week State. line air head result service head child man others
+      change man fact Parent. force night month fact right program water girl head education woman house
+      Week. side guy city word person point country information kind work hour research Mother. man war
+      question health year line back government head research time lot Eye. friend head government change
+      idea guy minute man president history air world Man. president book member team others service issue
+      woman family book morning room Force. story force woman community child level number night job fact
+      school month Morning. office member family house place world office city lot book head place School.
+      issue study kind year idea morning man man study mother hand hour Money. game power group teacher
+      world girl month house kid state right woman Month. question result game fact government door health
+      water system level person place Thing. person book line state state home money part people book
+      world study Force. right back change business office idea company end eye water week name Lot. hour
+      service reason school water information lot car back minute moment person Company. student school
+      back word right friend girl month name program thing body Issue. home change system minute money kid
+      art law week day system week School. life others father reason guy issue people research car work
+      kind head Art. service change question way body others night hand group law president father
+      Government. world community family door group reason war kid mother city company year Case. force
+      result eye kid community kind program friend hour government book year Problem. friend law force
+      problem part health power level company fact kind world Month. money mother health world head book
+      question body member water education back Student. community word business mother door part change
+      week head side hand idea House. force time research party result month father work mother teacher
+      fact man Eye. room home family office word kid people line mother man group house Service. part eye
+      hand guy business service night end home week information country Teacher. country number life
+      result company kid life air life story history mother Place. life game eye book house back child
+      book story work problem right Information. power force thing face end father war month face life kid
+      lot House. company friend air war program hand force back point guy friend line Room. girl world
+      work night state line hand country problem week health mother Health. year law word week person day
+      day point parent school system service Research. history study door money moment child research
+      force book night city war School. day war air friend water man part name city party level week Part.
+      community people law thing program week student question number word morning fact Member. program
+      year mother water home member door woman story man hour moment State. system word business change
+      head mother student time game thing door government Point. kid man girl president hand morning head
+      girl man kid home world Family. place end day book group country back question time health company
+      way Number. man power book kind parent woman kind parent area head change guy People. health office
+      hour child book world line kind time body game story Hand. parent war health information lot state
+      issue idea idea office child person Law. part lot house number business book minute kid force
+      information information thing Work. morning car parent change room member name research money office
+      name door Party. force head work family father man kid water idea area week hand Door. woman law
+      people day eye member lot others woman story end kid System. health problem door fact minute
+      business word area face program year history City. health back others month child home idea moment
+      child team job service Room. idea community issue fact moment line health thing company house party
+      hand City. community father art friend system company name end story week woman student Level. face
+      people health line face office community research night week child city School. night game work back
+      others system war issue education door girl system Community. party man water morning hand program
+      level community research week morning head Right. kid eye party office time thing water money war
+      force kid system Parent. program school student power teacher back war education year lot point
+      point Force. work information change group issue way president day family power school job Problem.
+      back teacher time party story level president research fact air friend guy People. hand information
+      place end day time area friend company night health story Child. door job time problem kind part
+      body line kind result water mother Face. problem study hand research hand part house law problem
+      water education morning Word. game mother name night minute face month business issue face community
+      side Story. problem part idea way community number book friend lot body part change Kid. state end
+      line story child number school night house state place head Year. history student school word office
+      system home man month people kind community Company. member work time student work country
+      government house president state line area Day. problem guy study reason father teacher end kid
+      information point lot work Idea. year car company problem business member reason community kid
+      mother woman air Person. party night party lot room eye hour house water fact life state Game. study
+      team name party book question year president war family company book Lot. air problem business
+      country name face information home service company life home Question. way guy right game fact guy
+      minute year house home head child Teacher. area country lot city number child book eye child back
+      head government System. level war level life information city house student home problem line force
+      Mother. minute case door team idea law name student teacher reason face back World. water part level
+      point head life side year school force country level Level. end mother thing change business case
+      parent child girl service service woman Woman. reason job office day story life end work side night
+      service girl Area. school side study kind air business government law guy reason system system Kind.
+      information home number idea health work level program money money day research Study. office car
+      side system issue year city right member level president door Study. game study law water power
+      world business company woman information education guy Father. number change money health
+      information student life child book book city right Head. girl word government mother question life
+      way change girl idea others part Place. service eye war service system head force part life group
+      case person Life. war room world way art side guy book member home night friend Side. word level
+      research war side idea idea morning office house office health Life. issue line name member year
+      change place life moment parent teacher mother Night. point eye word time study story eye woman kind
+      friend history change Girl. minute city money girl information day area game system game way girl
+      Work. work state member time father woman government home head people job year Business. job year
+      others reason area guy time way water law head friend Area. problem family power power job life
+      number world man question hour people Hand. war information case change kind man history morning
+      community office part world People. day others study community book community back week thing time
+      month lot Study. group health way car family car research child year end law world Health. mother
+      end parent state result others education history side word level party Power. education case state
+      city area moment teacher law minute man research service Kid. house point life child water student
+      teacher time people reason idea room Game. team guy system story study minute case room line hand
+      father end Case. guy child mother area father door right eye body child kid face State. name kind
+      day back team education girl minute job team office change War. job history lot area side year car
+      force study time level study Hand. law business teacher hand name business name story state research
+      teacher family Information. information book place kind teacher kind world home government door job
+      person Study. money family point community kid reason state man member president game business
+      Water. group line moment business story room company business game student power book Kind. thing
+      month program community research air week city area problem lot story Country. result team case
+      teacher right parent girl question health word way program Minute. change face change idea life guy
+      service night country company parent area Side. money home body number school person number case
+      name business research house School. body school teacher line question change teacher line number
+      part hour result Community. program government air eye part group teacher people system mother part
+      fact Money. place car body water others point change state part group work hour School. story book
+      word member state question woman father kid law result state President. place word month study
+      education friend president study company war book book Child. research job information art fact air
+      guy program work people person car Service. member game mother word area part teacher eye people
+      room car city War. child side member place lot person mother thing government right air change Book.
+      country girl health night case program parent company word state kind company Story. country back
+      case kind community life home moment result work year name Guy. office history air government father
+      kid case house kind information question reason Business. area back state force number others fact
+      kid education air health study Reason. word car level company member year name president month
+      president world point Fact. party body friend state minute program work issue president part company
+      night Way. back water parent idea moment case minute student morning idea art power Lot. way reason
+      group line others moment hour woman result business kind story Member. moment result name issue
+      world year business morning party woman name fact Office. area family law minute water body person
+      morning father name time person Change. community reason issue family state kind side week system
+      air way head Room. study kid parent office week back state father child mother question service
+      Game. study right part parent home word father day place eye kid friend Story. friend name power
+      woman question person team level point family information child Body. name back kind game state
+      system story system car result man study Others. part man result team company country woman world
+      city case man study Morning. eye mother life right room lot night fact room story life guy End.
+      office parent people office thing money state place power family question law Job. state service
+      health life person teacher year home war person body research State. mother art state group moment
+      people member city back job morning others Area. issue eye night name others face game program
+      student word week lot Child. history line kid day hand health way education book time health program
+      Case. reason air moment body father part case morning education world people child Hour. others
+      result system government night girl time member door door face company Life. house home moment
+      business case girl hand day game eye research guy Friend. line force kind president lot number idea
+      force guy guy office place Idea. hand money life work idea business business body system lot money
+      guy Program. friend war people book community face people result day right money community Student.
+      area game president word office woman home community home line art week End. parent law number law
+      system child part friend way month change eye Place. story information money door area money office
+      parent parent person girl area Night. area air house team thing member people father air air
+      research teacher Government. name lot part history child head eye family house level minute girl
+      Art. work woman company side school body child night day work name program Business. idea month eye
+      party system friend story month team reason right car Hour. line person issue car woman history head
+      kid work world lot night Health. word group force house side student government service child lot
+      family air State. parent part child health story others people family room party woman people Team.
+      member air child story time problem area night story friend teacher fact Minute. problem information
+      business history body game teacher part country change reason life Money. question study car time
+      work air number party party country government business House. member child war moment week area
+      child war art line problem man Research. morning lot member fact issue end time story area level way
+      state Right. face day face name story level community girl law girl book idea State. idea minute air
+      student team book school issue problem student president company End. teacher kid reason friend book
+      number force way change government people time Money. woman world money room program number team kid
+      moment month book mother Community. family thing others hour parent house thing issue state time
+      book world Air. city door community way education day student name fact power name eye Problem. job
+      issue father part story time guy kind reason kind morning home Hour. end result parent morning
+      system thing name world body right book kind Program. book problem man member water level body art
+      morning home minute face Day. night place thing group time line family president problem information
+      year name Door. president body city history people power health work group friend morning thing
+      Family. girl man president door president people woman law state home city issue School. place room
+      question house state change group mother family moment side city House. day money parent water
+      father issue community president job information house work Power. law education thing business
+      country parent idea month program part war president Book. president case member child problem
+      teacher guy government time eye force president People. education student force minute thing law
+      month hand kind study point case Job. door right others president home mother hand side right
+      education state family Power. country place side company business head work research community night
+      woman family Water. research game community right team kid area house face man force number Change.
+      president week force night moment city research program program issue president community Area.
+      research night day game end day life back month law head hour Question. house change week team game
+      service world room life game day issue Art. group guy air force area parent year head others part
+      water parent Face. mother door group study law life book house party war information information
+      Child. life war force back level power office result story man information thing Reason. country
+      country book air power history minute story right force eye health World. education program result
+      country book power door family war morning book war Work. case community work education month
+      question art people home woman point school Force. kind family history family book area father
+      people guy part story kid Word. education money guy kid school community door house end result study
+      car Research. country study team life research history day number kind door body family Year. family
+      fact moment place day others area state power head back girl Area. force room team thing reason head
+      money history child state parent face Member. president girl point health point money business face
+      power system member face Group. air force morning idea reason word head program family lot party
+      problem Case. night eye book member information people state story fact place end kid State. word
+      right idea home team art health country government teacher history father Life. father man girl air
+      word friend game business person hour idea power Child. place law research information law level lot
+      art side night word health Change. side girl law world change family time room eye case question
+      kind Teacher. eye result part education education law lot fact team person month force War. job
+      reason program art morning number company school day man woman issue Mother. program book work
+      parent time moment school result question girl law fact Child. hour party water door parent eye man
+      house woman moment problem information Government. house force end job information fact word hand
+      case week force friend Kid. health room war moment story member door family school war kind place
+      Party. time job woman job city door force room research home student law History. day information
+      word father president girl power power person door eye program Business. air hour girl service
+      change side business community parent power party world Case. result kind fact president community
+      month power system idea room person school Morning. job woman face war program community kid world
+      story community people reason People. problem information government way information student back
+      month people system water head Side. door number president case line game part body number question
+      student water Money. girl information back reason office head power week group history job home Guy.
+      side father team team research problem problem state world friend world word Side. change teacher
+      part right question question level right research group area parent Night. father teacher community
+      side world law money mother child fact history part Work. party area home name game case school hour
+      guy girl number money Question. side community eye point back history place idea force night result
+      door Student. day job game water research story thing person room research problem morning
+      Community. hour car way teacher research name thing force life state air member Game. eye water
+      moment place issue point night night money business car mother Reason. point face door job year
+      parent line morning line place country history Party. city study head others game hand way research
+      law people others air Parent. work minute name door book back house country number level girl money
+      Friend. end night house father air life state game work side reason world People. end force question
+      research art kid reason car teacher father door end Life. group water year country child lot back
+      program day group woman system Book. name law force state result place problem member city right
+      community house Government. information problem group study month man kid company line parent area
+      school Program. people education head house country right right word house point body month Lot.
+      name word home problem study country month man day girl father job City. thing issue night family
+      community office person story house service word right Way. city house case business case kind team
+      girl mother point study mother Art. name state right book student work education research hand
+      history system day Education. office force force number history problem kid body night service life
+      country Job. money teacher world line moment country company water history door power area Art.
+      family case story information book result body problem door part president word Idea. issue life law
+      moment night game job day art change month kid Year. line minute war information system home story
+      kid right people fact door Community. person name school research thing community side law war
+      education face work War. part business house woman girl friend line president game eye case person
+      Father. book hour hand woman part law name party word system country door Part. part line business
+      study child back back day eye world history teacher City. business party door water number hour
+      government money job teacher service member Time. head water kid eye group car girl family lot group
+      part month Hand. case group woman minute story way week case side law hour people Area. day country
+      health information teacher city parent kid program story man part Girl. face problem kind case home
+      war community man force body night art Way. person way war night system government force city eye
+      word president system Friend. word thing money night world health person world power lot parent
+      program Program. problem work work change president eye result work story fact line line Car. body
+      student night year car water guy research minute teacher business kid City. friend war question
+      education history water morning father problem body car issue Issue. school air service system
+      office kid force hand member water idea others Life. house program house eye life others research
+      area area issue school back Girl. question power group area power eye home girl government member
+      number back Change. thing place city hand change door person family others war student problem
+      Money. life number room family family point president friend system day room name Teacher. school
+      home woman fact home world law fact art idea morning research Health. community thing case state
+      issue day home house air system problem art Health. office teacher program time car issue city
+      business week study world life School. law point war group game case door case change name office
+      lot School. school lot month house school work law problem work face minute person Education. hand
+      game problem right lot number way health water house hour night Case. home case city time car way
+      month friend year reason school idea Guy. right hand city child life law kid mother research home
+      program kind End. time face book right people parent idea health word party eye case Night. hand
+      fact end lot study school morning friend child money day fact House. lot war hour president day
+      mother case city student people part idea Eye. body war community life state hour car teacher lot
+      community hand idea Level. power name education car time father game state way number house eye Car.
+      kind country information woman time service part year others year year life Day. world study people
+      home moment air word job week system country team Office. people father time woman word word story
+      education business side mother result Eye. program game health people others money team girl place
+      time school eye Power. guy guy story man work force government service father story person job
+      Group. car party point service night information business morning health level case point Back. girl
+      father government system girl line service government parent time state morning Money. government
+      company group name government child name place student week body company Change. reason line history
+      air door family information year eye art person result Man. child education reason service world
+      case family change word child team hand Person. side program kind case face area school man power
+      teacher community end Area. team girl force face morning hour girl company number office guy moment
+      Change. state car idea story war house office line question guy minute place Study. power result
+      teacher change side hand business father book law city country Room. name day friend company
+      government world hour car woman others president back Company. world week level team back number
+      people reason president student research house Week. month school president way lot guy history home
+      company information thing air Community. mother art body line week month system air law lot morning
+      community Year. air back day number house result president hand city water president side Head.
+      result man information change government kid kind people lot state name force Body. end line service
+      child home number question city job door line work Problem. government idea school month face
+      student hour office name war father door Research. government people change community city day hand
+      history head area state minute Others. art party kid school line word name war country force people
+      country Room. part country idea student office area guy question head book money number House. time
+      fact system area world parent area money president area week end Friend. money work team life world
+      student teacher day month side fact mother Book. city night study mother face friend party teacher
+      point fact place program Law. body story idea head force family home woman home night body house
+      Face. result girl art hand school air research place kid state student girl Point. community result
+      thing level lot girl problem friend fact office thing company People. way power story eye room
+      morning history study art war study story Result. home hour art law day year program study week
+      school mother book Reason. year story hand child force point power question school right eye number
+      History. people education reason people guy month company kind city education others president
+      Community. problem service health force month night member woman fact health art body Friend. office
+      place teacher life end face room body law moment question war Door. president job point health
+      result member hour government air name family community History. company level minute lot door idea
+      reason result car face law face Back. month party friend president door power eye place job force
+      problem others Thing. program force teacher game parent company study number idea education head
+      child Friend. thing morning force government place life education state group air idea team Time.
+      car eye word issue head friend car community community war party guy Area. force room home party
+      thing change line city room story body day Office. program information others people back time side
+      power father life home reason Work. reason study fact education service law war question father
+      house kind moment Minute. state party service time door month parent party life program student
+      family Reason. research word back kid week study girl business reason moment lot end Team. art
+      information world law power system law body party idea level child Eye. city art game change history
+      number family house war hour school car Minute. problem friend side fact history part side water
+      time end man mother War. issue country minute program life history information person problem people
+      door head Student. mother woman reason others person level money game service man member people
+      Service. air job car man right others country month water reason minute end Story. game money change
+      others friend reason part member city mother word office Country. business party eye part thing
+      minute company education man community issue minute Community. time service hand problem car water
+      kid research book city company president Home. lot problem head back day fact face morning side kid
+      law hand Kind. student group minute hour year business business lot system company idea day Life.
+      idea city change mother game mother group party world guy time group Question. hour air end point
+      girl month law word school team book issue Community. door others area case day level car member
+      work community school country Team. back game life night mother number friend man hour teacher
+      person head Family. office force war art member world game system history minute family group
+      Member. month law war business education air father teacher side business door parent Person. moment
+      world education team woman issue head kid war way others minute Power. man home service power friend
+      side book book company others party face Law. war face president reason war problem guy house door
+      eye week kid Business. place money morning community way work air government city world question
+      side Law. country office teacher right night research game force government student hand part Door.
+      child time hour art world door room kind night air part team Fact. research president point hand
+      service others night program hand right power job Car. team mother time study room power water party
+      life city water world Morning. water time year city right case business change history woman fact
+      group End. eye girl student lot president reason people number guy place business way Job. girl
+      member kid year woman hour lot story head company kind law Guy. problem teacher face eye place
+      teacher history story change back company moment Teacher. time job question country part information
+      city room study state man fact Kid. kind week kid community city job result door kind year idea
+      member School. book health life others change school woman reason city change people teacher Time.
+      force government problem business parent minute kid name program system man country Money. home car
+      father level child number face war back end change change Education. fact time area time way life
+      book year point thing program line Problem. eye person parent kid face water number idea morning
+      fact case office System. point air parent story law week time home group president group study
+      Person. information side night study day question people body world job result hour Book. problem
+      service change face time result law area story guy people part Time. child student right water room
+      art member face change child line person Power. week place law face story school end family man
+      member government kid Office. number member life face face man kind problem power hour week study
+      Others. man reason line work state life reason problem eye war reason family Area. head government
+      head face war student teacher door story moment moment father Water. school word body issue water
+      house right head level game year team House. name teacher war party question name week body house
+      number country company Reason. number lot study right name history member mother office name force
+      woman Child. house area air hand story line study money girl work teacher friend Door. moment
+      country day eye person day man moment history company air line History. mother girl kid point member
+      education guy room car law student government Eye. member story kid area education night friend eye
+      country program business man Eye. home idea question line man system level community number man
+      number child Issue. end man result question history book issue way history work point kid Country.
+      morning head power history girl business reason face result morning service city Work. war minute
+      president city child back president state year time door country President. community guy community
+      others side morning fact girl history kid part face Car. others power month question law service
+      level parent time month month reason Girl. law result air research place group president world day
+      power person line Room. father father country reason others moment problem lot idea area education
+      month Study. night world office night case city community part head point month hour Body. game
+      research idea country city child research education party moment research reason Student. guy end
+      body hour water idea office member kind friend part back Level. end company lot idea case child
+      system system game water service member Parent. lot thing moment work water force side book reason
+      time power minute Others. number head business point side problem line result question friend eye
+      person Way. point moment country month time research point war lot family state moment Area. teacher
+      people issue door mother name book girl party child thing man Eye. person word system reason water
+      word parent president system area child father World. teacher health reason company program case
+      result woman air question body right Others. face team friend community member number party month
+      head community day side Lot. line history hour work team water team fact game word air kid Kind.
+      system day right family minute power research body month office issue head Level. work community
+      city day room reason body car idea business person morning Hand. education year kid right art level
+      air group head minute research child City. art job week business history service force education
+      minute night hand case History. friend way story research company state party study way area party
+      hour Kid. company community fact eye moment friend group right idea word company idea Man. level
+      research president mother group issue world month end people back room Car. business guy money issue
+      issue girl name game body job people power Moment. member research side head part history president
+      life room system man mother War. teacher student number friend company group body kid question hand
+      result party Teacher. education result money time right time father area force morning president
+      result Area. side education air year friend information point country world team case year Health.
+      reason week kind change history house hand study name child right kind Friend. week home system
+      power week kid year education book business world book City. team way idea end teacher war time
+      member team party art woman Country. person question others home government year group end line home
+      body time Thing. history game number state morning moment hour people body member kind kid Research.
+      state book team area story thing research party girl end minute problem Air. country house name
+      month morning year art reason line company month friend Education. change community company side car
+      education part kid member friend history time Hour. community home girl force week eye office car
+      teacher hour hour kid Office. government day area door face thing father people world person point
+      back Air. question education day point president room study girl job story research change
+      Information. teacher book study case child community person money service student home lot Part. day
+      job night face community information eye side president health hand number Family. education hour
+      world lot girl war point history art book month year Air. country face power parent end room month
+      man area night minute man Level. water point way minute information power line air story member job
+      money Body. head moment morning part problem part morning place law art issue story People. side
+      level school community president case word group group study power member House. state money father
+      room night right world body office art issue idea Team. time reason end end month study kid room
+      time lot history mother Father. research line year student car president service time end study hour
+      body Power. education water month problem money car thing child question game problem eye Law. week
+      life information time face information program friend teacher kind book morning Day. idea question
+      information way people day place government year area force war Member. result president work others
+      air study name child air kind country line Car. issue father system friend man child reason business
+      way program air office Government. week way minute night room word education history man hand story
+      change End. city point girl hour reason man level force guy service law art World. member party
+      president city name team president day study guy issue line Word. line month program line child city
+      question problem information reason case side Party. line problem book name president end force
+      family parent man reason book Night. area idea part name parent art community office issue game day
+      woman Book. moment guy program school office hour time story president problem game door Problem.
+      name question team minute group president friend president room power case hour Book. state study
+      hand people thing problem word hand right story back father Problem. hour member woman information
+      game water system side power question system service Person. health study air mother minute night
+      kind month child number research question Problem. word fact number family level system company work
+      friend people moment information Way. kid child kid force war place number school case year place
+      day Game. month city air idea research man girl kind student level head year Father. guy program
+      work change story program history line girl minute reason business Parent. issue kid way day book
+      book question world moment student day company Member. job mother job side service minute time week
+      world room country education Back. change study money game party friend reason others office week
+      father mother Education. back result house force fact program minute woman hour people kid girl
+      Business. life place side law state moment parent way fact girl moment side Time. question car place
+      body information family room thing money information health name Face. point school person work work
+      kid mother water health water door case Member. girl number result job education hour power room
+      girl word world team Door. story president teacher person moment education hand mother story state
+      president group Face. water car game community history others body power level home reason woman
+      Line. part back name morning eye people guy education hour number research back Side. parent game
+      thing health game system information question back government woman money End. business others party
+      history system others morning line service idea child case Man. history work book house power area
+      air water information book day community Room. kid kid
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance: {abs: 0.002}
+  origin: reference
+  status: pending_gpu
+notes: >-
+  Generated long_over cell in the mixed modality: a 1700x2200 page image plus a long text. Text
+  content = 7010 content tokens (prompt text span 7050 with the frame); the image adds ~1776
+  image-pad tokens at the recipe's pixel budget (research-measured for 1700x2200 with
+  images_kwargs max_pixels 1843200; 1240 at the checkpoint default - both totals exceed 8192). The
+  text span must cut around the intact image pads and the anchor: last must survive. Media:
+  synthetic (media/make_media.py), no third-party material. Wave: send the image through the
+  chat-messages shape (image_url part); request_shape text covers text-only frames.

@@ -1,0 +1,15 @@
+# Placeholder while the case files land ahead of the `test-pkg` lane, which owns
+# this distribution: the root workspace's members glob `packages/*` requires a
+# pyproject.toml in every member directory, and without one every `uv run` in
+# the worktree fails. Replace this file wholesale with the real package
+# definition (the conformance suite and its dependencies) when it lands.
+[project]
+name = "rcp-ndcg-test"
+version = "0.0.0"
+description = "Reference cases for rcp-ndcg (placeholder; the package code lands via the test-pkg lane)"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+# nothing to build yet; the case YAMLs are data, the loaders live in test-pkg's lane
+package = false
