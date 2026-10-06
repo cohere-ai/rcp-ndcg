@@ -32,7 +32,10 @@ runtime fields that never enter an identity.
 An adapter turns one request into `Call` objects (method, path, JSON body, headers) and reads the `Reply`
 objects (status, decoded body, headers) back into the role's result, raising the role's typed errors. The
 transport routes the calls to one replica, retries what the status map calls unavailable, parks while every
-replica is down, and counts the calls. A role client sends one request like this:
+replica is down, and counts the calls. The shipped adapters register per role at import of
+`rcp_ndcg.inference.adapters`: the judge's `openai_chat` (the `JudgeConfig.api` default), the embed role's
+`openai_embeddings`, `cohere`, `voyage` and `gemini`, the rerank role's `rerank`, `cohere` and `voyage`, and the
+multi-vector role's `vllm_pooling`. A role client sends one request like this:
 
 ```python
 from pathlib import Path
@@ -76,7 +79,7 @@ replies = transport.run(transport.send(adapter.calls(None, model=endpoint.model)
 for reply in replies:
     transport.add_usage(adapter.usage(reply))
 vectors = adapter.interpret(None, replies)
-assert len(vectors[0]) == 8 and transport.usage.calls == 1
+assert len(vectors[0]) == 8 and transport.usage.requests == 1
 transport.close()  # a sync caller; an async one awaits transport.aclose()
 ```
 
@@ -106,6 +109,25 @@ is down, requests wait and are re-sent until one answers, or until `wait_on_outa
 (`BackendUnavailableError`, whose message states how long the endpoint was unavailable): a run against dead
 servers parks instead of turning the outage into missing results. A request that keeps failing on a replica
 that answers other requests is that request's failure: it is refused (`RequestRejectedError`).
+
+## Third-party adapters (C2)
+
+Every role's registry accepts a third-party adapter, shipped in the `rcp_ndcg.adapters` entry-point group with
+entries named `<role>.<name>` (e.g. `embed.bedrock`, one entry per role; a name may repeat across roles). A
+config selects one with `api: <name>`:
+
+* the retrieval roles resolve a non-shipped `api` against the role's registry where the config is read (the
+  CLI's YAML loading, a run config, `validate_retriever`/`validate_reranker`): it builds the role's generic
+  endpoint config, exposed from `rcp_ndcg.retrieval` as `PluginEmbedding`, `PluginPooling` and
+  `PluginReranker` (the shipped names -- `openai_embeddings`, `cohere`, `voyage`, `gemini`, `vllm_pooling`,
+  `rerank` -- keep selecting their own classes). A name that is not registered for that role -- unknown, or
+  registered for another role -- is refused with the registry's hint, and the adapters the retrieval steps
+  build (`EmbeddingClient`, `PoolingClient`, `RerankClient`) then run the third-party wire like a shipped one.
+* the judge resolves its `api` lazily, at the first judging call (the refusal still precedes any wire
+  traffic); its config validates any name.
+* the adapter name is content: a step (and an index) identity keys on it, so two wires never share an index or
+  a cache. Everything else about the identity (model, revision, recipe, prompts, budgets, the tokenizer's
+  SHA-256) is unchanged.
 
 ## The sync bridge
 
@@ -148,8 +170,9 @@ role.
 
 ## Usage
 
-`transport.usage` counts the calls, the failed calls and the input and output tokens. The transport counts the
-calls and the failed calls itself; the tokens cross the adapter, which is where the API's field names are
+`transport.usage` counts the requests, the failed requests and the input and output tokens, in the run
+manifest's `Usage` shape (one type for every role). The transport counts the requests and the failed requests
+itself; the tokens cross the adapter, which is where the API's field names are
 known: the role client calls `transport.add_usage(adapter.usage(reply))` once per reply.
 
 ## The provenance probe
@@ -168,11 +191,11 @@ role's wire, deterministically (every draw is a hash of the endpoint's seed and 
 | Route | Wire |
 |---|---|
 | `GET /models` | names the endpoint's model |
+| `POST /chat/completions` | the judge's fake (registered by `rcp_ndcg.llm._fake`): it reads the documents out of the real rendered prompt and answers in the JSON the real parsers read, so `JudgeConfig.fake(seed)` runs a real client over the real transport |
 | `POST /embeddings` | OpenAI shape; hash-seeded unit vectors, dimension from the URL's `?dim=` query (default 64), cut to the request's `dimensions` when it carries one |
 | `POST /pooling` | vLLM `task: token_embed`; ragged per-token vectors, as floats or base64-packed in the request's `embed_dtype` (default `float16`) |
 | `POST /rerank` | Cohere shape; each document scored by the same hidden ability the fake judge reads, so a tiny run's rerank and judge agree |
 
 The fakes sit *below* the transport, so routing, retries, parking and usage run in every offline test. A seed
 comes from the URL's numeric path tail (`fake://seed/3`); the vector dimension from its `?dim=` query. Extra
-routes (the judge's chat completions, a third party's) register with
-`register_fake_route(method, path, handler)`.
+routes (a third party's, or another role's) register with `register_fake_route(method, path, handler)`.

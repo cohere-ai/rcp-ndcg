@@ -364,7 +364,7 @@ class RunConfig(BaseModel):
 
     def _refuse_unservable_encoder(self) -> None:
         """Refuse ``serve.encoder`` for a config no engine can serve (the validator's encoder half)."""
-        from rcp_ndcg.retrieval.config import BM25Config, OpenAICompatibleEncoder
+        from rcp_ndcg.retrieval.config import BM25Config, ServedEmbedding, ServedPooling
 
         retrieval = self.candidates.retrieval
         if retrieval is None:
@@ -372,11 +372,11 @@ class RunConfig(BaseModel):
         if isinstance(retrieval, BM25Config):
             raise ConfigError("serve.encoder: this run retrieves with BM25, which calls no encoder")
         encoder = retrieval.encoder
-        if not isinstance(encoder, OpenAICompatibleEncoder):
+        if not isinstance(encoder, ServedEmbedding | ServedPooling):
             raise ConfigError(
-                f"serve.encoder: the {encoder.provider} encoder is not reached at a URL",
-                hint="serve.encoder starts an engine for a served (openai_compatible) encoder; a hosted encoder is "
-                "reached at its vendor's API, and an in-process one loads its weights here, so drop serve.encoder",
+                f"serve.encoder: the {encoder.api} encoder is not reached at a URL",
+                hint="serve.encoder starts an engine for a served (openai_embeddings or vllm_pooling) encoder; "
+                "a hosted encoder is reached at its vendor's API, so drop serve.encoder",
             )
         if encoder.base_url is not None:
             raise ConfigError(
@@ -386,17 +386,16 @@ class RunConfig(BaseModel):
 
     def _refuse_unservable_reranker(self) -> None:
         """Refuse ``serve.reranker`` for a config no engine can serve (the validator's reranker half)."""
-        from rcp_ndcg.retrieval.config import OpenAICompatibleReranker
+        from rcp_ndcg.retrieval.config import ServedReranker
 
         reranker = self.candidates.rerank
         if reranker is None:
             raise ConfigError("serve.reranker: this run has no reranker (candidates.rerank)")
-        if not isinstance(reranker, OpenAICompatibleReranker):
+        if not isinstance(reranker, ServedReranker):
             raise ConfigError(
-                f"serve.reranker: the {reranker.provider} reranker is not reached at a URL",
-                hint="serve.reranker starts an engine for a served (openai_compatible) reranker; a hosted reranker "
-                "is reached at its vendor's API, and an in-process one loads its weights here, so drop "
-                "serve.reranker",
+                f"serve.reranker: the {reranker.api} reranker is not reached at a URL",
+                hint="serve.reranker starts an engine for a served (api: rerank) reranker; a hosted reranker "
+                "is reached at its vendor's API, so drop serve.reranker",
             )
         if reranker.base_url is not None:
             raise ConfigError(

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 import pytest
 from click.testing import CliRunner
@@ -33,8 +32,8 @@ class _Sloppy(FakeJudge):
     def __init__(self) -> None:
         super().__init__(lambda text: ABILITY[text.split()[-1]])
 
-    async def _send(self, request: CompletionInput, replica: Any = None) -> Completion:
-        answer = await super()._send(request, replica)
+    async def complete(self, request: CompletionInput) -> Completion:
+        answer = await super().complete(request)
         draw = _uniform("sloppy", request.user_prompt)
         if draw < 0.17:
             return answer.model_copy(update={"response": "Ranking: 2, 1, 3, 5, 4"})

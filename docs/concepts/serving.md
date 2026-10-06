@@ -14,6 +14,7 @@ run that use it (on SLURM without a container runtime, your command on the node)
 | Field | Meaning |
 |---|---|
 | `base_url`, `model` | the OpenAI-compatible endpoint (`.../v1`), or a list of replica URLs of the same model, and the served model name |
+| `api` | the wire adapter that speaks the endpoint's protocol, resolved within the judge role's registry; unset (the default) is the judge's `openai_chat` wire (`POST {base_url}/chat/completions` over the shared transport; [the inference layer](inference.md)). A third-party adapter from the `rcp_ndcg.adapters` entry-point group (entries named `judge.<name>`) enters the identity: it decides what is computed |
 | `revision` | the checkpoint commit; recorded in every judgement |
 | `temperature` | the sampling temperature; `None` (the default) sends none, so the server's default applies |
 | `max_output_tokens`, `extra_body` | the completion cap (reasoning included) and further request fields, e.g. `reasoning_effort` |
@@ -45,7 +46,8 @@ assert replicas.urls == ("http://node1:8000/v1", "http://node2:8000/v1")
 ```
 
 `JudgeConfig.load(name_or_path)` reads a shipped config by name or a YAML config by path, and
-`JudgeConfig.fake(seed=0)` gives the offline fake judge of `rcp_ndcg.testing`, recorded as model `fake` so that its
+`JudgeConfig.fake(seed=0)` gives the offline fake judge (`fake://`, model `fake`, answered by the fake chat route
+below the transport, [the inference layer](inference.md)), recorded as model `fake` so that its
 judgements never pool with a real judge's.
 
 ## Serving a judge
@@ -135,9 +137,14 @@ the judge is one of its roles.
 - **Refusals.** HTTP 401 or 403 stops the pass with `CredentialsError` (exit code 5), and HTTP 404 (no such route or
   model) with `ProviderError`: both concern every request, not one window. Any other refusal of one request, such
   as HTTP 400 for an over-long prompt, is that window's: it is asked again up to three attempts, then recorded as
-  an invalid judgement, and a resumed pass asks it again. Failures of the OpenAI SDK and of httpx map alike.
+  an invalid judgement, and a resumed pass asks it again. Every request goes over `httpx` through the shared
+  transport (the package ships no second HTTP stack), so the refusals, the retries and their delays are the
+  transport's, described in [the inference layer](inference.md).
 - **Answers.** The client records the endpoint's `finish_reason` as it comes, any string or none; only the answer's
   text is parsed.
+- **Usage.** The client counts its requests, their failures and the tokens each answer reports, for the run
+  manifest and the CLI's judge command. The wire reports tokens and calls only: the endpoint's cached-input
+  token detail (`prompt_tokens_details.cached_tokens`) is not tracked.
 - **Window budget.** Each document's text is cut to the tokens its window leaves it, and every cut is recorded
   ([preprocessing](preprocessing.md)).
 - **Media.** A prompt with images or video is refused (`CapabilityError`) unless the judge config declares that the
@@ -283,8 +290,8 @@ overridden:
 judge: gpt_oss_120b
 candidates:
   from: retrieval
-  retrieval: {kind: dense, encoder: {provider: openai_compatible, model: octen-embedding-8b}}
-  rerank: {provider: openai_compatible, model: qwen3-reranker-8b}
+  retrieval: {kind: dense, encoder: {api: openai_embeddings, model: octen-embedding-8b}}
+  rerank: {api: rerank, model: qwen3-reranker-8b}
 steps: [retrieve, rerank, tournament, rubric, calibrate, evaluate]
 serve:
   encoder:
@@ -311,8 +318,8 @@ Every engine has the same fields (`image`, `command`, `env`, `resources`, `repli
 verbatim (an argv list or one string): it must serve the role config's `model` name on `port`, on all interfaces
 when there are several replicas. `nodes_per_replica` must be 1: a replica that spans several nodes is not
 implemented, and another value fails when the config is read. A served encoder or reranker runs one replica (this
-release's retrieval clients address one URL); the judge may run several. A hosted model (Cohere, Voyage, Gemini) or
-one that runs in this process (`[local]`) is not served by a job's engine at all — drop the role. The `image` is
+release's retrieval clients address one URL); the judge may run several. A hosted model (Cohere, Voyage, Gemini) is
+not served by a job's engine at all — drop the role. The `image` is
 required on Kubernetes and with the SLURM runner's `container_runtime: apptainer` or `pyxis`. With
 `container_runtime: none` (the SLURM default) the command runs on the node itself, so the role's `image` is refused
 there: set a container runtime to run the engine in its image, or drop `image` to run the command on the node. The

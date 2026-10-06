@@ -1,4 +1,5 @@
 # rerank-v4.0-fast: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
-# `rcp-ndcg retrieval rerank --reranker <this file>`. Hosted API (Cohere Rerank 4), no GPU; the key is read from CO_API_KEY or COHERE_API_KEY.
-provider: cohere
+# `rcp-ndcg retrieval rerank --reranker <this file>`. Hosted API (Cohere Rerank 4), no GPU; the key
+# is read from CO_API_KEY or COHERE_API_KEY, and `base_url` is omitted: the profile's public URL.
+api: cohere
 model: rerank-v4.0-fast

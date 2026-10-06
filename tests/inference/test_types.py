@@ -14,11 +14,9 @@ import pytest
 from pydantic import ValidationError
 from rcp_ndcg_core.content import Content
 
-from rcp_ndcg.data.resolution import ImagePolicy, VideoPolicy
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference import (
     ADAPTER_ENTRY_POINTS,
-    SELF_HOSTED_APIS,
     Adapter,
     AdapterRole,
     Call,
@@ -88,19 +86,24 @@ class TestCallAndReply:
 
 
 class TestUsage:
-    def test_usage_adds_element_wise(self) -> None:
-        total = Usage(calls=1, failed_calls=0, input_tokens=10, output_tokens=2) + Usage(
-            calls=2, failed_calls=1, input_tokens=5, output_tokens=3
-        )
-        assert total == Usage(calls=3, failed_calls=1, input_tokens=15, output_tokens=5)
+    def test_the_judge_and_the_transport_share_one_usage(self) -> None:
+        from rcp_ndcg.llm.client import Usage as JudgeUsage
 
-    def test_usage_refuses_another_type(self) -> None:
-        with pytest.raises(TypeError):
-            Usage() + 1  # type: ignore[operator]
+        assert JudgeUsage is Usage, "one Usage for one concept: the manifest's requests-and-tokens shape"
+
+    def test_usage_merges_element_wise(self) -> None:
+        total = Usage(requests=1, failed_requests=0, input_tokens=10, output_tokens=2).merged_with(
+            Usage(requests=2, failed_requests=1, input_tokens=5, output_tokens=3)
+        )
+        assert total == Usage(requests=3, failed_requests=1, input_tokens=15, output_tokens=5)
+
+    def test_usage_merges_the_cached_tokens_too(self) -> None:
+        total = Usage(cached_input_tokens=7).merged_with(Usage(cached_input_tokens=2))
+        assert total.cached_input_tokens == 9
 
     def test_usage_is_frozen(self) -> None:
-        with pytest.raises(AttributeError):
-            Usage().calls = 3  # type: ignore[misc]
+        with pytest.raises(ValidationError):
+            Usage().requests = 3  # type: ignore[misc]
 
 
 class TestTokenCount:
@@ -237,13 +240,7 @@ class TestRoleConfigs:
         [(EmbeddingEndpoint, "openai_embeddings"), (PoolingEndpoint, "vllm_pooling"), (RerankEndpoint, "rerank")],
     )
     def test_each_role_defaults_its_wire_adapter(self, config_cls: type[Endpoint], api: str) -> None:
-        config = config_cls(
-            model="m",
-            tokenizer="test/tokenizer",
-            max_tokens=8192,
-            **({"use_activation": False} if config_cls is RerankEndpoint else {}),
-        )
-        assert config.api == api
+        assert config_cls(model="m").api == api
 
     def test_an_embedding_config_declares_its_content_and_runtime_knobs(self) -> None:
         config = EmbeddingEndpoint(
@@ -264,206 +261,39 @@ class TestRoleConfigs:
         assert "tokenizer" not in identity_payload(config)  # the name is runtime; its SHA-256 is lane L3a's
 
     def test_a_pooling_config_defaults_to_float16(self) -> None:
-        config = PoolingEndpoint(
-            base_url="http://a:8000/v1", model="colpali", tokenizer="test/tokenizer", max_tokens=8192
-        )
+        config = PoolingEndpoint(base_url="http://a:8000/v1", model="colpali")
         assert config.embed_dtype == "float16"
         assert identity_payload(config)["embed_dtype"] == "float16"
-        opted = PoolingEndpoint(
-            base_url="http://a:8000/v1",
-            model="colpali",
-            tokenizer="test/tokenizer",
-            max_tokens=8192,
-            embed_dtype="float32",
-        )
+        opted = PoolingEndpoint(base_url="http://a:8000/v1", model="colpali", embed_dtype="float32")
         assert opted.embed_dtype == "float32"
 
     def test_a_rerank_config_folds_its_instruction_by_default(self) -> None:
-        config = RerankEndpoint(
-            use_activation=False,
-            base_url="http://a:8000/v1",
-            model="qwen3-reranker-8b",
-            tokenizer="test/tokenizer",
-            max_tokens=8192,
-        )
-        assert config.instruction == "fold" and config.use_activation is False and config.listwise is False
+        config = RerankEndpoint(base_url="http://a:8000/v1", model="qwen3-reranker-8b")
+        assert config.instruction == "fold" and config.use_activation is None and config.listwise is False
         assert identity_payload(config)["instruction"] == "fold"
 
     def test_a_listwise_reranker_refuses_a_batch_size(self) -> None:
         with pytest.raises(ValidationError, match="listwise"):
-            RerankEndpoint(
-                use_activation=False,
-                base_url="http://a:8000/v1",
-                model="jina-reranker-v3",
-                tokenizer="test/tokenizer",
-                max_tokens=8192,
-                listwise=True,
-                batch_size=8,
-            )
-        assert (
-            RerankEndpoint(
-                use_activation=False,
-                base_url="http://a:8000/v1",
-                model="qwen3-reranker-8b",
-                tokenizer="test/tokenizer",
-                max_tokens=8192,
-                batch_size=8,
-            ).batch_size
-            == 8
-        )
+            RerankEndpoint(base_url="http://a:8000/v1", model="jina-reranker-v3", listwise=True, batch_size=8)
+        assert RerankEndpoint(base_url="http://a:8000/v1", model="qwen3-reranker-8b", batch_size=8).batch_size == 8
 
     def test_a_rerank_config_can_split_the_pair_budget(self) -> None:
         config = RerankEndpoint(
-            use_activation=False,
-            base_url="http://a:8000/v1",
-            model="qwen3-reranker-8b",
-            tokenizer="test/tokenizer",
-            max_tokens=8192,
-            query_max_tokens=256,
+            base_url="http://a:8000/v1", model="qwen3-reranker-8b", max_tokens=8192, query_max_tokens=256
         )
         assert config.query_max_tokens == 256
         # Content: the split changes what the model reads, so it keys; unset, it is the absence of a split.
         assert identity_payload(config)["query_max_tokens"] == 256
         assert "query_max_tokens" not in identity_payload(
-            RerankEndpoint(
-                use_activation=False,
-                base_url="http://a:8000/v1",
-                model="qwen3-reranker-8b",
-                tokenizer="test/tokenizer",
-                max_tokens=8192,
-            )
+            RerankEndpoint(base_url="http://a:8000/v1", model="qwen3-reranker-8b")
         )
 
     def test_role_configs_are_frozen_and_refuse_unknown_fields(self) -> None:
-        config = RerankEndpoint(
-            use_activation=False,
-            base_url="http://a:8000/v1",
-            model="qwen3-reranker-8b",
-            tokenizer="test/tokenizer",
-            max_tokens=8192,
-        )
+        config = RerankEndpoint(base_url="http://a:8000/v1", model="qwen3-reranker-8b")
         with pytest.raises(ValidationError):
             config.listwise = True  # type: ignore[misc]
         with pytest.raises(ValidationError):
-            RerankEndpoint(
-                use_activation=False,
-                base_url="http://a:8000/v1",
-                model="m",
-                tokenizer="test/tokenizer",
-                max_tokens=8192,
-                surprise=1,
-            )  # type: ignore[call-arg]
-
-
-class TestExplicitTextBudget:
-    """A self-hosted role declares its budget explicitly (tokenizer + max_tokens); a hosted vendor
-    profile without a tokenizer may declare only its documented limit. Decision 1 of the budget lane."""
-
-    @pytest.mark.parametrize(
-        "config_cls", [EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint], ids=lambda cls: cls.__name__
-    )
-    def test_a_self_hosted_role_without_an_explicit_budget_is_refused(self, config_cls: type[Endpoint]) -> None:
-        with pytest.raises(ConfigError, match="max_tokens") as caught:
-            config_cls(model="m")
-        assert "tokenizer" in (caught.value.hint or "")
-        with pytest.raises(ConfigError):
-            config_cls(model="m", tokenizer="test/tokenizer")
-        with pytest.raises(ConfigError):
-            config_cls(model="m", max_tokens=8192)
-
-    def test_a_self_hosted_role_with_both_fields_is_accepted(self) -> None:
-        config = RerankEndpoint(use_activation=False, model="m", tokenizer="test/tokenizer", max_tokens=8192)
-        assert config.tokenizer == "test/tokenizer" and config.max_tokens == 8192
-
-    def test_a_hosted_vendor_profile_without_a_tokenizer_declares_its_documented_limit(self) -> None:
-        hosted = EmbeddingEndpoint(model="m", api="cohere", max_tokens=1024)
-        assert hosted.tokenizer is None and hosted.max_tokens == 1024
-        # A tokenizer without a number counts nothing, hosted or not.
-        with pytest.raises(ConfigError, match="max_tokens"):
-            EmbeddingEndpoint(model="m", api="cohere", tokenizer="test/tokenizer")
-
-    def test_self_hosted_apis_are_the_three_wire_defaults(self) -> None:
-        assert SELF_HOSTED_APIS == frozenset({"openai_embeddings", "vllm_pooling", "rerank"})
-
-
-class TestTextBudgetFields:
-    """The role configs' text-budget fields: template, overflow, chunk geometry, aggregation, empty documents,
-    the wire request shape, and the instruction channel's system value."""
-
-    def test_the_fields_default_to_the_declared_no_ops(self) -> None:
-        config = EmbeddingEndpoint(model="m", api="cohere", max_tokens=1024)
-        assert config.template is None and config.on_overflow == "cut" and config.chunk is None
-        assert config.aggregation == "max" and config.empty_doc == "send" and config.empty_doc_text is None
-        assert config.request_shape == "text"
-
-    def test_every_field_of_the_budget_is_content(self) -> None:
-        config = EmbeddingEndpoint(
-            model="m",
-            tokenizer="test/tokenizer",
-            max_tokens=8192,
-            on_overflow="chunk",
-            chunk={"max_tokens": 2048, "overlap_tokens": 0},
-            request_shape="messages",
-            empty_doc="omit_zero",
-        )
-        payload = identity_payload(config)
-        for name in ("template", "on_overflow", "chunk", "aggregation", "empty_doc", "request_shape"):
-            if name == "template":
-                continue
-            assert name in payload, name
-
-    def test_chunk_needs_the_chunk_overflow_and_vice_versa(self) -> None:
-        with pytest.raises(ValidationError, match="chunk"):
-            EmbeddingEndpoint(model="m", tokenizer="t", max_tokens=8192, chunk={"max_tokens": 8, "overlap_tokens": 0})
-        with pytest.raises(ValidationError, match="chunk"):
-            EmbeddingEndpoint(model="m", tokenizer="t", max_tokens=8192, on_overflow="chunk")
-
-    def test_send_text_names_its_placeholder_and_nothing_else_does(self) -> None:
-        with pytest.raises(ValidationError, match="empty_doc_text"):
-            EmbeddingEndpoint(model="m", api="cohere", max_tokens=1024, empty_doc="send_text")
-        with pytest.raises(ValidationError, match="empty_doc"):
-            EmbeddingEndpoint(model="m", api="cohere", max_tokens=1024, empty_doc_text="NULL")
-        config = EmbeddingEndpoint(
-            model="m", api="cohere", max_tokens=1024, empty_doc="send_text", empty_doc_text="NULL"
-        )
-        assert identity_payload(config)["empty_doc_text"] == "NULL"
-
-    def test_a_hosted_profile_without_a_tokenizer_refuses_inert_overflow_policies(self) -> None:
-        """Without a tokenizer the content is sent uncut: chunk/fail and a query split would be inert."""
-        with pytest.raises(ConfigError, match="uncut"):
-            EmbeddingEndpoint(model="m", api="cohere", max_tokens=1024, on_overflow="chunk")
-        with pytest.raises(ConfigError, match="uncut"):
-            RerankEndpoint(
-                model="m",
-                api="cohere",
-                max_tokens=1024,
-                on_overflow="chunk",
-                chunk={"max_tokens": 8, "overlap_tokens": 0},
-            )
-        with pytest.raises(ConfigError, match="uncut"):
-            RerankEndpoint(model="m", api="cohere", max_tokens=1024, query_max_tokens=64)
-        # With a tokenizer the same policies are declared and live.
-        hosted_with_tokenizer = EmbeddingEndpoint(
-            model="m",
-            api="cohere",
-            tokenizer="test/tokenizer",
-            max_tokens=1024,
-            on_overflow="chunk",
-            chunk={"max_tokens": 256, "overlap_tokens": 0},
-        )
-        assert hosted_with_tokenizer.chunk is not None
-
-    def test_an_instruction_can_be_a_system_message(self) -> None:
-        config = RerankEndpoint(use_activation=False, model="m", tokenizer="t", max_tokens=8192, instruction="system")
-        assert config.instruction == "system"
-        with pytest.raises(ValidationError):
-            RerankEndpoint(use_activation=False, model="m", tokenizer="t", max_tokens=8192, instruction="whisper")  # type: ignore[arg-type]
-
-    def test_a_rerank_config_refuses_a_non_positive_document_share(self) -> None:
-        with pytest.raises(ValidationError, match="max_tokens"):
-            RerankEndpoint(use_activation=False, model="m", tokenizer="t", max_tokens=8192, query_max_tokens=8192)
-        with pytest.raises(ValidationError, match="max_tokens"):
-            RerankEndpoint(use_activation=False, model="m", tokenizer="t", max_tokens=8192, query_max_tokens=8193)
+            RerankEndpoint(base_url="http://a:8000/v1", model="m", surprise=1)  # type: ignore[call-arg]
 
 
 class TestIdentityExtra:
@@ -489,28 +319,10 @@ class TestIdentityExtra:
         directory = tmp_path / "tok"
         directory.mkdir()
         file = save(word_tokenizer(), directory)
-        # A role config that declares a tokenizer declares its budget with it (the served roles); the judge
-        # has no budget fields and names the tokenizer alone.
-        budget: dict[str, Any] = (
-            {}
-            if config_cls is JudgeConfig
-            else {
-                "max_tokens": 8192,
-                **({"use_activation": False} if config_cls is RerankEndpoint else {}),
-            }
-        )
-        named = config_cls(base_url="http://a:8000/v1", model="m", tokenizer=str(file), **budget)
+        named = config_cls(base_url="http://a:8000/v1", model="m", tokenizer=str(file))
         assert named.identity_extra() == {"tokenizer_sha256": hashlib.sha256(file.read_bytes()).hexdigest()}
         assert set(named.identity_extra()) == {"tokenizer_sha256"}
-        assert (
-            config_cls(
-                base_url="http://a:8000/v1",
-                model="m",
-                api=None if config_cls is JudgeConfig else "cohere",
-                **({"max_tokens": 1024} if config_cls is RerankEndpoint else {}),
-            ).identity_extra()
-            == {}
-        )
+        assert config_cls(base_url="http://a:8000/v1", model="m").identity_extra() == {}
 
     def test_the_judge_identity_payload_does_not_move(self, tmp_path: Any) -> None:
         """The judgement family's keys must not move: ``identity_extra()`` is not part of ``identity()``."""
@@ -523,74 +335,6 @@ class TestIdentityExtra:
         assert config.identity_extra() != {}
         assert "tokenizer_sha256" not in config.identity()
         assert "tokenizer" not in identity_payload(config)
-
-
-class TestRoleMediaPolicy:
-    """Every retrieval role declares the media it sends, with the judge's own policy types:
-    one preparation path, the same pixel budget semantics, so a page costs an encoder what it costs the
-    judge. The policies and the processor family change the input the model sees: content."""
-
-    IMAGE = ImagePolicy(min_px=65536, max_px=1280 * 32 * 32)
-    VIDEO = VideoPolicy(num_frames=8, wire="frames")
-
-    @pytest.mark.parametrize(
-        "config_cls", [EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint], ids=lambda cls: cls.__name__
-    )
-    def test_every_role_declares_the_media_fields(self, config_cls: type[Endpoint]) -> None:
-        config = config_cls(
-            base_url="http://a:8000/v1",
-            model="m",
-            image_processor="qwen3_vl",
-            image_policy=self.IMAGE,
-            video_policy=self.VIDEO,
-            max_images=4,
-            max_videos=1,
-        )
-        assert config.image_processor == "qwen3_vl"
-        assert config.image_policy == self.IMAGE and config.video_policy == self.VIDEO
-        assert config.max_images == 4 and config.max_videos == 1
-        check_declarations(config_cls)
-
-    @pytest.mark.parametrize("config_cls", [EmbeddingEndpoint, RerankEndpoint], ids=lambda cls: cls.__name__)
-    def test_the_media_policy_is_content_and_the_media_limits_are_runtime(self, config_cls: type[Endpoint]) -> None:
-        """What the model sees (the processor family, the pixel and frame budgets) is content; the server's
-        per-request media limits, like the judge's, are runtime."""
-        payload = identity_payload(config_cls(base_url="http://a:8000/v1", model="m"))
-        assert "image_processor" not in payload and "image_policy" not in payload
-        configured = identity_payload(
-            config_cls(
-                base_url="http://a:8000/v1",
-                model="m",
-                image_processor="qwen3_vl",
-                image_policy=self.IMAGE,
-                video_policy=self.VIDEO,
-                max_images=4,
-                max_videos=1,
-            )
-        )
-        assert configured["image_processor"] == "qwen3_vl"
-        # identity_payload omits None-valued fields (an unset optional is the absence of a declaration)
-        assert configured["image_policy"] == identity_payload(self.IMAGE)
-        assert configured["video_policy"] == identity_payload(self.VIDEO)
-        assert "max_images" not in configured and "max_videos" not in configured
-
-    def test_a_different_pixel_budget_is_a_different_identity(self) -> None:
-        other = EmbeddingEndpoint(
-            base_url="http://a:8000/v1", model="m", image_policy=ImagePolicy(min_px=65536, max_px=65536)
-        )
-        assert (
-            identity_payload(other)["image_policy"]
-            != identity_payload(EmbeddingEndpoint(base_url="http://a:8000/v1", model="m", image_policy=self.IMAGE))[
-                "image_policy"
-            ]
-        )
-
-    def test_the_media_fields_default_to_a_text_only_role(self) -> None:
-        for config_cls in (EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint):
-            config = config_cls(base_url="http://a:8000/v1", model="m")
-            assert config.image_processor is None
-            assert config.image_policy is None and config.video_policy is None
-            assert config.max_images == 0 and config.max_videos == 0
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -625,31 +369,37 @@ class _EmbedProbeAlias(_EmbedProbe):
 
 
 @pytest.fixture(autouse=True)
-def _clean_registry() -> Iterator[None]:
+def _clean_registry(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Run each registry test against an empty registry, restoring whatever was there.
 
-    The restore assigns the module attribute: a test may have replaced ``_BUILTINS`` wholesale (a
-    monkeypatched empty registry), and writing into the replacement would be lost when the monkeypatch's
-    own teardown restores the original -- cleared -- object.
-    """
-    saved_builtins, saved_plugins = dict(_adapters.base._BUILTINS), _adapters.base._PLUGINS
-    _adapters.base._BUILTINS.clear()
+    One mechanism (``monkeypatch``) saves and restores both attributes: a teardown that mutated the old dict
+    object while another test had replaced the module attribute lost the shipped adapters for the rest of the
+    process (any later test that needs a shipped adapter failed)."""
+    monkeypatch.setattr(_adapters.base, "_BUILTINS", {})
+    monkeypatch.setattr(_adapters.base, "_PLUGINS", _adapters.base._PLUGINS)
     yield
-    _adapters.base._BUILTINS = dict(saved_builtins)
-    _adapters.base._PLUGINS = saved_plugins
 
 
 class TestAdapterRegistry:
-    def test_an_unknown_adapter_with_an_empty_registry_promises_nothing_shipped(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # The autouse fixture has already emptied the registry.
-        with pytest.raises(ConfigError) as caught:
-            get_adapter("nope", role="embed")
-        hint = caught.value.hint or ""
-        assert "no embed wire adapter is registered in this process" in hint
-        assert "importing ``rcp_ndcg.inference.adapters`` registers the shipped ones" in hint
-        assert "arrive with the transport" not in hint  # no promise of adapters that do not exist
+    def test_an_unknown_adapter_with_an_empty_registry_promises_nothing_shipped(self) -> None:
+        """The empty-registry test clears the registry in place: rebinding the module attribute through
+        ``monkeypatch`` would leave every later client in the process with no shipped adapter (the undo runs
+        after this fixture's own teardown, restoring an emptied dict object)."""
+        import rcp_ndcg.inference.adapters.base as adapter_base
+
+        plugins = adapter_base._PLUGINS
+        adapter_base._BUILTINS.clear()  # the autouse fixture already emptied it
+        adapter_base._PLUGINS = {}
+        try:
+            with pytest.raises(ConfigError) as caught:
+                get_adapter("nope", role="embed")
+            hint = caught.value.hint or ""
+            assert "no embed wire adapter is registered in this process" in hint
+            assert "importing ``rcp_ndcg.inference.adapters`` registers the shipped ones" in hint
+            assert "arrive with the transport" not in hint  # no promise of adapters that do not exist
+        finally:
+            adapter_base._BUILTINS.clear()
+            adapter_base._PLUGINS = plugins
 
     def test_an_adapter_is_registered_under_its_name_and_returned_by_it(self) -> None:
         register_adapter(_ProbeAdapter)
@@ -896,74 +646,3 @@ class TestDeclarations:
         assert Endpoint.IDENTITY_ROLES["api"] is FieldRole.CONTENT
         assert Endpoint.IDENTITY_ROLES["headers_env"] is FieldRole.RUNTIME
         assert Endpoint.IDENTITY_ROLES["wait_on_outage_s"] is FieldRole.RUNTIME
-
-
-class TestUseActivationExplicit:
-    """F10 (integration review): ``use_activation: None`` on a served rerank config means 'send nothing and
-    the engine's default applies' -- and two engines with different defaults would then share an identity.
-    A served config must set it explicitly; hosted profiles keep ``None`` (their scale is fixed)."""
-
-    def test_a_served_rerank_config_refuses_use_activation_none(self) -> None:
-        with pytest.raises(ConfigError, match="use_activation"):
-            RerankEndpoint(model="m", tokenizer="test/tokenizer", max_tokens=8192)
-        with pytest.raises(ConfigError, match="use_activation"):
-            RerankEndpoint(model="m", tokenizer="t", max_tokens=8192, use_activation=None, api="rerank")
-
-    def test_a_hosted_profile_keeps_none(self) -> None:
-        for api in ("cohere", "voyage"):
-            config = RerankEndpoint(model="m", api=api, max_tokens=1024)
-            assert config.use_activation is None
-
-    def test_the_explicit_value_is_content(self) -> None:
-        config = RerankEndpoint(model="m", tokenizer="t", max_tokens=8192, use_activation=False)
-        assert identity_payload(config)["use_activation"] is False
-
-
-class TestHostedFlag:
-    """R8: ``HOSTED`` is declared, not inferred from ``DEFAULT_BASE_URL is not None``."""
-
-    def test_the_rerank_profiles_declare_hosted(self) -> None:
-        from rcp_ndcg.inference.adapters.rerank import CohereRerankAdapter, RerankAdapter, VoyageRerankAdapter
-
-        assert RerankAdapter.HOSTED is False
-        assert CohereRerankAdapter.HOSTED is True
-        assert VoyageRerankAdapter.HOSTED is True
-
-    def test_the_embed_profiles_declare_hosted(self) -> None:
-        from rcp_ndcg.inference.adapters.embeddings import (
-            CohereEmbeddings,
-            GeminiEmbeddings,
-            OpenAIEmbeddings,
-            VoyageEmbeddings,
-        )
-
-        assert OpenAIEmbeddings.HOSTED is False  # the served engines' wire shape
-        assert CohereEmbeddings.HOSTED and VoyageEmbeddings.HOSTED and GeminiEmbeddings.HOSTED
-
-    def test_a_hosted_profile_refuses_use_activation_by_its_flag(self) -> None:
-        """The refusal keys on the declared flag, not on the base-URL proxy."""
-        from rcp_ndcg.inference.adapters.rerank import CohereRerankAdapter
-
-        with pytest.raises(ConfigError, match="use_activation"):
-            CohereRerankAdapter(RerankEndpoint(model="m", api="cohere", max_tokens=1024, use_activation=False))
-
-
-class TestInertTemplate:
-    """A declared template belongs to a measured budget: a hosted profile without a tokenizer sends content
-    uncut, so the template would be silently inert -- refused, as the other inert fields are."""
-
-    def test_a_hosted_profile_without_a_budget_refuses_a_template(self) -> None:
-        with pytest.raises(ConfigError, match="template"):
-            EmbeddingEndpoint(model="m", api="cohere", template={"query": ({"fixed": "Q: "}, {"content": "query"})})
-        with pytest.raises(ConfigError, match="template"):
-            RerankEndpoint(
-                model="m",
-                api="voyage",
-                template={"pair": ({"fixed": ""}, {"content": "query"}, {"content": "document"})},
-            )
-
-    def test_a_hosted_profile_with_only_the_limit_refuses_a_template(self) -> None:
-        """The vendor path measures nothing, so a template is inert there too (the budget refuses it)."""
-        template = {"query": ({"fixed": "Q: "}, {"content": "query"})}
-        with pytest.raises(ConfigError, match="inert"):
-            EmbeddingEndpoint(model="m", api="cohere", max_tokens=1024, template=template)

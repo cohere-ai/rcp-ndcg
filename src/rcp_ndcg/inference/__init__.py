@@ -13,9 +13,10 @@ paths send their requests through one set of names:
   (:mod:`rcp_ndcg.inference.types`);
 * :class:`Adapter` and its role-scoped registry -- the one seam a third party implements (C2), selected from a
   config with ``api: <name>`` within the config's role (:mod:`rcp_ndcg.inference.adapters.base`); the shipped
-  adapters register when :mod:`rcp_ndcg.inference.adapters` imports: the embed role's `openai_embeddings` and
-  its hosted `cohere`, `voyage`, `gemini` profiles, the rerank role's served Cohere-shaped wire and its hosted
-  `cohere` and `voyage` profiles, and the multi-vector role's `vllm_pooling`;
+  adapters register when :mod:`rcp_ndcg.inference.adapters` imports: the judge role's `openai_chat`, the
+  embed role's `openai_embeddings` and its hosted `cohere`, `voyage`, `gemini` profiles, the rerank role's
+  served Cohere-shaped wire and its hosted `cohere` and `voyage` profiles, and the multi-vector role's
+  `vllm_pooling`;
 * :class:`Sender` and :class:`Transport` -- the transport every role sends through: replicas, retries, parking,
   the sync bridge, the credentials (the adapter profiles' key variables and headers, R6), usage
   (:mod:`rcp_ndcg.inference.transport`);
@@ -41,6 +42,7 @@ from rcp_ndcg.inference.adapters.base import (
     known_adapters,
     register_adapter,
 )
+from rcp_ndcg.inference.adapters.chat import OpenAIChat
 from rcp_ndcg.inference.adapters.pooling import VllmPooling
 from rcp_ndcg.inference.adapters.rerank import CohereRerankAdapter, RerankAdapter, VoyageRerankAdapter
 from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient, RerankClient, RoleClient
@@ -85,6 +87,7 @@ __all__ = [
     "Endpoint",
     "FAKE_SCHEME",
     "FakeEndpoint",
+    "OpenAIChat",
     "PoolRequest",
     "PoolingClient",
     "PoolingEndpoint",

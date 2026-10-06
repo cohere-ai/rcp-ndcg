@@ -1,11 +1,20 @@
-# Octen-Embedding-8B, one of the paper's three first-stage retrievers: a retriever config
+# Octen-Embedding-8B, served: one of the paper's three first-stage retrievers: a retriever config
 # (rcp_ndcg.retrieval.RetrieverConfig) for `rcp-ndcg retrieval index|search --retriever <this file>`.
-# Runs in process (the [local] extra) and needs a GPU; the model pools the last token. Documents are encoded as
-# "- " + text and queries as they are, as in the paper.
+# Served by recipe `octen-embedding-8b` (last-token pooling with L2 normalisation, the pooling
+# runner of packages/rcp-ndcg-vllm; reference: experiments/paper/rerankers/reference/octen.py).
+# `base_url` is the placeholder the runner's engines overlay (serve.encoder) replaces; `model` is
+# the --served-model-name. Documents are encoded as "- " + text and queries as they are, as in the
+# paper; `max_tokens: 8192` is the paper's truncation budget, cut on the client once the text-budget
+# mechanism wires the declared tokenizer.
 kind: dense
 encoder:
-  provider: local
-  model: Octen/Octen-Embedding-8B
-  pooling: last
+  api: openai_embeddings
+  base_url: http://127.0.0.1:8000/v1
+  model: octen-embedding-8b
+  revision: 5adcfa292e712091dfc30f0e97f0b2282e6cc66c
+  recipe: octen-embedding-8b
+  tokenizer: Octen/Octen-Embedding-8B@5adcfa292e712091dfc30f0e97f0b2282e6cc66c
+  max_tokens: 8192
   doc_prompt: "- "
+  normalize: true
   batch_size: 32

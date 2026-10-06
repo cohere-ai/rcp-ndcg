@@ -32,7 +32,7 @@ from rcp_ndcg.data.resolution import (
     uniform_frame_indices,
 )
 from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.llm._payload import build_messages
+from rcp_ndcg.inference.adapters.chat import build_messages
 from rcp_ndcg.llm.client import CompletionInput
 from tests.data import _media_reference as ref
 

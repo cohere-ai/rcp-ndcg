@@ -277,12 +277,12 @@ class TestStatusMap:
         replies = _send(_transport(script, max_retries=1))
         assert replies[0].status == 200 and sleeps[-1] == 60.0  # capped at RETRY_MAX_BACKOFF_S
 
-    def test_usage_counts_calls_failed_calls_and_tokens(self) -> None:
+    def test_usage_counts_requests_failed_requests_and_tokens(self) -> None:
         transport = _transport(ReplicaScript(503, 200, 401), max_retries=1)
         assert _send(transport)[0].status == 200
         with pytest.raises(CredentialsError):
             _send(transport)
-        assert (transport.usage.calls, transport.usage.failed_calls) == (1, 1)
+        assert (transport.usage.requests, transport.usage.failed_requests) == (1, 1)
         transport.add_usage(TokenCount(input_tokens=10, output_tokens=2))
         transport.add_usage(None)  # a reply the API reports no tokens for adds nothing
         assert (transport.usage.input_tokens, transport.usage.output_tokens) == (10, 2)
@@ -291,7 +291,7 @@ class TestStatusMap:
         script = ReplicaScript(200, 200)
         transport = _transport(script)
         asyncio.run(transport.send([Call("POST", "/a", {}), Call("POST", "/b", {})]))
-        assert transport.usage.calls == 2
+        assert transport.usage.requests == 2
 
     def test_send_without_calls_is_refused(self) -> None:
         with pytest.raises(ValueError, match="at least one call"):
@@ -328,7 +328,7 @@ class TestHeaders:
         with pytest.raises(CredentialsError, match="RCP_NDCG_TEST_GATEWAY"):
             _send(transport)
         assert script.requests == []  # refused before anything was queued
-        assert (transport.usage.calls, transport.usage.failed_calls) == (0, 1)  # the request failed
+        assert (transport.usage.requests, transport.usage.failed_requests) == (0, 1)  # the request failed
 
     def test_a_missing_api_key_names_the_variable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("RCP_NDCG_TEST_KEY", raising=False)
@@ -336,7 +336,7 @@ class TestHeaders:
         with pytest.raises(CredentialsError, match="RCP_NDCG_TEST_KEY") as caught:
             _send(transport)
         assert caught.value.details == {"variable": "RCP_NDCG_TEST_KEY"}
-        assert transport.usage.failed_calls == 1  # the request failed, nothing was queued
+        assert transport.usage.failed_requests == 1  # the request failed, nothing was queued
 
     def test_the_calls_own_headers_are_sent(self) -> None:
         script = ReplicaScript()
@@ -412,6 +412,16 @@ class TestSyncBridge:
         asyncio.run(transport.aclose())  # the true async close (R15)
         assert transport._pool is None
         assert transport.run(transport.send([Call("POST", "/b", {})]))[0].status == 200
+
+    def test_aclose_after_its_loop_closed_drops_the_pool_without_raising(self) -> None:
+        """The judge client replaces its config after a pass's `asyncio.run` closed the loop the pool rode on;
+        closing the wire then must drop the dead pool, not raise `Event loop is closed`."""
+        script = ReplicaScript(200, 200)
+        transport = _transport(script)
+        asyncio.run(transport.send([Call("POST", "/a", {})]))  # builds the pool on a loop that then closes
+        transport.aclose()
+        assert transport._pool is None
+        assert asyncio.run(transport.send([Call("POST", "/b", {})]))[0].status == 200
 
     def test_close_and_the_context_manager_are_the_same_close(self) -> None:
         script = ReplicaScript(200)

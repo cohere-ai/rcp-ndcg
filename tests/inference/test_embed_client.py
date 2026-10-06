@@ -20,7 +20,7 @@ from rcp_ndcg.errors import CapabilityError, ConfigError, CredentialsError, Requ
 from rcp_ndcg.inference import EmbeddingClient, EncodeRole
 from rcp_ndcg.inference.types import Call, Embeddings, Reply
 from tests._tokenizers import byte_bpe_tokenizer, save, word_tokenizer
-from tests.inference._embed import FakeSender, openai_data, vendor_payload
+from tests.inference._embed import FakeSender, embeddings_data, vendor_payload
 
 #: Every profile under its registered api name.
 APIS = ("openai_embeddings", "cohere", "voyage", "gemini")
@@ -63,7 +63,7 @@ def handler(api: str, values: dict[str, float], *, shuffle: bool = False) -> Cal
         batch = input_texts(api, call)
         vectors = [[values.get(text, 1.0), 1.0] for text in batch]
         if shuffle and api in ("openai_embeddings", "voyage"):
-            body = openai_data(vectors, indices=list(reversed(range(len(vectors)))))
+            body = embeddings_data(vectors, indices=list(reversed(range(len(vectors)))))
         else:
             body = vendor_payload(api, vectors)
         return Reply(200, body, {})
@@ -146,7 +146,7 @@ class TestContentDecisions:
         assert sender.calls == []
 
     def test_empty_input_needs_no_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """An empty call makes no request, so a missing key must not fail it (api_dense's behaviour)."""
+        """An empty call makes no request, so a missing key must not fail it (the hosted path's behaviour)."""
         monkeypatch.delenv("CO_API_KEY", raising=False)
         monkeypatch.delenv("COHERE_API_KEY", raising=False)
         client = EmbeddingClient(endpoint("cohere"), sender=FakeSender(handler("cohere", {})))

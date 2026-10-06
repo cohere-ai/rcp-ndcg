@@ -75,6 +75,7 @@ The same flag means the same thing on every command that has it:
 | `--docs QUERY_ID:DOC_ID` | judge only these documents (re-annotation, insertion) |
 | `--plan FILE` | `judge tournament`: ask exactly the windows of an insertion plan (`calibration insert --plan --out FILE`), with the `--out` store's schedule |
 | `--k INT` | a cutoff; repeatable |
+| `--system NAME` | `eval score` (and `eval explain --report`): score only these systems of the rankings file (repeatable); an unknown name is refused (exit 3) with the systems the file names. One system whose rankings match nothing of the dataset no longer has to stop the others |
 | `--per-query`, `--fields NAME` | `eval score --json`: add the per-query values; print only the named top-level fields (repeatable). The full report goes to `--out` |
 | `--include-text` | `eval explain`: add the query and document texts |
 | `--include-reference` | `eval compare --run`: also compare the run's reference systems `candidates` and `judge` |
@@ -98,11 +99,10 @@ Environment variables:
 | `RCP_NDCG_LOG_LEVEL` | the log level when no `-v` or `-q` is given |
 | `RCP_NDCG_MAX_VIDEO_BYTES` | the largest video inlined into a judge request (default 64 MiB) |
 | `RCP_NDCG_IMAGE_CACHE_SIZE`, `RCP_NDCG_VIDEO_CACHE_SIZE` | encoded images and videos kept in memory per worker while judging |
-| `RCP_NDCG_PG_TIMEOUT_MIN` | the process-group timeout of a multi-GPU `accelerate launch`, in minutes (default 240) |
 
-Credentials are read only under the name a config declares (`api_key_env`), except that the hosted retrieval
-providers fall back to their vendors' usual variables: `CO_API_KEY` or `COHERE_API_KEY`, `VOYAGE_API_KEY`, and
-`GEMINI_API_KEY` or `GOOGLE_API_KEY`.
+Credentials are read only under the name a config declares (`api_key_env`); when a hosted retrieval profile
+(`api: cohere`, `voyage`, `gemini`) names none, its adapter reads the vendor's usual variables: `CO_API_KEY` or
+`COHERE_API_KEY`, `VOYAGE_API_KEY`, and `GEMINI_API_KEY` or `GOOGLE_API_KEY`.
 
 ## Machine output
 
@@ -117,11 +117,14 @@ With `--json`, stdout carries exactly one JSON document, and logs and progress g
 ```
 
 The envelope's `warnings` carry the conditions raised while the command ran, with a code from
-`rcp_ndcg.errors.WarningCode` (`APPROXIMATE_IMAGE_TOKENS`, `BT_L2_MISMATCH`, `INVALID_WINDOWS`, `UNCALIBRATED_DOCUMENTS`, `UNPINNED_REVISION`, `UNREADABLE_RUN`); without `--json` the same warnings print on stderr. A result can carry
-warnings of its own: an evaluation report's `data.warnings` also use `UNRANKED_QUERIES` and `NO_POSITIVE_QRELS`.
-`UNPINNED_REVISION` is the one a Hub dataset raises when its branch (or no revision at all) resolved to no commit
--- offline, or with the Hub unreachable, and no recorded ref in the local cache; it names `--revision <full sha>`
-as the fix.
+`rcp_ndcg.errors.WarningCode` (`APPROXIMATE_IMAGE_TOKENS`, `BT_L2_MISMATCH`, `INVALID_WINDOWS`, `SNAPSHOT_LISTING`,
+`UNCALIBRATED_DOCUMENTS`, `UNPINNED_REVISION`, `UNREADABLE_RUN`); without `--json` the same warnings print on
+stderr. A result can carry warnings of its own: an evaluation report's `data.warnings` also use `UNRANKED_QUERIES`
+and `NO_POSITIVE_QRELS`. `UNPINNED_REVISION` is the one a Hub dataset raises when its branch (or no revision at
+all) resolved to no commit -- offline, or with the Hub unreachable, and no recorded ref in the local cache; it
+names `--revision <full sha>` as the fix. `SNAPSHOT_LISTING` is the one an offline corpus read raises when the
+file listing came from the local snapshot instead of the Hub: the snapshot holds only the files a download left,
+so a partial cache can read as missing data.
 
 A failure has `"ok": false` and an `error` object with `code`, `exit_code`, `message`, `hint`, `retryable` and
 `details`. A config that does not validate (exit 3) lists its problems in `details.errors`: per problem the `field`

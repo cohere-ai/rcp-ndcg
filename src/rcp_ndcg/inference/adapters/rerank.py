@@ -488,8 +488,7 @@ class VoyageRerankAdapter(RerankWire):
     answered as ``data``.
 
     At most 1000 documents per request (or the config's ``batch_size`` when smaller), and the requests of one
-    query spaced by half a second (the pause of today's
-    :class:`~rcp_ndcg.retrieval.external_rerankers.VoyageRerank`): Voyage enforces strict rate limits. Its
+    query spaced by half a second (the pause of today's hosted Voyage path): Voyage enforces strict rate limits. Its
     return-limit field is ``top_k``; the client wants every document it sends scored, and Voyage returns all
     of them by default, so no field is sent.
     """
