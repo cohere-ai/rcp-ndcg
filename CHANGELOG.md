@@ -423,6 +423,14 @@ released together.
 
 ### Changed
 
+- **One lock for a served-only package**: with the `[local]` and `[vllm]` extras gone, `uv.lock` holds one torch
+  (2.14.0, the version the coordinator's extras already resolved, CPU-index compatible) instead of the
+  conflict-fork pair 2.9.1/2.14.0, and drops 114 packages only the in-process stack needed (`vllm` and its engine
+  dependencies `openai`, `httpx2`, `anthropic`, `mcp`, `xgrammar`, `jiter`, `flash-attn`, `accelerate`, and the
+  4.57.6 transformers fork among them; transformers stays only through the `mteb` extra, at 5.17.0).
+  `requirements-constraints.txt` is regenerated with the command in its header; `oauthlib` moves 3.3.1 → 4.0.0 (the
+  first patched version of its open advisory). No other version the coordinator's extras install moved, and the
+  paper reproduction (`experiments/run_all.py`) is unchanged: 0 failed, 35 known deviations, same summary.
 - `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/judge-config.v1.json`,
   `schemas/run-config.v1.json`) regenerated for the moved and new fields; `tests/test_errors.py` now requires
   one *root* class per exit code, since the moved outage and refusal types are `ProviderError` subclasses and
@@ -501,6 +509,29 @@ released together.
   the engines you started yourself). The single-engine `serve:` mapping (`serve: {image: ...}`) on a run
   config: `serve:` now maps roles to engines (`serve: {judge: {...}}`). The doctor's `--judge-url` flag is
   `--endpoint <url>`, which probes any role's endpoint.
+- **The `[local]` and `[vllm]` extras** (RFC L5, the served-only package): with every in-process model path gone
+  (above), the extras and their machinery leave `pyproject.toml` — the `local` extra (torch 2.9.1, transformers,
+  accelerate, flash-attn 2.8.3), the `vllm` extra, the `[tool.uv] conflicts` pair that kept the two in separate
+  environments, and `[tool.uv.extra-build-dependencies]` (flash-attn's build-time torch). `EXTRA_FOR_MODULE`
+  (and with it `rcp-ndcg doctor`) no longer names `accelerate`, `transformers` or `vllm`; `torch` maps to
+  `[calibrate]`, the one torch requirement in the manifest (the core's `[irt]` extra still carries its own, for
+  standalone core installs). A test pins the one-home rule: the extras `EXTRA_FOR_MODULE` names are exactly the
+  runtime extras `pyproject.toml` declares.
+- Every `uses:` in `.github/workflows/*.yml` is pinned to a full 40-hex commit SHA (the action's own repository,
+  resolved through its tags), with the release tag in a trailing comment; a contract test refuses any `uses:`
+  that is not (R22).
+- The release workflow's build job additionally refuses a `rcp-ndcg-vllm` manifest that depends on `rcp-ndcg`
+  without pinning it exactly `==<tag version>` (the check passes without the dependency and without the package).
+
+### Security
+
+- Dependabot alerts on the default branch's lock (operator snapshot): every alert the lock could carry is
+  closed in this one. The `vllm` alerts (27 open when read, the operator's snapshot counted 11, highs among
+  them) and its engine-only dependencies (`xgrammar`, `diskcache`) leave the lock with the extras;
+  `transformers` stays only through the `mteb` extra at 5.17.0 (≥ the high advisory's first patched 5.10.0);
+  `torch` 2.14.0 and `setuptools` 84.0.0 are already at or past their first patched versions (2.13.0, 83.0.0);
+  `oauthlib` moves to 4.0.0. No pyproject floor was raised to hold any of them. The constraints file attached
+  to the release carries no alerted high advisory.
 
 ## 0.1.0
 
