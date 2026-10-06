@@ -186,6 +186,12 @@ released together.
   `reference.known_deviations: [anchor_drop_over_cap]` (over-cap pairs gate on under-cap pairs only).
   Stage 1 passes on CPU against the real Hub tokenizer (tokenizer files only); state `unverified` until the
   GPU waves run.
+- The first serving recipe ships: `packages/rcp-ndcg-vllm/recipes/topk-embed-v1-small/` (recipe.yaml,
+  reference.py; the recipe directory is grafted into the sdist with the rest of `recipes/`), serving
+  `topk-io/topk-embed-v1-small` as a multi-vector model on `vllm/vllm-openai:v0.31.0` through a
+  `vllm.general_plugins` wheel (`serve.plugin: topk-embed-vllm`, built by the plugin lane). Its tests pin
+  the recipe on CPU: stage 1 over the product's `fit` (tokenizer files only), the image-wrapper ids of
+  the served chat template, the document keep-mask asymmetry, and anchor and frame mutations that go red.
 
 - **`JobSpec` takes exactly one of `argv` and `phases`** (`rcp_ndcg.runners`): a job without phases runs its
   `argv`; a phased job's commands are its phases' `argv`, and it carries no `argv` of its own — both or neither
