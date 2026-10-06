@@ -197,10 +197,14 @@ class RoleClient[C: Endpoint]:
         :func:`~rcp_ndcg.data.preprocess.fit` call reserves them.
 
         Until it lands, the reservation is zero, and the roles differ: the embedding adapters refuse media
+        Until it lands, the reservation is zero, and the roles differ: the embedding adapters refuse media
         outright (a declared budget is never under-counted there); the rerank and pooling wires carry media
         today (content parts, or the pooling ``messages`` shape) **without** reserving its tokens -- a
         declared budget counts text only. Declared interim policy: a media item's cost is outside the
-        declared budget until the media lane lands.
+        declared budget until the media lane lands. When that lane wires non-zero counts through here, the
+        rerank settlement probe must reserve the documents' maximum media count (per-pair caps then differ
+        per document; the probe's cap must match what ships), and the document's media parts ride on every
+        chunk of it -- the media lane owns both policies.
         """
         return [0] * len(contents)
 
@@ -210,11 +214,15 @@ class RoleClient[C: Endpoint]:
         shape: RequestShape,
         *,
         media_tokens: Sequence[int] | None = None,
+        instruction: str | None = None,
         record: bool = True,
     ) -> FitResult:
         """One :func:`~rcp_ndcg.data.preprocess.fit` call for this client's budget: the shared mechanism the
-        brief wires into every ``_prepare``. ``corpus`` is the client's role name; ids are positional. A probe
-        call passes ``record=False`` so its spans are decided without recording census rows."""
+        brief wires into every ``_prepare``. ``corpus`` is the client's role name; ids are positional. The
+        ``instruction`` reserves the instruction's tokens in the fixed overhead where the declared template
+        frames it (the reranker's ``instruction: field`` and ``system`` modes -- the instruction is then
+        engine-rendered into the frame, never inside the cut spans); ``record=False`` makes a probe call,
+        whose spans are decided without recording census rows."""
         budget, tokenizer = self._budget, self._tokenizer
         assert budget is not None  # callers only fit when a budget is declared
         return fit(
@@ -223,6 +231,7 @@ class RoleClient[C: Endpoint]:
             budget,
             tokenizer,
             ids=[str(index) for index in range(len(inputs))],
+            instruction=instruction,
             media_tokens=media_tokens,
             corpus=self.ROLE,
             census=self.census if record else None,

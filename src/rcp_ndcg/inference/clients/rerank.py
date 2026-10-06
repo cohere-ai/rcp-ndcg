@@ -58,6 +58,11 @@ if TYPE_CHECKING:
 #: query and fsyncs it); the client only calls at the right times.
 Checkpoint = Callable[[str, tuple[float, ...]], None]
 
+QUERY_DOC_ID = "<query>"
+"""The ``doc_id`` of the census row a shared query's settlement is recorded under (one row per rerank call,
+when the query settles below its input: over its declared ``query_max_tokens``, or when it alone fills the
+budget) -- the sibling of the fit census' ``BUDGET_DOC_ID``; the pair rows keep their positional ids."""
+
 
 class RerankClient(RoleClient):
     """One :class:`~rcp_ndcg.inference.config.RerankEndpoint`'s reranking, over one sender.
@@ -153,7 +158,7 @@ class RerankClient(RoleClient):
         prepared_documents = self._prepare(documents, EncodeRole.DOCUMENT)
         if not prepared_documents:
             return RerankResult(scores=())  # an empty candidate set is not a request (as on the served path)
-        wire_query, wire_documents, fitted = self._fit_pair(prepared_query, prepared_documents)
+        wire_query, wire_documents, fitted = self._fit_pair(prepared_query, prepared_documents, instruction=instruction)
         request = RerankRequest(
             query=wire_query,
             documents=tuple(wire_documents),
@@ -211,7 +216,9 @@ class RerankClient(RoleClient):
             for content in prepared
         )
 
-    def _fit_pair(self, query: Content, documents: Sequence[Content]) -> tuple[Content, list[Content], FitResult]:
+    def _fit_pair(
+        self, query: Content, documents: Sequence[Content], *, instruction: str | None = None
+    ) -> tuple[Content, list[Content], FitResult]:
         """The query and its candidates as the wire carries them, fitted into the pair budget.
 
         With a budget declared, :meth:`RoleClient._fit` runs the shared mechanism over the ``(query,
@@ -220,8 +227,9 @@ class RerankClient(RoleClient):
         query only when that pair overflows -- each document gets what remains, and a chunked document comes
         back as one output per chunk (``<id>#<k>``) with the full template around it. The settlement (a
         query over its declared ``query_max_tokens``, or one that alone fills the budget) is recorded in the
-        census under the doc id ``<query>``. The wire takes the cut spans (the engine renders the template
-        itself); the chunks' ``max`` pooling is the caller's, through the fit result.
+        census under :data:`QUERY_DOC_ID`. The vendor path (no tokenizer) settles nothing: fit sends the
+        pairs uncut and records the documented limit. The wire takes the cut spans (the engine renders the
+        template itself); the chunks' ``max`` pooling is the caller's, through the fit result.
 
         Returns:
             ``(wire_query, wire_documents, fitted)``: the query content (cut) and the document contents
@@ -248,25 +256,29 @@ class RerankClient(RoleClient):
         # document span is verified against.
         original_query = query.text
         query_text = original_query
-        share = self._budget.query_max_tokens
-        assert self._tokenizer is not None
-        if share is not None and self._tokenizer.count(query_text) > share:
-            query_text = token_prefix(query_text, share, self._tokenizer)
-        settled = self._fit([(query_text, "")], "pair", record=False).contents[0][0]
-        if settled != original_query:
-            self.census.record(
-                corpus=self.ROLE,
-                doc_id="<query>",
-                original_chars=len(original_query),
-                kept_chars=len(settled),
-                original_tokens=self._tokenizer.count(original_query),
-                kept_tokens=self._tokenizer.count(settled),
-                mechanism=TextTruncationCensus.TEXT_BUDGET,
-                budget_source="tokenizer",
-                shape="pair",
-            )
+        if self._tokenizer is not None:
+            share = self._budget.query_max_tokens
+            if share is not None and self._tokenizer.count(query_text) > share:
+                query_text = token_prefix(query_text, share, self._tokenizer)
+            settled = self._fit([(query_text, "")], "pair", instruction=instruction, record=False).contents[0][0]
+            if settled != original_query:
+                self.census.record(
+                    corpus=self.ROLE,
+                    doc_id=QUERY_DOC_ID,
+                    original_chars=len(original_query),
+                    kept_chars=len(settled),
+                    original_tokens=self._tokenizer.count(original_query),
+                    kept_tokens=self._tokenizer.count(settled),
+                    mechanism=TextTruncationCensus.TEXT_BUDGET,
+                    budget_source="tokenizer",
+                    shape="pair",
+                )
+        else:
+            # The vendor path: no tokenizer, so nothing is measured or settled; fit sends the pairs uncut
+            # and records the vendor's documented limit.
+            settled = query_text
         pairs = [(settled, document.text) for document in documents]
-        result = self._fit(pairs, "pair", media_tokens=self._media_tokens(documents))
+        result = self._fit(pairs, "pair", media_tokens=self._media_tokens(documents), instruction=instruction)
         contents = [pair if isinstance(pair, tuple) else (pair, "") for pair in result.contents]
         # The settled span is the one every output carries: an under-budget pair repeats it and an
         # overflowing one settles to it (or to a shorter cut that the probe pair already applied).

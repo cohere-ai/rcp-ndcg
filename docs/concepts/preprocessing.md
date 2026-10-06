@@ -221,8 +221,8 @@ form does not). The budget reserves those tokens too: they are part of the measu
 
 The budget names the tokenizer, the `max_tokens` (the model's whole input sequence, in that tokenizer's tokens),
 optionally `query_max_tokens` (the query's share of a pair budget: when a pair overflows, the query is cut to it
-first and the document gets the rest -- an input under budget goes out unchanged, so the share binds on
-overflow), `on_overflow` (`cut` by default, `chunk` or `fail` opt-in), the chunk geometry, and
+first and the document gets the rest -- an input under budget goes out unchanged, so within `fit` the share
+binds on overflow), `on_overflow` (`cut` by default, `chunk` or `fail` opt-in), the chunk geometry, and
 `aggregation: max`. `fit` then, per input:
 
 1. measures the fixed overhead once per (template, shape): the template rendered with every content span empty,
@@ -234,7 +234,11 @@ overflow), `on_overflow` (`cut` by default, `chunk` or `fail` opt-in), the chunk
    always client-side here;
 4. records every cut in the census under the `text_budget` mechanism.
 
-An input under budget comes back byte-identical to the uncut render. The function returns the rendered strings
+An input under budget comes back byte-identical to the uncut render -- within `fit`, which settles a pair's
+query span per pair. The rerank wire carries one query per request, so the rerank client settles the shared
+query span once per call (`fit`'s own rules, on a probe pair): whenever the query exceeds its declared share it
+ships at it, recorded once in the census under the doc id `<query>`, and every document span is verified
+against the span that ships. The function returns the rendered strings
 (the wire routes take text; tokenising once here to measure and cut is the same work either way), the cut content
 per span (for routes the engine renders the template on), the output ids, and the chunk mapping.
 

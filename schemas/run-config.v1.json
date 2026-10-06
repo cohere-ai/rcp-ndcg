@@ -242,7 +242,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -503,7 +503,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -702,7 +702,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -1347,7 +1347,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -1526,7 +1526,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {
@@ -2377,7 +2377,7 @@
             }
           ],
           "default": null,
-          "description": "Environment variable holding the API key; ``None`` sends no key. An empty name is refused (it would silently send no header).",
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
           "title": "Api Key Env"
         },
         "base_url": {

@@ -34,8 +34,10 @@ class Endpoint(BaseModel):
         model: The served model name, sent as the request's ``model``.
         revision: The checkpoint commit the served weights resolved to; recorded in identities, so two
             checkpoints served under one name are never mistaken for each other.
-        api_key_env: Environment variable holding the API key; ``None`` sends no key. An empty name is
-            refused (it would silently send no header).
+        api_key_env: Environment variable holding the API key, resolved by the transport; when ``None``
+            (the default), the wire adapter profile's own variables are tried in order, in the profile's
+            header (a hosted profile requires one). A variable the config names must be set. An empty name
+            is refused (it would silently send no header).
         headers_env: Header name -> environment variable name (e.g. ``{"X-Gateway-Key": "GATEWAY_KEY"}``); the
             values are read from the environment only, never from a config, and the variable names are validated.
         concurrency: Requests in flight at once.

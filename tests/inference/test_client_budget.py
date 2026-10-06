@@ -414,3 +414,68 @@ class TestQueryShareSettled:
         )
         with pytest.raises(TextBudgetExceededError):
             client.rerank(" ".join(["evidence"] * 50), ["a document"])
+
+
+class TestRerankVendorBudget:
+    """A hosted rerank profile that declares only the vendor's documented limit: content uncut, the limit
+    recorded, and no client-side settlement (there is no tokenizer to measure with)."""
+
+    def test_a_hosted_profile_with_only_max_tokens_sends_pairs_uncut(self) -> None:
+        sender = RecordingSender()
+        client = RerankClient(
+            RerankEndpoint(api="cohere", base_url="http://127.0.0.1:9000/v1", model="m", max_tokens=1024),
+            sender=sender,
+        )
+        long_query = " ".join(["evidence"] * 50)
+        long_document = " ".join(["evidence"] * 500)
+
+        client.rerank(long_query, [long_document])
+
+        assert sender.bodies[0]["query"] == long_query
+        assert sender.bodies[0]["documents"][0] == long_document
+        rows = client.census.cuts(mechanism=TextTruncationCensus.TEXT_BUDGET)
+        assert len(rows) == 1 and rows[0].budget_source == "vendor" and rows[0].doc_id == "<budget>"
+
+
+class TestInstructionReserved:
+    """An ``instruction: field`` (or ``system``) mode renders the instruction into the engine's frame: its
+    tokens are part of the fixed overhead, so the fit reserves them (``fold`` folds it into the query
+    content, where the span cut already counts it)."""
+
+    @staticmethod
+    def _template() -> TemplateSpec:
+        """The engine's pair frame with an instruction span: rendered by the engine for ``field`` mode, so
+        the fit must reserve the instruction's tokens in the fixed overhead."""
+        return TemplateSpec(
+            pair=(
+                Segment(content="instruction"),
+                Segment(fixed="\n"),
+                Segment(content="query"),
+                Segment(fixed=" "),
+                Segment(content="document"),
+            )
+        )
+
+    def test_the_instruction_travels_in_the_overhead_not_the_cut(self, tokenizer_json: str) -> None:
+        sender = RecordingSender()
+        config = RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=12,
+            instruction="field",
+            template=self._template(),
+            use_activation=False,
+        )
+        client = RerankClient(config, sender=sender)
+        long_instruction = " ".join(["evidence"] * 8)  # 8 tokens of fixed overhead, never cut
+        long_document = " ".join(["evidence"] * 20)
+
+        client.rerank("the query", [long_document], instruction=long_instruction)
+
+        body = sender.bodies[0]
+        assert body["instruction"] == long_instruction, "the field mode sends it as its own request field"
+        document = body["documents"][0]
+        # The pair the engine renders: the instruction line + the query + the cut document, all within the
+        # declared budget (the instruction reserved in the overhead, the document cut to what remains).
+        assert word_tokenizer().count(f"{long_instruction}\nthe query {document}") <= 12

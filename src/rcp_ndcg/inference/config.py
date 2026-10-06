@@ -278,9 +278,12 @@ class RerankEndpoint(Endpoint):
             config refuses (declare the budget); a hosted vendor profile with no tokenizer sends pairs uncut.
             Content.
         query_max_tokens: The query's share of the pair budget (``max_tokens``), in the declared tokenizer's
-            tokens; the document gets what remains. It binds when a pair overflows -- an input under budget is
-            sent byte-identical to the uncut render. ``None`` (the default) declares no split, and the
-            adapter's recipe decides. Content.
+            tokens; the document gets what remains. On the served rerank wire one query rides per request, so
+            the client settles the shared query span once per call: whenever the query exceeds its share it
+            ships at it (recorded once in the census under the doc id ``<query>``), and every document span
+            is verified against the span that ships -- so a pair is never shipped over the budget. ``None``
+            (the default) declares no split, and the adapter's recipe decides; a query that alone fills the
+            budget is then refused rather than cut undeclared. Content.
         template: The pair template as data (:class:`~rcp_ndcg.data.templates.TemplateSpec`), which orders
             query and document per model (document first for some rerankers, and then the query block is an
             anchor), names the specials, and declares the anchor and the per-shape ``add_special_tokens``.

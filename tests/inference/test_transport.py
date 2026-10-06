@@ -605,3 +605,25 @@ class TestSyncBridgeLoop:
         assert rebuilt is not None and rebuilt is not own
         transport.close()
         assert rebuilt.is_closed() and transport._own_loop is None
+
+
+class TestCloseInsideTheBridgeCall:
+    """A close requested from inside the bridge's own call drains: the scheduled pool close completes and
+    the loop closes when the call returns (no destroyed-pending task, no abandoned pool)."""
+
+    def test_close_from_within_the_bridged_coroutine(self) -> None:
+        script = ReplicaScript()
+        transport = _transport(script)
+
+        async def caller() -> None:
+            transport.run(transport.send([Call("POST", "/a", {})])) if False else None
+            transport.close()  # from inside the coroutine the bridge serves
+
+        async def run() -> None:
+            await caller()
+
+        asyncio.run(run())
+        transport._close_own_loop()  # the next close (or the caller's cleanup) finishes the close
+        own = transport._own_loop
+        assert own is None or own.is_closed()
+        assert transport._pool is None

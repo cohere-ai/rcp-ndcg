@@ -25,6 +25,7 @@ import os
 import threading
 import time
 from collections.abc import Coroutine, Mapping, Sequence
+from concurrent.futures import Future
 from dataclasses import dataclass
 from types import TracebackType
 from typing import Any, ClassVar, Protocol, Self, TypeVar, runtime_checkable
@@ -253,6 +254,9 @@ class Transport:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._own_loop: asyncio.AbstractEventLoop | None = None
         """The sync bridge's private loop (:meth:`run`); the pool of its calls is bound to it."""
+        self._bridge_close: Future[None] | None = None
+        """A pool close scheduled on the bridge's own loop (a :meth:`close` from inside its call); drained
+        by the next :meth:`close` before the loop closes."""
         self._background_loop: asyncio.AbstractEventLoop | None = None
         self._background_thread: threading.Thread | None = None
         self._last_error: BaseException | None = None
@@ -644,6 +648,7 @@ class Transport:
                 return
             await pool.aclose()
         finally:
+            self._bridge_close = None
             self._close_own_loop()
 
     def close(self) -> None:
@@ -670,9 +675,15 @@ class Transport:
             running: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
         except RuntimeError:
             running = None
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+        else:
+            running = asyncio.get_running_loop()
         if loop is running:
-            asyncio.run_coroutine_threadsafe(pool.aclose(), loop)  # blocking here would deadlock this loop
-            return
+            self._bridge_close = asyncio.run_coroutine_threadsafe(pool.aclose(), loop)
+            return  # a close requested from the bridge's own call; _close_own_loop drains it later
         if loop.is_running():
             asyncio.run_coroutine_threadsafe(pool.aclose(), loop).result()
             return
@@ -680,16 +691,21 @@ class Transport:
 
     def _close_own_loop(self) -> None:
         """The sync bridge's private loop (:meth:`run`), closed once it is not running; a later ``run``
-        builds a fresh one. The background thread's loop (a notebook's bridge) serves the process and is
-        left to it.
+        builds a fresh one. A close requested from the bridge's own call (the pool close scheduled on it) is
+        drained here: the next ``close()`` runs the scheduled close to completion and then closes the loop.
+        The background thread's loop (a notebook's bridge) serves the process and is left to it.
         """
         own = self._own_loop
-        self._own_loop = None
         if own is None or own.is_closed():
             return
         if own.is_running():
-            return  # still serving a caller (the notebook bridge's thread); it lives with the transport
+            return  # still serving a call: the next close() finishes this one
+        pending = self._bridge_close
+        self._bridge_close = None
+        if pending is not None and not pending.done():
+            own.run_until_complete(asyncio.wrap_future(pending))
         own.close()
+        self._own_loop = None
 
     def __enter__(self) -> Self:
         return self

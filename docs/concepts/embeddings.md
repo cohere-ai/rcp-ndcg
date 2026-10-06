@@ -20,7 +20,7 @@ An embedding endpoint is an `EmbeddingEndpoint` (`rcp_ndcg.inference.config`): t
 |---|---|
 | `api` | The wire adapter, from the embed role's registry: `openai_embeddings` (default), `cohere`, `voyage`, `gemini`, or a third party's from the `rcp_ndcg.adapters` entry-point group (entries named `embed.<name>`) |
 | `base_url` | The endpoint; `null` for a hosted API, which then uses the profile's public URL |
-| `api_key_env` | The variable holding the key, resolved by the transport; when unset, a hosted profile reads its own (e.g. `CO_API_KEY` or `COHERE_API_KEY`) in its own header |
+| `api_key_env` | The variable holding the key, resolved by the transport; when unset, the wire adapter profile's own variables are tried (a hosted profile's `CO_API_KEY` or `VOYAGE_API_KEY`, the OpenAI route's `OPENAI_API_KEY`), in the profile's header |
 | `query_prompt`, `doc_prompt` | Text prepended to every query / document (an asymmetric embedder's instruction prefix) |
 | `normalize` | L2-normalise the vectors (the default); normalising twice is harmless |
 | `dimensions` | The Matryoshka cut, sent only when set |
@@ -30,8 +30,8 @@ An embedding endpoint is an `EmbeddingEndpoint` (`rcp_ndcg.inference.config`): t
 
 Two hosted shortcuts: a config with no `base_url` points at the profile's public URL
 (`https://api.cohere.com/v2` for Cohere, and so on), and a profile that requires a key raises a
-`CredentialsError` naming its variables when none is set. A served engine (`base_url` set, `openai_embeddings`)
-takes no key unless `api_key_env` names a variable.
+`CredentialsError` naming its variables when none is set. A served engine takes no key unless a variable
+holds one -- the profile's own (the OpenAI route's `OPENAI_API_KEY`) or the one `api_key_env` names.
 
 ## The wire adapters
 
