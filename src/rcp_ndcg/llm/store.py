@@ -331,15 +331,20 @@ class JudgementStore:
         return records
 
     def append(self, judgement: Judgement) -> None:
-        """Append one record (one line, flushed)."""
-        path = self.path(judgement.stage)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if path not in self._checked_tail:
-            self._checked_tail.add(path)
-            _drop_torn_tail(path)
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(judgement.model_dump_json() + "\n")
-            handle.flush()
+        """Append one record (one line, flushed).
+
+        Overlapping passes append to one file: the first append's torn-tail repair truncates to the last
+        complete line, and a peer's in-flight line is exactly what that truncation would cut -- so the tail
+        repair and the append hold the store's advisory lock, like every other writer of this directory."""
+        with self._identity_lock():
+            path = self.path(judgement.stage)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if path not in self._checked_tail:
+                self._checked_tail.add(path)
+                _drop_torn_tail(path)
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(judgement.model_dump_json() + "\n")
+                handle.flush()
 
     def read(self, stage: Stage | None = None) -> JudgementSet:
         """The store's judgements (of one stage, or of every stage) with their families.
