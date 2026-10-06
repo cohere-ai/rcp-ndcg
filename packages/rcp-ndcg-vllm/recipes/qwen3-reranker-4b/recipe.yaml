@@ -1,0 +1,115 @@
+# Qwen/Qwen3-Reranker-4B: paper-exact serving recipe (vLLM, out-of-the-box image).
+#
+# Paper reference: experiments/paper/rerankers/reference/qwen3.py (QwenOGRerank, unchanged
+# behaviour; the paper's in-process numbers rest on it), batch_size 8 per
+# experiments/paper/rerankers/qwen3_reranker_4b.yaml. Research: research/r-qwen3-rer/out/
+# (report, digest, check_tokens.py) with the audit-synth corrections applied.
+id: qwen3-reranker-4b
+model: Qwen/Qwen3-Reranker-4B
+revision: "22e683669bc0f0bd69640a1354a6d0aebcfeede5"
+role: rerank
+input: [text]
+scoring: pointwise
+licence: apache-2.0
+engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0"}
+resources: {gpus: 1}
+serve:
+  runner: pooling
+  convert: null
+  hf_overrides:
+    # Turns the Qwen3ForCausalLM checkpoint into the 1-label sequence-classification
+    # head (W_yes - W_no, float32 diff, sigmoid): native at this engine, no --convert.
+    architectures: [Qwen3ForSequenceClassification]
+    classifier_from_token: ["no", "yes"]
+    is_original_qwen3_reranker: true
+  # The template file ships in this directory and the argv names it (REVIEW-LOG R10:
+  # without it the engine only WARNS at startup, because is_original_qwen3_reranker is
+  # set, then silently concatenates the prompts per request). It is the paper-exact
+  # frame patched with one trailing newline: the engine's renderer drops the file's
+  # final newline, and the paper prompt ends with a double newline (token 'ĊĊ' 271);
+  # the stock example file renders one newline short of the reference (measured on
+  # 3/3 probe pairs, last token 'Ċ' vs 'ĊĊ').
+  chat_template: template.jinja
+  pooler_config: {}          # defaults suffice: task=classify, 1-label head -> sigmoid
+  trust_remote_code: false
+  max_model_len: 10000        # the model card's own serving value; >= the 8192 budget
+  dtype: bfloat16             # the paper pipeline's DTYPE
+  plugin: null
+  extra_args: []
+client:
+  api: rerank
+  recipe: >-
+    vllm v0.31.0 pooling serve: hf_overrides (architectures [Qwen3ForSequenceClassification],
+    classifier_from_token [no, yes], is_original_qwen3_reranker true), --chat-template
+    template.jinja, dtype bfloat16, max-model-len 10000, default pooler (sigmoid on the
+    1-label head); requests are plain text, score read at the last position.
+  tokenizer: "Qwen/Qwen3-Reranker-4B@22e683669bc0f0bd69640a1354a6d0aebcfeede5"
+  max_tokens: 8192            # MAX_SEQ_LENGTH (the paper's pair budget; frame reserved)
+  query_max_tokens: 4096      # MAX_QUERY_LENGTH: the query's share, cut first on overflow
+  template:
+    pair:
+      - fixed: "{special:im_start}system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \"yes\" or \"no\".{special:im_end}\n{special:im_start}user\n<Instruct>: Given a web search query, retrieve relevant passages that answer the query\n<Query>: "
+      - {content: query}
+      - fixed: "\n<Document>: "
+      - {content: document}
+      - fixed: "{special:im_end}\n{special:im_start}assistant\n{special:<think>}\n\n{special:</think>}\n\n"
+    anchor: last
+    add_special_tokens: true   # the routes' default; this tokenizer's post-processor appends nothing
+  instruction: none            # the client sends no instruction; the template's fixed default
+                               # instruction is the paper's (config_sentence_transformers.json);
+                               # per-row instructions are dropped, as in the paper runs
+  use_activation: true         # the served head is a probability (sigmoid); the reference's
+                               # softmax([no, yes])[yes] is the same scale
+  request_shape: text
+  batch_size: 8                # documents per request, the paper's 4B config
+  on_overflow: cut             # content spans only, anchors reserved, template re-attached
+  empty_doc: send
+reference:
+  kind: transformers           # AutoModelForCausalLM + the manual chat markers, the model
+                               # card's own recipe, at the paper's bfloat16
+  score_scale: probability     # softmax([no, yes])[yes] in [0, 1]
+  entry: reference.py
+  known_deviations: [anchor_drop_over_cap]
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources:
+  - "https://huggingface.co/Qwen/Qwen3-Reranker-4B (sha 22e683669bc0f0bd69640a1354a6d0aebcfeede5): README.md, config.json, config_sentence_transformers.json, chat_template.jinja; revision re-checked against the Hub API"
+  - "vLLM d0d6e5f3a (image vllm/vllm-openai:v0.31.0, 376 commits ahead of the v0.31.0 tag, 27 behind; rerank-path files no-diff): examples/pooling/score/qwen3_reranker_offline.py; examples/pooling/score/template/qwen3_reranker.jinja (685 B, one trailing newline short of the paper prompt); vllm/model_executor/models/adapters.py:566-571 (score_weight float32 diff) and :307 (as_seq_cls_model); vllm/model_executor/models/config.py:783-801; vllm/entrypoints/pooling/scoring/io_processor.py:460-476 (the startup warning when is_original_qwen3_reranker is set without a template), :659-737 (get_score_prompt: the chat template is applied to [query, document] messages; without one the prompts are concatenated, :697-698), io_processor.py:449-466; vllm/entrypoints/pooling/scoring/protocol.py:69-74 (instruction resolution: request -> instruct -> system message -> default); vllm/renderers/hf.py:826-833 (safe_apply_chat_template)"
+  - "no Qwen3ForSequenceClassification entry exists in vllm/model_executor/models/registry.py: the mapping is the suffix table at vllm/model_executor/models/config/model.py:2318 -> _normalize_arch (registry.py:1286) -> as_seq_cls_model (vllm/model_executor/model_loader/utils.py:280)"
+  - "rcp-ndcg: experiments/paper/rerankers/reference/qwen3.py (the paper-exact in-process QwenOGRerank this reference.py derives from); experiments/paper/rerankers/qwen3_reranker_4b.yaml (batch_size 8) and its served-path config (max_tokens 8192, query_max_tokens 4096, instruction none); src/rcp_ndcg/retrieval/cross_encoder.py:42-46 (MAX_SEQ_LENGTH 8192, MAX_QUERY_LENGTH 4096) and :256-269 (the paper-era served call); src/rcp_ndcg/retrieval/external_rerankers.py:58-160 (QwenOGRerank; pair truncation at :98-103, yes/no ids at :99-100)"
+  - "research: /root/repos/rcp-ndcg-lanes/research/r-qwen3-rer/out/report.md sections 4.1 and 5 and risks R3-R7; digest.md; check_tokens.py (the gated tokenizer-only instrument: prefix 39 / suffix 9 tokens, patched template identical 3/3, 11026-token probe keeps the suffix)"
+  - "corrections applied: /root/repos/rcp-ndcg-lanes/research/audit-synth/out/corrections.md table r-qwen3-rer (adapters.py:566-571; no registry.py:330-413 entry; io_processor :460-476; cross_encoder served call :256-269; external_rerankers :98-103/:99-100; protocol :69-74; renderers/hf :826-833; the template-must-ship note; the 376-ahead/27-behind phrasing)"
+  - "reviews: /root/repos/rcp-ndcg-lanes/REVIEW-LOG.md R10 (the template file ships; harness T0 checks the engine loaded it) and R20 (n/a: text-only model); /root/repos/rcp-ndcg-lanes/research/ANCHOR-FINDING.md (cuts never touch the anchors: the suffix tokens are reserved, only the content spans are cut)"
+notes: >-
+  The one measured fix the recipe carries is the trailing newline in template.jinja
+  (the stock vLLM example file renders one newline short of the paper prompt: the
+  renderer strips the file's final newline, and the paper's suffix ends with a double
+  newline, token 'ĊĊ'). The declared client.template and the served file render to the
+  same token ids, which stage 1 proves; the GPU wave re-proves it against the engine
+  (/tokenize, R29) and must confirm the loaded template in the serve log.
+  Budgets: max_tokens 8192 = MAX_SEQ_LENGTH; the frame (prefix 39 + instruction frame
+  + suffix 9 tokens, 73 total with the default instruction) is reserved and only the
+  query/document spans are cut; query_max_tokens 4096 = MAX_QUERY_LENGTH binds on
+  overflow only (an under-budget pair is sent byte-identical to the uncut render).
+  The paper-era served path instead sent max_tokens_per_query=4096 and
+  truncate_prompt_tokens=8192 as request fields and let the engine right-cut the
+  RENDERED prompt, dropping the assistant suffix on over-cap pairs (measured: 2882
+  tokens cut on an 11026-token probe, last token mid-document); this recipe does the
+  cutting on the client, where the anchors are reserved, and never engine-truncates.
+  Over-cap pairs: the reference truncates the whole pair string longest_first to
+  8144 tokens (suffix re-attached, anchors intact), while the served path cuts the
+  query to its 4096 share first and the document gets the rest, so the two keep
+  different content tokens; reference.known_deviations declares anchor_drop_over_cap
+  so stage 2 gates under-cap pairs only and reports over-cap pairs separately.
+  Risks the GPU wave must check: R5 (a >4096-token query with the pair still under
+  8192 is sent whole on this path - no cut - so the old asymmetry is inert here;
+  any over-cap pair lands in the non-gating table), R6 (instruction-bearing dataset
+  rows are dropped by declaration, instruction: none - a run with instructions is a
+  new judgement family and needs its own recipe), R10 (the engine must load
+  template.jinja: the serve log must show it and /tokenize of a rendered prompt must
+  end with the suffix ids 151645,198,151644,77091,198,151667,271,151668,271), and the
+  score head (probability scale: use_activation true; the reference's
+  softmax([no, yes])[yes] with no/yes ids 2152/9693). Reference environment: the
+  package's requirements-reference.txt plus the paper pins in
+  experiments/paper/rerankers/reference/requirements.txt (torch 2.9.1,
+  transformers 4.57.6, flash-attn 2.8.3; declared in reference.py's docstring).

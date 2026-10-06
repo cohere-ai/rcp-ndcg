@@ -42,6 +42,17 @@ released together.
   stage 3 (`stage3_metrics`), the wave runner (`run_wave`) and the subprocess reference runner (`run_reference`)
   are public with package tests covering each; `metrics.py` shells out to `rcp-ndcg eval score` (the product is
   a dependency, so no extra is needed for stage 3).
+- First served recipe `recipes/qwen3-reranker-4b/` (the recipe lanes' product): Qwen/Qwen3-Reranker-4B at the
+  pinned revision, role `rerank`/pointwise on the unmodified `vllm/vllm-openai:v0.31.0` image — hf_overrides
+  turn the checkpoint into the 1-label sequence-classification head (`classifier_from_token` [no, yes],
+  `is_original_qwen3_reranker`), the paper-exact chat template ships as `template.jinja` (the stock example
+  file renders one trailing newline short of the paper prompt; REVIEW-LOG R10), the budgets are the paper's
+  (`max_tokens` 8192, `query_max_tokens` 4096, `on_overflow: cut`, tokenizer pinned `<repo>@<commit>`), the
+  anchor (the 9-token assistant suffix) is declared `anchor: last` and reserved from every cut, and the
+  reference derives unchanged from the paper's `QwenOGRerank` at bfloat16 with
+  `reference.known_deviations: [anchor_drop_over_cap]` (over-cap pairs gate on under-cap pairs only).
+  Stage 1 passes on CPU against the real Hub tokenizer (tokenizer files only); state `unverified` until the
+  GPU waves run.
 
 - `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
   larger than `adaptive_window` runs one batch, not one per batch: every adaptive window of such a pool holds
