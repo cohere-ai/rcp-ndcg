@@ -1,0 +1,456 @@
+{
+  "$defs": {
+    "Wave0Embed": {
+      "additionalProperties": false,
+      "description": "Step (e): the product's fit under an explicit budget, the product's client, the engine's /tokenize.",
+      "properties": {
+        "budget_tokens": {
+          "exclusiveMinimum": 0,
+          "title": "Budget Tokens",
+          "type": "integer"
+        },
+        "n_inputs": {
+          "exclusiveMinimum": 0,
+          "title": "N Inputs",
+          "type": "integer"
+        },
+        "n_over_length": {
+          "minimum": 0,
+          "title": "N Over Length",
+          "type": "integer"
+        },
+        "cuts_recorded": {
+          "minimum": 0,
+          "title": "Cuts Recorded",
+          "type": "integer"
+        },
+        "overhead_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Overhead Tokens"
+        },
+        "client_budget_wired": {
+          "title": "Client Budget Wired",
+          "type": "boolean"
+        },
+        "client": {
+          "additionalProperties": true,
+          "title": "Client",
+          "type": "object"
+        },
+        "tokenize_check": {
+          "additionalProperties": true,
+          "title": "Tokenize Check",
+          "type": "object"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "budget_tokens",
+        "n_inputs",
+        "n_over_length",
+        "cuts_recorded",
+        "client_budget_wired",
+        "client",
+        "tokenize_check",
+        "passed"
+      ],
+      "title": "Wave0Embed",
+      "type": "object"
+    },
+    "Wave0Engines": {
+      "additionalProperties": false,
+      "description": "Step (d): two engines on two slots at the same time, no slot sharing anything.",
+      "properties": {
+        "slots": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Slots",
+          "type": "array"
+        },
+        "concurrent": {
+          "title": "Concurrent",
+          "type": "boolean"
+        },
+        "isolation": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Isolation",
+          "type": "object"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "slots",
+        "concurrent",
+        "isolation",
+        "passed"
+      ],
+      "title": "Wave0Engines",
+      "type": "object"
+    },
+    "Wave0Evict": {
+      "additionalProperties": false,
+      "description": "Step (f): the models out of the HF cache, the free disk before and after (item 8).",
+      "properties": {
+        "models": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Models",
+          "type": "array"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "models",
+        "passed"
+      ],
+      "title": "Wave0Evict",
+      "type": "object"
+    },
+    "Wave0Gcs": {
+      "additionalProperties": false,
+      "description": "Step (c), the gs:// round-trip through the product's storage, from the client environment.",
+      "properties": {
+        "uri": {
+          "title": "Uri",
+          "type": "string"
+        },
+        "wrote_bytes": {
+          "minimum": 0,
+          "title": "Wrote Bytes",
+          "type": "integer"
+        },
+        "listed": {
+          "title": "Listed",
+          "type": "boolean"
+        },
+        "read_equal": {
+          "title": "Read Equal",
+          "type": "boolean"
+        },
+        "deleted": {
+          "title": "Deleted",
+          "type": "boolean"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "uri",
+        "wrote_bytes",
+        "listed",
+        "read_equal",
+        "deleted",
+        "passed"
+      ],
+      "title": "Wave0Gcs",
+      "type": "object"
+    },
+    "Wave0Hub": {
+      "additionalProperties": false,
+      "description": "Step (c), the Hub half: the metadata call with the token secret, the sha against the pin.",
+      "properties": {
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Revision"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Status"
+        },
+        "hub_sha": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hub Sha"
+        },
+        "pinned_match": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pinned Match"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "model",
+        "revision",
+        "status",
+        "passed"
+      ],
+      "title": "Wave0Hub",
+      "type": "object"
+    },
+    "Wave0Stop": {
+      "additionalProperties": false,
+      "description": "Step (g): everything stopped, and no engine process left on the node.",
+      "properties": {
+        "pids": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Pids",
+          "type": "array"
+        },
+        "scan_found": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scan Found",
+          "type": "array"
+        },
+        "all_stopped": {
+          "title": "All Stopped",
+          "type": "boolean"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "pids",
+        "scan_found",
+        "all_stopped",
+        "passed"
+      ],
+      "title": "Wave0Stop",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The whole wave-0 report: the envelope, then one section per step (absent until it ran).",
+  "properties": {
+    "schema": {
+      "const": "rcp-ndcg.wave0-report.v1",
+      "title": "Schema",
+      "type": "string"
+    },
+    "started": {
+      "title": "Started",
+      "type": "string"
+    },
+    "passed": {
+      "title": "Passed",
+      "type": "boolean"
+    },
+    "failed_step": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Failed Step"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "host": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Host"
+    },
+    "bootstrap": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Bootstrap"
+    },
+    "reach": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Wave0Hub"
+              },
+              {
+                "$ref": "#/$defs/Wave0Gcs"
+              }
+            ]
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reach"
+    },
+    "engines": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Wave0Engines"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "embed": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Wave0Embed"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "evict": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Wave0Evict"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "stop": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Wave0Stop"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "finished": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Finished"
+    }
+  },
+  "required": [
+    "schema",
+    "started",
+    "passed"
+  ],
+  "title": "Wave0Report",
+  "type": "object"
+}
