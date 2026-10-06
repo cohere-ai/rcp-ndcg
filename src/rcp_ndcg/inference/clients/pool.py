@@ -38,8 +38,9 @@ from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.data.prepare import MediaCensus
 from rcp_ndcg.data.preprocess import TextTruncationCensus
+from rcp_ndcg.data.templates import RequestShape
 from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError
-from rcp_ndcg.inference.adapters.base import Adapter
+from rcp_ndcg.inference.adapters.base import Adapter, get_adapter
 from rcp_ndcg.inference.clients._base import PreparedItems, RoleClient
 from rcp_ndcg.inference.config import PoolingEndpoint
 from rcp_ndcg.inference.transport import Sender
@@ -64,8 +65,9 @@ class PoolingClient(RoleClient):
     Raises:
         ConfigError: ``dim`` is not set (the base64 frame of ``/pooling`` is flat and carries no shape; a
             refusal at construction keeps the GPU idle-time free, R13), ``on_overflow: chunk`` is declared
-            (vector roles do not pool chunks), ``request_shape`` is declared but the wire sends text,
-            ``batch_size < 1``, or ``api`` names no adapter of the multi_vector role.
+            (vector roles do not pool chunks), ``request_shape`` names a shape the wire does not implement,
+            ``token_ids`` is declared without a tokenizer, ``batch_size < 1``, or ``api`` names no adapter
+            of the multi_vector role.
     """
 
     ROLE = "multi_vector"
@@ -93,11 +95,18 @@ class PoolingClient(RoleClient):
                 hint="use on_overflow: cut (the content is cut to the budget), or chunk the corpus at load "
                 "(the retrieval index keeps one slice per chunk)",
             )
-        if config.request_shape != "text":
+        supported = getattr(get_adapter(config.api, role=self.ROLE), "REQUEST_SHAPES", frozenset({"text"}))
+        if config.request_shape not in supported:
             raise ConfigError(
-                f"request_shape {config.request_shape!r} is declared, but this wire sends rendered text",
-                hint="the adapters implement text today; drop request_shape (the default) until the "
-                "messages and token_ids routes land",
+                f"request_shape {config.request_shape!r} is declared, but the {config.api} wire implements "
+                f"{sorted(supported)}",
+                hint="declare a request shape the wire implements (the default is text)",
+            )
+        if config.request_shape == "token_ids" and config.tokenizer is None:
+            raise ConfigError(
+                "request_shape 'token_ids' needs a tokenizer: the ids are the client's tokenisation of the "
+                "fitted text, and a hosted profile without one cannot tokenise",
+                hint="declare the tokenizer (with max_tokens), or drop request_shape (the default sends text)",
             )
         super().__init__(config, sender=sender, census=census, media_census=media_census)
         self._adapter: Adapter[PoolRequest, Embeddings] = self._adapter_cls()
@@ -234,14 +243,19 @@ class PoolingClient(RoleClient):
         )
 
     def _sent_ids(self, texts: Sequence[str], role: EncodeRole) -> tuple[tuple[int, ...], ...]:
-        """The token ids of each sent text, as the engine reads it, when the role tracks them (2): the
-        document side under declared ``document_skip_token_ids``. The client tokenises the fitted render
-        with the shape's ``add_special_tokens`` flag -- the same count the fit verified -- so the skip
-        positions are the ids the engine reads; a reply whose vector count disagrees is a typed error."""
-        if role is not EncodeRole.DOCUMENT or not self.config.document_skip_token_ids:
+        """The token ids of each sent text, as the engine reads it, when the role tracks them (2, 3): the
+        document side under declared ``document_skip_token_ids``, or both sides under ``request_shape:
+        token_ids``. The client tokenises the fitted render with the shape's ``add_special_tokens`` flag --
+        the same count the fit verified -- so the ids are what the engine reads; a reply whose vector count
+        disagrees is a typed error."""
+        wants_ids = (
+            role is EncodeRole.DOCUMENT and bool(self.config.document_skip_token_ids)
+        ) or self.config.request_shape == "token_ids"
+        if not wants_ids:
             return ()
-        assert self._tokenizer is not None, "the config refuses skip ids without a tokenizer (inert without one)"
-        flag = self.config.template.adds_special_tokens("document") if self.config.template is not None else True
+        assert self._tokenizer is not None, "the config refuses tracked ids without a tokenizer (inert without one)"
+        shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
+        flag = self.config.template.adds_special_tokens(shape) if self.config.template is not None else True
         return tuple(tuple(self._tokenizer.ids(text, add_special_tokens=flag)) for text in texts)
 
     def _probe_calls(self, content: Content) -> Sequence[Call]:
@@ -284,6 +298,8 @@ class PoolingClient(RoleClient):
             embed_dtype=self.config.embed_dtype,
             dim=self.config.dim,
             outputs=self.config.outputs,
+            request_shape=self.config.request_shape,
+            token_ids=batch_ids,
         )
         calls = self._adapter.calls(request, model=self.config.model)
         self._gate_media_calls(calls)

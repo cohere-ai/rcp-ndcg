@@ -212,6 +212,86 @@ class TestProfiles:
         assert OpenAIEmbeddings.AUTH_HEADER is None and GeminiEmbeddings.AUTH_HEADER == "x-goog-api-key"
 
 
+class TestRequestShapes:
+    """``request_shape`` (2e, 3): ``messages`` lowers each item to OpenAI content parts -- the chat-style
+    embeddings input of a vision-language embedder, image and video parts included -- ``token_ids`` sends
+    the ids the client fitted; the hosted profiles implement text only."""
+
+    adapter: ClassVar[OpenAIEmbeddings] = OpenAIEmbeddings()
+
+    @staticmethod
+    def _png(tmp_path: Any, name: str, colour: tuple[int, int, int]) -> Content:
+        from PIL import Image
+
+        path = tmp_path / f"page-{name}.png"
+        Image.new("RGB", (4, 4), colour).save(path, format="PNG")
+        return Content.from_image(path.as_uri())
+
+    def test_a_messages_request_lowers_each_item_to_content_parts(self, tmp_path: Any) -> None:
+        image = self._png(tmp_path, "a", (1, 2, 3))
+        content = Content.from_parts(
+            [TextPart(text="the caption"), ImagePart(ref=MediaRef(uri=image.media[0].uri))]
+        )
+        call = self.adapter.calls(
+            EmbedRequest(contents=(content,), role=EncodeRole.DOCUMENT, request_shape="messages"), model="m"
+        )[0]
+        assert call.path == "/embeddings"
+        parts = call.json["messages"][0]["content"]
+        assert "input" not in call.json
+        assert [part["type"] for part in parts] == ["text", "image_url"]
+        assert parts[0] == {"type": "text", "text": "the caption"}
+        assert parts[1]["image_url"]["url"].startswith("data:image/png;base64,")
+        assert call.json["encoding_format"] == "float"
+
+    def test_a_messages_request_keeps_interleaving_and_carries_dimensions(self, tmp_path: Any) -> None:
+        image = self._png(tmp_path, "b", (9, 9, 9))
+        content = Content.from_parts([ImagePart(ref=image.media[0]), TextPart(text="after")])
+        call = self.adapter.calls(
+            EmbedRequest(contents=(content,), role=EncodeRole.QUERY, request_shape="messages", dimensions=256),
+            model="m",
+        )[0]
+        parts = call.json["messages"][0]["content"]
+        assert [part["type"] for part in parts] == ["image_url", "text"]
+        assert call.json["dimensions"] == 256
+
+    def test_a_video_container_lowers_as_a_video_url_part(self, tmp_path: Any) -> None:
+        from tests.conftest import write_mjpeg_avi
+
+        clip = write_mjpeg_avi(tmp_path / "clip.avi", frames=2)
+        content = Content.from_parts([VideoPart(ref=MediaRef(uri=str(clip), mime="video/mp4"))])
+        call = self.adapter.calls(
+            EmbedRequest(contents=(content,), role=EncodeRole.DOCUMENT, request_shape="messages"), model="m"
+        )[0]
+        parts = call.json["messages"][0]["content"]
+        assert parts[0]["type"] == "video_url"
+        assert parts[0]["video_url"]["url"].startswith("data:video/mp4;base64,")
+
+    def test_token_ids_go_out_as_the_input(self) -> None:
+        call = self.adapter.calls(
+            EmbedRequest(
+                contents=(Content.from_text("a"), Content.from_text("b")),
+                role=EncodeRole.DOCUMENT,
+                request_shape="token_ids",
+                token_ids=((1, 2, 3), (4, 5)),
+            ),
+            model="m",
+        )[0]
+        assert call.json["input"] == [[1, 2, 3], [4, 5]]
+
+    @pytest.mark.parametrize("shape", ["text", "token_ids"])
+    def test_a_media_item_on_a_text_or_ids_shape_is_refused(self, tmp_path: Any, shape: str) -> None:
+        content = self._png(tmp_path, "c", (1, 1, 1))
+        with pytest.raises(CapabilityError, match="image"):
+            self.adapter.calls(
+                EmbedRequest(contents=(content,), role=EncodeRole.DOCUMENT, request_shape=shape), model="m"
+            )
+
+    @pytest.mark.parametrize("name", ["cohere", "voyage", "gemini"])
+    def test_a_hosted_profile_implements_text_only(self, name: str) -> None:
+        with pytest.raises(CapabilityError, match="request shapes"):
+            ADAPTERS[name]().calls(request(request_shape="messages"), model="m")
+
+
 class TestRefusals:
     adapter: ClassVar[OpenAIEmbeddings] = OpenAIEmbeddings()
 

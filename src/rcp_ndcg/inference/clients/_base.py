@@ -368,10 +368,15 @@ class RoleClient[C: Endpoint]:
 
         The media gates are each wire call's (see :meth:`_gate_media_calls`), not this call's.
         """
-        if not self.MEDIA_ON_WIRE and any(content.has_media for content in contents):
+        if not self._media_is_on_wire() and any(content.has_media for content in contents):
             self._refuse_media_before_preparation(contents)
         image, video = self._media_policies()
         return prepare_request(contents, image, video)
+
+    def _media_is_on_wire(self) -> bool:
+        """Whether this client's wire carries media: the class flag (the pool and rerank wires lower media
+        parts on every shape). The embed role overrides it -- its ``messages`` route only."""
+        return self.MEDIA_ON_WIRE
 
     def _refuse_media_before_preparation(self, contents: Sequence[Content]) -> None:
         """Refuse media for a text-only role before the media is fetched, sized or counted.

@@ -357,6 +357,22 @@ class TestDocumentSkipIds:
             asyncio.run(client.aencode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT))
 
 
+    def test_token_ids_travel_as_the_input_and_skip_ids_still_apply(self) -> None:
+        """3 (pplx): the pooling wire sends the ids the fit tokenised, and the document skip drops the same
+        positions (the ids sent are the ids checked)."""
+        from tests._tokenizers import word_tokenizer
+
+        text = "the a of to"  # four word tokens; the skip drops 'a' (id 2)
+        sender = _GatedSender(PoolingServer({}, default=np.ones((4, 2), dtype=np.float16)))
+        client = self._client(sender, request_shape="token_ids")
+
+        embeddings = asyncio.run(client.aencode([Content.from_text(text)], EncodeRole.DOCUMENT))
+
+        sent = sender.sent[0][0]["input"]
+        assert sent == [word_tokenizer().ids(text)]
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 3]
+
+
 def _media_chunk_client(sender: Any) -> PoolingClient:
     """A pooling client whose config declares chunk overflow (refused at construction: vectors do not pool);
     the media-fit refusal for chunk must be reachable before that."""

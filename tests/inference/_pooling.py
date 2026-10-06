@@ -59,7 +59,8 @@ class PoolingServer:
     def response_body(self, body: dict[str, Any]) -> dict[str, Any]:
         """The ``PoolingResponse`` the inputs of ``body`` decode to, in the request's own encoding."""
         if "input" in body:
-            keys = list(body["input"])
+            # A token-ids input (3) keys by its stringified ids, as the client sent them.
+            keys = [key if isinstance(key, str) else str(key) for key in body["input"]]
         else:
             keys = []
             for message in body.get("messages", []):

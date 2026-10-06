@@ -8999,6 +8999,18 @@
             "name": "dimensions"
           },
           {
+            "annotation": "Literal['text', 'messages', 'token_ids']",
+            "default": "text",
+            "kind": "positional_or_keyword",
+            "name": "request_shape"
+          },
+          {
+            "annotation": "tuple[tuple[int, ...], ...]",
+            "default": [],
+            "kind": "positional_or_keyword",
+            "name": "token_ids"
+          },
+          {
             "returns": "None"
           }
         ],
@@ -9862,6 +9874,18 @@
             "default": "per_token",
             "kind": "positional_or_keyword",
             "name": "outputs"
+          },
+          {
+            "annotation": "Literal['text', 'messages', 'token_ids']",
+            "default": "text",
+            "kind": "positional_or_keyword",
+            "name": "request_shape"
+          },
+          {
+            "annotation": "tuple[tuple[int, ...], ...]",
+            "default": [],
+            "kind": "positional_or_keyword",
+            "name": "token_ids"
           },
           {
             "returns": "None"

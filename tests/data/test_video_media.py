@@ -17,7 +17,7 @@ import pytest
 from rcp_ndcg_core.content import Content, MediaRef, VideoPart
 
 from rcp_ndcg.data.io import get_reader
-from rcp_ndcg.data.media import MediaError, MediaResolver, content_parts_payload, probe_video_header
+from rcp_ndcg.data.media import MediaResolver, content_parts_payload, probe_video_header
 from rcp_ndcg.errors import DataError
 from tests.conftest import write_mp4_header
 
@@ -86,11 +86,34 @@ class TestHydration:
 
 
 class TestTheEmbeddingLowering:
-    def test_a_container_is_refused_rather_than_sent_as_an_image(self, tmp_path: Path, video_clip):
-        content = Content.from_parts([VideoPart(ref=MediaRef(uri=str(video_clip())))])
+    def test_a_video_url_wire_lowers_the_container_to_a_video_url_part(self, tmp_path: Path, video_clip):
+        """2e: the lowering emits video -- a container (the role's ``video_policy: video_url`` wire leaves
+        one) goes out as a ``video_url`` part, which the chat-style embeddings and pooling inputs take."""
+        clip = video_clip()
+        content = Content.from_parts([VideoPart(ref=MediaRef(uri=str(clip), mime="video/mp4"))])
 
-        with pytest.raises(MediaError, match="the `frames` reader"):
-            content_parts_payload(content)
+        parts = content_parts_payload(content)
+
+        assert len(parts) == 1
+        assert parts[0]["type"] == "video_url"
+        assert parts[0]["video_url"]["url"].startswith("data:video/mp4;base64,")
+
+    def test_sampled_frames_lower_as_image_parts(self, tmp_path: Path):
+        """The role's ``wire: frames`` policy leaves sampled frames; they lower as image parts, as today."""
+        from PIL import Image
+
+        frames = tmp_path / "frames"
+        frames.mkdir()
+        refs = []
+        for index in range(2):
+            path = frames / f"frame_{index}.png"
+            Image.new("RGB", (8, 8), (index, 0, 0)).save(path, format="PNG")
+            refs.append(MediaRef(uri=str(path)))
+        content = Content.from_parts([VideoPart(frames=refs, frame_indices=[0, 1])])
+
+        parts = content_parts_payload(content)
+
+        assert [one["type"] for one in parts] == ["image_url", "image_url"]
 
 
 @pytest.fixture

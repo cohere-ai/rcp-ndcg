@@ -14,7 +14,7 @@ from typing import Any, ClassVar
 import httpx
 import numpy as np
 import pytest
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
 
 from rcp_ndcg.errors import CapabilityError, ConfigError, CredentialsError, RequestRejectedError
 from rcp_ndcg.inference import EmbeddingClient, EncodeRole
@@ -43,10 +43,14 @@ def _vendor_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def input_texts(api: str, call: Call) -> list[str]:
-    """The texts one call carries, per profile."""
+    """The texts one call carries, per profile (a token-ids item by its ids, stringified)."""
     body = call.json
     if api in ("openai_embeddings", "voyage"):
-        return list(body["input"])
+        items = body["input"] if "input" in body else [
+            " ".join(part["text"] for part in m["content"] if part["type"] == "text")
+            for m in body["messages"]
+        ]
+        return [text if isinstance(text, str) else " ".join(str(i) for i in text) for text in items]
     if api == "cohere":
         return list(body["texts"])
     return [entry["content"]["parts"][0]["text"] for entry in body["requests"]]
@@ -328,6 +332,117 @@ class TestConstruction:
         finally:
             registry.base._BUILTINS.clear()
             registry.base._BUILTINS.update(saved)
+
+
+class TestRequestShapes:
+    """``request_shape`` (2e, 3): media rides the ``messages`` wire (the chat-embed form, per shape), and
+    ``token_ids`` sends the ids the fit produced, end to end."""
+
+    @staticmethod
+    def _png(tmp_path: Any, name: str) -> Content:
+        from PIL import Image
+
+        path = tmp_path / f"{name}.png"
+        Image.new("RGB", (4, 4), (1, 2, 3)).save(path, format="PNG")
+        return Content.from_image(path.as_uri())
+
+    @staticmethod
+    def _messages_client(sender: FakeSender, **overrides: Any) -> EmbeddingClient:
+        from tests.inference import _budget
+
+        settings: dict[str, Any] = {
+            "request_shape": "messages",
+            "image_policy": {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            "max_images": 2,
+            "tokenizer": _budget.DEFAULT_TOKENIZER,
+            "max_tokens": 8192,
+        }
+        settings.update(overrides)
+        return EmbeddingClient(endpoint("openai_embeddings", **settings), sender=sender)
+
+    @pytest.mark.parametrize("role", [EncodeRole.QUERY, EncodeRole.DOCUMENT])
+    def test_media_travels_as_messages_per_shape(self, tmp_path: Any, role: EncodeRole) -> None:
+        """A test per shape: the query and the document side both lower to chat parts (the side's prompt
+        prefixed, the image part beside the text) and carry their media census rows."""
+        sender = FakeSender(handler("openai_embeddings", {}))
+        client = self._messages_client(sender)
+        image = self._png(tmp_path, f"{role.value}.png")
+        caption = Content.from_parts([TextPart(text="a caption"), ImagePart(ref=image.media[0])])
+
+        vectors = client.encode([caption], role)
+
+        assert vectors.num_items == 1
+        body = sender.calls[0].json
+        parts = body["messages"][0]["content"]
+        assert [part["type"] for part in parts] == ["text", "image_url"]
+        assert parts[0]["text"] == "a caption"  # the side's prompt (empty) changed nothing
+        assert parts[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+    def test_media_on_the_text_wire_is_still_refused(self, tmp_path: Any) -> None:
+        from tests.inference import _budget
+
+        client = EmbeddingClient(
+            endpoint(
+                "openai_embeddings",
+                tokenizer=_budget.DEFAULT_TOKENIZER,
+                max_tokens=8192,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                max_images=2,
+            ),
+            sender=FakeSender(handler("openai_embeddings", {})),
+        )
+        with pytest.raises(CapabilityError, match="image"):
+            client.encode([self._png(tmp_path, "page.png")], EncodeRole.DOCUMENT)
+
+    def test_media_over_the_fake_engine_per_shape(self, tmp_path: Any) -> None:
+        """End to end over the fake engine (``fake://`` under the real transport): a media query and a media
+        document, each answered one vector per item."""
+        from tests.inference import _budget
+
+        for role in (EncodeRole.QUERY, EncodeRole.DOCUMENT):
+            config = endpoint(
+                "openai_embeddings",
+                base_url="fake://seed/7?dim=4",
+                request_shape="messages",
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                max_images=2,
+                tokenizer=_budget.DEFAULT_TOKENIZER,
+                max_tokens=8192,
+            )
+            client = EmbeddingClient(config)
+            vectors = client.encode([self._png(tmp_path, f"fake-{role.value}.png")], role)
+            client.close()
+            assert vectors.num_items == 1 and vectors.dim == 4
+
+    def test_token_ids_are_sent_end_to_end(self) -> None:
+        """3 (pplx): the model must receive token ids -- the client sends the ids its fit tokenised, per
+        item, in the OpenAI ``input`` list."""
+        from tests._tokenizers import word_tokenizer
+        from tests.inference import _budget
+
+        sender = FakeSender(handler("openai_embeddings", {}))
+        client = EmbeddingClient(
+            endpoint(
+                "openai_embeddings",
+                tokenizer=_budget.DEFAULT_TOKENIZER,
+                max_tokens=8192,
+                request_shape="token_ids",
+            ),
+            sender=sender,
+        )
+        text = "the a of to"
+        vectors = client.encode(texts(text), EncodeRole.DOCUMENT)
+
+        assert vectors.num_items == 1
+        assert sender.calls[0].json["input"] == [word_tokenizer().ids(text)]
+
+    def test_token_ids_without_a_tokenizer_are_refused(self) -> None:
+        with pytest.raises(ConfigError, match="token_ids"):
+            EmbeddingClient(endpoint("cohere", request_shape="token_ids"), sender=FakeSender(handler("cohere", {})))
+
+    def test_messages_on_a_wire_that_implements_text_only_are_refused_at_construction(self) -> None:
+        with pytest.raises(ConfigError, match="implements"):
+            EmbeddingClient(endpoint("cohere", request_shape="messages"), sender=FakeSender(handler("cohere", {})))
 
 
 class TestEndpoints:

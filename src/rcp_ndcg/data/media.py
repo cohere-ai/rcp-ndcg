@@ -402,9 +402,10 @@ def decode_rgb(ref: MediaRef, payload: bytes) -> Image:
 def content_parts_payload(content: Content) -> list[dict[str, Any]]:
     """Lower *content* into the OpenAI content-parts shape used over HTTP.
 
-    ``[{"type": "text", "text": ...}, {"type": "image_url", "image_url": {"url": ...}}]``
+    ``[{'type': 'text', 'text': ...}, {'type': 'image_url', 'image_url': {'url': ...}}]``
     -- what Cohere's ``/embed``, vLLM's ``/pooling`` and ``/rerank``, and every
-    OpenAI-compatible chat endpoint accept, so one lowering serves all of them.
+    OpenAI-compatible chat endpoint accept, so one lowering serves all of them
+    (the chat-style embeddings input of a vision-language embedder included, 2e).
 
     Interleaving is preserved: a caption before its page is a different input from
     the same caption after it, and the order is information the model uses.
@@ -413,6 +414,11 @@ def content_parts_payload(content: Content) -> list[dict[str, Any]]:
     lives in a private bucket, so a URL would either not resolve for the server or
     would be a signed link that expires -- making a re-run of the same job depend
     on when it ran.
+
+    A video part is lowered per its role's video policy -- the policy has already
+    been applied when the request is prepared: sampled frames (``wire: frames``)
+    go out as image parts, a container (``wire: video_url``) as a ``video_url``
+    part for the engine to decode.
     """
     resolver = default_resolver()
     parts: list[dict[str, Any]] = []
@@ -422,10 +428,16 @@ def content_parts_payload(content: Content) -> list[dict[str, Any]]:
                 parts.append({"type": "text", "text": part.text})
             continue
         if isinstance(part, VideoPart) and not part.frames:
-            raise MediaError(
-                f"{part.ref.uri if part.ref else 'a video part'} is a video container; this lowering sends "
-                "images only. Ingest the clip as a frame directory (the `frames` reader) to embed it."
+            if part.ref is None:
+                raise MediaError(
+                    "a video part with neither frames nor a container cannot be lowered: ingest the clip as a "
+                    "frame directory (the `frames` reader) to embed it"
+                )
+            encoded = base64.b64encode(resolver.bytes_of(part.ref)).decode("ascii")
+            parts.append(
+                {"type": "video_url", "video_url": {"url": f"data:{part.ref.mime or 'video/mp4'};base64,{encoded}"}}
             )
+            continue
         for ref in part.frames if isinstance(part, VideoPart) else part.media_refs():
             encoded = base64.b64encode(resolver.bytes_of(ref)).decode("ascii")
             parts.append(

@@ -134,6 +134,10 @@ class VllmPooling:
     KEY_REQUIRED: ClassVar[bool] = False
     AUTH_HEADER: ClassVar[str | None] = None
 
+    #: The request shapes this wire implements (3): text (the rendered string), token_ids (the ids the
+    #: client fitted; vLLM's ``/pooling`` takes token-id prompts) and messages (a media item's only route).
+    REQUEST_SHAPES: ClassVar[frozenset[str]] = frozenset({"text", "messages", "token_ids"})
+
     _PATH: Final = "/pooling"
 
     def calls(self, request: PoolRequest, *, model: str) -> Sequence[Call]:
@@ -168,6 +172,18 @@ class VllmPooling:
                     },
                 )
                 for content in request.contents
+            ]
+        if request.request_shape == "token_ids":
+            return [
+                Call(
+                    method="POST",
+                    path=self._PATH,
+                    json={
+                        **wire,
+                        "model": model,
+                        "input": [list(ids) for ids in request.token_ids],
+                    },
+                )
             ]
         return [
             Call(
