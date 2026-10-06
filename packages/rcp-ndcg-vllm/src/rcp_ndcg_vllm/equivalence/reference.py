@@ -8,9 +8,12 @@ asserts that). :func:`run_reference` invokes it as a subprocess, with a declared
 
 The modes, and the JSON each writes to ``--out``:
 
-- ``render`` — stage 1's reference side: for each pairs-file row, the rendered prompt text for that row's
-  ``shape`` (the anchor-preserving render the reference implements: fixed segments reserved, content cut,
-  template re-attached).  ``{"rows": [{"index", "shape", "text": str}]}``.
+- ``render`` — stage 1's reference side.  Embedding roles: for each pairs-file row and declared shape, the
+  exact prompt the engine reads (the reference's own anchor-preserving render: fixed segments reserved,
+  content cut, template re-attached).  ``{"rows": [{"index", "shape", "text": str}]}``, one input per shape
+  (the row's query for the query shape, its first document for the document shape).  Rerank: the spans the
+  client ships — ``{"rows": [{"index", "shape": "pair", "query": str, "documents": [str, ...]}]}`` (the
+  query as the recipe's instruction mode folds it; the frame is the engine's own template).
 - ``score`` — stage 2 for a rerank recipe: one score per document per row, on the recipe's
   ``reference.score_scale``.  ``{"rows": [{"index", "scores": [...]}]}``.
 - ``embed`` — stage 2 for the embedding roles: one vector per text for the row's query (role ``query``) and

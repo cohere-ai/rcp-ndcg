@@ -869,17 +869,30 @@ def _rerank_stage2(
     census = TextTruncationCensus()
     client, capture = role_client(recipe, base_url, census=census)
     max_tokens = recipe.client.max_tokens or 0
+    if len(rows) > len(reference.get("rows", [])):
+        raise HarnessError(
+            f"the reference emitted {len(reference.get('rows', []))} score row(s) for {len(rows)} pairs "
+            "row(s): the comparison would silently drop the later rows -- fix the reference or the pairs file"
+        )
     per_document: list[dict[str, Any]] = []
     per_query: list[dict[str, Any]] = []
     over_cap: list[dict[str, Any]] = []
     for row_index, row in enumerate(rows):
-        if row_index >= len(reference["rows"]):
-            break
         reference_row = _reference_row(reference, row_index)
-        reference_scores = [float(value) for value in reference_row["scores"]]
+        reference_scores = [float(value) for value in reference_row.get("scores", [])]
+        if len(reference_scores) != len(row["documents"]):
+            raise HarnessError(
+                f"the reference emitted {len(reference_scores)} score(s) for pairs row {row_index} with "
+                f"{len(row['documents'])} document(s): scores align to the documents as given"
+            )
         start = len(census.cuts())
         result = client.rerank(row["query"], row["documents"], instruction=row.get("instruction"))
         flags = _census_over_cap(census, start, max_tokens, len(row["documents"]))
+        if len(result.scores) != len(reference_scores):
+            raise HarnessError(
+                f"the engine scored {len(result.scores)} document(s) for pairs row {row_index} whose "
+                f"reference row carries {len(reference_scores)}: the request set must agree"
+            )
         for document_index, (served_score, reference_score) in enumerate(
             zip(result.scores, reference_scores, strict=True)
         ):
@@ -948,8 +961,9 @@ def _census_over_cap(census: Any, start: int, max_tokens: int, n_documents: int)
     accounting: a ``text_budget`` cut whose whole input exceeds ``max_tokens`` means the pair was over cap)."""
     flags = [False] * n_documents
     for cut in census.cuts()[start:]:
+        origin = cut.doc_id.split("#", 1)[0]  # a chunked document's rows carry <position>#<chunk>
         try:
-            position = int(cut.doc_id)
+            position = int(origin)
         except ValueError:
             continue  # the reranker's settled-query row (its own doc id), not a document's
         if 0 <= position < n_documents and cut.original_tokens > max_tokens:
@@ -1164,9 +1178,7 @@ def _compare_shape(
         return
     for index, (served_matrix, reference_entry) in enumerate(zip(served_vectors, expected, strict=True)):
         over = bool(cut_flags[index]) if cut_flags and index < len(cut_flags) else False
-        expected_matrix = (
-            reference_entry if role == "document" and not _is_vector_of_vectors(reference_entry) else [reference_entry]
-        )
+        # A reference entry is one vector (wrap it) or one ragged matrix per text (use it as given).
         expected_matrix = (
             reference_entry
             if isinstance(reference_entry, list) and (not reference_entry or isinstance(reference_entry[0], list))
@@ -1214,11 +1226,6 @@ def _compare_shape(
                     "n_vectors": len(rows),
                 }
             )
-
-
-def _is_vector_of_vectors(entry: Any) -> bool:
-    """Whether one reference entry is a matrix (a list of vectors) rather than one vector."""
-    return bool(entry) and isinstance(entry[0], (list, tuple))
 
 
 def _vector_summary(recipe: Recipe, per_vector: list[dict[str, Any]], gates: Any) -> dict[str, Any]:
