@@ -33,6 +33,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import threading
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -232,8 +233,9 @@ class JudgementStore:
         self.root.mkdir(parents=True, exist_ok=True)
         # A temp file and a rename, like the run manifest's: `run status` counts a running pass's windows while
         # the pass claims its stages, and a rewrite in place would serve it an empty or partial file
-        # (tests/llm/test_store.py races a claim against a reader).
-        temporary = self.identity_path.with_suffix(f".{os.getpid()}.tmp")
+        # (tests/llm/test_store.py races a claim against a reader). The name carries the thread id, so two
+        # writers in one process never share the temp file.
+        temporary = self.identity_path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
         temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         temporary.replace(self.identity_path)
 

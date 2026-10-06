@@ -145,18 +145,33 @@ class JobOptions(BaseModel):
     env: Environment = Field(default_factory=dict)
     wheelhouse: str | None = Field(default=None, min_length=1)
     """Where the coordinator installs the release from instead of PyPI: a directory of staged wheels, or an
-    ``http(s)://`` or ``gs://`` URL of one, readable on the node; rendered as ``uvx --find-links <wheelhouse>
-    --no-index`` -- every package comes from the wheelhouse (a pre-release, or an air-gapped node). A relative
-    local path is recorded absolute by the runners whose job records read paths on the submitting host (slurm);
-    the value is always rendered verbatim, so it must be readable where the job runs (a container: mounted in).
-    On an air-gapped node set ``constraints`` too: the default release constraints URL is fetched at job start
-    even under ``--no-index``. Only runners that install the release take one (a container on SLURM,
-    Kubernetes); where the coordinator runs in an environment that already has it, setting one is refused. The
-    wheels are built and staged as ``docs/concepts/serving.md`` ("The coordinator installs itself") describes.
+    ``http(s)://`` URL of one, readable on the node; rendered as ``uvx --find-links <wheelhouse> --no-index``
+    -- every package comes from the wheelhouse (a pre-release, or an air-gapped node). A relative local path is
+    recorded absolute by the runners whose job records read paths on the submitting host (slurm); the value is
+    always rendered verbatim, so it must be readable where the job runs (a container: mounted in). On an
+    air-gapped node set ``constraints`` too: the default release constraints URL is fetched at job start even
+    under ``--no-index``. Only runners that install the release take one (a container on SLURM, Kubernetes);
+    where the coordinator runs in an environment that already has it, setting one is refused. The wheels are
+    built and staged as ``docs/concepts/serving.md`` ("The coordinator installs itself") describes.
     """
     constraints: str | None = Field(default=None, min_length=1)
     """A constraints file (path or URL) replacing the release's, which pins every dependency to the version
     the release was tested with; default the release's own, attached to its GitHub release."""
+
+    @field_validator("wheelhouse", "constraints")
+    @classmethod
+    def _readable_by_uv(cls, value: str | None) -> str | None:
+        """Refuse a bucket scheme: ``uv`` reads ``--find-links``/``--constraints`` as a local directory, a
+        ``file://`` or an ``http(s)://`` URL -- anything else (``gs://``, ``s3://``) fails at job start, so the
+        config refuses it and names the fix."""
+        if value is None:
+            return value
+        if "://" in value and not value.startswith(("http://", "https://", "file://")):
+            raise ValueError(
+                f"{value!r} names a scheme uv cannot read: --find-links and --constraints take a local path, a "
+                "file:// URL or an http(s):// URL; stage the wheelhouse as an https URL, or mount it on the node",
+            )
+        return value
 
     def resolved(self) -> dict[str, Any]:
         """The options set away from their defaults, every local path among them absolute (:data:`PATHS`).

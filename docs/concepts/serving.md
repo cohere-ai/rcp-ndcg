@@ -284,8 +284,10 @@ access, the coordinator installs from a **wheelhouse** instead of PyPI: set the 
 `constraints` options (`runner.options.wheelhouse`, `runner.options.constraints`; the generic `--set
 runner.options.wheelhouse=...` overrides them from the command line) — on a node without any network access, name
 `constraints` too, since `uvx` fetches the default release URL at job start even under `--no-index`. The wheelhouse
-is a directory or an
-`http(s)://`/`gs://` URL of staged wheels, readable on the node (on Kubernetes, mounted in or a URL); the rendered
+is a directory of staged wheels, readable on the node (on Kubernetes, mounted in), or an `http(s)://` URL of one:
+uv's `--find-links` and `--constraints` read local paths (or `file://` URLs) and http(s) URLs, and no bucket
+scheme — a GCS-staged wheelhouse is exposed through its `https://` URL or mounted; a `gs://`/`s3://` value is
+refused when the config is read, not at job start. The rendered
 `uvx` then takes everything from the wheelhouse and asks no index, and the constraints file you name replaces the
 release's:
 
@@ -293,8 +295,8 @@ release's:
 runner:
   name: kubernetes
   options:
-    wheelhouse: gs://my-bucket/wheelhouse/0.0.1rc1    # or /shared/wheelhouse on a shared filesystem
-    constraints: gs://my-bucket/wheelhouse/0.0.1rc1/requirements-constraints.txt
+    wheelhouse: https://storage.googleapis.com/my-bucket/wheelhouse/0.0.1rc1    # or /shared/wheelhouse
+    constraints: https://storage.googleapis.com/my-bucket/wheelhouse/0.0.1rc1/requirements-constraints.txt
 ```
 
 The local runner runs the coordinator in this host's environment and installs nothing (a wheelhouse there is

@@ -32,16 +32,15 @@ released together.
   phases the whole-run command as the job's `argv` (as before), and the local runner renders a phased job's
   phases in order instead of an `argv` that covered them.
 - **Every runner takes an install source** for the coordinator's release, where the job installs it from a
-  staged wheelhouse: `runner.options.wheelhouse` (a directory of wheels, or an `http(s)://`/`gs://` URL of one,
-  rendered as `uvx --find-links <wheelhouse> --no-index` — nothing is asked of PyPI or the torch index) and
-  `runner.options.constraints` (a constraints file path or URL replacing the release's). A local path is
-  recorded absolute, a URL kept as it is. Refused where nothing installs (the local runner — the coordinator
-  runs in this host's environment — and SLURM with `container_runtime: none` — the node's environment provides
-  the release); rendered for the Kubernetes pod and the SLURM containers. `install_argv` takes `wheelhouse` and
+  staged wheelhouse: `runner.options.wheelhouse` (a directory of wheels, a `file://` URL or an `http(s)://`
+  URL of one — what uv's `--find-links` reads; a bucket scheme is refused with the fix — rendered as `uvx
+  --find-links <wheelhouse> --no-index`: nothing is asked of PyPI or the torch index) and
+  `runner.options.constraints` (a constraints file path or URL replacing the release's). A relative local path
+  is recorded absolute by the runners whose job records read paths on the submitting host (slurm); a URL is
+  kept as it is. Refused where nothing installs (the local runner — the coordinator runs in this host's
+  environment — and SLURM with `container_runtime: none` — the node's environment provides the release);
+  rendered for the Kubernetes pod and the SLURM containers. `install_argv` takes `wheelhouse` and
   `constraints`; its default rendering is unchanged.
-- The engines overlay (`RCP_NDCG_ENGINES`, `run resume --engine`) rebuilds the role config through its model, so
-  an overlaid config passes every validator a configured one does; an invalid overlay (e.g. a `fake://` replica
-  list) is refused with the typed `ConfigError` where it is applied, never half-applied.
 
 - **The retrieval API runs on the role clients, and its configs select the wire with `api`** (the unified-inference
   design, sections 4.1, 7.1 and 7.2):
@@ -476,6 +475,11 @@ released together.
   rewritten by the next online one instead of failing it.
 
 ### Changed
+
+- The engines overlay (`RCP_NDCG_ENGINES`, `run resume --engine`) rebuilds the role config through its model, so
+  an overlaid config passes every validator a configured one does (a URL is normalised as a configured one is);
+  an invalid overlay (e.g. a `fake://` replica list) is refused with the typed `ConfigError` where it is applied,
+  never half-applied.
 
 - `tests/contract` snapshots and the exported schemas (`schemas/index.v1.json`, `schemas/judge-config.v1.json`,
   `schemas/run-config.v1.json`) regenerated for the moved and new fields; `tests/test_errors.py` now requires
