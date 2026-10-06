@@ -36,6 +36,7 @@ client:
     anchor: last
   instruction: fold
   on_overflow: cut
+  use_activation: false
   empty_doc: send
 reference:
   kind: transformers

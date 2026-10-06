@@ -51,10 +51,45 @@ gcs_run() { # gcs_run GCS_PY_PATH ARGS...
 }
 
 gcs_cp() { # gcs_cp SRC DST: copy a file or directory, either side gs://
+  # A directory source copies its CONTENTS under DST (the python helper's semantics, so the layout is
+  # the same whichever path runs); a file source copies as the destination. One retry: a transient GCS
+  # error (connection reset, 5xx) must not cost a wave its logs or report.
+  local attempt
+  for attempt in 1 2; do
+    if _gcs_cp_once "$@"; then
+      return 0
+    fi
+    if ((attempt < 2)); then
+      echo "gcs: the copy of $1 failed once; retrying" >&2
+      sleep 5
+    fi
+  done
+  return 1
+}
+
+_gcs_cp_once() { # the transfer itself, once
+  local src="$1" dst="$2"
   case "$(gcs_transfer_detect)" in
-    gcloud) gcloud storage cp -r "$1" "$2" ;;
-    gsutil) gsutil -m cp -r "$1" "$2" ;;
-    *) gcs_ensure_tools; gcs_run cp "$1" "$2" ;;
+    gcloud | gsutil)
+      # The CLIs nest a directory source under an existing destination; gcs.py copies contents. The
+      # wildcard form copies contents everywhere: for a local destination it must exist first (gcloud
+      # refuses a missing one), for gs:// gcloud creates it.
+      if [[ -d "$src" ]]; then
+        [[ "$dst" == gs://* ]] || mkdir -p "$dst"
+        if command -v gcloud >/dev/null; then
+          gcloud storage cp -r "${src}"/* "$dst"
+        else
+          gsutil -m cp -r "${src}"/* "$dst"
+        fi
+      else
+        if command -v gcloud >/dev/null; then
+          gcloud storage cp "$src" "$dst"
+        else
+          gsutil -m cp "$src" "$dst"
+        fi
+      fi
+      ;;
+    *) gcs_ensure_tools; gcs_run cp "$src" "$dst" ;;
   esac
 }
 

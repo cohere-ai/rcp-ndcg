@@ -56,7 +56,7 @@ class Wave0Embed(BaseModel):
     n_over_length: int = Field(ge=0)
     cuts_recorded: int = Field(ge=0)
     overhead_tokens: int | None = None
-    client_budget_wired: bool
+    client_budget_wired: bool  # always true since the clients-final merge: the wired role client fits
     client: dict[str, Any]  # n_vectors, dim, finite
     tokenize_check: dict[str, Any]  # checked, passed, rows (the product's own /tokenize check shape)
     passed: bool
@@ -141,6 +141,7 @@ class Wave0Report(BaseModel):
     embed: Wave0Embed | None = None
     evict: Wave0Evict | None = None
     stop: Wave0Stop | None = None
+    uploads: list[dict[str, Any]] | None = None
     finished: dict[str, Any] | None = None
 
 

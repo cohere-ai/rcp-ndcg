@@ -554,7 +554,7 @@ def _wire_vectors(
     calls = adapter.calls(request, model=recipe.id)
     transport = Transport(endpoint, httpx_transport=recorder) if recorder else Transport(endpoint)
     replies = list(transport.run(transport.send(calls)))
-    transport.aclose()
+    transport.close()
     embeddings = adapter.interpret(request, replies)
     if recipe.role == "embed" or embeddings.offsets is None:
         return [[[float(value) for value in vector] for vector in embeddings.vectors]]
@@ -588,7 +588,7 @@ def _wire_rerank(
     calls = adapter.calls(request, model=served_model_name or recipe.id)
     transport = Transport(endpoint, httpx_transport=recorder) if recorder else Transport(endpoint)
     replies = list(transport.run(transport.send(calls)))
-    transport.aclose()
+    transport.close()
     return adapter.interpret(request, replies)
 
 

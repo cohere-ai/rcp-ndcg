@@ -11,6 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -122,15 +123,23 @@ def test_gcs_cli_cp_prints_the_written_targets(tmp_path: Path, monkeypatch: pyte
     assert fs.remote["YOUR-BUCKET/w/r.json"] == b"{}"
 
 
-def test_gcs_cli_fails_with_one_line(tmp_path: Path) -> None:
-    """A transfer that fails exits 1 with a one-line reason (no traceback)."""
-    completed = subprocess.run(
-        [PY, str(GCS_PY), "cp", str(tmp_path / "absent.txt"), "gs://YOUR-BUCKET/x"],
-        capture_output=True,
-        text=True,
-    )
-    assert completed.returncode == 1
-    assert completed.stderr.startswith("gcs:") and "Traceback" not in completed.stderr
+def test_gcs_cli_fails_with_one_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A transfer that fails exits 1 with a one-line reason (no traceback) - and never the network.
+
+    The filesystem is injected: the real ``make_filesystem`` opens a connection on a machine with
+    credentials (this test once reached the service and got "Invalid bucket name" from it), so the
+    fake raises like a real failure would and the CLI's contract is checked offline.
+    """
+
+    def failing_fs() -> Any:
+        raise OSError("no network in tests: the transfer would fail here")
+
+    monkeypatch.setattr(gcs, "make_filesystem", failing_fs)
+    assert gcs.main(["cp", str(tmp_path / "absent.txt"), "gs://YOUR-BUCKET/x"]) == 1
+    captured = capsys.readouterr()
+    assert captured.err.startswith("gcs:") and "Traceback" not in captured.err
 
 
 # --- the shell dispatch: the auth script runs first, then gcloud | gsutil | the python path -----------

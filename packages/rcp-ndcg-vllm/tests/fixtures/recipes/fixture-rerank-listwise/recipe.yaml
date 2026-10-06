@@ -32,6 +32,7 @@ client:
     anchor: last
   instruction: fold
   on_overflow: cut
+  use_activation: false
   empty_doc: send
   listwise: true
 reference:

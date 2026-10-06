@@ -38,6 +38,7 @@ usage() {
 MAX_JOBS="1"
 PRIORITY="dev-medium"
 SCRIPT_NAME="bootstrap"
+IMAGE=""
 RC_STAGE_URI=""
 OUT_PREFIX=""
 WAVES=()
@@ -47,6 +48,7 @@ while (($#)); do
     --max-jobs) MAX_JOBS="${2:?--max-jobs needs a number}"; shift 2 ;;
     --priority) PRIORITY="${2:?--priority needs a class}"; shift 2 ;;
     --script) SCRIPT_NAME="${2:?--script needs bootstrap or wave0}"; shift 2 ;;
+    --image) IMAGE="${2:?--image needs a repository:tag}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     --*) echo "submit.sh: unknown option: $1" >&2; usage; exit 2 ;;
     *) if [[ -z "$RC_STAGE_URI" ]]; then RC_STAGE_URI="$1"; elif [[ -z "$OUT_PREFIX" ]]; then OUT_PREFIX="$1"; else WAVES+=("$1"); fi; shift ;;
@@ -99,6 +101,46 @@ run() { # run, or print when KJOBS=echo (the secret's VALUE never reaches this f
   fi
 }
 
+# resolve_digest IMAGE: the manifest digest of a public image, no credentials asked.
+# Docker Hub needs a token dance (an anonymous pull token, then the manifest head); the gcloud CLI
+# covers Google-hosted images when it is installed. Unresolvable prints to stderr and returns 1.
+resolve_digest() {
+  local image="$1" token digest
+  if [[ "$image" != *"/"* ]]; then
+    image="library/$image"
+  fi
+  token="$(python3 -c 'import json, sys, urllib.request
+request = urllib.request.Request(
+    "https://auth.docker.io/token?service=registry.docker.io&scope=repository:" + sys.argv[1] + ":pull"
+)
+with urllib.request.urlopen(request, timeout=30) as reply:
+    print(json.loads(reply.read().decode("utf-8"))["token"])' "${image%:*}" 2>/dev/null || true)"
+  if [[ -n "$token" ]]; then
+    digest="$(python3 -c 'import sys, urllib.request
+image, token = sys.argv[1], sys.argv[2]
+accept = "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json"
+request = urllib.request.Request(
+    "https://registry-1.docker.io/v2/" + sys.argv[3] + "/manifests/" + sys.argv[4],
+    headers={"Authorization": "Bearer " + token, "Accept": accept},
+)
+with urllib.request.urlopen(request, timeout=30) as reply:
+    print(reply.headers.get("Docker-Content-Digest", ""))' "$image" "$token" "${image%:*}" "${image##*:}" 2>/dev/null || true)"
+    if [[ -n "${digest:-}" ]]; then
+      printf '%s\n' "$digest"
+      return 0
+    fi
+  fi
+  if command -v gcloud >/dev/null; then
+    digest="$(gcloud container images describe "$image" --format 'value(image_summary.digest)' 2>/dev/null || true)"
+    if [[ -n "${digest:-}" ]]; then
+      printf '%s\n' "$digest"
+      return 0
+    fi
+  fi
+  echo "submit.sh: no digest resolver answered for $image (docker hub or gcloud)" >&2
+  return 1
+}
+
 # The release name a submitted job got, from the CLI's own instruction line
 # ("kjobs ... logs <release-name>"); the depends_on chain needs it. One name per submitted job.
 release_of() { # release_of LOG_FILE: the job's release name, or fail loudly
@@ -110,6 +152,23 @@ release_of() { # release_of LOG_FILE: the job's release name, or fail loudly
   }
   printf '%s\n' "$name"
 }
+
+# The image the job records: --image (default the pinned wave-0 image), and its digest. The digest
+# resolution needs no credentials for a public image; a private one is resolved with the gcloud CLI.
+# Unresolvable is not fatal: the report records it as unknown with the way out.
+IMAGE="${IMAGE:-vllm/vllm-openai:v0.31.0}"
+if [[ -n "${RCP_IMAGE_DIGEST:-}" ]]; then
+  IMAGE_DIGEST="$RCP_IMAGE_DIGEST"
+else
+  IMAGE_DIGEST="$(resolve_digest "$IMAGE" || true)"
+fi
+if [[ -n "${IMAGE_DIGEST:-}" ]]; then
+  echo "submit.sh: image digest for $IMAGE: $IMAGE_DIGEST"
+else
+  echo "submit.sh: warning: could not resolve the digest of $IMAGE; the wave-0 report will record it as" \
+    "unknown. Resolve it operator-side and export RCP_IMAGE_DIGEST=... , e.g.:" \
+    "gcloud container images describe <image> --format 'value(image_summary.digest)'" >&2
+fi
 
 declare -a RELEASES=()
 SUBMITTED=0
@@ -130,6 +189,8 @@ for wave in "${WAVES[@]}"; do
     "app=$JOB_NAME"
     "priority_class=$PRIORITY"
     "worker.shared_memory=$SHARED_MEMORY"
+    "env.RCP_IMAGE=$IMAGE"
+    "env.RCP_IMAGE_DIGEST=$IMAGE_DIGEST"
   )
   if [[ "$SCRIPT_NAME" == "wave0" ]]; then
     args+=(

@@ -149,18 +149,40 @@ fail_step() { # fail_step STEP REASON: one line, the report, the engines stopped
   exit 1
 }
 
-upload() { # upload LOCAL REMOTE: one copy through the transfer dispatch; a failure is reported, not fatal
-  local src="$1" dst="$2"
-  gcs_cp "$src" "$dst" 2>/dev/null || echo "wave0: the upload of $src to $dst failed; continuing" >&2
+# Every upload attempt is recorded (uploads.jsonl) and lands in the report's "uploads" section: a
+# failed upload is never silent - the report names the source, the destination and the error.
+record_upload() { # record_upload SRC DST OK ERROR
+  python3 - "$1" "$2" "$3" "$4" >>"$WORK/uploads.jsonl" <<'PYEOF'
+import json
+import sys
+
+print(json.dumps({"source": sys.argv[1], "destination": sys.argv[2], "ok": sys.argv[3] == "ok", "error": sys.argv[4]}))
+PYEOF
+}
+
+upload() { # upload LOCAL REMOTE: one copy through the transfer dispatch; a failure is recorded, not fatal
+  local src="$1" dst="$2" error
+  if error="$(gcs_cp "$src" "$dst" 2>&1 >/dev/null)"; then
+    record_upload "$src" "$dst" ok ""
+  else
+    error="${error//$'\n'/; }"
+    echo "wave0: the upload of $src to $dst failed: $error; continuing" >&2
+    record_upload "$src" "$dst" failed "$error"
+  fi
 }
 
 upload_artifacts() {
+  : >"$WORK/uploads.jsonl"
   upload "$REPORT" "${OUT_URI%/}/wave0-report.json"
   upload "$REPORT" "${RC_STAGE_URI%/}/reports/wave0-report-$STAMP.json"
   if [[ -d "$WORK/logs" ]]; then
-    gcs_cp "$WORK/logs" "${OUT_URI%/}/" 2>/dev/null \
-      || echo "wave0: the engine logs' upload failed; continuing" >&2
+    upload "$WORK/logs" "${OUT_URI%/}/logs/"
   fi
+  python3 "$REPORT_PY" merge --file "$REPORT" --key uploads --fragment <(
+    python3 -c 'import json, sys
+entries = [json.loads(line) for line in open(sys.argv[1], encoding="utf-8") if line.strip()]
+print(json.dumps(entries, indent=2))' "$WORK/uploads.jsonl"
+  ) >/dev/null
 }
 
 stop_engines() { # the bash fallback the EXIT trap runs; the probe's engines-stop is the real one

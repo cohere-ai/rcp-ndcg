@@ -61,19 +61,19 @@ def _function(name: str) -> str:
     return match.group(0)
 
 
-def test_the_stage_lands_at_parent_slash_name_not_nested(tmp_path: Path) -> None:
-    """A recursive copy into an existing directory nests the source; fetch_stage copies into the parent."""
+def test_the_stage_lands_at_destination_not_nested(tmp_path: Path) -> None:
+    """gcs_cp copies a directory source's contents under the destination; fetch_stage targets it."""
     remote = tmp_path / "bucket" / "rc0"
     remote.mkdir(parents=True)
     (remote / "manifest.json").write_text("{}", encoding="utf-8")
     state = tmp_path / "state"
+    destination = state / "stage"
     program = (
-        'gcs_cp() { cp -r "$1" "$2"; }\n'  # local cp -r nests exactly like gcloud/gsutil/fsspec
+        'gcs_cp() { mkdir -p "$2"; cp -r "$1"/. "$2"; }\n'  # the contents-copy contract
         f"{_function('fetch_stage')}\n"
-        f'fetch_stage "{remote}" "{state}"\n'
+        f'fetch_stage "{remote}" "{destination}"\n'
     )
     result = subprocess.run(["bash", "-c", program], capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
-    landed = Path(result.stdout.strip())
-    assert landed == state / "rc0"
-    assert (landed / "manifest.json").is_file()
+    assert (destination / "manifest.json").is_file()
+    assert not (destination / "rc0").exists()  # the contents land directly, never nested

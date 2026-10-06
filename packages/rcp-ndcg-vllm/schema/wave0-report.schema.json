@@ -460,6 +460,22 @@
       ],
       "default": null
     },
+    "uploads": {
+      "anyOf": [
+        {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Uploads"
+    },
     "finished": {
       "anyOf": [
         {

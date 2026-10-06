@@ -172,16 +172,14 @@ fi
 
 # --- the staged RC -----------------------------------------------------------------------------------
 
-fetch_stage() { # fetch_stage SRC_URI PARENT: copy the stage directory into PARENT and print where it landed
-  # A recursive copy into an existing directory nests the source under it (gcloud, gsutil and fsspec alike), so
-  # copy into the parent and use <parent>/<basename>; never pre-create the target.
-  local src="${1%/}" parent="$2" name
-  name="$(basename "$src")"
-  mkdir -p "$parent"
-  [[ ! -e "$parent/$name" ]] || { echo "bootstrap: $parent/$name already exists" >&2; return 1; }
-  gcs_cp "$src" "$parent/" >&2
-  [[ -d "$parent/$name" ]] || { echo "bootstrap: the stage copy did not produce $parent/$name" >&2; return 1; }
-  printf '%s\n' "$parent/$name"
+fetch_stage() { # fetch_stage SRC_URI DST: copy the staged RC's contents into DST (same layout on every path)
+  # gcs_cp copies a directory source's CONTENTS under the destination, so the stage lands directly at
+  # DST (manifest.json at DST/manifest.json) whichever transfer runs; the destination is pre-created -
+  # gcloud refuses a missing local one.
+  local src="${1%/}" dst="$2"
+  [[ ! -e "$dst" ]] || { echo "bootstrap: $dst already exists" >&2; return 1; }
+  mkdir -p "$dst"
+  gcs_cp "$src" "$dst/"
 }
 
 STAGE="${STAGE_URI#gs://}"
@@ -190,7 +188,8 @@ if [[ "$STAGE" == "$STAGE_URI" ]]; then
   STAGE_DIR="$STAGE_URI"
 else
   fetch_start="$(now_s)"
-  STAGE_DIR="$(fetch_stage "gs://$STAGE" "$STATE")"
+  STAGE_DIR="$STATE/stage"
+  fetch_stage "gs://$STAGE" "$STAGE_DIR"
   echo "bootstrap: stage downloaded in $(( $(now_s) - fetch_start ))s via $TRANSFER" >&2
 fi
 [[ -f "$STAGE_DIR/manifest.json" ]] || {

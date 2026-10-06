@@ -355,10 +355,8 @@ def _embed(args: argparse.Namespace, report: Path) -> dict[str, Any]:
     from rcp_ndcg.data.preprocess import TextBudget, fit
     from rcp_ndcg.data.tokenizer import load_tokenizer
     from rcp_ndcg.inference import EmbeddingClient
-    from rcp_ndcg.inference.adapters import embeddings as _shipped  # noqa: F401  # registers the adapters
-    from rcp_ndcg.inference.adapters.base import get_adapter
     from rcp_ndcg.inference.config import EmbeddingEndpoint
-    from rcp_ndcg.inference.types import Content, EmbedRequest, EncodeRole
+    from rcp_ndcg.inference.types import Content, EncodeRole
 
     tokenizer = load_tokenizer(args.tokenizer)
     budget = TextBudget(tokenizer=args.tokenizer, max_tokens=args.budget, on_overflow="cut")
@@ -373,6 +371,8 @@ def _embed(args: argparse.Namespace, report: Path) -> dict[str, Any]:
     )
     texts = list(fitted.texts)
     cuts = {record.doc_id: True for record in fitted.cuts}
+    # The wired role client: the config carries the budget, and the client fits every raw input itself
+    # (the same fit call, the same renders) - the interim adapter/transport pre-fit path is gone.
     endpoint_kwargs: dict[str, Any] = {
         "api": "openai_embeddings",
         "model": args.served_model_name,
@@ -381,30 +381,8 @@ def _embed(args: argparse.Namespace, report: Path) -> dict[str, Any]:
         "max_tokens": args.budget,
         "normalize": True,
     }
-    embeddings = None
-    wired = True
-    try:
-        # The wired client: the config carries the budget, the client fits the raw inputs itself.
-        client = EmbeddingClient(EmbeddingEndpoint(**endpoint_kwargs))
-        embeddings = client.encode([Content.from_text(text) for text in inputs], EncodeRole.DOCUMENT)
-    except Exception as error:  # noqa: BLE001 - until the client wiring lands (clients-final), pre-fit
-        if "max_tokens" not in str(error):
-            raise
-        wired = False
-    if embeddings is None:
-        # The unwired interim (the harness stage 2's own shape): the product's adapter and transport
-        # send the fitted texts; the fit above already applied the explicit budget.
-        from rcp_ndcg.inference.transport import Transport
-
-        endpoint = EmbeddingEndpoint(**endpoint_kwargs)
-        adapter = get_adapter(endpoint.api, role="embed")()
-        request = EmbedRequest(contents=tuple(Content.from_text(text) for text in texts), role=EncodeRole.DOCUMENT)
-        calls = adapter.calls(request, model=args.served_model_name)
-        transport = Transport(endpoint)
-        replies = list(transport.run(transport.send(calls)))
-        transport.aclose()
-        embeddings = adapter.interpret(request, replies)
-
+    client = EmbeddingClient(EmbeddingEndpoint(**endpoint_kwargs))
+    embeddings = client.encode([Content.from_text(text) for text in inputs], EncodeRole.DOCUMENT)
     rows = []
     for index, (text, kind) in enumerate(zip(texts, kinds, strict=True)):
         engine_ids = _engine_tokenize(args.base_url, args.served_model_name, text)
@@ -429,7 +407,7 @@ def _embed(args: argparse.Namespace, report: Path) -> dict[str, Any]:
         "n_over_length": args.over,
         "cuts_recorded": len(fitted.cuts),
         "overhead_tokens": fitted.overhead,
-        "client_budget_wired": wired,
+        "client_budget_wired": True,
         "client": {"n_vectors": int(vectors.shape[0]), "dim": int(vectors.shape[1]), "finite": finite},
         "tokenize_check": {"checked": len(rows), "passed": ids_ok, "rows": rows},
         "passed": ids_ok and int(vectors.shape[0]) == len(inputs) and finite,

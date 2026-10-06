@@ -384,7 +384,7 @@ def _full_report(tmp_path: Path) -> Path:
             "n_over_length": 5,
             "cuts_recorded": 5,
             "overhead_tokens": 1,
-            "client_budget_wired": False,
+            "client_budget_wired": True,
             "client": {"n_vectors": 20, "dim": 1024, "finite": True},
             "tokenize_check": {
                 "checked": 20,
