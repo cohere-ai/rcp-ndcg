@@ -20,6 +20,12 @@ Semantics (r-pplx research lane, measured against the pinned revision
   id is the role disambiguation rule (an unstated one-chunk case in the r-pplx audit).
 - An **empty chunk** (two consecutive markers, or a trailing marker) yields a zero vector
   for that chunk, which is the reference's own behaviour for a chunk with no tokens.
+- A chunk's text containing the literal ``<|chunk_sep|>`` cannot be distinguished, on the
+  id wire, from a boundary marker (the marker is an added token, not a special one, so it
+  renders as ``BOUNDARY_TOKEN_ID`` in both paths): the plugin segments there — one extra
+  row, the token excluded — where the reference's char-span pooling keeps it inside the
+  chunk. Declared contract, not a fallback: the recipe's chunker must not emit the marker
+  string as chunk content.
 - The head is ``Linear(4096→2048, bias=False)`` kept in fp32 (the checkpoint keeps the
   projection out of the quantised path via ``_keep_in_fp32_modules``) followed by
   ``round(tanh(x)·127).clamp(-128, 127)`` — the model card's "unnormalized int8-quantized

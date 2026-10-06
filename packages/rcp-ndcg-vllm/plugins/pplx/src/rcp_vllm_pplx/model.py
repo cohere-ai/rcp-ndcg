@@ -90,7 +90,8 @@ class PplxContextualForPooling(Qwen3_5ForCausalLMBase):
         # Replace the generation-only head with a missing-stage placeholder before the
         # base class builds it: the checkpoint has no lm_head (tie_word_embeddings is
         # false and the checkpoint carries no lm_head tensors) and pooling never calls
-        # compute_logits. Follows vLLM's _create_pooling_model_cls (adapters.py:136-146).
+        # compute_logits. Follows vLLM's _create_pooling_model_cls (adapters.py:145-148,
+        # the function at :128).
         with no_init_weights(
             self,
             lambda mod: StageMissingLayer("output", mod),

@@ -59,10 +59,12 @@ def _no_engine_config(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(methods_module, "get_current_vllm_config", lambda: config)
 
 
-def _wired_metadata(sequences: list[list[int]]) -> tuple[PoolingMetadata, torch.Tensor]:
+def _wired_metadata(pool: PplxChunkPool, sequences: list[list[int]]) -> PoolingMetadata:
     """A real ``PoolingMetadata`` for the given per-sequence token ids, as the v1 runner builds it."""
     params = PoolingParams(task=_TASK)
-    PplxChunkPool.get_pooling_updates(_TASK).apply(params)
+    # The same instance-method call the engine's pooling runner makes per request
+    # (pooling_runner.add_request); it must be called on the instance.
+    pool.get_pooling_updates(_TASK).apply(params)
     assert params.requires_token_ids is True
 
     max_len = max(len(s) for s in sequences)
@@ -82,13 +84,13 @@ def _wired_metadata(sequences: list[list[int]]) -> tuple[PoolingMetadata, torch.
         seq_lens_cpu=torch.tensor([len(s) for s in sequences], dtype=torch.int64),
         device=torch.device("cpu"),
     )
-    return metadata, scheduled
+    return metadata
 
 
 def _wired_forward(monkeypatch: pytest.MonkeyPatch, sequences: list[list[int]], hidden: torch.Tensor):
     _no_engine_config(monkeypatch)
-    metadata, _ = _wired_metadata(sequences)
     pool = PplxChunkPool()
+    metadata = _wired_metadata(pool, sequences)
     return pool(hidden, metadata)
 
 
@@ -119,7 +121,7 @@ def test_wired_pooler_passes_the_warmup_dummy(monkeypatch: pytest.MonkeyPatch) -
     _no_engine_config(monkeypatch)
     hidden = torch.randn(6, HIDDEN)
     pool = PplxChunkPool()
-    metadata, _ = _wired_metadata([[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]])
+    metadata = _wired_metadata(pool, [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]])
     outputs = pool(hidden, metadata)
     assert all(out.shape == (1, HIDDEN) for out in outputs)
 

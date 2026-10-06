@@ -3,7 +3,8 @@
 Registered through the ``vllm.general_plugins`` entry point (``rcp_vllm_pplx``): every
 vLLM process calls :func:`register`, which (a) refuses a vLLM outside the validated range
 and (b) registers the out-of-tree model class and its config handler. Registering is
-idempotent — vLLM warns that plugin functions may be called more than once per process.
+idempotent — vLLM warns that plugins "can be loaded for multiple times in different
+processes" and guards against a second load within one process.
 """
 
 from __future__ import annotations

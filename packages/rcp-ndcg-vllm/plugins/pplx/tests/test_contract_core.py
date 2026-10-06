@@ -240,6 +240,34 @@ def test_role_disambiguation_and_refusals() -> None:
         pool_sequence(hidden, torch.tensor([QUERY_PREFIX_TOKEN_ID, 1, 2]))
 
 
+def test_chunk_text_containing_the_marker_splits_a_documented_contract() -> None:
+    """The declared limitation: the id wire cannot tell an in-chunk marker from a boundary.
+
+    A chunk whose text is exactly the marker string renders as id 248079 and the pooler
+    segments there — the reference's char-span pooling would keep the token inside the
+    chunk. The README declares the recipe's chunker must not emit the marker as chunk
+    content; this test pins what the pooler does anyway, so a change to the segmentation
+    or to the contract note cannot pass silently.
+    """
+    tokenizer = TinyTokenizer()
+    backbone = TinyBackbone(tokenizer)
+    # The real tokenizer renders the chunk text "<|chunk_sep|>" as the added id 248079
+    # (it is an added token, not a special one), so the wire ids are: prefix, "a",
+    # marker (the boundary), marker (the chunk's own content).
+    ids = [*DOCUMENT_PREFIX_TOKEN_IDS, tokenizer.char_id("a"), BOUNDARY_TOKEN_ID, BOUNDARY_TOKEN_ID]
+    hidden = backbone(ids)
+    rows = pool_sequence(hidden, torch.tensor(ids, dtype=torch.int64))
+    # The client sent 2 chunks ("a", "<|chunk_sep|>") and the reference would return 2
+    # rows (the marker token pooled inside the second chunk); the id wire cannot tell
+    # that marker from a boundary, so the pooler sees three segments — "a", then two
+    # empty ones (zero vectors). The declared contract: such chunk text is refused by
+    # the recipe's chunker, never sent.
+    assert rows.shape == (3, HIDDEN)
+    assert torch.allclose(rows[0], hidden[2:3].to(torch.float32).mean(0), atol=1e-6)
+    assert torch.all(rows[1] == 0)
+    assert torch.all(rows[2] == 0)
+
+
 def test_pooler_warmup_dummy_is_single_span() -> None:
     tokenizer = TinyTokenizer()
     backbone = TinyBackbone(tokenizer)
@@ -254,7 +282,7 @@ def test_int8_head_is_created_in_head_dtype() -> None:
     assert head.linear.weight.dtype == torch.float32
     assert head.linear.bias is None
     saturated = head(torch.full((1, HIDDEN), 40.0))
-    assert float(saturated.abs().max()) == 127.0  # tanh saturates, clamp keeps the sign
+    assert float(saturated.detach().abs().max()) == 127.0  # tanh saturates, clamp keeps the sign
 
 
 # ---------------------------------------------------------------------------

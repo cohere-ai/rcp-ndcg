@@ -46,6 +46,12 @@ the reference implementation (the `[D] ` prefix tokenizes as one special id ther
   one exception: it is pooled as a single span so engine warm-up succeeds; its output is discarded).
 - An **empty chunk** (two consecutive markers, or a trailing marker) yields a zero vector for that chunk — the
   reference's own behavior for a chunk with no tokens.
+- A chunk's text must not contain the literal `<|chunk_sep|>`: the marker is an added token (not a special
+  token), so a client rendering that text produces its id `248079` inside the chunk, and the pooler — which sees
+  only ids — cannot distinguish it from a boundary marker (the chunk would split there, the token would be
+  excluded, and one extra vector would come back). The reference implementation, which pools by character spans,
+  keeps such a token inside its chunk; the token-id wire contract cannot reproduce that, so the recipe's chunker
+  must not emit the marker string as chunk content.
 
 The head is fixed by the model: fp32 cast, `Linear(4096→2048, bias=False)` in fp32, then
 `round(tanh(x)·127).clamp(-128, 127)` — the card's "unnormalized int8-quantized embeddings". The optional L2
