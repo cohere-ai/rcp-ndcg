@@ -133,6 +133,12 @@ class JudgementStore:
         """``{stage: entry}`` of ``identity.json`` (empty when the store is new)."""
         if not self.identity_path.exists():
             return {}
+        if self.identity_path.stat().st_size == 0:
+            # A zero-byte identity.json is this store's own torn write (a supersede copyfile the kernel
+            # killed mid-rename): the torn-tail rule governs -- the state is absent, so the claim that
+            # reads this rewrites the file instead of failing the parse.
+            logger.warning("%s is empty (a torn identity write); treating the store as new", self.identity_path)
+            return {}
         payload = json.loads(self.identity_path.read_text(encoding="utf-8"))
         tag = payload.get("schema") if isinstance(payload, dict) else None
         if tag != STORE_SCHEMA:

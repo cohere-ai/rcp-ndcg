@@ -469,13 +469,6 @@ def test_the_response_format_is_the_openai_standard_json_schema_form() -> None:
 
 
 def test_the_parse_version_is_pinned() -> None:
-    """The parse version is part of the judgement family: a change that can alter what identical text parses
-    to must bump it (M5's trailing-orphan fix did -- pre-fix answers and post-fix ones never pool), and the
-    bump is deliberate policy, pinned as a literal."""
-    assert PARSE_VERSION == 3
-
-
-def test_the_parse_version_is_pinned() -> None:
     """The parse version is part of the judgement family, the policy M5's fix trips: parsing changed in a way
     that alters the observations read from identical text (a trailing orphaned think-end no longer erases the
     object), so the version must move (pre- and post-fix observations never pool), pinned as a literal."""

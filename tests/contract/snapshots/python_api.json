@@ -1083,6 +1083,20 @@
               }
             ]
           },
+          "api_key_for_identity": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "str | None"
+              }
+            ]
+          },
           "fake": {
             "kind": "classmethod",
             "signature": [
@@ -11709,6 +11723,20 @@
               },
               {
                 "returns": "str"
+              }
+            ]
+          },
+          "api_key_for_identity": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "str | None"
               }
             ]
           },
