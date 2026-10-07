@@ -20,31 +20,31 @@ file: torch, transformers, qwen-vl-utils) -- never inside the harness process:
 
 Modes and output JSON (the harness's contract):
 
-- ``render`` -- ``{"rows": [{"index", "shape", "query", "documents"}]}``: the wire's
-  content CUT SPANS per pairs row (the settled query span and the document spans the client
-  ships), ported here on the pinned tokenizer (the reference environment has no rcp-ndcg):
-  every kept span is a verbatim prefix at a token boundary, the query settled at its declared
-  share (``QUERY_MAX_TOKENS``) whenever it exceeds it. The frame is the engine's chat template
-  (stage-1 ``template_render_check`` compares the file and the declared shape). Media columns are
-  refused (below).
+- ``render`` -- ``{"rows": [{"index", "shape", "query", "documents"}]}``: the content spans
+  the card's model reads per pairs row -- the harness compares spans, so this is the required
+  output FORMAT (the frame is the engine's chat template; stage-1 ``template_render_check``
+  compares the file and the declared shape). The spans are the card's own: its prompt
+  (:func:`render_pair_direct`, the repo chat template's string for the card's messages), its own
+  over-cap cut (:func:`truncate_tokens_optimized` on all but the last 5 ids, the 5 re-appended),
+  and the query and document text that cut keeps, located by the kept tokens' character offsets
+  on the rendered prompt -- verbatim prefixes, never a decode. Nothing here follows the product
+  client's cut (its query share, its settle-once rule); where the two cuts differ the recipe
+  declares ``over_cap_cut_differs``. Media columns are refused (below).
 - ``score`` -- ``{"rows": [{"index", "scores": [...]}]}`` on the recipe's
   ``reference.score_scale`` (probability: the sigmoid above). Needs torch, transformers and the
   ~4.0 GB weights; never runs on the CPU stage (stage 2 needs a served engine anyway).
 
 Deviations from the card's script, all declared:
 
-- ``render`` is not the card's prompt render: the harness's contract is the wire's content
-  spans (the frame is the engine's chat template's job), so the span cut is an independent port
-  of the product's rerank client for THIS declaration (settle-once query at
-  ``client.query_max_tokens``, then the pair fit's frame-reserving cut) and stage 1 compares it
-  byte-for-byte against the captured wire.
+- ``render`` reports the card's spans rather than the card's whole prompt string: the harness's
+  contract is spans (the frame is the engine's chat template's job).
 - ``render`` always uses the card's default instruction and ignores the pairs row's
   ``instruction`` field: the recipe's endpoint never sends an instruction
   (``client.instruction: none``), so the engine's template default is what the model reads.
 - The card's truncation (``truncate_tokens_optimized``: keep every special token and the first
-  ``MAX_LENGTH - specials`` non-special tokens, re-append the last 5 ids) is kept for ``score``
-  unchanged; it is the recipe's declared ``anchor_drop_over_cap`` deviation (over-cap pairs are
-  reported non-gating), not something the served path copies.
+  ``MAX_LENGTH - specials`` non-special tokens of all but the last 5 ids, re-append those 5) runs
+  in both modes. It keeps the assistant tail (the anchor) and cuts differently from the client:
+  the recipe's declared ``over_cap_cut_differs`` (over-cap pairs are reported non-gating).
 - The card's video branch (fps 1 / max_frames 64 containers, ``total_pixels`` frame arrays) is
   refused, not mirrored: the recipe declares ``input: [text, image]``, and the family's ONE video
   policy (64 uniformly spaced frames per clip -- ``qwen3-vl-embedding-2b``'s
@@ -69,9 +69,9 @@ from typing import Any
 MAX_LENGTH = 8192
 """The card's MAX_LENGTH: the reference truncates post-template to this many tokens."""
 
-QUERY_MAX_TOKENS = 4096
-"""The recipe's ``client.query_max_tokens``: the wire settles the query at this share whenever it
-exceeds it, all through the span render below."""
+TAIL_IDS = 5
+"""The card's protected tail: ``tokenize`` truncates all but the last 5 ids and re-appends them (the
+assistant header the model scores at)."""
 
 SYSTEM_TEXT = (
     "Judge whether the Document meets the requirements based on the Query and the "
@@ -360,7 +360,7 @@ class Qwen3VLRerankerReference:
 
 
 # ---------------------------------------------------------------------------
-# render mode (stage 1): the wire's content cut spans, no torch.
+# render mode (stage 1): the card's content spans after its own cut, no torch.
 # ---------------------------------------------------------------------------
 
 
@@ -382,95 +382,50 @@ def _raw_tokenizer(spec: str) -> Any:
     return Tokenizer.from_file(file)
 
 
-def _count(text: str, tok: Any, *, add_special_tokens: bool = False) -> int:
-    """How many tokens of ``text`` the engine counts (the post-processor's tokens included; this
-    tokenizer's processor appends nothing, measured)."""
-    return len(tok.encode(text, add_special_tokens=add_special_tokens).ids)
+def card_spans(tok: Any, query: str, document: str) -> tuple[str, str]:
+    """The query and document text the card's model reads for one text pair, after the card's own cut.
 
+    The card renders the pair's prompt (:func:`render_pair_direct`), tokenizes it untruncated and keeps
+    :func:`truncate_tokens_optimized` of all but the last :data:`TAIL_IDS` ids plus those ids. That keeps
+    every special token and a PREFIX of the body's non-special tokens, so the text it keeps of each content
+    span is a verbatim prefix of that span: the span's characters up to the last kept non-special token's
+    end offset. Under the cap both spans come back whole.
 
-def _offsets(text: str, tok: Any) -> list[tuple[int, int]]:
-    """``(start, end)`` character offsets of each token of ``text``, in order."""
-    return [(offset[0], offset[1]) for offset in tok.encode(text, add_special_tokens=False).offsets]
+    Args:
+        tok: the ``tokenizers`` tokenizer of the pinned revision.
+        query: the query text (non-empty).
+        document: the document text (the card's "NULL" already substituted for an empty one).
 
-
-def _token_prefix(text: str, max_tokens: int, tok: Any, *, rendered: Any = None) -> str:
-    """The longest prefix of ``text`` at one of its first ``max_tokens`` token boundaries that counts
-    at most ``max_tokens`` as the engine counts it (``rendered(piece)`` when given).
-
-    The cut is located on the ORIGINAL text's character offsets, so the result is a verbatim
-    prefix -- never a ``decode(encode(...))`` round trip (not the identity for a normalising
-    tokenizer; the wire carries text). Port of ``rcp_ndcg.data.preprocess.token_prefix``: the same
-    galloping-then-binary search over token boundaries, the same counting.
+    Returns:
+        ``(query_span, document_span)`` as the card's model reads them.
     """
-
-    def count(piece: str) -> int:
-        shown = rendered(piece) if rendered is not None else piece
-        return _count(shown, tok)
-
-    if count(text) <= max_tokens:
-        return text
-    offsets = _offsets(text, tok)
-
-    def prefix(tokens: int) -> str:
-        return text[: offsets[tokens - 1][1]] if tokens > 0 else ""
-
-    def fits(tokens: int) -> bool:
-        return count(prefix(tokens)) <= max_tokens
-
-    over = min(max_tokens, len(offsets))
-    if fits(over):
-        return prefix(over)
-    fitting, step = over - 1, 1
-    while fitting > 0 and not fits(fitting):
-        over, fitting, step = fitting, max(fitting - step, 0), step * 2
-    while over - fitting > 1:
-        middle = (over + fitting) // 2
-        fitting, over = (middle, over) if fits(middle) else (fitting, middle)
-    return prefix(fitting)
-
-
-def served_spans(tok: Any, query: str, document: str) -> tuple[str, str]:
-    """The cut content spans (query, document) the wire carries for one pair.
-
-    Port of the product's rerank client for this recipe's declaration: the query span settles
-    once per request -- to its declared share (``QUERY_MAX_TOKENS``) whenever it exceeds it (the
-    settle rule the merged wire carries) -- then through fit's frame-reserving cut, and each
-    document span gets what remains after the settled query and the fixed frame. The engine's
-    chat template re-assembles the frame around these spans; the scored anchor is the assistant
-    tail's last token. The frame is measured through :func:`render_pair_direct` (the frame the
-    served template file also renders).
-    """
-
-    def assemble(q: str, d: str) -> str:
-        return render_pair_direct({"text": q}, {"text": d}, DEFAULT_INSTRUCTION)
-
-    cap = MAX_LENGTH
-    # 1. settle at the declared share whenever the query exceeds it (the wire's settle-once rule):
-    if _count(query, tok) > QUERY_MAX_TOKENS:
-        q_final = _token_prefix(query, QUERY_MAX_TOKENS, tok)
-    else:
-        q_final = query
-    # 2. fit's probe pair (the query with an empty document): the query keeps the frame room.
-    q_final = _token_prefix(q_final, cap, tok, rendered=lambda piece: assemble(piece, ""))
-    q_min = _count(assemble(q_final, ""), tok)
-    if q_min >= cap and _count(document, tok) > 0:
-        raise SystemExit(
-            f"the query fills the pair budget of {cap} tokens and leaves the document nothing; "
-            "lower the query share (or raise max_tokens), so the document keeps a share"
-        )
-    # 3. the document gets what remains after the settled query and the frame:
-    d_final = _token_prefix(document, cap, tok, rendered=lambda piece: assemble(q_final, piece))
-    return q_final, d_final
+    head = render_pair_direct({"text": ""}, {"text": ""}, DEFAULT_INSTRUCTION)
+    query_at = head.index("<Query>:") + len("<Query>:")
+    prompt = render_pair_direct({"text": query}, {"text": document}, DEFAULT_INSTRUCTION)
+    document_at = query_at + len(query) + len("\n<Document>:")
+    assert prompt[query_at : query_at + len(query)] == query
+    assert prompt[document_at : document_at + len(document)] == document
+    encoding = tok.encode(prompt, add_special_tokens=False)
+    ids, offsets = list(encoding.ids), list(encoding.offsets)
+    specials = {token_id for token_id, token in tok.get_added_tokens_decoder().items() if token.special}
+    body = ids[:-TAIL_IDS]
+    kept_body = truncate_tokens_optimized(body, MAX_LENGTH, specials)
+    if len(kept_body) == len(body):
+        return query, document
+    keep = MAX_LENGTH - sum(1 for token_id in body if token_id in specials)
+    kept_non_special = [position for position, token_id in enumerate(body) if token_id not in specials][:keep]
+    cut = offsets[kept_non_special[-1]][1] if kept_non_special else 0
+    return query[: max(0, min(len(query), cut - query_at))], document[: max(0, min(len(document), cut - document_at))]
 
 
 def render_rows(pairs: list[dict[str, Any]], tokenizer_spec: str) -> list[dict[str, Any]]:
-    """The wire's cut content spans per pairs row: the settled query span, the document spans.
+    """The card's content spans per pairs row: the query span and one document span per document.
 
-    The empty-side policy rides with the spans (``empty_doc: send_text`` sends the card's own
-    "NULL" placeholder as the document's content); an empty QUERY is refused (the product's
-    ``empty_query: refuse`` default) and a media column is refused loudly -- the pairs contract
-    is text, images ride score mode's named columns, and video is out of this recipe's serving
-    form (see the module docstring). Nothing is silently dropped or defaulted.
+    The card's empty-side rule rides with the spans (an empty document is the literal "NULL", which the
+    recipe's ``empty_doc: send_text`` also sends); an empty QUERY is refused (the product's
+    ``empty_query: refuse`` default) and a media column is refused loudly -- the pairs contract is text,
+    images ride score mode's named columns, and video is out of this recipe's serving form (see the module
+    docstring). Nothing is silently dropped or defaulted.
     """
     tok = _raw_tokenizer(tokenizer_spec)
     rows: list[dict[str, Any]] = []
@@ -481,7 +436,7 @@ def render_rows(pairs: list[dict[str, Any]], tokenizer_spec: str) -> list[dict[s
         if carried:
             raise SystemExit(
                 f"pairs row {index} carries media columns {carried}, and --mode render's contract "
-                "is the text spans the client ships: score mode takes query_image/documents_images, "
+                "is the text spans: score mode takes query_image/documents_images, "
                 "and video is out of this recipe's serving form"
             )
         query = str(row["query"])
@@ -490,10 +445,9 @@ def render_rows(pairs: list[dict[str, Any]], tokenizer_spec: str) -> list[dict[s
                 f"pairs row {index} carries an empty query, and the endpoint refuses one "
                 "(empty_query: refuse, the declared policy): drop the row, nothing is defaulted"
             )
-        documents = [str(document) if str(document).strip() else "NULL" for document in row["documents"]]
-        query_span, _ = served_spans(tok, query, documents[0])
-        document_spans = [served_spans(tok, query, document)[1] for document in documents]
-        rows.append({"index": index, "shape": "pair", "query": query_span, "documents": document_spans})
+        documents = [str(document) if str(document) else "NULL" for document in row["documents"]]
+        spans = [card_spans(tok, query, document) for document in documents]
+        rows.append({"index": index, "shape": "pair", "query": spans[0][0], "documents": [span[1] for span in spans]})
     return rows
 
 
@@ -523,9 +477,9 @@ def main() -> int:
     rows: list[dict[str, Any]] = []
     document: dict[str, Any] = {}
     if args.mode == "render":
-        # The contract is the wire's content spans (the settled query and the document spans the
-        # client ships); the instruction is the recipe's declared none, so no rows carry one here.
-        document = {"rows": render_rows(rows_raw, args.tokenizer), "render_path": "wire-content-spans"}
+        # The harness compares content spans; these are the card's own (its prompt, its cut). The
+        # instruction is the recipe's declared none: the card's default instruction, always.
+        document = {"rows": render_rows(rows_raw, args.tokenizer), "render_path": "card-content-spans"}
     else:
         reference = Qwen3VLRerankerReference(args.tokenizer).load(args.device)
         for index, row in enumerate(rows_raw):

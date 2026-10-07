@@ -34,7 +34,7 @@ serve:
   max_model_len: 32768     # model card context length; config.json allows 262144
   dtype: bfloat16          # config.json dtype
   plugin: null             # native vLLM class + the conversion covers scoring; no plugin
-  mm_processor_kwargs: {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1310720}}   # the reference's numbers (R20); 1280 tokens/image at max_pixels. ONE shape across the media recipes -- nested images_kwargs, decided from the v0.31.0 tag source (the nested dict reaches the HF processor verbatim, context.py:293-309, and overlays the vLLM-side image reads, qwen3_vl.py:958-970; the flat form is the shared namespace and leaks into the video size override, qwen3_vl.py:1369-1377)
+  mm_processor_kwargs: {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1310720}}   # the reference's numbers (R20); 1280 tokens/image at max_pixels. ONE shape across the media recipes -- nested images_kwargs, decided from the v0.31.0 tag source: the nested dict reaches the HF processor's images_kwargs and the vLLM-side image token budget (context.py:44-84, :293-331; qwen3_vl.py:939-985), while flat keys also re-size every video clip (qwen3_vl.py:1371-1382)
   limit_mm_per_prompt: {"image": 1}        # one media item per request (client.max_images carries the
                                            # same number): never the engine's multi-item hoist
   extra_args: []           # the wave runner passes --served-model-name <recipe id>; the client's
@@ -68,6 +68,12 @@ client:
                            # two -- the engine's multi-item guard is never crossed). Image
                            # queries and image documents cannot combine in one request; the
                            # notes' data discipline matches
+  image_policy: {min_px: 4096, max_px: 1310720}   # R20's client half: the same numbers as
+                           # serve.mm_processor_kwargs. No image_processor: the product's qwen3_vl
+                           # geometry refuses a budget below its stock floor (65536 px), so the
+                           # client cannot count an image under this budget -- an image-bearing
+                           # request is refused loudly (a typed ConfigError) until the product
+                           # accepts a pinned budget (notes, "Media policy")
   template:
     pair:
       - {fixed: "{special:im_start}system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \"yes\" or \"no\".{special:im_end}\n{special:im_start}user\n<Instruct>: Given a search query, retrieve relevant candidates that answer the query.<Query>:"}
@@ -105,12 +111,14 @@ reference:
                            # Identity activation = raw logits and a different default prompt)
   score_scale: probability # sigmoid(W_yes - W_no . h_last), fp32 head
   entry: reference.py
-  known_deviations: [anchor_drop_over_cap]  # the card's script truncates over-cap pairs itself
+  known_deviations: [over_cap_cut_differs]  # the card's script truncates over-cap pairs itself
                                             # (keep every special token and the first
-                                            # (8192 - specials) non-special tokens, re-append the
-                                            # last 5 ids) -- a different kept-content set than the
-                                            # client's offset-based cut, so over-cap scores are
-                                            # reported non-gating and the gates run under cap
+                                            # (8192 - specials) non-special tokens of all but the
+                                            # last 5 ids, re-append those 5): the assistant tail
+                                            # (the anchor) survives, the kept content differs from
+                                            # the client's settle-once cut. reference.py renders
+                                            # the card's cut; over-cap rows are reported
+                                            # non-gating, under-cap rows gate exactly
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
@@ -137,12 +145,14 @@ sources:
      (PoolerClassify, num_labels<2 -> sigmoid); model_executor/models/interfaces_base.py:160
      (default LAST pooling); vllm/config/pooler.py:60 (use_activation) and
      config/model.py:787 (the engine defaults it from the pooler when the request sends none)"
-  - "vllm v0.31.0 vllm/multimodal/processing/context.py:45-82, :293-336 (the ONE mm_processor_kwargs
-     shape: nested images_kwargs reaches the HF processor verbatim and overlays the vLLM-side
-     image reads; flat keys are the shared namespace)"
-  - "vllm v0.31.0 vllm/model_executor/models/qwen3_vl.py:958-970 and :1369-1377 (the image budget
-     reads through the overlay, and the flat min_pixels/max_pixels leak into the VIDEO size
-     override -- why the pin is scoped under images_kwargs)"
+  - "the R20 shape (the full chain is cited once, in qwen3-vl-embedding-2b's sources): vllm v0.31.0
+     vllm/multimodal/processing/context.py:44-84 (the image-only overlay of a nested images_kwargs
+     dict), :293-331 (no overlay at processor construction and HF __call__: the nested dict reaches
+     the HF processor); vllm/model_executor/models/qwen3_vl.py:939-985 (the vLLM-side image token
+     budget reads through the overlay) and :1371-1382 (flat min_pixels/max_pixels re-size every
+     video clip); transformers 5.17.0 processing_utils.py:1513-1630 (_merge_kwargs routes the
+     nested dict to images_kwargs only) and models/qwen2_vl/image_processing_qwen2_vl.py:120-129
+     (min_pixels + max_pixels become the resize size)"
   - "research/r-qwen3vl-rer/out/{report.md,digest.md,check_template.py,reference-draft.py,
      recipe-draft.yaml}: the 12-case CPU template-equivalence check (28/28), the served-vs-card
      render equality for text, instruction, image, video and media-both-sides shapes, and the
@@ -182,25 +192,24 @@ notes: |
 
   Media policy (R20, both halves). Serve: serve.mm_processor_kwargs pins min_pixels 4096 /
   max_pixels 1310720 under the nested images_kwargs scope -- ONE shape across the media
-  recipes, decided from the v0.31.0 tag source (the nested dict reaches the HF processor
-  verbatim and scopes the pin to images; the flat form is the shared namespace and leaks into
-  the video size override): the reference script's own numbers, so the engine and the reference
-  resize identically by construction (the repo's preprocessor default min_pixels 4095 can tip
-  one image token for thin strips). Image-token budget: 1280 tokens/image at max_pixels
-  (px/1024 after the 2x2 merge; the draft's 5120 was a 4x unit error). Capacity: one media
-  item per request (serve.limit_mm_per_prompt image=1; client.max_images 1 carries the same
-  number) -- an image on the query side or on one document side, never two in one request, so
-  the engine's multi-item guard is never crossed (a side carrying text plus >= 2 images bypasses
-  it: the engine hoists placeholders to the front of the side and joins the texts with a
-  newline, which the reference cannot express; research, declared unmeasured). Pixel budget
-  client-side (the mirror half of R20): the product's ImagePolicy cannot mirror
-  4096-1310720px yet -- its stock-engine guard refuses any budget outside the stock qwen3_vl
-  envelope (65536-16777216px) even when serve.mm_processor_kwargs pins the engine to the same
-  budget (rcp_ndcg.data.resolution ImagePolicy.for_processor) -- so this recipe deliberately
-  declares no image_processor/image_policy rather than a default that would change numbers
-  silently: image-bearing requests fail loudly at the media token count until the product
-  accepts a pinned budget (product change, lane report). Image grid expansion counts need the
-  GPU wave's engine /tokenize probe (R20 p-media engine_check).
+  recipes, decided from the v0.31.0 tag source (the nested dict reaches the HF processor's
+  images_kwargs and the vLLM-side image token budget; the flat form also re-sizes every video
+  clip): the reference script's own numbers, so the engine and the reference resize identically
+  by construction (the repo's preprocessor default min_pixels 4095 can tip one image token for
+  thin strips). Image-token budget: 1280 tokens/image at max_pixels (px/1024 after the 2x2
+  merge). Capacity: one media item per request (serve.limit_mm_per_prompt image=1;
+  client.max_images 1 carries the same number) -- an image on the query side or on one
+  document side, never two in one request, so the engine's multi-item guard is never crossed
+  (a side carrying text plus >= 2 images bypasses it: the engine hoists placeholders to the
+  front of the side and joins the texts with a newline, which the reference cannot express;
+  research, declared unmeasured). Client half: client.image_policy declares the same pixel
+  numbers, but the product cannot apply them yet -- its qwen3_vl geometry refuses any budget
+  below the stock floor (65536 px) even when serve pins the engine to the very same budget
+  (rcp_ndcg.data.resolution _budget_problem), so no image_processor is declared and the client
+  cannot count an image here: the rerank wire refuses an image-bearing request with a typed
+  ConfigError before sending, never a silent default (product change requested in the lane
+  report). Image grid expansion counts need the GPU wave's engine /tokenize probe (R20
+  p-media engine_check).
 
   Video: out of scope (input: [text, image]). A sibling recipe declaring video follows the one
   video-policy decision (qwen3-vl-embedding-2b: 64 uniformly spaced frames per clip, the
@@ -216,13 +225,18 @@ notes: |
   upstream, never a silent default.
 
   Budgets: the pair fit binds on overflow and the rerank client settles the query at
-  query_max_tokens (4096) whenever the query exceeds its share -- an over-share query is a
-  declared divergence row (the reference keeps it whole) and the wave's pairs file must keep
-  queries within the share; over-cap pairs (over 8192 assembled) land in the non-gating table
-  under anchor_drop_over_cap.
+  query_max_tokens (4096) whenever the query exceeds its share, even when the pair fits. The
+  card cuts its own way: it keeps every special token and the first 8192 - specials non-special
+  tokens of all but the last 5 ids, then re-appends those 5 (the assistant tail) -- so it keeps
+  the anchor, keeps an over-share query whole, and admits up to 8197 tokens. Every pair the
+  client had to cut (an over-share query or an over-cap pair) is reported in the non-gating
+  table under the declared over_cap_cut_differs; reference.py renders the card's own cut there
+  and never the client's. The wave's pairs file should keep queries within the share and pairs
+  within the budget, so the gates see enough rows.
 
   Stage 1 on CPU proves: the declared pair shape renders byte-identically to the served
   template file (and hence to the card's reference prompt), the anchors survive every
-  over-length cut, and fit's render equals the reference subprocess's render. The GPU wave
+  over-length cut, and on the pairs rows the client's spans equal the card's (the reference
+  subprocess's render, the card's own cut). The GPU wave
   (stages 2-3) must still check: score-level equivalence against the ~4.0 GB weights, the
   engine's /tokenize agreement, the template mount (T0), and image-expansion token counts.

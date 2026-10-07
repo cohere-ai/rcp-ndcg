@@ -29,7 +29,7 @@ from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.inference.config import RerankEndpoint
 
 from ._contract import assert_recipe_contract
-from ._served import stage1_facts
+from ._served import served_pair, stage1_facts
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "qwen3-vl-reranker-2b"
 REVISION = "4bd860ac4f15ad1897a214615cccc700f8f71818"
@@ -78,7 +78,7 @@ CLIENT = {
     "max_retries": 2,
     "wait_on_outage_s": None,
     "image_processor": None,
-    "image_policy": None,
+    "image_policy": {"min_px": 4096, "max_px": 1310720, "processor": None},
     "video_policy": None,
     "max_images": 1,
     "max_videos": 0,
@@ -134,7 +134,7 @@ REFERENCE = {
     "kind": "transformers",
     "score_scale": "probability",
     "entry": "reference.py",
-    "known_deviations": ["anchor_drop_over_cap"],
+    "known_deviations": ["over_cap_cut_differs"],
 }
 TOP = {
     "id": "qwen3-vl-reranker-2b",
@@ -336,3 +336,64 @@ def test_mutation_dropping_the_tail_from_the_declared_shape_reddens_the_template
     template_check = document["template_render_check"]
     assert template_check["passed"] is False, "the file still emits the dropped suffix"
     assert template_check["failures"], "the red check names what moved"
+
+
+@pytest.mark.network
+def test_reference_renders_the_card_cut_not_the_client_cut(tmp_path: Path, snapshot: Path) -> None:
+    """Decision 9 on this recipe: the reference's spans are the card's (its prompt, its own cut).
+
+    Under the cap and within the query share, the card's spans equal what the role client ships. The
+    two cuts then differ exactly as ``over_cap_cut_differs`` declares: an over-share query ships settled
+    at its 4096-token share while the card reads it whole (the pair still fits the card); an over-cap
+    document is cut by both but to different lengths (the card keeps the specials, the first
+    8192 - specials non-special tokens of all but the last 5 ids, and re-appends those 5 -- the
+    assistant tail, the anchor, survives on both sides).
+    """
+    from rcp_ndcg_vllm.equivalence.reference import run_reference
+
+    loaded = stage1_recipe(snapshot)
+    tokenizer = tokenizer_of(loaded)
+    long_query = "which catalogue entry describes the harbour lighthouse restoration project " * 420
+    long_document = "the harbour lighthouse was restored with funds raised by the town council. " * 900
+    rows = [
+        {"query": "what is the capital of France", "documents": ["Paris is the capital of France.", ""]},
+        {"query": long_query, "documents": ["a short note"]},
+        {"query": "lighthouse restoration", "documents": [long_document]},
+    ]
+    assert tokenizer.count(long_query) > 4096, "the query is over its declared share"
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    out = tmp_path / "render.json"
+    run_reference(
+        sys.executable,
+        str(RECIPE_DIR / "reference.py"),
+        mode="render",
+        pairs_path=pairs,
+        out_path=out,
+        tokenizer_spec=str(snapshot),
+    )
+    card = {int(row["index"]): row for row in json.loads(out.read_text(encoding="utf-8"))["rows"]}
+    shipped = [served_pair(loaded, row["query"], row["documents"]) for row in rows]
+
+    assert card[0]["query"] == shipped[0]["query"] and card[0]["documents"] == shipped[0]["documents"]
+    assert card[0]["documents"][1] == "NULL", "the card's empty-side rule, which empty_doc send_text sends"
+    # The over-share query: settled by the client, whole for the card.
+    assert card[1]["query"] == long_query
+    assert long_query.startswith(shipped[1]["query"]) and len(shipped[1]["query"]) < len(long_query)
+    assert tokenizer.count(shipped[1]["query"]) <= 4096
+    assert card[1]["documents"] == shipped[1]["documents"] == ["a short note"]
+    # The over-cap document: both cut it, each its own way; both keep the query whole here.
+    assert card[2]["query"] == shipped[2]["query"] == "lighthouse restoration"
+    card_document, client_document = card[2]["documents"][0], shipped[2]["documents"][0]
+    assert long_document.startswith(card_document) and long_document.startswith(client_document)
+    assert len(card_document) < len(long_document) and len(client_document) < len(long_document)
+    assert card_document != client_document, "the two cuts differ: over_cap_cut_differs"
+    frame = loaded.client.template
+    card_ids = tokenizer.ids(
+        frame.render("pair", tokenizer, query=card[2]["query"], document=card_document), add_special_tokens=True
+    )
+    client_ids = tokenizer.ids(
+        frame.render("pair", tokenizer, query=shipped[2]["query"], document=client_document),
+        add_special_tokens=True,
+    )
+    assert len(client_ids) <= loaded.client.max_tokens < len(card_ids) <= loaded.client.max_tokens + 5
