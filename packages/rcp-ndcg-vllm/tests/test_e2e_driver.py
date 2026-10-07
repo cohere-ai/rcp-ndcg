@@ -273,3 +273,43 @@ def test_a_managed_engine_is_killed_and_restarted(tmp_path: Path) -> None:
     assert second is not None and second.pid != first.pid and second.poll() is None
     engine.stop()
     assert second.poll() is not None
+
+
+def test_a_managed_engine_never_sees_the_probe_on_pythonpath(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The probe rides the phase workers' ``PYTHONPATH``, never an engine's: the driver's own
+    ``PYTHONPATH`` is kept out of :class:`ManagedEngine`'s processes exactly as out of the job's
+    engines (node-runtime item 10: engines stay untouched)."""
+    monkeypatch.setenv("PYTHONPATH", "/leak/from/driver-env")
+    engine_stub = tmp_path / "env-engine.sh"
+    engine_stub.write_text(
+        '#!/usr/bin/env bash\necho "PYTHONPATH=[${PYTHONPATH:-}]" > "$STATE_ENV"\nexec sleep 60\n', encoding="utf-8"
+    )
+    engine_stub.chmod(0o755)
+    engine = ManagedEngine(
+        [str(engine_stub)],
+        env={"TMPDIR": str(tmp_path / "tmp"), "STATE_ENV": str(tmp_path / "state.env")},
+        log_path=tmp_path / "engine.log",
+    )
+    engine.start()
+    state = tmp_path / "state.env"
+    deadline = time.monotonic() + 10
+    while not state.exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    engine.stop()
+    assert state.exists()
+    assert state.read_text(encoding="utf-8") == "PYTHONPATH=[]\n"
+
+
+def test_the_outage_launcher_puts_the_srun_shim_on_the_path(stubs: Path, tmp_path: Path) -> None:
+    """The outage sub-runs launch the scripted job the way the driver runs it: with the ``srun`` shim on
+    the path and the probe kept out.  The stubs' ``bin`` carries no ``srun`` (a pod ships no SLURM
+    client): what makes an engine step start is the launcher's own shim."""
+    from rcp_ndcg_vllm.e2e import launch_job_script
+
+    process = launch_job_script(
+        'srun --overlap --gres=gpu:1 bash -c "touch $STUBS/outage-engine-started"',
+        out=tmp_path / "out",
+        env=_env(stubs),
+    )
+    assert process.wait(timeout=10) == 0
+    assert (stubs / "outage-engine-started").exists()

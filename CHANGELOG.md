@@ -34,7 +34,7 @@ released together.
   staged wheelhouse, an `srun` stand-in, the process-boundary probe, and the T0 judge smoke whose
   verdict picks the scenario's judge or its `fallback` (the Flash-Next NVFP4 candidate to its FP8
   release). Shipped scenarios: `text-four-phases` (run twice; identical identities and outputs,
-  judged values compared structurally only: judgements may differ at temperature > 0), `outage` (the
+  judged values are never compared, window counts and families only: judgements may differ at temperature > 0), `outage` (the
   judge killed mid-tournament: parks and recovers; the `wait_on_outage_s` expiry fails with
   `BackendUnavailableError`; a resume finishes), `identity` (the same run on new ports: nothing
   recomputes) and `vidore` (ViDoRe v3 page images). Offline counterparts in the root suite: the golden

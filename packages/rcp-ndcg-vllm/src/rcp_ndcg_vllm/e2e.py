@@ -34,7 +34,7 @@ Scenarios (``scenarios/``):
 * ``text-four-phases`` -- NanoBEIR one subset, served encoder -> served reranker -> served judge
   (tournament + rubric) -> calibrate + evaluate: the four phases of one run.  Run twice into two run
   directories and compared (:func:`compare_runs`: identical identities and outputs; judgement values are
-  compared structurally only, judgements may differ at temperature > 0 -- see :func:`run_facts`);
+  counts and families only), judgements may differ at temperature > 0 -- see :func:`run_facts`);
 * ``outage`` -- the same text run with the judge engine killed mid-tournament.  The judge is a run-scoped
   engine the driver owns (the product's model: engines the supervision script started end the job when
   they exit; engines that live elsewhere are "restarted by whatever runs them, and the judge bounds the
@@ -205,12 +205,18 @@ class EngineSlot(BaseModel):
 
 
 class JudgeModel(BaseModel):
-    """A judge checkpoint to serve: the revision the run pins."""
+    """A judge checkpoint to serve: the revision the run pins.
+
+    ``tokenizer`` is the judge config's tokenizer **when this checkpoint serves** (a quantized release of
+    one base shares its tokenizer files; name it explicitly when it does not) -- the fallback partner's
+    tokenizer must follow the winner, since the tokenizer's SHA-256 enters the judgement family.
+    """
 
     model_config = _no_extra()
 
     model: str = Field(min_length=1, description="the Hub repository id")
     revision: str = Field(pattern=r"^[0-9a-f]{40}$", description="the commit served, 40 hex")
+    tokenizer: str | None = None
 
 
 class JudgeEngine(BaseModel):
@@ -432,23 +438,31 @@ def build_serve(
     """
     scratch = Path(f"/tmp/rcp-e2e-{scenario.id}")
     engines: dict[str, ServeConfig] = {}
+
+    def shifted(slot: EngineSlot) -> EngineSlot:
+        # The rerun's ports move together: the command's --port, ServeConfig.port (the readiness wait and
+        # the RCP_NDCG_ENGINES URLs), VLLM_PORT and the per-slot TMPDIR are one story, and a script whose
+        # engines listen elsewhere than it waits on can never pass.
+        return slot.model_copy(update={"port": slot.port + port_offset, "vllm_port": slot.vllm_port + port_offset})
+
     if scenario.encoder_recipe is not None and "encoder" in scenario.slots:
-        slot = scenario.slots["encoder"]
+        slot = shifted(scenario.slots["encoder"])
         recipe = find_recipe(recipes_root, scenario.encoder_recipe)
         engines["encoder"] = _serve_config(
-            serve_argv(recipe, port=slot.port + port_offset, served_model_name=recipe.id), slot, scratch
+            serve_argv(recipe, port=slot.port, served_model_name=recipe.id), slot, scratch
         )
     if scenario.rerank_recipe is not None and "reranker" in scenario.slots:
-        slot = scenario.slots["reranker"]
+        slot = shifted(scenario.slots["reranker"])
         recipe = find_recipe(recipes_root, scenario.rerank_recipe)
         engines["reranker"] = _serve_config(
-            serve_argv(recipe, port=slot.port + port_offset, served_model_name=recipe.id), slot, scratch
+            serve_argv(recipe, port=slot.port, served_model_name=recipe.id), slot, scratch
         )
     if scenario.mode != "outage":
         _, judge_command = judge_choice or (scenario.judge.candidate, scenario.judge.command)
+        slot = shifted(scenario.judge.slot)
         engines["judge"] = _serve_config(
-            scenario.judge.render_command(judge_command, port=scenario.judge.slot.port + port_offset),
-            scenario.judge.slot,
+            scenario.judge.render_command(judge_command, port=slot.port),
+            slot,
             scratch,
         )
     return ServeByRole.model_validate(engines)
@@ -490,14 +504,15 @@ def build_run_config(
 
     judge_slot = scenario.judge.slot
     judge_model, _ = judge_choice or (scenario.judge.candidate, scenario.judge.command)
-    judge = JudgeConfig.model_validate(
-        {
-            **scenario.judge.config,
-            "model": scenario.judge.served_name,
-            "revision": judge_model.revision,
-            "base_url": f"http://127.0.0.1:{judge_slot.port + port_offset}/v1",
-        }
-    )
+    judge_data = {
+        **scenario.judge.config,
+        "model": scenario.judge.served_name,
+        "revision": judge_model.revision,
+        "base_url": f"http://127.0.0.1:{judge_slot.port + port_offset}/v1",
+    }
+    if judge_model.tokenizer is not None:  # the winner's tokenizer, never the loser's
+        judge_data["tokenizer"] = judge_model.tokenizer
+    judge = JudgeConfig.model_validate(judge_data)
     data: dict[str, Any] = {
         "label": scenario.id,
         "dataset": dict(scenario.dataset),
@@ -615,26 +630,40 @@ def write_srun_shim(out: Path) -> Path:
     return bin_dir
 
 
-def run_job_script(script: str, *, out: Path, env: Mapping[str, str] | None = None) -> tuple[int, Path]:
-    """Run the rendered phased job script in this pod: ``bash`` with the driver's ``srun`` on ``PATH``.
+def job_env(out: Path, env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """One launcher environment for everything the driver runs (the job script and the managed engines):
+    the driver's ``srun`` shim first on the path, and no probe ``PYTHONPATH`` -- the probe belongs to the
+    phase workers only (node-runtime item 10), so an engine process never imports the probe's
+    ``sitecustomize``."""
+    merged = {**os.environ, **dict(env or {})}
+    merged.pop("PYTHONPATH", None)
+    merged["PATH"] = f"{write_srun_shim(out)}:{merged.get('PATH', '')}"
+    return merged
+
+
+def launch_job_script(script: str, *, out: Path, env: Mapping[str, str] | None = None) -> subprocess.Popen[bytes]:
+    """Run the rendered phased job script in this pod: ``bash`` with the driver's ``srun`` on ``PATH``
+    (:func:`job_env`).  The script's phase workers export the probe environment themselves.
 
     Inputs: the rendered script, the scenario's output directory (``job.sh``, ``job.log`` and the shim
-    land there) and extra environment.  Output: ``(exit status, job.log path)``.  The script's phase
-    workers export the probe environment themselves, so the executor's own environment carries no
-    ``PYTHONPATH`` -- an engine process must never import the probe's ``sitecustomize``.
+    land there) and extra environment.  Output: the script's process (its ``job.log`` captures its
+    output); :func:`run_job_script` waits for it, the outage driver watches it.
     """
-    job_sh = out / "job.sh"
     out.mkdir(parents=True, exist_ok=True)
-    job_sh.write_text(script, encoding="utf-8")
-    log_path = out / "job.log"
-    job_env = {**os.environ, **dict(env or {})}
-    job_env.pop("PYTHONPATH", None)  # the probe belongs to the coordinators only (node-runtime item 10)
-    job_env["PATH"] = f"{write_srun_shim(out)}:{job_env.get('PATH', '')}"
-    with open(log_path, "a", encoding="utf-8") as log:
-        log.write(f"\n===== run job.sh at {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} =====\n")
-        log.flush()
-        completed = subprocess.run(["bash", str(job_sh)], env=job_env, stdout=log, stderr=subprocess.STDOUT)
-    return completed.returncode, log_path
+    (out / "job.sh").write_text(script, encoding="utf-8")
+    log = open(out / "job.log", "a", encoding="utf-8")  # noqa: SIM115 - lives as long as the job
+    log.write(f"\n===== run job.sh at {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} =====\n")
+    log.flush()
+    return subprocess.Popen(["bash", str(out / "job.sh")], env=job_env(out, env), stdout=log, stderr=subprocess.STDOUT)
+
+
+def run_job_script(script: str, *, out: Path, env: Mapping[str, str] | None = None) -> tuple[int, Path]:
+    """Run the rendered phased job script and wait: ``(exit status, job.log path)``.
+
+    See :func:`launch_job_script` for the launcher (the srun shim and the probe hygiene).
+    """
+    process = launch_job_script(script, out=out, env=env)
+    return process.wait(), out / "job.log"
 
 
 def resume_run(run_dir: Path, *, wheelhouse: str, constraints: str | None, version: str | None) -> int:
@@ -684,12 +713,16 @@ class ManagedEngine:
         self.process: subprocess.Popen[bytes] | None = None
 
     def start(self) -> None:
-        """Start the engine (its own session, so :meth:`kill` takes its whole process group)."""
+        """Start the engine (its own session, so :meth:`kill` takes its whole process group), with the
+        launcher's environment hygiene (:func:`job_env` without the shim: the engine runs no ``srun``
+        step): no probe ``PYTHONPATH`` reaches an engine process."""
         self.env.setdefault("TMPDIR", "/tmp")
         Path(self.env["TMPDIR"]).mkdir(parents=True, exist_ok=True)
+        clean = {**os.environ, **self.env}
+        clean.pop("PYTHONPATH", None)  # the probe belongs to the coordinators only (node-runtime item 10)
         log = open(self.log_path, "a", encoding="utf-8")  # noqa: SIM115 - lives as long as the engine
         self.process = subprocess.Popen(
-            self.command, env={**os.environ, **self.env}, stdout=log, stderr=subprocess.STDOUT, start_new_session=True
+            self.command, env=clean, stdout=log, stderr=subprocess.STDOUT, start_new_session=True
         )
 
     def kill(self) -> None:
@@ -928,8 +961,8 @@ def compare_runs(a: Mapping[str, Any], b: Mapping[str, Any]) -> dict[str, Any]:
         "name": "two identical runs give identical identities and outputs",
         "ok": not mismatches,
         "detail": "; ".join(sorted(set(mismatches)))
-        or "identities, deterministic outputs and the judgement windows' counts match (judged values compared "
-        "structurally only: judgements may differ at temperature > 0)",
+        or "identities, the deterministic steps' outputs and the judgement windows' counts and families match "
+        "(judged values are never compared: judgements may differ at temperature > 0)",
     }
 
 
@@ -970,7 +1003,9 @@ def _check_phase_engines(run_dir: Path, phases: Sequence[Mapping[str, Any]]) -> 
         "the manifest records each phase's engines",
         not problems,
         "; ".join(problems)
-        or f"{len(phases)} phase(s) recorded (roles per phase: "
+        or f"{len(phases)} phase(s) such that every judging step names what its engine said it serves (the "
+        "product records EngineInfo for judging steps only -- runs/pipeline.py -- and the encoder/reranker "
+        "phases' engine blocks are recorded here from the phase plan: "
         + ", ".join("/".join(sorted(phase.get("engines", {}))) or "none" for phase in phases)
         + ")",
     )
@@ -1063,7 +1098,8 @@ def run_scenario(
 
     Inputs: the scenario, the output directory, the recipe roots and the install source the coordinators
     install the release from (``wheelhouse``, ``constraints``, ``version`` -- node-runtime item 2).
-    Output: a :class:`ScenarioResult`; the run directories live under ``out_dir`` (or ``runs_dir``), the
+    Output: a :class:`ScenarioResult`; the run directories live under ``runs_dir`` (default
+    ``<out_dir>/runs``, so one upload carries the report and the runs), the
     rendered scripts and job logs beside it.  Raises :class:`HarnessError` only for a scenario the driver
     cannot set up; a scenario's own failures are its result's checks and error.
     """
@@ -1226,7 +1262,7 @@ def _run_text(
         builder.add(_check(f"{name}: the job script exits 0", status == 0, f"exit {status} ({log_path})"))
         builder.add(_steps_all_completed(run_dir, expected=scenario.steps))
         builder.add(_check_phase_engines(run_dir, phases))
-        builder.add(_boundary_check(run_out, install))
+        builder.add(_boundary_check(run_out, install, name))
         roles = ", ".join("/".join(sorted(phase["engines"])) or "none" for phase in phases)
         builder.add(_check(f"{name}: phases recorded", True, f"{roles} ({len(phases)} phases)"))
         facts.append(run_facts(run_dir))
@@ -1234,12 +1270,17 @@ def _run_text(
         builder.add(compare_runs(facts[0], facts[1]))
 
 
-def _boundary_check(run_out: Path, install: Mapping[str, Any]) -> dict[str, Any]:
-    """The process-boundary check of one run (node-runtime item 10): the run's probe records beside the
-    engine environment's own ``python3`` facts."""
+def _boundary_check(run_out: Path, install: Mapping[str, Any], label: str = "") -> dict[str, Any]:
+    """The process-boundary check of one driven job (node-runtime item 10): its probe records beside the
+    engine environment's own ``python3`` facts.  Every mode drives jobs under it -- the entry's claim
+    applies to all of them."""
     _, probe_jsonl = write_probe(run_out)  # idempotent: returns the probe's paths
     version = str(install["version"]) if install.get("version") else None
-    return check_process_boundary(read_probe(probe_jsonl), engine_python=engine_python_facts(), version=version)
+    check = check_process_boundary(read_probe(probe_jsonl), engine_python=engine_python_facts(), version=version)
+    if label:
+        check["name"] = f"process boundaries ({label})"
+        check["detail"] = f"{label}: {check['detail']}"
+    return check
 
 
 def _run_identity(
@@ -1263,6 +1304,7 @@ def _run_identity(
     builder.add(_check("first run: the job script exits 0", status == 0, f"exit {status} ({log_path})"))
     builder.add(_steps_all_completed(run_dir, expected=scenario.steps))
     builder.add(_check_phase_engines(run_dir, phases))
+    builder.add(_boundary_check(out, install, "first run"))
     before = full_facts(run_dir)
     (out / "facts-before.json").write_text(json.dumps(before, indent=2, default=str) + "\n", encoding="utf-8")
 
@@ -1275,6 +1317,7 @@ def _run_identity(
     )  # fmt: skip
     status, log_path = run_job_script(rerun_script, out=rerun_out)
     builder.add(_check("the rerun (new ports) exits 0", status == 0, f"exit {status} ({log_path})"))
+    builder.add(_boundary_check(rerun_out, install, "rerun"))
     after = full_facts(run_dir)
     (out / "facts-after.json").write_text(json.dumps(after, indent=2, default=str) + "\n", encoding="utf-8")
     builder.add(_snapshot_equal(before, after))
@@ -1326,12 +1369,20 @@ def _run_outage(
     )  # fmt: skip
     builder.runs.append(str(run_dir))
     phases = _phase_facts(pipeline)
-    status = _outage_pass(
+    status, parked = _outage_pass(
         scenario, run_out=run_out, script=script, run_dir=run_dir, judge=judge,
         outage_s=min(20.0, max(5.0, wait_s / 6)), restart=True,
     )  # fmt: skip
-    builder.add(_check("the outaged run recovers and finishes", status == 0, f"the job script exited {status}"))
+    builder.add(
+        _check(
+            "the outaged run parks and recovers",
+            status == 0 and parked,
+            f"parked through the outage: {parked}; the job script exited {status}",
+        )
+    )
+    builder.add(_steps_all_completed(run_dir, expected=scenario.steps))
     builder.add(_check_phase_engines(run_dir, phases))
+    builder.add(_boundary_check(run_out, install, "outage: the recovers sub-run"))
 
     # (b) the wait_on_outage_s expiry path
     run_out = out / "outage-expires"
@@ -1341,15 +1392,18 @@ def _run_outage(
         install=install, judge_choice=judge_choice,
     )  # fmt: skip
     builder.runs.append(str(run_dir))
-    status = _outage_pass(
+    status, parked = _outage_pass(
         scenario, run_out=run_out, script=script, run_dir=run_dir, judge=judge,
         outage_s=wait_s + 30.0, restart=False,
     )  # fmt: skip
     expired = _check(
-        "the outage outlasting wait_on_outage_s fails the run", status != 0, f"the job script exited {status}"
+        "the outage outlasting wait_on_outage_s fails the run",
+        status != 0,
+        f"the job script exited {status} (the run parked through the outage: {parked})",
     )
     builder.add(expired)
     builder.add(_check_backend_unavailable(run_dir, [run_out / "job.log", Path(run_dir) / "logs" / "run.log"]))
+    builder.add(_boundary_check(run_out, install, "outage: the expires sub-run"))
 
     # and the resume finishes it (the T4 criterion "resume after a killed engine parks and recovers")
     judge.restart()
@@ -1368,17 +1422,16 @@ def _outage_pass(
     judge: ManagedEngine,
     outage_s: float,
     restart: bool,
-) -> int:
+) -> tuple[int, bool]:
     """One outage sub-run: the script runs to the middle of the tournament, the judge is killed, and
     ``restart`` decides whether it comes back after ``outage_s`` or stays down past it.  Observes the
-    parking: the run is alive and unfinished while the judge is down.  Output: the script's exit status."""
+    parking: the run is alive and unfinished while the judge is down.  Output: ``(the script's exit
+    status, the parked observation)``."""
     url = f"http://127.0.0.1:{scenario.judge.slot.port}/v1"
     if judge.process is None:
         judge.start()
         judge.wait_ready(f"{url}/models", scenario.judge.slot.startup_timeout_s)
-    log_path = run_out / "job.log"
-    with open(log_path, "a", encoding="utf-8") as log:
-        process = subprocess.Popen(["bash", "-c", script], stdout=log, stderr=subprocess.STDOUT)
+    process = launch_job_script(script, out=run_out)  # the driver's launcher: the srun shim, no probe
     store = run_dir / "judgements" / "tournament.jsonl"
     deadline = time.monotonic() + scenario.judge.slot.startup_timeout_s + 1800
     while time.monotonic() < deadline and process.poll() is None:
@@ -1401,7 +1454,7 @@ def _outage_pass(
         "exit_status": status,
     }
     (run_out / "outage.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
-    return status
+    return status, parked
 
 
 def write_report(out: Path, results: Sequence[ScenarioResult]) -> Path:
@@ -1432,7 +1485,7 @@ def write_report(out: Path, results: Sequence[ScenarioResult]) -> Path:
         lines += ["", f"Runs: {', '.join(row.runs) or '(none)'}", ""]
     lines.append(
         "What two identical runs are compared on: every step's identity and its deterministic outputs, and the "
-        "judgement windows' counts and families (judged values only structurally: judgements may differ at "
+        "judgement windows' counts and families (judged values are never compared: judgements may differ at "
         "temperature > 0)."
     )
     (out / "E2E.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -1485,8 +1538,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     scenario_roots = [Path(root) for root in args.scenarios_root] or [default_scenarios_root()]
-    names = _recipe_ids(args.scenarios) if args.scenarios.startswith("@") else args.scenarios.split(",")
+    names = _scenario_ids(args.scenarios) if args.scenarios.startswith("@") else args.scenarios.split(",")
     out = Path(args.out)
+    runs_dir = Path(args.runs_dir) if args.runs_dir else out / "runs"
     try:
         paths = _resolve_scenarios([name for name in names if name], scenario_roots)
         results = [
@@ -1497,7 +1551,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 wheelhouse=args.wheelhouse,
                 constraints=args.constraints,
                 version=args.version,
-                runs_dir=args.runs_dir,
+                runs_dir=runs_dir,
             )
             for path in paths
         ]
@@ -1515,8 +1569,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0 if all(row.status == "passed" for row in results) else 1
 
 
-def _recipe_ids(value: str) -> list[str]:
-    """``@file.txt`` (one entry per line, ``#`` comments allowed) into a list (the wave runner's rule)."""
+def _scenario_ids(value: str) -> list[str]:
+    """``@file`` (one scenario id or path per line, ``#`` comments allowed) into a list (the wave
+    runner's file rule)."""
     lines = Path(value[1:]).read_text(encoding="utf-8").splitlines()
     return [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
 

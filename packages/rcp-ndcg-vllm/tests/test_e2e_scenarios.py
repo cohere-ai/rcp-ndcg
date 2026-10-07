@@ -115,16 +115,22 @@ def test_the_identity_rerun_moves_no_identity_field() -> None:
         assert hash_payload(left._identity(stage)) == hash_payload(right._identity(stage))  # noqa: SLF001
 
 
-def test_the_four_phase_script_is_the_golden_file() -> None:
-    """The rendered phased script of scenario 1, byte for byte (the in-pod job.sh and the golden copy)."""
+def test_the_four_phase_script_is_the_golden_file(tmp_path: Path) -> None:
+    """The rendered phased script of scenario 1, byte for byte (the in-pod job.sh and the golden copy).
+
+    Two paths are normalized out of the comparison (they name where the render ran, not what it is): the
+    run id and the recipes root's absolute path (``serve_argv`` renders ``--chat-template`` absolutely,
+    from wherever the recipes live).
+    """
     scenario, pipeline = _prepared("text-four-phases")
     script = render_phased_script(pipeline, options=FIXED_OPTIONS, run_dir=FIXED_RUNS, **INSTALL)
     script = script.replace(f"rcp-{pipeline.layout.run_id}", "rcp-RUN-ID")  # the run id names the job
+    script = script.replace(str(RECIPES), "/e2e/recipes")  # the recipes' absolute root (this checkout's)
     golden = GOLDEN / "job-text-four-phases.sh"
-    if not golden.exists():  # the first write is deliberate; the test pins the file afterwards
-        golden.parent.mkdir(parents=True, exist_ok=True)
-        golden.write_text(script, encoding="utf-8")
-        pytest.fail(f"wrote {golden} for the first time; review and commit it")
+    if not golden.exists():  # never write the checkout from a test: the candidate lands in tmp_path
+        candidate = tmp_path / "job-text-four-phases.sh"
+        candidate.write_text(script, encoding="utf-8")
+        pytest.fail(f"no golden file; copy {candidate} to {golden} after reviewing it, and commit it")
     assert script == golden.read_text(encoding="utf-8")
 
 
@@ -144,12 +150,41 @@ def test_the_script_installs_every_coordinator_from_the_staged_wheelhouse() -> N
     assert "PYTHONPATH=/e2e/out/probe-site" in script  # the probe rides the phase workers, not the engines
 
 
-def test_the_identity_scenario_rerender_points_at_the_same_run() -> None:
-    """The identity rerun renders the same run directory on new ports (``run_dir`` re-points the phases)."""
-    _, pipeline = _prepared("identity")
-    rerun = render_phased_script(pipeline, options=FIXED_OPTIONS, run_dir="/e2e/runs/the-first-run", **INSTALL)
-    assert "--run /e2e/runs/the-first-run" in rerun
-    assert "8220" not in rerun  # port offsets move the engine commands and URLs only at their owner's render
+def test_the_identity_rerun_moves_every_port_together() -> None:
+    """The identity rerun on new ports is internally consistent: the engine commands listen on the ports
+    the script waits for and hands the coordinators (command, ``ServeConfig.port``, the engine script's
+    ``VLLM_PORT``/``TMPDIR``, the ``RCP_NDCG_ENGINES`` overlay and the judge's URL move together), and
+    the phases still point at the first run's directory."""
+    scenario = load_scenario(SCENARIOS / "identity.yaml")
+    offset = scenario.identity_port_offset
+    config = build_run_config(scenario, recipes_root=[RECIPES], port_offset=offset)
+    serve = config.serve
+    assert serve is not None
+    slots = {"encoder": scenario.slots["encoder"], "reranker": scenario.slots["reranker"], "judge": scenario.judge.slot}
+    for role in ("encoder", "reranker", "judge"):
+        engine = getattr(serve, role)
+        if engine is None:
+            continue
+        slot = slots[role]
+        assert engine.port == slot.port + offset, role  # the overlay, the wait and the URL's port
+        joined = " ".join(engine.command)
+        assert f"--port {engine.port}" in joined, role  # the command listens where the script points
+        assert engine.env["VLLM_PORT"] == str(slot.vllm_port + offset), role
+        assert f"tmp-{engine.port}" in engine.env["TMPDIR"], role
+    assert config.judge_config().base_url == f"http://127.0.0.1:{serve.judge.port}/v1"
+
+    from rcp_ndcg.runs.run import prepare as prepare_run
+
+    moved = build_run_config(scenario, recipes_root=[RECIPES], port_offset=offset)
+    rerun_pipeline = prepare_run(moved, runs_dir="/e2e/runs", label=scenario.id)
+    rerun = render_phased_script(rerun_pipeline, options=FIXED_OPTIONS, run_dir="/e2e/runs/the-first-run", **INSTALL)
+    assert "--run /e2e/runs/the-first-run" in rerun  # the rerun drives the first run's directory
+    moved_serve = moved.serve
+    assert moved_serve is not None and moved_serve.judge is not None
+    port = moved_serve.judge.port
+    assert "rcp_ndcg_wait_ready RCP_NDCG_ENGINE_PID" in rerun  # the phases wait for their engines
+    assert f"{port} /v1/models" in rerun  # ... on the port the command binds
+    assert f'"judge": {{"urls": ["http://127.0.0.1:{port}/v1"]' in rerun  # coordinators point at it too
 
 
 def test_the_two_identical_runs_comparison_states_what_it_compares() -> None:
