@@ -512,6 +512,40 @@ class TestKeysStayOnTheProfileHost:
         assert seen and seen[0].headers["Authorization"] == "Bearer co-secret-key"
 
 
+@pytest.mark.parametrize(
+    ("api", "variable", "host"),
+    [
+        ("cohere", "CO_API_KEY", "https://api.cohere.com/v2"),
+        ("voyage", "VOYAGE_API_KEY", "https://api.voyageai.com/v1"),
+    ],
+)
+def test_a_hosted_rerank_profile_s_key_stays_on_its_own_host(
+    api: str, variable: str, host: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The host rule is the client base's, so the rerank role keeps it too: the vendor's variable reaches the
+    vendor's own root and nothing else -- behind a gateway URL the request goes out with no key."""
+    import httpx
+
+    from rcp_ndcg.inference.adapters.base import get_adapter
+    from rcp_ndcg.inference.transport import Transport
+
+    monkeypatch.setattr(get_adapter(api, role="rerank"), "PAUSE_S", 0.0)  # Voyage's rate-limit pause, not under test
+    monkeypatch.setenv(variable, "vendor-secret-key")
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"results": [{"index": 0, "relevance_score": 0.5}]})
+
+    for base_url, header in ((host, "Bearer vendor-secret-key"), ("https://gateway.example.com/rerank", None)):
+        config = RerankEndpoint(api=api, model="m", base_url=base_url)
+        client = RerankClient(config, sender=Transport(config, httpx_transport=httpx.MockTransport(handler)))
+        client.rerank("q", ["d"])
+        client.close()
+        assert seen[-1].url.host == httpx.URL(base_url).host
+        assert seen[-1].headers.get("Authorization") == header, base_url
+
+
 def _null_transport() -> Any:
     """A mock endpoint that answers nothing useful; credential errors fail before anything is queued."""
     import httpx
