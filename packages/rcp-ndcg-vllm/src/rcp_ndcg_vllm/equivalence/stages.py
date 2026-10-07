@@ -4,7 +4,7 @@ Stage 1 samples the pairs file, probes the recipe's role client for every sample
 injection point (a capturing ``httpx`` transport), and audits what the client actually sends: the anchor audit
 and the engine's ``/tokenize`` read the captured request bodies, the reference subprocess's ``render`` is
 compared against them, and the served template file is rendered against them.  Over-cap inputs the client had
-to cut are decided on the client's own census and -- under the declared ``anchor_drop_over_cap`` deviation --
+to cut are decided on the client's own census and -- under a declared over-cap deviation --
 reported in a separate non-gating table.  Stage 2 sends the reference's pairs through the same clients and
 gates the answers against the reference subprocess's outputs.  Stage 3 scores rankings with ``rcp-ndcg eval
 score``.  The harness never re-derives a render, a cut or a settlement.
@@ -58,7 +58,7 @@ def stage1_prompts(
       settle-once query (one settled span per row, within its declared share, no cut on an in-budget pair);
     - ``render_check`` — the reference subprocess's ``render`` output against the captured texts, zero
       tolerance (needs ``--reference-python``; reported ``not_run`` without one).  Under a declared
-      ``anchor_drop_over_cap`` deviation, over-cap rows are reported separately and do not gate;
+      over-cap deviation, over-cap rows are reported separately and do not gate;
     - ``template_render_check`` — when ``serve.chat_template`` is set: the template file's jinja2 render (the
       engine's settings) of every declared shape against the client's render of the same inputs;
     - ``engine_tokenize_check`` — with an engine URL: the engine's ``/tokenize`` of every captured text must
@@ -129,13 +129,19 @@ def _sampled_rows(
 def _over_length(seed: str, max_tokens: int | None, tokenizer: Any, index: int) -> str:
     """A seed text padded to at least ``max_tokens`` tokens (plus one, per index), in whole words."""
     budget = max_tokens or 128
-    words = seed.split() or ["anchor"]
     marker = f" pad{index}"
-    text = seed
-    while tokenizer.count(text) < budget * 2:
-        text = text + marker * max(1, (budget * 2 - tokenizer.count(text)) // max(1, len(words) + 1))
-        if text == seed:
-            text = seed + marker
+    # One probe measures the marker's token rate, and each step sizes the append from the measured
+    # deficit, so the loop converges in at most a few passes. The bound is what keeps the sampler
+    # linear in the padded length: the old per-step re-count of the GROWING text (and its
+    # word-count heuristic) re-tokenized a 2x-budget string O(steps) times -- a token-count storm
+    # at 32768-token budgets (jina-embeddings-v5-text-small's stage-1 sample sat in tokenizer.count).
+    unit_tokens = max(1, tokenizer.count(marker * 8))
+    text = seed or "anchor"
+    for _ in range(8):  # declarative bound: 8 measured passes, each at most doubling the growth
+        deficit = budget * 2 - tokenizer.count(text)
+        if deficit <= 0:
+            return text
+        text = text + marker * max(2, (deficit * 8) // unit_tokens + 2)
     return text
 
 
@@ -399,7 +405,7 @@ def _render_check(
     Only the pairs file's rows are compared (the injected over-length samples are audited for the cut, not
     compared: the reference cuts over-cap inputs its own way by declaration).  The comparison is on the
     client's captured texts: the rendered prompts the embed roles send, the settled query span and the
-    document spans for the rerank wire.  Under a declared ``anchor_drop_over_cap`` deviation, over-cap rows
+    document spans for the rerank wire.  Under a declared over-cap deviation, over-cap rows
     are reported separately and do not gate (the reference cuts them differently by declaration).
     """
     if reference_python is None:
@@ -422,7 +428,7 @@ def _render_check(
             out_path=out_path,
             tokenizer_spec=fitting.resolved_tokenizer_spec(recipe),
         )
-    deviation = "anchor_drop_over_cap" in recipe.reference.known_deviations
+    deviation = recipe.reference.over_cap_deviation is not None
     failures: list[dict[str, Any]] = []
     over_cap: list[dict[str, Any]] = []
     seen: set[tuple[int, str]] = set()
@@ -469,7 +475,7 @@ def _render_check(
             "rows": over_cap,
             "passed": True,
             "referent": "pairs-file rows whose uncut prompt exceeds client.max_tokens (what the client sent was "
-            "shortened); under the declared anchor_drop_over_cap deviation the reference cuts them its own way, "
+            "shortened); under the declared over-cap deviation the reference cuts them its own way, "
             "so they are reported here instead of gated",
         }
     return summary
@@ -862,10 +868,10 @@ def _rerank_stage2(
     One client call per row: the client folds the query per the config's instruction mode, settles the shared
     query span once, and fits every pair into the declared budget -- the wire carries exactly what the served
     path ships.  Over-cap pairs (the client recorded a cut in its census: the uncut prompt exceeds
-    ``client.max_tokens``) are excluded from the gates and reported separately under the declared
-    ``anchor_drop_over_cap`` deviation; the Kendall tau covers the under-cap subset of every gated query.
+    ``client.max_tokens``) are excluded from the gates and reported separately under a declared over-cap
+    deviation; the Kendall tau covers the under-cap subset of every gated query.
     """
-    deviation = "anchor_drop_over_cap" in recipe.reference.known_deviations
+    deviation = recipe.reference.over_cap_deviation is not None
     census = TextTruncationCensus()
     client, capture = role_client(recipe, base_url, census=census)
     max_tokens = recipe.client.max_tokens or 0
@@ -941,8 +947,8 @@ def _rerank_stage2(
         "pairs": over_cap,
         "passed": True,
         "referent": "pairs whose uncut prompt exceeds client.max_tokens, decided on the client's own census; "
-        "served and reference may differ by design when reference.known_deviations declares "
-        "anchor_drop_over_cap",
+        "served and reference may differ by design when reference.known_deviations declares an over-cap "
+        "deviation (anchor_drop_over_cap or over_cap_cut_differs)",
     }
     return summary
 
@@ -1067,11 +1073,11 @@ def _vector_stage2(
     A dense embedder's vectors compare with a cosine floor per vector; a late-interaction model's ragged
     token vectors compare per token (in the transfer precision the product's client applied on the wire).
     The client prompts and fits every text exactly as the served path does -- the harness pre-fits nothing.
-    Under a declared ``anchor_drop_over_cap`` deviation, the texts the client had to cut (a census cut over
+    Under a declared over-cap deviation, the texts the client had to cut (a census cut over
     ``client.max_tokens``) are reported separately and do not gate: the reference renders them its own way by
     declaration.
     """
-    deviation = "anchor_drop_over_cap" in recipe.reference.known_deviations
+    deviation = recipe.reference.over_cap_deviation is not None
     per_vector: list[dict[str, Any]] = []
     over_cap: list[dict[str, Any]] = []
     census = TextTruncationCensus()
@@ -1123,7 +1129,7 @@ def _vector_stage2(
         "pairs": over_cap,
         "passed": True,
         "referent": "inputs whose uncut prompt exceeds client.max_tokens (the client shortened them, recorded "
-        "in its census); under the declared anchor_drop_over_cap deviation the reference renders them its own "
+        "in its census); under the declared over-cap deviation the reference renders them its own "
         "way, so they are reported here instead of gated",
     }
     return summary
