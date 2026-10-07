@@ -84,6 +84,43 @@ released together.
 
 ### Fixed
 
+- **The offline fake draws one seeded stream per vector**: `rcp_ndcg.inference.fake`'s `/embeddings` and
+  `/pooling` vectors are one SHAKE-256 stream of the same parts each (read as `dim` uniforms), no longer one
+  SHA-256 per component, so a 16k-token text at 2048 dimensions answers in seconds instead of minutes. The
+  draw is bit-identical on every machine (the norm is exactly rounded, `math.fsum` of the squares: a BLAS
+  `np.linalg.norm` rounded its last bit by the CPU's kernel), but every fake vector's VALUES move
+  (deliberately; their shape, unit norm and per-text determinism do not); no shipped test or case pinned the
+  old values, and tests now pin the new draw's values and its exact bits. `fake_uniform` (the judge's, the reranker's and the token-id draws) is unchanged. The recipe tests'
+  8-wide probe copy of a 2048-wide multi-vector recipe is no longer what keeps them from hanging (the shipped
+  width now costs about twice the probe's time per text, not minutes) and stays: its assertions are
+  width-independent, and it keeps each probed answer small (an 8192-token text at 2048 dimensions is a
+  64 MiB float32 matrix on each side of the wire).
+- **The equivalence harness's stage 1 reads every wire shape** (`rcp_ndcg_vllm.equivalence`): a
+  `request_shape: token_ids` body is audited on the ids it sends (it crashed the audit with a `TypeError`),
+  the engine `/tokenize` check reports `not_run` for it (the engine tokenizes nothing), and the render check
+  compares those ids with the reference text's ids under the shape's `add_special_tokens` flag (it compared
+  the id list with the text, so a `token_ids` recipe never passed stage 1 with a reference); a `messages`
+  body is audited on its messages' text parts, joined with `rcp_ndcg_core.content.TEXT_JOIN` (`"\n"`, as
+  vLLM joins them), with its media parts listed as placeholders beside them (it
+  extracted as no input, and the audit passed having checked nothing); an audit that read no input now
+  fails. An `anchor: first` head is asserted on the assembled render, not on the head's standalone ids (a
+  byte-level BPE re-tokenizes the head's join with the content -- a trailing space into `Ġdocument`, a
+  Qwen-style `:` into `:Paris` -- which failed every request): a text body must start with the head's
+  characters and open with its tokens lying wholly inside them; a `token_ids` body must open with the head
+  tokens no content can merge away (measured on the head joined to a fixed set of probe continuations).
+  An `anchor: marker` audit counts the markers in the sent content without the post-processor's tokens, so a
+  post-processor that appends the same special (`add_special_tokens: true`) no longer stands in for a marker
+  the client dropped.
+- **The node scripts' Cloud SDK search is declared**: `wave0.sh` and `bootstrap.sh` put an SDK the auth script
+  installed on `PATH` through one function (`gcs_sdk_on_path` in `jobs/gcs.sh`, where each kept its own copy of
+  the loop) that searches `RCP_GCLOUD_SDK_DIRS` (colon-separated; unset, the same five install locations as
+  before; set empty, none). The node-script tests set it empty: their hermetic `PATH` was undone by that
+  search on a machine with an SDK in one of those locations (a GitHub runner's `/usr/lib/google-cloud-sdk`),
+  which then ran the machine's `gcloud storage cp`.
+- **A named recipe plugin is found in every staged wheelhouse**: `bootstrap.sh` installs a plugin named by a
+  recipe (not staged as a file) with one `--find-links` per existing `<stage>/extra/<name>/wheelhouse` beside
+  `<stage>/wheelhouse`, still `--no-index`: a plugin wheel staged through `rc_build.sh`'s `EXTRA_DIRS` lands
+  there and was not found, so the recipes that name it failed.
 - **The release publishes in install order**: `publish-vllm` waits for `publish-core` and `publish-rcp-ndcg` (it
   pins `rcp-ndcg==<version>` exactly, as `rcp-ndcg` pins the core). Every instant of the rollout installs, and a
   failed sibling can no longer strand a permanently uninstallable `rcp-ndcg-vllm` on PyPI.
