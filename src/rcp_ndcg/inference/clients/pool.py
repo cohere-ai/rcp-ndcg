@@ -198,11 +198,13 @@ class PoolingClient(RoleClient):
         prompted = [content.with_text_prefix(prefix) for content in contents]
         position_ids = [str(index) for index in range(len(prompted))]
         request = self._prepare_request(prompted, doc_ids=position_ids)
+        shape = "query" if role is EncodeRole.QUERY else "document"
         if self._budget is not None and request.media:
             # The media fit runs per wire request: the pooling wire sends one media item per call, so one
-            # item's fit bounds that item's media -- against the budget minus the fixed frame (the fit's
-            # own reservation, never the bare max_tokens: the two thresholds must not disagree).
-            allowance = max(self._budget.max_tokens - fixed_overhead(self._budget, self._tokenizer, "query"), 0)
+            # item's fit bounds that item's media -- against the budget minus THIS BATCH SHAPE's fixed frame
+            # (the fit's own reservation, never the bare max_tokens: the two thresholds must not disagree;
+            # and never the query shape's frame -- a document batch measures the document shape's).
+            allowance = max(self._budget.max_tokens - fixed_overhead(self._budget, self._tokenizer, shape), 0)
             prepared = [
                 self._fit_media_for_request(
                     [content],
@@ -224,7 +226,7 @@ class PoolingClient(RoleClient):
         else:
             result = self._fit(
                 [content.text for content in kept],
-                "query" if role is EncodeRole.QUERY else "document",
+                shape,
                 media_tokens=[media_tokens[position] for position in positions],
             )
             texts = result.texts

@@ -838,3 +838,74 @@ class TestConcurrentSyncBridges:
         thread.join(30)
         assert done.is_set(), "the in-flight call completed"
         assert transport._pool is None
+
+
+class TestCloseWhileRunsRace:
+    """``close()`` from a foreign thread waits for the in-flight bridge call and never raises into the
+    caller (its own docstring; the verifier's R5): the old code checked ``is_running()`` and closed the
+    loop outside the bridge lock, so every close attempt racing two ``run()``s lost the TOCTOU race
+    (``RuntimeError: Cannot close a running event loop`` / a half-closed loop's teardown ``AttributeError``).
+    """
+
+    def test_close_from_a_fourth_side_never_raises_while_two_threads_run(self) -> None:
+        import threading
+
+        script = ReplicaScript(delay=0.005)
+        transport = _transport(script)
+        errors: list[str] = []
+        failures: list[str] = []
+
+        def work(tag: str) -> None:
+            try:
+                for _ in range(40):
+                    replies = transport.run(transport.send([Call("POST", f"/{tag}", {})]))
+                    if replies[0].status != 200:
+                        failures.append(f"{tag}: status {replies[0].status}")
+            except Exception as exc:  # noqa: BLE001 - both errors are the test's result
+                errors.append(f"run({tag}): {type(exc).__name__}: {exc}")
+
+        threads = [threading.Thread(target=work, args=(tag,)) for tag in ("a", "b")]
+        for thread in threads:
+            thread.start()
+        for attempt in range(40):
+            try:
+                transport.close()
+            except Exception as exc:  # noqa: BLE001 - a close that raises is the bug
+                errors.append(f"close#{attempt}: {type(exc).__name__}: {exc}")
+        for thread in threads:
+            thread.join(60)
+
+        assert not any(thread.is_alive() for thread in threads), "every run() finished"
+        assert not errors, errors[:3]
+        assert not failures, failures[:3]
+
+    def test_the_background_loop_is_started_once_under_concurrent_notebooks(self) -> None:
+        """Two threads in their own running loops do not double-start the private background loop."""
+        import asyncio as _asyncio
+        import threading
+
+        transport = _transport(ReplicaScript())
+        loops: list[Any] = []
+
+        def notebook() -> None:
+            loop = _asyncio.new_event_loop()
+            try:
+
+                async def inside() -> None:
+                    # a sync call from inside a running loop: the transport bridges on its background loop
+                    transport.run(transport.send([Call("POST", "/n", {})]))
+
+                _asyncio.set_event_loop(loop)
+                loop.run_until_complete(inside())
+                loops.append(transport._background_loop)
+            finally:
+                loop.close()
+
+        threads = [threading.Thread(target=notebook) for _ in range(4)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(30)
+        transport.close()
+        started = [entry for entry in loops if entry is not None]
+        assert started and all(entry is started[0] for entry in started), "one background loop for all callers"

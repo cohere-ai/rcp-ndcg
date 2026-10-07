@@ -1394,3 +1394,119 @@ class TestRerankPairFitWithMedia:
 
         assert result.scores == (0.0,)
         assert sender.prompt_tokens and max(sender.prompt_tokens) <= 200, "no pair ships over the budget"
+
+
+class TestPoolFramePerShape:
+    """The pooling media allowance reserves the REQUEST SHAPE's frame, not the query's (the verifier's
+    R17): a document batch leaves the ``document`` frame's tokens beside the media, or the text fit refuses
+    the request blaming the media that fit."""
+
+    POLICY = {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"}
+
+    def _client(self, tokenizer_json: str, sender: Any, *, max_tokens: int, template: Any) -> PoolingClient:
+        return PoolingClient(
+            PoolingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="colqwen",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=max_tokens,
+                template=template,
+                image_policy=dict(self.POLICY),
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            sender=sender,
+        )
+
+    def test_a_document_batch_reserves_the_document_frame(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """Frame-heavy ``document`` shape (101 tokens), light ``query`` shape, max_tokens 300, one
+        258-token media item: the old allowance reserved the query's ~0-token frame and the request died
+        (``the fixed template overhead (101 tokens) plus the declared media (258) already fill the budget``);
+        the fit must shrink/drop within the room the DOCUMENT frame leaves and serve the request."""
+        template = TemplateSpec(
+            query=(Segment(content="query"),),
+            document=(Segment(fixed=" ".join(["frame"] * 101)), Segment(content="document")),
+        )
+        sender = _GatedSender(
+            PoolingServer({}, default=np.ones((2, 2), dtype=np.float16), media_vector=np.ones((2, 2), dtype=np.float16))
+        )
+        client = self._client(tokenizer_json, sender, max_tokens=300, template=template)
+
+        result = asyncio.run(client.aencode([_image_content(tmp_path, 0, 448)], EncodeRole.DOCUMENT))
+
+        assert result.num_items == 1, "the request is served (the media fit ran within the document frame)"
+
+    def test_a_document_only_template_never_reserves_a_query_frame(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """A template with no ``query`` shape must not be blamed for the client's own lookup (the old code
+        asked for the ``query`` frame on a document batch and died ``the template declares no 'query'
+        shape``)."""
+        template = TemplateSpec(document=(Segment(content="document"),))
+        sender = _GatedSender(
+            PoolingServer({}, default=np.ones((2, 2), dtype=np.float16), media_vector=np.ones((2, 2), dtype=np.float16))
+        )
+        client = self._client(tokenizer_json, sender, max_tokens=300, template=template)
+
+        result = asyncio.run(client.aencode([_image_content(tmp_path, 0, 448)], EncodeRole.DOCUMENT))
+
+        assert result.num_items == 1, "the request is served against its own shape's frame"
+
+
+def test_the_pair_fit_invariant_message_carries_its_numbers() -> None:
+    """The bug-report DataError interpolates its numbers -- no literal braces in the message a user reports."""
+    from rcp_ndcg.errors import DataError
+
+    client = RerankClient(
+        RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=str(SESSION_TOKENIZER),
+            max_tokens=12,
+            use_activation=False,
+        ),
+        sender=_HonestBudgetRerankServer(
+            load_tokenizer(str(SESSION_TOKENIZER)), ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl")
+        ),
+    )
+    from rcp_ndcg.data.preprocess import ContentParts
+
+    contents: list[ContentParts] = [("q", " ".join(["word"] * 50))]
+    with pytest.raises(DataError, match="over the budget of 12") as caught:
+        client._assert_pairs_within_budget("q", contents, [0], None)  # type: ignore[arg-type]
+    assert "{" not in str(caught.value), "the message interpolates its values"
+
+
+class TestLongQueryDoesNotDropFittingMedia:
+    """The pair media allowance reserves the SETTLED query's render, not the raw unsettled one (the
+    verifier's R2): a query over its share ships at its share, so media that fit beside the shipped pair
+    must go whole (``fit_media_to_budget`` rule 1) -- never dropped against a query length that never
+    ships."""
+
+    def test_a_shared_query_keeps_media_that_fit_the_shipped_pair(self, tokenizer_json: str, tmp_path: Any) -> None:
+        policy = ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl")
+        sender = _HonestBudgetRerankServer(load_tokenizer(tokenizer_json), policy)
+        client = RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=1000,
+                query_max_tokens=10,
+                use_activation=False,
+                image_policy=dict(TestRerankPairFitWithMedia.POLICY),
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            sender=sender,
+        )
+        document = Content.from_parts([*_image_content(tmp_path, 9, 392).parts, TextPart(text="a b c")])
+
+        result = client.rerank(_words(1000), [document], instruction=None)
+
+        assert result.scores == (0.0,)
+        assert not [1 for _c, _d, _u, dropped in client.media_census.recorded() if dropped], (
+            "no media drop: the image fits the shipped 10-token-share pair"
+        )
+        body = sender.bodies[0]["documents"][0]
+        assert "image_url" in __import__("json").dumps(body), "the document's image rides the wire"
+        assert max(sender.prompt_tokens) <= 1000, "within the budget"
