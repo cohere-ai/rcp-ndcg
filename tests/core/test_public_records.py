@@ -175,7 +175,7 @@ def test_a_placement_carries_one_shape_not_both() -> None:
     family = Family(stage="tournament", judge_model="m", prompt_hash="p" * 64, parse_version=1)
     with pytest.raises(ValidationError, match="criteria"):
         Judgement(
-            record_id=judgement_record_id(family.key, "q", "tournament", 0, ["a"]),
+            record_id=judgement_record_id(family.key, "q", "tournament", 0, ["a"], dataset="d"),
             dataset="d",
             query_id="q",
             stage="tournament",

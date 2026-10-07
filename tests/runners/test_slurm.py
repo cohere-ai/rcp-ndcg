@@ -154,7 +154,7 @@ def test_a_failing_squeue_falls_through_to_sacct(monkeypatch) -> None:
         return "101|COMPLETED\n"
 
     monkeypatch.setattr("rcp_ndcg.runners.slurm.run_cli", fake)
-    assert SlurmRunner().status("101") is JobStatus.SUCCEEDED
+    assert SlurmRunner().status("101") is JobStatus.COMPLETED
     assert [argv[0] for argv in calls] == ["squeue", "sacct"]
 
 
