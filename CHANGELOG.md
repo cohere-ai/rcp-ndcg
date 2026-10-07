@@ -1309,7 +1309,8 @@ released together.
   `pplx-embed-v2-context-9b-preview/`, `packages/rcp-ndcg-vllm/plugins/{topk,pplx}`): topk serves through
   `serve.plugin: rcp-ndcg-vllm-topk` with the product's fields (`query_max_tokens: 1024`, the checkpoint's 41
   `scoring_skip_ids` as `document_skip_token_ids`, `media_sides: [document]`, `normalize: [strip]`) and the
-  nested R20 shape; its plugin marks the bias-less checkpoint's zero projection bias as loaded (vLLM
+  nested R20 shape; its reference renders the card's own 1024/8192 cut (by character offsets), declared
+  `over_cap_cut_differs` (an id cut inside a multi-token character reads one id no text carries); its plugin marks the bias-less checkpoint's zero projection bias as loaded (vLLM
   v0.31.0's weight tracker refused `custom_text_proj.bias`). Neither recipe passes `--trust-remote-code`:
   each plugin registers the checkpoint's configuration class with transformers, so a `config.json` that
   names remote code resolves locally with the flag off. pplx serves `dtype: bfloat16` (vLLM v0.31.0's GDN
