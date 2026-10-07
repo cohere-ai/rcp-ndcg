@@ -192,14 +192,17 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
 - `anchor_check` asserts every anchor survived the client's cut, on the captured requests of every shape —
   the rendered prompt's edge for the embed roles, and for a reranker the settle-once query (one settled span
   per row, identical across the row's pointwise requests, within its declared `query_max_tokens`, and no cut
-  on an in-budget pair);
+  on an in-budget pair). Every wire shape is read: a `token_ids` body is audited on the ids it sends, a
+  `messages` body on its messages' text parts (its media parts are listed as placeholders beside them). An
+  audit that read no input fails;
 - `render_check` compares the reference subprocess's `render` output against the captured texts, zero
   tolerance — every declared shape of every pairs-file row (a row carrying the per-row `shape` field is
   compared too; the injected over-length samples are audited, not compared). Under a declared
   `reference.known_deviations: [anchor_drop_over_cap]`, the rows the client had to cut are reported in a
   separate non-gating table here as well (the reference renders them its own way by declaration);
 - `engine_tokenize_check` (R29, needs the engine) requires the engine's `/tokenize` ids and counts of every
-  captured text to equal the recipe tokenizer's; reported `not_run` without an engine, never as passed;
+  captured text to equal the recipe tokenizer's; reported `not_run` without an engine, never as passed (and
+  for a `token_ids` client, which sends ids and leaves the engine nothing to tokenize);
 - `template_render_check`, when `serve.chat_template` is set: the template file's jinja2 render (the engine's
   settings) against the declared template's render, for every declared shape.
 

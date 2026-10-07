@@ -465,3 +465,42 @@ def test_engine_tokenize_check_does_not_post_token_ids_bodies(monkeypatch: pytes
     probe = {"rows": [{"shapes": {"document": {"texts": [[5, 6, 7]]}}, "cuts": 0, "over_cap": False}]}
     check = stages_module_check(recipe, probe, load_tokenizer(str(TOKENIZER)))
     assert check is not None and check["status"] == "not_run" and check["passed"] is None
+
+
+def test_stage1_audits_messages_bodies_and_fails_an_audit_that_checked_nothing(tmp_path: Path) -> None:
+    """G2: a ``messages`` client's bodies extract as their message texts (media parts as placeholders), so the
+    audit checks every captured input; an audit that checked zero inputs fails instead of passing vacuously."""
+    from rcp_ndcg_vllm.equivalence import stages as stages_module
+    from rcp_ndcg_vllm.equivalence.wire import Capture
+
+    from rcp_ndcg.data.tokenizer import load_tokenizer
+
+    recipe = _with_client(load("fixture-embed"), request_shape="messages")
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    document = stage1_prompts(recipe, pairs, None, over_length_per_shape=2)
+    audit = document["anchor_check"]
+    assert audit["checked"] == len(sample_pairs()[0]["documents"]) + 2, audit
+    assert audit["passed"] is True, audit["failures"][:1]
+    body = {
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "doc: a caption"},
+                    {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+                    {"type": "text", "text": " [END]"},
+                ],
+            },
+            {"role": "user", "content": "doc: plain [END]"},
+        ]
+    }
+    capture = Capture(recipe)
+    capture.exchanges = [{"url": "http://engine/v1/embeddings", "status": 200, "request_body": body}]
+    texts = capture.texts(capture.exchanges[0])
+    assert texts["input"] == ["doc: a caption [END]", "doc: plain [END]"]
+    assert texts["media"] == [["image_url"], []]
+    assert stages_module._captured_heads(capture, [])["first"][0]["media"] == [["image_url"], []]  # reported
+    empty = {"rows": [{"shapes": {"document": {"texts": []}}, "cuts": 0, "over_cap": False}]}
+    nothing = stages_module._anchor_check(recipe, empty, load_tokenizer(str(TOKENIZER)))
+    assert nothing["checked"] == 0 and nothing["passed"] is False
+    assert nothing["failures"][0]["check"] == "nothing_checked"

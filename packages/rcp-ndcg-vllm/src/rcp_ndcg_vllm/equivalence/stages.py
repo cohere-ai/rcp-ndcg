@@ -266,6 +266,7 @@ def _captured_heads(capture: Capture, sampled: list[dict[str, Any]]) -> dict[str
                 "url": exchange["url"],
                 "status": exchange["status"],
                 "texts_head": [text[:_SNIPPET] for text in _flatten(texts)],
+                **({"media": texts["media"]} if any(texts.get("media") or ()) else {}),
             }
         )
     return {"exchanges": len(capture.exchanges), "first": heads, "sampled": len(sampled)}
@@ -332,6 +333,16 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
                             "text": _head_of(text),
                         }
                     )
+    if not checked:
+        # An audit that read no input proves nothing: an extraction gap (a wire shape the capture does not
+        # read) must fail here, never pass vacuously.
+        failures.append(
+            {
+                "check": "nothing_checked",
+                "note": "the anchor audit read no captured input: the client's requests carried no text the "
+                "capture could extract",
+            }
+        )
     return {
         "anchor": template.anchor if template is not None else None,
         "checked": checked,

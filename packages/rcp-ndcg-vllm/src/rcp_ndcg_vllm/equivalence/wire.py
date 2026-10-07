@@ -109,13 +109,29 @@ class Capture:
 
     def texts(self, exchange: dict[str, Any]) -> dict[str, Any]:
         """The texts one captured request carries: ``input`` for the embed roles, ``query``/``documents``
-        for the rerank wire (the spans the engine assembles -- for a reranker, the settled query span)."""
+        for the rerank wire (the spans the engine assembles -- for a reranker, the settled query span).
+
+        A ``messages`` body (the chat-style input: a media item's route, or ``request_shape: messages``)
+        yields one ``input`` per message -- its text parts joined in order, the client's rendered text --
+        and ``media``: per message, the placeholders of its media parts in order (their part ``type``, e.g.
+        ``image_url``), which ride beside the rendered text and are never part of it.  A ``token_ids`` body
+        yields its id lists as sent.
+        """
         body = exchange.get("request_body") or {}
         if self.role == "rerank":
             documents = body.get("documents", [])
             if isinstance(documents, str):
                 documents = [documents]
             return {"query": body.get("query"), "documents": [str(document) for document in documents]}
+        if "input" not in body and isinstance(body.get("messages"), list):
+            texts: list[str] = []
+            media: list[list[str]] = []
+            for message in body["messages"]:
+                content = message.get("content") if isinstance(message, dict) else None
+                parts = [{"type": "text", "text": content}] if isinstance(content, str) else list(content or [])
+                texts.append("".join(str(part.get("text", "")) for part in parts if part.get("type") == "text"))
+                media.append([str(part.get("type")) for part in parts if part.get("type") != "text"])
+            return {"input": texts, "media": media}
         inputs = body.get("input", body.get("texts"))
         return {"input": [inputs] if isinstance(inputs, str) else list(inputs or [])}
 
