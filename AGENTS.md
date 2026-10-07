@@ -27,6 +27,16 @@ secrets. Run the narrowest test first, then the whole suite before you finish.
   Eager imports have no cycles; `schemas` and `mcp` import the CLI's command table lazily, to describe and serve it.
   Job runners are loaded through the `rcp_ndcg.runners` entry-point group, the one plugin seam for job execution
   (adapters have their own: `rcp_ndcg.adapters`).
+- `rcp-ndcg-vllm/src/rcp_ndcg_vllm`: the lean serving package: the GPU-validated recipes (package data), the
+  `rcp-ndcg-vllm serve` console and the folded model plugins (`rcp_ndcg_vllm.models`, one `vllm.general_plugins`
+  entry point, lazily registered). Its dependencies are only what the stock vLLM image ships (pydantic, PyYAML),
+  so `pip install --no-deps` works there and `pip freeze` then differs by exactly that wheel. It NEVER imports
+  `rcp-ndcg` or the engine. `rcp-ndcg` may import its recipe data **lazily** — the `recipe: <id>` resolution
+  (`rcp_ndcg.inference.recipes`) is the one seam.
+- `rcp-ndcg-test/src/rcp_ndcg_test`: the unpublished validation tooling — the equivalence harness, the engine
+  recorder and the GPU wave jobs (rc_build, bootstrap, run_wave, wave 0, submit), plus the cases/conformance/fakes
+  the cases lanes land. It imports `rcp_ndcg` and `rcp_ndcg-vllm` and reimplements neither (R30: the harness drives
+  the product's role clients).
 - `experiments/`: paper reproduction from public data. It imports the package; the package never imports it.
 - `examples/`: runnable examples (`tests/docs` runs them). `skills/rcp-ndcg/`: the skill for agents that use the
   package. `schemas/`: exported JSON Schemas, generated and committed.
@@ -40,6 +50,7 @@ Before adding a helper, `git grep` for an existing one. A second implementation 
 | nDCG, tie rules, Count-nDCG, the paper's scoring protocols | `rcp_ndcg_core.metric`, `rcp_ndcg_core.protocol` |
 | The gain `g(theta)`, pass probabilities, item and query parameters | `rcp_ndcg_core.gain`, `rcp_ndcg_core.schemas` |
 | Calibration (with or without the tournament, pooled judges), scoring and insertion of documents | `rcp_ndcg.calibration` over `rcp_ndcg_core.irt` |
+| Serving recipes and their `recipe:` data | `rcp_ndcg_vllm.recipe` (the data), `rcp_ndcg.inference.recipes` (the `recipe: <id>` mapping form and CLI shorthand) |
 | Judging: the client, the schedules, the judgement store, cost estimates | `rcp_ndcg.llm` |
 | Prompts (tournament, rubric, vision and video variants) | `rcp-ndcg/src/rcp_ndcg/llm/prompts/`, loaded by name |
 | Text, image and video preprocessing, caps and chunking | `rcp_ndcg.data.preprocess` (text), `rcp_ndcg.data.resolution` (image and video policies), `rcp_ndcg.data.prepare` (media sent to a judge) |

@@ -42,10 +42,33 @@ class IndexBuild(BaseModel):
     identity: str
 
 
-def _retriever(path: str, overrides: list[str]) -> Any:
-    from rcp_ndcg.retrieval import validate_retriever
+def _role_config(value: str, overrides: list[str], *, which: str) -> Any:
+    """A retriever or reranker config from a YAML path, or the shorthand ``recipe:<id>`` (docs-firstcontact Q1:
+    one string that expands to the mapping form, with the URL from ``--set ...base_url=`` or serve-by-role)."""
+    from rcp_ndcg.retrieval import validate_reranker, validate_retriever
 
-    return validate_retriever(load_yaml_config(path, overrides))
+    validate = validate_retriever if which == "retriever" else validate_reranker
+    if not value.startswith("recipe:"):
+        return validate(load_yaml_config(value, overrides))
+    from rcp_ndcg.errors import ConfigError
+    from rcp_ndcg.inference.recipes import recipe_role, shorthand_config
+    from rcp_ndcg.support.config import apply_overrides
+
+    mapping = shorthand_config(value)
+    data: Any = mapping
+    if which == "retriever":
+        role = recipe_role(str(mapping["recipe"]))
+        if role == "rerank":
+            raise ConfigError(
+                f"--retriever {value}: the recipe is a reranker, not a retriever",
+                hint="pass it to retrieval rerank --reranker, or name a recipe with role embed or multi_vector",
+            )
+        data = {"kind": "late_interaction" if role == "multi_vector" else "dense", "encoder": mapping}
+    return validate(apply_overrides(data, overrides))
+
+
+def _retriever(path: str, overrides: list[str]) -> Any:
+    return _role_config(path, overrides, which="retriever")
 
 
 def _written(rankings: Any, out: str) -> RankingsFile:
@@ -139,9 +162,9 @@ class RetrievalRerankRequest(DatasetInput):
 def retrieval_rerank(request: RetrievalRerankRequest) -> RankingsFile:
     """Rescore rankings with a served /rerank endpoint or a hosted rerank API."""
     from rcp_ndcg.data import load_rankings
-    from rcp_ndcg.retrieval import rerank, validate_reranker
+    from rcp_ndcg.retrieval import rerank
 
-    reranker = validate_reranker(load_yaml_config(request.reranker, request.set))
+    reranker = _role_config(request.reranker, request.set, which="reranker")
     rankings = rerank(
         request.load(),
         load_rankings(request.rankings),

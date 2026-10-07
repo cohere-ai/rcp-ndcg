@@ -180,19 +180,33 @@ class PluginEmbedding(_ApiSelected, EmbeddingEndpoint):
         return data
 
 
+def _expand_recipe(data: Any) -> Any:
+    """ "``recipe: <id>`` (docs-firstcontact Q1): the mapping form fills the client block from the shipped
+    recipe before the union runs -- CONTENT equal or refused, RUNTIME the config's own."""
+    from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+    from rcp_ndcg.inference.recipes import expand_role_recipe
+
+    if isinstance(data, dict) and data.get("recipe"):
+        return expand_role_recipe(
+            data,
+            classes={"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint},
+        )
+    return data
+
+
 def _resolve_embed_api(data: Any) -> Any:
     """Confirm a non-shipped ``api`` names a registered embed adapter (the registry's hint when it does not)."""
-    return _resolve_plugin_api(data, _SHIPPED_EMBED_APIS, "embed")
+    return _resolve_plugin_api(_expand_recipe(data), _SHIPPED_EMBED_APIS, "embed")
 
 
 def _resolve_pooling_api(data: Any) -> Any:
     """Confirm a non-shipped multi-vector ``api`` against the ``multi_vector`` role's registry."""
-    return _resolve_plugin_api(data, _SHIPPED_POOLING_APIS, "multi_vector")
+    return _resolve_plugin_api(_expand_recipe(data), _SHIPPED_POOLING_APIS, "multi_vector")
 
 
 def _resolve_rerank_api(data: Any) -> Any:
     """Confirm a non-shipped rerank ``api`` against the ``rerank`` role's registry."""
-    return _resolve_plugin_api(data, _SHIPPED_RERANK_APIS, "rerank")
+    return _resolve_plugin_api(_expand_recipe(data), _SHIPPED_RERANK_APIS, "rerank")
 
 
 EncoderConfig = Annotated[

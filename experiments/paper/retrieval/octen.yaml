@@ -12,9 +12,15 @@ encoder:
   base_url: http://127.0.0.1:8000/v1
   model: octen-embedding-8b
   revision: 5adcfa292e712091dfc30f0e97f0b2282e6cc66c
-  recipe: octen-embedding-8b
   tokenizer: Octen/Octen-Embedding-8B@5adcfa292e712091dfc30f0e97f0b2282e6cc66c
   max_tokens: 8192
   doc_prompt: "- "
   normalize: true
   batch_size: 32
+
+# No recipe: pointer on this config yet (docs-firstcontact Q1's strict mapping form): its explicit
+# CONTENT disagrees with the recipe's declared block -- the paper reproduces the source release's path
+# (instruction: none, the raw logit stored) where the recipes declare the model card's serving
+# (instruction: fold, use_activation: true), and jina_v3's budgets (8192/4096) differ from its recipe's
+# (3219/512). A pointer's content must equal the recipe's or is refused (naming both values); these
+# configs keep every explicit field until the family owners reconcile recipe content with the paper.
