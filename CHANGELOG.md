@@ -29,7 +29,9 @@ released together.
   `anchor_drop_over_cap`: a reference that keeps the anchors but cuts over-cap content its own way (a joint
   `longest_first` truncation where the client settles the query at its share) declares it, and the harness
   reports those inputs outside the gates. A reference stays the paper's or the model card's; it never
-  copies the client's cut to make an over-cap row pass. `schema/recipe.schema.json` carries the new value.
+  copies the client's cut to make an over-cap row pass. `schema/recipe.schema.json` carries the new value,
+  and the new read-only property `ReferenceSpec.over_cap_deviation` names the declared over-cap deviation
+  (or `None`), which the harness's stages read.
 - **The role clients expose their text budget**: `EmbeddingClient`, `PoolingClient` and `RerankClient` gain the
   read-only `text_budget` (the `TextBudget` the client fits every request to, as built from its config; `None`
   without `max_tokens`), so harnesses and case loaders read the client's budget instead of rebuilding it.
@@ -91,7 +93,9 @@ released together.
 
 - **The case loader reads a recipe template's query frame as the query side's text prefix** (`rcp-ndcg-test`):
   a case's run-level `inputs.instruction` passes when the recipe's `query_prompt` or a fixed segment of its
-  template's `query` shape carries it verbatim. The product allows exactly one of the two per side (a
+  template's `query` shape carries it verbatim as a whole delimited unit (starting at the text's start, a
+  newline or a label's colon, ending at its end or a newline: a substring such as the frame's own `query`
+  label or a truncated instruction is refused; a document frame never counts). The product allows exactly one of the two per side (a
   `query_prompt` beside a template is refused), so a template recipe such as qwen3-embedding-0.6b, whose
   `Instruct: ...\nQuery:` frame sends the instruction on every query, was refused with a fix it could not
   apply. A frame without the instruction is still refused.
