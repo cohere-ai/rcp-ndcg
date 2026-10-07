@@ -1,16 +1,18 @@
-"""The recipe ``qwen3-vl-reranker-2b``: it validates against the product schema, its stage 1
-passes on CPU, and the anchor audit is red when the template's trailing anchor segment is gone.
+"""The recipe ``qwen3-vl-reranker-2b``: it validates against the product schema and pins its declared
+contract, its stage 1 passes on CPU, and the anchor audit is red when the template's trailing anchor
+segment is gone.
 
-Stage 1 here runs with the model's tokenizer files only, downloaded once into the lane's scratch
-directory (``RCP_VLLM_RECIPE_SCRATCH`` or the lane's own ``scratch/`` next to the worktree); the
-download skips with its reason when the environment is offline. The GPU wave (stages 2-3) runs
-the harness's full sampling (>= 20 over-length inputs per shape) on the node.
+Every field of the resolved ``serve``, ``client`` and ``reference`` blocks is pinned exactly through
+the shared :func:`._contract.assert_recipe_contract`, and two drift mutants are shown red. Stage 1
+here runs with the model's tokenizer files only, downloaded once through the shared cache (the
+conftest's network gate: every test here needs ``RCP_NDCG_NETWORK_TESTS=1``; downloads land under
+``RCP_NDCG_VLLM_TOKENIZER_CACHE`` or ``tmp_path``) -- no weights, no GPU. The GPU wave (stages 2-3)
+runs the harness's full sampling (>= 20 over-length inputs per shape) on the node.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import sys
 from pathlib import Path
@@ -26,10 +28,12 @@ from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.inference.config import RerankEndpoint
 
+from ._contract import assert_recipe_contract
+from ._served import stage1_facts
+
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "qwen3-vl-reranker-2b"
 REVISION = "4bd860ac4f15ad1897a214615cccc700f8f71818"
 REPO = "Qwen/Qwen3-VL-Reranker-2B"
-SCRATCH_ENV = "RCP_VLLM_RECIPE_SCRATCH"
 TOKENIZER_FILES = (
     "tokenizer.json",
     "tokenizer_config.json",
@@ -40,64 +44,201 @@ TOKENIZER_FILES = (
     "chat_template.jinja",
 )
 
+#: The resolved blocks the contract pins (the product's ``model_dump(mode="json")`` shape): every
+#: field of ``serve``, ``client`` (minus the runtime ``base_url``) and ``reference``, defaults
+#: included, so a schema default that moves reds here and is re-pinned deliberately.
+SERVE = {
+    "runner": "pooling",
+    "convert": None,
+    "hf_overrides": {
+        "architectures": ["Qwen3VLForSequenceClassification"],
+        "classifier_from_token": ["no", "yes"],
+        "is_original_qwen3_reranker": True,
+    },
+    "chat_template": "template.jinja",
+    "pooler_config": {"use_activation": True},
+    "trust_remote_code": False,
+    "max_model_len": 32768,
+    "dtype": "bfloat16",
+    "plugin": None,
+    "io_processor_plugin": None,
+    "mm_processor_kwargs": {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1310720}},
+    "limit_mm_per_prompt": {"image": 1},
+    "extra_args": [],
+}
+CLIENT = {
+    "api": "rerank",
+    "model": "qwen3-vl-reranker-2b",
+    "revision": REVISION,
+    "api_key_env": None,
+    "headers_env": {},
+    "concurrency": 64,
+    "timeout_s": 600.0,
+    "connect_timeout_s": 5.0,
+    "max_retries": 2,
+    "wait_on_outage_s": None,
+    "image_processor": None,
+    "image_policy": None,
+    "video_policy": None,
+    "max_images": 1,
+    "max_videos": 0,
+    "media_sides": ["query", "document"],
+    "recipe": (
+        "vllm v0.31.0 pooling/classify: Qwen3VLForSequenceClassification via as_seq_cls_model; "
+        "hf_overrides {architectures, classifier_from_token [no, yes], "
+        "is_original_qwen3_reranker}; served chat template template.jinja; LAST pooling with "
+        "use_activation true pinned server-side and sent on the wire; mm_processor_kwargs "
+        "nested images_kwargs min_pixels 4096 / max_pixels 1310720 (the R20 one shape); one "
+        "media item per request (limit_mm_per_prompt image=1 = max_images 1)"
+    ),
+    "tokenizer": f"{REPO}@{REVISION}",
+    "max_tokens": 8192,
+    "instruction": "none",
+    "use_activation": True,
+    "query_max_tokens": 4096,
+    "template": {
+        "query": None,
+        "document": None,
+        "pair": [
+            {
+                "fixed": (
+                    "{special:im_start}system\nJudge whether the Document meets the requirements "
+                    "based on the Query and the Instruct provided. Note that the answer can only be "
+                    '"yes" or "no".{special:im_end}\n{special:im_start}user\n'
+                    "<Instruct>: Given a search query, retrieve relevant candidates that answer "
+                    "the query.<Query>:"
+                ),
+                "content": None,
+            },
+            {"fixed": None, "content": "query"},
+            {"fixed": "\n<Document>:", "content": None},
+            {"fixed": None, "content": "document"},
+            {"fixed": "{special:im_end}\n{special:im_start}assistant\n", "content": None},
+        ],
+        "anchor": "last",
+        "anchor_markers": [],
+        "add_special_tokens": True,
+        "normalize": [],
+    },
+    "on_overflow": "cut",
+    "chunk": None,
+    "aggregation": "max",
+    "empty_doc": "send_text",
+    "empty_doc_text": "NULL",
+    "empty_query": "refuse",
+    "request_shape": "text",
+    "listwise": False,
+    "batch_size": None,
+}
+REFERENCE = {
+    "kind": "transformers",
+    "score_scale": "probability",
+    "entry": "reference.py",
+    "known_deviations": ["anchor_drop_over_cap"],
+}
+TOP = {
+    "id": "qwen3-vl-reranker-2b",
+    "model": REPO,
+    "revision": REVISION,
+    "role": "rerank",
+    "scoring": "pointwise",
+    "input": ["text", "image"],
+    "licence": "apache-2.0",
+}
+
 
 def recipe() -> object:
     """The recipe as shipped, loaded and validated through the product's endpoint config."""
     return load_recipe(RECIPE_DIR)
 
 
-# ---------------------------------------------------------------------------
-# The lane's scratch: where the tokenizer files live between runs (never the checkout).
-# ---------------------------------------------------------------------------
-
-
-def _scratch_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The scratch directory the tokenizer files download into.
-
-    ``RCP_VLLM_RECIPE_SCRATCH`` wins; otherwise the lane's own scratch directory (a sibling of
-    the worktree); otherwise an ephemeral pytest directory (a checkout without the lane layout).
-    """
-    from_env = os.environ.get(SCRATCH_ENV)
-    if from_env:
-        path = Path(from_env)
-        path.mkdir(parents=True, exist_ok=True)
-        return path
-    worktree = Path(__file__).resolve().parents[4]
-    lane = worktree.parent / "rec-qwen3-vl-reranker-2b" / "scratch"
-    if worktree.parent.name == "rcp-ndcg-lanes":
-        lane.mkdir(parents=True, exist_ok=True)
-        return lane
-    return tmp_path_factory.mktemp("recipe-tokenizer-cache")
-
-
 @pytest.fixture(scope="module")
 def snapshot(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The model's tokenizer files at the pinned revision, downloaded once into the scratch dir.
+    """The model's tokenizer files at the pinned revision, downloaded once into the shared cache.
 
-    Skips with the reason when the Hub is unreachable (offline CI): stage 1 needs the tokenizer
-    files and nothing else -- no weights, no GPU.
+    Every file goes through the shared :func:`._served.fetch_tokenizer` into
+    ``$RCP_NDCG_VLLM_TOKENIZER_CACHE`` (the lane's scratch) when set, else a pytest-managed
+    directory. Skips with the reason when the Hub is unreachable (offline CI): stage 1 needs the
+    tokenizer files and nothing else -- no weights, no GPU.
     """
-    target = _scratch_root(tmp_path_factory) / f"tokenizer-{REVISION}"
-    if not (target / "tokenizer.json").is_file():
-        try:
-            from huggingface_hub import hf_hub_download
+    from ._served import fetch_tokenizer
 
-            target.mkdir(parents=True, exist_ok=True)
-            for name in TOKENIZER_FILES:
-                shutil.copyfile(hf_hub_download(REPO, name, revision=REVISION), target / name)
-        except Exception as error:  # offline CI, or the Hub refused: skip with the reason
-            pytest.skip(f"offline: cannot download the {REPO} tokenizer files: {error}")
-    return target
+    fallback = tmp_path_factory.mktemp("recipe-tokenizer-cache")
+    paths = [
+        fetch_tokenizer(
+            f"https://huggingface.co/{REPO}/resolve/{REVISION}/{name}",
+            f"qwen3-vl-reranker-2b/{name}",
+            fallback,
+        )
+        for name in TOKENIZER_FILES
+    ]
+    return paths[0].parent
+
+
+# ---------------------------------------------------------------------------
+# The recipe validates, without any network: the client block IS the product's endpoint config.
+# ---------------------------------------------------------------------------
+
+
+def test_recipe_contract_pins_every_field() -> None:
+    """Every field of the resolved serve/client/reference blocks, plus the top-level facts, pinned exactly
+    (the shared helper is exact in both directions: a drifted value and an unpinned field both fail)."""
+    loaded = recipe()
+    assert_recipe_contract(loaded, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
+    assert isinstance(loaded.client, RerankEndpoint)
+    template = loaded.client.template
+    assert template is not None and template.shapes() == ("pair",)
+    assert (RECIPE_DIR / loaded.serve.chat_template).is_file()
+
+
+def test_two_contract_mutants_are_red() -> None:
+    """A drifted serve field and a drifted reference field each red the contract pin, naming the field
+    (the sweep's finding-9 mutants: serve.max_model_len and reference.kind)."""
+    loaded = recipe()
+    serve_mutant = loaded.model_copy(update={"serve": loaded.serve.model_copy(update={"max_model_len": 40960})})
+    with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
+        assert_recipe_contract(serve_mutant, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
+    reference_mutant = loaded.model_copy(
+        update={"reference": loaded.reference.model_copy(update={"kind": "remote_code"})}
+    )
+    with pytest.raises(AssertionError, match=r"reference\.kind"):
+        assert_recipe_contract(reference_mutant, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
+
+
+def test_serve_argv_carries_the_pinned_flags() -> None:
+    """The argv the wave runner renders: overrides, template, the nested media kwargs pin, the pinned
+    pooler activation, the media limit, no extra flags."""
+    loaded = recipe()
+    argv = serve_argv(loaded, port=8100, served_model_name=loaded.id)
+    assert json.loads(argv[argv.index("--hf-overrides") + 1]) == {
+        "architectures": ["Qwen3VLForSequenceClassification"],
+        "classifier_from_token": ["no", "yes"],
+        "is_original_qwen3_reranker": True,
+    }
+    assert json.loads(argv[argv.index("--mm-processor-kwargs") + 1]) == {
+        "images_kwargs": {"min_pixels": 4096, "max_pixels": 1310720}
+    }
+    assert json.loads(argv[argv.index("--pooler-config") + 1]) == {"use_activation": True}
+    assert json.loads(argv[argv.index("--limit-mm-per-prompt") + 1]) == {"image": 1}
+    assert argv[argv.index("--chat-template") + 1] == str(RECIPE_DIR / "template.jinja")
+    assert "--dtype" in argv and argv[argv.index("--dtype") + 1] == "bfloat16"
+    assert argv[argv.index("--max-model-len") + 1] == "32768"
+
+
+# ---------------------------------------------------------------------------
+# Stage 1 on CPU: the declared shapes render to the served template file's ids, the anchors
+# survive every over-length cut, and fit's render equals the reference subprocess's render.
+# ---------------------------------------------------------------------------
 
 
 def stage1_recipe(snapshot: Path):
     """The shipped recipe with its tokenizer pointed at the downloaded snapshot (a test view).
 
     The shipped YAML keeps the Hub spec ``<repo>@<commit>``; the stage-1 copy reads the same
-    bytes from the scratch snapshot, so ``fit`` never needs the network.
+    bytes from the shared cache, so ``fit`` never needs the network.
     """
-    recipe = load_recipe(RECIPE_DIR)
-    return recipe.model_copy(update={"client": recipe.client.model_copy(update={"tokenizer": str(snapshot)})})
+    loaded = recipe()
+    return loaded.model_copy(update={"client": loaded.client.model_copy(update={"tokenizer": str(snapshot)})})
 
 
 def write_pairs(path: Path) -> Path:
@@ -125,91 +266,33 @@ def write_pairs(path: Path) -> Path:
     return path
 
 
-# ---------------------------------------------------------------------------
-# The recipe validates, without any network: the client block IS the product's endpoint config.
-# ---------------------------------------------------------------------------
-
-
-def test_recipe_loads_with_the_product_rerank_endpoint() -> None:
-    """The recipe loads; its client block constructs the product's RerankEndpoint."""
-    recipe = load_recipe(RECIPE_DIR)
-    assert recipe.id == "qwen3-vl-reranker-2b"
-    assert recipe.model == REPO
-    assert recipe.revision == REVISION
-    assert recipe.role == "rerank" and recipe.scoring == "pointwise"
-    assert recipe.input == ["text", "image"]
-    assert isinstance(recipe.client, RerankEndpoint)
-    assert recipe.client.model == recipe.id and recipe.client.revision == REVISION
-
-
-def test_recipe_declares_the_binding_fields() -> None:
-    """The explicit budget, the activation, the instruction policy, the media pin, the template."""
-    recipe = load_recipe(RECIPE_DIR)
-    client = recipe.client
-    assert client.tokenizer == f"{REPO}@{REVISION}"
-    assert client.max_tokens == 8192 and client.query_max_tokens == 4096
-    assert client.on_overflow == "cut"
-    assert client.use_activation is True  # probability scale, matching reference.score_scale
-    assert client.instruction == "none"  # the engine's template default is pinned in the frame
-    assert client.empty_doc == "send_text" and client.empty_doc_text == "NULL"
-    assert recipe.serve.chat_template == "template.jinja"
-    assert recipe.serve.mm_processor_kwargs == {"min_pixels": 4096, "max_pixels": 1310720}
-    assert recipe.serve.hf_overrides["architectures"] == ["Qwen3VLForSequenceClassification"]
-    assert recipe.serve.hf_overrides["classifier_from_token"] == ["no", "yes"]
-    assert recipe.serve.hf_overrides["is_original_qwen3_reranker"] is True
-    assert recipe.serve.pooler_config == {}
-    assert recipe.serve.max_model_len == 32768 >= client.max_tokens
-    assert recipe.reference.score_scale == "probability"
-    assert recipe.reference.known_deviations == ["anchor_drop_over_cap"]
-    assert recipe.status.state == "unverified"
-    assert recipe.sources
-
-
-def test_serve_argv_carries_the_pinned_flags() -> None:
-    """The argv the wave runner renders: overrides, template, media kwargs, no pooler config."""
-    recipe = load_recipe(RECIPE_DIR)
-    argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
-    assert json.loads(argv[argv.index("--hf-overrides") + 1]) == {
-        "architectures": ["Qwen3VLForSequenceClassification"],
-        "classifier_from_token": ["no", "yes"],
-        "is_original_qwen3_reranker": True,
-    }
-    assert json.loads(argv[argv.index("--mm-processor-kwargs") + 1]) == {
-        "min_pixels": 4096,
-        "max_pixels": 1310720,
-    }
-    assert "--pooler-config" in argv and argv[argv.index("--pooler-config") + 1] == "{}"
-    assert argv[argv.index("--chat-template") + 1] == str(RECIPE_DIR / "template.jinja")
-    assert "--dtype" in argv and argv[argv.index("--dtype") + 1] == "bfloat16"
-    assert argv[argv.index("--max-model-len") + 1] == "32768"
-
-
-# ---------------------------------------------------------------------------
-# Stage 1 on CPU: the declared shapes render to the served template file's ids, the anchors
-# survive every over-length cut, and fit's render equals the reference subprocess's render.
-# ---------------------------------------------------------------------------
-
-
+@pytest.mark.network
 def test_stage1_passes_on_cpu_token_ids_anchors_and_reference_render(tmp_path: Path, snapshot: Path) -> None:
     """At least 20 sampled pairs including 5 over-length ones, with every check green."""
-    recipe = stage1_recipe(snapshot)
+    loaded = stage1_recipe(snapshot)
     pairs = write_pairs(tmp_path / "pairs.jsonl")
     document = stage1_prompts(
-        recipe, pairs, sys.executable, over_length_per_shape=5
+        loaded, pairs, sys.executable, over_length_per_shape=5
     )  # fmt: skip
     assert document["passed"] is True, json.dumps(document["anchor_check"]["failures"][:1])
-    fit = document["fit"]["pair"]
-    assert fit["n_texts"] == 20 + 5  # the pairs file's rows + the over-length samples
-    assert fit["overhead"] == 66  # the empty render's fixed frame, measured, in tokens
+    # The cut facts come from the role client's own capture and census (R30: what the client sends):
+    # 20 pairs-file rows plus the harness's 5 padded over-length samples, and the product measured
+    # the fixed frame's overhead.
+    rows = [json.loads(line) for line in pairs.read_text(encoding="utf-8").splitlines()]
+    facts = stage1_facts(loaded, rows, tokenizer_of(loaded), 5)
+    pair = facts["per_shape"]["pair"]
+    assert len(pair["spans"]) == 20 + 5  # the pairs file's rows + the over-length samples
+    assert pair["overhead"] == 66  # the empty render's fixed frame, measured, in tokens
     anchor = document["anchor_check"]
-    assert anchor["passed"] is True and anchor["checked"] == 25
+    # the rerank-side audit counts every sampled row's spans (query and document spans alike)
+    assert anchor["passed"] is True and anchor["checked"] >= 40
     template_check = document["template_render_check"]
     assert template_check is not None and template_check["passed"] is True
     # The token-id form of the same proof: fit's rendered ids equal the served template file's ids.
-    tokenizer = tokenizer_of(recipe)
+    tokenizer = tokenizer_of(loaded)
     assert load_tokenizer(str(snapshot)).sha256 == tokenizer.sha256
     row = json.loads(pairs.read_text(encoding="utf-8").splitlines()[0])
-    declared = recipe.client.template.render("pair", tokenizer, query=row["query"], document=row["documents"][0])
+    declared = loaded.client.template.render("pair", tokenizer, query=row["query"], document=row["documents"][0])
     env = ImmutableSandboxedEnvironment(
         trim_blocks=True, lstrip_blocks=True, keep_trailing_newline=False, undefined=StrictUndefined
     )
@@ -224,14 +307,17 @@ def test_stage1_passes_on_cpu_token_ids_anchors_and_reference_render(tmp_path: P
     assert document["engine_tokenize_check"]["passed"] is None
 
 
-def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_red(
+@pytest.mark.network
+def test_mutation_dropping_the_tail_from_the_declared_shape_reddens_the_template_check(
     tmp_path: Path, snapshot: Path
 ) -> None:
-    """Drop the pair shape's trailing fixed segment (the assistant tail) and the audit goes red.
+    """Drop the pair shape's trailing fixed segment (the assistant tail) and the declared frame no
+    longer matches the file the engine renders: the stage-1 template check goes red.
 
     The mutated recipe still loads (its ``add_special_tokens: true`` lets a shape end with the
-    document content) and ``fit`` still renders -- which is exactly why the anchor audit exists:
-    the rendered ids no longer end with the declared anchor edge.
+    document content) and the span audit stays green (it audits the wire's spans, not the frame) --
+    which is exactly why ``template_render_check`` exists: the served template file still emits the
+    dropped suffix and the engine would score a prompt the recipe no longer declares.
     """
     mutated_dir = tmp_path / "qwen3-vl-reranker-2b"
     mutated_dir.mkdir()
@@ -246,5 +332,7 @@ def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_re
 
     document = stage1_prompts(mutated, write_pairs(tmp_path / "pairs.jsonl"), None, over_length_per_shape=2)
     anchor = document["anchor_check"]
-    assert anchor["passed"] is False
-    assert anchor["failures"] and anchor["failures"][0]["check"] == "tail"
+    assert anchor["passed"] is True, "the span audit reads the wire's spans, not the frame"
+    template_check = document["template_render_check"]
+    assert template_check["passed"] is False, "the file still emits the dropped suffix"
+    assert template_check["failures"], "the red check names what moved"
