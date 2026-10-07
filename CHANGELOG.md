@@ -98,11 +98,6 @@ released together.
 
 ### Fixed
 
-- **Stage 1's over-length padding is one tokenization** (`rcp-ndcg-vllm`): the growth loop repeatedly
-  tokenized whole candidate strings and went quadratic on a long seed (122 s per call measured on a
-  4000-word synthetic document); the pad is now located with the tokenizer's offset mapping in one pass,
-  keeps the seed verbatim and pads with whole indexed pad words.  A runtime bound on a long synthetic
-  document guards it.
 - **A tokenizer file's embedded truncation and padding no longer cap the counts** (G5): a `tokenizer.json`
   can ship `truncation: {max_length: 1024}` (topk-embed-v1-small does) or fixed-length padding, and an
   un-reset backend silently topped every count and id list at those lengths, so no budget above them could

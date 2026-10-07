@@ -127,29 +127,33 @@ def _sampled_rows(
 
 
 def _over_length(seed: str, max_tokens: int | None, tokenizer: Any, index: int) -> str:
-    """A seed text padded past the budget -- at least twice ``max_tokens`` tokens -- in whole words.
+    """A seed text padded to at least twice ``max_tokens`` tokens (128 without a budget), in whole words.
 
-    The pad is located by the tokenizer's offset mapping over ONE tokenization of the pool, never by
-    a growth loop re-tokenizing whole candidate strings (a long seed made that quadratic: 122 s per
-    call measured on a 4000-word document).  The seed is kept verbatim; the pad words carry the
-    sample's index.  A runtime bound on a long synthetic document guards this
-    (``tests/test_stage1_overlength_speed.py``).
+    The padding appends `` pad<index>`` words, so each sample index pads differently.  Raises
+    ``HarnessError`` when the recipe tokenizer's count never reaches the target within the bounded passes
+    (a count that saturates at an embedded truncation ceiling): an over-length sample that was never
+    measured over the target would audit an uncut input as if the client had cut it.
     """
     budget = max_tokens or 128
-    target = budget * 2
     marker = f" pad{index}"
-    seed_tokens = tokenizer.count(seed)
-    if seed_tokens >= target:
-        return seed
-    gap = target - seed_tokens
-    pool = seed + marker * (gap + 32)
-    offsets = tokenizer.offsets(pool)
-    want = min(target + 16, len(offsets))
-    text = pool[: offsets[want - 1][1]]
-    for _ in range(16):
-        if tokenizer.count(text) >= target:
-            break
-        text = text + marker
+    # One probe measures the marker's token rate, and each step sizes the append from the measured
+    # deficit, so the loop converges in at most a few passes. The bound is what keeps the sampler
+    # linear in the padded length: the old per-step re-count of the GROWING text (and its
+    # word-count heuristic) re-tokenized a 2x-budget string O(steps) times -- a token-count storm
+    # at 32768-token budgets (jina-embeddings-v5-text-small's stage-1 sample sat in tokenizer.count).
+    unit_tokens = max(1, tokenizer.count(marker * 8))
+    text = seed or "anchor"
+    for _ in range(8):  # declarative bound: at most 8 measured passes, each sized from the measured deficit
+        deficit = budget * 2 - tokenizer.count(text)
+        if deficit <= 0:
+            return text
+        text = text + marker * max(2, (deficit * 8) // unit_tokens + 2)
+    counted = tokenizer.count(text)
+    if counted < budget * 2:
+        raise HarnessError(
+            f"cannot build an over-length sample of {budget * 2} tokens: the recipe tokenizer counts {counted} "
+            "tokens after the bounded padding passes (does the tokenizer file carry a truncation ceiling?)"
+        )
     return text
 
 
