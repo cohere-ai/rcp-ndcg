@@ -78,7 +78,9 @@ class AdapterBase:
             class (empty names are refused at registration).
         role: The role the adapter serves; it fixes which request and result types flow through it.
         HOSTED: Whether this wire is a hosted vendor profile (its public API root is its default
-            ``base_url``, its key is required): declared, never inferred from the default URL.
+            ``base_url``, its key is required): declared, never inferred from the default URL -- and never
+            inherited from this base's ``False``: registration refuses a class that does not declare it
+            itself (or through a base below this one).
         API_KEY_ENV: The environment variables that may hold the API key, most preferred first; the config's
             ``api_key_env`` names one instead. The transport resolves the key and sends it in
             :attr:`AUTH_HEADER`; an adapter never touches a key. Empty: the endpoint takes no key.
@@ -245,6 +247,11 @@ def _adapter_shape_problems(cls: Any) -> list[str]:
         f"has no callable {member}(...)" for member in ADAPTER_MEMBERS if not callable(getattr(cls, member, None))
     ]
     problems += [f"declares no credential fact {fact}" for fact in ADAPTER_FACTS if not hasattr(cls, fact)]
+    mro = getattr(cls, "__mro__", (cls,))
+    if hasattr(cls, "HOSTED") and not any("HOSTED" in vars(base) for base in mro if base is not AdapterBase):
+        # AdapterBase's False default would silently treat a hosted wire as a served engine (its published
+        # cap never enforced, served-only fields not refused): what a wire IS is declared, never defaulted.
+        problems.append("does not declare HOSTED itself (AdapterBase's default is not a declaration)")
     return problems
 
 

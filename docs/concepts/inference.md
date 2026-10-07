@@ -122,7 +122,9 @@ entries named `<role>.<name>` (e.g. `embed.bedrock`, one entry per role; a name 
 config selects one with `api: <name>`. The seam's contract is declared: an adapter subclasses
 `rcp_ndcg.inference.adapters.base.AdapterBase` (the credential facts with their declared defaults, and the
 constructor convention -- built with the role config), registration refuses a class without the three members
-(`calls`, `interpret`, `usage`) or the five credential facts, and `rcp_ndcg.testing.adapter_contract` checks a
+(`calls`, `interpret`, `usage`) or the five credential facts -- `HOSTED` declared by the class itself, never
+inherited from the base's `False` (what a wire is decides its published cap and its served-only refusals) --
+and `rcp_ndcg.testing.adapter_contract` checks a
 wire adapter as one listed failure set (a third party's test suite calls it):
 
 * the retrieval roles resolve a non-shipped `api` against the role's registry where the config is read (the

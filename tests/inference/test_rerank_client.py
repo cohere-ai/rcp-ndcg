@@ -351,6 +351,27 @@ def test_an_incomplete_rerank_wire_subclass_is_refused_at_construction() -> None
         _HalfWire(_config())
 
 
+def test_a_wire_that_does_not_declare_hosted_is_refused_at_registration() -> None:
+    """HOSTED decides what a wire is (a hosted profile's published cap, the refusals of served-only fields):
+    AdapterBase's False default would silently treat a hosted third-party wire as a served engine, so the
+    class itself (or a base below AdapterBase) must declare it -- the other facts keep their defaults."""
+    from rcp_ndcg.inference.adapters import register_adapter
+    from rcp_ndcg.inference.adapters.rerank import RerankWire
+
+    class _HostedButUndeclared(RerankWire):
+        name = "hosted_but_undeclared_probe"
+        SERVER = "a hosted rerank API"
+        REQUEST_CAP = 100
+        PAUSE_S = 0.0
+        SENDS_TOP_N = True
+        HAS_INSTRUCTION_FIELD = False
+        DEFAULT_BASE_URL = "https://api.rerank.example/v1"
+
+    with pytest.raises(ConfigError, match="HOSTED") as caught:
+        register_adapter(_HostedButUndeclared)  # type: ignore[arg-type]
+    assert "AdapterBase" in (caught.value.hint or "")
+
+
 def test_the_wire_facts_refusal_asks_only_for_what_a_subclass_can_miss() -> None:
     """The credential facts are AdapterBase's declared contract (inherited with their defaults, checked at
     registration): a RerankWire subclass cannot miss them, so its own refusal names the rerank facts alone

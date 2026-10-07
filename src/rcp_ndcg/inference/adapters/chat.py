@@ -260,6 +260,8 @@ class OpenAIChat(AdapterBase):
     role: ClassVar[AdapterRole] = "judge"
     """The role the adapter serves: one prompt in, one answer out."""
 
+    HOSTED: ClassVar[bool] = False  # any OpenAI-compatible chat server; the key is the config's api_key_env
+
     def __init__(self, config: ChatSettings) -> None:
         super().__init__(config)
         self._reasoning_checked = False

@@ -31,7 +31,9 @@ released together.
   defaults and the
   constructor convention (an adapter is built with its role config). `register_adapter` and the
   `rcp_ndcg.adapters` entry-point loader refuse a class without the three members (`calls`, `interpret`,
-  `usage`) or the five credential facts -- previously duck-typed with defaults that could be wrong, and a
+  `usage`) or the five credential facts, and a class that does not declare `HOSTED` itself (the base's
+  `False` would silently serve a hosted wire as an engine) -- previously duck-typed with defaults that could
+  be wrong, and a
   missing member failed only at the first request. `rcp_ndcg.testing.adapter_contract` is the contract-test
   kit the unified-inference design promised: name/role, members, facts, construction, and a recorded round's
   alignment and usage, as one listed failure set.
