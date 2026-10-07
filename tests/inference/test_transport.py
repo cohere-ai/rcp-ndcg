@@ -835,6 +835,33 @@ class TestConcurrentSyncBridges:
         assert transport._pool is None
 
 
+class TestLoopRebinding:
+    def test_a_new_loop_closes_the_previous_live_loop_s_pool(self) -> None:
+        """The pool is bound to the loop it first ran on; a send on a new loop gets a new pool, and the
+        previous one is closed on its own loop while that loop still lives -- never dropped with its
+        connections open."""
+        import threading
+
+        transport = _transport(ReplicaScript())
+        first_loop = asyncio.new_event_loop()
+        thread = threading.Thread(target=first_loop.run_forever, daemon=True)
+        thread.start()
+        try:
+            asyncio.run_coroutine_threadsafe(transport.send([Call("POST", "/a", {})]), first_loop).result(10)
+            first_pool = transport._pool
+            assert first_pool is not None and not first_pool.is_closed
+
+            _send(transport, "/b")  # a fresh loop: the gate rebinds
+
+            asyncio.run_coroutine_threadsafe(asyncio.sleep(0.01), first_loop).result(10)  # let the close run
+            assert first_pool.is_closed, "the previous loop's pool was dropped open"
+        finally:
+            first_loop.call_soon_threadsafe(first_loop.stop)
+            thread.join(10)
+            first_loop.close()
+            transport.close()
+
+
 class TestCloseWhileRunsRace:
     """``close()`` from a foreign thread waits for the in-flight bridge call and never raises into the
     caller (its own docstring; the verifier's R5): the old code checked ``is_running()`` and closed the

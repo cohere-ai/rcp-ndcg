@@ -752,6 +752,28 @@ class TestMediaHook:
             fit([LONG], shape="document", budget=budget(document_template()), tokenizer=FRAMED, media_tokens=[24])
 
 
+class TestFitArguments:
+    """fit's argument checks are typed refusals with hints (the client's preparation hands it these; a bare
+    ValueError was the one error family outside rcp_ndcg.errors)."""
+
+    @pytest.mark.parametrize(
+        ("inputs", "shape", "extra", "said"),
+        [
+            (["a lone string"], "pair", {}, "pair of strings"),
+            ([("q", "d")], "document", {}, "must be a string"),
+            (["a", "b"], "document", {"ids": ["only-one"]}, "must name every input"),
+            (["a", "b"], "document", {"media_tokens": [0]}, "every input"),
+            (["a"], "document", {"media_tokens": [-1]}, "non-negative"),
+        ],
+    )
+    def test_a_malformed_call_is_a_data_error_with_a_hint(
+        self, inputs: list[object], shape: str, extra: dict[str, object], said: str
+    ) -> None:
+        with pytest.raises(DataError, match=said) as caught:
+            fit(inputs, shape=shape, budget=budget(document_template()), tokenizer=FRAMED, **extra)  # type: ignore[arg-type]
+        assert caught.value.hint
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # Identity and the word-level family
 # ---------------------------------------------------------------------------------------------------------------

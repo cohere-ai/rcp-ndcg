@@ -427,6 +427,32 @@ def _capturing_transport() -> tuple[Any, list[Any]]:
     return httpx.MockTransport(handler), seen
 
 
+@pytest.mark.parametrize("role", ["embed", "pool"])
+def test_every_role_builds_its_adapter_with_the_role_config(
+    role: str, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The constructor convention is uniform: a role client instantiates its adapter with the config it
+    serves (the resolved endpoint), so an adapter whose requests depend on a config field can read it -- an
+    adapter built bare would raise at construction, or silently never see the config."""
+    from rcp_ndcg.inference.adapters.embeddings import OpenAIEmbeddings
+    from rcp_ndcg.inference.adapters.pooling import VllmPooling
+
+    adapter = OpenAIEmbeddings if role == "embed" else VllmPooling
+    seen: list[Any] = []
+
+    def needs_its_config(self: Any, config: Any) -> None:
+        self.config = config
+        seen.append(config)
+
+    monkeypatch.setattr(adapter, "__init__", needs_its_config)
+    fields: dict[str, Any] = {"base_url": "http://127.0.0.1:9000/v1", "model": "m", "tokenizer": tokenizer_json}
+    if role == "embed":
+        client: Any = EmbeddingClient(EmbeddingEndpoint(max_tokens=8192, **fields), sender=RecordingSender())
+    else:
+        client = PoolingClient(PoolingEndpoint(max_tokens=8192, dim=2, **fields), sender=RecordingSender())
+    assert seen == [client.endpoint]
+
+
 class TestKeysStayOnTheProfileHost:
     """A profile's default key variables travel only to the profile's own default host.
 

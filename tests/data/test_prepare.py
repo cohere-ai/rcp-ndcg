@@ -479,6 +479,36 @@ class TestDroppedCensusRows:
         rows = [json.loads(line) for line in sink.read_text().splitlines()]
         assert sorted(row["dropped"] for row in rows) == [False, True]
 
+    def test_concurrent_recorders_write_one_row(self, tmp_path: Path):
+        """``record`` is a check-then-append, serialised per census: two passes recording the same item at
+        once write it once. The dedup set is made slow to answer, so an unserialised check is overtaken
+        deterministically (both threads would see the key absent and both would append)."""
+        import threading
+        import time
+
+        page = _png(tmp_path / "p.png", (1700, 2200))
+        item = prepare_image(page, ImagePolicy(min_px=65536, max_px=1280 * 32 * 32, processor="qwen3_vl"))
+        sink = tmp_path / "preprocessing.jsonl"
+        census = MediaCensus(sink=sink)
+
+        class _SlowToAnswer(set):
+            def __contains__(self, key: object) -> bool:
+                answer = super().__contains__(key)
+                time.sleep(0.05)
+                return answer
+
+        census._seen = _SlowToAnswer(census._seen)  # the one private touch: the race window, widened
+        threads = [
+            threading.Thread(target=census.record, kwargs={"corpus": "c", "doc_id": "d1", "media": [item]})
+            for _ in range(2)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(10)
+
+        assert len(sink.read_text().splitlines()) == 1
+
     def test_a_kept_row_says_it_was_sent(self, tmp_path: Path):
         page = _png(tmp_path / "p.png", (1700, 2200))
         policy = ImagePolicy(min_px=65536, max_px=1280 * 32 * 32, processor="qwen3_vl")
