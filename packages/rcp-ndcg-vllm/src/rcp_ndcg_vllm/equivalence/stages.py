@@ -720,20 +720,24 @@ def _render_check(
 def _text_changed(entry: dict[str, Any], shape: str, mismatch: dict[str, Any]) -> bool:
     """Whether the client changed the one text a render mismatch is about (the probe's per-text flags).
 
-    A rerank mismatch names its span: the query span is changed when the row's shared query was settled (the
-    settlement changes it in every pair of the row), ``document <i>`` when document ``i`` has a record, and a
-    document-count mismatch (a chunked or omitted document) when any document has one.  An embed mismatch is
-    about the shape's first input (the one the reference contract renders)."""
+    A rerank mismatch names its span, and the unit the client changes is the pair: the row's shared-query
+    settlement changes every pair of the row -- its query span and, with it, each pair the reference renders
+    its own way by declaration (a whole-prompt right cut that drops the document of an over-cap query, say),
+    exactly as stage 2 counts every pair of a settled row changed -- while a document's own record changes only
+    its pair (``document <i>``); a document-count mismatch (a chunked or omitted document) counts when any
+    document or the query changed.  An embed mismatch is about the shape's first input (the one the reference
+    contract renders)."""
     body = entry["shapes"].get(shape, {})
     span = str(mismatch.get("span", ""))
     if "query_changed" in body:
+        settled = bool(body["query_changed"])
         documents = list(body.get("documents_changed", []))
         if span == "query":
-            return bool(body["query_changed"])
+            return settled
         if span.startswith("document "):
             position = int(span.removeprefix("document "))
-            return bool(documents[position]) if position < len(documents) else any(documents)
-        return any(documents)
+            return settled or (bool(documents[position]) if position < len(documents) else any(documents))
+        return settled or any(documents)
     changed = list(body.get("changed", []))
     return bool(changed[0]) if changed else False
 

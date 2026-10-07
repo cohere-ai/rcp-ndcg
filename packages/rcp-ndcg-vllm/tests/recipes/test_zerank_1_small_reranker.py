@@ -382,17 +382,20 @@ def test_the_reference_renders_the_papers_cut_never_the_clients(tmp_path: Path) 
 
 @stage1_env
 @pytest.mark.network
-def test_an_over_share_query_under_the_budget_gates_red(tmp_path: Path) -> None:
-    """Under-cap rows gate exactly: an over-share query in an under-budget pair ships settled at its
-    share while the paper keeps it whole, so the render check goes red -- the reference never ports the
-    client's settle rule to make the row pass (the waves' pairs files keep queries within the share)."""
+def test_an_over_share_query_under_the_budget_is_reported(tmp_path: Path) -> None:
+    """A query the client settles at its share in a pair the budget takes whole is a change the client made
+    (decision 9): the paper keeps it whole and the reference never ports the settle rule, so under the declared
+    over-cap deviation the row's query span is reported, not gated -- and the report names ``query_share``."""
     recipe = _resolved_recipe(tmp_path)
     rows = [{"query": "alfa " * 2600, "documents": ["a short document"]}]
     assert 4096 < tokenizer_of(recipe).count(rows[0]["query"]) < 8000
     assert _reference_render(tmp_path, recipe, rows)[0]["query"] == rows[0]["query"].strip()
     document = stage1_prompts(recipe, _pairs_path(tmp_path, rows), sys.executable, over_length_per_shape=1)
-    assert document["render_check"]["passed"] is False
-    assert document["passed"] is False
+    render = document["render_check"]
+    assert render["passed"] is True, render["failures"][:1]
+    (reported,) = render["over_cap"]["rows"]
+    assert reported["index"] == 0 and [m["span"] for m in reported["mismatches"]] == ["query"]
+    assert [change["mechanisms"] for change in reported["changes"]] == [["query_share"]]
 
 
 @stage1_env

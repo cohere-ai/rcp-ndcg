@@ -220,8 +220,8 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
   reference renders them its own way by declaration): every row the client's census records a cut for, with its
   `cause` -- the budget counted with the frame (a content under `max_tokens` whose framed request is over it),
   the reranker's query share (also inside a pair the budget takes whole) or a declared per-document cap. The
-  decision is per text: a reranker's settled query is changed in every pair of its row, a cut document only
-  itself, and every text the client sent uncut gates exactly, also beside a changed sibling;
+  decision is per text: a reranker's settled query changes every pair of its row, a cut document only its
+  own pair, and every text the client sent uncut gates exactly, also beside a changed sibling;
 - `engine_tokenize_check` (R29, needs the engine) requires the engine's `/tokenize` ids and counts of every
   captured text to equal the recipe tokenizer's; reported `not_run` without an engine, never as passed (and
   for a `token_ids` client, which sends ids and leaves the engine nothing to tokenize);

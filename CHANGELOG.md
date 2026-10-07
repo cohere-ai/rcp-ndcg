@@ -211,8 +211,8 @@ released together.
   and stage 2 now read the client's own processing records (`RoleClient.processing`), per TEXT, never per
   row: a text is reported, under the declared over-cap deviation, exactly when the client changed it -- any
   mechanism: a budget cut counted with the frame, a per-document cap, an empty-document substitution, a media
-  resize or drop; a reranker's query settlement changes the query span (and, in stage 2, the score) of every
-  pair of its row, a document's change only that document -- and the report names each change's mechanisms,
+  resize or drop; a reranker's query settlement changes every pair of its row (the reference renders an
+  over-cap pair its own way, the whole pair), a document's change only that document's pair -- and the report names each change's mechanisms,
   the uncut and kept request totals and the budget. Every text the client sent uncut gates exactly, also
   beside a changed sibling in the same row. Declared normalisation (`strip`, `lowercase`) is policy both sides
   apply, never a change: the rerank settlement compares the normalised query with the settled span and
