@@ -8,6 +8,7 @@ judge agree.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import math
 import time
@@ -23,6 +24,10 @@ from rcp_ndcg.inference.fake import FakeEndpoint, _fake_endpoint, fake_uniform, 
 
 PINNED_UNIT_VECTOR = (-0.41370025636660385, -0.5207374821709475, -0.5862891756258611, -0.4625468355619963)
 """The fake's unit vector for (seed 0, "embedding", "hello") at 4 dimensions."""
+
+PINNED_DRAW_SHA256 = "00f0b4362192cbfb1b4e0a445b9a11d584891f7baf5d721d338e712615652faf"
+"""SHA-256 of the little-endian float64 bytes of the fake's unit vectors (seed 0, "token", "some text", i) for
+i in 0..255 at 2048 dimensions: the draw's exact bits."""
 
 CHAT = ("POST", "/custom/route")
 """A third-party route for the registry tests; `/chat/completions` is the judge's shipped fake."""
@@ -190,6 +195,16 @@ class TestPooling:
         assert np.allclose(vector, PINNED_UNIT_VECTOR, rtol=0.0, atol=1e-12), np.asarray(vector).tolist()
         wider = fake_module._unit_vector(0, "embedding", "hello", dim=8)
         assert np.allclose(wider[:4] / np.linalg.norm(wider[:4]), vector)  # a wider draw extends the stream
+
+    def test_the_draw_is_bit_identical_on_every_machine(self) -> None:
+        """The same BITS on every machine, not only the same values to a tolerance: the norm is exactly
+        rounded (``math.fsum`` of the squares), never a BLAS reduction whose last bit depends on the CPU's
+        kernel (``np.linalg.norm`` differed under OpenBLAS's Prescott, Sandybridge and Haswell kernels)."""
+        digest = hashlib.sha256()
+        for index in range(256):
+            vector = fake_module._unit_vector(0, "token", "some text", index, dim=2048)
+            digest.update(np.asarray(vector, dtype="<f8").tobytes())
+        assert digest.hexdigest() == PINNED_DRAW_SHA256
 
 
 class TestRerank:

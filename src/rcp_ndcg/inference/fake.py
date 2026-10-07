@@ -213,12 +213,14 @@ def _unit_vector(*parts: object, dim: int) -> np.ndarray:
     """A deterministic unit vector: one seeded draw per vector, L2-normalised.
 
     The draw is one SHAKE-256 stream of the parts (encoded as :func:`fake_uniform` encodes them), read as
-    ``dim`` uniforms in [0, 1) -- the same on every machine, and a wider vector extends the same stream. One
-    hash per vector, never one per component: a 16k-token text at 2048 dimensions stays a matter of seconds.
+    ``dim`` uniforms in [0, 1) -- a wider vector extends the same stream. One hash per vector, never one per
+    component: a 16k-token text at 2048 dimensions stays a matter of seconds. Every step is exactly rounded
+    (elementwise arithmetic, ``math.fsum`` of the squares, ``math.sqrt``), so the bits are the same on every
+    machine; a BLAS reduction (``np.linalg.norm``) rounds its last bit by the CPU's kernel.
     """
     stream = hashlib.shake_256("|".join(str(part) for part in parts).encode("utf-8")).digest(8 * dim)
     raw = (np.frombuffer(stream, dtype=">u8") >> np.uint64(11)) * 2.0**-53 * 2.0 - 1.0
-    return raw / (float(np.linalg.norm(raw)) or 1.0)
+    return raw / (math.sqrt(math.fsum((raw * raw).tolist())) or 1.0)
 
 
 def _embeddings(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
