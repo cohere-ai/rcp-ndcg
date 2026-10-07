@@ -152,7 +152,8 @@ class Capture:
         batch.  It yields one ``input`` per conversation -- its messages' text parts joined in order with
         ``TEXT_JOIN`` (``"\n"``, as the engine joins them): the content the client sent, which the engine's
         chat template frames -- ``conversations``, the conversations as sent (the served template renders
-        them), and ``media``: per conversation, the placeholders of its media parts in order (their part
+        them), ``add_generation_prompt``, the flag the engine renders them with (false when the body sends
+        none, the chat routes' default), and ``media``: per conversation, the placeholders of its media parts in order (their part
         ``type``, e.g. ``image_url``), which ride beside the text and are never part of it.  A ``token_ids``
         body yields its id lists as sent.
         """
@@ -177,7 +178,13 @@ class Capture:
                 # The engine joins text parts with "\n" (vLLM's chat_utils): the product's TEXT_JOIN.
                 texts.append(TEXT_JOIN.join(str(part.get("text", "")) for part in parts if part.get("type") == "text"))
                 media.append([str(part.get("type")) for part in parts if part.get("type") != "text"])
-            return {"input": texts, "media": media, "conversations": conversations}
+            return {
+                "input": texts,
+                "media": media,
+                "conversations": conversations,
+                # The chat routes' default is false (vllm/entrypoints/pooling/base/protocol.py:230-237).
+                "add_generation_prompt": bool(body.get("add_generation_prompt", False)),
+            }
         inputs = body.get("input", body.get("texts"))
         return {"input": [inputs] if isinstance(inputs, str) else list(inputs or [])}
 

@@ -25,6 +25,17 @@ released together.
 
 ### Public surface
 
+- **A declared generation prompt on the messages route** (`EmbeddingEndpoint.add_generation_prompt`,
+  `EmbedRequest.add_generation_prompt`): vLLM v0.31.0's chat routes default `add_generation_prompt` to false
+  (`vllm/entrypoints/pooling/base/protocol.py:230-237`), so a checkpoint whose frame ends with the chat
+  template's assistant header (Qwen3-VL-Embedding's) rendered without it on the `messages` route. Declaring
+  `add_generation_prompt: true` sends the flag with every `messages` request; it is content (it enters the
+  config's identity and the recipe fingerprint as a request field), refused on any other request shape and
+  on `PoolingEndpoint` (its media lowering sends no such field), and `false` -- the engine's default -- is
+  stored as `None`, so no identity re-keys. The equivalence harness's messages template check renders every
+  captured conversation with the flag that request carried, its parts as vLLM hands them to the template
+  (`rcp_ndcg_vllm.equivalence.stages.engine_conversation`: `image_url` as `{"type": "image"}`, `video_url` as
+  `{"type": "video"}`).
 - **Two public accessors of `rcp-ndcg-vllm`, and the release rule for stale corpora**:
   `rcp_ndcg_vllm.fingerprint.stored_tokenizer(spec)` returns a registered tokenizer store's verified
   `tokenizer.json` bytes and SHA-256 (the golden replay materialises the recipe's tokenizer with it), and

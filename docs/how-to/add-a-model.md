@@ -227,8 +227,9 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
   for a `token_ids` client, which sends ids and leaves the engine nothing to tokenize);
 - `template_render_check`, when `serve.chat_template` is set: the template file's jinja2 render (the engine's
   settings) against the declared template's render, for every declared shape. On the `messages` route the file
-  is the engine's chat template: it is rendered over every conversation the client sent and must equal the
-  declared frame around that content, once (without `serve.chat_template` the check is `not_run`: the engine
+  is the engine's chat template: it is rendered over every conversation the client sent, with the
+  `add_generation_prompt` flag that request carried, and must equal the declared frame around that content,
+  once (without `serve.chat_template` the check is `not_run`: the engine
   renders the checkpoint's own template, which the recipe's own test pins).
 
 Stage 2 sends the same pairs through the product's role clients (`EmbeddingClient`, `PoolingClient`,

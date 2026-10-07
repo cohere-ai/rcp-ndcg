@@ -496,6 +496,43 @@ class TestRequestShapes:
             assert engine_render == declared
             assert engine_render.count(head) == 1 and engine_render.count(tail) == 1, "framed exactly once"
 
+    def test_a_declared_generation_prompt_rides_the_messages_route(self) -> None:
+        """vLLM v0.31.0's chat routes default ``add_generation_prompt`` to false
+        (vllm/entrypoints/pooling/base/protocol.py:230-237), and a checkpoint whose declared frame ends with the
+        assistant header renders that header only with it true: the declared flag travels on every messages
+        request, and an undeclared one sends nothing (the engine's default applies)."""
+        sender = FakeSender(handler("openai_embeddings", {}))
+        client = self._messages_client(sender, add_generation_prompt=True)
+        client.encode([Content.from_text("a query")], EncodeRole.QUERY)
+        client.encode([Content.from_text("a document")], EncodeRole.DOCUMENT)
+        assert [call.json["add_generation_prompt"] for call in sender.calls] == [True, True]
+        plain_sender = FakeSender(handler("openai_embeddings", {}))
+        self._messages_client(plain_sender).encode([Content.from_text("a query")], EncodeRole.QUERY)
+        assert "add_generation_prompt" not in plain_sender.calls[0].json
+
+    def test_a_generation_prompt_off_the_messages_route_is_refused_and_false_declares_nothing(self) -> None:
+        """The flag frames a chat render, so a route that renders no chat template would carry it inertly:
+        refused on the text route and on the pooling role (whose media lowering sends no such field); ``false``
+        is the engine's own default, stored as ``None``, so it never re-keys an identity."""
+        from rcp_ndcg.inference.config import PoolingEndpoint
+        from tests.inference import _budget
+
+        budget = {"tokenizer": _budget.DEFAULT_TOKENIZER, "max_tokens": 64}
+        with pytest.raises(ConfigError, match="add_generation_prompt"):
+            endpoint("openai_embeddings", add_generation_prompt=True, **budget)
+        with pytest.raises(ConfigError, match="add_generation_prompt"):
+            PoolingEndpoint(
+                model="m", base_url="http://x", dim=4, request_shape="messages", add_generation_prompt=True, **budget
+            )
+        declared = endpoint("openai_embeddings", request_shape="messages", add_generation_prompt=False, **budget)
+        undeclared = endpoint("openai_embeddings", request_shape="messages", **budget)
+        from rcp_ndcg.support.identity import identity_payload
+
+        assert declared.add_generation_prompt is None
+        assert identity_payload(declared) == identity_payload(undeclared)
+        sent = endpoint("openai_embeddings", request_shape="messages", add_generation_prompt=True, **budget)
+        assert identity_payload(sent) == {**identity_payload(undeclared), "add_generation_prompt": True}
+
     def test_token_ids_without_a_tokenizer_are_refused(self) -> None:
         with pytest.raises(ConfigError, match="token_ids"):
             EmbeddingClient(endpoint("cohere", request_shape="token_ids"), sender=FakeSender(handler("cohere", {})))

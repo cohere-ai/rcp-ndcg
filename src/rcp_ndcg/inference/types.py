@@ -385,6 +385,9 @@ class EmbedRequest:
             post-processor tokens to its chat-template render (the chat route's own default is ``false``).
             ``None`` sends nothing (the engine's default applies): every other route, and a config without
             a template.
+        add_generation_prompt: For ``request_shape: messages``, the config's declared
+            ``add_generation_prompt``, sent with the request so the engine's chat template renders its
+            generation prompt; ``None`` sends nothing (the chat route's default, false, applies).
     """
 
     contents: tuple[Content, ...]
@@ -393,6 +396,7 @@ class EmbedRequest:
     request_shape: Literal["text", "messages", "token_ids"] = "text"
     token_ids: tuple[tuple[int, ...], ...] = ()
     add_special_tokens: bool | None = None
+    add_generation_prompt: bool | None = None
 
 
 @dataclass(frozen=True)

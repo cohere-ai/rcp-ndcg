@@ -30,7 +30,7 @@ from .gates import kendall_tau_b, resolve_gates
 from .reference import run_reference
 from .wire import Capture, role_client
 
-__all__ = ["load_pairs", "stage1_prompts", "stage2_scores"]
+__all__ = ["engine_conversation", "load_pairs", "stage1_prompts", "stage2_scores"]
 
 _SNIPPET = 240
 _OUTPUT_SNIPPET = 500
@@ -264,7 +264,7 @@ def _probe_vectors(
 
     budget = getattr(client, "text_budget", None)
 
-    def _captured(start: int, shape: str, conversations: list[Any]) -> list[Any]:
+    def _captured(start: int, shape: str, conversations: list[Any], generation: list[bool]) -> list[Any]:
         texts: list[Any] = []
         for exchange in capture.exchanges[start:]:
             captured = capture.texts(exchange)
@@ -272,6 +272,7 @@ def _probe_vectors(
                 texts.extend(captured["input"])
                 continue
             conversations.extend(captured["conversations"])
+            generation.extend([captured["add_generation_prompt"]] * len(captured["conversations"]))
             for content in captured["input"]:
                 texts.append(
                     rendered_request(budget, tokenizer, fitting.cast_shape(shape), query=content, document=content)
@@ -284,6 +285,7 @@ def _probe_vectors(
         if shape == "pair":
             continue  # the embed roles have no pair wire; a rerank recipe owns that shape
         conversations: list[Any] = []
+        generation: list[bool] = []
         inputs = [row["query"]] if shape == "query" else list(row["documents"])
         role = EncodeRole.QUERY if shape == "query" else EncodeRole.DOCUMENT
         texts: list[Any] = []
@@ -294,13 +296,13 @@ def _probe_vectors(
         for text in inputs:
             start, records_start = len(capture.exchanges), len(client.processing)
             client.encode([Content.from_text(text)], role)
-            sent = _captured(start, shape, conversations)
+            sent = _captured(start, shape, conversations, generation)
             texts.extend(sent)
             changed.extend([any(record.changed for record in client.processing[records_start:])] * len(sent))
         entry["shapes"][shape] = {
             "texts": texts,
             "changed": changed,
-            **({"conversations": conversations} if conversations else {}),
+            **({"conversations": conversations, "add_generation_prompt": generation} if conversations else {}),
         }
 
 
@@ -871,11 +873,12 @@ def _messages_template_check(recipe: Recipe, probe: dict[str, Any]) -> dict[str,
     """The ``messages`` route's frame check: the engine frames each sent conversation exactly once.
 
     vLLM v0.31.0 renders every chat-shaped ``/embeddings`` request through the served chat template
-    (vllm/entrypoints/pooling/embed/io_processor.py:302-355, with ``add_generation_prompt`` false by default,
-    vllm/entrypoints/pooling/base/protocol.py:230-237), and the client sends the content only.  So the served
-    template file, rendered with transformers' jinja2 settings over every captured conversation (its content
-    parts as sent), must equal the declared template's render of the same content -- the frame the client's
-    budget reserved, once.  Without ``serve.chat_template`` the engine renders the checkpoint's own template,
+    (vllm/entrypoints/pooling/embed/io_processor.py:302-355, with the request's ``add_generation_prompt``,
+    false by default, vllm/entrypoints/pooling/base/protocol.py:230-237), and the client sends the content
+    only.  So the served template file, rendered with transformers' jinja2 settings over every captured
+    conversation (its content parts as the engine hands them to the template, :func:`engine_conversation`)
+    and with the flag that request carried, must equal the declared template's render of the same content --
+    the frame the client's budget reserved, once.  Without ``serve.chat_template`` the engine renders the checkpoint's own template,
     which the harness does not read: ``not_run``, never passed (the recipe's own test pins that file).
     """
     if recipe.serve.chat_template is None:
@@ -895,11 +898,16 @@ def _messages_template_check(recipe: Recipe, probe: dict[str, Any]) -> dict[str,
     checked = 0
     for index, entry in enumerate(probe["rows"]):
         for shape, shape_body in entry["shapes"].items():
-            for conversation, declared in zip(
-                shape_body.get("conversations", []), shape_body.get("texts", []), strict=False
+            flags = shape_body.get("add_generation_prompt", [])
+            for position, (conversation, declared) in enumerate(
+                zip(shape_body.get("conversations", []), shape_body.get("texts", []), strict=False)
             ):
                 checked += 1
-                engine = template.render(messages=conversation, add_generation_prompt=False, tools=None)
+                engine = template.render(
+                    messages=engine_conversation(conversation),
+                    add_generation_prompt=bool(flags[position]) if position < len(flags) else False,
+                    tools=None,
+                )
                 if engine != declared:
                     failures.append(
                         {
@@ -937,6 +945,36 @@ def _jinja_environment(*, strict: bool = True) -> Any:
     if not strict:
         return ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True)
     return ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True, undefined=StrictUndefined)
+
+
+def engine_conversation(conversation: list[Any]) -> list[dict[str, Any]]:
+    """A sent conversation as vLLM v0.31.0 hands it to a chat template (the ``openai`` content format).
+
+    vllm/entrypoints/chat_utils.py:1875-1999 (``_parse_chat_message_content_part`` with ``wrap_dicts``): a
+    string part becomes ``{"type": "text", "text": ...}``, a text part keeps its text, an ``image_url`` part
+    becomes ``{"type": "image"}`` and a ``video_url`` part ``{"type": "video"}`` -- the template sees the
+    modality, never the URL.  A message whose content is a string stays as it is.
+    """
+    engine: list[dict[str, Any]] = []
+    for message in conversation:
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list):
+            engine.append(dict(message))
+            continue
+        parts: list[dict[str, Any]] = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append({"type": "text", "text": part})
+            elif part.get("type") in ("text", "input_text"):
+                parts.append({"type": "text", "text": str(part.get("text", ""))})
+            elif part.get("type") in ("image_url", "input_image", "image"):
+                parts.append({"type": "image"})
+            elif part.get("type") in ("video_url", "video"):
+                parts.append({"type": "video"})
+            else:
+                parts.append(dict(part))
+        engine.append({**message, "content": parts})
+    return engine
 
 
 def _engine_tokenize_check(

@@ -803,8 +803,9 @@ _CHAT_TEMPLATE = (
 """A served chat template that frames one user turn exactly as ``fixture-embed`` declares it (``doc: ... [END]``)."""
 
 
-def _messages_recipe(tmp_path: Path, chat_template: str) -> Any:
-    """``fixture-embed`` on the ``messages`` route, served with ``chat_template`` (the engine's frame)."""
+def _messages_recipe(tmp_path: Path, chat_template: str, *, client_extra: str = "") -> Any:
+    """``fixture-embed`` on the ``messages`` route, served with ``chat_template`` (the engine's frame); the
+    ``client_extra`` YAML lines join the client block."""
     directory = tmp_path / "scratch" / "recipes" / "embed-messages"
     directory.mkdir(parents=True)
     shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "scratch" / "deterministic.py")
@@ -812,7 +813,7 @@ def _messages_recipe(tmp_path: Path, chat_template: str) -> Any:
     (directory / "chat.jinja").write_text(chat_template, encoding="utf-8")
     manifest = _rebased((RECIPES / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8"), "embed-messages")
     manifest = manifest.replace("  chat_template: null", "  chat_template: chat.jinja").replace(
-        "  api: openai_embeddings", "  api: openai_embeddings\n  request_shape: messages"
+        "  api: openai_embeddings", "  api: openai_embeddings\n  request_shape: messages" + client_extra
     )
     (directory / "recipe.yaml").write_text(manifest, encoding="utf-8")
     return load_recipe(directory)
@@ -836,3 +837,19 @@ def test_stage1_messages_route_is_framed_once_by_the_served_chat_template(tmp_pa
     assert check["passed"] is False
     failure = check["failures"][0]
     assert failure["engine_head"].startswith("doc: doc: ") and failure["declared_head"].count("doc: ") == 1
+
+
+def test_stage1_messages_route_renders_the_declared_generation_prompt(tmp_path: Path) -> None:
+    """A served chat template whose closing frame renders only under ``add_generation_prompt`` (the
+    assistant header of Qwen3-VL-Embedding's template): the engine renders each captured request with the
+    flag it carries (vLLM's default false when absent), so without the declared flag the served render
+    misses the declared tail and the check fails; with ``add_generation_prompt: true`` it is the frame."""
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    template = _CHAT_TEMPLATE.replace(" [END]", "{% if add_generation_prompt %} [END]{% endif %}")
+    without = _messages_recipe(tmp_path / "without", template)
+    check = stage1_prompts(without, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["passed"] is False and not check["failures"][0]["engine_head"].endswith("[END]")
+    declared = _messages_recipe(tmp_path / "declared", template, client_extra="\n  add_generation_prompt: true")
+    assert declared.client.add_generation_prompt is True
+    check = stage1_prompts(declared, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["passed"] is True and check["checked"] > 0, check["failures"][:1]

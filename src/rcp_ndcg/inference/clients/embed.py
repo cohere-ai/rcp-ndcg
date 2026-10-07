@@ -164,6 +164,9 @@ class EmbeddingClient(RoleClient):
                 request_shape=self.config.request_shape,
                 token_ids=token_ids[offset : offset + size],
                 add_special_tokens=add_special_tokens,
+                add_generation_prompt=(
+                    self.config.add_generation_prompt if self.config.request_shape == "messages" else None
+                ),
             )
             for offset in range(0, len(prepared.items), size)
         ]

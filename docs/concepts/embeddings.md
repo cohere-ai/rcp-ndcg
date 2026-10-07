@@ -47,7 +47,10 @@ are registered under their names and are stateless:
   request through its chat template, which places each media part inside the user turn, so the item carries
   its content (the prompt and the cut content span), never the framed render: the served chat template must
   render the declared template's frame around it, once, and the request carries the declared
-  `add_special_tokens` (the chat route's own default is false). `request_shape: token_ids` sends the ids the
+  `add_special_tokens` (the chat route's own default is false). A frame that ends with the chat template's
+  generation prompt (the assistant header, Qwen3-VL-Embedding's) declares `add_generation_prompt: true`, which
+  every `messages` request then carries (the chat route's default is false, and the header would be missing);
+  the flag is refused on any other route. `request_shape: token_ids` sends the ids the
   client fitted; the hosted profiles implement text only.
 * `cohere` sends `{"model", "texts", "input_type", "embedding_types": ["float"]}` to `POST {base_url}/embed`,
   with `input_type` `search_query` / `search_document`, and reads `embeddings.float`.
