@@ -101,6 +101,12 @@ released together.
   extracted as no input, and the audit passed having checked nothing); an audit that read no input now
   fails. An `anchor: first` head is asserted up to its join to the content: on a byte-level BPE the head's
   trailing whitespace tokens re-tokenize with the first content token, which failed every request.
+- **The node scripts' Cloud SDK search is declared**: `wave0.sh` and `bootstrap.sh` put an SDK the auth script
+  installed on `PATH` through one function (`gcs_sdk_on_path` in `jobs/gcs.sh`, where each kept its own copy of
+  the loop) that searches `RCP_GCLOUD_SDK_DIRS` (colon-separated; unset, the same five install locations as
+  before; set empty, none). The node-script tests set it empty: their hermetic `PATH` was undone by that
+  search on a machine with an SDK in one of those locations (a GitHub runner's `/usr/lib/google-cloud-sdk`),
+  which then ran the machine's `gcloud storage cp`.
 - **A named recipe plugin is found in every staged wheelhouse**: `bootstrap.sh` installs a plugin named by a
   recipe (not staged as a file) with one `--find-links` per existing `<stage>/extra/<name>/wheelhouse` beside
   `<stage>/wheelhouse`, still `--no-index`: a plugin wheel staged through `rc_build.sh`'s `EXTRA_DIRS` lands

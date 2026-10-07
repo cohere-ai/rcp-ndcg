@@ -29,6 +29,8 @@
 # uv is installed with pip --target (the product's own bootstrap_uv location), never into the engine
 # environment; UV_CACHE_DIR lives in the state directory. The auth script mounted at
 # $RCP_GCS_AUTH_FILE is executed, never printed; HF_TOKEN reaches the engines from the job's secret.
+# A Cloud SDK it installs is put on PATH from the first of RCP_GCLOUD_SDK_DIRS holding a CLI (jobs/gcs.sh:
+# colon-separated, the SDK's usual locations when unset, no search when empty).
 # The staged files must hash to the manifest rc_build.sh wrote; anything else fails fast, one line.
 
 set -euo pipefail
@@ -56,14 +58,6 @@ auth() {
     echo "bootstrap: the GCS auth script failed with exit code $status (its output is not echoed)" >&2
     return 1
   fi
-  local sdk_bin
-  for sdk_bin in "$HOME/google-cloud-sdk/bin" /root/google-cloud-sdk/bin /opt/google-cloud-sdk/bin \
-    /usr/lib/google-cloud-sdk/bin /usr/local/google-cloud-sdk/bin; do
-    if [[ -x "$sdk_bin/gcloud" || -x "$sdk_bin/gsutil" ]]; then
-      export PATH="$sdk_bin:$PATH"
-      break
-    fi
-  done
 }
 
 now_s() { date +%s; }
@@ -272,6 +266,7 @@ GCS_HELPER_PY="${RCP_GCS_HELPER_PY:-/etc/rcp/files/gcshelper/gcs.py}"
 auth || exit 1
 # shellcheck disable=SC1090  # the helper is mounted at a job-specific path
 source "$GCS_SH"
+gcs_sdk_on_path  # an SDK the auth script installed, searched in RCP_GCLOUD_SDK_DIRS (gcs.sh)
 export GCS_PY="${GCS_PY:-$(command -v python3)}"
 export GCS_WHEELHOUSE=""  # set once the stage is local; the helper prefers the staged gcsfs wheel
 

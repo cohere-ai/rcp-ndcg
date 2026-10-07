@@ -130,7 +130,10 @@ RC. It fails fast with a one-line reason at the first failure and writes one JSO
    can — the Docker Hub registry for a public image, `gcloud container images describe` otherwise —
    and passes it in `env.RCP_IMAGE_DIGEST`, so the report never says null), the driver, the GPUs, free
    disk, `/dev/shm`, the python versions, and which GCS transfer path ran (`gcloud`, `gsutil`, or the
-   python `gcsfs` helper — the image ships neither CLI).
+   python `gcsfs` helper — the image ships neither CLI). A Cloud SDK the auth script installs is put
+   on `PATH` from the first directory of `RCP_GCLOUD_SDK_DIRS` that holds `gcloud` or `gsutil`
+   (colon-separated; unset, the SDK's usual locations such as `$HOME/google-cloud-sdk/bin` and
+   `/usr/lib/google-cloud-sdk/bin`; set empty, no directory is searched).
 3. **bootstrap** — the three environments, and the engine's `pip freeze` unchanged (no plugin in
    wave 0).
 4. **reach** — the Hub with the token secret (a metadata call; the reply's commit must be the pinned

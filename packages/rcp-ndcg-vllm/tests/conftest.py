@@ -92,10 +92,12 @@ def stub() -> Iterator[StubEngine]:
 def sandbox_path(fakes: Path, *tools: str) -> str:
     """A hermetic ``PATH`` for a node-script test: the test's fakes, then a sandbox of the named system tools.
 
-    No system bin directory is on it, so a tool the machine happens to have (a real ``gcloud`` in
-    ``/usr/bin``, as on GitHub's runner images) can never stand in for one the test means to be absent. Each
-    named tool is symlinked from the caller's ``PATH`` into ``<fakes>/../sandbox-bin``; a tool the machine
-    lacks fails the test here, by name.
+    No system bin directory is on it, so a tool the machine has on its ``PATH`` (a real ``gcloud`` in
+    ``/usr/bin``) is not found through it. Each named tool is symlinked from the caller's ``PATH`` into
+    ``<fakes>/../sandbox-bin``; a tool the machine lacks fails the test here, by name. This closes the
+    ``PATH`` only: a script that adds directories itself must be told not to -- the node scripts' Cloud SDK
+    search (``gcs_sdk_on_path`` in ``jobs/gcs.sh``, which would put e.g. ``/usr/lib/google-cloud-sdk/bin``
+    first) is switched off with ``RCP_GCLOUD_SDK_DIRS`` set empty.
     """
     sandbox = fakes.parent / "sandbox-bin"
     sandbox.mkdir(exist_ok=True)

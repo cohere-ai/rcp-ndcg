@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tests.conftest import sandbox_path
 
 WAVE0_SH = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_vllm" / "jobs" / "wave0.sh"
@@ -19,7 +21,9 @@ PINNED_REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
 
 _SHELL_TOOLS = ("bash", "mkdir", "mktemp", "rm", "date", "wc", "tail")
 """The system tools wave0.sh and the scripts it calls run up to the bootstrap's expected failure; nothing else
-of the machine is on the test's PATH (a real gcloud there would stand in for the absent one)."""
+of the machine is on the test's PATH. The scripts' own Cloud SDK search (``gcs_sdk_on_path``, which puts an
+SDK bin directory such as ``/usr/lib/google-cloud-sdk/bin`` first on PATH) is a second way in, closed by
+``RCP_GCLOUD_SDK_DIRS`` (:func:`_wave0_env` sets it empty unless a test names its own directories)."""
 
 
 def _fake_tools(tmp_path: Path) -> dict[str, Path]:
@@ -81,35 +85,7 @@ def test_wave0_without_the_clis_takes_the_python_transfer_path(tmp_path: Path) -
     (tmp_path / "token").write_text("hf_fake_0123456789abcdef\n", encoding="utf-8")
     (tmp_path / "auth.sh").write_text("# placeholder auth: not the real script\n", encoding="utf-8")
     (tmp_path / "auth.sh").chmod(0o755)
-    out_uri = f"gs://YOUR-BUCKET/waves/wave0-{tmp_path.name}"
-
-    completed = subprocess.run(
-        [
-            "bash",
-            str(WAVE0_SH),
-            str(stage),
-            out_uri,
-        ],  # fmt: skip
-        capture_output=True,
-        text=True,
-        env={
-            "PATH": sandbox_path(tools["bin"], *_SHELL_TOOLS),
-            "HOME": str(tmp_path),
-            "TMPDIR": str(tmp_path),  # the run's work directories land under tmp_path, never /tmp
-            "HF_TOKEN": "hf_fake_0123456789abcdef",
-            "WAVE0_MIN_SHM_GIB": "0",
-            "WAVE0_MIN_FREE_GIB": "0",
-            "RCP_GCS_AUTH_FILE": str(tmp_path / "auth.sh"),
-            "RCP_REPORT_PY": str(REPORT_PY),
-            "RCP_HOST_PY": str(WAVE0_HOST),
-            "RCP_BOOTSTRAP_SH": str(BOOTSTRAP_SH),
-            "RCP_GCS_HELPER_SH": str(JOBS / "gcs.sh"),
-            "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
-            "RCP_REFERENCE_DEPS_PY": str(JOBS / "reference_deps.py"),
-            "RCP_IMAGE": "vllm/vllm-openai:v0.31.0",
-            "RCP_IMAGE_DIGEST": "sha256:" + "0" * 64,
-        },
-    )
+    completed = _run_wave0(tmp_path, tools, stage)
     calls = tools["log"].read_text(encoding="utf-8")
     assert "gcloud" not in calls and "gsutil" not in calls  # neither CLI ran
     assert "-m pip install" in calls  # the gcsfs tools install went to its own --target directory
@@ -122,6 +98,84 @@ def test_wave0_without_the_clis_takes_the_python_transfer_path(tmp_path: Path) -
     assert report["failed_step"] == "bootstrap"
     assert "PYNVML" not in json.dumps(report)  # no token-shaped or unexpected fields
     assert "hf_fake_0123456789abcdef" not in json.dumps(report)  # the token's value never leaks
+
+
+def _wave0_env(tmp_path: Path, tools: dict[str, Path], *, sdk_dirs: str = "") -> dict[str, str]:
+    """wave0.sh's environment: the hermetic PATH, every mounted helper from the checkout, and
+    ``RCP_GCLOUD_SDK_DIRS`` (empty by default: the scripts search no Cloud SDK directory)."""
+    return {
+        "PATH": sandbox_path(tools["bin"], *_SHELL_TOOLS),
+        "HOME": str(tmp_path),
+        "TMPDIR": str(tmp_path),  # the run's work directories land under tmp_path, never /tmp
+        "RCP_GCLOUD_SDK_DIRS": sdk_dirs,
+        "HF_TOKEN": "hf_fake_0123456789abcdef",
+        "WAVE0_MIN_SHM_GIB": "0",
+        "WAVE0_MIN_FREE_GIB": "0",
+        "RCP_GCS_AUTH_FILE": str(tmp_path / "auth.sh"),
+        "RCP_REPORT_PY": str(REPORT_PY),
+        "RCP_HOST_PY": str(WAVE0_HOST),
+        "RCP_BOOTSTRAP_SH": str(BOOTSTRAP_SH),
+        "RCP_GCS_HELPER_SH": str(JOBS / "gcs.sh"),
+        "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
+        "RCP_REFERENCE_DEPS_PY": str(JOBS / "reference_deps.py"),
+        "RCP_IMAGE": "vllm/vllm-openai:v0.31.0",
+        "RCP_IMAGE_DIGEST": "sha256:" + "0" * 64,
+    }
+
+
+def _run_wave0(
+    tmp_path: Path, tools: dict[str, Path], stage: Path, *, sdk_dirs: str = ""
+) -> subprocess.CompletedProcess[str]:
+    """Run wave0.sh against the fake stage (the bootstrap fails at ``import vllm`` on a CPU box)."""
+    return subprocess.run(
+        ["bash", str(WAVE0_SH), str(stage), f"gs://YOUR-BUCKET/waves/wave0-{tmp_path.name}"],
+        capture_output=True,
+        text=True,
+        env=_wave0_env(tmp_path, tools, sdk_dirs=sdk_dirs),
+    )
+
+
+def _planted_sdk(tmp_path: Path) -> tuple[Path, Path]:
+    """A Cloud SDK bin directory at ``$HOME/google-cloud-sdk/bin`` (the first default search entry) whose
+    gcloud only logs its argv: what a node's SDK install, or a runner's ``/usr/lib/google-cloud-sdk``, is."""
+    sdk_bin = tmp_path / "google-cloud-sdk" / "bin"
+    sdk_bin.mkdir(parents=True)
+    log = tmp_path / "sdk-gcloud.log"
+    gcloud = sdk_bin / "gcloud"
+    gcloud.write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "$*" >>"{log}"\nexit 0\n', encoding="utf-8")
+    gcloud.chmod(0o755)
+    return sdk_bin, log
+
+
+@pytest.mark.parametrize("override", ["empty", "elsewhere"])
+def test_wave0_searches_only_the_declared_sdk_dirs(tmp_path: Path, override: str) -> None:
+    """An SDK directory the search would find by default stays unused when RCP_GCLOUD_SDK_DIRS names no
+    directory, or only others: wave 0 and the bootstrap it runs take the python path, and that gcloud never
+    runs."""
+    tools = _fake_tools(tmp_path)
+    stage = _fake_stage(tmp_path)
+    (tmp_path / "auth.sh").write_text("# placeholder auth: not the real script\n", encoding="utf-8")
+    _, log = _planted_sdk(tmp_path)
+    elsewhere = tmp_path / "no-sdk-here" / "bin"
+    elsewhere.mkdir(parents=True)
+    completed = _run_wave0(tmp_path, tools, stage, sdk_dirs="" if override == "empty" else str(elsewhere))
+    report = _last_report_text(completed.stdout)
+    assert report["host"]["transfer"] == "python"
+    assert report["failed_step"] == "bootstrap"  # the CPU box's expected failure, past the bootstrap's own search
+    assert not log.exists(), log.read_text(encoding="utf-8")
+
+
+def test_wave0_puts_a_declared_sdk_dir_on_path(tmp_path: Path) -> None:
+    """The search reads RCP_GCLOUD_SDK_DIRS: a directory it names, holding gcloud, goes first on PATH and
+    the transfer runs through it (the override is the list, not an off switch)."""
+    tools = _fake_tools(tmp_path)
+    stage = _fake_stage(tmp_path)
+    (tmp_path / "auth.sh").write_text("# placeholder auth: not the real script\n", encoding="utf-8")
+    sdk_bin, log = _planted_sdk(tmp_path)
+    completed = _run_wave0(tmp_path, tools, stage, sdk_dirs=f"{tmp_path / 'missing'}:{sdk_bin}")
+    report = _last_report_text(completed.stdout)
+    assert report["host"]["transfer"] == "gcloud"
+    assert "storage cp" in log.read_text(encoding="utf-8")
 
 
 def _last_report_text(stdout: str) -> dict:
