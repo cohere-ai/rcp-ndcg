@@ -217,7 +217,9 @@ def served_spans(tokenizer, query: str, document: str) -> tuple[str, str]:
     anchor fit even alone -- and each document gets what remains. Every cut is a verbatim prefix at
     a token boundary of the content, the frame and its trailing anchor always re-attached by the
     engine around these spans. A query that fills the budget and leaves the document nothing is
-    refused, never cut undeclared.
+    refused, never cut undeclared. Both spans carry the declared normalisation
+    (``normalize: [strip]``, the paper's strip; fit strips the content spans before it measures
+    anything, and the share's count reads the raw query first, as the client's count does).
     """
     head, mid, tail = _frame(tokenizer)
 
@@ -233,19 +235,22 @@ def served_spans(tokenizer, query: str, document: str) -> tuple[str, str]:
         q_final = _token_prefix(query, QUERY_MAX_TOKENS, tokenizer)
     else:
         q_final = query
-    # 2. fit's probe pair (the query with an empty document): the query keeps the frame room.
+    # 2. the declared normalisation (fit strips the content spans before it measures anything):
+    q_final = q_final.strip()
+    d_final = document.strip()
+    # 3. fit's probe pair (the query with an empty document): the query keeps the frame room.
     q_final = _token_prefix(
         q_final, cap, tokenizer, rendered=lambda piece: assemble(piece, ""), add_special_tokens=ADD_SPECIAL_TOKENS
     )
     q_min = _count(assemble(q_final, ""), tokenizer, add_special_tokens=ADD_SPECIAL_TOKENS)
-    if q_min >= cap and _count(document, tokenizer) > 0:
+    if q_min >= cap and _count(d_final, tokenizer) > 0:
         raise SystemExit(
             f"the query fills the pair budget of {cap} tokens and leaves the document nothing; "
             "lower QUERY_MAX_TOKENS (or raise MAX_SEQ_LEN), so the document keeps a share"
         )
-    # 3. the document gets what remains after the settled query and the frame:
+    # 4. the document gets what remains after the settled query and the frame:
     d_final = _token_prefix(
-        document, cap, tokenizer, rendered=lambda piece: assemble(q_final, piece), add_special_tokens=ADD_SPECIAL_TOKENS
+        d_final, cap, tokenizer, rendered=lambda piece: assemble(q_final, piece), add_special_tokens=ADD_SPECIAL_TOKENS
     )
     return q_final, d_final
 
