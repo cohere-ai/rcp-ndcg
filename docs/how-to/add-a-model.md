@@ -194,9 +194,14 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
   per row, identical across the row's pointwise requests, within its declared `query_max_tokens`, and no cut
   on an in-budget pair). Every wire shape is read: a `token_ids` body is audited on the ids it sends, a
   `messages` body on its messages' text parts (joined with `"\n"`, as the engine joins them) (its media parts are listed as placeholders beside them). An
-  audit that read no input fails. An `anchor: first` head is asserted up to its join to the content: the
-  head's trailing whitespace tokens re-tokenize with the first content token on a byte-level BPE (`"doc: "`
-  then reads `Ġdocument`), so they are not part of the asserted edge;
+  audit that read no input fails. An `anchor: first` head is asserted as the engine reads it: where the head
+  meets the content a byte-level BPE re-tokenizes across the join (`"doc: "` then reads `Ġdocument`; under a
+  Qwen-style pre-tokenizer `"Query:"` reads `:Paris`), so the edge is the post-processor's prefix and the
+  head's own tokens in the assembled render: a text body must start with the head's characters, and its
+  tokens lying wholly inside them are the edge; a `token_ids` body (no text on the wire) must open with the
+  head tokens that lie wholly inside the head whatever content follows (measured on the head joined to a set
+  of letters, digits, punctuation, spaces, newlines and other scripts). A head character that merges into
+  the content is then not asserted on a `token_ids` body; the render check compares those rows' ids whole;
 - `render_check` compares the reference subprocess's `render` output against the captured texts, zero
   tolerance (a `token_ids` body on ids: the ids it sent against the reference text's ids under the shape's
   `add_special_tokens` flag) — every declared shape of every pairs-file row (a row carrying the per-row `shape` field is

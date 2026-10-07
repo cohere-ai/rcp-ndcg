@@ -307,8 +307,10 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
                 checked += _audit_rerank_span(index, shape, shape_body, share, max_tokens, entry, failures, tokenizer)
                 continue
             flag = _add_specials_flag(recipe, shape)
-            edge = _anchor_edge_ids(recipe, tokenizer, shape)
-            join = _head_join_tokens(recipe, tokenizer, shape)
+            at_start = template is not None and template.anchor == "first"
+            edge = [] if at_start else _anchor_edge_ids(recipe, tokenizer, shape)
+            head, prefix = _head_parts(recipe, tokenizer, shape) if at_start else ("", [])
+            stable = _stable_head_tokens(tokenizer, head) if at_start else []
             for text in shape_body["texts"]:
                 # A ``token_ids`` body carries the ids as sent: the client tokenized its render with the
                 # shape's flag, so they already hold the edge and the post-processor's tokens (G1).
@@ -321,20 +323,35 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
                     if missing:
                         failures.append({"shape": shape, "check": "markers", "missing_names": missing, "row": index})
                     continue
-                at_start = template.anchor == "first"
-                # The head edge stops before its join tokens: the whitespace where the head meets the content
-                # re-tokenizes with it on a byte-level BPE (G3), as the fit's assembled-render count allows.
-                expected = edge[: len(edge) - join] if at_start else edge
-                actual = ids[: len(expected)] if at_start else ids[-len(expected) :]
-                if not expected or actual != expected:
+                if at_start:
+                    # The head edge is the head's own tokens in the ASSEMBLED render (G3): where the head meets
+                    # the content a byte-level BPE re-tokenizes across the join (a trailing space reads
+                    # ``Ġdocument``, a Qwen-style ``:`` reads ``:Paris``), as the fit's assembled-render count
+                    # allows, so the head's standalone ids are not what the engine reads.
+                    head_edge = _head_edge_ids(tokenizer, head, prefix, stable, text)
+                    actual = ids[: len(head_edge)] if head_edge is not None else []
+                    if head_edge is None or not head_edge or actual != head_edge:
+                        failures.append(
+                            {
+                                "shape": shape,
+                                "check": "head",
+                                "row": index,
+                                "expected_head_text": head[:_SNIPPET],
+                                "expected_edge_ids": head_edge,
+                                "actual_edge_ids": actual,
+                                "text": _head_of(text),
+                            }
+                        )
+                    continue
+                actual = ids[-len(edge) :] if edge else []
+                if not edge or actual != edge:
                     failures.append(
                         {
                             "shape": shape,
-                            "check": "head" if at_start else "tail",
+                            "check": "tail",
                             "row": index,
-                            "expected_edge_ids": expected,
+                            "expected_edge_ids": edge,
                             "actual_edge_ids": actual,
-                            **({"join_tokens": join} if at_start else {}),
                             "text": _head_of(text),
                         }
                     )
@@ -834,29 +851,70 @@ def _anchor_edge_ids(recipe: Recipe, tokenizer: Any, shape: Any) -> list[int]:
     return list(ids)
 
 
-def _head_join_tokens(recipe: Recipe, tokenizer: Any, shape: Any) -> int:
-    """How many of an ``anchor: first`` head's trailing tokens are its join to the content: whitespace only.
+_JOIN_PROBES = ("a", "Z", "é", "中", "0", ".", ":", "'s", "(", "-", "_", " a", "  a", " ", "\n", "\t", "🙂")
+"""The continuations a ``token_ids`` body's head edge is measured against (letters, digits, punctuation,
+contractions, spaces, newlines, non-Latin scripts, emoji): its text is not on the wire, so the edge is the head
+tokens that lie wholly inside the head in the assembled render with every one of them."""
 
-    The fit counts the frame on the empty render and verifies every request on the assembled one, because a
-    byte-level merge across a span join re-tokenizes the frame's edge with the content: a head ending in a
-    space (``"doc: "``, alone ``... Ġ``) reads ``Ġdocument`` once the content follows it.  Those join tokens
-    are measured here on the head's own render (its tokens whose characters are whitespace, at its end) and
-    are not part of the head edge the audit asserts; every other head token is.  Zero for any other anchor,
-    and for a head whose first segment is not fixed (the post-processor's prefix alone is the edge).
-    """
+
+def _head_parts(recipe: Recipe, tokenizer: Any, shape: Any) -> tuple[str, list[int]]:
+    """An ``anchor: first`` shape's head: its fixed head segment's render ("" when the shape opens with
+    content: the post-processor's prefix alone is the edge) and the ids the shape's ``add_special_tokens``
+    flag puts before it (measured as :func:`_anchor_edge_ids` measures them)."""
     template = recipe.client.template
-    if template is None or template.anchor != "first":
-        return 0
+    if template is None:
+        return "", []
     segments = template.segments(shape)
-    if not segments or segments[0].fixed is None:
-        return 0
-    head = segments[0].render(tokenizer)
-    join = 0
-    for start, end in reversed(tokenizer.offsets(head)):
-        if head[start:end].strip():
+    fixed = next((segment for segment in segments if segment.fixed is not None), None)
+    rendered = fixed.render(tokenizer) if fixed is not None else ""
+    head = rendered if segments and segments[0].fixed is not None else ""
+    prefix = _post_processor_prefix(tokenizer, rendered) if template.adds_special_tokens(shape) else []
+    return head, list(prefix)
+
+
+def _head_tokens_in(tokenizer: Any, render: str, head: str) -> list[int]:
+    """The ids of ``render``'s leading tokens that lie wholly inside its first ``len(head)`` characters
+    (the product tokenizer's offsets, no post-processor): the head's own tokens in that assembled render."""
+    kept: list[int] = []
+    for token_id, (_, end) in zip(tokenizer.ids(render), tokenizer.offsets(render), strict=True):
+        if end > len(head):
             break
-        join += 1
-    return join
+        kept.append(token_id)
+    return kept
+
+
+def _head_edge_ids(
+    tokenizer: Any, head: str, prefix: list[int], stable: list[int], body: str | list[int]
+) -> list[int] | None:
+    """The head edge one captured body must open with: the post-processor's prefix, then the head's own tokens.
+
+    A text body IS the assembled render: it must start with the head's characters (``None`` when it does
+    not: the head was cut or changed), and the edge is its tokens lying wholly inside them.  A ``token_ids``
+    body carries no text, so its edge is ``stable`` (:func:`_stable_head_tokens`): the head tokens that lie
+    wholly inside the head in the assembled render with every :data:`_JOIN_PROBES` continuation.
+    """
+    if not head:
+        return list(prefix)
+    if isinstance(body, str):
+        if not body.startswith(head):
+            return None
+        return [*prefix, *_head_tokens_in(tokenizer, body, head)]
+    return [*prefix, *stable]
+
+
+def _stable_head_tokens(tokenizer: Any, head: str) -> list[int]:
+    """The head tokens that lie wholly inside the head in its assembled render with every probe continuation
+    (their longest common prefix): the edge of a ``token_ids`` body, whose text is not on the wire."""
+    if not head:
+        return []
+    stable = _head_tokens_in(tokenizer, head + _JOIN_PROBES[0], head)
+    for probe in _JOIN_PROBES[1:]:
+        run = _head_tokens_in(tokenizer, head + probe, head)
+        common = 0
+        while common < min(len(stable), len(run)) and stable[common] == run[common]:
+            common += 1
+        stable = stable[:common]
+    return stable
 
 
 # ---------------------------------------------------------------------------

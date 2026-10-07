@@ -580,8 +580,106 @@ def test_stage1_head_edge_tolerates_the_join_merge_on_a_byte_level_bpe(tmp_path:
         audit = stage1_prompts(shaped, pairs, None, over_length_per_shape=2)["anchor_check"]
         assert audit["passed"] is True, (request_shape, audit["failures"][:1])
         assert audit["checked"] == len(sample_pairs()[0]["documents"]) + 2
-    for broken in ("doc: document 0", cls + "dog: document 0", cls + "do"):  # no cls, another head, a cut head
+    # no cls, another head, a cut head, a head that lost its colon (its join then reads Ġdocument)
+    for broken in ("doc: document 0", cls + "dog: document 0", cls + "do", cls + "doc document 0"):
         for body in (broken, tokenizer.ids(broken)):
             probe = {"rows": [{"shapes": {"document": {"texts": [body]}}, "cuts": 0, "over_cap": False}]}
             check = stages_module._anchor_check(recipe, probe, tokenizer)
             assert check["passed"] is False, (broken, type(body).__name__)
+
+
+_QWEN_STYLE_SPLIT = (
+    r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+"
+    r"|\s+(?!\S)|\s+"
+)
+"""The pre-tokenizer split of the Qwen-family byte-level BPEs: one punctuation character joins the LETTERS
+after it (the second alternative), so a head ending in ``:`` merges its last token into the content."""
+
+_JOIN_CONTENTS = ("Paris is big", "über alles", "中国的首都", "123 apples", "(parens)", "\nnewline first",
+                  " leading space", "🙂 emoji", "Ünïcödé", "-dash", "'s owner", "")  # fmt: skip
+
+
+def _qwen_style_bpe(path: Path) -> Path:
+    """A small byte-level BPE with the Qwen-family pre-tokenizer split, trained in-test on framed texts; its
+    post-processor prepends ``<|cls|>`` (so an ``add_special_tokens: true`` head edge opens with it)."""
+    from tokenizers import Regex, Tokenizer, decoders, models, pre_tokenizers, processors, trainers
+
+    backend = Tokenizer(models.BPE())
+    backend.pre_tokenizer = pre_tokenizers.Sequence(  # type: ignore[assignment]
+        [
+            pre_tokenizers.Split(Regex(_QWEN_STYLE_SPLIT), behavior="isolated"),
+            pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=False),
+        ]
+    )
+    backend.decoder = decoders.ByteLevel()  # type: ignore[assignment]
+    documents = [text for row in sample_pairs() for text in row["documents"]]
+    heads = ("Query:", "Query: ", "doc: ", "Instruct: x\nQuery:")
+    corpus = [head + content for head in heads for content in (*_JOIN_CONTENTS, *documents)]
+    trainer = trainers.BpeTrainer(
+        vocab_size=800,
+        special_tokens=["<|cls|>", "<|sep|>", "<|end|>"],
+        initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
+        show_progress=False,
+    )
+    backend.train_from_iterator(corpus * 30, trainer)
+    cls_id = backend.token_to_id("<|cls|>")
+    backend.post_processor = processors.TemplateProcessing(  # type: ignore[assignment]
+        single="<|cls|> $A", special_tokens=[("<|cls|>", cls_id)]
+    )
+    backend.save(str(path))
+    return path
+
+
+@pytest.mark.parametrize("head", ["Query:", "Instruct: x\nQuery:", "Query: ", "doc: "])
+def test_stage1_head_edge_is_the_heads_own_tokens_in_the_assembled_render(tmp_path: Path, head: str) -> None:
+    """G3: the ``anchor: first`` edge is the tokens lying wholly inside the head's characters of the assembled
+    render, so a head whose last token merges into the content -- whitespace on a GPT-2 BPE, or ``:`` under
+    the Qwen-family split (``:Paris``) -- passes on text and token_ids bodies for any content. A text body
+    that lost or changed a head character fails; a token_ids body (no text on the wire) fails when a head
+    token no content can merge away changed -- the merging join itself is the render check's to compare."""
+    from rcp_ndcg_vllm.equivalence import stages as stages_module
+
+    from rcp_ndcg.data.tokenizer import load_tokenizer
+
+    bpe = _qwen_style_bpe(tmp_path / "tokenizer.json")
+    tokenizer = load_tokenizer(str(bpe))
+    base = load("fixture-embed-cls")
+    spec = base.client.template.model_dump()
+    spec["document"] = [{"fixed": head}, {"content": "document"}]
+    spec["add_special_tokens"] = True  # the post-processor's <|cls|> opens the edge, then the head's tokens
+    recipe = _with_client(base, tokenizer=str(bpe), template=type(base.client.template)(**spec))
+    template = recipe.client.template
+    assert tokenizer.ids("x", add_special_tokens=True)[0] == tokenizer.special_id("cls")
+
+    def audit(body: str | list[int]) -> dict[str, Any]:
+        probe = {"rows": [{"shapes": {"document": {"texts": [body]}}, "cuts": 0, "over_cap": False}]}
+        return stages_module._anchor_check(recipe, probe, tokenizer)
+
+    for content in _JOIN_CONTENTS:
+        render = template.render("document", tokenizer, document=content)
+        for body in (render, tokenizer.ids(render, add_special_tokens=True)):
+            check = audit(body)
+            assert check["passed"] is True, (content, type(body).__name__, check["failures"][:1])
+    rendered_head = template.render("document", tokenizer, document="")
+    assert audit(rendered_head[:-1] + "Paris")["passed"] is False  # the head's last character, cut
+    changed = rendered_head.replace("Query", "Quarry").replace("doc", "dog") + "Paris"
+    for body in (changed, tokenizer.ids(changed, add_special_tokens=True)):
+        assert audit(body)["passed"] is False, type(body).__name__
+
+
+def test_stage1_token_ids_head_edge_is_common_to_every_join_probe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G3: a token_ids body's head edge is the head tokens wholly inside the head in the assembled render with
+    EVERY join probe (their common prefix), and a token ending exactly at the head's end is inside it."""
+    from rcp_ndcg_vllm.equivalence import stages as stages_module
+
+    from rcp_ndcg.data.tokenizer import load_tokenizer
+
+    tokenizer = load_tokenizer(str(_byte_level_bpe(tmp_path / "tokenizer.json")))
+    assert stages_module._stable_head_tokens(tokenizer, "doc:") == tokenizer.ids("doc:")  # ":" ends at the end
+    assert stages_module._stable_head_tokens(tokenizer, "doc: ") == tokenizer.ids("doc:")  # the space merges
+    monkeypatch.setattr(stages_module, "_JOIN_PROBES", (".",))
+    assert stages_module._stable_head_tokens(tokenizer, "doc: ") == tokenizer.ids("doc: ")  # "." keeps the space
+    monkeypatch.setattr(stages_module, "_JOIN_PROBES", (".", "a"))
+    assert stages_module._stable_head_tokens(tokenizer, "doc: ") == tokenizer.ids("doc:")  # "a" takes it

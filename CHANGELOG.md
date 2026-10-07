@@ -103,8 +103,11 @@ released together.
   body is audited on its messages' text parts, joined with `rcp_ndcg_core.content.TEXT_JOIN` (`"\n"`, as
   vLLM joins them), with its media parts listed as placeholders beside them (it
   extracted as no input, and the audit passed having checked nothing); an audit that read no input now
-  fails. An `anchor: first` head is asserted up to its join to the content: on a byte-level BPE the head's
-  trailing whitespace tokens re-tokenize with the first content token, which failed every request.
+  fails. An `anchor: first` head is asserted on the assembled render, not on the head's standalone ids (a
+  byte-level BPE re-tokenizes the head's join with the content -- a trailing space into `Ġdocument`, a
+  Qwen-style `:` into `:Paris` -- which failed every request): a text body must start with the head's
+  characters and open with its tokens lying wholly inside them; a `token_ids` body must open with the head
+  tokens no content can merge away (measured on the head joined to a fixed set of probe continuations).
 - **The node scripts' Cloud SDK search is declared**: `wave0.sh` and `bootstrap.sh` put an SDK the auth script
   installed on `PATH` through one function (`gcs_sdk_on_path` in `jobs/gcs.sh`, where each kept its own copy of
   the loop) that searches `RCP_GCLOUD_SDK_DIRS` (colon-separated; unset, the same five install locations as
