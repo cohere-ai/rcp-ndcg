@@ -58,6 +58,8 @@ def run_wave(
     upload: str | None = None,
     record: bool = False,
     record_corpus: bool = False,
+    quality: bool = False,
+    paper_numbers: str | Path | None = None,
     changed_since_index: str | Path | None = None,
     pairs_dir: str | Path | None = None,
     reference_python: str | None = None,
@@ -163,6 +165,7 @@ def run_wave(
                     run, results, out, pairs_dir=pairs_dir, record=record, error=error,
                     reference_python=reference_python, reuse=reuse,
                     record_corpus=record_corpus, vllm_cmd=vllm_cmd, port_base=port_base,
+                    quality=quality, paper_numbers=paper_numbers,
                 )  # fmt: skip
                 running.remove(run)
                 used_gpus.difference_update(run.gpus)
@@ -416,6 +419,8 @@ def _finalise(
     pairs_dir: str | Path | None = None,
     record: bool = False,
     record_corpus: bool = False,
+    quality: bool = False,
+    paper_numbers: str | Path | None = None,
     vllm_cmd: str | None = None,
     port_base: int = 8100,
     error: str | None = None,
@@ -451,6 +456,9 @@ def _finalise(
             )
             if record:
                 run.status["steps"]["record"] = _record(run.recipe, base_url, out)
+            if quality:
+                # Before the corpus step: that one restarts the engine for its after-restart pass.
+                run.status["steps"]["quality"] = _quality(run, base_url, out, reference_python, paper_numbers, vllm_cmd)
             if record_corpus:
                 step, fingerprint = _observe_corpus(
                     run,
@@ -467,12 +475,14 @@ def _finalise(
             steps = run.status["steps"]
             record_ok = not record or steps["record"].get("state") == "passed"
             corpus_ok = not record_corpus or steps["observation_corpus"].get("state") != "failed"
+            quality_ok = not quality or steps["quality"].get("state") == "passed"
             run.status["state"] = (
                 "verified"
                 if steps["smoke"].get("state") == "passed"
                 and steps["equivalence"].get("passed")
                 and record_ok
                 and corpus_ok
+                and quality_ok
                 else "failed"
             )
         else:
@@ -685,6 +695,63 @@ def _observe_corpus(
     return {"state": "passed" if report["passed"] else "failed", **report}, fingerprint
 
 
+def _quality(
+    run: _EngineRun,
+    base_url: str,
+    out: Path,
+    reference_python: str | None,
+    paper_numbers: str | Path | None,
+    vllm_cmd: str | None,
+) -> dict[str, Any]:
+    """The T3 quality stage for one recipe (:func:`rcp_ndcg_vllm.quality.run_quality`) on its task-matrix tasks,
+    written under ``<out>/<id>/quality/``.  The paper's stored per-subset numbers come from ``--paper-numbers``
+    (``{recipe: {metric: {subset: value}}}``); the golden-replay corpus carries the wave's engine and collector
+    blocks.  A recipe outside the task matrix, or any failing task, fails the step."""
+    from .. import quality as t3
+    from ..observe.provenance import collector_facts, engine_facts
+
+    recipe = run.recipe
+    if reference_python is None:
+        return {"state": "failed", "error": "the quality stage needs --reference-python (the mteb reference)"}
+    try:
+        tasks = t3.tasks_for(recipe.id)
+        paper = None
+        if paper_numbers is not None:
+            paper = json.loads(Path(paper_numbers).read_text(encoding="utf-8")).get(recipe.id)
+        manifest = {
+            "engine": engine_facts(
+                image=recipe.engine.image,
+                serve_argv=list(run.status.get("serve_argv") or []),
+                engine_python=None if vllm_cmd else os.environ.get("RCP_ENGINE_PYTHON"),
+                environ=run.env,
+                started=run.status.get("started"),
+                ready_wait_s=run.status.get("ready_wait_s"),
+            ),
+            "collector": collector_facts(
+                wave_id=os.environ.get("RCP_WAVE_ID") or out.name,
+                job_id=os.environ.get("RCP_JOB_ID"),
+                started=_now(),
+                finished=None,
+            ),
+        }
+        document = t3.run_quality(
+            recipe,
+            engine_url=base_url,
+            tasks=tasks,
+            work_dir=out / recipe.id / "quality",
+            reference_python=reference_python,
+            paper=paper,
+            golden_manifest=manifest,
+        )
+    except (HarnessError, OSError, ValueError) as error:
+        return {"state": "failed", "error": str(error)}
+    return {
+        "state": "passed" if document["passed"] else "failed",
+        "errors": document["errors"],
+        "report": "quality.json",
+    }
+
+
 def _filter_changed(
     recipes: list[Recipe], index_path: Path, vllm_cmd: str | None
 ) -> tuple[list[Recipe], list[str], dict[str, Any]]:
@@ -835,6 +902,16 @@ def main(argv: list[str] | None = None) -> int:
         "once after an engine restart, plus the protocol probes and /tokenize)",
     )
     parser.add_argument(
+        "--quality",
+        action="store_true",
+        help="run the T3 quality stage per recipe (served path vs the mteb reference on its task-matrix tasks)",
+    )
+    parser.add_argument(
+        "--paper-numbers",
+        default=None,
+        help="JSON {recipe: {metric: {subset: value}}}: the paper's stored per-subset numbers the T3 stage gates",
+    )
+    parser.add_argument(
         "--changed-since",
         default=None,
         help="a previous wave.json or corpus index: re-record only the recipes whose behaviour "
@@ -860,6 +937,8 @@ def main(argv: list[str] | None = None) -> int:
             upload=args.upload,
             record=args.record,
             record_corpus=args.record_corpus,
+            quality=args.quality,
+            paper_numbers=args.paper_numbers,
             changed_since_index=args.changed_since,
             pairs_dir=args.pairs_dir,
             reference_python=args.reference_python,
