@@ -41,6 +41,7 @@ from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError, Request
 from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, register_adapter
 from rcp_ndcg.inference.config import RerankEndpoint
 from rcp_ndcg.inference.types import Call, Reply, RerankRequest, RerankResult, TokenCount
+from rcp_ndcg.storage.uri import safe_url
 
 #: A 400/422 body naming the thing a smaller client-side budget would fix. The endpoint's own wording varies
 #: (vLLM: "This model's maximum context length is ... tokens"; TEI and the hosted APIs word it differently), so
@@ -149,7 +150,10 @@ class RerankWire(AdapterBase):
                 "scale, which the package records as returned",
                 hint="leave use_activation unset for a hosted profile; it is a served engine's (vLLM) extension",
             )
-        where = f" at {config.base_url}" if config.base_url is not None else ""
+        # The server is named by its URL in every message and details dict: as safe_url writes it (a URL
+        # may embed credentials -- userinfo, a query key).
+        urls = config.urls
+        where = f" at {', '.join(safe_url(url) for url in urls)}" if urls else ""
         self._server = f"{self.SERVER}{where}"
 
     # -- the adapter seam ---------------------------------------------------
