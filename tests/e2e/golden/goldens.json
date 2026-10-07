@@ -1,0 +1,25 @@
+{
+  "nanobeir": {
+    "fingerprints": {
+      "qwen3-embedding-0.6b": "e6ac6ebdb0530cbeb17b363573286ead1d088f95ce1dc22c84bdbcf3e4c50254",
+      "qwen3-reranker-0.6b": "92c037f2639d6ec78f93e30ebc17041a819077f59fdc3e2e8bd9298c1c14020e"
+    },
+    "rerank": {
+      "qrel_ndcg@10": 1.0,
+      "rcp_ndcg@10": 0.7967075809905066
+    },
+    "retrieval": {
+      "qrel_ndcg@10": 1.0,
+      "rcp_ndcg@10": 1.0
+    }
+  },
+  "vidore": {
+    "fingerprints": {
+      "qwen3-vl-reranker-2b": "bf219f557786e2a3397908220ca0a6b24754e1ba3ddee2c9f54a3cd48a471014"
+    },
+    "rerank": {
+      "qrel_ndcg@10": 1.0,
+      "rcp_ndcg@10": 0.7967075809905066
+    }
+  }
+}

@@ -14,11 +14,12 @@
   "engine": {
     "image": "vllm/vllm-openai:v0.31.0",
     "image_digest": null,
+    "min_version": "0.31.0",
     "name": "vllm",
     "version": "0.31.0"
   },
   "files": {
-    "exchanges.jsonl.gz": "d203211934083bbf78da4fb22d3821481ef05f2a67a4847d13e2fdb00cc9c8d2"
+    "exchanges.jsonl.gz": "e5e5e00ecc4e9cff6712dab87348c3434c616b65d4560e847c4175f38b2e539a"
   },
   "model": {
     "id": "jinaai/jina-reranker-v3",

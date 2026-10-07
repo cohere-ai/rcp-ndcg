@@ -14,11 +14,12 @@
   "engine": {
     "image": "vllm/vllm-openai:v0.31.0",
     "image_digest": null,
+    "min_version": "0.31.0",
     "name": "vllm",
     "version": "0.31.0"
   },
   "files": {
-    "exchanges.jsonl.gz": "6003dd6fcc8fd09f9a1546cf2101f0fea0321d0fc41704148c74534f77257565"
+    "exchanges.jsonl.gz": "7e9026e471e05f89f2658f5b417859d767b6c5a12a0f072f84ea7d8d43f82009"
   },
   "model": {
     "id": "Octen/Octen-Embedding-8B",

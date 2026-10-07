@@ -14,11 +14,12 @@
   "engine": {
     "image": "vllm/vllm-openai:v0.31.0",
     "image_digest": null,
+    "min_version": "0.31.0",
     "name": "vllm",
     "version": "0.31.0"
   },
   "files": {
-    "exchanges.jsonl.gz": "88d53a1aca923ba220ca1850c7a83b3c60a30fdfded1cf186a3ab9a56ff53d9d"
+    "exchanges.jsonl.gz": "02486b24989a2b9035f9ea12ff2cd898b8fbf918ba725dee5a41866886b6aa83"
   },
   "model": {
     "id": "Qwen/Qwen3-Reranker-8B",

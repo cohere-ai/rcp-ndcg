@@ -14,11 +14,12 @@
   "engine": {
     "image": "vllm/vllm-openai:v0.31.0",
     "image_digest": null,
+    "min_version": "0.31.0",
     "name": "vllm",
     "version": "0.31.0"
   },
   "files": {
-    "exchanges.jsonl.gz": "a6065c4a84dea8d8b98e80bdfee8a105e39c8cda491eeda3bc6aa4c8c2f2e713"
+    "exchanges.jsonl.gz": "edd1e6871a1ea7ef8d268e9d3cbb26850c4034208cdebecf3b36c186c4024ce7"
   },
   "model": {
     "id": "Qwen/Qwen3-Embedding-0.6B",

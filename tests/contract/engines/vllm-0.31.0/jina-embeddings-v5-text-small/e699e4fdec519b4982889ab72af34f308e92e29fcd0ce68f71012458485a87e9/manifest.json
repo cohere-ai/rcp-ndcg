@@ -14,11 +14,12 @@
   "engine": {
     "image": "vllm/vllm-openai:v0.31.0",
     "image_digest": null,
+    "min_version": "0.20.0",
     "name": "vllm",
-    "version": "0.20.0"
+    "version": "0.31.0"
   },
   "files": {
-    "exchanges.jsonl.gz": "56f24a5fd2a7d4fbddb57b27a1b8d88a386f2eba901fedf676084325f7293235"
+    "exchanges.jsonl.gz": "28d55f1436520330eefa36030f507aeaf03cd156c36096b24cf83b926aa0e118"
   },
   "model": {
     "id": "jinaai/jina-embeddings-v5-text-small",

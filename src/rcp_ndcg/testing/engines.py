@@ -706,6 +706,9 @@ class VllmEmulator:
         "top_n > documents -> truncated to the documents",
     )
     _counter: list[int] = field(default_factory=lambda: [0])
+    answer_log: list[str] = field(default_factory=list)
+    """The provenance of every composed reply (``replayed``/``surrogate``/``mixed``): what tells a
+    numbers-asserting test whether its inputs were observed (GPU-VALIDATION item 2)."""
 
     # -- construction ---------------------------------------------------------
 
@@ -919,7 +922,7 @@ class VllmEmulator:
                 vector = _l2(vector[:dimensions])
             data.append({"object": "embedding", "index": index, "embedding": vector})
         usage = self._usage(set_)
-        return _marked(
+        return self._marked(
             _json(
                 200,
                 {
@@ -933,6 +936,13 @@ class VllmEmulator:
             ),
             sources,
         )
+
+    def _marked(self, response: httpx.Response, sources: Sequence[str]) -> httpx.Response:
+        """Compose the reply's provenance metadata and record it: the observed-inputs guard that lets a
+        numbers-asserting test require every input to be replayed."""
+        response = _marked(response, sources)
+        self.answer_log.append(response.headers.get("x-rcp-ndcg-emulator-source", "surrogate"))
+        return response
 
     def _pooling(self, body: Mapping[str, Any]) -> httpx.Response:
         set_, error = self._prompts_or_error(body)
@@ -965,7 +975,7 @@ class VllmEmulator:
                 packed = matrix
             data.append({"object": "pooling", "index": index, "data": packed, "prompt_token_ids": token_ids})
         usage = self._usage(set_)
-        return _marked(
+        return self._marked(
             _json(
                 200,
                 {
@@ -1023,7 +1033,7 @@ class VllmEmulator:
             for entry in scored
         ]
         usage = self._usage(set_)
-        return _marked(
+        return self._marked(
             _json(
                 200,
                 {
