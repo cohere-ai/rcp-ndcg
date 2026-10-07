@@ -9,6 +9,7 @@ function the product's fakes use), not verified emulators.
 from __future__ import annotations
 
 import base64
+import json
 import math
 from pathlib import Path
 from typing import Any
@@ -71,6 +72,10 @@ class FakeRerankEngine(_Deterministic):
         ):
             return FakeReply(400, {"error": {"message": "the rerank fake takes {'query': str, 'documents': [str]}"}})
         query, documents = body["query"], list(body["documents"])
+        # a media document lowers to a content-parts dict; score it by its own JSON (deterministic)
+        documents = [
+            document if isinstance(document, str) else json.dumps(document, sort_keys=True) for document in documents
+        ]
         scores = [fake_uniform(self.recipe_id, "relevance", query, document) for document in documents]
         rows = sorted(
             ({"index": index, "relevance_score": float(score)} for index, score in enumerate(scores)),

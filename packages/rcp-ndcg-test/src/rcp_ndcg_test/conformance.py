@@ -17,12 +17,6 @@ The report is per case (:class:`CaseResult`: compared, passed, skipped with a re
 (:class:`ConformanceReport`). ``expected.values: null`` is a skip, never a pass; ``expected.kind: none``
 runs the path and compares nothing; a tolerance breach is a failure carrying the worst delta.
 
-One declared bridge, until the role clients carry the text budget (the ``clients-final`` wiring): the
-runner pre-fits every input with the product's :func:`rcp_ndcg.data.preprocess.fit` -- the recipe's own
-tokenizer, template and budget -- and sends the fitted contents through a client whose budget fields are
-cleared (the client refuses a budget until the wiring lands). The recipe's per-side prompts must be
-empty: the client would prepend them onto the fitted render a second time. When the wiring lands, drop
-``_fit*`` here and send the raw contents; the client then fits and cuts itself.
 """
 
 from __future__ import annotations
@@ -141,9 +135,8 @@ def run_suite(
     failure is in the report.
 
     Raises:
-        ConformanceError: ``target="engine"`` without a ``base_url``, a fake target with no registered
-            fake for the recipe, or a recipe whose client config the role client refuses (see the
-            module docstring for the pre-fit bridge).
+        ConformanceError: ``target="engine"`` without a ``base_url``, or a fake target with no
+            registered fake for the recipe.
     """
     resolved = _resolve(recipe, target, base_url, fake_engine)
     try:
@@ -295,31 +288,27 @@ def _run_or_skip(resolved: _Resolved, case: Case) -> CaseResult:
 
 
 def _media_skip(recipe: Recipe, case: Case) -> str | None:
-    """Why the runner cannot send this case's media yet, or ``None`` when it has none.
+    """Why the runner cannot send this case's media, or ``None`` when it can.
 
-    A case with media is a skip on every role today, and the reason names the gap: the product's embed
-    adapters take text only (media embedding is wired with the media-preparation mechanism), and while
-    the media lowering sends image parts, the pre-fit bridge of this runner (``fit`` takes strings) has
-    no media token hook on this branch -- sending the document's text part alone would drop the image
-    silently. A skip is recorded with its reason, never a silent pass, and the cases lanes keep the
-    media strata pending until the media lane closes the gap.
+    The wired pooling and rerank clients prepare the media themselves (image parts on the wire, tokens
+    reserved whole), so an image case runs on every role that reads media. What still cannot run: the
+    embed role (its adapters are text-only -- the product's client refuses media before preparation)
+    and a video container on any role (the OpenAI content-parts lowering sends images only; a
+    container needs the frames reader). A skip is recorded with its reason, never a silent pass.
     """
     if not any(document.image or document.video for document in case.inputs.documents):
         return None
     if recipe.role == "embed":
         return (
-            "the embed adapters take text only; media embedding is wired with the media-preparation "
-            "mechanism (the product's adapter names it in its refusal)"
+            "the product's embed client refuses media (its adapters take text only; the product raises "
+            "the refusal itself); media embedding is wired with the media-preparation mechanism"
         )
     if any(document.video for document in case.inputs.documents):
         return (
             "the product's media lowering sends images; a video container is refused by "
             "content_parts_payload until the clip is ingested as frames"
         )
-    return (
-        "the runner's pre-fit sends text spans only, so the image document would be sent as its text "
-        "part alone; image inputs run once the media lane wires media token reservation into the fit"
-    )
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -409,7 +398,7 @@ def _document_contents(case: Case) -> list[Any]:
     The media references resolve against the case's recipe directory (the format's ``media/<file>``
     paths), which :func:`load_case` pins on the case; the wired clients size and prepare them.
     """
-    from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+    from rcp_ndcg_core.content import Content, ImagePart, TextPart, VideoPart
 
     from .cases import text_of
 
@@ -420,21 +409,35 @@ def _document_contents(case: Case) -> list[Any]:
         if text is not None:
             parts.append(TextPart(text=text))
         if document.image is not None:
-            parts.append(ImagePart(ref=MediaRef(uri=str(_media_path(case, document.image)))))
+            parts.append(ImagePart(ref=_media_ref(case, document.image)))
         if document.video is not None:
-            parts.append(VideoPart(ref=MediaRef(uri=str(_media_path(case, document.video)))))
+            parts.append(VideoPart(ref=_media_ref(case, document.video)))
         contents.append(Content.from_parts(parts) if parts else Content.from_text(""))
     return contents
 
 
-def _media_path(case: Case, relative: str) -> Any:
-    """A case's media file, resolved against the recipe's case directory."""
+def _media_ref(case: Case, relative: str) -> Any:
+    """The media reference of one case asset, resolved against the recipe's case directory, with the
+    image's pixel dimensions read from the file (the token-resolution policies need the real size when
+    the recipe declares no processor geometry)."""
+    import struct
     from pathlib import Path
+
+    from rcp_ndcg_core.content import MediaRef
 
     directory = getattr(case, "_dir", None)
     if directory is None:  # pragma: no cover - load_case always pins it
         raise ConformanceError(f"case {case.id}: no recipe directory pinned; the media {relative!r} cannot resolve")
-    return Path(directory) / relative
+    path = Path(directory) / relative
+    ref_kwargs: dict[str, Any] = {"uri": str(path)}
+    if path.suffix.lower() == ".png" and path.is_file():
+        data = path.read_bytes()
+        if data[:8] == b"\x89PNG\r\n\x1a\n" and data[12:16] == b"IHDR":
+            width, height = struct.unpack(">II", data[16:24])
+            ref_kwargs.update({"width": width, "height": height, "mime": "image/png", "num_bytes": len(data)})
+    elif path.suffix.lower() in (".jpg", ".jpeg") and path.is_file():
+        ref_kwargs.update({"mime": "image/jpeg", "num_bytes": path.stat().st_size})
+    return MediaRef(**ref_kwargs)
 
 
 def _matrix(answer: Any) -> Any:

@@ -433,19 +433,98 @@ def test_a_kind_none_case_with_media_skips_too() -> None:
     assert calls == [], "a media case must not reach the engine on the kind-none path either"
 
 
-def test_an_image_case_skips_on_the_rerank_route_too() -> None:
-    """The runner's pre-fit sends text spans only: an image document must never go out as its text part."""
-    from rcp_ndcg_test.cases import CaseDocument, load_cases
+def _tiny_png() -> bytes:
+    """A 1x1 red PNG the wired client can inline (PIL-decodable)."""
+    import io
 
-    recipe = load_recipe(RECIPES / "fake-rerank")
-    bundle = load_cases(CASES, recipe, recipes_root=RECIPES)
-    case = bundle.cases[0]
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (1, 1), (255, 0, 0)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def test_an_image_case_runs_on_the_rerank_and_pool_routes(tmp_path: Path) -> None:
+    """A media case RUNS on the pool and rerank routes: the wired clients prepare the media and the
+    image reaches the wire as image_url content parts (the bridge-era skip is gone).
+
+    The media document carries text beside its image: the pool fixture declares
+    ``empty_doc: omit_zero``, which omits an empty-text document outright (the product's own rule) --
+    a caption keeps the media document in the request where its image parts can be seen on the wire.
+    """
+    import shutil
+
+    # the fixture recipe + case sets, copied into tmp so the cases' media/ dirs are writable (tests
+    # never write into the checkout)
+    shutil.copytree(RECIPES, tmp_path / "recipes")
+    (tmp_path / "tokenizer.json").write_bytes(
+        (Path(__file__).resolve().parent / "fixtures" / "tokenizer.json").read_bytes()
+    )
+    shutil.copytree(CASES, tmp_path / "cases")
+    for name in ("fake-rerank", "fake-pool"):
+        (tmp_path / "cases" / name / "media").mkdir(exist_ok=True)
+        (tmp_path / "cases" / name / "media" / "pixel.png").write_bytes(_tiny_png())
+
+    from rcp_ndcg_test.cases import CaseDocument
+
+    def with_image(case):
+        documents = list(case.inputs.documents)
+        documents[0] = CaseDocument(id=documents[0].id, text="the page above the image", image="media/pixel.png")
+        return case.model_copy(update={"inputs": case.inputs.model_copy(update={"documents": documents})})
+
+    # the rerank route: one /rerank request carries the query and the media document's content parts
+    recorded: list[dict] = []
+
+    class RecordingRerankEngine(FakeRerankEngine):
+        def handle(self, method: str, path: str, body: object):
+            if method == "POST" and path.endswith("/rerank"):
+                recorded.append(body)
+            return super().handle(method, path, body)
+
+    recipe = load_recipe(tmp_path / "recipes" / "fake-rerank")
+    bundle = load_cases(tmp_path / "cases", recipe, recipes_root=tmp_path / "recipes", check_lengths=False)
+    result = run_case(recipe, with_image(bundle.cases[0]), target="fake", fake_engine=RecordingRerankEngine())
+    assert recorded, "the send must reach the fake"
+    assert result.compared, (result.skipped, result.detail)  # a real comparison, never a skip
+    document = recorded[0]["documents"][0]
+    assert isinstance(document, dict) and "content" in document, document  # the OpenAI content-parts shape
+    assert any(part["type"] == "image_url" for part in document["content"])
+    image_part = next(part for part in document["content"] if part["type"] == "image_url")
+    assert image_part["image_url"]["url"].startswith("data:image/")
+
+    # the pooling route: the media item goes its own messages request (one media item per call)
+    recorded.clear()
+
+    class RecordingPoolEngine(FakePoolEngine):
+        def handle(self, method: str, path: str, body: object):
+            if method == "POST" and path.endswith("/pooling"):
+                recorded.append(body)
+            return super().handle(method, path, body)
+
+    pool_recipe = load_recipe(tmp_path / "recipes" / "fake-pool")
+    pool_bundle = load_cases(tmp_path / "cases", pool_recipe, recipes_root=tmp_path / "recipes", check_lengths=False)
+    run_case(pool_recipe, with_image(pool_bundle.cases[0]), target="fake", fake_engine=RecordingPoolEngine())
+    messages_bodies = [body for body in recorded if "messages" in body]
+    assert messages_bodies, f"the media item must go out as a messages request; recorded {sorted(recorded[0])}"
+    parts = messages_bodies[0]["messages"][0]["content"]
+    assert any(part["type"] == "image_url" for part in parts)
+
+
+def test_an_image_case_skips_on_the_embed_route(tmp_path: Path) -> None:
+    """The embed role's wires are text-only: the product's client refuses media, so the case is a
+    declared skip (never a silent empty-text send)."""
+    from rcp_ndcg_test.cases import CaseDocument
+
+    media = tmp_path / "media"
+    media.mkdir()
+    (media / "pixel.png").write_bytes(_tiny_png())
+    case = filled_case()
     documents = list(case.inputs.documents)
     documents[0] = CaseDocument(id=documents[0].id, image="media/pixel.png")
     inputs = case.inputs.model_copy(update={"documents": documents})
     image_case = case.model_copy(update={"inputs": inputs})
-    result = run_case(recipe, image_case, target="fake", fake_engine=FakeRerankEngine())
-    assert result.skipped is not None and "text spans only" in result.skipped
+    result = run_case(packaged_recipe(), image_case, target="fake", fake_engine=FakeEmbedEngine())
+    assert result.skipped is not None and "text only" in result.skipped
     assert not result.passed and not result.compared
 
 

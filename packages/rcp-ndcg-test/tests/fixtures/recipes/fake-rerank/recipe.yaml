@@ -42,6 +42,9 @@ client:
     anchor: last
   instruction: fold
   use_activation: true
+  max_images: 4
+  max_videos: 0
+  image_policy: {min_px: 3136, max_px: 1003520, processor: qwen2_vl}
   on_overflow: cut
   empty_doc: send
 reference:
