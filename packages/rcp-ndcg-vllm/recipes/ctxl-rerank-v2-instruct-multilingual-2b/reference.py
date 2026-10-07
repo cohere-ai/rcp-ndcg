@@ -33,30 +33,29 @@ Declared interface behaviours, neither a scoring change:
   paper's served-path mode) and the paper's in-process path itself never set an instruction (its
   ``instruction=None`` behaviour) — no side folds ``Task: ...\nQuery: ...``, and the bare query is
   what both sides use;
-- ``--mode render`` implements the harness's rerank reference contract: the cut CONTENT spans the
-  wire carries per pairs row (the query settled at its 4096-token share whenever it exceeds it —
-  the merged rerank client's settle rule; a bare pair fit binds the share on overflow only — then
-  through fit's probe pair, each document cut to what remains, the " ??" anchor re-attached by the
-  engine around these spans).  It is an independent port of the product's mechanism (offset-based
-  verbatim prefixes), checked byte-for-byte against the client's captured spans by stage 1's
-  render comparison; ``score`` keeps the paper's whole-prompt truncation (the declared deviation
-  lives only in the score path: over-cap pairs and the declared over-share divergence rows).
+- ``--mode render`` fills the harness's rerank span format (``{"index", "shape": "pair", "query",
+  "documents"}``) with the spans the paper's prompt builder receives: the raw query and the raw
+  documents, uncut -- the paper cuts only at encode (the whole-prompt right truncation in
+  ``_forward_scores``).  Under the cap and within the query share these are the spans the served
+  wire carries, byte for byte; over the cap they differ by declaration (``anchor_drop_over_cap``,
+  stage 1's non-gating table), and a query over the 4096-token share is a declared divergence row
+  (the merged rerank client settles the shared query once per call and ships it at the share
+  whenever it exceeds it; the paper has no query share).  The reference never reproduces the
+  product client's cut.
 
 Run as the harness's reference subprocess (never imported by the harness, which holds no torch)::
 
     reference.py --mode <render|score> --pairs <file> --out <file> --tokenizer <spec> [--device <d>]
 
-``render`` writes ``{"rows": [{"index", "shape", "text"}]}``; ``score`` writes
+``render`` writes ``{"rows": [{"index", "shape", "query", "documents"}]}``; ``score`` writes
 ``{"rows": [{"index", "scores": [...]}]}`` on the recipe's ``score_scale: logit`` (one raw logit
 per document).
 
 Reference environment (``requirements-reference.txt`` beside this file, documented not installed):
 torch 2.9.1, transformers 4.57.6, accelerate, flash-attn 2.8.3 (the paper's former ``[local]``
-extra pins, from ``experiments/paper/rerankers/reference/requirements.txt``). ``render`` needs the
-tokenizer only (transformers, or the ``tokenizers`` library over the same ``tokenizer.json`` when
-transformers is absent — stage 1 on CPU); ``score`` needs the weights (about 5.97 GB stored,
-5.19 GB in bf16 — the Hub's safetensors metadata, corrected by the audit-synth lane from the
-research draft's stale per-precision figures), the transformers pin and the device the harness
+extra pins, from ``experiments/paper/rerankers/reference/requirements.txt``). ``render`` is pure
+string work (no tokenizer, no weights); ``score`` needs the weights (about 5.97 GB stored,
+5.19 GB in bf16, from the Hub's safetensors metadata), the transformers pin and the device the harness
 passes. No rcp-ndcg import: the reference environment is the paper's, not the harness's.
 """
 
@@ -71,11 +70,10 @@ from typing import Any
 DEFAULT_MODEL = "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b"
 DEFAULT_REVISION = "6ffef5dc552583b8db58dc4a87f79f7aee78d2d9"
 
-#: The paper budget: ``MAX_SEQ_LENGTH`` (the whole prompt), and ``MAX_QUERY_LENGTH``, the query
-#: share the paper's own served path sent as ``max_tokens_per_query``; the recipe declares both as
-#: ``client.max_tokens``/``client.query_max_tokens``.
+#: The paper budget: ``MAX_SEQ_LENGTH``, the whole prompt's right-truncation length at encode (the
+#: recipe's ``client.max_tokens``; the recipe's ``query_max_tokens`` 4096 is the served path's share,
+#: which the paper's in-process path never applied).
 MAX_SEQ_LEN = 8192
-QUERY_MAX_TOKENS = 4096
 
 #: The paper's per-model batch size and padded-area budget (``ContextualRerank.__init__``;
 #: the area budget counts *characters*, exactly as the paper code did).
@@ -93,42 +91,6 @@ VOCAB_POSITION = 0
 HEAD = "Check whether a given document contains information helpful to answer the query.\n<Document> "
 MID = "\n<Query> "
 TAIL = " ??"
-
-
-def served_spans(tokenizer: PairTokenizer, query: str, document: str) -> tuple[str, str]:
-    """The cut content spans (query, document) the served wire carries for one pair.
-
-    Port of the product's role client for this recipe's declaration (the settle rule and ``fit``'s
-    pair path): the query's span settles once per request — to its declared share
-    (``QUERY_MAX_TOKENS``) whenever it exceeds it — then through fit's probe pair (the query with
-    an empty document) that guarantees the frame and its anchor fit even alone, and the document
-    gets what remains.  Every cut is a verbatim token-boundary prefix of the original text (never a
-    decode round trip).  A query that fills the budget and leaves the document nothing is refused,
-    never cut undeclared.
-    """
-
-    def assemble(q: str, d: str) -> str:
-        return f"{HEAD}{d}{MID}{q}{TAIL}"
-
-    cap = MAX_SEQ_LEN
-    # 1. settle at the declared share whenever the query exceeds it (the wire's settle rule):
-    if tokenizer.count(query) > QUERY_MAX_TOKENS:
-        q_final = token_prefix(query, QUERY_MAX_TOKENS, tokenizer)
-    else:
-        q_final = query
-    # 2. fit's probe pair (the query with an empty document): the query keeps the frame room.
-    q_final = token_prefix(q_final, cap, tokenizer, rendered=lambda piece: assemble(piece, ""), add_special_tokens=True)
-    q_min = tokenizer.count(assemble(q_final, ""), add_special_tokens=True)
-    if q_min >= cap and tokenizer.count(document) > 0:
-        raise RuntimeError(
-            f"the query fills the pair budget of {cap} tokens and leaves the document nothing: "
-            "lower query_max_tokens (or raise max_tokens), so the document keeps a share"
-        )
-    # 3. the document gets what remains after the settled query and the frame:
-    d_final = token_prefix(
-        document, cap, tokenizer, rendered=lambda piece: assemble(q_final, piece), add_special_tokens=True
-    )
-    return q_final, d_final
 
 
 def _tokenizer_dir(spec: str) -> str:
@@ -149,105 +111,20 @@ def _tokenizer_dir(spec: str) -> str:
 
 
 class PairTokenizer:
-    """The tokenizer surface the reference needs, over the recipe's ``tokenizer.json``.
+    """The paper's tokenizer for ``score``: transformers' ``AutoTokenizer`` at the pinned revision.
 
-    The paper path is transformers' ``AutoTokenizer`` (the reference environment of
-    ``requirements-reference.txt``, where ``score`` runs). Stage 1 on CPU runs in the harness's
-    environment, which carries no transformers; there the same ``tokenizer.json`` loads through
-    the ``tokenizers`` library directly — the library transformers' fast tokenizers wrap — giving
-    the same ids, offsets and counts for this checkpoint (its ByteLevel post-processor adds no
-    tokens; measured on the checkpoint's tokenizer.json).
-
-    The ``padding_side`` the paper code sets is ``left``; padding applies to ``score`` batching
-    only (``_forward_scores``), never to the rendered prompt text.
+    Loaded with ``padding_side="left"`` exactly as the paper class's ``__init__``; padding applies to
+    ``score`` batching only (``_forward_scores``).  Needs the reference environment (transformers).
     """
 
     def __init__(self, spec: str, *, revision: str) -> None:
-        path = Path(spec).expanduser()
-        file = path / "tokenizer.json" if path.is_dir() else path
-        try:
-            from transformers import AutoTokenizer
-        except ModuleNotFoundError:
-            if not file.is_file():
-                raise SystemExit(
-                    f"the tokenizer spec {spec!r} names no local tokenizer.json and transformers is "
-                    "not installed: pass a local tokenizer.json path, or run in the reference "
-                    "environment of requirements-reference.txt"
-                ) from None
-            from tokenizers import Tokenizer
+        from transformers import AutoTokenizer
 
-            self._fast = Tokenizer.from_file(str(file))
-            self._hub = False
-        else:
-            self._fast = AutoTokenizer.from_pretrained(_tokenizer_dir(spec), padding_side="left", revision=revision)
-            # The paper's fallback (ContextualRerank.__init__); inert for this checkpoint, whose
-            # tokenizer_config.json already carries pad_token "+".
-            if self._fast.pad_token is None:
-                self._fast.pad_token = self._fast.eos_token
-            self._hub = True
-
-    def count(self, text: str, *, add_special_tokens: bool = False) -> int:
-        """The number of tokens of ``text``, optionally as the engine counts it."""
-        return len(self.ids(text, add_special_tokens=add_special_tokens))
-
-    def ids(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
-        """The token ids of ``text``, optionally with the post-processor's (none for this model)."""
-        if self._hub:
-            return list(self._fast(text, add_special_tokens=add_special_tokens)["input_ids"])
-        return list(self._fast.encode(text, add_special_tokens=add_special_tokens).ids)
-
-    def offsets(self, text: str) -> list[tuple[int, int]]:
-        """``(start, end)`` character offsets in ``text`` of each of its tokens, in order."""
-        if self._hub:
-            encoding = self._fast(text, add_special_tokens=False, return_offsets_mapping=True)
-            return [tuple(pair) for pair in encoding["offset_mapping"]]
-        return [tuple(pair) for pair in self._fast.encode(text, add_special_tokens=False).offsets]
-
-
-def token_prefix(
-    text: str,
-    max_tokens: int,
-    tokenizer: PairTokenizer,
-    *,
-    rendered: Any = None,
-    add_special_tokens: bool = False,
-) -> str:
-    """The longest prefix of ``text`` ending at one of its first ``max_tokens`` token boundaries.
-
-    The recipe budget's cut, over the recipe tokenizer's offset mapping: a verbatim prefix of
-    ``text`` (never tokens decoded back to text), counted as the engine reads it —
-    ``rendered(piece)`` when given (the assembled render, so a byte-level merge across a span
-    join cannot push the request over the budget) — a galloping, then binary search over token
-    boundaries. The mirror of the product's ``rcp_ndcg.data.preprocess.token_prefix``, which the
-    reference environment does not carry; stage 1's render comparison holds the two equal.
-    """
-
-    def count(piece: str) -> int:
-        return tokenizer.count(
-            rendered(piece) if rendered is not None else piece, add_special_tokens=add_special_tokens
-        )
-
-    if count(text) <= max_tokens:
-        return text
-    offsets = tokenizer.offsets(text)
-
-    def prefix(tokens: int) -> str:
-        return text[: offsets[tokens - 1][1]] if tokens > 0 else ""
-
-    def fits(tokens: int) -> bool:
-        return count(prefix(tokens)) <= max_tokens
-
-    # ``fitting`` fits (the empty prefix always does); ``over`` does not, or is past the budget.
-    over = min(max_tokens, len(offsets))
-    if fits(over):
-        return prefix(over)
-    fitting, step = over - 1, 1
-    while fitting > 0 and not fits(fitting):
-        over, fitting, step = fitting, max(fitting - step, 0), step * 2
-    while over - fitting > 1:
-        middle = (over + fitting) // 2
-        fitting, over = (middle, over) if fits(middle) else (fitting, middle)
-    return prefix(fitting)
+        self._fast = AutoTokenizer.from_pretrained(_tokenizer_dir(spec), padding_side="left", revision=revision)
+        # The paper's fallback (ContextualRerank.__init__); inert for this checkpoint, whose
+        # tokenizer_config.json already carries pad_token "+".
+        if self._fast.pad_token is None:
+            self._fast.pad_token = self._fast.eos_token
 
 
 class CtxlRerankReference:
@@ -258,8 +135,8 @@ class CtxlRerankReference:
     truncation at ``MAX_SEQ_LEN``, dtype (bfloat16, the pipeline's), the length-descending
     character-batch permutation with the 16-document cap and the 15,000-character padded-area
     budget, and the OOM back-off that splits a batch in half. The only changes from that module
-    are the harness's subprocess interface (``--mode`` CLI, pairs file in, JSON out), the pinned
-    revision and the instruction fold the served client applies.
+    are the harness's subprocess interface (``--mode`` CLI, pairs file in, JSON out) and the pinned
+    revision; the row's instruction is ignored (``instruction: none``, the paper's own path).
     """
 
     def __init__(
@@ -268,7 +145,6 @@ class CtxlRerankReference:
         *,
         tokenizer_spec: str,
         max_seq_len: int = MAX_SEQ_LEN,
-        query_max_tokens: int = QUERY_MAX_TOKENS,
         batch_size: int = BATCH_SIZE,
         batch_size_tokens: int = BATCH_SIZE_TOKENS,
         dtype: str = "bfloat16",
@@ -279,7 +155,6 @@ class CtxlRerankReference:
         self.model_name = model_name
         self.revision = revision
         self.max_length = max_seq_len
-        self.query_max_tokens = query_max_tokens
         self.batch_size = batch_size
         self.batch_size_tokens = batch_size_tokens
         self.dtype = dtype
@@ -321,14 +196,6 @@ class CtxlRerankReference:
         paper path, and the recipe declares ``instruction: none``): the bare query rides here.
         """
         return f"{HEAD}{doc}{MID}{query}{TAIL}"
-
-    def render_spans(self, query: str, documents: list[str]) -> dict[str, Any]:
-        """The harness's rerank render row body: the wire's settled query span and document spans."""
-        query_span, _ = served_spans(self.tokenizer, query, documents[0] if documents else "")
-        return {
-            "query": query_span,
-            "documents": [served_spans(self.tokenizer, query, str(document))[1] for document in documents],
-        }
 
     def score(self, query: str, docs: list[str], instruction: str | None = None) -> list[float]:
         """The raw relevance logit per document, aligned with ``docs`` (the paper's ``predict``).
@@ -399,6 +266,14 @@ class CtxlRerankReference:
             return self._forward_scores(batch[:mid]) + self._forward_scores(batch[mid:])
 
 
+def paper_spans(row: dict[str, Any]) -> dict[str, Any]:
+    """One pairs row in the harness's rerank span format: the spans the paper's prompt builder gets.
+
+    The raw query and the raw documents, uncut (the paper cuts only at encode); the row's instruction
+    is ignored (``instruction: none``)."""
+    return {"query": str(row["query"]), "documents": [str(document) for document in row["documents"]]}
+
+
 def device_name(device: str) -> str:
     """The device string the model is moved to: the harness's ``--device`` (``cpu`` default)."""
     return device or "cpu"
@@ -416,22 +291,11 @@ def main() -> int:
 
     rows_in = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
     if args.mode == "render":
-        # The harness's rerank reference contract: the wire's content spans per pairs row (the
-        # query settled once, each document cut to what remains). The row's instruction is ignored
-        # (the recipe declares instruction: none).
-        reference = CtxlRerankReference(tokenizer_spec=args.tokenizer)
-        rows = []
-        for index, row in enumerate(rows_in):
-            documents = [str(document) for document in row["documents"]]
-            spans = reference.render_spans(str(row["query"]), documents)
-            rows.append(
-                {
-                    "index": index,
-                    "shape": str(row.get("shape") or "pair"),
-                    "query": spans["query"],
-                    "documents": spans["documents"],
-                }
-            )
+        # The harness's rerank span format, filled with the paper's own spans (uncut; see paper_spans).
+        rows = [
+            {"index": index, "shape": str(row.get("shape") or "pair"), **paper_spans(row)}
+            for index, row in enumerate(rows_in)
+        ]
     else:
         reference = CtxlRerankReference(tokenizer_spec=args.tokenizer).load(device_name(args.device))
         rows = [

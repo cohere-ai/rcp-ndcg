@@ -8,9 +8,11 @@ merged rerank client's settle rule (the query ships at its declared share whenev
 the pair fit alone binds the share on overflow only).
 
 Stage 1 is CPU-only: the recipe's ``tokenizer.json`` (the only Hub artifact it needs) downloads
-into the shared tokeniser cache (``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when set, else ``tmp_path``),
-and the reference subprocess (``--mode render``, stdlib + ``tokenizers``) must reproduce the wire's
-content spans byte for byte.  Those tests are network tests and skip offline
+through the shared ``fetch_tokenizer`` (``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when set, else
+``tmp_path``; sha256-pinned), and the reference subprocess (``--mode render``, pure string work)
+fills the span format with the paper's own spans (the raw query and documents, uncut -- never a
+port of the client's cut): equal to the wire's on every under-cap row, over-cap rows in the declared
+``anchor_drop_over_cap`` table.  Those tests are network tests and skip offline
 (``tests/recipes/conftest.py``).  Weights, score mode and the engine belong to the GPU wave (the
 recipe ships ``status: unverified`` until it passes there).
 """
@@ -30,13 +32,15 @@ from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg_vllm.equivalence.reference import run_reference
 
 from ._contract import assert_recipe_contract
-from ._served import served_pair, served_rows, stage1_facts, tokenizer_cache
+from ._served import fetch_tokenizer, served_pair, served_rows, stage1_facts
 
 RECIPE_ID = "ctxl-rerank-v2-instruct-multilingual-6b"
 REPO_ID = "ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b"
 REVISION = "f14ca1a2fc204dc0934c84a3d2e278f8ff646b80"  # re-checked against the HF API on 2026-10-06
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / RECIPE_ID
+TOKENIZER_URL = f"https://huggingface.co/{REPO_ID}/resolve/{REVISION}/tokenizer.json"
+TOKENIZER_SHA256 = "b0240ce510f08e6c2041724e9043e33be9d251d1e4a4d94eb68cd47b954b61d2"  # Hub LFS oid at REVISION
 
 MAX_TOKENS = 8192
 QUERY_MAX_TOKENS = 4096
@@ -190,17 +194,9 @@ _PAIRS: list[dict] = [
 
 
 def _tokenizer_file(tmp_path: Path) -> Path:
-    """The recipe's ``tokenizer.json`` at the pinned revision, in the shared tokeniser cache (the
-    lane's scratch dir when ``RCP_NDCG_VLLM_TOKENIZER_CACHE`` is set, else ``tmp_path``)."""
-    try:
-        from huggingface_hub import hf_hub_download
-    except ModuleNotFoundError as error:  # pragma: no cover - the [hf] extra
-        pytest.skip(f"the Hub download needs huggingface_hub: {error}")
-    try:
-        target = tokenizer_cache(tmp_path / "tokenizer")
-        return Path(hf_hub_download(REPO_ID, "tokenizer.json", revision=REVISION, local_dir=str(target)))
-    except Exception as error:  # noqa: BLE001 - any Hub failure means the same skip
-        pytest.skip(f"offline: the {REPO_ID} tokenizer.json is not downloadable ({error})")
+    """The recipe's ``tokenizer.json`` at the pinned revision, sha256-checked, through the shared
+    tokenizer cache (``_served.fetch_tokenizer``); skips with the reason when offline."""
+    return fetch_tokenizer(TOKENIZER_URL, f"{RECIPE_ID}@{REVISION}/tokenizer.json", tmp_path, sha256=TOKENIZER_SHA256)
 
 
 def _local_recipe(tmp_path: Path):
@@ -215,16 +211,13 @@ def _local_recipe(tmp_path: Path):
     return load_recipe(copied), tokenizer_file
 
 
-def _over_share_query(tokenizer) -> str:
-    """A whitespace-clean query over the 4096-token share but under the pair budget (the declared
-    divergence row class)."""
-    words: list[str] = []
-    text = ""
-    for _ in range(6000):
-        words.append("flibbertigibbet")
-        text = " ".join(words) + "."
-        if tokenizer.count(text) > QUERY_MAX_TOKENS + 400:
-            break
+def _long_text(tokenizer, tokens: int) -> str:
+    """A whitespace-clean text of more than ``tokens`` tokens, sized from one measured unit (no
+    re-count of a growing text)."""
+    unit = " flibbertigibbet"
+    per_unit = max(1, tokenizer.count(unit * 8) // 8)
+    text = "flibbertigibbet" + unit * (tokens // per_unit + 50) + "."
+    assert tokenizer.count(text) > tokens
     return text
 
 
@@ -320,21 +313,22 @@ def test_the_served_and_reference_prompts_ignore_the_pairs_row_instruction(tmp_p
         assert row["documents"] == [document]
 
 
-def test_the_reference_render_spans_are_the_served_spans_including_over_share_and_over_budget(
-    tmp_path: Path,
-) -> None:
-    """The reference's ``render`` is its own port of the wire's settle rule and cut: byte-equal to
-    the client's captured spans (sweep item #5: the query settles at its share whenever it exceeds
-    it — the share never binds on overflow only)."""
+def test_the_reference_renders_the_paper_spans_never_the_clients_cut(tmp_path: Path) -> None:
+    """Decision 9: the reference's ``render`` fills the span format with the paper's own spans -- the
+    raw query and documents its prompt builder receives, uncut.  Under the cap and within the share
+    they equal the wire's spans byte for byte; on an over-share query and an over-budget document the
+    wire ships the client's cut (the settle rule; the content-only cut) while the reference keeps the
+    paper's uncut spans (the declared divergence row and the declared anchor_drop_over_cap row)."""
     from rcp_ndcg.data.tokenizer import load_tokenizer
 
     recipe, tokenizer_file = _local_recipe(tmp_path)
     tokenizer = load_tokenizer(str(tokenizer_file))
-    long_query = _over_share_query(tokenizer)
+    long_query = _long_text(tokenizer, QUERY_MAX_TOKENS + 400)
+    long_document = _long_text(tokenizer, MAX_TOKENS + 200)
     rows = [
         {"query": "short query", "documents": ["a short document.", "a second document."]},
         {"query": long_query, "documents": ["a short document under the settled share."]},
-        {"query": "short query", "documents": ["汉字填充句子，用于测试分词边界与截断行为。" * 900]},
+        {"query": "short query", "documents": [long_document]},
     ]
     pairs_path = _pairs_path(tmp_path, rows)
     wire = served_rows(recipe, rows, tokenizer)["per_shape"]["pair"]["spans"]
@@ -346,13 +340,16 @@ def test_the_reference_render_spans_are_the_served_spans_including_over_share_an
         out_path=tmp_path / "reference.json",
         tokenizer_spec=str(tokenizer_file),
     )
-    assert [{"query": row["query"], "documents": list(row["documents"])} for row in reference["rows"]] == wire
-    assert tokenizer.count(long_query) > QUERY_MAX_TOKENS
-    assert tokenizer.count(wire[1]["query"]) <= QUERY_MAX_TOKENS
-    assert wire[1]["query"] == long_query[: len(wire[1]["query"])]
+    spans = [{"query": row["query"], "documents": list(row["documents"])} for row in reference["rows"]]
+    assert spans == [{"query": row["query"], "documents": row["documents"]} for row in rows]  # uncut
+    assert spans[0] == wire[0]  # under the cap and the share: byte-identical with the wire
+    # The wire settles the over-share query at its share (the merged client's settle rule).
+    assert tokenizer.count(long_query) > QUERY_MAX_TOKENS >= tokenizer.count(wire[1]["query"])
+    assert wire[1]["query"] == long_query[: len(wire[1]["query"])] != long_query
+    # The over-budget pair: the wire cuts the document only, the " ??" anchor re-attached in budget.
     rendered = FRAME_HEAD + wire[2]["documents"][0] + FRAME_MID + wire[2]["query"] + FRAME_TAIL
     assert tokenizer.count(rendered, add_special_tokens=True) <= MAX_TOKENS
-    assert rendered.endswith(FRAME_TAIL)
+    assert wire[2]["query"] == "short query" and wire[2]["documents"][0] != long_document
 
 
 def test_stage1_on_cpu_passes_token_ids_anchors_and_the_served_template(tmp_path: Path) -> None:
@@ -362,20 +359,26 @@ def test_stage1_on_cpu_passes_token_ids_anchors_and_the_served_template(tmp_path
 
     recipe, tokenizer_file = _local_recipe(tmp_path)
     tokenizer = load_tokenizer(str(tokenizer_file))
-    pairs_path = _pairs_path(tmp_path, _PAIRS)
+    rows = [*_PAIRS, {"query": "short query", "documents": [_long_text(tokenizer, MAX_TOKENS + 200)]}]
+    pairs_path = _pairs_path(tmp_path, rows)
     document = stage1_prompts(recipe, pairs_path, str(sys.executable), over_length_per_shape=5)
-    assert document["sampled"] == 25  # 20 pairs + 5 over-length pair samples
+    assert document["sampled"] == 26  # 20 pairs + 1 over-budget pair + 5 over-length pair samples
     assert document["passed"] is True, document
     anchor = document["anchor_check"]
     assert anchor["passed"] is True, anchor["failures"][:1]
     assert anchor["checked"] == 2 * document["sampled"]  # one settled query + one document span per row
     render = document["render_check"]
     assert render["status"] == "run" and render["passed"] is True, render["failures"][:1]
-    assert render["rows"] == len(_PAIRS)
+    assert render["rows"] == len(rows)
+    # The over-budget pairs row differs by declaration (the paper's uncut spans vs the client's
+    # cut): reported in the non-gating table, never gated; every other row compared exactly.
+    over_cap = render["over_cap"]
+    assert over_cap["known_deviation"] is True and over_cap["gating"] is False
+    assert [entry["index"] for entry in over_cap["rows"]] == [len(_PAIRS)]
     assert document["template_render_check"]["passed"] is True, document["template_render_check"]["failures"][:1]
     engine = document["engine_tokenize_check"]
     assert engine["status"] == "not_run" and engine["passed"] is None  # no engine on CPU: neutral, never passed
-    facts = stage1_facts(recipe, _PAIRS, tokenizer, 5)
+    facts = stage1_facts(recipe, rows, tokenizer, 5)
     assert facts["per_shape"]["pair"]["cut_rows"] >= 5, facts["per_shape"]["pair"]["cut_rows"]
     template = recipe.client.template
     assert template is not None

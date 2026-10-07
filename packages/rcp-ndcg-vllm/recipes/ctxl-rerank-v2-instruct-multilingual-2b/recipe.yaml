@@ -121,10 +121,10 @@ notes: >-
   reported per pair at stage 2, non-gating. Declared divergence rows: a query over the share (over
   4096 tokens and under the budget) ships settled at the share while the reference keeps it whole
   and scores it - so the gating pairs keep queries within the share and documents within the
-  budget, and stage 1's render comparison (the reference's own port of the wire's spans, including
-  the settle rule) signals any divergence row loudly. Scores: the served score is the raw logit of
+  budget. Stage 1's render comparison holds the reference's spans (the raw query and documents
+  the paper's prompt builder receives, uncut -- never a port of the client's cut) against the
+  wire's: an over-share row fails it loudly, and over-cap rows ride its non-gating table. Scores: the served score is the raw logit of
   vocabulary position 0 at the final position (use_activation false on the client and in the
   pooler config); the fp32 score head vs the reference's bf16 head is bounded by the logit gate
-  (an unmeasured RFC proposal, not a measured bound - audit-synth's correction of the r-ctxl
-  decline reason). No plugin: the architecture override, the chat template and the pooler config
+  (an unmeasured proposal, not a measured bound). No plugin: the architecture override, the chat template and the pooler config
   suffice on the stock v0.31.0 image.
