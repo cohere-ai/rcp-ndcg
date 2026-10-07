@@ -1048,6 +1048,19 @@ released together.
 
 ### Changed
 
+- **The zerank recipes are one declared family** (`packages/rcp-ndcg-vllm/recipes/zerank-1-reranker/`,
+  `zerank-1-small-reranker/`, `zerank-2-reranker/`): the paper's `query.strip()`/`doc.strip()` is the
+  declared content normalisation `client.template normalize: [strip]` (zerank-1's template file loses its
+  jinja `| trim`; the declared whitespace divergence of zerank-1-small/zerank-2 closes as declared policy),
+  the recipes state the merged rerank client's settle rule (the pair fit binds on overflow; the shared query
+  settles at its `query_max_tokens` share whenever it exceeds it -- over-share queries are declared
+  divergence rows), all three pin `pooler_config.use_activation` server-side beside `client.use_activation`
+  and declare `client.recipe`, and zerank-1 stops passing `serve.convert` (the shakedown row: a rerank
+  recipe declares the checkpoint's scorer through `serve.hf_overrides`). The three references' `--mode
+  render` speak the rerank reference contract -- the wire's cut content spans via one settle-rule port --
+  and each recipe's contract test pins every resolved `serve`/`client`/`reference` field through
+  `tests/recipes/_contract.assert_recipe_contract` (two mutants per recipe red). The served prompts are
+  unchanged on whitespace-clean inputs.
 - **The BM25 index is persisted in bm25s' own format, never a pickle** (`rcp_ndcg.retrieval.sparse`): the
   index directory's model is stored with `BM25.save(..., allow_pickle=False)` (npz arrays + JSON parameters)
   and loaded with `allow_pickle=False` -- the index directory comes from ordinary user paths (`retrieval index
