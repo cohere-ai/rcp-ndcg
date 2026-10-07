@@ -191,3 +191,25 @@ def test_the_client_and_the_engine_pixel_budgets_must_agree(
 ) -> None:
     with pytest.raises(RecipeError, match=match):
         load_recipe(_media_recipe(tmp_path, client_policy=client_policy, serve_kwargs=serve_kwargs))
+
+
+def test_a_duplicate_yaml_key_is_refused(tmp_path: Path) -> None:
+    """YAML keeps the last of two equal keys silently: a recipe declaring a field twice would serve whichever
+    came last. The loader refuses it with a typed error naming the key and its line, and no shipped or fixture
+    recipe declares a key twice."""
+    import shutil
+
+    from rcp_ndcg_vllm import RecipeError
+
+    fixtures = recipe_dirs_path()
+    directory = tmp_path / "fixture-embed"
+    shutil.copytree(fixtures / "fixture-embed", directory)
+    path = directory / "recipe.yaml"
+    tokenizer = str((fixtures / ".." / "tokenizer.json").resolve())
+    text = path.read_text(encoding="utf-8").replace("../../tokenizer.json", tokenizer)
+    path.write_text(text.replace("  on_overflow: cut\n", "  on_overflow: cut\n  on_overflow: fail\n"), encoding="utf-8")
+    with pytest.raises(RecipeError, match="duplicate key 'on_overflow'"):
+        load_recipe(directory)
+    for root in (fixtures, Path(__file__).resolve().parents[1] / "recipes"):
+        for recipe_dir in sorted(entry for entry in root.iterdir() if (entry / "recipe.yaml").is_file()):
+            load_recipe(recipe_dir)
