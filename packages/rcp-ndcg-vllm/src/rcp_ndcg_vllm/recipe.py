@@ -211,9 +211,12 @@ class ReferenceSpec(BaseModel):
         entry: The reference module file in the recipe directory; the harness runs it as
             ``<reference-python> <recipe-dir>/<entry> --mode <mode> --pairs <file> --out <file>`` (see
             :mod:`rcp_ndcg_vllm.equivalence.reference` for the modes).  Not needed for ``stored_scores``.
-        known_deviations: Deliberate reference deviations the paper code carries (e.g. a whole-prompt right
-            cut that drops tail anchors on over-cap pairs); stage 2 gates only pairs under the cap and reports
-            the rest in a separate, non-gating table.
+        known_deviations: Deliberate reference deviations on over-cap inputs: ``anchor_drop_over_cap`` (the
+            reference's whole-prompt right cut drops tail anchors) or ``over_cap_cut_differs`` (the reference keeps
+            the anchors but cuts the content its own way, e.g. a joint ``longest_first`` truncation where the
+            client settles the query at its share). Either way the harness gates only the inputs under the cap
+            and reports the client's over-cap cuts in a separate, non-gating table; the reference stays the
+            paper's or the model card's -- it never copies the client's cut to make an over-cap row pass.
     """
 
     model_config = ConfigDict(**_no_extra())
@@ -221,7 +224,12 @@ class ReferenceSpec(BaseModel):
     kind: Literal["transformers", "sentence_transformers", "remote_code", "stored_scores"]
     score_scale: ScoreScale
     entry: str = Field(default="reference.py", description="reference module file inside the recipe directory")
-    known_deviations: list[Literal["anchor_drop_over_cap"]] = Field(default_factory=list)
+    known_deviations: list[Literal["anchor_drop_over_cap", "over_cap_cut_differs"]] = Field(default_factory=list)
+
+    @property
+    def over_cap_deviation(self) -> str | None:
+        """The declared over-cap deviation (over-cap inputs are reported, not gated), or ``None``."""
+        return next(iter(self.known_deviations), None)
 
 
 class Gates(BaseModel):
