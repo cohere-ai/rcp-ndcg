@@ -368,6 +368,10 @@ released together.
 
 ### Fixed
 
+- **A role client keeps an item's media placement through the fit**: the fitted text was put before every media
+  part, so a media-first item (a page and then its caption; the vision-language cards build their inputs media
+  first) went out text-first -- another input than the one given. The text now stands where the item's first
+  text part stood.
 - **The offline fake counts tokens as the engine would** (`rcp_ndcg.inference.fake`): `/pooling` answered one
   vector per whitespace word and drew its `prompt_token_ids`, so a pooling client with
   `document_skip_token_ids` over `fake://` refused every text whose words and tokens differ (a

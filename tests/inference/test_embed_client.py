@@ -405,6 +405,21 @@ class TestRequestShapes:
         assert parts[0]["text"] == "a caption"  # the side's prompt (empty) changed nothing
         assert parts[1]["image_url"]["url"].startswith("data:image/png;base64,")
 
+    def test_the_media_placement_survives_the_fit(self, tmp_path: Any) -> None:
+        """The order of an item's parts is information the model reads (a page before its caption is another
+        input than the caption before the page, and the vision-language cards put the media first): the fit
+        replaces the text in place, so a media-first item goes out media-first -- cut or not."""
+        from rcp_ndcg.data.templates import Segment, TemplateSpec
+
+        template = TemplateSpec(document=(Segment(fixed="doc: "), Segment(content="document")))
+        sender = FakeSender(handler("openai_embeddings", {}))
+        client = self._messages_client(sender, template=template, max_tokens=12)
+        image = self._png(tmp_path, "page.png")
+        for text in ("a caption", " ".join(["the"] * 40)):
+            client.encode([Content.from_parts([ImagePart(ref=image.media[0]), TextPart(text=text)])], EncodeRole.DOCUMENT)
+            parts = sender.calls[-1].json["messages"][0]["content"]
+            assert [part["type"] for part in parts] == ["image_url", "text"], text
+
     def test_media_on_the_text_wire_is_still_refused(self, tmp_path: Any) -> None:
         from tests.inference import _budget
 

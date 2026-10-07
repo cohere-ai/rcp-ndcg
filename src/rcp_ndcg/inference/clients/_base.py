@@ -671,9 +671,23 @@ class RoleClient[C: Endpoint]:
 
     @staticmethod
     def _with_text(content: Content, text: str) -> Content:
-        """The content with its text parts replaced by ``text``, media parts untouched."""
-        parts: list[Any] = [TextPart(text=text)] if (text or not content.has_media) else []
-        parts += [part for part in content.parts if not isinstance(part, TextPart)]
+        """The content with its text parts replaced by ``text``, in place: the text stands where the content's
+        first text part stood (its other text parts were joined into it), media parts untouched -- the order
+        of an item's parts is information the model reads (a media-first item stays media-first). A content
+        without a text part gets the text first. An empty text on a media item is dropped."""
+        keep_text = bool(text) or not content.has_media
+        if not any(isinstance(part, TextPart) for part in content.parts):
+            parts: list[Any] = [TextPart(text=text)] if keep_text else []
+            return Content.from_parts(parts + list(content.parts))
+        parts = []
+        placed = False
+        for part in content.parts:
+            if not isinstance(part, TextPart):
+                parts.append(part)
+            elif not placed:
+                placed = True
+                if keep_text:
+                    parts.append(TextPart(text=text))
         return Content.from_parts(parts)
 
     async def check_engine_media(self) -> None:
