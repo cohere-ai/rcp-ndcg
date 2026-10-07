@@ -172,7 +172,7 @@ ContextualAI ctxl-rerank-v2-instruct
     subprocess.
   - packages/rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-1b/template.jinja,
     packages/rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-2b/template.jinja
-    and packages/rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-6b/score-template-6b.jinja:
+    and packages/rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-6b/template.jinja:
     the vendor score templates adapted from each checkpoint's chat_template.jinja
     at its pinned revision -- ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b@8fd1edf6a98564cb712064f884b8ef7df5c1b876
     (upstream SHA-256 71212658f6231f4dbd772ff361758fdfb23fe93df9f9868d758642610f512f53),
@@ -180,9 +180,9 @@ ContextualAI ctxl-rerank-v2-instruct
     (upstream SHA-256 48cdd3809735930e818f54fb8761bdfd12fa2b024951baa2963fdb4b2d4d397b)
     and ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b@f14ca1a2fc204dc0934c84a3d2e278f8ff646b80
     (upstream SHA-256 205dc6813ce869bfeeb28ae9af919f5e8bc54123d13e5d378edd466ad16d721a).
-    The adaptations fold the instruction through the served /rerank route's
-    fields and reshape the score blocks; each recipe's notes record its own
-    delta lines.
+    The adaptations render the served /rerank route's two messages (roles
+    query and document) into the paper's two-line prompt; each recipe's notes
+    record its own delta lines.
 
 Jina AI jina-reranker-v3
   https://huggingface.co/jinaai/jina-reranker-v3
