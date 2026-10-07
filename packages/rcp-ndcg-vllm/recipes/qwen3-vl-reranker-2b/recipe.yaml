@@ -14,19 +14,19 @@ serve:
   runner: pooling
   convert: null            # not needed: the ForSequenceClassification suffix resolves to
                            # native Qwen3VLForConditionalGeneration wrapped by as_seq_cls_model
-                           # (pooling/classify); config/model.py:1950 at checkout a5bd0b085
+                           # (pooling/classify); config/model.py:2279 at the v0.31.0 tag
   hf_overrides:
     architectures: ["Qwen3VLForSequenceClassification"]
     classifier_from_token: ["no", "yes"]   # quoted: YAML reads a bare no as false. Order is
                                            # load-bearing: tokens[0]=no(false), tokens[1]=yes(true)
-                                           # -> score head W[yes]-W[no] (adapters.py:532-539)
+                                           # -> score head W[yes]-W[no] (adapters.py:566-571)
     is_original_qwen3_reranker: true       # sets method from_2_way_softmax, num_labels=1
-                                           # (model_executor/models/config.py:784-815;
-                                           # adapters.py:389-396)
+                                           # (model_executor/models/config.py:793-816, :1058;
+                                           # adapters.py:436-437)
   chat_template: template.jinja
   pooler_config: {use_activation: true}    # the sigmoid default pinned as CONTENT on the server too
                                            # (v0.31.0 config/pooler.py:60; the engine falls back to the
-                                           # pooler default, model.py:787): client.use_activation: true
+                                           # pooler default, pooling_params.py:111-125): client.use_activation: true
                                            # is the wire field, this covers any caller that does not
                                            # send it (sweep finding 12). No other pooler field: the
                                            # defaults are LAST pooling + the sigmoid, pinned above
@@ -132,19 +132,19 @@ sources:
      (the served template; this recipe's copy rewrites the two expression blocks to the
      query/document variable convention with a messages fallback, byte-equal under the engine's
      render)"
-  - "vllm renderers/hf.py:697 safe_apply_chat_template; scoring/protocol.py:38-66 (the /rerank
-     instruction field merged into chat_template_kwargs); scoring/io_processor.py:1032
-     get_score_prompt, :1139-1169 the chat-template render and the ChatTemplateResolutionError
-     fallback (checkout a5bd0b085; the rerank-path files were verified tag-identical or
-     diffed-unrelated by research/r-qwen3vl-rer)"
-  - "vllm model_executor/models/config.py:784-815 (is_original_qwen3_reranker -> method
-     from_2_way_softmax + classifier_from_token); model_executor/models/adapters.py:389-396
-     (num_labels=1) and :473-552 load_weights_using_from_2_way_softmax with the fp32 head
-     W[true] - W[false] at :532-539; vllm/config/model.py:1950 (the ForSequenceClassification
+  - "vllm v0.31.0 vllm/renderers/hf.py:757-778 safe_apply_chat_template; vllm/entrypoints/pooling/
+     scoring/protocol.py:38-66 (the /rerank instruction field merged into chat_template_kwargs);
+     scoring/io_processor.py:605 get_score_prompt, :690-707 the chat-template render with
+     messages [{role: query}, {role: document}] (the template's messages fallback) and the
+     ChatTemplateResolutionError fallback to the un-templated pair encode"
+  - "vllm v0.31.0 model_executor/models/config.py:793-816 and :1058 (is_original_qwen3_reranker -> method
+     from_2_way_softmax + classifier_from_token); model_executor/models/adapters.py:436-437
+     (num_labels=1) and :516-571 load_weights_using_from_2_way_softmax with the fp32 head
+     W[true] - W[false] at :566-571; vllm/config/model.py:2279 (the ForSequenceClassification
      suffix -> pooling/classify); model_executor/layers/pooler/activations.py:118-141
      (PoolerClassify, num_labels<2 -> sigmoid); model_executor/models/interfaces_base.py:160
      (default LAST pooling); vllm/config/pooler.py:60 (use_activation) and
-     config/model.py:787 (the engine defaults it from the pooler when the request sends none)"
+     pooling_params.py:111-125 (_merge_default_parameters: a request that sends none takes the pooler config's)"
   - "the R20 shape (the full chain is cited once, in qwen3-vl-embedding-2b's sources): vllm v0.31.0
      vllm/multimodal/processing/context.py:44-84 (the image-only overlay of a nested images_kwargs
      dict), :293-331 (no overlay at processor construction and HF __call__: the nested dict reaches
