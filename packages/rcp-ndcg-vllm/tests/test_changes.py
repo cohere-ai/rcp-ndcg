@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
+
+import pytest
+from rcp_ndcg.testing.corpus import manifest_digest
 
 from rcp_ndcg_vllm.changes import behaviour_report, changed_recipes, main
 from rcp_ndcg_vllm.fingerprint import behaviour_fingerprint, fingerprint_inputs
@@ -53,8 +57,14 @@ def _corpora_root(tmp_path: Path, index: dict) -> Path:
             "model": {"id": "fixtures/DenseEmbedder", "revision": "0123456789abcdef0123456789abcdef01234567"},
             "recipe": {"id": "fixture-embed", "behaviour_fingerprint": fingerprint, "fingerprint_inputs": inputs},
         }
+        records = directory / "records.jsonl"
+        records.write_text(json.dumps(_record([0.5, 0.5])) + "\n", encoding="utf-8")
+        manifest["integrity"] = {
+            "files": {"records.jsonl": {"sha256": hashlib.sha256(records.read_bytes()).hexdigest()}},
+            "records_count": 1,
+        }
+        manifest["integrity"]["manifest_sha256"] = manifest_digest(manifest)
         (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-        (directory / "records.jsonl").write_text(json.dumps(_record([0.5, 0.5])) + "\n", encoding="utf-8")
     return tmp_path / "vllm-0.31.0"
 
 
@@ -136,3 +146,21 @@ def test_corpora_resolve_by_their_manifests_and_a_moved_fingerprint_names_its_in
     with pytest.raises(StaleCorpusError) as error:
         resolve_corpus(recipe, tmp_path / "empty")
     assert "no committed corpus" in str(error.value)
+
+
+def test_a_corpus_whose_hashes_do_not_hold_is_refused(tmp_path: Path) -> None:
+    """The change handling reads every corpus through the one reader (``rcp_ndcg.testing.corpus``) and its
+    integrity check: a manifest edited without its digest is refused, naming the corpus -- never compared."""
+    from rcp_ndcg_vllm.changes import recipe_state
+    from rcp_ndcg_vllm.errors import HarnessError
+
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    fingerprint = behaviour_fingerprint(recipe)
+    root = _corpora_root(tmp_path, {fingerprint: dict(fingerprint_inputs(recipe))})
+    assert recipe_state(recipe, root)["state"] == "unchanged"
+    path = root / "fixture-embed" / fingerprint / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["recipe"]["fingerprint_inputs"]["model"] = "edited"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(HarnessError, match="manifest_sha256 mismatch"):
+        recipe_state(recipe, root)

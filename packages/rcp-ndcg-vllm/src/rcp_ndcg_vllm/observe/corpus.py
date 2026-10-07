@@ -687,7 +687,10 @@ def subset_for_repository(
 
 
 def changed_since(recipes: list[Recipe], corpus_index: dict[str, Any], *, engine_version_of: Any) -> dict[str, Any]:
-    """Section 7's re-record-changed-only: the recipes whose corpus key moved since the previous index.
+    """Section 7's re-record-changed-only for a WAVE: the recipes whose corpus key moved since a previous
+    wave's index (the wave runner's ``--changed-since <wave.json>``).  The selection against the corpora
+    committed in the repository is :func:`rcp_ndcg_vllm.changes.changed_recipes` (``python -m
+    rcp_ndcg_vllm.changes changed``); both key a corpus by the same behaviour fingerprint.
 
     Inputs: the recipes, the previous index (a ``wave.json``: ``fingerprints`` and ``engine_versions``, each
     ``{recipe_id: value}``) and a callable giving each recipe's engine version.  A recipe is recorded again

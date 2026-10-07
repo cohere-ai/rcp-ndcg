@@ -3,11 +3,13 @@ what moved.
 
 Two commands, one library:
 
-* ``changed`` -- the **re-record-changed-only** selection: every recipe of the recipes root, its
-  behaviour fingerprint recomputed from the repository, reported against the committed corpora:
+* ``changed`` -- the **re-record-changed-only** selection against the corpora COMMITTED in the
+  repository: every recipe of the recipes root, its behaviour fingerprint recomputed, reported as
   ``new`` (no corpus), ``changed`` (a fingerprint moved -- the inputs that moved are named) or
-  ``unchanged``. The wave runner's ``--changed-since <corpus-index>`` mode records exactly the
-  ``changed`` and ``new`` ones (and, for a new engine version, the protocol layer once).
+  ``unchanged`` -- what a reviewer re-records before a release. The wave runner's own
+  ``--changed-since <wave.json>`` selection is another scope: it compares a previous WAVE's index (its
+  fingerprints and engine versions, :func:`rcp_ndcg_vllm.observe.corpus.changed_since`), so a wave
+  re-records what moved since that wave; both key a corpus by the same behaviour fingerprint.
 * ``diff`` -- the **behaviour diff** of two corpora of one recipe (per input, the score or vector
   deltas, changed statuses, changed refusals and changed protocol behaviour, summarised by stratum),
   written here for review before a new corpus replaces the old in the repository.
@@ -53,12 +55,19 @@ class StaleCorpusError(HarnessError):
 
 def _recorded(corpora_root: str | Path, recipe_id: str) -> dict[str, tuple[Path, dict[str, str]]]:
     """The recipe's committed corpora by recorded fingerprint: ``{fingerprint: (directory, inputs)}``,
-    found by scanning manifests (:func:`rcp_ndcg.testing.engines.find_corpora`)."""
+    found by scanning manifests (:func:`rcp_ndcg.testing.engines.find_corpora`) and read through the one
+    corpus reader (:func:`rcp_ndcg.testing.corpus.load_corpus`) with its integrity check: a corpus whose
+    hashes do not hold is refused (:class:`HarnessError` naming it and the mismatches), never compared."""
+    from rcp_ndcg.testing.corpus import integrity_mismatches, load_corpus
     from rcp_ndcg.testing.engines import find_corpora
 
     recorded: dict[str, tuple[Path, dict[str, str]]] = {}
     for directory in find_corpora(corpora_root, recipe_id=recipe_id):
-        manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+        corpus = load_corpus(directory)
+        mismatches = integrity_mismatches(corpus)
+        if mismatches:
+            raise HarnessError(f"corpus {directory}: its hashes do not hold ({'; '.join(mismatches)})")
+        manifest = corpus.manifest
         fingerprint = str(manifest["recipe"]["behaviour_fingerprint"])
         recorded[fingerprint] = (directory, dict(manifest["recipe"].get("fingerprint_inputs") or {}))
     return recorded
