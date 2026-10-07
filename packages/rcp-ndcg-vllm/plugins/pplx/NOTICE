@@ -140,10 +140,6 @@ Qwen3-VL-Embedding-2B
     (https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/blob/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/scripts/qwen3_vl_embedding.py,
     SHA-256 8ffa74a1a6bb759610c57865ea416fd4daf9936cb787520e1112a3e1d547f36a;
     the shipped copy is byte-identical).
-  - packages/rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/template.jinja: the
-    text frame reduced from the checkpoint's chat_template.jinja at the same
-    revision (upstream SHA-256
-    a47e6afb389f86f45be7810f17d2686fd42b2bec7ba6e6958abf85845af258c5).
 
 Qwen3-VL-Reranker-2B
   https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B
@@ -214,6 +210,11 @@ Perplexity pplx-embed-v2-context-9b-preview
     checkpoint's remote modeling_pplx_contextual.py (`_pool`, `encode`) at
     revision b667039ee8b438a6350fbc91bbcecd86f9d363ba (upstream SHA-256
     090f68c9907f2b055b3f41bd0dfc94ef8250e8a98e390e6d308b8fa34702bd45).
+  - packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/hf_config.py:
+    `PplxContextualConfig` restates `PplxContextualConfig` of the checkpoint's
+    remote configuration_pplx_contextual.py (lines 6-27) at the same revision
+    line for line (upstream SHA-256
+    fc05839ea7274b6d0c2c02aea7157a247df081bd31f647c8d612e7552ceba99a).
 
 Model card examples (the Apache-2.0 checkpoint repositories above, plus
 zeroentropy/zembed-1-embedding, Apache-2.0)
