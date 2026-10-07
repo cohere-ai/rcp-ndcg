@@ -48,8 +48,10 @@ environments that are never mixed. `bootstrap.sh` builds them from a staged RC:
 
 - **engine** — the image's own Python, which runs `vllm serve`. Untouched, except recipe plugin wheels
   installed with `--no-deps`: a spec that names a staged file installs from the staged tree; a name installs
-  from the staged **wheelhouse only** (`--no-index --find-links <stage>/wheelhouse`, never an index). A plugin
-  found nowhere is recorded with its exact name (the report's engine block lists it under `plugins_failed`)
+  from the staged **wheelhouses only** (`--no-index --find-links <stage>/wheelhouse`, plus one `--find-links`
+  per existing `<stage>/extra/<name>/wheelhouse`, where a wheel staged through `EXTRA_DIRS` lands; never an
+  index). A plugin found nowhere is recorded with its exact name (the report's engine block lists it under
+  `plugins_failed`)
   and the wave marks exactly the recipes that name it failed — one failing recipe never stops the wave, end
   to end (a recipe that fails validation is likewise reported on stderr, skipped by the collect step, and
   marked failed in the wave report with the validation message). A `pip freeze` before and after must differ

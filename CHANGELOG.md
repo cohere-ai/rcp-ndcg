@@ -92,6 +92,10 @@ released together.
   new draw. `fake_uniform` (the judge's, the reranker's and the token-id draws) is unchanged. The recipe tests'
   8-wide probe copy of a 2048-wide multi-vector recipe stays: its assertions are width-independent, and the
   shipped width still costs seconds per probed text where the probe costs milliseconds.
+- **A named recipe plugin is found in every staged wheelhouse**: `bootstrap.sh` installs a plugin named by a
+  recipe (not staged as a file) with one `--find-links` per existing `<stage>/extra/<name>/wheelhouse` beside
+  `<stage>/wheelhouse`, still `--no-index`: a plugin wheel staged through `rc_build.sh`'s `EXTRA_DIRS` lands
+  there and was not found, so the recipes that name it failed.
 - **The release publishes in install order**: `publish-vllm` waits for `publish-core` and `publish-rcp-ndcg` (it
   pins `rcp-ndcg==<version>` exactly, as `rcp-ndcg` pins the core). Every instant of the rollout installs, and a
   failed sibling can no longer strand a permanently uninstallable `rcp-ndcg-vllm` on PyPI.

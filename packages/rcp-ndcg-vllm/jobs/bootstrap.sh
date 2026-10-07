@@ -107,12 +107,19 @@ freeze_diff_guard() {
 
 # install_plugin_wheels SPECS_FILE ALLOWED_FILE FAILED_FILE: install one plugin spec per line into the
 # engine environment.  A spec that names a staged file installs from the staged tree; a name installs
-# from the staged wheelhouse ONLY (--no-index --find-links "$STAGE_DIR/wheelhouse", never an index:
-# the stage is the whole truth).  A spec that cannot install (a plugin found nowhere) is appended to
+# from the staged wheelhouses ONLY (--no-index --find-links "$STAGE_DIR/wheelhouse", plus each existing
+# "$STAGE_DIR"/extra/*/wheelhouse - a wheel staged through rc_build's EXTRA_DIRS lands there - never an
+# index: the stage is the whole truth).  A spec that cannot install (a plugin found nowhere) is appended to
 # FAILED_FILE with its exact name - run_wave's --failed-plugins then fails exactly the recipes that
 # name it - and this returns 0 even when every plugin failed: one failing recipe never stops the job.
 install_plugin_wheels() {
-  local specs_file="$1" allowed_file="$2" failed_file="$3" plugin plugin_path
+  local specs_file="$1" allowed_file="$2" failed_file="$3" plugin plugin_path extra_wheelhouse
+  local -a links=(--find-links "$STAGE_DIR/wheelhouse")
+  for extra_wheelhouse in "$STAGE_DIR"/extra/*/wheelhouse; do
+    if [[ -d "$extra_wheelhouse" ]]; then
+      links+=(--find-links "$extra_wheelhouse")
+    fi
+  done
   while IFS= read -r plugin; do
     [[ -z "$plugin" ]] && continue
     plugin_path=""
@@ -131,10 +138,10 @@ install_plugin_wheels() {
       fi
     else
       # Not a staged file: installed as named from the staged wheelhouse only.
-      echo "bootstrap: the recipe's plugin $plugin is not staged; installing it from $STAGE_DIR/wheelhouse" >&2
-      if ! "$ENGINE_PYTHON" -m pip install --quiet --no-deps --no-index \
-        --find-links "$STAGE_DIR/wheelhouse" "$plugin"; then
-        echo "bootstrap: the plugin $plugin is neither staged nor in the staged wheelhouse;" \
+      echo "bootstrap: the recipe's plugin $plugin is not staged; installing it from the staged wheelhouses" \
+        "(${links[*]})" >&2
+      if ! "$ENGINE_PYTHON" -m pip install --quiet --no-deps --no-index "${links[@]}" "$plugin"; then
+        echo "bootstrap: the plugin $plugin is neither staged nor in a staged wheelhouse;" \
           "the recipes that name it will fail (with the exact name)" >&2
         printf '%s\n' "$plugin" >>"$failed_file"
         continue

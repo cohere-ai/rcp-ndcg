@@ -199,10 +199,17 @@ def _fake_engine_python(tmp_path: Path, *, fail_spec: str) -> Path:
     return script
 
 
-def _install_plugin_wheels(tmp_path: Path, specs: str, *, fail_spec: str = "") -> subprocess.CompletedProcess[str]:
-    """Run bootstrap's install_plugin_wheels (its functions, by sourcing) with a fake engine python."""
+def _install_plugin_wheels(
+    tmp_path: Path, specs: str, *, fail_spec: str = "", extra: tuple[str, ...] = ()
+) -> subprocess.CompletedProcess[str]:
+    """Run bootstrap's install_plugin_wheels (its functions, by sourcing) with a fake engine python.
+
+    ``extra`` names EXTRA_DIRS entries staged under ``<stage>/extra/<name>/``; a name ending in ``/wheelhouse``
+    stages that entry with a wheelhouse directory, any other name without one."""
     stage = tmp_path / "stage"
     (stage / "wheelhouse").mkdir(parents=True)
+    for entry in extra:
+        (stage / "extra" / entry).mkdir(parents=True)
     recipes = tmp_path / "recipes"
     recipes.mkdir()
     specs_file = tmp_path / "specs.txt"
@@ -235,6 +242,22 @@ def test_bootstrap_installs_a_named_plugin_from_the_staged_wheelhouse_only(tmp_p
     assert str(tmp_path / "stage" / "wheelhouse") in log
     assert (tmp_path / "allowed.txt").read_text(encoding="utf-8").strip() == "my-plugin"
     assert not (tmp_path / "failed.txt").exists() or not (tmp_path / "failed.txt").read_text(encoding="utf-8").strip()
+
+
+def test_bootstrap_finds_a_named_plugin_in_every_staged_extra_wheelhouse(tmp_path: Path) -> None:
+    """A plugin wheel staged through EXTRA_DIRS lands under <stage>/extra/<name>/wheelhouse: the named install
+    also finds links there -- each existing extra wheelhouse, still never an index."""
+    completed = _install_plugin_wheels(tmp_path, "my-plugin\n", extra=("one/wheelhouse", "two", "three/wheelhouse"))
+    assert completed.returncode == 0, completed.stderr
+    argv = (tmp_path / "engine-python.log").read_text(encoding="utf-8").split()
+    links = [argv[index + 1] for index, word in enumerate(argv) if word == "--find-links"]
+    stage = tmp_path / "stage"
+    assert links == [
+        str(stage / "wheelhouse"),
+        str(stage / "extra" / "one" / "wheelhouse"),
+        str(stage / "extra" / "three" / "wheelhouse"),
+    ]
+    assert "--no-index" in argv and argv[-1] == "my-plugin"
 
 
 def test_bootstrap_a_plugin_found_nowhere_is_recorded_with_its_exact_name(tmp_path: Path) -> None:
