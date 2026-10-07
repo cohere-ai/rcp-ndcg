@@ -359,6 +359,7 @@ class RerankClient(RoleClient):
         ):
             query_text = token_prefix(query_text, self._budget.query_max_tokens, self._tokenizer)
         if self._budget is not None and request_prepared.media:
+            slices = request_prepared.per_content()
             if self._tokenizer is not None:
                 query_render = rendered_pair_tokens(
                     self._budget,
@@ -376,7 +377,7 @@ class RerankClient(RoleClient):
                 self._fit_media_for_request(
                     [content],
                     doc_ids=[str(index)],
-                    prepared=request_prepared.select([1 + index]),
+                    prepared=slices[1 + index],
                     allowance=max(
                         self._budget.max_tokens - query_media_raw - query_render - (1 if content.text else 0), 0
                     ),
@@ -392,7 +393,7 @@ class RerankClient(RoleClient):
             query_fit = self._fit_media_for_request(
                 [prepared_query],
                 doc_ids=[QUERY_DOC_ID],
-                prepared=request_prepared.select([0]),
+                prepared=slices[0],
                 allowance=max(self._budget.max_tokens - max(pair_media, default=0) - query_render - text_floor, 0),
             )
             prepared_query = query_fit[0][0]

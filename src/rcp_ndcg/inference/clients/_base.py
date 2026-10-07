@@ -411,13 +411,9 @@ class RoleClient[C: Endpoint]:
                     f"{len(doc_ids)} doc_id(s) for {len(contents)} content(s); one doc_id per content names "
                     "the census rows of a request's prepared media",
                 )
-            offset = 0
-            for content, doc_id in zip(prepared.contents, doc_ids, strict=True):
-                count = sum(len(part.media_refs()) for part in content.parts)
-                items = prepared.media[offset : offset + count]
-                offset += count
-                if items:
-                    self.media_census.record(corpus=self.ROLE, doc_id=doc_id, media=items, dropped=False)
+            for one, doc_id in zip(prepared.per_content(), doc_ids, strict=True):
+                if one.media:
+                    self.media_census.record(corpus=self.ROLE, doc_id=doc_id, media=one.media, dropped=False)
         return prepared
 
     def _media_is_on_wire(self) -> bool:
@@ -454,7 +450,7 @@ class RoleClient[C: Endpoint]:
     ) -> tuple[list[Content], list[int]]:
         """The media fit of a request whose wire carries ONE item per budget (the pooling items, the
         embeddings inputs): each item's media fitted on its own, sliced from the one preparation
-        (:meth:`PreparedRequest.select`, never a second preparation), against the item shape's budget
+        (:meth:`PreparedRequest.per_content`, never a second preparation), against the item shape's budget
         (:meth:`~rcp_ndcg.data.preprocess.TextBudget.shape_max_tokens`) minus that shape's fixed frame
         (:func:`~rcp_ndcg.data.preprocess.fixed_overhead`) -- the threshold the text fit measures, so the
         media fit never keeps what the text fit then refuses.
@@ -472,10 +468,8 @@ class RoleClient[C: Endpoint]:
             return list(request.contents), [0] * len(request.contents)
         allowance = max(self._budget.shape_max_tokens(shape) - fixed_overhead(self._budget, self._tokenizer, shape), 0)
         fitted = [
-            self._fit_media_for_request(
-                [content], doc_ids=[doc_ids[index]], prepared=request.select([index]), allowance=allowance
-            )
-            for index, content in enumerate(request.contents)
+            self._fit_media_for_request(one.contents, doc_ids=[doc_id], prepared=one, allowance=allowance)
+            for one, doc_id in zip(request.per_content(), doc_ids, strict=True)
         ]
         return [pair[0][0] for pair in fitted], [pair[1] for pair in fitted]
 
@@ -502,7 +496,7 @@ class RoleClient[C: Endpoint]:
             contents: The wire request's contents, as prepared.
             doc_ids: One census doc_id per content, for the drop rows.
             prepared: The caller's own preparation of exactly ``contents`` (it prepared the whole request
-                once, through :meth:`_prepare_request`, and slices it with :meth:`PreparedRequest.select`);
+                once, through :meth:`_prepare_request`, and slices it with :meth:`PreparedRequest.per_content`);
                 ``None`` prepares here. A second preparation of already-prepared contents would re-inline
                 the bytes and record census rows against ``data:`` URIs, so callers that already prepared
                 pass the request in.

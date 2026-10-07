@@ -50,8 +50,9 @@ released together.
   `TextBudget.shape_max_tokens(shape)` (the one home of a shape's budget: `query_max_tokens` on the embedding
   roles' query shape, else `max_tokens`).
 - `rcp_ndcg.data.prepare`: `PreparedRequest.content_tokens` (per-content media token counts) and
-  `PreparedRequest.select` (a slice of a prepared request -- the role clients prepare a request once, never
-  re-inline prepared bytes); `MediaCensus.recorded()` (the public read the tests use instead of private
+  `PreparedRequest.per_content()` (each content's slice of a prepared request, in one pass -- the role
+  clients prepare a request once and fit each wire request's slice, never re-inlining prepared bytes; a
+  corpus encode is one request, so the slicing is linear in it); `MediaCensus.recorded()` (the public read the tests use instead of private
   state).
 - `rcp_ndcg.data.media`: `data_uri` (the one builder of every inline `data:` URI the package writes) and
   `DEFAULT_IMAGE_MIME` beside it; `rcp_ndcg.data.prepare.DEFAULT_IMAGE_MIME` is re-exported from the new home.

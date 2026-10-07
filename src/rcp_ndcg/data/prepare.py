@@ -150,13 +150,16 @@ class PreparedRequest(NamedTuple):
     """Per content, its own media token counts (the same rule as :attr:`tokens`). A per-content slice of a
     request (:meth:`select`) needs them; :func:`prepare_request` fills them."""
 
-    def select(self, indices: Sequence[int]) -> PreparedRequest:
-        """The preparation of a subset of this request's contents: their media items (the flat list is in
-        content order, so it slices by each content's media count) and their exact media token counts.
+    def per_content(self) -> tuple[PreparedRequest, ...]:
+        """The preparation of each content on its own, in one pass: its media items (the flat list is in
+        content order, so it slices by each content's media count) and its exact media token counts.
 
-        A role client that prepares a whole request once and then fits one wire request's slice of it (a
-        rerank pair, one pooling item) calls this instead of preparing the slice again -- a second
-        preparation would re-inline prepared bytes and record census rows against ``data:`` URIs.
+        The one slicing of a prepared request. A role client that prepares a whole request once and then
+        fits each wire request's share of it (one pooling item, one rerank document, the rerank query) takes
+        these slices instead of preparing the share again -- a second preparation would re-inline prepared
+        bytes and record census rows against ``data:`` URIs -- and the census rows of the kept media are
+        recorded per slice. One pass: a corpus encode is one request, so a slice that re-walked every
+        content per item would be quadratic in the corpus.
 
         Raises:
             DataError: this request carries no per-content counts (it was not built by
@@ -166,22 +169,22 @@ class PreparedRequest(NamedTuple):
             raise DataError(
                 "a prepared request without per-content token counts cannot be sliced; construct prepared "
                 "requests through prepare_request, which fills them",
+                hint="prepare the request with prepare_request (it records each content's media token counts)",
             )
-        wanted = set(indices)
-        media: list[PreparedMedia] = []
+        slices: list[PreparedRequest] = []
         offset = 0
-        for position, content in enumerate(self.contents):
+        for content, tokens in zip(self.contents, self.content_tokens, strict=True):
             count = sum(len(part.media_refs()) for part in content.parts)
-            if position in wanted:
-                media.extend(self.media[offset : offset + count])
+            slices.append(
+                PreparedRequest(
+                    contents=[content],
+                    media=self.media[offset : offset + count],
+                    tokens=tokens,
+                    content_tokens=(tokens,),
+                )
+            )
             offset += count
-        tokens = tuple(self.content_tokens[position] for position in indices)
-        return PreparedRequest(
-            contents=[self.contents[position] for position in indices],
-            media=media,
-            tokens=MediaTokenCount(sum(count.tokens for count in tokens), sum(count.bounded for count in tokens)),
-            content_tokens=tokens,
-        )
+        return tuple(slices)
 
 
 class MediaFit(NamedTuple):

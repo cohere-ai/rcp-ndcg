@@ -1729,6 +1729,47 @@ class TestRerankPairFitWithMedia:
         assert sender.prompt_tokens and max(sender.prompt_tokens) <= 200, "no pair ships over the budget"
 
 
+class TestOnePreparationScalesLinearly:
+    """A corpus encode is ONE request through the client (the retrieval API hands it the whole corpus), so
+    slicing the one preparation per item must cost each item once: a per-item slice that re-walks every
+    content made a media corpus quadratic (10k page images, ~10^8 part walks before a request went out)."""
+
+    def test_the_per_item_media_fit_walks_each_item_a_bounded_number_of_times(
+        self, tokenizer_json: str, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        count = 60
+        contents = [_image_content(tmp_path, index, 56) for index in range(count)]
+        sender = _GatedSender(
+            PoolingServer({}, default=np.ones((2, 2), dtype=np.float16), media_vector=np.ones((2, 2), dtype=np.float16))
+        )
+        client = PoolingClient(
+            PoolingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="colqwen",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            sender=sender,
+        )
+        walks = [0]
+        media_refs = ImagePart.media_refs
+
+        def counted(part: ImagePart) -> Any:
+            walks[0] += 1
+            return media_refs(part)
+
+        monkeypatch.setattr(ImagePart, "media_refs", counted)
+
+        result = asyncio.run(client.aencode(contents, EncodeRole.DOCUMENT))
+
+        assert result.num_items == count
+        assert walks[0] <= 8 * count, f"{walks[0]} part walks for {count} items: the slicing is not linear"
+
+
 class TestPoolFramePerShape:
     """The pooling media allowance reserves the REQUEST SHAPE's frame, not the query's (the verifier's
     R17): a document batch leaves the ``document`` frame's tokens beside the media, or the text fit refuses
