@@ -1,0 +1,25 @@
+{# The chat template vLLM serves for zerank-1-reranker (--chat-template), rendered two ways:
+
+   - serve time (vLLM's CrossEncoderIOProcessor.get_score_prompt): the engine applies this file to
+     [{"role": "query", "content": ...}, {"role": "document", "content": ...}] with tokenize=False
+     (transformers' jinja settings; no add_generation_prompt);
+   - the harness's stage-1 template check: the same file rendered with the query/document variables.
+
+   The conditional keeps the fixed frame single-sourced: only the content extraction branches on the
+   caller. Both branches yield the same string for the same texts. The content spans carry no
+   filter here: the paper's query.strip()/doc.strip() is the recipe's declared normalisation
+   (client.template normalize: [strip]); fit strips the spans and the wire ships them stripped, so
+   the rendered prompt matches the paper byte for byte (measured 21/21 token-id equal, including
+   the whitespace-padded case; r-zerank1 check_cpu.py).
+   The unconditional assistant header is the model's anchor: the score is read at the last position,
+   which is the newline after "assistant". The header's newline sits mid-template, before the final
+   `{{ "" }}` line, so no env setting can strip it; the file itself ends without a trailing newline
+   (and jinja's default keep_trailing_newline=False would strip one anyway). Also load bearing:
+   without this file, vLLM's rerank path silently falls back to tokenizing query and document as a
+   pair (no warning for a converted architecture at vLLM d0d6e5f3a, io_processor.py:701-710). #}
+<|im_start|>system
+{{ (query if query is defined else (messages | selectattr('role', 'eq', 'query') | map(attribute='content') | first)) }}<|im_end|>
+<|im_start|>user
+{{ (document if document is defined else (messages | selectattr('role', 'eq', 'document') | map(attribute='content') | first)) }}<|im_end|>
+<|im_start|>assistant
+{{ "" }}

@@ -1,0 +1,20 @@
+# The reference environment for zerank-2-reranker's reference.py, in ITS OWN python (never the
+# harness's process, never the engine image). Install with the reference python:
+# pip install -r requirements-reference.txt. The wave runner takes it via --reference-python;
+# the reference subprocess runs while the engine on that slot is up and releases its memory
+# when it exits.
+#
+# Stage 1 (--mode render) needs only tokenizers + huggingface_hub (both below; both are
+# transformers' own dependencies). Stage 2 (--mode score) needs torch and the ~8 GB
+# zeroentropy/zerank-2-reranker weights. torch/transformers/scipy are the subset of the paper's
+# pins (experiments/paper/rerankers/reference/requirements.txt, the package's former [local]
+# extra) that this reference needs: it passes neither attn_implementation nor device_map, so the
+# paper file's accelerate and flash-attn pins are deliberately not carried. The paper's zerank
+# reference computes its sigmoid with scipy.special.expit (a hand-rolled math.exp would overflow
+# on very negative logits); the score head runs in bf16.
+
+torch==2.9.1
+transformers==4.57.6
+scipy>=1.11
+tokenizers>=0.21
+huggingface_hub>=0.30

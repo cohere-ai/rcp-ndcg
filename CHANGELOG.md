@@ -65,6 +65,13 @@ released together.
   a content count under it, so whether a role client changed an input is read from the record. The pooling
   client's census rows now name each input's original position (an omitted empty document no longer shifts
   a later one's id), as the rerank client's do.
+- **`rcp-ndcg-vllm` recipes: `reference.known_deviations` accepts `over_cap_cut_differs`** beside
+  `anchor_drop_over_cap`: a reference that keeps the anchors but cuts over-cap content its own way (a joint
+  `longest_first` truncation where the client settles the query at its share) declares it, and the harness
+  reports those inputs outside the gates. A reference stays the paper's or the model card's; it never
+  copies the client's cut to make an over-cap row pass. `schema/recipe.schema.json` carries the new value,
+  and the new read-only property `ReferenceSpec.over_cap_deviation` names the declared over-cap deviation
+  (or `None`), which the harness's stages read.
 - **The adapter seam's contract is declared and checked** (`rcp_ndcg.inference.adapters.base`): `AdapterBase`
   carries the credential and capability ClassVars (`HOSTED`, `API_KEY_ENV`, `KEY_REQUIRED`, `AUTH_HEADER`,
   `DEFAULT_BASE_URL`, `MAX_BATCH`, `SUPPORTS_DIMENSIONS`, `ENCODING_FORMAT`, `REQUEST_SHAPES`) with declared
@@ -211,6 +218,28 @@ released together.
   apply, never a change: the rerank settlement compares the normalised query with the settled span and
   records a cut only when content was removed; the pair fit's residual re-fit at a shorter query span records
   that settlement too. A record under no input position is attributed to every input of its call.
+- **The case loader reads a recipe template's query frame as the query side's text prefix** (`rcp-ndcg-test`):
+  a case's run-level `inputs.instruction` passes when the recipe's `query_prompt` or a fixed segment of its
+  template's `query` shape carries it verbatim as a whole delimited unit (starting at the text's start, a
+  newline or a label's colon, ending at its end or a newline: a substring such as the frame's own `query`
+  label or a truncated instruction is refused; a document frame never counts). The product allows exactly one of the two per side (a
+  `query_prompt` beside a template is refused), so a template recipe such as qwen3-embedding-0.6b, whose
+  `Instruct: ...\nQuery:` frame sends the instruction on every query, was refused with a fix it could not
+  apply. A frame without the instruction is still refused.
+- **NOTICE attributes every third-party file the recipes and plugins carry**, each re-checked at its pinned
+  revision (upstream SHA-256 and licence): the reference modules that port model-card or remote code
+  (ctxl, jina-reranker-v3, qwen3-embedding-0.6b, the qwen3-reranker and zerank families,
+  qwen3-vl-reranker-2b), the topk plugin's restated config class and the pplx plugin's pooling core and
+  pooler join the templates and the vendored Qwen3-VL-Embedding script; the pplx plugin's paths are
+  corrected. Two packaging tests keep it so: every repository path NOTICE names exists, and every recipe
+  template, vendored recipe module and audited port is named. NOTICE's opening summary names the MIT
+  licence of the Perplexity entry beside the two non-commercial ones (a third packaging test checks that
+  the summary names every licence an entry names).
+- **The equivalence harness's stage-1 over-length sampler is bounded** (`rcp-ndcg-vllm`): it measures the
+  padding's token rate once and sizes each append from the measured deficit (at most 8 passes), instead of
+  re-tokenizing the growing text at every step -- quadratic at 32768-token budgets, the network recipe tests'
+  hang. A recipe tokenizer whose count never reaches twice the budget (a truncation ceiling in the file) is
+  refused with a `HarnessError` instead of yielding a sample that was never over the cap.
 - **The offline fake draws one seeded stream per vector**: `rcp_ndcg.inference.fake`'s `/embeddings` and
   `/pooling` vectors are one SHAKE-256 stream of the same parts each (read as `dim` uniforms), no longer one
   SHA-256 per component, so a 16k-token text at 2048 dimensions answers in seconds instead of minutes. The
@@ -300,11 +329,6 @@ released together.
   engine slot's `TMPDIR` is short enough for vLLM's ZMQ IPC paths (AF_UNIX's 107 characters) whatever the
   recipe id is, and `steps.serve.state` records the serve step's own success (a clean stop is not a failure). The
   `WAVE.md` table keeps one row per recipe whatever the message wraps.
-- **The equivalence harness's stage-1 over-length sampler is bounded** (`rcp-ndcg-vllm`): it measures the
-  padding's token rate once and sizes each append from the measured deficit (at most 8 passes), instead of
-  re-tokenizing the growing text at every step -- quadratic at 32768-token budgets, the network recipe tests'
-  hang. A recipe tokenizer whose count never reaches twice the budget (a truncation ceiling in the file) is
-  refused with a `HarnessError` instead of yielding a sample that was never over the cap.
 - **A tokenizer file's embedded truncation and padding no longer cap the counts** (G5): a `tokenizer.json`
   can ship `truncation: {max_length: 1024}` (topk-embed-v1-small does) or fixed-length padding, and an
   un-reset backend silently topped every count and id list at those lengths, so no budget above them could
@@ -329,6 +353,29 @@ released together.
   small corpus. The `cli.v1` envelope schema changed description-only (`data` says which commands tag their
   data with a schema id). No payload changes shape except `run list`'s unreadable rows, which now carry the row's null
   fields explicitly; the payloads validate against the regenerated schemas.
+- New served recipe `octen-embedding-8b` (`packages/rcp-ndcg-vllm/recipes/octen-embedding-8b/`): the paper's
+  first-stage retriever Octen/Octen-Embedding-8B @ `5adcfa292e712091dfc30f0e97f0b2282e6cc66c` on stock
+  `vllm/vllm-openai:v0.31.0` (`--runner pooling`; last-token pooling and the normalize activation come from the
+  checkpoint's own sentence-transformers configs). The client block is an `EmbeddingEndpoint` with the product's
+  template as data: documents render as the one string `"- " + text` (the paper's prefix, a fixed head segment;
+  never separately tokenised ids), queries as they are, the appended end-of-text anchor (added-token name
+  `endoftext`, id 151643) declared via `add_special_tokens: true` and reserved by the 8192-token budget
+  (`on_overflow: cut`), `max_model_len: 8192` defense in depth, `chat_template: null` (the checkpoint's ChatML
+  template would change every prompt; the /v2/embed route is a trap: it auto-applies the checkpoint's ST prompts).
+  `reference.py` is the paper-exact in-process path (bf16, left padding, last token, float32 L2) whose render
+  mode needs no torch and no transformers; the recipe directory carries its `requirements-reference.txt`.
+- New serving recipe `rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/` (`Qwen/Qwen3-VL-Embedding-2B` at revision
+  `9f2f7e71…`, role `embed`, stock `vllm/vllm-openai:v0.31.0`, no plugin): the chat frame declared as product
+  `TemplateSpec` data with the model's default instruction pinned as fixed text, the template file shipped
+  (`serve.chat_template: template.jinja`, R10), the media pixel budget pinned on both sides
+  (`serve.mm_processor_kwargs` `images_kwargs` min 4096 / max 1843200, mirrored in `client.recipe`, R20),
+  explicit `client.tokenizer` + `max_tokens: 8192` with `on_overflow: cut`, `empty_doc: send_text "NULL"`
+  (the card's NULL rule), and the subprocess reference running the card's `Qwen3VLEmbedder` (vendored
+  verbatim, sha256-pinned; the render mode mirrors the anchor-preserving cut, and the card's whole-prompt
+  right cut is the declared `anchor_drop_over_cap` deviation). The recipe's tests run stage 1 on CPU against
+  the pinned tokenizer (offline: skipped with a clear reason) and prove the over-cap cut and the query-side
+  frame byte-identical.
+
 - **`rcp-ndcg-vllm` gains the release-candidate and wave scripts** (`packages/rcp-ndcg-vllm/jobs/`, and
   `wave0.sh` with the package): `rc_build.sh <name> [<commit>]` builds an RC exactly as `release.yml`
   does — the three distributions, the version and pin checks, the constraints-file check against the
@@ -459,6 +506,23 @@ released together.
 - Stage 1's report carries `checked` (the audited request count) for `EQUIVALENCE.md`; `tests/recipes/` is
   the recipe lanes' network-gated home (`RCP_NDCG_NETWORK_TESTS=1`; downloads land in
   `RCP_NDCG_VLLM_TOKENIZER_CACHE` or `tmp_path`, never the checkout).
+- First served recipe `recipes/qwen3-reranker-4b/` (the recipe lanes' product): Qwen/Qwen3-Reranker-4B at the
+  pinned revision, role `rerank`/pointwise on the unmodified `vllm/vllm-openai:v0.31.0` image — hf_overrides
+  turn the checkpoint into the 1-label sequence-classification head (`classifier_from_token` [no, yes],
+  `is_original_qwen3_reranker`), the paper-exact chat template ships as `template.jinja` (the stock example
+  file renders one trailing newline short of the paper prompt; REVIEW-LOG R10), the budgets are the paper's
+  (`max_tokens` 8192, `query_max_tokens` 4096, `on_overflow: cut`, tokenizer pinned `<repo>@<commit>`), the
+  anchor (the 9-token assistant suffix) is declared `anchor: last` and reserved from every cut, and the
+  reference derives unchanged from the paper's `QwenOGRerank` at bfloat16 with
+  `reference.known_deviations: [anchor_drop_over_cap]` (over-cap pairs gate on under-cap pairs only).
+  Stage 1 passes on CPU against the real Hub tokenizer (tokenizer files only); state `unverified` until the
+  GPU waves run.
+- The first serving recipe ships: `packages/rcp-ndcg-vllm/recipes/topk-embed-v1-small/` (recipe.yaml,
+  reference.py; the recipe directory is grafted into the sdist with the rest of `recipes/`), serving
+  `topk-io/topk-embed-v1-small` as a multi-vector model on `vllm/vllm-openai:v0.31.0` through a
+  `vllm.general_plugins` wheel (`serve.plugin: topk-embed-vllm`, built by the plugin lane). Its tests pin
+  the recipe on CPU: stage 1 over the product's `fit` (tokenizer files only), the image-wrapper ids of
+  the served chat template, the document keep-mask asymmetry, and anchor and frame mutations that go red.
 
 - **`JobSpec` takes exactly one of `argv` and `phases`** (`rcp_ndcg.runners`): a job without phases runs its
   `argv`; a phased job's commands are its phases' `argv`, and it carries no `argv` of its own — both or neither
@@ -587,6 +651,93 @@ released together.
   saved rankings for the systems the report
   scored (its own, by default; `--system` narrows them further), so one broken system of the file does not
   kill the explanation, and `--system` with `--run` there is a `UsageError` (it has no effect on a run).
+- New package `rcp-ndcg-vllm-topk` (`packages/rcp-ndcg-vllm/plugins/topk/`, outside the root uv workspace and
+  lock; version 0.0.1, no dependencies): the `vllm.general_plugins` wheel that serves
+  `topk-io/topk-embed-v1-small` (multimodal late interaction) on the stock `vllm/vllm-openai:v0.31.0` image
+  after `pip install --no-deps`, with no `--trust-remote-code`. Two registrations: a faithful local
+  configuration class (`TopkEmbedConfig`, a line-for-line restatement of the checkpoint's remote
+  `TopkEmbedConfig` — whose module imports `flash-linear-attention`, absent from the engine image, so the
+  remote config load would die before any weight loads) registered with transformers' `AutoConfig`, which
+  takes the explicit-local-code path and never executes remote code; and the model class `TopkEmbedModel`,
+  a subclass of the native `ColQwen3_5Model` that overrides only the checkpoint-name mapping (`head.` →
+  `custom_text_proj.`; the Qwen3-VL naming convention restored): the checkpoint's own
+  `text_config.is_causal: false` drives the stock `Qwen3NextAttention` to bidirectional ENCODER_ONLY
+  attention on the six full-attention layers, so no attention code is copied. The version guard refuses vLLM
+  outside `>=0.31,<0.32` with the tested range named; the pure-torch pooling chain (`token_embed_pool`) and
+  the mapping table (`weights`) are importable without vLLM for the CPU tests (entry-point declaration,
+  version guard, the 618-name census mapping, the tiny-config chain equivalence against the reference chain,
+  and the simulated `--no-deps` freeze check, which also rejects forged wheels with a declared dependency, a
+  compiled artifact or a platform tag, and is the GPU wave's script). Skips name the environment: the
+  registry effects, the config-class parse and the served-class mapper cross-check need vLLM and
+  transformers; the full served-vs-reference equivalence on real weights is the GPU wave's.
+
+- A served recipe in `packages/rcp-ndcg-vllm/recipes/`: `ctxl-rerank-v2-instruct-multilingual-2b`
+  (ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b @ 6ffef5dc552583b8db58dc4a87f79f7aee78d2d9, pointwise
+  rerank, paper-exact): `--runner pooling` with the `Qwen3ForSequenceClassification` conversion overrides
+  (`classifier_from_token` ["!"] = the checkpoint's token id 0, `method: no_post_processing`) on the stock
+  `vllm/vllm-openai:v0.31.0` image, the paper's two-line score template shipped as a dual-mode jinja file
+  (the harness's check variables and the engine's `messages` render both produce the paper prompt), the
+  raw-logit pooler (`use_activation: false` on the client and server side; the paper's score is the raw
+  logit of vocabulary position 0 at the final position), and the paper budgets (`max_tokens` 8192 =
+  `MAX_SEQ_LENGTH`, `query_max_tokens` 4096 = `MAX_QUERY_LENGTH`, `on_overflow: cut`). The paper's
+  whole-prompt right truncation drops the trailing " ??" anchor over the cap, so the recipe declares
+  `reference.known_deviations: [anchor_drop_over_cap]` instead of copying the drop into the served path;
+  the reference subprocess derives from `experiments/paper/rerankers/reference/contextual.py`
+  (paper-exact; no instruction is sent or folded -- the family's `instruction: none`). Status `unverified`
+  until the GPU waves run the harness's stages 2–3.
+
+- The `ctxl-rerank-v2-instruct-multilingual-1b`/`-2b`/`-6b` recipe family settles one policy: all three
+  declare `client.instruction: none` (the paper configs' mode; the paper's in-process path never received
+  an instruction), and neither a template nor a reference folds or appends one -- the 6b template and
+  reference drop the vendor's inline instruction slot as 1b and 2b do, and a pairs row's instruction is
+  ignored on both sides. Every recipe states the merged rerank client's settle rule (the pair fit binds its
+  share on overflow only; the client settles the shared query once per call and ships it at
+  `query_max_tokens` whenever it exceeds it), declares over-share queries as divergence rows (the gating
+  pairs keep queries within the share), and its reference stays the paper's: `render` fills the harness's
+  span format with the raw query and documents the paper's prompt builder receives, uncut, and never
+  reproduces the client's cut (over-cap rows are the declared `anchor_drop_over_cap` table; under-cap rows
+  gate exactly); the three references load bfloat16 weights on every device, as the paper's factory did.
+  Family conventions: the template file is `template.jinja` in all three (6b's `score-template-6b.jinja`
+  renamed; one trailing-newline convention), `requirements-reference.txt` ships beside every reference (1b
+  gained one), `client.recipe` stays unset (`client_config` records the recipe id), and
+  `engine.startup_timeout_s` is no longer restated at its 1800 default.
+
+- The dense recipe family (`qwen3-embedding-0.6b`, `octen-embedding-8b`, `jina-embeddings-v5-text-small`,
+  `zembed-1-embedding`, `jina-reranker-v3`): every reference stays the paper's or the model card's and
+  never reproduces the client's cut -- `qwen3-embedding-0.6b`'s `render` now emits the card's uncut prompt
+  (the card truncates ids at encode) and the recipe declares `reference.known_deviations:
+  [over_cap_cut_differs]` (both sides keep the appended anchor; over-cap rows are reported, not gated), and
+  `zembed-1-embedding`'s reference drops its unused copy of the client's cut search (its render needs no
+  tokenizer now). `zembed-1-embedding`'s reference environment pins sentence-transformers to the 5.3 line
+  (the last whose encode calls the checkpoint's remote tokenize; 5.4.0's preprocess-first pipeline drops
+  the pooled suffix) with transformers >= 4.51, so the reference venv reuses the engine image's
+  transformers. `query_max_tokens` is declared only where the reference caps queries (`jina-reranker-v3`:
+  512, the checkpoint's `max_query_length`; the embedders' referents cut queries and documents alike, so
+  none declares it); `jina-embeddings-v5-text-small` declares `anchor: last_content`; `jina-reranker-v3`
+  states the merged rerank client's settle rule, its `client.recipe` identity no longer claims per-text
+  engine caps (the client sends none), its `use_activation` pin is documented as inert (the model's
+  pooler has no head; the score is a cosine), and its reference no longer reconfigures the product's
+  cached tokenizer (a process-wide 2048-token cap). `experiments/paper/rerankers/jina_v3.yaml` states what
+  the served path sends (the 8192/4096 pair cut, no per-text caps). Family conventions:
+  `engine.min_version` is the verified image (0.31.0) with any feature floor in the notes,
+  `requirements-reference.txt` beside every reference (`zembed-1-embedding` gained one), and every recipe
+  test pins the full contract through the shared helper (two mutants red each), downloads its tokenizer
+  through the one shared cache, and checks that no shipped recipe file carries an internal process
+  label.
+
+- The first served recipe in `packages/rcp-ndcg-vllm/recipes/`: `qwen3-reranker-0.6b`
+  (Qwen/Qwen3-Reranker-0.6B @ e61197ed45024b0ed8a2d74b80b4d909f1255473, pointwise rerank,
+  paper-exact): `--runner pooling` with the `Qwen3ForSequenceClassification` conversion overrides
+  (`classifier_from_token` no/yes, `is_original_qwen3_reranker`) on the stock
+  `vllm/vllm-openai:v0.31.0` image, the shipped chat template (dual-mode: the harness's check
+  variables and the engine's `messages` render both produce the paper prompt; the stock example
+  template alone loses one trailing newline at the scored position), the paper budgets
+  (`max_tokens` 8192 = `MAX_SEQ_LENGTH`, `query_max_tokens` 4096 = `MAX_QUERY_LENGTH`,
+  `on_overflow: cut`), `use_activation: true` on the probability scale, and a reference subprocess
+  derived from `experiments/paper/rerankers/reference/qwen3.py` (on branch lane/l5-packaging at this
+  HEAD; probability =
+  `softmax([no, yes])[yes]`, bfloat16, batch 16, no anchor ever dropped). Status `unverified`
+  until the GPU waves run the harness's stages 2–3.
 - `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
   larger than `adaptive_window` runs one batch, not one per batch: every adaptive window of such a pool holds
   the whole pool, so a further batch asks the same documents again (in the refit order) and covers only what
@@ -985,6 +1136,37 @@ released together.
   (`GET <url>/models`).
 - The `ServeConfig` fields' schema descriptions are role-neutral (the same engine shape serves the judge, the
   retrieval encoder and the reranker); no property changed.
+- New plugin distribution `rcp-ndcg-vllm-pplx` (`packages/rcp-ndcg-vllm/plugins/pplx/`, pure Python, dependency-free):
+  registers the `PplxContextualModel` architecture (perplexity-ai/pplx-embed-v2-context-9b-preview,
+  revision `b667039e`) with stock vLLM v0.31.x through the `vllm.general_plugins` entry point
+  (`rcp_vllm_pplx:register`), so the unmodified `vllm/vllm-openai:v0.31.0` image serves it after
+  `pip install --no-deps <wheel>`. Registers one lazy model class (`PplxContextualForPooling`, one embedding per
+  chunk via a boundary-marker segment pooler and the checkpoint's fp32 `contextual_projection` + int8 tanh head,
+  no vision tower, no lm_head) and a `MODELS_CONFIG_MAP` handler that forces the checkpoint's
+  `is_causal=false` attention contract on both HF configs. At import it refuses any vLLM outside
+  `>=0.31,<0.32`. The client contract (token ids with the role prefixes, per the plugin README) needs the
+  product's `request_shape: token_ids` (the `vllm_pooling` wire sends it), and the
+  recipe's chunker must not emit the `<|chunk_sep|>` marker as chunk content (the id wire cannot tell it from a
+  boundary; declared in the plugin README).
+- The served recipe `jina-reranker-v3` (`packages/rcp-ndcg-vllm/recipes/jina-reranker-v3/`,
+  jinaai/jina-reranker-v3 @ d7d7e73b6ea138ced340b83865931b5dfb6c97aa, listwise rerank, paper-exact):
+  stock `vllm/vllm-openai:v0.31.0` with `--runner pooling` (the native `JinaForRanking`; no conversion,
+  no plugin, and deliberately no chat-template file — the listwise prompt is built server-side by the
+  engine's Python builder, which the declared pair template mirrors byte for byte), the pair budget
+  `max_tokens` 3219 (the measured 147-token frame + `query_max_tokens` 512 for EACH of the query's
+  two spans + the checkpoint's per-document 2048 — the checkpoint's own worst-case 1-vs-1 prompt), `instruction: none`, `use_activation: false` (raw cosine), `empty_doc:
+  omit_zero`, and a reference subprocess derived from `experiments/paper/rerankers/reference/jina.py`
+  (raw cosine in [-1, 1], empty documents 0.0, the checkpoint's 125-doc/2048-token blocking ported for
+  the GPU waves). Stage 1 passes on CPU against the real tokenizer; the anchor mutation turns the
+  audit red. Status `unverified` until the GPU waves run the harness's stages 2–3.
+- New recipe `qwen3-vl-reranker-2b` (`packages/rcp-ndcg-vllm/recipes/qwen3-vl-reranker-2b/`, shipped in the sdist):
+  Qwen/Qwen3-VL-Reranker-2B as a pointwise reranker on the stock `vllm/vllm-openai:v0.31.0` pooling runner --
+  three-key `hf_overrides`, the served chat template as data plus a shipped template file (rewritten to the recipe
+  variable convention, byte-equal under the engine's render), the explicit 8192-token budget with a 4096 query
+  share, `instruction: none` (the card's default instruction pinned as fixed frame text), `use_activation: true`
+  (probability), `empty_doc: send_text "NULL"`, and `mm_processor_kwargs` min_pixels 4096 / max_pixels 1310720
+  (1280 tokens/image, R20). `reference.known_deviations: [anchor_drop_over_cap]`: the card's script truncates
+  over-cap pairs itself. Status `unverified` until the GPU waves run stages 2-3.
 - **The embedding and pooling media allowances count from the item shape's own budget.** Under a declared
   `query_max_tokens` a query's media were fitted against `max_tokens` while the text fit measured the query
   against its share, so an image that fit `max_tokens` but not the share was kept whole and the request was
@@ -1406,6 +1588,62 @@ released together.
   present four paths (score, serve and score, re-judge, reproduce), state the rankings-file column contract
   with its accepted aliases, and describe `recipe: <id>`, `rcp-ndcg-vllm serve` and the judge text policy. The
   exit-code table's one home is `docs/reference/cli.md`; the skill links it.
+- **The qwen3-vl recipes are one declared family** (`packages/rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/`,
+  `qwen3-vl-reranker-2b/`): one R20 pixel-pin shape for every media recipe, `serve.mm_processor_kwargs:
+  {images_kwargs: {...}}` -- at the vLLM v0.31.0 tag both shapes reach the HF image resize (measured: 1776
+  vs 1240 image tokens on one page), but flat keys also re-size every video clip on vLLM's video path (a
+  64-frame clip measured 672 instead of 7040 tokens); `client.image_policy` declares the same pixel numbers
+  (the client cannot apply them yet: the product's `qwen3_vl` geometry refuses a budget below its 65536 px
+  floor, so media stay a typed refusal); one video sampling policy on every side (64 uniformly spaced
+  frames per clip: `client.video_policy` with `--media-io-kwargs` engine pinning). qwen3-vl-embedding-2b
+  declares a `query` shape after the model card (the card frames queries exactly like documents, with its
+  default instruction) and serves no template file (the completion route applies none; its test renders the
+  checkpoint's own `chat_template.jinja` instead). Both references render the card's own over-cap cut, never
+  the client's: the embedding's `truncation=True` right cut (`anchor_drop_over_cap`), the reranker's
+  `truncate_tokens_optimized` cut, which keeps the anchor (`over_cap_cut_differs`, no longer the mislabelled
+  `anchor_drop_over_cap`). Each contract test pins every resolved field (two mutants per recipe red).
+- **The late-interaction recipes and their plugins** (`packages/rcp-ndcg-vllm/recipes/topk-embed-v1-small/`,
+  `pplx-embed-v2-context-9b-preview/`, `packages/rcp-ndcg-vllm/plugins/{topk,pplx}`): topk serves through
+  `serve.plugin: rcp-ndcg-vllm-topk` with the product's fields (`query_max_tokens: 1024`, the checkpoint's 41
+  `scoring_skip_ids` as `document_skip_token_ids`, `media_sides: [document]`, `normalize: [strip]`) and the
+  nested R20 shape; its reference renders the card's own 1024/8192 cut (by character offsets), declared
+  `over_cap_cut_differs` (an id cut inside a multi-token character reads one id no text carries); its plugin marks the bias-less checkpoint's zero projection bias as loaded (vLLM
+  v0.31.0's weight tracker refused `custom_text_proj.bias`). Neither recipe passes `--trust-remote-code`:
+  each plugin registers the checkpoint's configuration class with transformers, so a `config.json` that
+  names remote code resolves locally with the flag off. pplx serves `dtype: bfloat16` (vLLM v0.31.0's GDN
+  kernels refuse float32; the reference keeps the card's float32, a declared deviation). The pplx NOTICE
+  entry for the restated config class is added; the plugin suites run together in one process.
+- **The qwen3-reranker recipes are one declared family** (`packages/rcp-ndcg-vllm/recipes/qwen3-reranker-0.6b/`,
+  `qwen3-reranker-4b/`, `qwen3-reranker-8b/`): one over-cap policy -- every reference is the paper's
+  `QwenOGRerank` cut (the pair string right-cut at 8144 tokens, both anchors re-attached) and never the
+  client's, so all three declare `reference.known_deviations: [over_cap_cut_differs]` (4b's
+  `anchor_drop_over_cap` was mislabelled; 8b's reference stops porting the client's settle rule) and
+  under-cap rows gate exactly; the references write their render as the harness's content spans, located at
+  raw character offsets (never a `decode(encode())` round trip, which NFC-maps non-NFC input); one template
+  file, `template.jinja`, byte-identical across the three (0.6b's `qwen3_reranker.jinja` is renamed and no
+  longer reads a request instruction); `serve.pooler_config.use_activation: true` beside
+  `client.use_activation`; `min_version` 0.31.0 (the verified image) with the 0.30.1 feature floor in the
+  notes; every recipe ships `requirements-reference.txt`; the notes state the merged rerank client's settle
+  rule (the pair fit binds on overflow; the shared query settles at its 4096-token share whenever it exceeds
+  it, so an over-share query is a declared divergence row). Each contract test pins every resolved
+  `serve`/`client`/`reference` field through `tests/recipes/_contract.assert_recipe_contract` (two mutants
+  per recipe red). The served prompts are unchanged.
+- **The zerank recipes are one declared family** (`packages/rcp-ndcg-vllm/recipes/zerank-1-reranker/`,
+  `zerank-1-small-reranker/`, `zerank-2-reranker/`): the paper's `query.strip()`/`doc.strip()` is the
+  declared content normalisation `client.template normalize: [strip]` (zerank-1's template file loses its
+  jinja `| trim`; the declared whitespace divergence of zerank-1-small/zerank-2 closes as declared policy),
+  the recipes state the merged rerank client's settle rule (the pair fit binds on overflow; the shared query
+  settles at its `query_max_tokens` share whenever it exceeds it -- over-share queries are declared
+  divergence rows), all three pin `pooler_config.use_activation` server-side beside `client.use_activation`
+  and declare `client.recipe`, and zerank-1 stops passing `serve.convert` (the shakedown row: a rerank
+  recipe declares the checkpoint's scorer through `serve.hf_overrides`). The three references' `--mode
+  render` write the paper's own cut (the whole rendered prompt right-cut at 8192 tokens, located at raw
+  character offsets) as the harness's content spans -- never the client's cut; over-cap rows are the
+  declared `anchor_drop_over_cap` and under-cap rows gate exactly. The template files are named
+  `template.jinja` in all three (zerank-1-small's `zerank_score_template.jinja` and zerank-2's
+  `zerank2_score_template.jinja` are renamed). Each recipe's contract test pins every resolved
+  `serve`/`client`/`reference` field through `tests/recipes/_contract.assert_recipe_contract` (two mutants
+  per recipe red). The served prompts are unchanged on whitespace-clean inputs.
 - **The BM25 index is persisted in bm25s' own format, never a pickle** (`rcp_ndcg.retrieval.sparse`): the
   index directory's model is stored with `BM25.save(..., allow_pickle=False)` (npz arrays + JSON parameters)
   and loaded with `allow_pickle=False` -- the index directory comes from ordinary user paths (`retrieval index

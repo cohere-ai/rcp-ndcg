@@ -7,7 +7,9 @@ workspace; it is installed into the engine image, which carries its own vLLM and
 
 ## The recipe directory
 
-One directory per model, `packages/rcp-ndcg-vllm/recipes/<id>/`, with four files:
+One directory per model, `packages/rcp-ndcg-vllm/recipes/<id>/`, with these four files (a recipe may also ship
+a vendored card script that its reference runs verbatim, byte-identical to the Hub file and hash-pinned by the
+recipe's test):
 
 ```text
 recipes/<id>/
@@ -158,7 +160,9 @@ reference.py --mode <render|score|embed> --pairs <file> --out <file> \
 The serving path is chosen per model — flags alone, a chat template, pooler settings, or a plugin — and the
 decision tree lives in this section once the survey of model families lands; for now, a recipe's `serve` section
 renders verbatim into `vllm serve` argv, and `serve.plugin` is reserved for a `vllm.general_plugins` package when
-no flag can express the model's scoring.
+no flag can express the model's scoring (the first one ships: `rcp-ndcg-vllm-pplx`, which registers
+perplexity-ai/pplx-embed-v2-context-9b-preview's per-chunk pooling head on the stock image; its README carries
+the token-id client contract).
 
 ## Worked example: a last-token-pooling embedder (CPU)
 
