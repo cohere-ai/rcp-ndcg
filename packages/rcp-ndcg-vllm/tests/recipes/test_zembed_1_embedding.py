@@ -35,6 +35,8 @@ from rcp_ndcg.data.preprocess import TextBudget, fit
 from rcp_ndcg.data.templates import TemplateSpec
 from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
 
+from ._contract import assert_recipe_contract
+
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "zembed-1-embedding"
 REPO = "zeroentropy/zembed-1-embedding"
 REVISION = "cf13c81f3274394053d166740294f7eea4586f7a"
@@ -234,6 +236,7 @@ def reference_python() -> str | None:
 def test_recipe_loads_and_declares_the_serving_shape() -> None:
     """The recipe validates against the product's endpoint config, with every serving decision explicit."""
     recipe = load_recipe(RECIPE_DIR)
+    _assert_contract(recipe)  # every serve, client and reference field pinned, exactly
     assert recipe.id == "zembed-1-embedding"
     assert recipe.model == REPO
     assert recipe.revision == REVISION
@@ -470,3 +473,149 @@ def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_re
     failures = red["anchor_check"]["failures"]
     assert failures, "the anchor check must report the renders whose tail is no longer the anchor"
     assert all(entry["check"] == "tail" for entry in failures)
+
+
+# ---------------------------------------------------------------------------
+# The declared contract: every serve, client and reference field pinned.
+# ---------------------------------------------------------------------------
+
+EXPECTED_TOP = {
+    "id": "zembed-1-embedding",
+    "input": ["text"],
+    "licence": "apache-2.0",
+    "model": "zeroentropy/zembed-1-embedding",
+    "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
+    "role": "embed",
+}
+EXPECTED_SERVE = {
+    "chat_template": None,
+    "convert": "embed",
+    "dtype": "bfloat16",
+    "extra_args": [],
+    "hf_overrides": {},
+    "io_processor_plugin": None,
+    "limit_mm_per_prompt": None,
+    "max_model_len": 32768,
+    "mm_processor_kwargs": {},
+    "plugin": None,
+    "pooler_config": {},
+    "runner": "pooling",
+    "trust_remote_code": False,
+}
+EXPECTED_CLIENT = {
+    "aggregation": "max",
+    "api": "openai_embeddings",
+    "api_key_env": None,
+    "batch_size": 32,
+    "chunk": None,
+    "concurrency": 64,
+    "connect_timeout_s": 5.0,
+    "dimensions": None,
+    "doc_prompt": "",
+    "empty_doc": "send",
+    "empty_doc_text": None,
+    "headers_env": {},
+    "image_policy": None,
+    "image_processor": None,
+    "max_images": 0,
+    "max_retries": 2,
+    "max_tokens": 32768,
+    "max_videos": 0,
+    "media_sides": ["query", "document"],
+    "model": "zembed-1-embedding",
+    "normalize": True,
+    "on_overflow": "cut",
+    "query_max_tokens": None,
+    "query_prompt": "",
+    "recipe": "vllm v0.31.0: --runner pooling --convert embed; the pooler resolves from the checkpoint's "
+    "modules.json (last-token + normalize); the checkpoint's remote tokenize appends the trailing "
+    "marker the template declares",
+    "request_shape": "text",
+    "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
+    "template": {
+        "add_special_tokens": True,
+        "anchor": "last",
+        "anchor_markers": [],
+        "document": [
+            {"content": None, "fixed": "{special:im_start}system\ndocument{special:im_end}\n{special:im_start}user\n"},
+            {"content": "document", "fixed": None},
+            {"content": None, "fixed": "{special:im_end}\n"},
+        ],
+        "normalize": [],
+        "pair": None,
+        "query": [
+            {"content": None, "fixed": "{special:im_start}system\nquery{special:im_end}\n{special:im_start}user\n"},
+            {"content": "query", "fixed": None},
+            {"content": None, "fixed": "{special:im_end}\n"},
+        ],
+    },
+    "timeout_s": 600.0,
+    "tokenizer": "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a",
+    "video_policy": None,
+    "wait_on_outage_s": None,
+}
+EXPECTED_REFERENCE = {
+    "entry": "reference.py",
+    "kind": "sentence_transformers",
+    "known_deviations": [],
+    "score_scale": "cosine",
+}
+
+# Two mutants per recipe against the contract pin above (the sweep's weak-contract
+# finding #9): each drift must fail, naming the field.
+MUTANTS: list[tuple[str, tuple[str, ...], object, str]] = [
+    ("serve.max_model_len drifts to 40960", ("serve", "max_model_len"), 40960, "max_model_len"),
+    ("reference.kind drifts to transformers", ("reference", "kind"), "transformers", "reference.kind"),
+]
+
+
+def _mutated_recipe(tmp_path: Path, path: tuple[str, ...], value: object) -> object:
+    """The recipe directory copied into ``tmp_path`` with one YAML field set to ``value``."""
+    import shutil
+
+    import yaml
+
+    target = tmp_path / RECIPE_DIR.name
+    shutil.copytree(RECIPE_DIR, target)
+    yaml_path = target / "recipe.yaml"
+    data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    node = data
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = value
+    yaml_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return load_recipe(target)
+
+
+def _assert_contract(recipe: object) -> None:
+    assert_recipe_contract(
+        recipe,
+        serve=EXPECTED_SERVE,
+        client=EXPECTED_CLIENT,
+        reference=EXPECTED_REFERENCE,
+        top=EXPECTED_TOP,
+    )
+
+
+@pytest.mark.parametrize(("label", "path", "value", "needle"), MUTANTS, ids=[m[0] for m in MUTANTS])
+def test_two_contract_mutants_are_red(
+    label: str, path: tuple[str, ...], value: object, needle: str, tmp_path: Path
+) -> None:
+    """A drifted field fails the contract assertion naming it (two mutants per recipe)."""
+    _assert_contract(load_recipe(RECIPE_DIR))  # the pinned recipe itself is green
+    with pytest.raises(AssertionError) as caught:
+        _assert_contract(_mutated_recipe(tmp_path, path, value))
+    assert needle in str(caught.value), f"{label}: the failure must name {needle}: {caught.value}"
+
+
+def test_requirements_reference_ships_the_documented_environment() -> None:
+    """Finding #10: the note-7 referent exists -- requirements-reference.txt beside reference.py
+    with the documented pins -- and no startup default is restated in the YAML."""
+    path = RECIPE_DIR / "requirements-reference.txt"
+    assert path.is_file(), "every recipe of this family ships its reference environment"
+    text = path.read_text(encoding="utf-8")
+    for pin in ("torch>=2.0", "transformers>=4.40", "sentence-transformers>=3.0,<6"):
+        assert pin in text
+    assert "startup_timeout_s" not in (RECIPE_DIR / "recipe.yaml").read_text(encoding="utf-8")
+    notes = load_recipe(RECIPE_DIR).notes
+    assert "no separate query cap exists in the referent" in notes
