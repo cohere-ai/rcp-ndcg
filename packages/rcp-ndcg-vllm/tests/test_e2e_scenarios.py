@@ -31,6 +31,7 @@ INSTALL = {"wheelhouse": "/stage/wheelhouse", "constraints": "/stage/requirement
 
 #: Fixed paths for the golden rendering (a rendered script names its workdir, log dir and run directory).
 FIXED_RUNS = Path("/e2e/runs/rcp-text-four-phases")
+FIXED_OUT = Path("/e2e/out")
 FIXED_OPTIONS = {
     "log_dir": "/e2e/out/logs",
     "workdir": str(FIXED_RUNS),
@@ -118,14 +119,21 @@ def test_the_identity_rerun_moves_no_identity_field() -> None:
 def test_the_four_phase_script_is_the_golden_file(tmp_path: Path) -> None:
     """The rendered phased script of scenario 1, byte for byte (the in-pod job.sh and the golden copy).
 
-    Two paths are normalized out of the comparison (they name where the render ran, not what it is): the
-    run id and the recipes root's absolute path (``serve_argv`` renders ``--chat-template`` absolutely,
-    from wherever the recipes live).
+    The options are the driver's own (:func:`rcp_ndcg_vllm.e2e.render_options` -- the golden pins the
+    exact byte stream `_prepare_run` executes).  Two paths are normalized out of the comparison (they name
+    where the render ran, not what it is): the run id and the recipes root's absolute path (``serve_argv``
+    renders ``--chat-template`` absolutely, from wherever the recipes live).
     """
+    from rcp_ndcg_vllm.e2e import render_options
+
     scenario, pipeline = _prepared("text-four-phases")
-    script = render_phased_script(pipeline, options=FIXED_OPTIONS, run_dir=FIXED_RUNS, **INSTALL)
+    script = render_phased_script(
+        pipeline, options=render_options(FIXED_OUT, FIXED_RUNS, pipeline=pipeline), run_dir=FIXED_RUNS, **INSTALL
+    )
     script = script.replace(f"rcp-{pipeline.layout.run_id}", "rcp-RUN-ID")  # the run id names the job
     script = script.replace(str(RECIPES), "/e2e/recipes")  # the recipes' absolute root (this checkout's)
+    assert "mkdir -p /tmp/rcp-e2e-text-four-phases/tmp-8100 " in script  # each slot's TMPDIR, created by setup
+    assert "if ! command -v uvx" in script  # the driver's setup bootstrap: the golden pins what runs
     golden = GOLDEN / "job-text-four-phases.sh"
     if not golden.exists():  # never write the checkout from a test: the candidate lands in tmp_path
         candidate = tmp_path / "job-text-four-phases.sh"
@@ -205,6 +213,42 @@ def test_the_scenario_schema_is_exported_and_current() -> None:
     """``schema/scenario.schema.json`` is the frozen :class:`Scenario` schema, kept current."""
     schema = json.loads((Path(__file__).resolve().parents[1] / "schema" / "scenario.schema.json").read_text("utf-8"))
     assert schema == scenario_json_schema()
+
+
+def test_slot_ports_never_collide_across_roles() -> None:
+    """One engine per phase, but the roles share a node: every ``port`` and every ``vllm_port`` is
+    unique (an unset ``vllm_port`` defaults to 8100 and would collide loudly here)."""
+    data = _valid()
+    data["steps"] = ["retrieve", "calibrate", "evaluate"]
+    data["encoder_recipe"] = "some-encoder"
+    data["slots"] = {"encoder": {"port": 8100, "cuda_visible_devices": "0"}}
+    with pytest.raises(ValueError, match="vllm_port"):
+        Scenario.model_validate(
+            {**data, "judge": {**data["judge"], "slot": {"port": 8120, "vllm_port": 8100, "cuda_visible_devices": "0"}}}
+        )
+    with pytest.raises(ValueError, match="port"):
+        Scenario.model_validate(
+            {**data, "judge": {**data["judge"], "slot": {"port": 8100, "vllm_port": 9100, "cuda_visible_devices": "0"}}}
+        )
+
+
+def test_a_missing_scenario_list_is_a_bad_request_not_a_crash() -> None:
+    """``main``'s documented contract: 2 for a bad request, never a traceback."""
+    from rcp_ndcg_vllm.e2e import main
+
+    status = main(
+        [
+            "--scenarios",
+            "@does-not-exist.txt",
+            "--recipes-root",
+            str(RECIPES),
+            "--out",
+            "/e2e/unused-out",
+            "--wheelhouse",
+            "/stage/wheelhouse",
+        ]
+    )
+    assert status == 2
 
 
 def test_an_unknown_scenario_key_is_refused() -> None:

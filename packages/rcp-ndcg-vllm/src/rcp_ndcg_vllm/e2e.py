@@ -65,6 +65,7 @@ import argparse
 import hashlib
 import json
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -179,8 +180,10 @@ class EngineSlot(BaseModel):
         cuda_visible_devices: The device slice the engine process sees, as its ``CUDA_VISIBLE_DEVICES``.
             A phase runs one engine at a time (the phases reuse the GPUs), so the slices may overlap; they
             may not be left unset -- a node grants every device to a process that sees them all.
-        gpus: The GPUs the engine occupies (its ``--tensor-parallel-size`` for a recipe; declared for a
-            judge command).
+        gpus: The GPUs the engine occupies.  For a recipe engine it equals the recipe's own
+            ``resources.gpus`` (the recipe renders its ``--tensor-parallel-size``; the slot sizes the
+            driver's ``--gres`` and the device slice around it, checked in :func:`build_serve`); for a
+            judge command it matches the command's ``--tensor-parallel-size``.
         startup_timeout_s: Seconds the script waits for the engine's readiness path.
         outage_timeout_s: Seconds a step waits while the engine is down before
             :class:`~rcp_ndcg.errors.BackendUnavailableError` (the role config's ``wait_on_outage_s``).
@@ -330,6 +333,21 @@ class Scenario(BaseModel):
             raise ValueError("steps.retrieve: declare the encoder's slot (ports and devices live there)")
         if "rerank" in self.steps and self.rerank_recipe is not None and "reranker" not in self.slots:
             raise ValueError("steps.rerank: declare the reranker's slot (ports and devices live there)")
+        seen_ports: dict[int, str] = {}
+        seen_internal: dict[int, str] = {}
+        for role, slot in {"judge": self.judge.slot, **self.slots}.items():
+            if slot.port in seen_ports:
+                raise ValueError(
+                    f"the {role} and {seen_ports[slot.port]} slots share the port {slot.port}: one engine per "
+                    "phase still needs one port per role"
+                )
+            if slot.vllm_port in seen_internal:
+                raise ValueError(
+                    f"the {role} and {seen_internal[slot.vllm_port]} slots share the vllm_port "
+                    f"{slot.vllm_port}: each engine opens its own internal port"
+                )
+            seen_ports[slot.port] = role
+            seen_internal[slot.vllm_port] = role
         return self
 
 
@@ -448,12 +466,14 @@ def build_serve(
     if scenario.encoder_recipe is not None and "encoder" in scenario.slots:
         slot = shifted(scenario.slots["encoder"])
         recipe = find_recipe(recipes_root, scenario.encoder_recipe)
+        _check_slot_gpus(scenario.encoder_recipe, slot, recipe)
         engines["encoder"] = _serve_config(
             serve_argv(recipe, port=slot.port, served_model_name=recipe.id), slot, scratch
         )
     if scenario.rerank_recipe is not None and "reranker" in scenario.slots:
         slot = shifted(scenario.slots["reranker"])
         recipe = find_recipe(recipes_root, scenario.rerank_recipe)
+        _check_slot_gpus(scenario.rerank_recipe, slot, recipe)
         engines["reranker"] = _serve_config(
             serve_argv(recipe, port=slot.port, served_model_name=recipe.id), slot, scratch
         )
@@ -466,6 +486,17 @@ def build_serve(
             scratch,
         )
     return ServeByRole.model_validate(engines)
+
+
+def _check_slot_gpus(recipe_id: str, slot: EngineSlot, recipe: Recipe) -> None:
+    """The slot and the recipe name the same devices: the recipe renders ``--tensor-parallel-size`` from
+    its own ``resources.gpus``, and the slot sizes the driver's ``--gres`` and ``CUDA_VISIBLE_DEVICES``
+    around it -- two numbers here is one incoherent engine."""
+    if slot.gpus != recipe.resources.gpus:
+        raise HarnessError(
+            f"slot for {recipe_id}: gpus {slot.gpus} but the recipe serves on {recipe.resources.gpus} "
+            "(set the slot's gpus to the recipe's, so --gres matches --tensor-parallel-size)"
+        )
 
 
 def _serve_config(command: Sequence[str], slot: EngineSlot, scratch: Path) -> ServeConfig:
@@ -608,16 +639,19 @@ def render_phased_script(
     return render([wrapped])[wrapped.name]
 
 
-def write_probe(out: Path) -> tuple[Path, Path]:
-    """The process-boundary probe's files: the ``sitecustomize`` directory and the JSONL it appends to.
+def probe_paths(out: Path) -> tuple[Path, Path]:
+    """The process-boundary probe's files' paths (pure): the ``sitecustomize`` directory and the JSONL it
+    appends to.  The directory is what the phase workers put on ``PYTHONPATH``; their coordinators record
+    (one JSON line per interpreter that starts with it on the path)."""
+    return out / "probe-site", out / "client-probe.jsonl"
 
-    The directory is what the phase workers put on ``PYTHONPATH``; only their coordinators record (a
-    record is written by every interpreter that starts with it on the path, one JSON line each).
-    """
-    site = out / "probe-site"
+
+def write_probe(out: Path) -> tuple[Path, Path]:
+    """The probe's files, written (:func:`probe_paths` is the pure path computation)."""
+    site, probe_jsonl = probe_paths(out)
     site.mkdir(parents=True, exist_ok=True)
     (site / "sitecustomize.py").write_text(PROBE_SITECUSTOMISE, encoding="utf-8")
-    return site, out / "client-probe.jsonl"
+    return site, probe_jsonl
 
 
 def write_srun_shim(out: Path) -> Path:
@@ -666,16 +700,22 @@ def run_job_script(script: str, *, out: Path, env: Mapping[str, str] | None = No
     return process.wait(), out / "job.log"
 
 
-def resume_run(run_dir: Path, *, wheelhouse: str, constraints: str | None, version: str | None) -> int:
+def resume_run(run_dir: Path, *, wheelhouse: str, constraints: str | None, version: str | None, out: Path) -> int:
     """Resume a run directory through the client mechanism (what a submitted job would run): the
-    product's ``run resume`` wrapped with :func:`~rcp_ndcg.runners.script.install_argv`."""
+    product's ``run resume`` wrapped with :func:`~rcp_ndcg.runners.script.install_argv`, with the
+    launcher's hygiene (:func:`job_env`: the driver's ``PYTHONPATH`` out) and the probe in (the resumed
+    coordinator records like the script's ones)."""
+    site, probe_jsonl = write_probe(out)
+    env = job_env(out)
+    env["PYTHONPATH"] = str(site)  # the probe replaces every inherited entry (job_env dropped them)
+    env["RCP_E2E_PROBE_JSONL"] = str(probe_jsonl)
     command = install_argv(
         ("rcp-ndcg", "run", "resume", "--run", str(run_dir)),
         version=version,
         wheelhouse=wheelhouse,
         constraints=constraints,
     )
-    return subprocess.call(list(command))
+    return subprocess.call(list(command), env=env)
 
 
 def _wait_http(url: str, timeout_s: float) -> bool:
@@ -1218,21 +1258,44 @@ def _prepare_run(
     if stage:
         stage_run_dir(pipeline)
     staged = run_dir or Path(pipeline.layout.root)
-    site, probe_jsonl = write_probe(out)
+    write_probe(out)  # the workers' PYTHONPATH names it; without the file the probe would never record
     script = render_phased_script(
         pipeline,
-        options={
-            "log_dir": str(out / "logs"),
-            "workdir": str(staged),
-            "setup": bootstrap_uv(),
-            "env": {"PYTHONPATH": str(site), "RCP_E2E_PROBE_JSONL": str(probe_jsonl)},
-        },
+        options=render_options(out, staged, pipeline=pipeline),
         wheelhouse=str(install["wheelhouse"]),
         constraints=str(install.get("constraints")),
         version=str(install.get("version")) if install.get("version") else None,
         run_dir=run_dir,
     )
     return pipeline, staged, script
+
+
+def render_options(out: Path, workdir: Path, *, pipeline: Any) -> dict[str, Any]:
+    """The runner options every driven render uses -- the golden file pins this exact set (the tests and
+    :func:`_prepare_run` share it, so the golden is the byte stream the run executes).
+
+    The setup brings uv to an image that lacks it (:func:`~rcp_ndcg.runners.script.bootstrap_uv`) and
+    creates each engine slot's ``TMPDIR`` (node-runtime item 7 -- without the directory Python's
+    ``tempfile`` silently falls back to the shared ``/tmp`` and ``mktemp`` fails).
+    """
+    site, probe_jsonl = probe_paths(out)  # pure: rendering writes nothing
+    serve = pipeline.config.serve or ServeByRole()
+    tmpdirs = sorted(
+        {
+            engine.env["TMPDIR"]
+            for role in ("judge", "encoder", "reranker")
+            if (engine := getattr(serve, role, None)) is not None
+        }
+    )
+    setup = [*bootstrap_uv()]
+    if tmpdirs:
+        setup.append("mkdir -p " + " ".join(shlex.quote(path) for path in tmpdirs))
+    return {
+        "log_dir": str(out / "logs"),
+        "workdir": str(workdir),
+        "setup": setup,
+        "env": {"PYTHONPATH": str(site), "RCP_E2E_PROBE_JSONL": str(probe_jsonl)},
+    }
 
 
 def _run_text(
@@ -1408,9 +1471,10 @@ def _run_outage(
     # and the resume finishes it (the T4 criterion "resume after a killed engine parks and recovers")
     judge.restart()
     judge.wait_ready(f"http://127.0.0.1:{scenario.judge.slot.port}/v1/models", scenario.judge.slot.startup_timeout_s)
-    resumed = resume_run(run_dir, **install)  # type: ignore[arg-type]
+    resumed = resume_run(run_dir, out=run_out, **install)  # type: ignore[arg-type]
     builder.add(_check("resume after the killed engine finishes the run", resumed == 0, f"run resume exited {resumed}"))
     builder.add(_steps_all_completed(run_dir, expected=scenario.steps))
+    builder.add(_boundary_check(run_out, install, "the resume"))
 
 
 def _outage_pass(
@@ -1538,10 +1602,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     scenario_roots = [Path(root) for root in args.scenarios_root] or [default_scenarios_root()]
-    names = _scenario_ids(args.scenarios) if args.scenarios.startswith("@") else args.scenarios.split(",")
     out = Path(args.out)
     runs_dir = Path(args.runs_dir) if args.runs_dir else out / "runs"
     try:
+        names = _scenario_ids(args.scenarios) if args.scenarios.startswith("@") else args.scenarios.split(",")
         paths = _resolve_scenarios([name for name in names if name], scenario_roots)
         results = [
             run_scenario(
@@ -1571,8 +1635,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _scenario_ids(value: str) -> list[str]:
     """``@file`` (one scenario id or path per line, ``#`` comments allowed) into a list (the wave
-    runner's file rule)."""
-    lines = Path(value[1:]).read_text(encoding="utf-8").splitlines()
+    runner's file rule).
+
+    Raises:
+        HarnessError: the file cannot be read (a bad request, not a crash).
+    """
+    try:
+        lines = Path(value[1:]).read_text(encoding="utf-8").splitlines()
+    except OSError as error:
+        raise HarnessError(f"cannot read the scenario list {value[1:]}: {error}") from error
     return [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
 
 
