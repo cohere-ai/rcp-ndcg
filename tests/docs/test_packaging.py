@@ -375,6 +375,7 @@ DEPENDENCY_GATES = {
     "mteb": "mteb",
     "transformers": "mteb",  # mteb's own dependency (uv.lock)
     "mcp": "direct:mcp",
+    "rcp_ndcg_vllm": "direct:./packages/rcp-ndcg-vllm",  # example 09; the sibling installs from the checkout
 }
 
 
