@@ -320,6 +320,7 @@ class RoleClient[C: Endpoint]:
             tokenizer=tokenizer_name,
             max_tokens=max_tokens,
             query_max_tokens=getattr(self.config, "query_max_tokens", None),
+            document_max_tokens=getattr(self.config, "document_max_tokens", None),
             template=getattr(self.config, "template", None),
             on_overflow=getattr(self.config, "on_overflow", "cut"),
             chunk=getattr(self.config, "chunk", None),

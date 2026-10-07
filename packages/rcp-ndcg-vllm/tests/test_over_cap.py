@@ -82,6 +82,13 @@ def _rerank_share_row() -> dict[str, Any]:
     return {"query": query, "documents": ["cities and rivers"]}
 
 
+def _rerank_with_a_document_cap() -> Any:
+    """``fixture-rerank-pointwise`` with a per-document cap of 24 tokens beside its pair budget (H3): every
+    :data:`UNDER_CAP` document stays under it."""
+    recipe = load_recipe(RECIPES / "fixture-rerank-pointwise")
+    return recipe.model_copy(update={"client": recipe.client.model_copy(update={"document_max_tokens": 24})})
+
+
 def _embed_frame_only_row() -> dict[str, Any]:
     """A document whose content fits ``max_tokens`` (128) while ``doc: <document> [END]`` does not."""
     document = _text_with_content_tokens(125, 128)
@@ -104,13 +111,15 @@ def _case(name: str, tmp_path: Path) -> tuple[Any, dict[str, Any]]:
         return load_recipe(RECIPES / "fixture-rerank-pointwise"), _rerank_frame_only_row()
     if name == "rerank-query-share":
         return load_recipe(RECIPES / "fixture-rerank-pointwise"), _rerank_share_row()
+    if name == "rerank-document-share":
+        return _rerank_with_a_document_cap(), {"query": "capital of france", "documents": [_words(6)]}
     if name == "embed-frame-only":
         return load_recipe(RECIPES / "fixture-embed"), _embed_frame_only_row()
     assert name == "embed-query-share"
     return _embed_with_a_query_shape(tmp_path), {"query": _text_with_content_tokens(20, 30), "documents": ["x"]}
 
 
-CASES = ["rerank-frame-only", "rerank-query-share", "embed-frame-only", "embed-query-share"]
+CASES = ["rerank-frame-only", "rerank-query-share", "rerank-document-share", "embed-frame-only", "embed-query-share"]
 
 
 @pytest.mark.parametrize("case", CASES)
@@ -151,7 +160,7 @@ def test_stage1_an_uncut_row_gates_exactly_under_the_deviation(tmp_path: Path) -
     assert "over_cap" not in render
 
 
-@pytest.mark.parametrize("case", ["rerank-frame-only", "rerank-query-share"])
+@pytest.mark.parametrize("case", ["rerank-frame-only", "rerank-query-share", "rerank-document-share"])
 def test_stage2_rerank_reports_every_pair_the_client_changed(tmp_path: Path, case: str) -> None:
     """Stage 2 classifies on the same census rows: a frame-only overflow and a share settlement (which changes
     every pair of its call) are reported, the uncut row's pairs gate."""
@@ -182,3 +191,18 @@ def test_stage2_vectors_report_every_text_the_client_changed(tmp_path: Path, cas
     assert reported == {f"row 0 {shape} 0"}, reported
     assert all(entry["over_cap"] is False for entry in document["per_vector"])
     assert document["passed"] is True, document["per_vector"][:2]
+
+
+def test_the_rerank_audit_holds_every_document_span_to_its_declared_cap(tmp_path: Path) -> None:
+    """H3 on the wire: the over-length samples (padded in the document span) ship within the declared cap, and
+    a captured document span over it fails the audit, as a query span over its share does."""
+    from rcp_ndcg_vllm.equivalence import stages as stages_module
+
+    recipe = _rerank_with_a_document_cap()
+    pairs = write_pairs(tmp_path / "pairs.jsonl", [UNDER_CAP])
+    audit = stage1_prompts(recipe, pairs, None, over_length_per_shape=2)["anchor_check"]
+    assert audit["passed"] is True, audit["failures"][:1]
+    over = {"query": "capital of france", "queries": ["capital of france"], "documents": [_words(6)]}
+    probe = {"rows": [{"shapes": {"pair": over}, "cuts": 1, "over_cap": True}]}
+    failures = stages_module._anchor_check(recipe, probe, TOK)["failures"]
+    assert [failure["check"] for failure in failures] == ["document_share"]

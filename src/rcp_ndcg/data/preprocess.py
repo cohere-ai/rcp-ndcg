@@ -950,6 +950,14 @@ class TextBudget(BaseModel):
             capped the same) -- a pair share at or over the budget is refused one layer up, by the rerank
             config, and ``fit``'s pair cut refuses a query whose settled render would leave the document
             nothing.
+        document_max_tokens: The document's own cap on a ``pair`` budget, in content tokens -- for a checkpoint
+            that cuts each document itself (jina-reranker-v3 reads 2048 document tokens): a document over it is
+            cut to it, also in a pair the budget would take whole (the model never reads past it), the frame
+            re-attached and the cut recorded (``cause: document_share``), before the pair is fitted to
+            ``max_tokens``. The pair shape only (an embedding role's document shape is capped by
+            ``max_tokens``). ``None`` (the default) declares no cap. Above ``max_tokens`` it is refused (the
+            rerank config refuses one at or over it: it could never bind), and beside ``on_overflow: chunk``
+            too (the cap and the chunks would decide the same document two ways).
         template: The request template (:class:`~rcp_ndcg.data.templates.TemplateSpec`), whose fixed
             segments are measured once per (template, shape) and whose specials are resolved from the
             tokenizer. ``None`` fits raw text: the overhead is then the tokenizer post-processor's tokens
@@ -973,6 +981,7 @@ class TextBudget(BaseModel):
         "tokenizer": FieldRole.RUNTIME,
         "max_tokens": FieldRole.CONTENT,
         "query_max_tokens": FieldRole.CONTENT,
+        "document_max_tokens": FieldRole.CONTENT,
         "template": FieldRole.CONTENT,
         "on_overflow": FieldRole.CONTENT,
         "chunk": FieldRole.CONTENT,
@@ -982,6 +991,7 @@ class TextBudget(BaseModel):
     tokenizer: str | None = Field(default=None, min_length=1)
     max_tokens: int = Field(ge=1)
     query_max_tokens: int | None = Field(default=None, ge=1)
+    document_max_tokens: int | None = Field(default=None, ge=1, exclude_if=lambda value: value is None)
     template: TemplateSpec | None = None
     on_overflow: Literal["cut", "chunk", "fail"] = "cut"
     chunk: ChunkPolicy | None = Field(default=None, exclude_if=lambda value: value is None)
@@ -1012,6 +1022,16 @@ class TextBudget(BaseModel):
                 f"query_max_tokens ({self.query_max_tokens}) must not exceed max_tokens ({self.max_tokens}): "
                 "the query budget would be over the model's whole input budget"
             )
+        if self.document_max_tokens is not None and self.document_max_tokens > self.max_tokens:
+            raise ValueError(
+                f"document_max_tokens ({self.document_max_tokens}) must not exceed max_tokens ({self.max_tokens}): "
+                "the document cap would be over the model's whole input budget"
+            )
+        if self.document_max_tokens is not None and self.on_overflow == "chunk":
+            raise ValueError(
+                "document_max_tokens cuts every document to its cap, and on_overflow 'chunk' splits an over-budget "
+                "document into chunks instead: the two would decide the same document two ways; declare one"
+            )
         return self
 
     @model_validator(mode="after")
@@ -1024,6 +1044,7 @@ class TextBudget(BaseModel):
                 for name, value in (
                     ("on_overflow", self.on_overflow),
                     ("query_max_tokens", self.query_max_tokens),
+                    ("document_max_tokens", self.document_max_tokens),
                     ("chunk", self.chunk),
                     ("template", self.template),
                 )
@@ -1034,7 +1055,7 @@ class TextBudget(BaseModel):
                     f"this budget declares no tokenizer, so its content is sent uncut (a hosted vendor "
                     f"profile) and {inert} would be inert",
                     hint="declare tokenizer (the profile then cuts like a self-hosted one), or drop the "
-                    "inert fields (on_overflow, query_max_tokens, chunk, template)",
+                    "inert fields (on_overflow, query_max_tokens, document_max_tokens, chunk, template)",
                 )
         return self
 
@@ -1495,6 +1516,27 @@ def fit(
         uncut_tokens = tokenizer.count(assemble(query, document), add_special_tokens=flag)
         # The uncut request's whole size as the engine would read it: every census row of this input names it.
         request_tokens = uncut_tokens + spent
+        # A declared per-document cap binds first, whatever the budget says: the checkpoint never reads past it
+        # (the content span only, the frame re-attached by the render below).
+        document_cap = budget.document_max_tokens if shape == "pair" else None
+        if document_cap is not None and tokenizer.count(document) > document_cap:
+            document = token_prefix(document, document_cap, tokenizer)
+            uncut_tokens = tokenizer.count(assemble(query, document), add_special_tokens=flag)
+            if uncut_tokens <= cap:
+                if template is not None:
+                    texts.append(assemble(query, document))
+                contents.append((query, document))
+                entries.append((input_id, input_id))
+                _record(
+                    doc_id=input_id,
+                    original=original,
+                    kept=(query, document),
+                    aggregation=None,
+                    request_tokens=request_tokens,
+                    raw=raw,
+                    cause="document_share",
+                )
+                continue
         if uncut_tokens <= cap:
             if not (template is None and shape == "pair"):
                 texts.append(assemble(query, document))

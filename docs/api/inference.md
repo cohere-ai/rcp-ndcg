@@ -73,7 +73,8 @@ defaults would then share an identity; a hosted profile keeps it unset (its scal
 **Preparation.** Every input passes through one seam, `_prepare(contents, role)`, where the instruction mode
 applies, and then the pair budget: when the config declares one, every request is fitted through the shared
 text-budget mechanism (`rcp_ndcg.data.preprocess.fit`, the `pair` shape) -- the query cut to
-`query_max_tokens` when it is set, each document cut to what remains, the template's fixed segments
+`query_max_tokens` when it is set, each document cut to its declared `document_max_tokens` (when set) and
+then to what remains, the template's fixed segments
 re-attached so the anchors survive, every cut recorded in the census, and a chunked document sent as one
 candidate-set row per chunk, scored in the query's request(s), with the chunks' scores pooled back by
 `max`. The wire carries the cut spans (the engine

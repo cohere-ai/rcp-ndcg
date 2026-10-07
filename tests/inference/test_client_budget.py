@@ -417,6 +417,33 @@ class TestRerankBudget:
             self._config(tokenizer=tokenizer_json, request_shape="messages")
         assert "drop request_shape" in (caught.value.hint or ""), "the refusal names the field to change"
 
+    def test_a_declared_document_cap_cuts_every_document_over_it(self, tokenizer_json: str) -> None:
+        """H3: ``document_max_tokens`` beside the pair budget (jina-reranker-v3 cuts each document at 2048
+        tokens itself): the client ships every document over it at the cap -- in a pair the budget takes
+        whole too -- records the cut under the document's position (``cause: document_share``), and the cap
+        enters the config's identity."""
+        sender = RecordingSender()
+        client = RerankClient(
+            self._config(tokenizer=tokenizer_json, max_tokens=64, document_max_tokens=5), sender=sender
+        )
+        client.rerank("the query", ["a b c", " ".join(["evidence"] * 12)])
+
+        assert sender.bodies[-1]["documents"] == ["a b c", " ".join(["evidence"] * 5)]
+        (cut,) = client.census.cuts()
+        assert (cut.doc_id, cut.cause) == ("1", "document_share")
+        plain = self._config(tokenizer=tokenizer_json, max_tokens=64)
+        capped = self._config(tokenizer=tokenizer_json, max_tokens=64, document_max_tokens=5)
+        from rcp_ndcg.support.identity import identity_payload
+
+        assert identity_payload(capped)["document_max_tokens"] == 5
+        assert "document_max_tokens" not in identity_payload(plain)
+
+    def test_a_document_cap_that_never_binds_or_cannot_be_measured_is_refused(self, tokenizer_json: str) -> None:
+        with pytest.raises(ConfigError, match="document_max_tokens"):
+            self._config(tokenizer=tokenizer_json, max_tokens=64, document_max_tokens=64)
+        with pytest.raises(ConfigError, match="document_max_tokens"):
+            RerankEndpoint(api="cohere", model="rerank-v3.5", max_tokens=4096, document_max_tokens=512)
+
     def test_the_census_names_the_documents_original_positions(self, tokenizer_json: str) -> None:
         """With ``empty_doc: omit_zero``, a later document's census cut names ITS position -- never the kept
         position an earlier omission displaced."""

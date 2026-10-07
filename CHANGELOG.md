@@ -25,6 +25,16 @@ released together.
 
 ### Public surface
 
+- **A per-document cap beside the pair budget** (`RerankEndpoint.document_max_tokens`,
+  `TextBudget.document_max_tokens`): a reranker whose checkpoint cuts each document itself (jina-reranker-v3
+  reads 2048 document tokens beside its 512-token query share) declares it, mirroring `query_max_tokens`.
+  `fit` cuts every pair's document over it to it on the content span only -- also in a pair the budget would
+  take whole -- re-attaches the frame (the anchors survive) and records the cut under the document's position
+  with `cause: document_share` (`budget` when the pair still overflowed and the budget cut it further). The
+  cap is content (it enters the config's and the budget's identity; unset, both are unchanged), must be below
+  `max_tokens` on the rerank config (at or over it the pair budget always binds first), and is refused
+  beside `on_overflow: chunk` and on a hosted profile without a tokenizer (inert). The equivalence harness's
+  rerank audit holds every captured document span to it, as it holds the query span to its share.
 - **A role client's cut says why, and how large the uncut request was** (`rcp_ndcg.data.preprocess`):
   `TextCutRecord.cause` (`budget`, `query_share` or `document_share`, the new `CutCause` / `CUT_CAUSES`) and
   `TextCutRecord.original_request_tokens` (the uncut request's whole size as the engine would read it: the

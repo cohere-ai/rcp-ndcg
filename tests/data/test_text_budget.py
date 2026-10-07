@@ -437,6 +437,80 @@ class TestPairSplit:
         assert equal.query_max_tokens == 40
 
 
+class TestDocumentCap:
+    """``document_max_tokens`` (H3): a checkpoint that cuts each document itself (jina-reranker-v3 reads 2048
+    document tokens) declares the per-document cap beside the pair budget, mirroring ``query_max_tokens``. The
+    client cuts every document over it to it -- also in a pair the budget would take whole -- on the content
+    span only, the frame re-attached, and records the cut."""
+
+    SHORT_QUERY = "the query"
+
+    def _budget(self, **fields: object) -> TextBudget:
+        fields.setdefault("max_tokens", 512)
+        fields.setdefault("document_max_tokens", 8)
+        return TextBudget(tokenizer="test/framed-bpe", template=pair_template(), **fields)  # type: ignore[arg-type]
+
+    def test_a_document_over_its_cap_is_cut_to_it_in_an_under_budget_pair(self) -> None:
+        spec = pair_template()
+        census = TextTruncationCensus()
+        document = " ".join(["the page"] * 10)
+        result = fit(
+            [(self.SHORT_QUERY, document)], shape="pair", budget=self._budget(), tokenizer=FRAMED, census=census
+        )
+        query_final, document_final = result.contents[0]
+        assert query_final == self.SHORT_QUERY
+        assert 0 < FRAMED.count(document_final) <= 8 < FRAMED.count(document)
+        assert document.startswith(document_final)
+        ids = engine_ids(result.texts[0], spec, "pair")
+        assert ids[-2] == FRAMED.special_id(END_TURN_NAME), "the anchor survives the cap"
+        (cut,) = census.cuts()
+        assert cut.cause == "document_share"
+        uncut = FRAMED.count(
+            spec.render("pair", FRAMED, query=self.SHORT_QUERY, document=document), add_special_tokens=True
+        )
+        assert cut.original_request_tokens == uncut < 512, "the pair fitted the budget whole: the cap alone cut it"
+
+    def test_a_document_under_its_cap_rides_whole(self) -> None:
+        census = TextTruncationCensus()
+        result = fit(
+            [(self.SHORT_QUERY, "the page")], shape="pair", budget=self._budget(), tokenizer=FRAMED, census=census
+        )
+        assert result.contents[0] == (self.SHORT_QUERY, "the page") and len(census) == 0
+
+    def test_a_pair_the_capped_document_still_overflows_is_cut_by_the_budget(self) -> None:
+        census = TextTruncationCensus()
+        query = " ".join(["the"] * 40)
+        result = fit(
+            [(query, LONG)],
+            shape="pair",
+            budget=self._budget(max_tokens=64, query_max_tokens=24),
+            tokenizer=FRAMED,
+            census=census,
+        )
+        assert len(engine_ids(result.texts[0], pair_template(), "pair")) <= 64
+        assert FRAMED.count(result.contents[0][1]) <= 8
+        assert [cut.cause for cut in census.cuts()] == ["budget"]
+
+    def test_the_cap_is_validated_and_enters_the_identity(self) -> None:
+        with pytest.raises(ValueError, match="document_max_tokens"):
+            TextBudget(tokenizer="t", max_tokens=40, document_max_tokens=41)
+        with pytest.raises(ValueError, match="document_max_tokens"):
+            TextBudget(
+                tokenizer="t",
+                max_tokens=40,
+                document_max_tokens=8,
+                on_overflow="chunk",
+                chunk=ChunkPolicy(max_tokens=6, overlap_tokens=0),
+            )
+        with pytest.raises(ConfigError, match="document_max_tokens"):
+            TextBudget(max_tokens=40, document_max_tokens=8)
+        assert (
+            identity_payload(TextBudget(tokenizer="t", max_tokens=40, document_max_tokens=8))["document_max_tokens"]
+            == 8
+        )
+        assert "document_max_tokens" not in identity_payload(TextBudget(tokenizer="t", max_tokens=40))
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # Chunking: every chunk carries the full template; the census names the aggregation
 # ---------------------------------------------------------------------------------------------------------------

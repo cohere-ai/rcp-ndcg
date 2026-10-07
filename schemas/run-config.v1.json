@@ -650,6 +650,20 @@
           "title": "Connect Timeout S",
           "type": "number"
         },
+        "document_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The document's own cap, in the declared tokenizer's content tokens, beside the pair budget -- for a checkpoint that cuts each document itself (jina-reranker-v3 reads 2048 document tokens and 512 query tokens: ``document_max_tokens: 2048`` beside ``query_max_tokens: 512``). The client cuts every document over it to it, also in a pair the budget would take whole, on the content span only (the template re-attached, the anchors kept), records the cut under the document's position (``cause: document_share``) and then fits the pair to max_tokens. ``None`` (the default) declares no cap. It must be below max_tokens (at or over it the pair budget always binds first) and is refused beside ``on_overflow: chunk``. Content.",
+          "title": "Document Max Tokens"
+        },
         "empty_doc": {
           "default": "send",
           "description": "What an empty document becomes: ``send`` (the default: the empty string goes out), ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder, empty_doc_text). Content.",
@@ -2871,6 +2885,20 @@
           "title": "Connect Timeout S",
           "type": "number"
         },
+        "document_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The document's own cap, in the declared tokenizer's content tokens, beside the pair budget -- for a checkpoint that cuts each document itself (jina-reranker-v3 reads 2048 document tokens and 512 query tokens: ``document_max_tokens: 2048`` beside ``query_max_tokens: 512``). The client cuts every document over it to it, also in a pair the budget would take whole, on the content span only (the template re-attached, the anchors kept), records the cut under the document's position (``cause: document_share``) and then fits the pair to max_tokens. ``None`` (the default) declares no cap. It must be below max_tokens (at or over it the pair budget always binds first) and is refused beside ``on_overflow: chunk``. Content.",
+          "title": "Document Max Tokens"
+        },
         "empty_doc": {
           "default": "send",
           "description": "What an empty document becomes: ``send`` (the default: the empty string goes out), ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder, empty_doc_text). Content.",
@@ -4428,6 +4456,20 @@
           "title": "Connect Timeout S",
           "type": "number"
         },
+        "document_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The document's own cap, in the declared tokenizer's content tokens, beside the pair budget -- for a checkpoint that cuts each document itself (jina-reranker-v3 reads 2048 document tokens and 512 query tokens: ``document_max_tokens: 2048`` beside ``query_max_tokens: 512``). The client cuts every document over it to it, also in a pair the budget would take whole, on the content span only (the template re-attached, the anchors kept), records the cut under the document's position (``cause: document_share``) and then fits the pair to max_tokens. ``None`` (the default) declares no cap. It must be below max_tokens (at or over it the pair budget always binds first) and is refused beside ``on_overflow: chunk``. Content.",
+          "title": "Document Max Tokens"
+        },
         "empty_doc": {
           "default": "send",
           "description": "What an empty document becomes: ``send`` (the default: the empty string goes out), ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder, empty_doc_text). Content.",
@@ -5658,6 +5700,20 @@
           "exclusiveMinimum": 0,
           "title": "Connect Timeout S",
           "type": "number"
+        },
+        "document_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The document's own cap, in the declared tokenizer's content tokens, beside the pair budget -- for a checkpoint that cuts each document itself (jina-reranker-v3 reads 2048 document tokens and 512 query tokens: ``document_max_tokens: 2048`` beside ``query_max_tokens: 512``). The client cuts every document over it to it, also in a pair the budget would take whole, on the content span only (the template re-attached, the anchors kept), records the cut under the document's position (``cause: document_share``) and then fits the pair to max_tokens. ``None`` (the default) declares no cap. It must be below max_tokens (at or over it the pair budget always binds first) and is refused beside ``on_overflow: chunk``. Content.",
+          "title": "Document Max Tokens"
         },
         "empty_doc": {
           "default": "send",

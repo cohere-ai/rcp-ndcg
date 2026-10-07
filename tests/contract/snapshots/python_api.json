@@ -5044,6 +5044,13 @@
             "required": false,
             "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
           },
+          "document_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "max_tokens": {
             "alias": null,
             "default": "<required>",
@@ -5954,6 +5961,13 @@
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.data.preprocess.ChunkPolicy | None"
+          },
+          "document_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "max_tokens": {
             "alias": null,
@@ -11018,6 +11032,13 @@
             "required": false,
             "type": "float"
           },
+          "document_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "empty_doc": {
             "alias": null,
             "default": "send",
@@ -13566,6 +13587,13 @@
             "required": false,
             "type": "float"
           },
+          "document_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "empty_doc": {
             "alias": null,
             "default": "send",
@@ -14856,6 +14884,13 @@
             "required": false,
             "type": "float"
           },
+          "document_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "empty_doc": {
             "alias": null,
             "default": "send",
@@ -15637,6 +15672,13 @@
             "required": false,
             "type": "float"
           },
+          "document_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "empty_doc": {
             "alias": null,
             "default": "send",
@@ -16127,6 +16169,13 @@
             "frozen": false,
             "required": false,
             "type": "float"
+          },
+          "document_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "empty_doc": {
             "alias": null,

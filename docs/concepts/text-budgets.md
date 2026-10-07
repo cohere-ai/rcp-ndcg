@@ -70,7 +70,11 @@ goes out unchanged, so within `fit` the share binds on overflow); on an embedder
 `query` shape it is that shape's WHOLE budget -- per-shape budgets, for the asymmetric and late-interaction
 embedders that cap queries and documents differently (topk-embed-v1-small reads 1024 tokens of query, 8192 of
 document) -- while `max_tokens` keeps capping the `document` shape. A query budget above `max_tokens` is refused
-(on a reranker, one at or over it is refused: the document would keep nothing). `fit` then, per input:
+(on a reranker, one at or over it is refused: the document would keep nothing). A reranker whose checkpoint cuts
+each document itself declares `document_max_tokens` beside the pair budget (jina-reranker-v3 reads 2048
+document tokens and 512 query tokens): every document over it is cut to it, also in a pair the budget would take
+whole, the frame re-attached and the cut recorded (`cause: document_share`), before the pair is fitted; it must
+be below `max_tokens` and is refused beside `on_overflow: chunk`. `fit` then, per input:
 
 1. measures the fixed overhead once per (template, shape): the template rendered with every content span empty,
    counted as the engine reads it (the shape's `add_special_tokens` flag included);

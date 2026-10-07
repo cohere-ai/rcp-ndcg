@@ -57,7 +57,8 @@ def stage1_prompts(
     - ``anchor_check`` — every declared shape sampled on purpose with over-length inputs (at least
       ``over_length_per_shape`` per shape, padded in that shape's own span): every anchor must survive the
       client's cut, asserted on the captured requests and the client's census; for a reranker this is the
-      settle-once query (one settled span per row, within its declared share, no cut on an in-budget pair);
+      settle-once query (one settled span per row, within its declared share, every document span within its
+      declared ``document_max_tokens``, no cut on an in-budget pair);
     - ``render_check`` — the reference subprocess's ``render`` output against the captured texts, zero
       tolerance (needs ``--reference-python``; reported ``not_run`` without one).  Under a declared
       over-cap deviation, over-cap rows are reported separately and do not gate;
@@ -348,7 +349,8 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
     without the post-processor's tokens (:func:`_content_ids`), an ``anchor: last_content`` shape's head
     marker and its last content token (:func:`_audit_last_content`).  The rerank wire ships spans -- the
     engine assembles the frame -- so its audit asserts the client's settle-once: one query span per row,
-    identical across the row's pointwise requests, within its declared ``query_max_tokens``, and no cut on an
+    identical across the row's pointwise requests, within its declared ``query_max_tokens``, every document
+    span within its declared ``document_max_tokens``, and no cut on an
     in-budget pair (a cut recorded in the client's census for a pair under budget would mean the client
     shortened something the budget allowed whole).
     """
@@ -357,10 +359,13 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
     checked = 0
     max_tokens = recipe.client.max_tokens or 0
     share = getattr(recipe.client, "query_max_tokens", None)
+    document_cap = getattr(recipe.client, "document_max_tokens", None)
     for index, entry in enumerate(probe["rows"]):
         for shape, shape_body in entry["shapes"].items():
             if recipe.role == "rerank":
-                checked += _audit_rerank_span(index, shape, shape_body, share, max_tokens, entry, failures, tokenizer)
+                checked += _audit_rerank_span(
+                    index, shape, shape_body, (share, document_cap), max_tokens, entry, failures, tokenizer
+                )
                 continue
             flag = _add_specials_flag(recipe, shape)
             if template is not None and template.anchor == "last_content":
@@ -436,7 +441,8 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
         "failures": failures,
         "referent": "the anchor ids (the declared edge plus the post-processor's tokens on that side) must sit "
         "at their declared positions in the client's rendered request; a reranker's settled query must be one "
-        "span per row, within its declared share, and no in-budget pair may be cut",
+        "span per row, within its declared share, every document span within its declared cap, and no in-budget "
+        "pair may be cut",
     }
 
 
@@ -510,13 +516,15 @@ def _audit_rerank_span(
     row_index: int,
     shape: str,
     shape_body: dict[str, Any],
-    share: int | None,
+    caps: tuple[int | None, int | None],
     max_tokens: int,
     entry: dict[str, Any],
     failures: list[dict[str, Any]],
     tokenizer: Any,
 ) -> int:
-    """The rerank side of the anchor audit, on the captured spans: the settle-once query and the budget."""
+    """The rerank side of the anchor audit, on the captured spans: the settle-once query, the declared caps
+    (``caps``: the query's share and the per-document cap) and the budget."""
+    share, document_cap = caps
     checked = 0
     queries = shape_body.get("queries") or ([shape_body["query"]] if shape_body.get("query") else [])
     if len(set(queries)) > 1:
@@ -545,6 +553,17 @@ def _audit_rerank_span(
             )
     for document in shape_body.get("documents", []):
         checked += 1
+        if document_cap is not None and tokenizer.count(document) > document_cap:
+            failures.append(
+                {
+                    "shape": shape,
+                    "check": "document_share",
+                    "row": row_index,
+                    "document_tokens": tokenizer.count(document),
+                    "bound": document_cap,
+                    "text": document[:_SNIPPET],
+                }
+            )
         if not entry.get("over_length") and entry.get("cuts", 0) == 0 and tokenizer.count(document) > max_tokens:
             failures.append(
                 {
