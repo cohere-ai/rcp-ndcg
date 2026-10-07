@@ -1,10 +1,12 @@
 # ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b served with stock vLLM, paper-exact.
 #
 # Paper reference: experiments/paper/rerankers/reference/contextual.py (ContextualRerank, moved
-# unchanged from the former src/rcp_ndcg/retrieval/external_rerankers.py) with the paper config
-# experiments/paper/rerankers/ctxl_rerank_2b.yaml (batch_size 16) and the paper budget
-# MAX_SEQ_LENGTH = 8192 (retrieval/cross_encoder.py:42; the paper's own served path also capped
-# queries at MAX_QUERY_LENGTH = 4096, cross_encoder.py:46). The served prompt is the paper's
+# unchanged from the former src/rcp_ndcg/retrieval/external_rerankers.py, pre-unification) with the
+# paper config
+# experiments/paper/rerankers/ctxl_rerank_2b.yaml (batch_size 16, instruction: none) and the paper budget
+# MAX_SEQ_LENGTH = 8192 (the pair budget the paper factory passed; its query share MAX_QUERY_LENGTH =
+# 4096 is what the paper's own served path sent as max_tokens_per_query and this recipe declares as
+# client.query_max_tokens). The served prompt is the paper's
 # two-line frame (document before query, " ??" tail); the research lane (r-ctxl) measured every
 # claim below on the checkpoint's config and tokenizer files, and proved the template render
 # byte-identical to the paper prompt on CPU (the score path needs weights, so it is the GPU wave's).
@@ -21,7 +23,6 @@ engine:
   name: vllm
   image: "vllm/vllm-openai:v0.31.0"
   min_version: "0.31.0"
-  startup_timeout_s: 1800
 resources: {gpus: 1}
 serve:
   runner: pooling
@@ -49,9 +50,14 @@ serve:
   extra_args: []
 client:
   api: rerank
-  recipe: "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + classifier_from_token [\"!\"] + method no_post_processing, --chat-template template.jinja, pooler_config use_activation false (1-row score head = the lm_head row of token id 0, raw logit, no sigmoid)"
   tokenizer: "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b@6ffef5dc552583b8db58dc4a87f79f7aee78d2d9"
   max_tokens: 8192
+  # The query's share of the pair budget (the paper's MAX_QUERY_LENGTH). The settle rule, read from
+  # the merged rerank client (src/rcp_ndcg/inference/clients/rerank.py): the pair fit binds its share
+  # on overflow only, BUT the rerank client settles the shared query once per call and ships it AT
+  # THE SHARE whenever it exceeds it. An over-share query (over 4096 tokens) is therefore a declared
+  # divergence row -- the reference keeps the query whole -- so the gating pairs keep queries within
+  # the share.
   query_max_tokens: 4096
   template:
     pair:
@@ -64,7 +70,10 @@ client:
       - {fixed: " ??"}
     anchor: last
     add_special_tokens: {pair: true}
-  instruction: fold
+  instruction: none          # the paper's served-path config (experiments/paper/rerankers/
+                             # ctxl_rerank_2b.yaml says none) and what the reference reproduces: the
+                             # bare query reaches the model, the instruction field is never sent and
+                             # never folded (the client no longer folds for this recipe)
   use_activation: false
   on_overflow: cut
   empty_doc: send
@@ -82,38 +91,40 @@ status: {state: unverified, image: null, date: null, report: null}
 sources:
   - "https://huggingface.co/ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b @ 6ffef5dc552583b8db58dc4a87f79f7aee78d2d9: config.json (Qwen3ForCausalLM, bfloat16, id2label {0: LABEL_0}), tokenizer.json (ByteLevel post-processor, id 0 = \"!\"), tokenizer_config.json (model_max_length 131072, truncation_side unset), 1_LogitScore/config.json (true_token_id 0), config_sentence_transformers.json (activation_fn Identity)"
   - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0, every line below read at the tag): config/model.py:2279 (the ForSequenceClassification suffix maps to runner pooling + convert classify), model_executor/models/registry.py:201 (Qwen3ForCausalLM), model_executor/models/adapters.py:593-617 (the 1-row score head lifted from lm_head[classifier_from_token]) and :659 (SEQ_CLS_LOAD_METHODS), model_executor/layers/pooler/activations.py:134-139 (a <2-label head's default activation is sigmoid), model_executor/layers/pooler/seqwise/heads.py:194 (the per-request use_activation flag), pooling_params.py:111-128 (_merge_default_parameters fills unset request fields from the pooler config), entrypoints/pooling/scoring/io_processor.py:693-705 (/rerank renders roles query and document through --chat-template), entrypoints/pooling/scoring/protocol.py:72 (the rendered prompt is tokenized with add_special_tokens=True)"
-  - "rcp-ndcg: src/rcp_ndcg/retrieval/cross_encoder.py:42,46 (MAX_SEQ_LENGTH 8192, MAX_QUERY_LENGTH 4096), experiments/paper/rerankers/ctxl_rerank_2b.yaml; the paper-exact ContextualRerank this reference.py derives from lives on this branch at src/rcp_ndcg/retrieval/external_rerankers.py:275-389 and, on the clients-final lineage that moved the in-process models out, at experiments/paper/rerankers/reference/contextual.py (behaviour byte-identical)"
+  - "rcp-ndcg: the paper's MAX_SEQ_LENGTH = 8192 pair budget and MAX_QUERY_LENGTH = 4096 query share (the pre-unification retrieval/cross_encoder.py:42,46 constants at the lanes' base; kept here as client.max_tokens/query_max_tokens); experiments/paper/rerankers/ctxl_rerank_2b.yaml (the paper's config)"
+  - "experiments/paper/rerankers/reference/contextual.py (from the clients-final move onward; the pre-unification retrieval/external_rerankers.py:275-389 before it) — the paper-exact ContextualRerank this reference.py derives from (behaviour byte-identical)"
   - "research lane r-ctxl: report.md, digest.md, reference_common.py, recipe-ctxl-rerank-v2-instruct-multilingual-2b.yaml and score-template-2b.jinja in the r-ctxl research outputs (research/audit-synth/out/corrections.md carries the audit corrections applied here)"
 notes: >-
   Template: the shipped template.jinja is the research lane's score template re-written dual-mode:
-  when the harness's stage-1 check renders it with the query/document/instruction variables (the
-  query already carrying the client's fold) it renders the reference-exact prompt, and otherwise it
-  falls back to the messages-based body (the engine's safe_apply_chat_template passes exactly two
-  messages, roles query and document), so the engine renders the same prompt bit-exactly without
-  the vendor template's pitfalls (the vendor chat_template.jinja reads the instruction only from a
-  system message vLLM never sends, and would silently drop it). The template adds no instruction of
-  its own: the client's instruction mode is fold (the product's Task:/Query: fold, which the paper's
-  served path applied and the paper's in-process reference never received an instruction), so the
-  instruction rides inside the query span and stage 1's template check proves the file renders
-  exactly what fit renders. R10: the template file MUST ship with the engine. The wave's T0 smoke
-  should probe it (a /tokenize of one rendered prompt must carry the frame and end with the " ??"
-  anchor token): served without --chat-template, vLLM falls back silently to the un-templated pair
-  encode for this converted architecture (the missing-template warning fires only for an original
-  Qwen3 reranker), which reads a different prompt with no error. Budget: max_tokens 8192 is the
-  paper's MAX_SEQ_LENGTH,
-  counted as the engine sees the whole prompt (frame + document + query + anchor); query_max_tokens
-  4096 is the paper's MAX_QUERY_LENGTH (its own served path sent it as max_tokens_per_query), which
-  binds on pair overflow only - the query is cut to it first and the document keeps the rest, every
+  when the harness's stage-1 check renders it with the query/document variables it renders the
+  reference-exact prompt, and otherwise it falls back to the messages-based body (the engine's
+  safe_apply_chat_template passes exactly two messages, roles query and document), so the engine
+  renders the same prompt bit-exactly without the vendor template's pitfalls (the vendor
+  chat_template.jinja reads the instruction only from a system message vLLM never sends, and would
+  silently drop it). The template adds no instruction of its own and none is sent: the client's
+  instruction mode is none (the paper's served-path config, experiments/paper/rerankers/
+  ctxl_rerank_2b.yaml: none; the paper's in-process reference never received an instruction
+  either), so a pairs row's instruction is ignored on both sides and stage 1's template check
+  proves the file renders exactly what fit renders. R10: the template file MUST ship with the
+  engine. The wave's T0 smoke should probe it (a /tokenize of one rendered prompt must carry the
+  frame and end with the " ??" anchor token): served without --chat-template, vLLM falls back
+  silently to the un-templated pair encode for this converted architecture (the missing-template
+  warning fires only for an original Qwen3 reranker), which reads a different prompt with no
+  error. Budget: max_tokens 8192 is the paper's MAX_SEQ_LENGTH, counted as the engine sees the
+  whole prompt (frame + document + query + anchor). query_max_tokens 4096 is the paper's
+  MAX_QUERY_LENGTH (its own served path sent it as max_tokens_per_query): the pair fit binds its
+  share on overflow only, but the merged rerank client settles the shared query once per call and
+  ships it at the share whenever it exceeds it (src/rcp_ndcg/inference/clients/rerank.py) - every
   cut a content-span cut with the " ??" anchor reserved. The paper's in-process path instead
-  right-truncates the whole prompt at 8192 (document first, so a long document pushes the query and
-  the anchor out of the prompt): that drop is the declared anchor_drop_over_cap deviation, reported
-  per pair at stage 2, non-gating; the gates run on the under-cap pairs, whose renders are
-  byte-identical. Residual long-query note: the reference has no query-side cap, so a query between
-  4096 tokens and the pair budget diverges by design on an over-share pair (served query head vs
-  reference whole query) - the paper's own served behaviour, bounded by the same query share; a
-  pairs file that keeps queries at or under MAX_QUERY_LENGTH never hits it. Scores: the served
-  score is the raw logit of vocabulary position 0 at the final position (use_activation false on
-  the client and in the pooler config); the fp32 score head vs the reference's bf16 head is
-  bounded by the logit gate (an unmeasured RFC proposal, not a measured bound - audit-synth's
-  correction of the r-ctxl decline reason). No plugin: the architecture override, the chat
-  template and the pooler config suffice on the stock v0.31.0 image.
+  right-truncates the whole prompt at 8192 (document first, so a long document pushes the query
+  and the anchor out of the prompt): that drop is the declared anchor_drop_over_cap deviation,
+  reported per pair at stage 2, non-gating. Declared divergence rows: a query over the share (over
+  4096 tokens and under the budget) ships settled at the share while the reference keeps it whole
+  and scores it - so the gating pairs keep queries within the share and documents within the
+  budget, and stage 1's render comparison (the reference's own port of the wire's spans, including
+  the settle rule) signals any divergence row loudly. Scores: the served score is the raw logit of
+  vocabulary position 0 at the final position (use_activation false on the client and in the
+  pooler config); the fp32 score head vs the reference's bf16 head is bounded by the logit gate
+  (an unmeasured RFC proposal, not a measured bound - audit-synth's correction of the r-ctxl
+  decline reason). No plugin: the architecture override, the chat template and the pooler config
+  suffice on the stock v0.31.0 image.

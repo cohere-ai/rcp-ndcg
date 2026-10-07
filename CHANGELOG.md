@@ -514,9 +514,22 @@ released together.
   `MAX_SEQ_LENGTH`, `query_max_tokens` 4096 = `MAX_QUERY_LENGTH`, `on_overflow: cut`). The paper's
   whole-prompt right truncation drops the trailing " ??" anchor over the cap, so the recipe declares
   `reference.known_deviations: [anchor_drop_over_cap]` instead of copying the drop into the served path;
-  the reference subprocess derives from `experiments/paper/rerankers/reference/contextual.py` with the
-  instruction fold the served client applies. Status `unverified` until the GPU waves run the harness's
-  stages 2–3.
+  the reference subprocess derives from `experiments/paper/rerankers/reference/contextual.py`
+  (paper-exact; no instruction is sent or folded -- the family's `instruction: none`). Status `unverified`
+  until the GPU waves run the harness's stages 2–3.
+
+- The `ctxl-rerank-v2-instruct-multilingual-1b`/`-2b`/`-6b` recipe family settles its shared policy
+  (sweep-recipes items #1/#2/#5): all three declare `client.instruction: none` (the paper configs' mode; the
+  paper's in-process path never received an instruction) and no reference folds or appends one -- a pairs
+  row's instruction is ignored on both sides. Every recipe states the merged rerank client's settle rule
+  (the pair fit binds its share on overflow only; the client settles the shared query once per call and
+  ships it at `query_max_tokens` whenever it exceeds it), declares over-share queries as divergence rows
+  (the gating pairs keep queries within the share), and its reference's `render` mode ports the wire's
+  content spans (the settle rule and the anchor-preserving cut, verbatim prefixes) for stage 1's span
+  comparison. Family conventions: the template file is `template.jinja` in all three (6b's
+  `score-template-6b.jinja` renamed; one trailing-newline convention), `requirements-reference.txt` ships
+  beside every reference (1b gained one), `client.recipe` stays unset (`client_config` records the recipe
+  id), and `engine.startup_timeout_s` is no longer restated at its 1800 default.
 
 - The first served recipe in `packages/rcp-ndcg-vllm/recipes/`: `qwen3-reranker-0.6b`
   (Qwen/Qwen3-Reranker-0.6B @ e61197ed45024b0ed8a2d74b80b4d909f1255473, pointwise rerank,
