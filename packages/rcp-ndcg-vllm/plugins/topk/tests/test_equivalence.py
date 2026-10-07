@@ -43,7 +43,7 @@ def reference_chain(
 
     The reference computes the head matmul in the model's dtype and casts the
     RESULT to float32; with float32 inputs this is the same math as the
-    served fp32-head chain, and with bf16 operands it is the R6 rounding
+    served fp32-head chain, and with bf16 operands it is the head-rounding
     regime the GPU wave measures on real weights.
     """
     vectors = (hidden_states @ head_weight.T).float()
@@ -105,7 +105,7 @@ def test_chain_rejects_mrl_wider_than_the_projection() -> None:
 
 
 def test_bf16_head_rounding_is_bounded() -> None:
-    """R6 on CPU: the reference runs the head matmul on bf16 operands and
+    """The head rounding on CPU: the reference runs the head matmul on bf16 operands and
     casts the result; the served pooler casts the data to a float32 head
     first.  The two agree to bf16 rounding of the operands — measured here on
     a tiny config to bound the delta the GPU wave should see from this source

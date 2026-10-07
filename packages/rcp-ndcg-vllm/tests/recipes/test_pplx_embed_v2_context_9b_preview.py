@@ -1,10 +1,13 @@
-"""The pplx-embed-v2-context-9b-preview recipe: the schema, stage 1 on CPU, the anchor mutation.
+"""The pplx-embed-v2-context-9b-preview recipe: contract, stage 1 on CPU, the ids facts.
 
-The recipe validates through the product's ``PoolingEndpoint``; stage 1 runs the harness's
-CPU checks against the model's real tokenizer (downloaded into the lane's scratch
-directory, outside the checkout, and skipped with a clear reason when offline); the
-tokenization facts the wire contract rests on are pinned against the downloaded
-tokenizer; and dropping the template's anchor segment turns the anchor audit red.
+The recipe validates through the product's ``PoolingEndpoint`` and every resolved serve/client/
+reference field is pinned through the shared helper (``tests/recipes/_contract.py``), with two
+mutant tests showing a drifted recipe going red by name. Stage 1 runs the harness's CPU checks
+against the model's real tokenizer (downloaded under ``RCP_NDCG_VLLM_TOKENIZER_CACHE``, else the
+system temp directory -- never the checkout -- and skipped with a clear reason when offline); the
+tokenization facts the wire contract rests on are pinned against the downloaded tokenizer, and the
+declared document-ids product gap is pinned on both sides (flip that test to equality when the
+product gains the split-parse id seam the notes name).
 """
 
 from __future__ import annotations
@@ -21,8 +24,7 @@ import yaml
 from rcp_ndcg_vllm import load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
 
-from rcp_ndcg.data.tokenizer import load_tokenizer
-from rcp_ndcg.inference.config import PoolingEndpoint
+from ._contract import assert_recipe_contract
 
 RECIPE_ID = "pplx-embed-v2-context-9b-preview"
 REVISION = "b667039ee8b438a6350fbc91bbcecd86f9d363ba"
@@ -49,13 +51,120 @@ _CACHED_SNAPSHOT = HF_CACHE / f"models--perplexity-ai--{RECIPE_ID}" / "snapshots
 # module binds them before anything in the process imports it.
 os.environ.setdefault("HF_HUB_CACHE", str(HF_CACHE))
 if _CACHED_SNAPSHOT.is_file():
-    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
+EXPECTED_SERVE = {
+    "runner": "pooling",
+    "convert": None,
+    "hf_overrides": {},
+    "chat_template": None,
+    "pooler_config": {
+        "task": "token_embed",
+    },
+    "trust_remote_code": False,
+    "max_model_len": 262144,
+    "dtype": "bfloat16",
+    "plugin": "rcp-ndcg-vllm-pplx",
+    "io_processor_plugin": None,
+    "mm_processor_kwargs": {},
+    "limit_mm_per_prompt": None,
+    "extra_args": [],
+}
+
+EXPECTED_CLIENT = {
+    "api": "vllm_pooling",
+    "model": "pplx-embed-v2-context-9b-preview",
+    "revision": "b667039ee8b438a6350fbc91bbcecd86f9d363ba",
+    "api_key_env": None,
+    "headers_env": {},
+    "concurrency": 64,
+    "timeout_s": 600.0,
+    "connect_timeout_s": 5.0,
+    "max_retries": 2,
+    "wait_on_outage_s": None,
+    "image_processor": None,
+    "image_policy": None,
+    "video_policy": None,
+    "max_images": 0,
+    "max_videos": 0,
+    "media_sides": ["query", "document"],
+    "recipe": (
+        "vLLM v0.31.0 pooling runner; plugin-registered PplxContextualModel (Qwen3_5-based "
+        "contextual chunk model: span-mean per chunk, int8 tanh head, bidirectional attention); "
+        "the role-prefix frame (by name in the template); token-id wire; 262142-token right cuts "
+        "client-side"
+    ),
+    "tokenizer": "perplexity-ai/pplx-embed-v2-context-9b-preview@b667039ee8b438a6350fbc91bbcecd86f9d363ba",
+    "max_tokens": 262142,
+    "query_max_tokens": None,
+    "template": {
+        "query": [
+            {
+                "fixed": "{special:[Q] }",
+                "content": None,
+            },
+            {
+                "fixed": None,
+                "content": "query",
+            },
+        ],
+        "document": [
+            {
+                "fixed": "{special:[D] }",
+                "content": None,
+            },
+            {
+                "fixed": None,
+                "content": "document",
+            },
+        ],
+        "pair": None,
+        "anchor": "first",
+        "anchor_markers": [],
+        "add_special_tokens": True,
+        "normalize": [],
+    },
+    "on_overflow": "cut",
+    "chunk": None,
+    "aggregation": "max",
+    "empty_doc": "send",
+    "empty_doc_text": None,
+    "request_shape": "token_ids",
+    "query_prompt": "",
+    "doc_prompt": "",
+    "normalize": True,
+    "dimensions": None,
+    "batch_size": 32,
+    "embed_dtype": "float16",
+    "dim": 2048,
+    "document_skip_token_ids": [],
+    "mrl_dim": None,
+    "outputs": "per_chunk",
+}
+
+EXPECTED_REFERENCE = {
+    "kind": "remote_code",
+    "score_scale": "cosine",
+    "entry": "reference.py",
+    "known_deviations": [],
+}
+
+EXPECTED_TOP = {
+    "id": "pplx-embed-v2-context-9b-preview",
+    "licence": "MIT",
+    "revision": "b667039ee8b438a6350fbc91bbcecd86f9d363ba",
+    "role": "multi_vector",
+    "input": ["text"],
+    "model": "perplexity-ai/pplx-embed-v2-context-9b-preview",
+}
 
 
 @pytest.fixture(scope="module")
 def tokenizer():
-    """The recipe's own tokenizer, from the scratch cache or the Hub; skipped when offline."""
+    """The recipe's own tokenizer, from the cache or the Hub; skipped when offline."""
     try:
+        from rcp_ndcg.data.tokenizer import load_tokenizer
+
         return load_tokenizer(TOKENIZER_SPEC)
     except Exception as error:  # noqa: BLE001  (any Hub/transport failure means offline)
         pytest.skip(
@@ -229,47 +338,97 @@ def _pairs(tokenizer) -> list[dict]:
     return [{"query": query, "documents": [document(*chunks)]} for query, chunks in rows]
 
 
-def test_recipe_validates_against_the_product_endpoint() -> None:
-    """The recipe loads, and its client block is the product's PoolingEndpoint with the declared budget."""
+def test_recipe_contract() -> None:
+    """Every resolved serve/client/reference field is pinned (the shared helper, both directions)."""
     recipe = load_recipe(RECIPES)
-    assert recipe.id == RECIPE_ID
-    assert recipe.model == f"perplexity-ai/{RECIPE_ID}"
-    assert recipe.revision == REVISION
-    assert recipe.role == "multi_vector"
-    assert recipe.input == ["text"]
-    assert isinstance(recipe.client, PoolingEndpoint)
-    assert recipe.client.api == "vllm_pooling"
-    assert recipe.client.request_shape == "token_ids"
-    assert recipe.client.tokenizer == TOKENIZER_SPEC
-    assert recipe.client.max_tokens == 262142
-    template = recipe.client.template
-    assert template is not None and template.shapes() == ("query", "document")
-    assert template is not None and template.anchor == "first"
-    assert recipe.client.on_overflow == "cut"
-    assert recipe.client.empty_doc == "send"
-    assert recipe.client.normalize is True
-    assert recipe.client.embed_dtype == "float16"
-    assert recipe.client.dim == 2048
-    assert recipe.serve.dtype == "float32"
-    assert recipe.serve.max_model_len == 262144
-    assert recipe.serve.runner == "pooling"
-    assert recipe.serve.plugin == "rcp-ndcg-vllm-pplx"
-    assert recipe.serve.chat_template is None
-    assert recipe.serve.trust_remote_code is True
-    assert recipe.reference.kind == "remote_code"
+    assert_recipe_contract(
+        recipe,
+        serve=EXPECTED_SERVE,
+        client=EXPECTED_CLIENT,
+        reference=EXPECTED_REFERENCE,
+        top=EXPECTED_TOP,
+    )
     assert recipe.status.state == "unverified"
+    assert recipe.sources
+
+
+def test_contract_mutant_serve_max_model_len_is_red(tmp_path: Path) -> None:
+    """Mutant 1 (the sweep reviewer's): serve.max_model_len 262144 -> 327680 must red, naming the field.
+
+    Drifted upward: a context below the client's 262,142-token budget is refused by the schema itself
+    (client.max_tokens must not exceed engine.max_model_len) before the contract pin is reached."""
+
+    def mutate(data: dict) -> dict:
+        data["serve"]["max_model_len"] = 327680
+        return data
+
+    drifted = load_recipe(_mutated_recipe(tmp_path / "mutant", mutate))
+    with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
+        assert_recipe_contract(
+            drifted, serve=EXPECTED_SERVE, client=EXPECTED_CLIENT, reference=EXPECTED_REFERENCE, top=EXPECTED_TOP
+        )
+
+
+def test_contract_mutant_reference_kind_is_red(tmp_path: Path) -> None:
+    """Mutant 2 (the sweep reviewer's): reference.kind remote_code -> transformers must red."""
+
+    def mutate(data: dict) -> dict:
+        data["reference"]["kind"] = "transformers"
+        return data
+
+    drifted = load_recipe(_mutated_recipe(tmp_path / "mutant", mutate))
+    with pytest.raises(AssertionError, match=r"reference\.kind"):
+        assert_recipe_contract(
+            drifted, serve=EXPECTED_SERVE, client=EXPECTED_CLIENT, reference=EXPECTED_REFERENCE, top=EXPECTED_TOP
+        )
+
+
+def _mutated_recipe(root: Path, change) -> Path:
+    """A copy of the recipe directory with one YAML mutation applied (the contract mutants)."""
+    root.mkdir(parents=True, exist_ok=True)
+    target = root / RECIPE_ID
+    target.mkdir()
+    (target / "reference.py").write_text((RECIPES / "reference.py").read_text(encoding="utf-8"), encoding="utf-8")
+    data = yaml.safe_load((RECIPES / "recipe.yaml").read_text(encoding="utf-8"))
+    (target / "recipe.yaml").write_text(yaml.safe_dump(change(data), sort_keys=False), encoding="utf-8")
+    return target
+
+
+def _probe_recipe(root: Path, change=None) -> Path:
+    """A probe copy for the offline fake: the answer bounded, the request mechanism unchanged.
+
+    Stage 1 audits what the role client SENDS; the fake's answer is scaffolding. The product's offline fake
+    answers one hash-seeded vector per token of every item, drawing each component from a sha256 over the
+    item's whole text (for a token-ids body, the stringified id list), so at the shipped budget -- over-length
+    samples of ~262,142 tokens -- one probed item costs millions of hashes over a megabyte-long input: the
+    stage-1 run never finishes (faulthandler: ``fake.fake_uniform`` <- ``_unit_vector`` <- ``_pooling``). The
+    probe copy therefore declares ``dim: 8`` (the answer's width, reply-side only) and ``max_tokens: 2048``
+    (the over-length samples are padded past the DECLARED budget, so they shrink with it). Every check stage 1
+    runs is budget-independent (the fit's content-only cut, the anchors, the render comparison of the pairs
+    rows, all under 2048 tokens); the shipped 262,142 and 2048 are pinned by ``test_recipe_contract``, and the
+    full-budget stage 1 runs against the engine on the GPU wave.
+    """
+
+    def bound(data: dict) -> dict:
+        narrowed = {**data, "client": {**data["client"], "dim": 8, "max_tokens": 2048}}
+        return change(narrowed) if change else narrowed
+
+    return _mutated_recipe(root, bound)
 
 
 def test_serve_argv_carries_the_plugin_and_the_pooling_flags() -> None:
-    """The rendered argv serves the stock image with the plugin, fp32 and the token_embed pooler."""
+    """The rendered argv serves the stock image with the plugin, bf16 and the token_embed pooler.
+
+    No --trust-remote-code: the plugin's registered config class parses config.json locally (the
+    AutoConfig registration the contract-core tests pin)."""
     recipe = load_recipe(RECIPES)
     argv = serve_argv(recipe, port=8100, served_model_name=RECIPE_ID)
     assert argv[:3] == ["vllm", "serve", recipe.model]
     assert argv[argv.index("--revision") + 1] == REVISION
-    assert argv[argv.index("--dtype") + 1] == "float32"
+    assert argv[argv.index("--dtype") + 1] == "bfloat16"
     assert argv[argv.index("--max-model-len") + 1] == "262144"
     assert argv[argv.index("--pooler-config") + 1] == '{"task": "token_embed"}'
-    assert "--trust-remote-code" in argv
+    assert "--trust-remote-code" not in argv
     assert "--chat-template" not in argv  # the plugin names the wheel; the template would be inert on this route
 
 
@@ -298,6 +457,67 @@ def test_wire_contract_tokenization_facts(tokenizer) -> None:
     assert document_ids[:2] != list(DOCUMENT_PREFIX_LITERAL_IDS)
 
 
+def _split_ids(tokenizer, text: str) -> list[int]:
+    """The reference's split-side ids of ``text``: transformers' ``split_special_tokens=True``.
+
+    That flag is the raw ``tokenizers`` ``encode_special_tokens`` toggle
+    (transformers 5.x tokenization_utils_tokenizers.py:466 and :1055-1060): added SPECIAL
+    tokens textify (the role prefixes render as their literal tokens), non-special added
+    tokens (the chunk_sep boundary marker) keep their one id. The backend object is shared,
+    so the flag is restored after the call.
+    """
+    backend = tokenizer.backend
+    backend.encode_special_tokens = True
+    try:
+        return list(backend.encode(text, add_special_tokens=False).ids)
+    finally:
+        backend.encode_special_tokens = False
+
+
+def test_the_wire_ids_match_on_the_query_and_diverge_on_the_document(tokenizer) -> None:
+    """The declared product gap (the notes' PRODUCT GAP paragraph), pinned on both sides.
+
+    What request_shape: token_ids sends is the tokenizer's added-token parse of the fitted
+    render; what the model's reference call runs is the split-side parse of the same text
+    (modeling_pplx_contextual.py:46-113). The QUERY leg matches (the remote prepends the
+    248077 id and split-tokenizes the body; the added-token parse of the render equals it).
+    The DOCUMENT leg diverges at the prefix boundary (248078 vs (62724, 60), and the first
+    content token behind it), so the plugin refuses document ids until the product's id
+    derivation gains the split-parse seam the notes name. When that seam lands and the recipe
+    adopts it, THIS TEST FLIPS: assert equality there and delete the divergence lines.
+    """
+    query = "what drives scientific breakthroughs"
+    marker = tokenizer.special_text("chunk_sep")
+    document = marker.join(["first chunk text", "second chunk text"])
+
+    client_query_ids = tokenizer.ids(f"[Q] {query}")
+    client_document_ids = tokenizer.ids(f"[D] {document}")
+    reference_query_ids = [QUERY_PREFIX_ID, *_split_ids(tokenizer, query)]
+    reference_document_ids = _split_ids(tokenizer, f"[D] {document}")
+
+    # The query leg is the reference's id-level render TODAY (measured parity).
+    assert client_query_ids == reference_query_ids
+    # The document leg is not: both halves of the divergence are pinned here.
+    assert reference_document_ids[:2] == list(DOCUMENT_PREFIX_LITERAL_IDS)
+    assert client_document_ids[0] == DOCUMENT_PREFIX_ID
+    assert client_document_ids != reference_document_ids
+    # Beyond the prefix boundary the marker keeps its id in both parses (a non-special
+    # added token survives the split toggle), which is why the plugin can segment the
+    # reference's id space at all.
+    assert reference_document_ids.count(BOUNDARY_ID) == 1
+
+
+_HARNESS_TOKEN_IDS = pytest.mark.xfail(
+    strict=True,
+    reason="harness, fixed on another lane: stage 1 does not read token_ids requests yet -- the anchor audit "
+    "tokenizes the sent id lists as text (G1: TypeError 'TextInputSequence must be str' in "
+    "stages._anchor_check) and the render check compares the sent id lists with the reference's text (all "
+    "40 rows); every other stage-1 check of this recipe passes. Strict: green the day the harness lands it.",
+)
+"""The one expected failure of this recipe's stage 1 (recorded in the lane report)."""
+
+
+@_HARNESS_TOKEN_IDS
 def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer) -> None:
     """Stage 1 on CPU: the product's fit, the anchor audit, the reference render - all green.
 
@@ -305,7 +525,7 @@ def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer) -> None:
     (five per declared shape, padded in that shape's own content span, cut by the
     product's budget mechanism with every anchor reserved).
     """
-    recipe = load_recipe(RECIPES)
+    recipe = load_recipe(_probe_recipe(tmp_path / "probe"))
     pairs_path = tmp_path / "pairs.jsonl"
     pairs_path.write_text("".join(json.dumps(row) + "\n" for row in _pairs(tokenizer)), encoding="utf-8")
     document = stage1_prompts(recipe, pairs_path, sys.executable, over_length_per_shape=5)
@@ -319,6 +539,7 @@ def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer) -> None:
     assert document["passed"] is True
 
 
+@_HARNESS_TOKEN_IDS
 def test_dropping_the_anchor_segment_turns_the_anchor_check_red(tmp_path: Path, tokenizer) -> None:
     """The mutation: drop the template's anchor segment (the leading role prefix) and the audit goes red.
 
@@ -330,19 +551,16 @@ def test_dropping_the_anchor_segment_turns_the_anchor_check_red(tmp_path: Path, 
     """
     pairs_path = tmp_path / "pairs.jsonl"
     pairs_path.write_text("".join(json.dumps(row) + "\n" for row in _pairs(tokenizer)[:2]), encoding="utf-8")
-    healthy = stage1_prompts(load_recipe(RECIPES), pairs_path, None, over_length_per_shape=1)
+    healthy = stage1_prompts(load_recipe(_probe_recipe(tmp_path / "probe")), pairs_path, None, over_length_per_shape=1)
     assert healthy["anchor_check"]["passed"] is True  # positive control: the audit is not vacuously red
 
-    mutated_dir = tmp_path / RECIPE_ID
-    mutated_dir.mkdir()
-    data = yaml.safe_load((RECIPES / "recipe.yaml").read_text(encoding="utf-8"))
-    template = data["client"]["template"]
-    for shape in ("query", "document"):
-        template[shape] = [segment for segment in template[shape] if "content" in segment]
-    shutil_reference = mutated_dir / "reference.py"
-    shutil_reference.write_text((RECIPES / "reference.py").read_text(encoding="utf-8"), encoding="utf-8")
-    (mutated_dir / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    broken = load_recipe(mutated_dir)
+    def mutate(data: dict) -> dict:
+        template = data["client"]["template"]
+        for shape in ("query", "document"):
+            template[shape] = [segment for segment in template[shape] if "content" in segment]
+        return data
+
+    broken = load_recipe(_probe_recipe(tmp_path / "mutant", mutate))
     red = stage1_prompts(broken, pairs_path, None, over_length_per_shape=1)
     assert red["anchor_check"]["passed"] is False
     assert red["anchor_check"]["failures"], "the audit must name the shape it failed"

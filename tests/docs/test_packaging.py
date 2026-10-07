@@ -387,6 +387,7 @@ _DERIVED_RECIPE_AND_PLUGIN_FILES = (
     "packages/rcp-ndcg-vllm/recipes/zerank-1-reranker/reference.py",
     "packages/rcp-ndcg-vllm/recipes/zerank-1-small-reranker/reference.py",
     "packages/rcp-ndcg-vllm/recipes/zerank-2-reranker/reference.py",
+    "packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/hf_config.py",
     "packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/model.py",
     "packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/pooler.py",
     "packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/pooling_core.py",

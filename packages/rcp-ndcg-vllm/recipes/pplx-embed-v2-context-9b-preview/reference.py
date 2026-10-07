@@ -31,11 +31,15 @@ the remote ``prepare_inputs`` (``modeling_pplx_contextual.py`` at the revision):
 Modes and outputs (written to ``--out``):
 
 - ``render``: ``{"rows": [{"index", "shape", "text"}]}`` -- the prompt text per
-  declared shape. No cut and no limit check here: the recipe's client applies the
-  declared cut policy before this reference is consulted, and the model's own
-  over-limit raise (``:128-133``) fires inside its own ``prepare_inputs`` in embed
-  mode. Runs on the stdlib plus PyYAML (the recipe's declared shapes), so it runs
-  in any interpreter that has both.
+  declared shape, uncut. The harness hands this reference the pairs rows raw, and
+  the model's own code cuts nothing: its ``prepare_inputs`` raises for an input over
+  262144 tokens (``query_length``/``document_length`` in config.json; the raise at
+  ``:126-133``) -- "split the document into context windows". So a row over that
+  limit has no card output at all (embed mode raises), while the client cuts it to
+  its 262142-token budget; the render of such a row is the uncut prompt and stage 1
+  reports it as a mismatch. The pairs files keep every text under the limit. Runs
+  on the stdlib plus PyYAML (the recipe's declared shapes), so it runs in any
+  interpreter that has both.
 - ``embed``: ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors":
   [[...]]}]}`` -- the query's vectors and the FIRST document's vectors as flat
   lists of per-chunk (2048-d) rows, the shape the harness's stage-2 comparison
@@ -132,8 +136,8 @@ def render(pairs: list[dict]) -> dict:
     """The model's prompt text per declared shape: ``{"rows": [{"index", "shape", "text"}]}``.
 
     The document content is taken as the already-joined chunk list the recipe
-    declares; the frame is the model's own prompt construction, uncut (the
-    client's declared cut happens before this reference is consulted).
+    declares; the frame is the model's own prompt construction, uncut: the model
+    cuts nothing and raises over 262144 tokens (see the module docstring).
     """
     rows: list[dict] = []
     for index, row in enumerate(pairs):
