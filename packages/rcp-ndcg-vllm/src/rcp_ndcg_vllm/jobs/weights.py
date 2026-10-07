@@ -54,8 +54,12 @@ def cache_dir_of(model: str, *, cache_root: Path | None = None) -> Path:
 
 
 def disk_free_bytes(path: str | Path) -> int:
-    """Free bytes on the filesystem holding ``path`` (the container filesystem on the node)."""
-    return shutil.disk_usage(path).free
+    """Free bytes on the filesystem holding ``path`` (the container filesystem on the node); a path that
+    does not exist yet (a fresh pod's empty cache) is measured at its nearest existing parent."""
+    probe = Path(path)
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    return shutil.disk_usage(probe).free
 
 
 def snapshot_bytes(model: str, *, cache_root: Path | None = None) -> int:

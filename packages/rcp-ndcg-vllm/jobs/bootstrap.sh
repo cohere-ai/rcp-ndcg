@@ -21,8 +21,10 @@
 #             (rcp_ndcg.runners.script.install_argv: uvx --find-links <wheelhouse> --no-index, held to the
 #             staged constraints file) - the code users run, exercised by the waves.
 #   reference a venv with --system-site-packages over the image's torch and CUDA, installing only what
-#             requirements-reference.txt names from the wheelhouse; the recipes' reference.py runs as
-#             <state>/reference/bin/python subprocesses.
+#             requirements-reference.txt names from the wheelhouse (--no-deps under the image's full
+#             freeze as constraints, then jobs/reference_deps.py completes the venv's own missing deps
+#             to a fixed point); the recipes' reference.py runs as <state>/reference/bin/python
+#             subprocesses.
 #
 # uv is installed with pip --target (the product's own bootstrap_uv location), never into the engine
 # environment; UV_CACHE_DIR lives in the state directory. The auth script mounted at
@@ -103,7 +105,154 @@ freeze_diff_guard() {
   return 0
 }
 
+# install_plugin_wheels SPECS_FILE ALLOWED_FILE FAILED_FILE: install one plugin spec per line into the
+# engine environment.  A spec that names a staged file installs from the staged tree; a name installs
+# from the staged wheelhouse ONLY (--no-index --find-links "$STAGE_DIR/wheelhouse", never an index:
+# the stage is the whole truth).  A spec that cannot install (a plugin found nowhere) is appended to
+# FAILED_FILE with its exact name - run_wave's --failed-plugins then fails exactly the recipes that
+# name it - and this returns 0 even when every plugin failed: one failing recipe never stops the job.
+install_plugin_wheels() {
+  local specs_file="$1" allowed_file="$2" failed_file="$3" plugin plugin_path
+  while IFS= read -r plugin; do
+    [[ -z "$plugin" ]] && continue
+    plugin_path=""
+    for candidate in "$STAGE_DIR/recipes/$plugin" "$STAGE_DIR/$plugin" "$RECIPES_ROOT/$plugin" "$plugin"; do
+      if [[ -n "$candidate" && -e "$candidate" ]]; then
+        plugin_path="$candidate"
+        break
+      fi
+    done
+    if [[ -n "$plugin_path" ]]; then
+      if ! "$ENGINE_PYTHON" -m pip install --quiet --no-deps "$plugin_path"; then
+        echo "bootstrap: the recipe's plugin $plugin could not be installed from $plugin_path;" \
+          "the recipes that name it will fail (with the exact name)" >&2
+        printf '%s\n' "$plugin" >>"$failed_file"
+        continue
+      fi
+    else
+      # Not a staged file: installed as named from the staged wheelhouse only.
+      echo "bootstrap: the recipe's plugin $plugin is not staged; installing it from $STAGE_DIR/wheelhouse" >&2
+      if ! "$ENGINE_PYTHON" -m pip install --quiet --no-deps --no-index \
+        --find-links "$STAGE_DIR/wheelhouse" "$plugin"; then
+        echo "bootstrap: the plugin $plugin is neither staged nor in the staged wheelhouse;" \
+          "the recipes that name it will fail (with the exact name)" >&2
+        printf '%s\n' "$plugin" >>"$failed_file"
+        continue
+      fi
+    fi
+    freeze_name_of "${plugin_path:-$plugin}" >>"$allowed_file"
+  done <"$specs_file"
+  return 0
+}
+
+# --- the reference venv's torch stack: the image's own, pinned and verified ---------------------------
+
+# image_constraints ENGINE_FREEZE OUT_FILE: the reference install's constraint file - the image's
+# FULL pip freeze (the torch/torchvision/torchaudio/triton stack included), so nothing of the image
+# can be replaced and --no-deps never has to resolve the image stack's own dependency tree (which the
+# image does not register).  A freeze with no torch== pin is an error with a hint: an unconstrained
+# install could silently swap the image's CUDA torch for the wheelhouse's CPU torch.
+image_constraints() {
+  cp "$1" "$2"
+  if ! grep -q '^torch==' "$2"; then
+    echo "bootstrap: the engine's pip freeze carries no torch== pin ($1); cannot constrain the" >&2
+    echo "  reference install against the image's torch stack (a paper reference that needs its own" >&2
+    echo "  torch gets REFERENCE_REQUIREMENTS and its own venv)" >&2
+    return 1
+  fi
+}
+
+# reference_install REFERENCE_PYTHON CONSTRAINTS REQUIREMENTS WHEELHOUSE: install the reference's
+# requirements from the staged wheelhouse only, --no-deps under the image's full freeze as
+# constraints - the install never resolves the image stack, and a requirement that would replace any
+# image distribution fails loudly (the pip conflict), never a silent swap of the wheelhouse's CPU
+# torch over the image's CUDA build.  What --no-deps cannot pull is completed by reference_complete.
+reference_install() {
+  if ! "$1" -m pip install --quiet --no-deps --no-index --find-links "$4" -c "$2" -r "$3"; then
+    echo "bootstrap: the reference install failed (pip's output is above); a requirement that would" >&2
+    echo "  replace the image's torch/torchvision/torchaudio/triton stack conflicts with $2 (the" >&2
+    echo "  image's pins) - a paper reference that needs other versions gets REFERENCE_REQUIREMENTS" >&2
+    echo "  and its own venv" >&2
+    return 1
+  fi
+}
+
+# reference_complete REFDEPS_PY REFERENCE_PYTHON WHEELHOUSE: complete the reference venv's OWN
+# distributions' missing dependencies to a fixed point, each --no-deps from the staged wheelhouse
+# (the image's distributions are never completed - that would shadow its CUDA stack).
+reference_complete() {
+  if ! "$2" "$1" "$3"; then
+    echo "bootstrap: completing the reference venv's own missing dependencies failed (the output is" >&2
+    echo "  above). Add them to requirements-reference.txt, or stage their wheels in the wheelhouse." >&2
+    return 1
+  fi
+}
+
+# torch_probe PYTHON: the torch build that PYTHON sees, as one JSON line {"version":..., "cuda":...}
+# where ``cuda`` is torch.version.cuda (null on a CPU build).  A python torch cannot import reports
+# nulls: the probe records, never raises.
+torch_probe() {
+  "$1" - <<'PYEOF'
+import json
+
+try:
+    import torch
+
+    print(json.dumps({"version": torch.__version__, "cuda": torch.version.cuda}))
+except Exception:  # noqa: BLE001 - the probe records, never raises
+    print(json.dumps({"version": None, "cuda": None}))
+PYEOF
+}
+
+# check_reference_torch REF_JSON IMAGE_JSON: does the reference see the image's own CUDA torch build?
+# Prints true/false and: fails when the reference replaced the image's torch stack, cannot see torch at
+# all, or sees a CPU torch where the image ships CUDA (a CPU torch on a GPU node is a failed bootstrap).
+check_reference_torch() {
+  python3 - "$1" "$2" <<'PYEOF'
+import json
+import sys
+
+reference = json.load(open(sys.argv[1]))
+image = json.load(open(sys.argv[2]))
+if not image.get("version") and not reference.get("version"):
+    print("false")  # the image carries no torch: nothing to keep
+    raise SystemExit(0)
+kept_image_build = bool(image.get("version")) and reference == image
+is_image_build = bool(kept_image_build and image.get("cuda"))
+print("true" if is_image_build else "false")
+if kept_image_build:
+    # The reference sees exactly the image's torch build (recorded CUDA or not: the image's own CPU
+    # build is still the image's build, so nothing was replaced).
+    raise SystemExit(0)
+if image.get("version") and not reference.get("version"):
+    print(
+        f"bootstrap: the reference venv cannot import torch at all; the image's build is "
+        f"{image.get('version')}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+if image.get("cuda") and not reference.get("cuda"):
+    print(
+        f"bootstrap: the reference venv's torch {reference.get('version')} is a CPU build where the "
+        f"image ships CUDA torch {image.get('version')}: a CPU torch on a GPU node is a failed bootstrap",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+print(
+    f"bootstrap: the reference venv replaced the image's torch build {image.get('version')} "
+    f"(cuda {image.get('cuda')}) with {reference.get('version')} (cuda {reference.get('cuda')}); a "
+    "requirement that would replace the image's torch stack conflicts with the image's pins",
+    file=sys.stderr,
+)
+raise SystemExit(1)
+PYEOF
+}
+
 main() {
+# The report and the reference completion are mounted helpers (subprocess scripts, never printed);
+# both are defined before every use (set -u is active, and defining them late once broke the run).
+REPORT_PY="${RCP_REPORT_PY:-/etc/rcp/files/report/report.py}"
+REFERENCE_DEPS_PY="${RCP_REFERENCE_DEPS_PY:-/etc/rcp/files/refdeps/reference_deps.py}"
 # The auth script runs before anything else (credentials first; then the transfer path is chosen -
 # gcloud, gsutil, or the python helper when the image ships neither CLI - and recorded).
 export AUTH_SCRIPT="${RCP_GCS_AUTH_FILE:-/etc/rcp/gcs_auth.sh}"
@@ -371,32 +520,16 @@ fi
 # --- the engine's plugin wheels (none in wave 0), under the freeze-diff guard ------------------------
 
 : >"$STATE/plugin-allowed.txt"
+: >"$STATE/plugin-failures.txt"
 if [[ -n "${WAVE_LIST_FILE:-}" && -n "$RECIPES_ROOT" ]]; then
-  PLUGINS="$("$STATE/client" python -m rcp_ndcg_vllm.jobs.plugins collect \
-    --recipes-root "$RECIPES_ROOT" --recipes "@$WAVE_LIST_FILE")"
-else
-  PLUGINS=""
-fi
-if [[ -n "$PLUGINS" ]]; then
-  echo "bootstrap: installing the recipes' plugin wheels into the engine environment (--no-deps)" >&2
-  while IFS= read -r plugin; do
-    [[ -z "$plugin" ]] && continue
-    plugin_path=""
-    for candidate in "$STAGE_DIR/recipes/$plugin" "$STAGE_DIR/$plugin" "$RECIPES_ROOT/$plugin" "$plugin"; do
-      if [[ -n "$candidate" && -e "$candidate" ]]; then
-        plugin_path="$candidate"
-        break
-      fi
-    done
-    if [[ -n "$plugin_path" ]]; then
-      "$ENGINE_PYTHON" -m pip install --quiet --no-deps "$plugin_path"
-    else
-      # Not a staged file: a name on an index or in the wheelhouse (the item-9 fallback, declared).
-      echo "bootstrap: the recipe's plugin $plugin is not staged; installing it as named" >&2
-      "$ENGINE_PYTHON" -m pip install --quiet --no-deps "$plugin"
-    fi
-    freeze_name_of "${plugin_path:-$plugin}" >>"$STATE/plugin-allowed.txt"
-  done <<<"$PLUGINS"
+  # The collect step has already skipped (and reported) any invalid recipe of the wave list; the wave
+  # marks those failed with the validation message.  What remains are the plugin specs to install.
+  "$STATE/client" python -m rcp_ndcg_vllm.jobs.plugins collect \
+    --recipes-root "$RECIPES_ROOT" --recipes "@$WAVE_LIST_FILE" >"$STATE/plugin-specs.txt"
+  if [[ -s "$STATE/plugin-specs.txt" ]]; then
+    echo "bootstrap: installing the recipes' plugin wheels into the engine environment (--no-deps)" >&2
+    install_plugin_wheels "$STATE/plugin-specs.txt" "$STATE/plugin-allowed.txt" "$STATE/plugin-failures.txt"
+  fi
 fi
 freeze_of "$ENGINE_PYTHON" >"$STATE/engine-freeze-after.txt"
 ENGINE_MEASURE_S="$(( $(now_s) - ENVS_START ))"
@@ -419,13 +552,26 @@ export PLUGIN_CANARY
 ref_start="$(now_s)"
 # The reference reads the image's torch and CUDA through --system-site-packages and installs only what
 # is missing - pip's job, not uv's: uv ignores system site-packages during resolution and would install
-# the wheelhouse's CPU torch over the image's CUDA build; pip sees the system distributions and skips
-# them (a paper reference that needs other versions gets REFERENCE_REQUIREMENTS and its own venv).
+# the wheelhouse's CPU torch over the image's CUDA build.  The install is --no-deps under the image's
+# FULL freeze as constraints (resolving the image stack fails on its unregistered dependency
+# tree, and replacing any image distribution must fail loudly); REFERENCE_REQUIREMENTS and its own
+# venv is the escape hatch for a paper reference that needs other versions.  What --no-deps cannot
+# pull (the venv's own distributions' missing deps, e.g. sentence-transformers' scikit-learn) is
+# completed from the staged wheelhouse to a fixed point - never for the image's own distributions.
+image_constraints "$STATE/engine-freeze-before.txt" "$STATE/reference-constraints.txt"
 uv venv --system-site-packages --seed "$STATE/reference" >/dev/null
-"$STATE/reference/bin/python" -m pip install --quiet --no-index \
-  --find-links "$STAGE_DIR/wheelhouse" \
-  -r "${REFERENCE_REQUIREMENTS:-$STAGE_DIR/requirements-reference.txt}"
+reference_install "$STATE/reference/bin/python" "$STATE/reference-constraints.txt" \
+  "${REFERENCE_REQUIREMENTS:-$STAGE_DIR/requirements-reference.txt}" "$STAGE_DIR/wheelhouse"
+reference_complete "$REFERENCE_DEPS_PY" "$STATE/reference/bin/python" "$STAGE_DIR/wheelhouse"
 ref_s="$(( $(now_s) - ref_start ))"
+# The reference must carry the image's torch build: the report's reference block records torch and
+# whether it is the image's build (CUDA), and a CPU torch on a GPU node is a failed bootstrap.
+torch_probe "$ENGINE_PYTHON" >"$STATE/engine-torch.json"
+torch_probe "$STATE/reference/bin/python" >"$STATE/reference-torch.json"
+if ! TORCH_IS_IMAGE_BUILD="$(check_reference_torch "$STATE/reference-torch.json" "$STATE/engine-torch.json")"; then
+  echo "bootstrap: the reference venv does not carry the image's torch build (the message above is the reason)" >&2
+  exit 1
+fi
 "$STATE/reference/bin/python" - <<'PYEOF' >"$STATE/reference-versions.json"
 import json
 import sys
@@ -445,30 +591,31 @@ except ImportError:
     versions["transformers"] = None
 print(json.dumps(versions))
 PYEOF
-python3 - "$STATE/reference-versions.json" "$ref_s" <<'PYEOF' >"$STATE/reference.json"
+python3 - "$STATE/reference-versions.json" "$ref_s" "$TORCH_IS_IMAGE_BUILD" <<'PYEOF' >"$STATE/reference.json"
 import json
 import sys
 
 versions = json.load(open(sys.argv[1]))
 versions["install_s"] = int(sys.argv[2])
+versions["torch_is_image_build"] = sys.argv[3] == "true"
 print(json.dumps(versions, indent=2))
 PYEOF
 echo "bootstrap: reference environment ready in ${ref_s}s ($(cat "$STATE/reference-versions.json"))" >&2
 
 # --- the report --------------------------------------------------------------------------------------
 
-REPORT_PY="${RCP_REPORT_PY:-/etc/rcp/files/report/report.py}"
 REPORT="$STATE/bootstrap.json"
 python3 "$REPORT_PY" init --file "$REPORT" --schema rcp-ndcg.bootstrap-report.v1 --started "$STARTED"
 python3 "$REPORT_PY" merge --file "$REPORT" --key engine --fragment <(
-  python3 - "$STATE/plugin-allowed.txt" "$ENGINE_PYTHON_VERSION" "$ENGINE_VLLM_VERSION" "$ENGINE_MEASURE_S" \
+  python3 - "$STATE/plugin-allowed.txt" "$STATE/plugin-failures.txt" "$ENGINE_PYTHON_VERSION" "$ENGINE_VLLM_VERSION" "$ENGINE_MEASURE_S" \
     "$STATE/engine-freeze-after.txt" "$STAGE_DIR/wheelhouse" "$PLUGIN_CANARY" <<'PYEOF'
 import json
 import sys
 from pathlib import Path
 
-allowed, python_version, vllm_version, measure_s, freeze_file, wheelhouse, canary = sys.argv[1:8]
+allowed, failed, python_version, vllm_version, measure_s, freeze_file, wheelhouse, canary = sys.argv[1:9]
 plugins = [line.strip() for line in Path(allowed).read_text(encoding="utf-8").splitlines() if line.strip()]
+plugins_failed = [line.strip() for line in Path(failed).read_text(encoding="utf-8").splitlines() if line.strip()]
 freeze = [
     line.strip()
     for line in Path(freeze_file).read_text(encoding="utf-8").splitlines()
@@ -476,6 +623,7 @@ freeze = [
 ]
 print(json.dumps({
     "python": python_version, "vllm": vllm_version, "freeze_unchanged": True, "plugins": plugins,
+    "plugins_failed": plugins_failed,
     "measure_s": int(measure_s), "freeze": freeze, "wheelhouse": wheelhouse, "plugin_canary": canary,
 }))
 PYEOF
@@ -499,6 +647,7 @@ if [[ "$MODE" == "wave" ]]; then
   exec "$STATE/client" python -m rcp_ndcg_vllm.jobs.run_wave \
     --recipes "@$WAVE_LIST_FILE" --recipes-root "$RECIPES_ROOT" --gpus "$gpus" \
     --out "$STATE/wave" --upload "$OUT_URI" --record \
+    --failed-plugins "$STATE/plugin-failures.txt" \
     --reference-python "$STATE/reference/bin/python" "${pairs_args[@]+${pairs_args[@]}}"
 fi
 }

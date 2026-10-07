@@ -61,6 +61,7 @@ AUTH_SCRIPT="${RCP_GCS_AUTH_FILE:-/etc/rcp/gcs_auth.sh}"
 REPORT_PY="${RCP_REPORT_PY:-/etc/rcp/files/report/report.py}"
 HOST_PY="${RCP_HOST_PY:-/etc/rcp/files/wave0host/wave0_host.py}"
 BOOTSTRAP_SH="${RCP_BOOTSTRAP_SH:-/etc/rcp/files/bootstrap/bootstrap.sh}"
+REFDEPS_PY="${RCP_REFERENCE_DEPS_PY:-/etc/rcp/files/refdeps/reference_deps.py}"  # the bootstrap's reference step
 GCS_SH="${RCP_GCS_HELPER_SH:-/etc/rcp/files/gcshelper/gcs.sh}"
 GCS_HELPER_PY="${RCP_GCS_HELPER_PY:-/etc/rcp/files/gcshelper/gcs.py}"
 
@@ -90,9 +91,10 @@ for tool in python3 nvidia-smi; do
 done
 [[ -f "$AUTH_SCRIPT" ]] || { echo "wave0: no auth script at $AUTH_SCRIPT (set RCP_GCS_AUTH_FILE)"; exit 1; }
 [[ -n "${HF_TOKEN:-}" ]] || { echo "wave0: HF_TOKEN is not set (the job's secret); the Hub check needs it"; exit 1; }
-[[ -f "$REPORT_PY" && -f "$HOST_PY" && -f "$BOOTSTRAP_SH" && -f "$GCS_SH" && -f "$GCS_HELPER_PY" ]] || {
+[[ -f "$REPORT_PY" && -f "$HOST_PY" && -f "$BOOTSTRAP_SH" && -f "$GCS_SH" && -f "$GCS_HELPER_PY" \
+  && -f "$REFDEPS_PY" ]] || {
   echo "wave0: a mounted helper is missing (report.py: $REPORT_PY, wave0_host.py: $HOST_PY, bootstrap.sh:" \
-    "$BOOTSTRAP_SH, gcs.sh: $GCS_SH, gcs.py: $GCS_HELPER_PY)"
+    "$BOOTSTRAP_SH, gcs.sh: $GCS_SH, gcs.py: $GCS_HELPER_PY, reference_deps.py: $REFDEPS_PY)"
   exit 1
 }
 

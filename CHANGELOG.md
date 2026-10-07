@@ -120,6 +120,19 @@ released together.
   every newly imported module from `sys.modules`, including scipy and numpy's C-extension submodules, which a
   later re-import cannot load twice in one process; it now removes only `experiments/`' own modules.
 
+- **The node runtime's harness bugs found while validating the GPU waves** (`packages/rcp-ndcg-vllm/jobs`) — one failing
+  recipe never stops the wave, end to end: `jobs.plugins collect` reports and skips a recipe that fails
+  validation (never fails the job) and the wave report marks it failed with the validation message; a named
+  plugin installs from the staged wheelhouse only (`--no-index --find-links <stage>/wheelhouse`) and a plugin
+  found nowhere marks exactly the recipes that name it failed, with the exact name; `submit.sh` creates
+  `RCP_SUBMIT_DIR` when it does not exist. The reference venv installs `--no-deps` under the image's full
+  freeze as constraints (resolving the image stack fails on its unregistered dependency tree) and completes
+  only its OWN distributions' missing dependencies from the wheelhouse to a fixed point (`jobs/reference_deps.py`);
+  the report's `reference` block records `torch` and `torch_is_image_build`, and a CPU torch on a GPU node is
+  a failed bootstrap. Every disk check measures a not-yet-created cache at its nearest existing parent, each
+  engine slot's `TMPDIR` is short enough for vLLM's ZMQ IPC paths (AF_UNIX's 107 characters) whatever the
+  recipe id is, and `steps.serve.state` records the serve step's own success (a clean stop is not a failure). The
+  `WAVE.md` table keeps one row per recipe whatever the message wraps.
 - **A tokenizer file's embedded truncation and padding no longer cap the counts** (G5): a `tokenizer.json`
   can ship `truncation: {max_length: 1024}` (topk-embed-v1-small does) or fixed-length padding, and an
   un-reset backend silently topped every count and id list at those lengths, so no budget above them could

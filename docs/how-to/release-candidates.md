@@ -32,7 +32,7 @@ under `<prefix>/rc0/` is what the node installs from:
 | `plugins/` | public plugin packages, when the package ships any |
 | `wave-lists/<wave>.txt` | one recipe id per line, per wave |
 | `pairs/` | the stage-2 pairs files, when the checkout has any |
-| `requirements-reference.txt` | what the reference venv installs from the wheelhouse (the image's torch stays) |
+| `requirements-reference.txt` | what the reference venv installs from the wheelhouse (`--no-deps` under the image's freeze; the image's torch stack stays) |
 | `extra/<name>/` | the `EXTRA_DIRS` entries (private plugins, pairs, wave lists), as they are |
 | `manifest.json` | the commit, the version, the CUDA-lock wheels inert on a CPU client (`nvidia-*`, `triton`), the SHA-256 of every staged file |
 
@@ -47,14 +47,32 @@ Every wave runs on the stock `vllm/vllm-openai:v0.31.0` image — no custom imag
 environments that are never mixed. `bootstrap.sh` builds them from a staged RC:
 
 - **engine** — the image's own Python, which runs `vllm serve`. Untouched, except recipe plugin wheels
-  installed with `--no-deps`: a `pip freeze` before and after must differ by exactly those wheels (in
-  wave 0, by nothing at all), or the bootstrap fails before any engine starts.
+  installed with `--no-deps`: a spec that names a staged file installs from the staged tree; a name installs
+  from the staged **wheelhouse only** (`--no-index --find-links <stage>/wheelhouse`, never an index). A plugin
+  found nowhere is recorded with its exact name (the report's engine block lists it under `plugins_failed`)
+  and the wave marks exactly the recipes that name it failed — one failing recipe never stops the wave, end
+  to end (a recipe that fails validation is likewise reported on stderr, skipped by the collect step, and
+  marked failed in the wave report with the validation message). A `pip freeze` before and after must differ
+  by exactly the installed plugin wheels (in wave 0, by nothing at all), or the bootstrap fails before any
+  engine starts.
 - **client** — no separate venv: every client command runs through the product's own install mechanism
   (`rcp_ndcg.runners.script.install_argv`: `uvx --find-links <wheelhouse> --no-index`, held to the
   staged constraints file), so the waves exercise exactly the code users run. `uv` itself is installed
   with `pip --target` (the product's own `bootstrap_uv` location), never into the engine environment.
-- **reference** — a venv with `--system-site-packages` over the image's torch and CUDA, installing only
-  what `requirements-reference.txt` names from the wheelhouse; the recipes' references run as
+- **reference** — a venv with `--system-site-packages` over the image's torch and CUDA. The install
+  runs `pip install --no-deps` from the staged wheelhouse only, held to the image's **full**
+  `pip freeze` as its constraints file: pip never resolves the image stack's own dependency tree (the
+  image does not register it — its unregistered `nvidia-nccl-cu13` pin broke a resolved install once),
+  and a requirement that would replace any image distribution fails the bootstrap loudly
+  (`REFERENCE_REQUIREMENTS` and its own venv is the escape hatch for a paper reference that needs other
+  versions). What `--no-deps` cannot pull — the reference venv's **own** distributions' missing
+  dependencies (sentence-transformers' scikit-learn, scipy, joblib, threadpoolctl) — is completed from
+  the wheelhouse to a fixed point by the mounted `reference_deps.py`; the image's distributions are
+  never completed (that would shadow its CUDA stack), and a wheelhouse gap fails with the requirement
+  names and the way out. Afterwards the bootstrap probes torch in both pythons: the report's
+  `reference` block records `torch`, `transformers`, `install_s` and `torch_is_image_build` (whether
+  the reference sees exactly the image's CUDA build) — a CPU torch where the image ships CUDA, a
+  replaced torch, or no torch at all is a **failed bootstrap**. The recipes' references run as
   subprocesses of that python, never inside the client.
 
 The bootstrap verifies the staged files against the manifest before installing anything, records the
@@ -67,6 +85,16 @@ bootstrap.sh envs <STAGE_URI> --state <DIR>     # the three environments only (w
 bootstrap.sh wave <STAGE_URI> <OUT_URI> --wave wave-a
 ```
 
+The wave mode then runs the wave's list through `run_wave.py` from the client wrapper: one engine per
+recipe on its GPUs, and one failing recipe never stops the wave. A recipe that fails validation is a
+failed row in `wave.json`/`WAVE.md` with the validation message, a recipe whose plugin could not be
+installed is a failed row with the plugin's exact name, and a recipe that measurably cannot fit the
+free disk fails early (measured at the nearest existing parent on a fresh pod, where the cache does
+not exist yet). The serve step records the engine's own outcome — started, answered, stopped cleanly
+is a success whatever a later step's verdict is — and every slot's `TMPDIR` is a short per-slot
+directory, because vLLM's ZMQ IPC socket path must fit AF_UNIX's 107 characters whatever the recipe
+id is.
+
 ## Submitting the waves
 
 `submit.sh` submits one job per wave against a staged RC — at most `--max-jobs` in flight (a wave
@@ -77,13 +105,15 @@ Kueue priority class and the shared-memory size for eight engines:
 export RCP_KJOBS_CONFIG=/path/to/jobs-config.yaml    # the job CLI's -f config (required, no default)
 export RCP_GCS_AUTH_FILE=/path/to/gcs_auth.sh        # mounted at /etc/rcp/gcs_auth.sh; named, never read
 export RCP_HF_TOKEN_FILE=/path/to/token              # passed as a kjobs secret, never read or echoed
+export RCP_SUBMIT_DIR=/path/to/job-outputs           # optional: where the job CLI's output files land
 packages/rcp-ndcg-vllm/jobs/submit.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves wave-a wave-b
 ```
 
 Options: `--max-jobs N` (default 1), `--priority dev-high|dev-medium` (the `priority_class=` override,
 rendered as `<class>-training-priority`; verify with a dry run), `--script bootstrap|wave0`, and
-`KJOBS=echo` to print the plan instead of submitting. The job CLI's output goes to a file; only job
-names and states are printed.
+`KJOBS=echo` to print the plan instead of submitting. The job CLI's output goes to a file under
+`RCP_SUBMIT_DIR` (default: a fresh temp directory; the directory is created when it does not exist);
+only job names and states are printed.
 
 ## Wave 0, the node test
 
@@ -151,6 +181,8 @@ kjobs-go submit -f "$RCP_KJOBS_CONFIG" \
   files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh \
   files.report.from_file=packages/rcp-ndcg-vllm/jobs/report.py \
   files.report.mount_path=/etc/rcp/files/report/report.py \
+  files.refdeps.from_file=packages/rcp-ndcg-vllm/jobs/reference_deps.py \
+  files.refdeps.mount_path=/etc/rcp/files/refdeps/reference_deps.py \
   files.gcsauth.from_file="$RCP_GCS_AUTH_FILE" files.gcsauth.mount_path=/etc/rcp/gcs_auth.sh \
   secret.HF_TOKEN="$(cat "$RCP_HF_TOKEN_FILE")"
 ```

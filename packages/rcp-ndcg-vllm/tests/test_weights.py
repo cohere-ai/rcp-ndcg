@@ -76,6 +76,14 @@ def test_evict_frees_readonly_blobs(cache_root: Path) -> None:
     assert not directory.exists()
 
 
+def test_disk_free_bytes_measures_a_not_yet_created_cache_at_its_parent(tmp_path: Path) -> None:
+    """A fresh pod's HF cache does not exist before the first download: the measurement lands on the
+    nearest existing parent (the same filesystem), never a FileNotFoundError crash."""
+    missing = tmp_path / "deep" / "not" / "created" / "hub"
+    assert not missing.exists()
+    assert weights.disk_free_bytes(missing) == weights.disk_free_bytes(tmp_path)
+
+
 def test_will_fit_refuses_a_model_that_measurably_does_not_fit() -> None:
     """The one-line early failure: the model's size plus headroom against the free disk."""
     free = 2 << 30
