@@ -9,7 +9,7 @@ processes" and guards against a second load within one process.
 
 from __future__ import annotations
 
-__all__ = ["PLUGIN_ARCHITECTURE", "PLUGIN_NAME", "register"]
+__all__ = ["PLUGIN_ARCHITECTURE", "PLUGIN_NAME", "register_pplx"]
 
 #: The entry-point name (what ``VLLM_PLUGINS`` filters by).
 PLUGIN_NAME = "rcp_ndcg_vllm.models.pplx"
@@ -17,7 +17,7 @@ PLUGIN_NAME = "rcp_ndcg_vllm.models.pplx"
 PLUGIN_ARCHITECTURE = "PplxContextualModel"
 
 
-def register() -> None:
+def register_pplx() -> None:
     """Register the model class and its config handler with the running vLLM.
 
     The model class is registered as a lazy ``"module:Class"`` string, as vLLM's plugin

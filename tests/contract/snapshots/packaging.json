@@ -24,6 +24,16 @@
     "rcp-ndcg-core": {
       "entry_points": {},
       "scripts": {}
+    },
+    "rcp-ndcg-vllm": {
+      "entry_points": {
+        "vllm.general_plugins": [
+          "rcp-ndcg-vllm"
+        ]
+      },
+      "scripts": {
+        "rcp-ndcg-vllm": "rcp_ndcg_vllm.serve:run_console"
+      }
     }
   },
   "pydantic_version": "2.13.5"

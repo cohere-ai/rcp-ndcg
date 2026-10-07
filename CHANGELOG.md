@@ -24,6 +24,25 @@ released together.
 ## Unreleased
 
 ### Public surface
+- **The four-distribution layout, and the serving package's pinned surface** (layout move): the repository
+  tree is `rcp-ndcg-core/`, `rcp-ndcg/`, `rcp-ndcg-vllm/`, `rcp-ndcg-test/` (unpublished) with the root
+  `pyproject.toml` the uv workspace only. `rcp_ndcg_vllm.recipe` joins the public modules (`Recipe`,
+  `load_recipe`, `iter_recipes`, `serve_argv`), the `rcp-ndcg-vllm` console tree is pinned (`serve`,
+  `--dry-run` -- `rcp-ndcg-vllm serve <recipe-id> [--port ...] [--dry-run]` is new), and the exported recipe
+  schema file (`rcp-ndcg-vllm/schema/recipe.schema.json`) is regenerated for the plain-data `client` block
+  (rcp-ndcg validates it when it reads it). `recipe: <id>` in a retriever/rerank role config now resolves the
+  client block from the shipped recipe (the mapping form of docs-firstcontact Q1: CONTENT equal or refused
+  with both values named, RUNTIME the config's); `--retriever recipe:<id>` / `--reranker recipe:<id>` is the
+  shorthand. `rcp-ndcg-vllm`'s dependencies are now only pydantic and PyYAML (`pip install --no-deps` works in
+  the stock vLLM image and `pip freeze` differs by exactly that wheel); `fit_rows`/`budget_of` stay deleted
+  (R30: the harness drives the product's role clients). The release workflow builds and publishes three
+  distributions in the order core -> rcp-ndcg -> vllm.
+
+### Removed
+
+- **The vLLM plugin distributions** (`rcp-ndcg-vllm-topk`, `rcp-ndcg-vllm-pplx`): their model code folds into
+  `rcp_ndcg_vllm.models.{topk,pplx}` under one lazily-registering `vllm.general_plugins` entry point
+  (`rcp-ndcg-vllm`) and one version guard; no plugin wheels are built or published (layout-move item 3).
 
 - **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
   are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric

@@ -23,7 +23,7 @@ import sys
 from .errors import RecipeError
 from .recipe import default_recipes_root, load_recipe, serve_argv
 
-__all__ = ["main"]
+__all__ = ["build_parser", "run_console"]
 
 
 def _recipe(recipe_id: str):
@@ -50,20 +50,25 @@ def _check_plugin(spec: str | None) -> None:
         ) from None
 
 
-def main(argv: list[str] | None = None) -> int:
-    """The ``rcp-ndcg-vllm`` console: ``serve <recipe-id> [--port ...] [--dry-run]``.
-
-    Inputs: the console argv (default :data:`sys.argv`).  Outputs: the exit status — 0 from ``--dry-run`` and
-    never from a real serve (:func:`os.execvp` replaces this process); 2 for usage, 1 for a bad recipe or a
-    missing plugin, each message on stderr.
-    """
+def build_parser() -> argparse.ArgumentParser:
+    """The console's ``argparse`` tree (``tests/contract`` pins it: Q3's public console tree)."""
     parser = argparse.ArgumentParser(prog="rcp-ndcg-vllm", description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
     serve = commands.add_parser("serve", help="build the `vllm serve` argv of a recipe and exec it")
     serve.add_argument("recipe_id", metavar="recipe-id", help="the shipped recipe to serve (its id)")
     serve.add_argument("--port", type=int, default=8000, help="the port the engine serves on (default 8000)")
     serve.add_argument("--dry-run", action="store_true", help="print the shell-quoted argv; exec nothing")
-    args = parser.parse_args(argv)
+    return parser
+
+
+def run_console(argv: list[str] | None = None) -> int:
+    """The ``rcp-ndcg-vllm`` console: ``serve <recipe-id> [--port ...] [--dry-run]``.
+
+    Inputs: the console argv (default :data:`sys.argv`).  Outputs: the exit status — 0 from ``--dry-run`` and
+    never from a real serve (:func:`os.execvp` replaces this process); 2 for usage, 1 for a bad recipe or a
+    missing plugin, each message on stderr.
+    """
+    args = build_parser().parse_args(argv)
 
     try:
         recipe = _recipe(args.recipe_id)

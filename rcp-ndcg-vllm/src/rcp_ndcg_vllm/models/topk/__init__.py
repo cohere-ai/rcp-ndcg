@@ -16,21 +16,21 @@ from typing import TYPE_CHECKING
 
 __version__ = "0.0.1"
 
-__all__ = ["TopkEmbedModel", "__version__", "register"]
+__all__ = ["TopkEmbedModel", "__version__", "register_topk"]
 
 if TYPE_CHECKING:
     # Re-exported lazily (see __getattr__); these imports are type-only so the
     # package import itself needs neither vLLM nor torch.
     from .model import TopkEmbedModel
-    from .plugin import register
+    from .plugin import register_topk
 
 
 def __getattr__(name: str):  # noqa: ANN202 - PEP 562 module hook
     """Resolve lazily so importing the package needs neither vLLM nor torch."""
-    if name == "register":
-        from .plugin import register
+    if name == "register_topk":
+        from .plugin import register_topk
 
-        return register
+        return register_topk
     if name == "TopkEmbedModel":
         from .model import TopkEmbedModel
 

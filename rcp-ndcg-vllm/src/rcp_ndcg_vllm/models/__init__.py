@@ -12,7 +12,23 @@ The topk and pplx distributions folded into this one wheel (layout-move item 3):
 
 from __future__ import annotations
 
-__all__ = ["register"]
+__all__ = ["LAZY_MODEL_MODULES", "register"]
+
+LAZY_MODEL_MODULES: tuple[str, ...] = (
+    "rcp_ndcg_vllm.models.pplx.config",
+    "rcp_ndcg_vllm.models.pplx.model",
+    "rcp_ndcg_vllm.models.pplx.pooler",
+    "rcp_ndcg_vllm.models.pplx.pooling_core",
+    "rcp_ndcg_vllm.models.topk",
+    "rcp_ndcg_vllm.models.topk.config",
+    "rcp_ndcg_vllm.models.topk.model",
+    "rcp_ndcg_vllm.models.topk.plugin",
+    "rcp_ndcg_vllm.models.topk.pooling",
+    "rcp_ndcg_vllm.models.topk.weights",
+)
+"""The registry-lazy model modules: they import vLLM/torch (and the version guard refuses outside an engine)
+by design, and only vLLM imports them -- as the ``module:Class`` strings the entry point registers. Importing
+every OTHER module of this package needs neither torch nor vLLM (test_no_torch, and the contract walks)."""
 
 
 def register() -> None:
@@ -29,8 +45,8 @@ def register() -> None:
 
     require_vllm_version()
 
-    from .pplx import register as register_pplx
-    from .topk.plugin import register as register_topk
+    from .pplx import register_pplx
+    from .topk.plugin import register_topk
 
     register_topk()
     register_pplx()

@@ -32,7 +32,7 @@ import pydantic
 from pydantic import BaseModel
 
 REPO = Path(__file__).resolve().parents[2]
-PACKAGES = ("rcp_ndcg_core", "rcp_ndcg")
+PACKAGES = ("rcp_ndcg_core", "rcp_ndcg", "rcp_ndcg_vllm")
 HEAVY = (
     "torch",
     "transformers",
@@ -184,17 +184,25 @@ PUBLIC_MODULES: tuple[str, ...] = (
     "rcp_ndcg.runners",
     "rcp_ndcg.runs",
     "rcp_ndcg.testing",
+    "rcp_ndcg_vllm.recipe",
 )
+"""The public Python modules: the facade, the core with its documented modules, the modules the docs present
+as API, and (docs-release Q3) ``rcp_ndcg_vllm.recipe`` -- the lean serving package's public recipe module
+(``Recipe``, ``load_recipe``, ``iter_recipes``, the serve-argv builder). The rest of ``rcp_ndcg_vllm`` and all
+of ``rcp_ndcg_test`` are internal."""
 
 
 def all_modules() -> list[str]:
     """Every module of both packages whose dotted name has no ``_``-prefixed part (the hygiene checks walk these)."""
+    from rcp_ndcg_vllm.models import LAZY_MODEL_MODULES
+
     names = []
     for top in PACKAGES:
         pkg = importlib.import_module(top)
         names.append(top)
         for info in pkgutil.walk_packages(pkg.__path__, top + "."):
-            if not any(part.startswith("_") for part in info.name.split(".")[1:]):
+            lazy = info.name in LAZY_MODEL_MODULES  # imported by vLLM alone, never by a walk
+            if not lazy and not any(part.startswith("_") for part in info.name.split(".")[1:]):
                 names.append(info.name)
     return sorted(names)
 
@@ -392,14 +400,18 @@ def _heavy_after(module: str) -> list[str]:
 
 def collect_packaging() -> dict[str, Any]:
     projects = {}
-    for pyproject in (REPO / "rcp-ndcg" / "pyproject.toml", REPO / "rcp-ndcg-core/pyproject.toml"):
+    for pyproject in (
+        REPO / "rcp-ndcg" / "pyproject.toml",
+        REPO / "rcp-ndcg-core/pyproject.toml",
+        REPO / "rcp-ndcg-vllm/pyproject.toml",
+    ):
         data = tomllib.loads(pyproject.read_text())["project"]
         projects[data["name"]] = {
             "scripts": data.get("scripts", {}),
             "entry_points": {group: sorted(eps) for group, eps in data.get("entry-points", {}).items()},
         }
     read_groups = set()
-    for base in (REPO / "rcp-ndcg" / "src", REPO / "rcp-ndcg-core/src"):
+    for base in (REPO / "rcp-ndcg" / "src", REPO / "rcp-ndcg-core/src", REPO / "rcp-ndcg-vllm/src"):
         for path in base.rglob("*.py"):
             for match in re.finditer(r"entry_points\(\s*group\s*=\s*([A-Z_a-z.\"']+)", path.read_text()):
                 token = match.group(1).strip("\"'")
@@ -415,10 +427,33 @@ def collect_packaging() -> dict[str, Any]:
     }
 
 
+# ----------------------------------------------------------------------------------------------------------------
+# S3 the lean serving package's console tree (docs-release Q3: `serve`, `--dry-run`)
+# ----------------------------------------------------------------------------------------------------------------
+
+
+def collect_vllm_cli() -> dict[str, Any]:
+    """The ``rcp-ndcg-vllm`` console tree from its own argparse builder (the public entry: ``serve``)."""
+    from rcp_ndcg_vllm.serve import build_parser
+
+    parser = build_parser()
+    tree: dict[str, Any] = {}
+    for action in parser._actions:  # noqa: SLF001 - argparse exposes the tree no other way
+        if action.__class__.__name__ != "_SubParsersAction":
+            continue
+        for name, sub in sorted(action.choices.items()):
+            tree[name] = {
+                "positionals": [a.dest for a in sub._actions if not a.option_strings],  # noqa: SLF001
+                "options": sorted(f"--{a.dest.replace('_', '-')}" for a in sub._actions if a.option_strings),
+            }
+    return tree
+
+
 COLLECTORS = {
     "python_api": collect_python,
     "cli": collect_cli,
     "mcp_tools": collect_mcp,
     "exit_codes": collect_exit_codes,
     "packaging": collect_packaging,
+    "vllm_cli": collect_vllm_cli,
 }

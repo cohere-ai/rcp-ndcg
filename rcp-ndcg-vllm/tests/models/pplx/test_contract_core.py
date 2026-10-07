@@ -329,7 +329,7 @@ def test_distribution_declares_the_general_plugins_entry_point() -> None:
 
 
 def test_register_registers_model_and_config_handler(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``register()`` against a stub registry: the exact lazy path and config binding."""
+    """``register_pplx()`` against a stub registry: the exact lazy path and config binding."""
     monkeypatch.setattr(
         importlib.metadata,
         "version",
@@ -352,13 +352,13 @@ def test_register_registers_model_and_config_handler(monkeypatch: pytest.MonkeyP
 
     import rcp_ndcg_vllm.models.pplx
 
-    rcp_ndcg_vllm.models.pplx.register()
+    rcp_ndcg_vllm.models.pplx.register_pplx()
 
     assert registered == {PLUGIN_ARCHITECTURE: "rcp_ndcg_vllm.models.pplx.model:PplxContextualForPooling"}
     assert config_map[PLUGIN_ARCHITECTURE].__name__ == "PplxContextualConfig"
 
     # Re-entrant: a second call must not raise and must not double-register.
-    rcp_ndcg_vllm.models.pplx.register()
+    rcp_ndcg_vllm.models.pplx.register_pplx()
     assert registered == {PLUGIN_ARCHITECTURE: "rcp_ndcg_vllm.models.pplx.model:PplxContextualForPooling"}
 
 
@@ -367,7 +367,7 @@ def test_register_refuses_a_vllm_outside_the_range(monkeypatch: pytest.MonkeyPat
     import rcp_ndcg_vllm.models.pplx
 
     with pytest.raises(RuntimeError, match="vllm/vllm-openai:v0.31.0"):
-        rcp_ndcg_vllm.models.pplx.register()
+        rcp_ndcg_vllm.models.pplx.register_pplx()
 
 
 def test_config_handler_forces_bidirectional_on_both_configs() -> None:
