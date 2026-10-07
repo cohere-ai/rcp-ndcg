@@ -48,10 +48,16 @@ def _no_dns(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 @pytest.fixture(autouse=True)
 def _hub_is_offline(monkeypatch: pytest.MonkeyPatch) -> None:
     """No network in tests: every wave's Hub question (the model's bytes) answers "unknown" here, for every
-    test that runs a wave; the tests that need a size monkeypatch their own value on top of this."""
+    test that runs a wave; the tests that need a size monkeypatch their own value on top of this. A Hub file
+    read (the checkpoint's chat template) answers from the local cache only -- offline mode, so a missing
+    file fails at once instead of retrying a refused connection."""
     from rcp_ndcg_vllm.jobs import weights
 
     monkeypatch.setattr(weights, "model_disk_bytes", lambda model, revision=None: None)
+    if not os.environ.get("RCP_NDCG_NETWORK_TESTS"):
+        import huggingface_hub.constants as constants
+
+        monkeypatch.setattr(constants, "HF_HUB_OFFLINE", True)
 
 
 class StubEngine:

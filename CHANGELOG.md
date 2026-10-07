@@ -25,6 +25,14 @@ released together.
 
 ### Public surface
 
+- **The harness reads the checkpoint's own chat template** (`rcp_ndcg_vllm.equivalence.stages.checkpoint_chat_template`,
+  `CHECKPOINT_TEMPLATE_FILES`): a `messages` recipe without `serve.chat_template` reported its
+  `template_render_check` as `not_run`, so the frame the engine renders there was never checked. The check now
+  reads the checkpoint's own template at the pinned revision, in the order the engine resolves it
+  (`chat_template.jinja`, `chat_template.json`, `tokenizer_config.json`; vllm/renderers/hf.py:263-300), from the
+  Hub cache (a pinned revision answers without a request) or the Hub, renders it over every captured
+  conversation and names the file and its SHA-256 in the report (`template`, `template_sha256`). A template
+  that cannot be read fails the check (`status: unresolved`), never passes.
 - **A declared generation prompt on the messages route** (`EmbeddingEndpoint.add_generation_prompt`,
   `EmbedRequest.add_generation_prompt`): vLLM v0.31.0's chat routes default `add_generation_prompt` to false
   (`vllm/entrypoints/pooling/base/protocol.py:230-237`), so a checkpoint whose frame ends with the chat

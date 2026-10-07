@@ -7,6 +7,7 @@ subprocess's outputs.  The harness process never imports torch or transformers.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import sys
@@ -853,3 +854,46 @@ def test_stage1_messages_route_renders_the_declared_generation_prompt(tmp_path: 
     assert declared.client.add_generation_prompt is True
     check = stage1_prompts(declared, pairs, None, over_length_per_shape=1)["template_render_check"]
     assert check["passed"] is True and check["checked"] > 0, check["failures"][:1]
+
+
+def _hub_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, files: dict[str, str]) -> None:
+    """An offline Hub cache holding ``fixtures/DenseEmbedder`` at fixture-embed's pinned revision with ``files``
+    (the layout huggingface_hub reads a commit-hash revision from without any request)."""
+    import huggingface_hub.constants as constants
+
+    revision = "0123456789abcdef0123456789abcdef01234567"
+    snapshot = tmp_path / "hub" / "models--fixtures--DenseEmbedder" / "snapshots" / revision
+    snapshot.mkdir(parents=True)
+    for name, text in files.items():
+        (snapshot / name).write_text(text, encoding="utf-8")
+    monkeypatch.setattr(constants, "HF_HUB_CACHE", str(tmp_path / "hub"))
+    monkeypatch.setattr(constants, "HF_HUB_OFFLINE", True)
+
+
+def test_stage1_messages_route_render_checks_the_checkpoints_own_chat_template(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without ``serve.chat_template`` the engine frames the messages route with the checkpoint's own chat
+    template at the pinned revision: the harness reads that file (the Hub cache, or a pinned fetch) and
+    render-checks against it -- run and passed when it frames the declared template once, failed when it does
+    not, and failed (never passed, never silently skipped) when the file cannot be resolved."""
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    recipe = _messages_recipe(tmp_path / "own", _CHAT_TEMPLATE)
+    recipe = recipe.model_copy(update={"serve": recipe.serve.model_copy(update={"chat_template": None})})
+    _hub_cache(tmp_path / "good", monkeypatch, {"chat_template.jinja": _CHAT_TEMPLATE})
+    check = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["status"] == "run" and check["passed"] is True and check["checked"] > 0, check
+    assert check["template"] == "fixtures/DenseEmbedder@0123456789abcdef0123456789abcdef01234567:chat_template.jinja"
+    assert check["template_sha256"] == hashlib.sha256(_CHAT_TEMPLATE.encode("utf-8")).hexdigest()
+
+    _hub_cache(tmp_path / "twice", monkeypatch, {"chat_template.jinja": _CHAT_TEMPLATE.replace("doc: ", "doc: doc: ")})
+    assert stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]["passed"] is False
+
+    config = json.dumps({"chat_template": _CHAT_TEMPLATE})
+    _hub_cache(tmp_path / "config", monkeypatch, {"tokenizer_config.json": config})
+    check = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["passed"] is True and check["template"].endswith(":tokenizer_config.json"), check
+
+    _hub_cache(tmp_path / "empty", monkeypatch, {})
+    check = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["status"] == "unresolved" and check["passed"] is False, check

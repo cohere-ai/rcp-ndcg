@@ -229,8 +229,10 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
   settings) against the declared template's render, for every declared shape. On the `messages` route the file
   is the engine's chat template: it is rendered over every conversation the client sent, with the
   `add_generation_prompt` flag that request carried, and must equal the declared frame around that content,
-  once (without `serve.chat_template` the check is `not_run`: the engine
-  renders the checkpoint's own template, which the recipe's own test pins).
+  once. Without `serve.chat_template` the engine renders the checkpoint's own chat template, and the check
+  reads it at the pinned revision (`chat_template.jinja`, else `chat_template.json`, else
+  `tokenizer_config.json`, from the Hub cache or the Hub) and renders that; a template it cannot read fails
+  the check (`unresolved`), never passes.
 
 Stage 2 sends the same pairs through the product's role clients (`EmbeddingClient`, `PoolingClient`,
 `RerankClient`) built from the recipe's real budget — the client prompts, fits and settles exactly as the

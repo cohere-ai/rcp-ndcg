@@ -15,6 +15,7 @@ settlement.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 from pathlib import Path
@@ -30,7 +31,14 @@ from .gates import kendall_tau_b, resolve_gates
 from .reference import run_reference
 from .wire import Capture, role_client
 
-__all__ = ["engine_conversation", "load_pairs", "stage1_prompts", "stage2_scores"]
+__all__ = [
+    "CHECKPOINT_TEMPLATE_FILES",
+    "checkpoint_chat_template",
+    "engine_conversation",
+    "load_pairs",
+    "stage1_prompts",
+    "stage2_scores",
+]
 
 _SNIPPET = 240
 _OUTPUT_SNIPPET = 500
@@ -62,7 +70,9 @@ def stage1_prompts(
       tolerance (needs ``--reference-python``; reported ``not_run`` without one).  Under a declared
       over-cap deviation, over-cap rows are reported separately and do not gate;
     - ``template_render_check`` — when ``serve.chat_template`` is set: the template file's jinja2 render (the
-      engine's settings) of every declared shape against the client's render of the same inputs;
+      engine's settings) of every declared shape against the client's render of the same inputs; on the
+      ``messages`` route the served chat template (the checkpoint's own at the pinned revision when the recipe
+      serves none) rendered over every captured conversation against the declared frame;
     - ``engine_tokenize_check`` — with an engine URL: the engine's ``/tokenize`` of every captured text must
       equal the recipe tokenizer's ids; reported ``not_run`` without an engine, never as passed.
     """
@@ -878,22 +888,28 @@ def _messages_template_check(recipe: Recipe, probe: dict[str, Any]) -> dict[str,
     only.  So the served template file, rendered with transformers' jinja2 settings over every captured
     conversation (its content parts as the engine hands them to the template, :func:`engine_conversation`)
     and with the flag that request carried, must equal the declared template's render of the same content --
-    the frame the client's budget reserved, once.  Without ``serve.chat_template`` the engine renders the checkpoint's own template,
-    which the harness does not read: ``not_run``, never passed (the recipe's own test pins that file).
+    the frame the client's budget reserved, once.  Without ``serve.chat_template`` the engine renders the
+    checkpoint's own template, which the check reads at the pinned revision
+    (:func:`checkpoint_chat_template`); one that cannot be read fails the check (``unresolved``), never passes.
     """
     if recipe.serve.chat_template is None:
-        return {
-            "status": "not_run",
-            "passed": None,
-            "reason": "request_shape messages without serve.chat_template: the engine frames the content with the "
-            "checkpoint's own chat template, which the harness does not read (the recipe's test must pin it)",
-        }
-    directory = recipe._dir
-    if directory is None:  # pragma: no cover - load_recipe sets it
-        raise HarnessError(f"recipe {recipe.id} was not loaded from a directory")
-    template = _jinja_environment(strict=False).from_string(
-        (directory / recipe.serve.chat_template).read_text(encoding="utf-8")
-    )
+        try:
+            source, template_text = checkpoint_chat_template(recipe)
+        except HarnessError as error:
+            return {
+                "status": "unresolved",
+                "passed": False,
+                "failures": [{"check": "checkpoint_chat_template", "note": str(error)}],
+                "reason": "the engine frames the content with the checkpoint's own chat template, and it could "
+                "not be read: the frame is unchecked, which never passes",
+            }
+    else:
+        directory = recipe._dir
+        if directory is None:  # pragma: no cover - load_recipe sets it
+            raise HarnessError(f"recipe {recipe.id} was not loaded from a directory")
+        source = recipe.serve.chat_template
+        template_text = (directory / recipe.serve.chat_template).read_text(encoding="utf-8")
+    template = _jinja_environment(strict=False).from_string(template_text)
     failures: list[dict[str, Any]] = []
     checked = 0
     for index, entry in enumerate(probe["rows"]):
@@ -920,14 +936,62 @@ def _messages_template_check(recipe: Recipe, probe: dict[str, Any]) -> dict[str,
     if not checked:
         failures.append({"check": "nothing_checked", "note": "no captured conversation to render"})
     return {
-        "template": recipe.serve.chat_template,
+        "template": source,
+        "template_sha256": hashlib.sha256(template_text.encode("utf-8")).hexdigest(),
         "status": "run",
         "checked": checked,
         "passed": not failures,
         "failures": failures,
-        "referent": "the served chat template, rendered over every conversation the client sent (its content), "
-        "must render exactly the declared template's frame around it -- framed once",
+        "referent": "the served chat template (serve.chat_template, else the checkpoint's own at the pinned "
+        "revision), rendered over every conversation the client sent (its content), must render exactly the "
+        "declared template's frame around it -- framed once",
     }
+
+
+CHECKPOINT_TEMPLATE_FILES = ("chat_template.jinja", "chat_template.json", "tokenizer_config.json")
+"""Where a checkpoint carries its chat template, in the order the engine's resolution reads them: vLLM v0.31.0
+takes the AutoProcessor's template, then the AutoTokenizer's (vllm/renderers/hf.py:263-300), and transformers
+reads a processor's from ``chat_template.jinja`` (else ``chat_template.json``) and a tokenizer's from
+``chat_template.jinja`` (else ``tokenizer_config.json``'s ``chat_template``)."""
+
+
+def checkpoint_chat_template(recipe: Recipe) -> tuple[str, str]:
+    """The checkpoint's own chat template at the recipe's pinned revision: the frame the engine renders a
+    chat-shaped request with when the recipe serves no template file.
+
+    Inputs: the recipe (``model`` and its 40-hex ``revision``).  Output: ``(source, text)`` -- the source names
+    ``<model>@<revision>:<file>`` -- read from the first of :data:`CHECKPOINT_TEMPLATE_FILES` the checkpoint
+    carries, through ``huggingface_hub`` (the local Hub cache answers a pinned revision without a request; the
+    Hub otherwise, unless offline).  A ``tokenizer_config.json`` or ``chat_template.json`` template is its
+    ``chat_template`` value (the ``default`` entry of a named list).  Raises :class:`HarnessError` naming every
+    file tried when none resolves.
+    """
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError as error:  # pragma: no cover - huggingface_hub ships with the harness's [test] extra
+        raise HarnessError("reading the checkpoint's chat template needs huggingface_hub") from error
+    tried: list[str] = []
+    for name in CHECKPOINT_TEMPLATE_FILES:
+        try:
+            path = Path(hf_hub_download(recipe.model, name, revision=recipe.revision))
+        except Exception as error:  # noqa: BLE001 - every Hub failure is one more file tried, named below
+            tried.append(f"{name}: {type(error).__name__}")
+            continue
+        text = path.read_text(encoding="utf-8")
+        if name.endswith(".json"):
+            value = json.loads(text).get("chat_template")
+            if isinstance(value, list):
+                value = next((entry.get("template") for entry in value if entry.get("name") == "default"), None)
+            if not isinstance(value, str):
+                tried.append(f"{name}: no chat_template")
+                continue
+            text = value
+        return f"{recipe.model}@{recipe.revision}:{name}", text
+    raise HarnessError(
+        f"recipe {recipe.id}: no chat template resolves for {recipe.model} at {recipe.revision} ("
+        + "; ".join(tried)
+        + "): populate the Hub cache, or serve the template as serve.chat_template"
+    )
 
 
 def _jinja_environment(*, strict: bool = True) -> Any:
