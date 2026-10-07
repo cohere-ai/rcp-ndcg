@@ -3929,6 +3929,13 @@
         "defined_in": "rcp_ndcg.data.resolution",
         "extra": "forbid",
         "fields": {
+          "engine_pixel_pinning": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal[True] | None"
+          },
           "max_px": {
             "alias": null,
             "default": null,
@@ -4017,6 +4024,7 @@
               }
             ]
           },
+          "pinned": "property",
           "resizes": "property",
           "target_size": {
             "kind": "method",

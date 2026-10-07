@@ -514,7 +514,7 @@
     },
     "ImagePolicy": {
       "additionalProperties": false,
-      "description": "The pixel budget every page image and video frame is resized to, and the processor whose resize is used.\n\nAttributes:\n    min_px: The fewest pixels an image is scaled up to.\n    max_px: The most pixels an image is scaled down to.\n    processor: The judge's image processor family (:data:`ImageProcessor`). Left unset in a declared policy:\n        the judging pass takes it from the judge config's ``image_processor`` (:meth:`for_processor`), so the\n        recorded policy names it. ``None`` in an effective policy means the family is unknown, and images are\n        sent unchanged.\n\nBudget both or neither: without one, images go at their stored size and the engine's processor decides\n(:meth:`native`), so their token cost cannot be counted. With a known processor the budget must lie within\nthe engines' default budget for it (:data:`PROCESSORS`), so the engine keeps the prepared size.",
+      "description": "The pixel budget every page image and video frame is resized to, and the processor whose resize is used.\n\nAttributes:\n    min_px: The fewest pixels an image is scaled up to.\n    max_px: The most pixels an image is scaled down to.\n    processor: The judge's image processor family (:data:`ImageProcessor`). Left unset in a declared policy:\n        the judging pass takes it from the judge config's ``image_processor`` (:meth:`for_processor`), so the\n        recorded policy names it. ``None`` in an effective policy means the family is unknown, and images are\n        sent unchanged.\n\n    engine_pixel_pinning: Whether the engine serving this policy is pinned to exactly this pixel budget\n        (vLLM ``--mm-processor-kwargs '{\"images_kwargs\": {\"min_pixels\": <min_px>, \"max_pixels\": <max_px>}}'``;\n        a serving recipe checks that both sides carry the same numbers). Then the budget is the engine's\n        own and may lie outside the family's stock range -- the Qwen3-VL-Embedding card's 4096 px floor\n        under qwen3_vl's stock 65536 -- and the engine keeps the prepared size. ``False`` is the absence of\n        the declaration (stored as ``None``, so a policy that never names it keeps its identity).\n\nBudget both or neither: without one, images go at their stored size and the engine's processor decides\n(:meth:`native`), so their token cost cannot be counted. With a known processor the budget must lie within\nthe engines' default budget for it (:data:`PROCESSORS`), so the engine keeps the prepared size -- unless the\nengine is pinned to the budget itself (:attr:`engine_pixel_pinning`).",
       "properties": {
         "min_px": {
           "anyOf": [
@@ -558,6 +558,19 @@
           ],
           "default": null,
           "title": "Processor"
+        },
+        "engine_pixel_pinning": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine Pixel Pinning"
         }
       },
       "title": "ImagePolicy",

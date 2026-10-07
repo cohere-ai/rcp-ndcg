@@ -25,6 +25,15 @@ released together.
 
 ### Public surface
 
+- **An image pixel budget the engine is pinned to** (`ImagePolicy.engine_pixel_pinning`): a budget outside the
+  processor family's stock range was refused even when the engine was pinned to it (Qwen3-VL-Embedding's card
+  budget, 4096..1843200 px, below `qwen3_vl`'s stock 65536 px floor), so such a client could neither resize nor
+  count an image. Declaring `engine_pixel_pinning: true` admits the budget, and the policy's re-resize check
+  then uses the pinned budget (the engine's own) instead of the stock range; the descriptor says `pinned`.
+  `false` is stored as `None`, so no existing policy re-keys; a declared pinning is a different instrument (it
+  enters the family key). A policy without a budget refuses the declaration. `rcp_ndcg_vllm`'s recipe
+  validator checks both sides: a pinned client needs `serve.mm_processor_kwargs.images_kwargs` with both
+  numbers, and every pixel number serve pins (nested or flat) must equal the client's.
 - **A per-document cap beside the pair budget** (`RerankEndpoint.document_max_tokens`,
   `TextBudget.document_max_tokens`): a reranker whose checkpoint cuts each document itself (jina-reranker-v3
   reads 2048 document tokens beside its 512-token query share) declares it, mirroring `query_max_tokens`.

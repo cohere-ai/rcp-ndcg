@@ -393,7 +393,56 @@ class Recipe(BaseModel):
                 "recipe.input declares video but the client config carries max_videos: 0; declare max_videos "
                 "(or drop the modality)"
             )
+        _pixel_budgets_agree(self)
         return self
+
+
+_PIXEL_KEYS = {"min_pixels": "min_px", "max_pixels": "max_px"}
+"""The engine's pixel-budget keys and the client image policy's fields they mirror."""
+
+
+def _pixel_budgets_agree(recipe: Recipe) -> None:
+    """The client's image pixel budget and the engine's pinned one are the same numbers (R20, H4).
+
+    The client resizes and counts every image under ``client.image_policy``; the engine resizes it again under
+    its own budget -- the processor family's stock range, or what ``serve.mm_processor_kwargs`` pins: the
+    nested ``images_kwargs`` (the one pixel-pin shape, read from the vLLM v0.31.0 source; it reaches the HF
+    image processor and the vLLM-side image token budget) or the flat keys (which also reach every image).  A
+    client policy that declares ``engine_pixel_pinning`` -- the only way to declare a budget outside the
+    stock range -- needs the nested pin on serve, and every pixel number serve pins must equal the client's,
+    or the counted tokens describe a size the engine never keeps.
+
+    Raises:
+        ValueError: a pinned client policy without the nested serve pin, or a serve pin that differs from the
+            client's declared budget.
+    """
+    policy = getattr(recipe.client, "image_policy", None)
+    kwargs = recipe.serve.mm_processor_kwargs
+    nested = kwargs.get("images_kwargs")
+    nested = nested if isinstance(nested, dict) else {}
+    if policy is not None and policy.pinned:
+        missing = [key for key in _PIXEL_KEYS if key not in nested]
+        if missing:
+            raise ValueError(
+                "client.image_policy declares engine_pixel_pinning, but serve.mm_processor_kwargs pins no "
+                f"images_kwargs {' and '.join(missing)}: a stock engine would resize the prepared image again "
+                f"(declare serve.mm_processor_kwargs: {{images_kwargs: {{min_pixels: {policy.min_px}, max_pixels: "
+                f"{policy.max_px}}}}})"
+            )
+    if policy is None or policy.is_native:
+        return
+    pins = [
+        (f"serve.mm_processor_kwargs.images_kwargs.{key}", key, nested[key]) for key in _PIXEL_KEYS if key in nested
+    ]
+    pins += [(f"serve.mm_processor_kwargs.{key}", key, kwargs[key]) for key in _PIXEL_KEYS if key in kwargs]
+    for where, key, value in pins:
+        declared = getattr(policy, _PIXEL_KEYS[key])
+        if value != declared:
+            raise ValueError(
+                f"{where} ({value}) differs from client.image_policy's {_PIXEL_KEYS[key]} ({declared}): the client "
+                "counts every image under its declared budget and the engine resizes it under the pinned one, so "
+                "both sides carry the same numbers"
+            )
 
 
 def default_recipes_root() -> Path:
