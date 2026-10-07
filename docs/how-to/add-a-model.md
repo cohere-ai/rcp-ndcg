@@ -256,7 +256,8 @@ packages/rcp-ndcg-vllm/jobs/submit.sh gs://YOUR-BUCKET/stage/rc0 gs://YOUR-BUCKE
 
 The three variables are required — the script refuses to run without them, because no tracked file may name a
 machine's paths or a token. The recipe list is the staged `<RC>/wave-lists/<wave>.txt`; `--priority dev-high`,
-`--max-jobs N`, `--script wave0` (the node test) and `KJOBS=echo` (print the plan instead of submitting) are
+`--max-jobs N`, `--script wave0` (the node test), `--script e2e` (the T4 run scenarios, whose wave list names
+scenario ids) and `KJOBS=echo` (print the plan instead of submitting) are
 optional. The full procedure — the candidate, the wheelhouse, the three environments and wave 0 — is in
 [Release candidates and the GPU waves](release-candidates.md). The wave packs recipes onto the node's GPUs,
 serves one engine per slot with its own GPU slice, port, `VLLM_PORT` and `TMPDIR`, checks the free disk and

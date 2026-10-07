@@ -71,6 +71,22 @@ released together.
 - **The role clients expose their text budget**: `EmbeddingClient`, `PoolingClient` and `RerankClient` gain the
   read-only `text_budget` (the `TextBudget` the client fits every request to, as built from its config; `None`
   without `max_tokens`), so harnesses and case loaders read the client's budget instead of rebuilding it.
+- **T4 end to end: the run scenarios the GPU validation drives inside the pod** (`rcp-ndcg-vllm`): the
+  scenario configs `packages/rcp-ndcg-vllm/scenarios/*.yaml` (schema `schema/scenario.schema.json`),
+  the stage `python -m rcp_ndcg_vllm.e2e`, the entry `src/rcp_ndcg_vllm/jobs/e2e.sh` and the submission
+  flag `submit.sh --script e2e` (beside `bootstrap` and `wave0`; the wave list names scenario ids). One
+  scenario materializes a `RunConfig`, renders its phased job script with the SLURM renderer
+  (`container_runtime: none`) and runs it in the pod: the coordinator through `install_argv` from the
+  staged wheelhouse, an `srun` stand-in, the process-boundary probe, and the T0 judge smoke whose
+  verdict picks the scenario's judge or its `fallback` (the Flash-Next NVFP4 candidate to its FP8
+  release). Shipped scenarios: `text-four-phases` (run twice; identical identities and outputs,
+  judged values are never compared, window counts and families only: judgements may differ at temperature > 0), `outage` (the
+  judge killed mid-tournament: parks and recovers; the `wait_on_outage_s` expiry fails with
+  `BackendUnavailableError`; a resume finishes), `identity` (the same run on new ports: nothing
+  recomputes) and `vidore` (ViDoRe v3 page images). Offline counterparts in the root suite: the golden
+  rendered script (harness tests), the four-phase supervision re-run with the fake engines as its
+  engines (`tests/runners/test_supervision_replay.py`) and the observed outage behaviour as a transport
+  test (`tests/inference/test_outage_observed.py`).
 - **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
   are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric
   placements whose document has no Bradley-Terry theta, and the queries absent from `bt_scores`, instead of
@@ -238,6 +254,7 @@ released together.
   engine slot's `TMPDIR` is short enough for vLLM's ZMQ IPC paths (AF_UNIX's 107 characters) whatever the
   recipe id is, and `steps.serve.state` records the serve step's own success (a clean stop is not a failure). The
   `WAVE.md` table keeps one row per recipe whatever the message wraps.
+- **The T4 driver creates its output directory** before it writes the job script (`run_job_script`).
 - **A tokenizer file's embedded truncation and padding no longer cap the counts** (G5): a `tokenizer.json`
   can ship `truncation: {max_length: 1024}` (topk-embed-v1-small does) or fixed-length padding, and an
   un-reset backend silently topped every count and id list at those lengths, so no budget above them could

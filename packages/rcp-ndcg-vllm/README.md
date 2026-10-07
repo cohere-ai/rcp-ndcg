@@ -94,6 +94,10 @@ authors of new recipes start at [add a serving
 recipe](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/add-a-model.md). The judging pipeline and
 the metric are `rcp-ndcg` and `rcp-ndcg-core`.
 
+The T4 end-to-end run scenarios (`scenarios/<id>.yaml`, schema `schema/scenario.schema.json`) and their in-pod
+driver (`python -m rcp_ndcg_vllm.e2e`) are described in [release candidates and the GPU
+waves](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/release-candidates.md).
+
 ## License
 
 Apache-2.0: `LICENSE` and `NOTICE` ship in every wheel and sdist.
