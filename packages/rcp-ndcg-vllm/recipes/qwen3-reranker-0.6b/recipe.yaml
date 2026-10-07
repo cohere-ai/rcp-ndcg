@@ -61,11 +61,14 @@ client:
       # The anchor tail: the assistant turn and the empty think block the paper prompt ends with.
       - fixed: "{special:im_end}\n{special:im_start}assistant\n{special:<think>}\n\n{special:</think>}\n\n"
     anchor: last
-    add_special_tokens: {pair: true}
+    add_special_tokens: true
   instruction: none
   use_activation: true
   on_overflow: cut
   empty_doc: send
+  empty_query: send             # the paper's QwenOGRerank.predict formats any query, the empty one included
+                               # (reference/qwen3.py:128); one rule with the zerank family (the product's
+                               # post-refusal default is `refuse`)
 reference:
   kind: transformers
   score_scale: probability
@@ -81,23 +84,24 @@ status: {state: unverified, image: null, date: null, report: null}
 sources:
   - "https://huggingface.co/Qwen/Qwen3-Reranker-0.6B (sha e61197ed45024b0ed8a2d74b80b4d909f1255473): README.md, config.json, config_sentence_transformers.json, 1_LogitScore/config.json (true_token_id 9693, false_token_id 2152), chat_template.jinja"
   - "vLLM d0d6e5f3a26f484786e7f20490152e911fd4e220 (3 days after the v0.31.0 tag, 376 commits ahead): examples/pooling/score/qwen3_reranker_offline.py, examples/pooling/score/template/qwen3_reranker.jinja, vllm/model_executor/models/adapters.py:566-571 (score head, float32 diff of the yes/no rows) and :580-590 (bookkeeping), vllm/entrypoints/pooling/scoring/io_processor.py:460-469 (the no-chat-template warning; only warns, then concatenates), :697-698 (the concatenation fallback), vllm/entrypoints/pooling/scoring/protocol.py:69-74 (build_tok_params, add_special_tokens=True), vllm/renderers/hf.py:759-845 (safe_apply_chat_template, the renderer the engine calls). Every cited construct is unchanged between the v0.31.0 tag and this checkout; io_processor.py (+33 lines) and renderers/hf.py (+47/-5) carry unrelated late-interaction additions, and the anchors are the checkout's (the tag's copies sit lower: io_processor warning :432, concatenation :669; renderers call :824)"
-  - "experiments/paper/rerankers/reference/qwen3.py and experiments/paper/rerankers/qwen3_reranker_0_6b.yaml at HEAD (the paper-exact QwenOGRerank this reference.py derives from, and the paper's batch_size 16): the paper facts. The paper budgets MAX_SEQ_LENGTH 8192 and MAX_QUERY_LENGTH 4096 were constants of the PRE-UNIFIED-INFERENCE tree's src/rcp_ndcg/retrieval/cross_encoder.py:42,46 (that tree also carried the in-package copy src/rcp_ndcg/retrieval/external_rerankers.py, QwenOGRerank's former home with the yes/no ids at :95-96 and the pair truncation at :113-118; both files are gone at the unified-inference merge). The product's preprocessor (src/rcp_ndcg/data/preprocess.py fit; src/rcp_ndcg/data/templates.py TemplateSpec) is cited at this tree's HEAD"
+  - "experiments/paper/rerankers/reference/qwen3.py and experiments/paper/rerankers/qwen3_reranker_0_6b.yaml at HEAD (the paper-exact QwenOGRerank this reference.py derives from, and the served-path config); the paper's batch_size 16 is the pre-unified-inference config (git show 28dc100^:experiments/paper/rerankers/qwen3_reranker_0_6b.yaml): the paper facts. The paper budgets MAX_SEQ_LENGTH 8192 and MAX_QUERY_LENGTH 4096 were constants of the PRE-UNIFIED-INFERENCE tree's src/rcp_ndcg/retrieval/cross_encoder.py:42,46 (that tree also carried the in-package copy src/rcp_ndcg/retrieval/external_rerankers.py, QwenOGRerank's former home with the yes/no ids at :95-96 and the pair truncation at :113-118; both files are gone at the unified-inference merge). The product's preprocessor (src/rcp_ndcg/data/preprocess.py fit; src/rcp_ndcg/data/templates.py TemplateSpec) is cited at this tree's HEAD"
+  - "vLLM at the v0.31.0 tag (the image's source): vllm/config/model.py:2279 (the ForSequenceClassification suffix -> runner pooling, convert classify); vllm/model_executor/models/config.py:793-812,1057 (is_original_qwen3_reranker -> method from_2_way_softmax); vllm/model_executor/models/adapters.py:416-441 (num_labels 1) and :516-583 (score weight = lm_head[yes] - lm_head[no] in float32, the tied embedding here); vllm/model_executor/layers/pooler/activations.py:139-140 (1 label -> sigmoid); vllm/pooling_params.py:111-125,195-197 (pooler_config defaults merge, classify use_activation default true); vllm/entrypoints/pooling/scoring/io_processor.py:431-447 (the missing-template warning), :677-705 (the template applied to the query/document messages; without one, plain concatenation); vllm/entrypoints/pooling/scoring/protocol.py:38-66 (a request instruction routes into chat_template_kwargs; this template reads none) and :69-74 (add_special_tokens=True)"
   - "research lane r-qwen3-rer: research/r-qwen3-rer/out/ (report.md, digest.md, check_tokens.py, recipe-draft-qwen3-reranker-0.6b.yaml, qwen3_reranker.patched.jinja) with the audit-synth corrections for r-qwen3-rer (research/audit-synth/out/corrections.md) and the sweep's over-cap/NFC battery (research/sweep-recipes/work/repro_overcap.{py,out}: within-share over-cap rows byte-identical in all three qwen3-reranker recipes, over-share rows byte-unequal, NFD input NFC-mapped by decode-based renders)"
 notes: >-
-  Template: the shipped template.jinja is the stock vLLM example template
-  (examples/pooling/score/template/qwen3_reranker.jinja) with one change: transformers'
-  apply_chat_template compiles with keep_trailing_newline=False and strips ONE trailing newline
-  from the template file, so the stock file (which ends with the think-close marker and two
-  newlines) renders a prompt one token short of the paper reference at the scored position
-  (single vs double newline token; measured on all probe pairs by the research lane). The shipped
-  file is dual-mode: it renders the reference-exact prompt from the query/document/instruction
-  variables the harness's stage-1 check passes, and otherwise falls through to the stock
-  messages-based body (what the engine's safe_apply_chat_template passes) with the two trailing
-  newlines preserved inside the branch, so the engine renders the paper prompt bit-exactly without
-  a newline patch. The file ships named template.jinja (the family's one naming convention) with
-  one trailing newline at EOF. The template file MUST ship with the engine: served without
-  --chat-template, vLLM only logs a warning (scoring io_processor) and then concatenates query
-  and documents with no frame at all. R10: stage 1's template_render_check proves the declared
+  Template: template.jinja is the family's one template file, byte-identical across
+  qwen3-reranker-0.6b/4b/8b: the stock vLLM example template
+  (examples/pooling/score/template/qwen3_reranker.jinja) with the paper's default instruction
+  baked in (instruction: none; a request instruction is not read) and one trailing newline added:
+  transformers' apply_chat_template compiles with keep_trailing_newline=False and strips ONE
+  trailing newline from the template file, so the stock file (which ends with the think-close
+  marker and two newlines) renders a prompt one token short of the paper reference at the scored
+  position (single vs double newline token; measured on all probe pairs by the research lane).
+  The query and document read the engine's chat variables with a fallback: the engine's
+  safe_apply_chat_template passes [{role: query}, {role: document}] messages, while the harness's
+  stage-1 check passes query/document variables; the recipe tests render both branches against
+  the paper prompt. The template file MUST ship with the engine: served without --chat-template,
+  vLLM only logs a warning (io_processor.py:431-447 at the v0.31.0 tag) and then concatenates query
+  and documents with no frame at all (:677-678). R10: stage 1's template_render_check proves the declared
   shapes render to the file's render; the wave's T0 smoke must assert the engine loaded it (a
   /tokenize probe of one rendered prompt must carry the frame). Budget: max_tokens 8192 is the
   paper's MAX_SEQ_LENGTH, counted as the engine sees the whole prompt (frame + query + document);

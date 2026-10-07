@@ -10,7 +10,7 @@ constructor arguments the paper's factory passed are fixed here (max_seq_len 819
 ``DTYPE``).
 
 Reference environment (declared per the recipe contract; the harness documents it, never
-installs it): the package's ``requirements-reference.txt`` base plus the paper pins in
+installs it): ``requirements-reference.txt`` beside this file, the paper pins of
 ``experiments/paper/rerankers/reference/requirements.txt`` — torch 2.9.1,
 transformers 4.57.6, flash-attn 2.8.3 (the paper's attention backend on CUDA; CPU loads
 fall back to the model's default attention, a load-environment accommodation that changes
@@ -94,7 +94,7 @@ def _load_fast_tokenizer(spec: str):
 
     ``render`` mode is tokenizer-only: it runs in the reference environment without weights
     and without transformers, on the same backend ``AutoTokenizer`` wraps for this checkpoint
-    (the ids and the decode are the backend's own).
+    (the ids and the character offsets are the backend's own).
     """
     if spec.endswith(".json") or spec.startswith(("/", "./", "../", "~")):
         from tokenizers import Tokenizer

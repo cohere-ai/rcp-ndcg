@@ -1,9 +1,9 @@
-{%- if messages is defined -%}{%- set q = (messages | selectattr("role", "eq", "query") | map(attribute="content") | first) -%}{%- set d = (messages | selectattr("role", "eq", "document") | map(attribute="content") | first) -%}{%- else -%}{%- set q = query -%}{%- set d = document -%}{%- endif -%}<|im_start|>system
+<|im_start|>system
 Judge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be "yes" or "no".<|im_end|>
 <|im_start|>user
 <Instruct>: Given a web search query, retrieve relevant passages that answer the query
-<Query>: {{ q }}
-<Document>: {{ d }}<|im_end|>
+<Query>: {{ query if query is defined else (messages | selectattr("role", "eq", "query") | map(attribute="content") | first) }}
+<Document>: {{ document if document is defined else (messages | selectattr("role", "eq", "document") | map(attribute="content") | first) }}<|im_end|>
 <|im_start|>assistant
 <think>
 

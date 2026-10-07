@@ -3,12 +3,12 @@
 Derived with unchanged behaviour from the paper's exact in-process implementation,
 ``experiments/paper/rerankers/reference/qwen3.py`` (``QwenOGRerank``, itself moved unchanged from
 the former ``src/rcp_ndcg/retrieval/external_rerankers.py`` of the PRE-UNIFIED-INFERENCE tree
-(the in-package copy it was extracted from; both moved unchanged when the package stopped
+(the in-package copy it was extracted from; both moved unchanged when the package stopped carrying
 in-process models and the unified-inference merge deleted the old retrieval tree; the paper's
 numbers rest on the file at HEAD). The paper pipeline loaded it with
 ``max_seq_len=8192`` (``MAX_SEQ_LENGTH``, the pre-unified-inference ``retrieval/cross_encoder.py``
 constant), the config's
-``batch_size`` (16 for this model, ``experiments/paper/rerankers/qwen3_reranker_0_6b.yaml``),
+``batch_size`` (16 for this model, the pre-unified-inference ``experiments/paper/rerankers/qwen3_reranker_0_6b.yaml``),
 bfloat16 (the pipeline's ``DTYPE``; the class default would be float16) and the config's revision
 (pinned here to the recipe's commit, so a moved default checkpoint cannot silently break
 equivalence).
@@ -81,10 +81,10 @@ DEFAULT_INSTRUCTION = "Given a web search query, retrieve relevant passages that
 DEFAULT_MODEL = "Qwen/Qwen3-Reranker-0.6B"
 DEFAULT_REVISION = "e61197ed45024b0ed8a2d74b80b4d909f1255473"
 
-#: The paper budget: ``MAX_SEQ_LENGTH`` (``rcp_ndcg.retrieval/cross_encoder.py``), the whole prompt.
+#: The paper budget: ``MAX_SEQ_LENGTH`` (the pre-unified-inference ``retrieval/cross_encoder.py``), the whole prompt.
 MAX_SEQ_LENGTH = 8192
 
-#: The paper's per-model batch size (``experiments/paper/rerankers/qwen3_reranker_0_6b.yaml``).
+#: The paper's per-model batch size (the pre-unified-inference ``qwen3_reranker_0_6b.yaml``).
 BATCH_SIZE = 16
 
 

@@ -1,0 +1,17 @@
+# The reference environment for this recipe's reference.py, in ITS OWN python (never the harness's
+# process, never the engine image): the paper's exact pins, from
+# experiments/paper/rerankers/reference/requirements.txt (the former [local] extra of the package).
+# Install with the reference python: pip install -r requirements-reference.txt
+#
+# torch 2.9.1 is the only torch with an official Dao-AILab flash-attn 2.8.3 prebuilt wheel for
+# cp312 + cu12; transformers 4.57.6 is the paper-era release. flash-attn needs torch already
+# installed and a CUDA toolchain; it ships prebuilt wheels on Linux x86_64 for this pin.
+# `render` mode needs only the tokenizer (the `tokenizers` library over tokenizer.json; no torch
+# import runs), so stage 1 of the equivalence check runs on CPU without the weights.
+
+torch==2.9.1
+transformers==4.57.6
+accelerate>=1.10
+flash-attn==2.8.3 ; sys_platform == "linux"
+tokenizers>=0.21
+huggingface-hub>=0.30
