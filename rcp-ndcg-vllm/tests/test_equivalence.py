@@ -104,7 +104,7 @@ def test_stage1_audits_the_clients_settled_query(tmp_path: Path) -> None:
     queries = [capture.texts(exchange).get("query") for exchange in capture.exchanges]
     assert queries and len(set(queries)) == 1, f"one settled span per row, got {len(set(queries))}"
     tokenizer = load_tokenizer(str(TOKENIZER))
-    assert tokenizer.count(str(queries[0])) <= recipe.client.query_max_tokens
+    assert tokenizer.count(str(queries[0])) <= recipe.client.get("query_max_tokens")
 
 
 def test_stage1_engine_tokenize_check_runs_against_the_stub(tmp_path: Path) -> None:
@@ -279,9 +279,7 @@ def test_stage2_carves_a_chunked_over_cap_document_out_when_declared(tmp_path: P
     chunking = recipe.model_copy(
         update={
             "reference": recipe.reference.model_copy(update={"known_deviations": ["anchor_drop_over_cap"]}),
-            "client": recipe.client.model_copy(
-                update={"on_overflow": "chunk", "chunk": ChunkPolicy(max_tokens=40, overlap_tokens=0)}
-            ),
+            "client": {**recipe.client, "on_overflow": "chunk", "chunk": ChunkPolicy(max_tokens=40, overlap_tokens=0)},
         }
     )
     pairs = write_pairs(

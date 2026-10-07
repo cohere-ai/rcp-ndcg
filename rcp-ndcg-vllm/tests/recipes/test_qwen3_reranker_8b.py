@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 from rcp_ndcg_vllm import RecipeError, load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
-from rcp_ndcg_vllm.equivalence.fitting import budget_of
+from rcp_ndcg_vllm.equivalence.wire import role_client
 
 REPO = "Qwen/Qwen3-Reranker-8B"
 REVISION = "77d193c791ed757ca307ee72715aa132723da912"
@@ -79,7 +79,7 @@ def tokenizer_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def local_recipe(tokenizer_dir: Path):
     """The recipe with its tokenizer pointed at the local tokenizer.json directory."""
     recipe = load_recipe(RECIPE_DIR)
-    client = recipe.client.model_copy(update={"tokenizer": str(tokenizer_dir)})
+    client = {**recipe.client, "tokenizer": str(tokenizer_dir)}
     return recipe.model_copy(update={"client": client})
 
 
@@ -188,7 +188,7 @@ def test_stage1_on_cpu(tmp_path: Path, tokenizer_dir: Path) -> None:
     assert document["fit"]["pair"]["cuts"] == 10  # 5 pairs-file rows + 5 harness-padded samples
 
     # golden: one under-cap render is byte-identical to the paper reference's assembly
-    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    budget = role_client(recipe, None)[0]._resolve_budget()[0].model_copy(update={"tokenizer": tokenizer.name})
     query, doc = pairs[0]["query"], pairs[0]["documents"][0]
     result = fit([(query, doc)], "pair", budget, tokenizer, ids=["0"])
     expected = PREFIX + query + PAIR_MID + doc + SUFFIX
@@ -213,8 +213,8 @@ def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_re
 
     recipe = local_recipe(tokenizer_dir)
     tokenizer = load_tokenizer(str(tokenizer_dir))
-    template = recipe.client.template
-    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
+    budget = role_client(recipe, None)[0]._resolve_budget()[0].model_copy(update={"tokenizer": tokenizer.name})
 
     # the real render ends with the 9-token assistant suffix (the scored anchor)
     result = fit([("capital of france", "paris is the capital of france.")], "pair", budget, tokenizer, ids=["0"])
@@ -228,13 +228,13 @@ def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_re
     anchorless = TemplateSpec(
         pair=tuple(segment for segment in template.pair[:-1]), anchor="last", add_special_tokens=True
     )
-    client = recipe.client.model_copy(update={"template": anchorless})
+    client = {**recipe.client, "template": anchorless}
     mutated = recipe.model_copy(update={"client": client})
     no_tail_ids = tokenizer.ids(
         fit(
             [("capital of france", "paris is the capital of france.")],
             "pair",
-            budget_of(mutated).model_copy(update={"tokenizer": tokenizer.name}),
+            role_client(mutated, None)[0]._resolve_budget()[0].model_copy(update={"tokenizer": tokenizer.name}),
             tokenizer,
             ids=["0"],
         ).texts[0],

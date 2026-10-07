@@ -39,8 +39,10 @@ import pytest
 import yaml
 from rcp_ndcg_vllm import client_config, load_recipe
 from rcp_ndcg_vllm.equivalence import stage1_prompts
-from rcp_ndcg_vllm.equivalence.fitting import budget_of, tokenizer_of
+from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
+from rcp_ndcg_vllm.equivalence.wire import role_client
 
+from rcp_ndcg.data.templates import TemplateSpec
 from rcp_ndcg.inference.config import EmbeddingEndpoint
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "octen-embedding-8b"
@@ -162,7 +164,7 @@ def _tokenizer_dir(tmp_path: Path) -> Path:
 
 def _local_recipe(recipe: Any, tokenizer_dir: Path) -> Any:
     """The recipe with its tokenizer pointed at the local files (the Hub spec stays in recipe.yaml)."""
-    client = recipe.client.model_copy(update={"tokenizer": str(tokenizer_dir)})
+    client = {**recipe.client, "tokenizer": str(tokenizer_dir)}
     return recipe.model_copy(update={"client": client})
 
 
@@ -248,7 +250,7 @@ def test_fitted_render_token_ids_match_the_paper_string(tmp_path: Path) -> None:
 
     recipe = _local_recipe(_recipe(), _tokenizer_dir(tmp_path))
     tokenizer = tokenizer_of(recipe)
-    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    budget = role_client(recipe, None)[0]._resolve_budget()[0].model_copy(update={"tokenizer": tokenizer.name})
     for row in PAIRS[:4]:
         query_result = fit([row["query"]], "query", budget, tokenizer, ids=["0"])
         assert query_result.texts[0] == row["query"]
@@ -276,7 +278,7 @@ def test_over_length_inputs_keep_every_anchor(tmp_path: Path) -> None:
 
     recipe = _local_recipe(_recipe(), _tokenizer_dir(tmp_path))
     tokenizer = tokenizer_of(recipe)
-    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    budget = role_client(recipe, None)[0]._resolve_budget()[0].model_copy(update={"tokenizer": tokenizer.name})
     unit = "the diesel locomotive hauled freight through the alpine tunnel and arrived late in the evening "
     long_document = unit * 500  # 500 repetitions tokenise well over the 8192-token budget
     long_query = unit * 500
@@ -312,10 +314,10 @@ def test_mutation_drop_the_trailing_anchor_segment_reddens_the_anchor_check(tmp_
     render -- so every document render fails the audit.
     """
     recipe = _local_recipe(_recipe(), _tokenizer_dir(tmp_path))
-    template = recipe.client.template
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
     assert template is not None
     mutated_template = template.model_copy(update={"document": tuple(template.document)[:-1]})
-    client = recipe.client.model_copy(update={"template": mutated_template})
+    client = {**recipe.client, "template": mutated_template}
     mutated = recipe.model_copy(update={"client": client})
 
     pairs = _write_pairs(tmp_path)

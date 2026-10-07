@@ -19,9 +19,11 @@ import pytest
 import yaml
 from rcp_ndcg_vllm import load_recipe
 from rcp_ndcg_vllm.equivalence import stage1_prompts
-from rcp_ndcg_vllm.equivalence.fitting import fit_rows, load_pairs
+from rcp_ndcg_vllm.equivalence.fitting import cast_shape, load_pairs
+from rcp_ndcg_vllm.equivalence.wire import role_client
 from rcp_ndcg_vllm.recipe import serve_argv
 
+from rcp_ndcg.data.preprocess import fit
 from rcp_ndcg.data.tokenizer import load_tokenizer
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "topk-embed-v1-small"
@@ -124,11 +126,11 @@ def test_recipe_validates() -> None:
     assert recipe.role == "multi_vector" and recipe.scoring is None
     assert recipe.input == ["text", "image"]
     assert recipe.licence == "apache-2.0"
-    assert recipe.client.api == "vllm_pooling"
-    assert recipe.client.tokenizer == TOKENIZER_SPEC and recipe.client.max_tokens == 8192
-    assert recipe.client.embed_dtype == "float16" and recipe.client.dim == 2048
-    assert recipe.client.normalize is True and recipe.client.on_overflow == "cut"
-    assert recipe.client.empty_doc == "omit_zero"
+    assert recipe.client.get("api") == "vllm_pooling"
+    assert recipe.client.get("tokenizer") == TOKENIZER_SPEC and recipe.client.get("max_tokens") == 8192
+    assert recipe.client.get("embed_dtype") == "float16" and recipe.client.get("dim") == 2048
+    assert recipe.client.get("normalize") is True and recipe.client.get("on_overflow") == "cut"
+    assert recipe.client.get("empty_doc") == "omit_zero"
     assert recipe.serve.plugin == "topk-embed-vllm"
     assert recipe.serve.mm_processor_kwargs == {"min_pixels": 65536, "max_pixels": 1310720}
     assert recipe.serve.limit_mm_per_prompt == {"image": 1}
@@ -192,7 +194,24 @@ def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(tmp_path:
     recipe = load_recipe(RECIPE_DIR)
     rows = load_pairs(_pairs_file(tmp_path))
     sampled = _sampled_rows(recipe, rows, tokenizer, 5)
-    fitted = fit_rows(recipe, sampled, tokenizer)
+    by_shape: dict[str, list[tuple[int, dict]]] = {}
+    for index, row in enumerate(sampled):
+        by_shape.setdefault(str(row.get("shape") or "document"), []).append((index, row))
+    fitted = {"per_shape": {}}
+    for shape, items in by_shape.items():
+        inputs = [row["query"] if shape == "query" else row["documents"][0] for _, row in items]
+        result = fit(
+            inputs,
+            cast_shape(shape),
+            role_client(recipe, None)[0]._resolve_budget()[0].model_copy(update={"tokenizer": tokenizer.name}),
+            tokenizer,
+            ids=[str(index) for index, _ in items],
+        )
+        fitted["per_shape"][shape] = {
+            "row_indexes": [index for index, _ in items],
+            "texts": list(result.texts),
+            "cuts": len(result.cuts),
+        }
     work = tmp_path / "ref"
     reference = run_reference(
         sys.executable,
@@ -226,7 +245,7 @@ def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(tmp_path:
             uncapped = type(tokenizer.backend).from_str(tokenizer.backend.to_str())
             uncapped.no_truncation()
             true_count = len(uncapped.encode(text).ids)
-            assert true_count > recipe.client.max_tokens, (true_count, shape)
+            assert true_count > recipe.client.get("max_tokens"), (true_count, shape)
             if len(text) == len(uncut):
                 # G5 as shipped: no cut fired, so the whole text goes out while the product's own id
                 # view stops at the file's ceiling -- exactly the divergence the wave's /tokenize
@@ -371,10 +390,16 @@ def test_cut_preserves_the_frame_head(tmp_path: Path, tokenizer) -> None:
             "documents": [padded if shape == "document" else "Q3 revenue was $12 million."],
             "shape": shape,
         }
-        fitted = fit_rows(recipe, [row], tokenizer)
-        body = fitted["per_shape"][shape]
-        assert body["cuts"] == 1, body  # the cut fired
-        text = body["texts"][0]
+        inputs = row["query"] if shape == "query" else row["documents"][0]
+        result = fit(
+            [inputs],
+            cast_shape(shape),
+            role_client(recipe, None)[0]._resolve_budget()[0].model_copy(update={"tokenizer": tokenizer.name}),
+            tokenizer,
+            ids=["0"],
+        )
+        assert len(result.cuts) == 1, result.cuts  # the cut fired
+        text = result.texts[0]
         assert text.startswith(head)  # the frame's text survived the cut
         ids = tokenizer.ids(text, add_special_tokens=True)
         assert ids[: len(head_ids)] == head_ids, text[:60]  # the fixed head survived the cut

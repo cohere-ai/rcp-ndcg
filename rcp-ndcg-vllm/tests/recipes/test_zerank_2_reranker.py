@@ -20,6 +20,8 @@ from rcp_ndcg_vllm import load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg_vllm.recipe import Recipe
 
+from rcp_ndcg.data.templates import TemplateSpec
+
 TESTS = Path(__file__).resolve().parent  # rcp-ndcg-vllm/tests/recipes
 PACKAGE = TESTS.parent.parent  # rcp-ndcg-vllm
 RECIPES = PACKAGE / "recipes"
@@ -46,7 +48,7 @@ def with_local_tokenizer(tokenizer_path: Path) -> Recipe:
     after the one download.
     """
     recipe = committed()
-    client = recipe.client.model_copy(update={"tokenizer": str(tokenizer_path)})
+    client = {**recipe.client, "tokenizer": str(tokenizer_path)}
     return recipe.model_copy(update={"client": client})
 
 
@@ -121,12 +123,12 @@ def test_recipe_loads_and_declares_the_paper_path() -> None:
     assert recipe.input == ["text"]
     assert recipe.licence == "apache-2.0"
     assert recipe.engine.image == "vllm/vllm-openai:v0.31.0"
-    assert recipe.client.tokenizer == f"{MODEL}@{REVISION}"
-    assert recipe.client.max_tokens == MAX_TOKENS
-    assert recipe.client.query_max_tokens == QUERY_MAX_TOKENS
-    assert recipe.client.on_overflow == "cut"
-    assert recipe.client.instruction == "none"
-    assert recipe.client.use_activation is True  # the served score is the probability, like the reference
+    assert recipe.client.get("tokenizer") == f"{MODEL}@{REVISION}"
+    assert recipe.client.get("max_tokens") == MAX_TOKENS
+    assert recipe.client.get("query_max_tokens") == QUERY_MAX_TOKENS
+    assert recipe.client.get("on_overflow") == "cut"
+    assert recipe.client.get("instruction") == "none"
+    assert recipe.client.get("use_activation") is True  # the served score is the probability, like the reference
     assert recipe.reference.kind == "transformers"
     assert recipe.reference.score_scale == "probability"
     assert recipe.reference.known_deviations == ["anchor_drop_over_cap"]
@@ -197,7 +199,7 @@ def test_stage1_token_ids_are_equal_across_the_reference_the_fit_and_the_served_
     template file's render tokenize to the same ids, per sampled row."""
     import jinja2
     from jinja2.sandbox import ImmutableSandboxedEnvironment
-    from rcp_ndcg_vllm.equivalence.fitting import budget_of
+    from rcp_ndcg_vllm.equivalence.wire import role_client
 
     from rcp_ndcg.data.preprocess import fit
     from rcp_ndcg.data.tokenizer import load_tokenizer
@@ -205,7 +207,7 @@ def test_stage1_token_ids_are_equal_across_the_reference_the_fit_and_the_served_
     recipe = with_local_tokenizer(zerank_tokenizer)
     tokenizer = load_tokenizer(str(zerank_tokenizer))
     rows = sample_pairs()
-    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    budget = role_client(recipe, None)[0]._resolve_budget()[0].model_copy(update={"tokenizer": tokenizer.name})
     template_text = (RECIPE_DIR / TEMPLATE).read_text(encoding="utf-8")
     env = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True, undefined=jinja2.StrictUndefined)
 
@@ -244,12 +246,12 @@ def test_stage1_token_ids_are_equal_across_the_reference_the_fit_and_the_served_
         assert document["rows"][0]["shape"] == "pair"
         assert document["rows"][0]["text"] == fitted, index
         # Token-id equality, explicitly: fit's ids == the jinja render's ids == the reference's ids.
-        flag = recipe.client.template.adds_special_tokens("pair")
+        flag = TemplateSpec.model_validate(recipe.client.get("template")).adds_special_tokens("pair")
         ids = tokenizer.ids(fitted, add_special_tokens=flag)
         assert ids == tokenizer.ids(jinja_text, add_special_tokens=flag)
         assert ids == tokenizer.ids(document["rows"][0]["text"], add_special_tokens=flag)
         # The anchor: the trailing fixed segment sits at the tail of every rendered id list.
-        anchor = recipe.client.template.segments("pair")[-1].render(tokenizer)
+        anchor = TemplateSpec.model_validate(recipe.client.get("template")).segments("pair")[-1].render(tokenizer)
         assert ids[-len(tokenizer.ids(anchor)) :] == tokenizer.ids(anchor)
 
 
@@ -277,18 +279,18 @@ def test_the_served_template_renders_identically_for_the_engine_and_the_harness(
     """
     import jinja2
     from jinja2.sandbox import ImmutableSandboxedEnvironment
-    from rcp_ndcg_vllm.equivalence.fitting import budget_of
+    from rcp_ndcg_vllm.equivalence.wire import role_client
 
     from rcp_ndcg.data.preprocess import fit
     from rcp_ndcg.data.tokenizer import load_tokenizer
 
     recipe = with_local_tokenizer(zerank_tokenizer)
     tokenizer = load_tokenizer(str(zerank_tokenizer))
-    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    budget = role_client(recipe, None)[0]._resolve_budget()[0].model_copy(update={"tokenizer": tokenizer.name})
     template_text = (RECIPE_DIR / TEMPLATE).read_text(encoding="utf-8")
     engine_env = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True)
     harness_env = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True, undefined=jinja2.StrictUndefined)
-    flag = recipe.client.template.adds_special_tokens("pair")
+    flag = TemplateSpec.model_validate(recipe.client.get("template")).adds_special_tokens("pair")
     for index, row in enumerate(sample_pairs()):
         result = fit([(row["query"], row["documents"][0])], "pair", budget, tokenizer, ids=[str(index)])
         fitted = result.texts[0]
@@ -341,14 +343,14 @@ def test_reference_cli_renders_the_anchor_preserving_prompt_and_refuses_embed(
     assert set(document["rows"][0]) == {"index", "shape", "text"}
     budget = TextBudget(
         tokenizer=str(zerank_tokenizer),
-        max_tokens=recipe.client.max_tokens,
-        query_max_tokens=recipe.client.query_max_tokens,
-        template=recipe.client.template,
-        on_overflow=recipe.client.on_overflow,
+        max_tokens=recipe.client.get("max_tokens"),
+        query_max_tokens=recipe.client.get("query_max_tokens"),
+        template=TemplateSpec.model_validate(recipe.client.get("template")),
+        on_overflow=recipe.client.get("on_overflow"),
     )
     fitted = fit([(over_cap["query"], over_cap["documents"][0])], "pair", budget, tokenizer, ids=["0"])
     assert document["rows"][0]["text"] == fitted.texts[0]
-    assert len(tokenizer.ids(fitted.texts[0], add_special_tokens=True)) == recipe.client.max_tokens
+    assert len(tokenizer.ids(fitted.texts[0], add_special_tokens=True)) == recipe.client.get("max_tokens")
 
     refused = subprocess.run(
         [
@@ -414,10 +416,10 @@ def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_re
     healthy = stage1_prompts(recipe, pairs, None, over_length_per_shape=2)
     assert healthy["anchor_check"]["passed"] is True
 
-    template = recipe.client.template
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
     mutated_template = template.model_copy(update={"pair": template.pair[:-1]})
     assert mutated_template.pair[-1].fixed is None  # the shape now ends with the raw content
-    mutated = recipe.model_copy(update={"client": recipe.client.model_copy(update={"template": mutated_template})})
+    mutated = recipe.model_copy(update={"client": {**recipe.client, "template": mutated_template}})
     document = stage1_prompts(mutated, pairs, None, over_length_per_shape=2)
     assert document["anchor_check"]["passed"] is False
     failures = document["anchor_check"]["failures"]

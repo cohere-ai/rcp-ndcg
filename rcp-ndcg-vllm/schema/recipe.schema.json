@@ -1,385 +1,9 @@
 {
   "$defs": {
-    "ChunkPolicy": {
-      "additionalProperties": false,
-      "description": "How a long document is split for judging, in tokens of the judge's tokenizer.\n\nA document longer than ``max_tokens`` is split into consecutive chunks of at\nmost ``max_tokens`` tokens, each repeating the last ``overlap_tokens``\ntokens of the previous one, so evidence straddling a boundary is seen\nwhole by one chunk. A chunk is a verbatim slice of the document between\ntoken boundaries. Chunk ``k`` of document ``d`` has the id ``d#k`` (``k``\nfrom 0). The judge sees every chunk, and a document's judgements are pooled\nby ``aggregate``: within one window, a document passes a criterion when any\nof its chunks does, and its tournament score is its best chunk's.\n\nAttributes:\n    max_tokens: The largest chunk, and the length above which a document is split (tokens).\n    overlap_tokens: Tokens shared by consecutive chunks (``< max_tokens``).\n    aggregate: How chunk judgements pool onto their document (``\"max\"``).",
-      "properties": {
-        "max_tokens": {
-          "minimum": 1,
-          "title": "Max Tokens",
-          "type": "integer"
-        },
-        "overlap_tokens": {
-          "minimum": 0,
-          "title": "Overlap Tokens",
-          "type": "integer"
-        },
-        "aggregate": {
-          "const": "max",
-          "default": "max",
-          "title": "Aggregate",
-          "type": "string"
-        }
-      },
-      "required": [
-        "max_tokens",
-        "overlap_tokens"
-      ],
-      "title": "ChunkPolicy",
-      "type": "object"
-    },
-    "ClientEndpoint": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/EmbeddingEndpoint"
-        },
-        {
-          "$ref": "#/$defs/PoolingEndpoint"
-        },
-        {
-          "$ref": "#/$defs/RerankEndpoint"
-        }
-      ]
-    },
-    "EmbeddingEndpoint": {
-      "additionalProperties": false,
-      "description": "A dense-embedding endpoint speaking OpenAI ``POST {base_url}/embeddings``.\n\nThe package owns every content decision itself: it applies the prompts in the text, sends ``dimensions``\nonly when set, and L2-normalises the result. A config that sets ``max_tokens`` (required, with the\n``tokenizer``, on a self-hosted role) is fitted by the client through the one text-budget mechanism:\nonly content spans cut at token boundaries of the declared ``tokenizer``, the template re-attached,\nevery cut recorded, the media tokens reserved whole and never cut. The media fields declare what the\nrole sends; the client prepares every request through\n:func:`~rcp_ndcg.data.prepare.prepare_request` -- the same preparation path the judge uses, and the\nrole's startup probe runs the engine media check when an ``image_processor`` is declared.\n\n\nAttributes:\n    api: The wire adapter; ``\"openai_embeddings\"`` by default (a hosted profile overrides it in its own\n        config).\n    recipe: The server-side settings the package cannot read (the pooling, the template, the overrides), as\n        a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never\n        share a cache.\n    tokenizer: The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository\n        id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name;\n        the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already\n        does.\n    max_tokens: What the budget counts is the model's whole input sequence as the engine sees it -- the\n        rendered template, its special tokens, the instruction (the prompts) and the content together,\n        in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after\n        reserving every fixed template token (the anchors a model reads its output from: for a last-token\n        pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the\n        anchors always survive. The cut is never left to the engine: an engine-side truncation of the\n        rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which\n        a self-hosted role config refuses (declare the budget); a hosted vendor profile with no\n        tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document\n        side); the ``query`` shape is capped by :attr:`query_max_tokens` when that is declared, by this\n        budget when it is not.\n    query_max_tokens: The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape\n        budgets: a late-interaction or asymmetric embedder caps queries and documents differently --\n        topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's\n        WHOLE budget there: the fixed frame is reserved out of it exactly as :attr:`max_tokens`\n        reserves the document shape's. Must not exceed :attr:`max_tokens` -- the model's whole input\n        budget, which no shape's render can be sent over. ``None`` (the default): both shapes are\n        capped by :attr:`max_tokens`. On a :class:`RerankEndpoint` the field keeps its pair-share\n        meaning instead. Content.\n    template: The request template as data\n        (:class:`~rcp_ndcg.data.templates.TemplateSpec`): per request shape (``query``, ``document``,\n        ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens\n        written by name and resolved from the tokenizer, the anchor the model reads its output from, and\n        the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits\n        raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling\n        routes' default). Content.\n    on_overflow: What an input over the budget does: ``cut`` (the default: the content is cut to the\n        budget the template's fixed tokens leave, every cut recorded in the census under\n        ``text_budget``), ``chunk`` (the document is split into :attr:`chunk` pieces, each carrying the\n        full template, scores pooled back by ``max``), or ``fail`` (the input is refused). Content.\n    chunk: The chunk geometry for ``on_overflow: chunk`` (a :class:`~rcp_ndcg.data.preprocess.ChunkPolicy`\n        reused, not copied). Content.\n    aggregation: How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same\n        rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.\n    empty_doc: What an empty document becomes: ``send`` (the default: the empty string goes out, as\n        today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or\n        ``send_text`` (a literal placeholder goes out, :attr:`empty_doc_text` names it). Content.\n    empty_doc_text: The placeholder text ``empty_doc: send_text`` sends. Content.\n    request_shape: How a request crosses the wire: ``text`` (the default: the rendered string),\n        ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the\n        routes that take them). Declares what the adapter sends; the adapters implement it. Content.\n    query_prompt: Text prepended to every query (an asymmetric embedder's instruction prefix). Content.\n    doc_prompt: Text prepended to every document. Content.\n    normalize: Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising\n        twice is harmless, so a server that already normalised is unaffected).\n    dimensions: The Matryoshka cut served, when the config sets one. Content.\n    batch_size: Items per request. Runtime: how fast, never what.",
-      "properties": {
-        "api": {
-          "default": "openai_embeddings",
-          "title": "Api",
-          "type": "string"
-        },
-        "base_url": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Base Url"
-        },
-        "model": {
-          "minLength": 1,
-          "title": "Model",
-          "type": "string"
-        },
-        "revision": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Revision"
-        },
-        "api_key_env": {
-          "anyOf": [
-            {
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Api Key Env"
-        },
-        "headers_env": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "title": "Headers Env",
-          "type": "object"
-        },
-        "concurrency": {
-          "default": 64,
-          "minimum": 1,
-          "title": "Concurrency",
-          "type": "integer"
-        },
-        "timeout_s": {
-          "default": 600.0,
-          "exclusiveMinimum": 0,
-          "title": "Timeout S",
-          "type": "number"
-        },
-        "connect_timeout_s": {
-          "default": 5.0,
-          "exclusiveMinimum": 0,
-          "title": "Connect Timeout S",
-          "type": "number"
-        },
-        "max_retries": {
-          "default": 2,
-          "minimum": 0,
-          "title": "Max Retries",
-          "type": "integer"
-        },
-        "wait_on_outage_s": {
-          "anyOf": [
-            {
-              "minimum": 0,
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Wait On Outage S"
-        },
-        "image_processor": {
-          "anyOf": [
-            {
-              "enum": [
-                "qwen2_vl",
-                "qwen2_5_vl",
-                "qwen3_vl"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Image Processor"
-        },
-        "image_policy": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ImagePolicy"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "video_policy": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/VideoPolicy"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "max_images": {
-          "default": 0,
-          "minimum": 0,
-          "title": "Max Images",
-          "type": "integer"
-        },
-        "max_videos": {
-          "default": 0,
-          "minimum": 0,
-          "title": "Max Videos",
-          "type": "integer"
-        },
-        "media_sides": {
-          "default": [
-            "query",
-            "document"
-          ],
-          "items": {
-            "enum": [
-              "query",
-              "document"
-            ],
-            "type": "string"
-          },
-          "title": "Media Sides",
-          "type": "array"
-        },
-        "recipe": {
-          "anyOf": [
-            {
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Recipe"
-        },
-        "tokenizer": {
-          "anyOf": [
-            {
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Tokenizer"
-        },
-        "max_tokens": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Max Tokens"
-        },
-        "query_max_tokens": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Query Max Tokens"
-        },
-        "template": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/TemplateSpec"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "on_overflow": {
-          "default": "cut",
-          "enum": [
-            "cut",
-            "chunk",
-            "fail"
-          ],
-          "title": "On Overflow",
-          "type": "string"
-        },
-        "chunk": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ChunkPolicy"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "aggregation": {
-          "const": "max",
-          "default": "max",
-          "title": "Aggregation",
-          "type": "string"
-        },
-        "empty_doc": {
-          "default": "send",
-          "enum": [
-            "omit_zero",
-            "send",
-            "send_text"
-          ],
-          "title": "Empty Doc",
-          "type": "string"
-        },
-        "empty_doc_text": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Empty Doc Text"
-        },
-        "request_shape": {
-          "default": "text",
-          "enum": [
-            "text",
-            "messages",
-            "token_ids"
-          ],
-          "title": "Request Shape",
-          "type": "string"
-        },
-        "query_prompt": {
-          "default": "",
-          "title": "Query Prompt",
-          "type": "string"
-        },
-        "doc_prompt": {
-          "default": "",
-          "title": "Doc Prompt",
-          "type": "string"
-        },
-        "normalize": {
-          "default": true,
-          "title": "Normalize",
-          "type": "boolean"
-        },
-        "dimensions": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Dimensions"
-        },
-        "batch_size": {
-          "default": 32,
-          "minimum": 1,
-          "title": "Batch Size",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "model"
-      ],
-      "title": "EmbeddingEndpoint",
-      "type": "object"
-    },
     "EngineSpec": {
       "additionalProperties": false,
-      "description": "The engine image a recipe is served with.\n\nAttributes:\n    name: The engine family; this package serves ``vllm``.\n    image: The container image, ``repository:tag`` (public names only).\n    min_version: The engine version the recipe is known to work with, ``MAJOR.MINOR.PATCH``.\n    startup_timeout_s: How long :mod:`rcp_ndcg_vllm.jobs.run_wave` waits for ``GET /v1/models`` before it\n        declares the recipe failed (seconds).  Large models override this per recipe.",
+      "description": "The engine image a recipe is served with.\n\nAttributes:\n    name: The engine family; this package serves ``vllm``.\n    image: The container image, ``repository:tag`` (public names only).\n    min_version: The engine version the recipe is known to work with, ``MAJOR.MINOR.PATCH``.\n    startup_timeout_s: How long the wave runner waits for ``GET /v1/models`` before it declares the\n        recipe failed (seconds). Large models override this per recipe.",
       "properties": {
-        "name": {
-          "const": "vllm",
-          "title": "Name",
-          "type": "string"
-        },
         "image": {
           "description": "repository:tag of the engine image",
           "minLength": 1,
@@ -390,6 +14,11 @@
           "description": "known-good engine version (a release candidate counts)",
           "pattern": "^\\d+\\.\\d+\\.\\d+(rc\\d+)?$",
           "title": "Min Version",
+          "type": "string"
+        },
+        "name": {
+          "const": "vllm",
+          "title": "Name",
           "type": "string"
         },
         "startup_timeout_s": {
@@ -409,9 +38,36 @@
     },
     "Gates": {
       "additionalProperties": false,
-      "description": "Overrides of the stage-2 gate defaults for one recipe's ``reference.score_scale``.\n\nEvery field defaults to ``None`` (= the published default for the scale).  The defaults, and what each field\nmeans, are in :mod:`rcp_ndcg_vllm.equivalence.gates`; ``tau_min`` applies to every scored scale,\n``metrics_max_abs`` to stage 3.",
+      "description": "Overrides of the stage-2 gate defaults for one recipe's ``reference.score_scale``.\n\nEvery field defaults to ``None`` (= the published default for the scale).",
       "properties": {
-        "prob_p99_abs": {
+        "cos_max_abs": {
+          "anyOf": [
+            {
+              "maximum": 2,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cos Max Abs"
+        },
+        "logit_rel_abs": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Logit Rel Abs"
+        },
+        "metrics_max_abs": {
           "anyOf": [
             {
               "maximum": 1,
@@ -423,7 +79,7 @@
             }
           ],
           "default": null,
-          "title": "Prob P99 Abs"
+          "title": "Metrics Max Abs"
         },
         "prob_max_abs": {
           "anyOf": [
@@ -439,38 +95,11 @@
           "default": null,
           "title": "Prob Max Abs"
         },
-        "logit_rel_abs": {
-          "anyOf": [
-            {
-              "minimum": 0,
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Logit Rel Abs"
-        },
-        "cos_max_abs": {
-          "anyOf": [
-            {
-              "maximum": 2,
-              "minimum": 0,
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Cos Max Abs"
-        },
-        "vec_min_cosine": {
+        "prob_p99_abs": {
           "anyOf": [
             {
               "maximum": 1,
-              "minimum": -1,
+              "minimum": 0,
               "type": "number"
             },
             {
@@ -478,7 +107,7 @@
             }
           ],
           "default": null,
-          "title": "Vec Min Cosine"
+          "title": "Prob P99 Abs"
         },
         "tau_min": {
           "anyOf": [
@@ -494,11 +123,11 @@
           "default": null,
           "title": "Tau Min"
         },
-        "metrics_max_abs": {
+        "vec_min_cosine": {
           "anyOf": [
             {
               "maximum": 1,
-              "minimum": 0,
+              "minimum": -1,
               "type": "number"
             },
             {
@@ -506,449 +135,22 @@
             }
           ],
           "default": null,
-          "title": "Metrics Max Abs"
+          "title": "Vec Min Cosine"
         }
       },
       "title": "Gates",
       "type": "object"
     },
-    "ImagePolicy": {
-      "additionalProperties": false,
-      "description": "The pixel budget every page image and video frame is resized to, and the processor whose resize is used.\n\nAttributes:\n    min_px: The fewest pixels an image is scaled up to.\n    max_px: The most pixels an image is scaled down to.\n    processor: The judge's image processor family (:data:`ImageProcessor`). Left unset in a declared policy:\n        the judging pass takes it from the judge config's ``image_processor`` (:meth:`for_processor`), so the\n        recorded policy names it. ``None`` in an effective policy means the family is unknown, and images are\n        sent unchanged.\n\nBudget both or neither: without one, images go at their stored size and the engine's processor decides\n(:meth:`native`), so their token cost cannot be counted. With a known processor the budget must lie within\nthe engines' default budget for it (:data:`PROCESSORS`), so the engine keeps the prepared size.",
-      "properties": {
-        "min_px": {
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Min Px"
-        },
-        "max_px": {
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Max Px"
-        },
-        "processor": {
-          "anyOf": [
-            {
-              "enum": [
-                "qwen2_vl",
-                "qwen2_5_vl",
-                "qwen3_vl"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Processor"
-        }
-      },
-      "title": "ImagePolicy",
-      "type": "object"
-    },
-    "PoolingEndpoint": {
-      "additionalProperties": false,
-      "description": "A multi-vector (late interaction) endpoint speaking vLLM ``POST {base_url}/pooling`` (task ``token_embed``).\n\nThe result is ragged: one slice of vectors per item, not one vector. Everything else works as\n:class:`EmbeddingEndpoint` (the prompts, the declared text budget, the client's fit of every item) --\nexcept that ``dimensions`` is never sent: vLLM's ``/pooling`` refuses it (\"dimensions is currently not\nsupported\"), and the client refuses an unset ``dim`` at construction (the base64 frame carries no shape).\n\nAttributes:\n    api: The wire adapter; ``\"vllm_pooling\"`` by default.\n    embed_dtype: The precision the vectors cross the wire in; ``\"float16\"`` (the owner's Q11 decision)\n        halves the bytes of a ragged buffer, ``\"float32\"`` is the lossless opt-in. Content: it changes the\n        vectors. MaxSim computes in float32 either way.\n    dim: The width of one token vector -- the checkpoint's late-interaction dimension (ColBERT-style\n        checkpoints project to a fixed width, e.g. 128). Content: it is the served checkpoint's own\n        output width. Needed to decode the base64 frame of ``/pooling``, which is flat and carries no\n        shape (``vllm/utils/serial_utils.py::tensor2binary`` flattens); the response's token counts are\n        checked against it, so a mistyped width fails loudly instead of silently mis-shaping every\n        vector. The self-describing float and bytes frames decode without it, and the ``bytes`` encoding\n        makes it unnecessary (its metadata carries each item's ``shape``).\n    document_skip_token_ids: The token ids whose DOCUMENT vectors the model scores nothing by (2, the\n        topk hand-off): the client drops the vector at every position whose token id is listed, before\n        MaxSim (topk-embed-v1-small drops 41 ids -- standalone punctuation and specials; queries keep\n        all their vectors). The positions are the ids the client sent: it tokenises the fitted document\n        text with the declared tokenizer, checks the returned vector count against them (a mismatch is\n        a typed error, never a silent misalignment), and refuses a batch that carries media -- a media\n        request's positions are the server's chat-template render, which the client cannot tokenise.\n        Needs the declared tokenizer; a hosted profile without one cannot apply it (refused as inert).\n        Content.\n    mrl_dim: The Matryoshka output size served (2g, plug-pplx), below :attr:`dim` when set: applied\n        CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then\n        L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the\n        default) serves the checkpoint's own :attr:`dim`. Content.\n    outputs: What one input yields (2g, plug-pplx): ``\"per_token\"`` (the default) is the token_embed\n        contract -- one vector per prompt token, which the reply's ``usage`` cross-checks;\n        ``\"per_chunk\"`` is a per-chunk multi-output model -- several outputs per input, one slice of\n        chunk vectors per input, so the usage cross-check cannot apply and is skipped. Content.",
-      "properties": {
-        "api": {
-          "default": "vllm_pooling",
-          "title": "Api",
-          "type": "string"
-        },
-        "base_url": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Base Url"
-        },
-        "model": {
-          "minLength": 1,
-          "title": "Model",
-          "type": "string"
-        },
-        "revision": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Revision"
-        },
-        "api_key_env": {
-          "anyOf": [
-            {
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Api Key Env"
-        },
-        "headers_env": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "title": "Headers Env",
-          "type": "object"
-        },
-        "concurrency": {
-          "default": 64,
-          "minimum": 1,
-          "title": "Concurrency",
-          "type": "integer"
-        },
-        "timeout_s": {
-          "default": 600.0,
-          "exclusiveMinimum": 0,
-          "title": "Timeout S",
-          "type": "number"
-        },
-        "connect_timeout_s": {
-          "default": 5.0,
-          "exclusiveMinimum": 0,
-          "title": "Connect Timeout S",
-          "type": "number"
-        },
-        "max_retries": {
-          "default": 2,
-          "minimum": 0,
-          "title": "Max Retries",
-          "type": "integer"
-        },
-        "wait_on_outage_s": {
-          "anyOf": [
-            {
-              "minimum": 0,
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Wait On Outage S"
-        },
-        "image_processor": {
-          "anyOf": [
-            {
-              "enum": [
-                "qwen2_vl",
-                "qwen2_5_vl",
-                "qwen3_vl"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Image Processor"
-        },
-        "image_policy": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ImagePolicy"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "video_policy": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/VideoPolicy"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "max_images": {
-          "default": 0,
-          "minimum": 0,
-          "title": "Max Images",
-          "type": "integer"
-        },
-        "max_videos": {
-          "default": 0,
-          "minimum": 0,
-          "title": "Max Videos",
-          "type": "integer"
-        },
-        "media_sides": {
-          "default": [
-            "query",
-            "document"
-          ],
-          "items": {
-            "enum": [
-              "query",
-              "document"
-            ],
-            "type": "string"
-          },
-          "title": "Media Sides",
-          "type": "array"
-        },
-        "recipe": {
-          "anyOf": [
-            {
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Recipe"
-        },
-        "tokenizer": {
-          "anyOf": [
-            {
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Tokenizer"
-        },
-        "max_tokens": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Max Tokens"
-        },
-        "query_max_tokens": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Query Max Tokens"
-        },
-        "template": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/TemplateSpec"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "on_overflow": {
-          "default": "cut",
-          "enum": [
-            "cut",
-            "chunk",
-            "fail"
-          ],
-          "title": "On Overflow",
-          "type": "string"
-        },
-        "chunk": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ChunkPolicy"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "aggregation": {
-          "const": "max",
-          "default": "max",
-          "title": "Aggregation",
-          "type": "string"
-        },
-        "empty_doc": {
-          "default": "send",
-          "enum": [
-            "omit_zero",
-            "send",
-            "send_text"
-          ],
-          "title": "Empty Doc",
-          "type": "string"
-        },
-        "empty_doc_text": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Empty Doc Text"
-        },
-        "request_shape": {
-          "default": "text",
-          "enum": [
-            "text",
-            "messages",
-            "token_ids"
-          ],
-          "title": "Request Shape",
-          "type": "string"
-        },
-        "query_prompt": {
-          "default": "",
-          "title": "Query Prompt",
-          "type": "string"
-        },
-        "doc_prompt": {
-          "default": "",
-          "title": "Doc Prompt",
-          "type": "string"
-        },
-        "normalize": {
-          "default": true,
-          "title": "Normalize",
-          "type": "boolean"
-        },
-        "dimensions": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Dimensions"
-        },
-        "batch_size": {
-          "default": 32,
-          "minimum": 1,
-          "title": "Batch Size",
-          "type": "integer"
-        },
-        "embed_dtype": {
-          "default": "float16",
-          "enum": [
-            "float16",
-            "float32"
-          ],
-          "title": "Embed Dtype",
-          "type": "string"
-        },
-        "dim": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Dim"
-        },
-        "document_skip_token_ids": {
-          "default": [],
-          "items": {
-            "type": "integer"
-          },
-          "title": "Document Skip Token Ids",
-          "type": "array"
-        },
-        "mrl_dim": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Mrl Dim"
-        },
-        "outputs": {
-          "default": "per_token",
-          "enum": [
-            "per_token",
-            "per_chunk"
-          ],
-          "title": "Outputs",
-          "type": "string"
-        }
-      },
-      "required": [
-        "model"
-      ],
-      "title": "PoolingEndpoint",
-      "type": "object"
-    },
     "ReferenceSpec": {
       "additionalProperties": false,
-      "description": "The reference implementation the equivalence harness runs as a subprocess.\n\nAttributes:\n    kind: Where the reference comes from: ``transformers`` (an HF checkpoint run in the reference\n        environment), ``sentence_transformers`` (a sentence-transformers checkpoint), ``remote_code`` (the\n        checkpoint's trusted code) or ``stored_scores`` (scores stored with the paper's runs).\n    score_scale: The scale the reference's scores come back on, which selects the stage-2 gates:\n        ``probability``, ``logit`` or ``cosine``.  Embedding recipes always compare vectors (cosine per\n        vector or per token).\n    entry: The reference module file in the recipe directory; the harness runs it as\n        ``<reference-python> <recipe-dir>/<entry> --mode <mode> --pairs <file> --out <file>`` (see\n        :mod:`rcp_ndcg_vllm.equivalence.reference` for the modes).  Not needed for ``stored_scores``.\n    known_deviations: Deliberate reference deviations the paper code carries (e.g. a whole-prompt right\n        cut that drops tail anchors on over-cap pairs); stage 2 gates only pairs under the cap and reports\n        the rest in a separate, non-gating table.",
+      "description": "The reference implementation the equivalence harness runs as a subprocess.\n\nAttributes:\n    kind: Where the reference comes from: ``transformers`` (an HF checkpoint run in the reference\n        environment), ``sentence_transformers``, ``remote_code`` (the checkpoint's trusted code) or\n        ``stored_scores`` (scores stored with the paper's runs).\n    score_scale: The scale the reference's scores come back on: ``probability``, ``logit`` or ``cosine``.\n    entry: The reference module file in the recipe directory; the harness runs it as\n        ``<reference-python> <recipe-dir>/<entry> --mode <mode> --pairs <file> --out <file>``.\n    known_deviations: Deliberate reference deviations the paper code carries (e.g. a whole-prompt right cut\n        that drops tail anchors on over-cap pairs); stage 2 gates only pairs under the cap.",
       "properties": {
+        "entry": {
+          "default": "reference.py",
+          "description": "reference module file inside the recipe directory",
+          "title": "Entry",
+          "type": "string"
+        },
         "kind": {
           "enum": [
             "transformers",
@@ -959,6 +161,14 @@
           "title": "Kind",
           "type": "string"
         },
+        "known_deviations": {
+          "items": {
+            "const": "anchor_drop_over_cap",
+            "type": "string"
+          },
+          "title": "Known Deviations",
+          "type": "array"
+        },
         "score_scale": {
           "enum": [
             "probability",
@@ -967,20 +177,6 @@
           ],
           "title": "Score Scale",
           "type": "string"
-        },
-        "entry": {
-          "default": "reference.py",
-          "description": "reference module file inside the recipe directory",
-          "title": "Entry",
-          "type": "string"
-        },
-        "known_deviations": {
-          "items": {
-            "const": "anchor_drop_over_cap",
-            "type": "string"
-          },
-          "title": "Known Deviations",
-          "type": "array"
         }
       },
       "required": [
@@ -988,352 +184,6 @@
         "score_scale"
       ],
       "title": "ReferenceSpec",
-      "type": "object"
-    },
-    "RerankEndpoint": {
-      "additionalProperties": false,
-      "description": "A reranking endpoint speaking the Cohere-shaped ``POST {base_url}/rerank``.\n\nOne query's whole candidate set goes per request (the engine reuses the query prefix, and a listwise model\nneeds them together).\n\nAttributes:\n    api: The wire adapter; ``\"rerank\"`` by default.\n    recipe: As on :class:`EmbeddingEndpoint`: the server-side settings the package cannot read (the\n        ``hf_overrides``, the score template), as a free string. Content.\n    tokenizer: The model's tokenizer, in whose tokens ``max_tokens`` and ``query_max_tokens`` are counted.\n        Runtime by name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the\n        judge's already does.\n    max_tokens: What the budget counts is the model's whole input sequence as the engine sees it -- the\n        rendered template, its special tokens, the instruction and the query-and-document content\n        together, in the declared tokenizer's tokens. The content is cut on the client, in a budget\n        computed after reserving every fixed template token (the anchors: a pointwise reranker reads its\n        score from the last position, so the generation prompt or \"yes-no\" suffix always survives; when\n        the template puts the document first, so does the query), and the template is re-attached after\n        the cut. The cut is never left to the engine: an engine-side truncation of the rendered prompt\n        drops anchors from one end or the other. The query is cut first, to ``query_max_tokens``; the\n        document gets the rest of the budget. ``None`` sends every pair whole -- which a self-hosted role\n        config refuses (declare the budget); a hosted vendor profile with no tokenizer sends pairs uncut.\n        Content.\n    query_max_tokens: The query's share of the pair budget (``max_tokens``), in the declared tokenizer's\n        tokens; the document gets what remains. On the served rerank wire one query rides per request, so\n        the client settles the shared query span once per call: whenever the query exceeds its share it\n        ships at it (recorded once in the census under the doc id ``<query>``), and every document span\n        is verified against the span that ships -- so a pair is never shipped over the budget. ``None``\n        (the default) declares no split, and the adapter's recipe decides; a query that alone fills the\n        budget is then refused rather than cut undeclared. Content.\n    template: The pair template as data (:class:`~rcp_ndcg.data.templates.TemplateSpec`), which orders\n        query and document per model (document first for some rerankers, and then the query block is an\n        anchor), names the specials, and declares the anchor and the per-shape ``add_special_tokens``.\n        Content.\n    on_overflow: What a pair over the budget does: ``cut`` (the default), ``chunk`` (the document side is\n        split into :attr:`chunk` pieces, each carrying the full template; scores pool back by ``max``)\n        or ``fail``. A query is never chunked. Content.\n    chunk: The chunk geometry for ``on_overflow: chunk`` (the judge's\n        :class:`~rcp_ndcg.data.preprocess.ChunkPolicy` reused, not copied). Content.\n    aggregation: How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same\n        rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.\n    empty_doc: What an empty document becomes: ``send`` (the default: the empty string goes out),\n        ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder,\n        :attr:`empty_doc_text`). Content.\n    empty_doc_text: The placeholder text ``empty_doc: send_text`` sends. Content.\n    empty_query: What an empty query does (2f, qwen3-vl-reranker): ``refuse`` (the default) refuses the\n        request with a typed :class:`~rcp_ndcg.errors.DataError` naming the query id -- the reference\n        wrapper refuses an empty query, and silently scoring one against every candidate would rank by\n        nothing; ``send`` sends the empty string, today's behaviour. Content.\n    request_shape: How a request crosses the wire: ``text`` (the default and the only shape the rerank\n        wires implement today -- any other value is refused, the field exists so a rerank config stays\n        shape-shaped with its siblings). Content.\n    instruction: How the reranker's instruction reaches the model: ``\"fold\"`` folds it into the query text\n        (``Task: ...\\nQuery: ...``, today's served behaviour), ``\"field\"`` sends the engine's own\n        ``instruction`` request field (vLLM), ``\"system\"`` sends it as a system message (the shape some\n        models take), ``\"none\"`` sends none. Content.\n    use_activation: ``True`` sends through the engine's activation (a probability), ``False`` asks for the\n        raw logit, ``None`` sends nothing and the engine's default applies. Content: raw logit or\n        probability is a different stored score.\n    listwise: Whether the model scores the whole candidate set in one prompt (listwise) rather than point\n        per pair. Content.\n    batch_size: Documents per request for a pointwise model; refused for a listwise one, which always gets\n        the whole candidate set. Runtime.",
-      "properties": {
-        "api": {
-          "default": "rerank",
-          "title": "Api",
-          "type": "string"
-        },
-        "base_url": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Base Url"
-        },
-        "model": {
-          "minLength": 1,
-          "title": "Model",
-          "type": "string"
-        },
-        "revision": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Revision"
-        },
-        "api_key_env": {
-          "anyOf": [
-            {
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Api Key Env"
-        },
-        "headers_env": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "title": "Headers Env",
-          "type": "object"
-        },
-        "concurrency": {
-          "default": 64,
-          "minimum": 1,
-          "title": "Concurrency",
-          "type": "integer"
-        },
-        "timeout_s": {
-          "default": 600.0,
-          "exclusiveMinimum": 0,
-          "title": "Timeout S",
-          "type": "number"
-        },
-        "connect_timeout_s": {
-          "default": 5.0,
-          "exclusiveMinimum": 0,
-          "title": "Connect Timeout S",
-          "type": "number"
-        },
-        "max_retries": {
-          "default": 2,
-          "minimum": 0,
-          "title": "Max Retries",
-          "type": "integer"
-        },
-        "wait_on_outage_s": {
-          "anyOf": [
-            {
-              "minimum": 0,
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Wait On Outage S"
-        },
-        "image_processor": {
-          "anyOf": [
-            {
-              "enum": [
-                "qwen2_vl",
-                "qwen2_5_vl",
-                "qwen3_vl"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Image Processor"
-        },
-        "image_policy": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ImagePolicy"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "video_policy": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/VideoPolicy"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "max_images": {
-          "default": 0,
-          "minimum": 0,
-          "title": "Max Images",
-          "type": "integer"
-        },
-        "max_videos": {
-          "default": 0,
-          "minimum": 0,
-          "title": "Max Videos",
-          "type": "integer"
-        },
-        "media_sides": {
-          "default": [
-            "query",
-            "document"
-          ],
-          "items": {
-            "enum": [
-              "query",
-              "document"
-            ],
-            "type": "string"
-          },
-          "title": "Media Sides",
-          "type": "array"
-        },
-        "recipe": {
-          "anyOf": [
-            {
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Recipe"
-        },
-        "tokenizer": {
-          "anyOf": [
-            {
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Tokenizer"
-        },
-        "max_tokens": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Max Tokens"
-        },
-        "instruction": {
-          "default": "fold",
-          "enum": [
-            "none",
-            "field",
-            "fold",
-            "system"
-          ],
-          "title": "Instruction",
-          "type": "string"
-        },
-        "use_activation": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Use Activation"
-        },
-        "query_max_tokens": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Query Max Tokens"
-        },
-        "template": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/TemplateSpec"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "on_overflow": {
-          "default": "cut",
-          "enum": [
-            "cut",
-            "chunk",
-            "fail"
-          ],
-          "title": "On Overflow",
-          "type": "string"
-        },
-        "chunk": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ChunkPolicy"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "aggregation": {
-          "const": "max",
-          "default": "max",
-          "title": "Aggregation",
-          "type": "string"
-        },
-        "empty_doc": {
-          "default": "send",
-          "enum": [
-            "omit_zero",
-            "send",
-            "send_text"
-          ],
-          "title": "Empty Doc",
-          "type": "string"
-        },
-        "empty_doc_text": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Empty Doc Text"
-        },
-        "empty_query": {
-          "default": "refuse",
-          "enum": [
-            "refuse",
-            "send"
-          ],
-          "title": "Empty Query",
-          "type": "string"
-        },
-        "request_shape": {
-          "default": "text",
-          "enum": [
-            "text",
-            "messages",
-            "token_ids"
-          ],
-          "title": "Request Shape",
-          "type": "string"
-        },
-        "listwise": {
-          "default": false,
-          "title": "Listwise",
-          "type": "boolean"
-        },
-        "batch_size": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Batch Size"
-        }
-      },
-      "required": [
-        "model"
-      ],
-      "title": "RerankEndpoint",
       "type": "object"
     },
     "Resources": {
@@ -1352,55 +202,22 @@
       "title": "Resources",
       "type": "object"
     },
-    "Segment": {
-      "additionalProperties": false,
-      "description": "One segment of a rendered request shape: a piece of fixed frame text or a content span.\n\nExactly one of the two is set. A fixed segment writes its special tokens by name\n(``{special:<name>}``); a content span names the role whose text fills it\n(:data:`ContentSpan`).\n\nAttributes:\n    fixed: The frame text, with specials written ``{special:<name>}``.\n    content: The role whose text fills the span.",
-      "properties": {
-        "fixed": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Fixed"
-        },
-        "content": {
-          "anyOf": [
-            {
-              "enum": [
-                "query",
-                "document",
-                "instruction"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Content"
-        }
-      },
-      "title": "Segment",
-      "type": "object"
-    },
     "ServeConfig": {
       "additionalProperties": false,
-      "description": "Everything rendered into the ``vllm serve`` argv \u2014 nothing implicit.\n\nSee :func:`serve_argv` for the exact argv.  ``plugin`` and ``io_processor_plugin`` never reach the argv: they\nname packages that must be installed into the image before the engine starts (a ``vllm.general_plugins``\npackage and the checkpoint's IO-processor plugin, respectively; the node's bootstrap collects a wave's\n``serve.plugin`` wheels with ``python -m rcp_ndcg_vllm.jobs.plugins`` and installs them with ``--no-deps``,\nunder the freeze-diff guard).",
+      "description": "Everything rendered into the ``vllm serve`` argv \u2014 nothing implicit.\n\nSee :func:`serve_argv` for the exact argv. ``plugin`` and ``io_processor_plugin`` never reach the argv: they\nname packages that must be installed into the image before the engine starts (a ``vllm.general_plugins``\npackage and the checkpoint's IO-processor plugin, respectively). ``rcp-ndcg-vllm serve`` refuses a declared\n``plugin`` the engine environment does not carry, with the exact ``pip install --no-deps`` line.",
       "properties": {
-        "runner": {
-          "description": "vLLM --runner; the rcp-ndcg routes need pooling",
-          "enum": [
-            "pooling",
-            "generate"
+        "chat_template": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
           ],
-          "title": "Runner",
-          "type": "string"
+          "default": null,
+          "description": "chat template file in the recipe directory, given to vLLM --chat-template",
+          "title": "Chat Template"
         },
         "convert": {
           "anyOf": [
@@ -1419,43 +236,6 @@
           "description": "vLLM --convert, for a decoder checkpoint turned into an embed or classify model",
           "title": "Convert"
         },
-        "hf_overrides": {
-          "additionalProperties": true,
-          "description": "vLLM --hf-overrides, a JSON object sent verbatim (keys sorted)",
-          "title": "Hf Overrides",
-          "type": "object"
-        },
-        "chat_template": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "chat template file in the recipe directory, given to vLLM --chat-template",
-          "title": "Chat Template"
-        },
-        "pooler_config": {
-          "additionalProperties": true,
-          "description": "vLLM --pooler-config, a JSON object; keys must be PoolerConfig fields at the pinned engine",
-          "title": "Pooler Config",
-          "type": "object"
-        },
-        "trust_remote_code": {
-          "default": false,
-          "description": "vLLM --trust-remote-code flag",
-          "title": "Trust Remote Code",
-          "type": "boolean"
-        },
-        "max_model_len": {
-          "description": "vLLM --max-model-len; at least every client budget",
-          "exclusiveMinimum": 0,
-          "title": "Max Model Len",
-          "type": "integer"
-        },
         "dtype": {
           "description": "vLLM --dtype",
           "enum": [
@@ -1469,18 +249,19 @@
           "title": "Dtype",
           "type": "string"
         },
-        "plugin": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "pip spec of a vllm.general_plugins package, installed before the engine starts",
-          "title": "Plugin"
+        "extra_args": {
+          "description": "further vllm serve flags, verbatim (one argv element per item)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Extra Args",
+          "type": "array"
+        },
+        "hf_overrides": {
+          "additionalProperties": true,
+          "description": "vLLM --hf-overrides, a JSON object sent verbatim (keys sorted)",
+          "title": "Hf Overrides",
+          "type": "object"
         },
         "io_processor_plugin": {
           "anyOf": [
@@ -1494,12 +275,6 @@
           "default": null,
           "description": "name of the checkpoint's io-processor plugin, resolved through its config (the sanctioned seam when the stock embed IO-processor's prompt construction cannot express the model)",
           "title": "Io Processor Plugin"
-        },
-        "mm_processor_kwargs": {
-          "additionalProperties": true,
-          "description": "vLLM --mm-processor-kwargs (min/max_pixels etc.): changes image-token counts, so content",
-          "title": "Mm Processor Kwargs",
-          "type": "object"
         },
         "limit_mm_per_prompt": {
           "anyOf": [
@@ -1517,13 +292,51 @@
           "description": "vLLM --limit-mm-per-prompt, the per-request media caps",
           "title": "Limit Mm Per Prompt"
         },
-        "extra_args": {
-          "description": "further vllm serve flags, verbatim (one argv element per item)",
-          "items": {
-            "type": "string"
-          },
-          "title": "Extra Args",
-          "type": "array"
+        "max_model_len": {
+          "description": "vLLM --max-model-len; at least every client budget",
+          "exclusiveMinimum": 0,
+          "title": "Max Model Len",
+          "type": "integer"
+        },
+        "mm_processor_kwargs": {
+          "additionalProperties": true,
+          "description": "vLLM --mm-processor-kwargs (min/max_pixels etc.): changes image-token counts, so content",
+          "title": "Mm Processor Kwargs",
+          "type": "object"
+        },
+        "plugin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "pip spec of a vllm.general_plugins package (rcp-ndcg-vllm itself for the folded models), installed with --no-deps before the engine starts",
+          "title": "Plugin"
+        },
+        "pooler_config": {
+          "additionalProperties": true,
+          "description": "vLLM --pooler-config, a JSON object; keys must be PoolerConfig fields at the pinned engine",
+          "title": "Pooler Config",
+          "type": "object"
+        },
+        "runner": {
+          "description": "vLLM --runner; the rcp-ndcg routes need pooling",
+          "enum": [
+            "pooling",
+            "generate"
+          ],
+          "title": "Runner",
+          "type": "string"
+        },
+        "trust_remote_code": {
+          "default": false,
+          "description": "vLLM --trust-remote-code flag",
+          "title": "Trust Remote Code",
+          "type": "boolean"
         }
       },
       "required": [
@@ -1538,15 +351,17 @@
       "additionalProperties": false,
       "description": "Where the recipe stands in the verification workflow.\n\nAttributes:\n    state: ``unverified`` (written, not yet checked), ``verified`` (the harness passed every gate) or\n        ``failed`` (a gate failed; the report says which).\n    image: The engine image the recipe was last verified against.\n    date: ISO date of the last verification.\n    report: Path or URL of the equivalence report.",
       "properties": {
-        "state": {
-          "default": "unverified",
-          "enum": [
-            "unverified",
-            "verified",
-            "failed"
+        "date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
           ],
-          "title": "State",
-          "type": "string"
+          "default": null,
+          "title": "Date"
         },
         "image": {
           "anyOf": [
@@ -1560,18 +375,6 @@
           "default": null,
           "title": "Image"
         },
-        "date": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Date"
-        },
         "report": {
           "anyOf": [
             {
@@ -1583,178 +386,57 @@
           ],
           "default": null,
           "title": "Report"
+        },
+        "state": {
+          "default": "unverified",
+          "enum": [
+            "unverified",
+            "verified",
+            "failed"
+          ],
+          "title": "State",
+          "type": "string"
         }
       },
       "title": "StatusSpec",
       "type": "object"
-    },
-    "TemplateSpec": {
-      "additionalProperties": false,
-      "description": "The frame of every request a role sends, declared as data.\n\nPer request shape, an ordered list of segments; at render time the fixed segments are joined with\nthe content spans filled from the call's texts. The template is content: two configs whose\ntemplates differ never share an identity (its canonical JSON is what the identity hashes).\n\nAttributes:\n    query: The ``query`` shape's segments (an embedder's query side).\n    document: The ``document`` shape's segments (an embedder's document side).\n    pair: The ``pair`` shape's segments (a reranker's request; its order is the model's).\n    anchor: The position the model reads its output from (``last`` by default: the last-token\n        poolers, the pointwise rerankers scored at the last position). ``last_content`` declares a model\n        that pools the last real token of raw text (jina-embeddings-v5): no fixed tail exists, the shape\n        may end on a content span, and every fixed segment (a head marker) is still reserved by the\n        budget -- the prefix a cut keeps always carries the last content token. Declared so the budget\n        knows what must survive and the golden-render tests what to assert.\n    anchor_markers: For ``anchor: marker``: the special tokens' *names* (resolved like\n        ``{special:...}``), e.g. a listwise reranker's per-passage markers.\n    add_special_tokens: What the engine does to the rendered string per shape -- ``True`` (the\n        default) when the route adds the tokenizer's post-processor tokens (vLLM's pooling and\n        scoring routes), ``False`` where it adds none (the chat-embed form). A bool for every\n        shape, or a mapping shape -> bool naming every declared shape. The budget reserves those\n        tokens: measured on the empty render, they are part of the fixed overhead.\n    normalize: The declared content normalisation, applied by :func:`rcp_ndcg.data.preprocess.fit`\n        to a shape's content spans before measuring -- so the reference and the engine see the same\n        text. ``(\"strip\",)`` strips the spans (the topk wrapper strips the query text and the whole\n        document); ``(\"strip\", \"lowercase\")`` strips then lowers them (Cobble's\n        ``lower_case_text`` checkpoints); the ops run in the declared order. A tuple for every\n        declared shape, or a mapping shape -> tuple naming every declared shape. Empty (the\n        default): the text goes in as it is.",
-      "properties": {
-        "query": {
-          "anyOf": [
-            {
-              "items": {
-                "$ref": "#/$defs/Segment"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Query"
-        },
-        "document": {
-          "anyOf": [
-            {
-              "items": {
-                "$ref": "#/$defs/Segment"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Document"
-        },
-        "pair": {
-          "anyOf": [
-            {
-              "items": {
-                "$ref": "#/$defs/Segment"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Pair"
-        },
-        "anchor": {
-          "default": "last",
-          "enum": [
-            "last",
-            "first",
-            "last_content",
-            "mean",
-            "marker"
-          ],
-          "title": "Anchor",
-          "type": "string"
-        },
-        "anchor_markers": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "title": "Anchor Markers",
-          "type": "array"
-        },
-        "add_special_tokens": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "additionalProperties": {
-                "type": "boolean"
-              },
-              "type": "object"
-            }
-          ],
-          "default": true,
-          "title": "Add Special Tokens"
-        },
-        "normalize": {
-          "anyOf": [
-            {
-              "items": {
-                "enum": [
-                  "strip",
-                  "lowercase"
-                ],
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "additionalProperties": {
-                "items": {
-                  "enum": [
-                    "strip",
-                    "lowercase"
-                  ],
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "type": "object"
-            }
-          ],
-          "default": [],
-          "title": "Normalize"
-        }
-      },
-      "title": "TemplateSpec",
-      "type": "object"
-    },
-    "VideoPolicy": {
-      "additionalProperties": false,
-      "description": "Which frames of a video the judge is shown, and which videos it may be shown at all.\n\nOne sampling rule: ``num_frames`` frames at uniformly spaced indices over the\nwhole clip (:func:`uniform_frame_indices`), the rule both serving engines apply\nto a decoded container. It is the only rule whose realised frame count is fixed\nby the policy -- a frames-per-second rule shows a 10-second clip 20 frames and a\n10-minute clip 1200, so two runs \"at 2 fps\" would share a judgement family while\nshowing the judge different amounts of video.\n\nA clip with fewer frames than ``num_frames`` is refused, not shown whole: the\nengines disagree about it (SGLang rejects the request, vLLM resamples at its\nprocessor's own rate), so no single number of frames could be recorded for it.\nA container's frame count must therefore be recorded at ingest\n(``hash_media=True``) before it can be judged over ``video_url``.\n\n``wire`` is how the judge receives the frames, and it is part of the\ninstrument. ``frames`` (client-sampled, the default and the exact one): the\nclient picks the frames from the corpus's pre-extracted frames and sends each,\nsized by the image policy, as its own image, which any OpenAI-compatible\nendpoint accepts -- so the frames counted are the frames sent.\n``video_url`` (engine-sampled, an opt-in for models with a native video encoder):\nthe container is sent unchanged and the engine decodes and samples it (Qwen-VL\ntowers then merge frame pairs in time and see timestamps). A stock engine samples\nits own default number of frames (32 on vLLM), so ``video_url`` is refused unless\n:attr:`engine_video_pinning` declares the engine pinned to ``num_frames`` -- and\nthe same clips judged both ways are different measurements, so the wire is part\nof the policy and a corpus whose videos do not match it is refused.\n\n``max_duration_s`` is a refusal, not a cut: uniform sampling of a long clip\nspreads the same frame budget ever thinner, so a corpus that declares it refuses\nany video whose recorded duration exceeds it -- or whose duration was never\nrecorded -- rather than judging it at a density nobody chose.",
-      "properties": {
-        "num_frames": {
-          "exclusiveMinimum": 0,
-          "title": "Num Frames",
-          "type": "integer"
-        },
-        "wire": {
-          "enum": [
-            "frames",
-            "video_url"
-          ],
-          "title": "Wire",
-          "type": "string"
-        },
-        "engine_video_pinning": {
-          "default": false,
-          "title": "Engine Video Pinning",
-          "type": "boolean"
-        },
-        "max_duration_s": {
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0,
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Max Duration S"
-        }
-      },
-      "required": [
-        "num_frames",
-        "wire"
-      ],
-      "title": "VideoPolicy",
-      "type": "object"
     }
   },
   "additionalProperties": false,
-  "description": "One served model: how vLLM serves it, how ``rcp-ndcg`` reads it, and what it is checked against.\n\nConstruct it through :func:`load_recipe` (which also checks the referenced files exist, that ``id`` equals\nthe directory name, and that the ``client`` block constructs the product's endpoint model); the model itself\nis frozen and refuses unknown fields.\n\nAttributes:\n    id: The recipe identifier, ``^[a-z0-9][a-z0-9.-]*$``, equal to the directory name; also the\n        ``--served-model-name`` the engine serves and the client config's ``model``.\n    model: The Hugging Face repo id to serve.\n    revision: The exact commit of ``model`` (40 hex); serving and client cutting pin it.\n    role: What the model produces: ``embed`` (one dense vector), ``multi_vector`` (one vector per token) or\n        ``rerank`` (query-document scores).\n    input: The input modalities the model accepts, a non-empty subset of ``[text, image, video]``.\n    scoring: Rerank only: ``pointwise`` (documents scored independently) or ``listwise`` (the whole\n        candidate set in one prompt; the product endpoint's ``listwise`` flag).\n    licence: SPDX identifier of the model's licence, or ``see-model-card``.\n    engine: The engine image and the startup timeout.\n    resources: The GPUs the engine occupies (``--tensor-parallel-size``).\n    serve: Everything rendered into ``vllm serve`` argv.\n    client: The product's endpoint config for the role (validated by constructing it at load).\n    reference: The subprocess reference the harness compares against.\n    gates: Overrides of the stage-2 gate defaults.\n    status: Where the recipe stands in the verification workflow.\n    sources: URLs and ``path:line`` references the recipe rests on.\n    notes: Free-form notes.",
+  "description": "One served model: how vLLM serves it, how ``rcp-ndcg`` reads it, and what it is checked against.\n\nConstruct it through :func:`load_recipe` (which also checks the referenced files exist, that ``id`` equals\nthe directory name, and the load-time rules below); the model itself is frozen and refuses unknown fields.\n\nAttributes:\n    id: The recipe identifier, ``^[a-z0-9][a-z0-9.-]*$``, equal to the directory name; also the\n        ``--served-model-name`` the engine serves and the client config's ``model``.\n    model: The Hugging Face repo id to serve.\n    revision: The exact commit of ``model`` (40 hex); serving and client cutting pin it.\n    role: What the model produces: ``embed``, ``multi_vector`` or ``rerank``.\n    input: The input modalities the model accepts, a non-empty subset of ``[text, image, video]``.\n    scoring: Rerank only: ``pointwise`` or ``listwise`` (the product endpoint's ``listwise`` flag).\n    licence: SPDX identifier of the model's licence, or ``see-model-card``.\n    engine: The engine image and the startup timeout.\n    resources: The GPUs the engine occupies (``--tensor-parallel-size``).\n    serve: Everything rendered into ``vllm serve`` argv.\n    client: The product's endpoint config for the role, as plain data (the ``model`` and ``revision`` keys\n        are injected here and refused in the YAML); ``rcp-ndcg`` validates the whole block with the\n        product's endpoint class when it resolves the recipe.\n    reference: The subprocess reference the harness compares against.\n    gates: Overrides of the stage-2 gate defaults.\n    status: Where the recipe stands in the verification workflow.\n    sources: URLs and ``path:line`` references the recipe rests on.\n    notes: Free-form notes.",
   "properties": {
+    "client": {
+      "additionalProperties": true,
+      "title": "Client",
+      "type": "object"
+    },
+    "engine": {
+      "$ref": "#/$defs/EngineSpec"
+    },
+    "gates": {
+      "$ref": "#/$defs/Gates"
+    },
     "id": {
       "pattern": "^[a-z0-9][a-z0-9.-]*$",
       "title": "Id",
+      "type": "string"
+    },
+    "input": {
+      "items": {
+        "enum": [
+          "text",
+          "image",
+          "video"
+        ],
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Input",
+      "type": "array"
+    },
+    "licence": {
+      "minLength": 1,
+      "title": "Licence",
       "type": "string"
     },
     "model": {
@@ -1762,6 +444,17 @@
       "minLength": 1,
       "title": "Model",
       "type": "string"
+    },
+    "notes": {
+      "default": "",
+      "title": "Notes",
+      "type": "string"
+    },
+    "reference": {
+      "$ref": "#/$defs/ReferenceSpec"
+    },
+    "resources": {
+      "$ref": "#/$defs/Resources"
     },
     "revision": {
       "description": "40-hex commit of model",
@@ -1777,19 +470,6 @@
       ],
       "title": "Role",
       "type": "string"
-    },
-    "input": {
-      "items": {
-        "enum": [
-          "text",
-          "image",
-          "video"
-        ],
-        "type": "string"
-      },
-      "minItems": 1,
-      "title": "Input",
-      "type": "array"
     },
     "scoring": {
       "anyOf": [
@@ -1807,31 +487,8 @@
       "default": null,
       "title": "Scoring"
     },
-    "licence": {
-      "minLength": 1,
-      "title": "Licence",
-      "type": "string"
-    },
-    "engine": {
-      "$ref": "#/$defs/EngineSpec"
-    },
-    "resources": {
-      "$ref": "#/$defs/Resources"
-    },
     "serve": {
       "$ref": "#/$defs/ServeConfig"
-    },
-    "client": {
-      "$ref": "#/$defs/ClientEndpoint"
-    },
-    "reference": {
-      "$ref": "#/$defs/ReferenceSpec"
-    },
-    "gates": {
-      "$ref": "#/$defs/Gates"
-    },
-    "status": {
-      "$ref": "#/$defs/StatusSpec"
     },
     "sources": {
       "items": {
@@ -1840,10 +497,8 @@
       "title": "Sources",
       "type": "array"
     },
-    "notes": {
-      "default": "",
-      "title": "Notes",
-      "type": "string"
+    "status": {
+      "$ref": "#/$defs/StatusSpec"
     }
   },
   "required": [

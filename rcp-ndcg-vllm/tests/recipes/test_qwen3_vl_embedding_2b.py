@@ -24,6 +24,7 @@ import yaml
 from rcp_ndcg_vllm import load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg_vllm.equivalence.reference import run_reference
+from rcp_ndcg_vllm.equivalence.wire import role_client
 
 from tests.conftest import start_stub
 
@@ -146,7 +147,7 @@ def _reference_render(recipe: Any, rows: list[dict[str, Any]], work: Path) -> li
         mode="render",
         pairs_path=_pairs(work, rows),
         out_path=out,
-        tokenizer_spec=str(recipe.client.tokenizer),
+        tokenizer_spec=str(recipe.client.get("tokenizer")),
     )
     return json.loads(out.read_text(encoding="utf-8"))["rows"]
 
@@ -236,7 +237,7 @@ def test_reference_cut_matches_fit_under_and_over_cap(recipe_cpu: Any, tmp_path:
 
     recipe = recipe_cpu
     tokenizer = fitting.tokenizer_of(recipe)
-    budget = fitting.budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    budget = role_client(recipe, None)[0]._resolve_budget()[0].model_copy(update={"tokenizer": tokenizer.name})
     long_document = "Island biogeography studies the species richness of isolated habitats. " * 60
     over_cap_query = "cache invalidation strategies for read-mostly workloads part " * 900
     rows = [
@@ -258,7 +259,7 @@ def test_reference_cut_matches_fit_under_and_over_cap(recipe_cpu: Any, tmp_path:
         assert reference_row["shape"] == "document"
         assert reference_row["text"] == result.texts[0], f"row {index}: the reference cut differs from fit"
         ids = tokenizer.ids(reference_row["text"], add_special_tokens=True)
-        assert len(ids) <= recipe.client.max_tokens
+        assert len(ids) <= recipe.client.get("max_tokens")
         assert ids[-1] == tokenizer.special_id("endoftext"), "the anchor sits at the tail of every render"
 
 

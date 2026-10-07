@@ -28,6 +28,7 @@ from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg_vllm.equivalence.reference import run_reference
 from rcp_ndcg_vllm.recipe import default_recipes_root
 
+from rcp_ndcg.data.templates import TemplateSpec
 from rcp_ndcg.inference.config import RerankEndpoint
 
 RECIPE_ID = "ctxl-rerank-v2-instruct-multilingual-6b"
@@ -324,10 +325,10 @@ def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_re
 ) -> None:
     """Dropping the declared template's trailing anchor segment (" ??") must fail the anchor audit."""
     recipe = load_recipe(_recipe_dir())
-    template = recipe.client.template
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
     trimmed = template.model_copy(update={"pair": template.segments("pair")[:-1]})
-    mutated = recipe.model_copy(update={"client": recipe.client.model_copy(update={"template": trimmed})})
-    assert mutated.client.template.segments("pair")[-1].content == "query"  # the tail is now content
+    mutated = recipe.model_copy(update={"client": {**recipe.client, "template": trimmed}})
+    assert mutated.client.get("template").segments("pair")[-1].content == "query"  # the tail is now content
     _pin_tokenizer(monkeypatch, tokenizer_snapshot)
     document = stage1_prompts(mutated, pairs_file, str(sys.executable), over_length_per_shape=2)
     assert document["anchor_check"]["passed"] is False

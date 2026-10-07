@@ -20,6 +20,8 @@ import pytest
 import yaml
 from rcp_ndcg_vllm.recipe import load_recipe
 
+from rcp_ndcg.data.templates import TemplateSpec
+
 REPO = "jinaai/jina-reranker-v3"
 REVISION = "d7d7e73b6ea138ced340b83865931b5dfb6c97aa"
 RECIPES = Path(__file__).resolve().parents[2] / "recipes"
@@ -102,13 +104,13 @@ def test_recipe_loads_and_declares_the_product_endpoint() -> None:
     assert recipe.model == "jinaai/jina-reranker-v3"
     assert recipe.revision == REVISION
     assert recipe.role == "rerank" and recipe.scoring == "listwise"
-    assert recipe.client.listwise is True
-    assert recipe.client.tokenizer == f"{REPO}@{REVISION}"
-    assert recipe.client.max_tokens == 3219
-    assert recipe.client.query_max_tokens == 512
-    assert recipe.client.on_overflow == "cut"
-    assert recipe.client.empty_doc == "omit_zero"
-    assert recipe.client.use_activation is False
+    assert recipe.client.get("listwise") is True
+    assert recipe.client.get("tokenizer") == f"{REPO}@{REVISION}"
+    assert recipe.client.get("max_tokens") == 3219
+    assert recipe.client.get("query_max_tokens") == 512
+    assert recipe.client.get("on_overflow") == "cut"
+    assert recipe.client.get("empty_doc") == "omit_zero"
+    assert recipe.client.get("use_activation") is False
     assert recipe.reference.score_scale == "cosine"
     assert recipe.reference.known_deviations == []
     # The engine serves the model natively: no conversion, no plugin, no chat template file.
@@ -119,8 +121,11 @@ def test_recipe_loads_and_declares_the_product_endpoint() -> None:
     assert recipe.serve.max_model_len == 131072
     assert recipe.serve.dtype == "bfloat16"
     # The declared anchor: the two marker tokens the pooler reads its states from.
-    assert recipe.client.template.anchor == "marker"
-    assert set(recipe.client.template.anchor_markers) == {"embed_token", "rerank_token"}
+    assert TemplateSpec.model_validate(recipe.client.get("template")).anchor == "marker"
+    assert set(TemplateSpec.model_validate(recipe.client.get("template")).anchor_markers) == {
+        "embed_token",
+        "rerank_token",
+    }
 
 
 def test_declared_pair_shape_renders_the_engine_prompt(tmp_path: Path) -> None:
@@ -131,7 +136,9 @@ def test_declared_pair_shape_renders_the_engine_prompt(tmp_path: Path) -> None:
     recipe = load_recipe(_recipe_copy_with_local_tokenizer(tmp_path, tokenizer_file))
     tokenizer = load_tokenizer(str(tokenizer_file))
     query, document = "capital of france", "Paris is the capital of France and its largest city."
-    served = recipe.client.template.render("pair", tokenizer, query=query, document=document)
+    served = TemplateSpec.model_validate(recipe.client.get("template")).render(
+        "pair", tokenizer, query=query, document=document
+    )
     # The engine's own builder (vLLM's format_docs_prompts_func == the checkpoint's, measured by the
     # research instrument) produces exactly this text: role turns, one passage, the query block, the
     # no-thinking suffix.  Specials travel by name and resolve from the tokenizer's added tokens.

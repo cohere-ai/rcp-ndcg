@@ -1,8 +1,8 @@
-"""The recipe schema: the client block IS the product's endpoint config, validated at load.
+"""The recipe schema: the client block stays plain data here; ``rcp-ndcg`` validates it when it reads it.
 
 Product rules are the product's tests (refusals for template shape rules, budgets, empty_doc pairing and the
 rest happen in the product's own suite); here only the recipe-level rules and the round-trip through the
-product's config loader are tested.
+product's config loader (``client_config`` -> the product's endpoint class) are tested.
 """
 
 from __future__ import annotations
@@ -32,9 +32,12 @@ def recipe_dirs_path() -> Path:
 
 
 def test_every_fixture_recipe_loads_against_the_product_endpoints() -> None:
-    """Every fixture recipe loads, with the client block constructing the product's endpoint model."""
+    """Every fixture recipe loads, its plain client block constructing the product's endpoint model."""
     recipes = iter_recipes(recipe_dirs_path())
-    types = {recipe.id: type(recipe.client).__name__ for recipe in recipes}
+    classes = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
+    types = {
+        recipe.id: type(classes[recipe.role](**client_config(recipe, base_url=None))).__name__ for recipe in recipes
+    }
     assert types == {
         "fixture-embed": "EmbeddingEndpoint",
         "fixture-embed-cls": "EmbeddingEndpoint",
@@ -63,8 +66,8 @@ def test_client_config_round_trips_through_the_product_loader() -> None:
 
 def test_client_model_and_revision_are_injected(tmp_path: Path) -> None:
     recipe = load_recipe(recipe_dirs_path() / "fixture-embed")
-    assert recipe.client.model == "fixture-embed"
-    assert recipe.client.revision == recipe.revision
+    assert recipe.client.get("model") == "fixture-embed"
+    assert recipe.client.get("revision") == recipe.revision
 
 
 def test_client_block_cannot_declare_the_injected_fields(tmp_path: Path) -> None:

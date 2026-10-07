@@ -31,6 +31,7 @@ from rcp_ndcg_vllm import RecipeError, load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
 
 from rcp_ndcg.data.preprocess import TextBudget, fit
+from rcp_ndcg.data.templates import TemplateSpec
 from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "zerank-1-reranker"
@@ -170,15 +171,15 @@ def test_recipe_validates_and_pins_the_researched_serve_shape() -> None:
     from rcp_ndcg.inference.config import RerankEndpoint
 
     assert isinstance(recipe.client, RerankEndpoint)
-    assert recipe.client.tokenizer == TOKENIZER_SPEC
-    assert recipe.client.max_tokens == 8192
-    assert recipe.client.query_max_tokens == 4096
-    assert recipe.client.on_overflow == "cut"
-    assert recipe.client.empty_doc == "send"
-    assert recipe.client.instruction == "none"
-    assert recipe.client.use_activation is True  # probability-scale scores; explicit, never the default
-    assert recipe.client.listwise is False
-    template = recipe.client.template
+    assert recipe.client.get("tokenizer") == TOKENIZER_SPEC
+    assert recipe.client.get("max_tokens") == 8192
+    assert recipe.client.get("query_max_tokens") == 4096
+    assert recipe.client.get("on_overflow") == "cut"
+    assert recipe.client.get("empty_doc") == "send"
+    assert recipe.client.get("instruction") == "none"
+    assert recipe.client.get("use_activation") is True  # probability-scale scores; explicit, never the default
+    assert recipe.client.get("listwise") is False
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
     assert template.shapes() == ("pair",) and template.anchor == "last"
     assert template.adds_special_tokens("pair") is True
     assert recipe.serve.runner == "pooling" and recipe.serve.convert == "classify"
@@ -186,7 +187,7 @@ def test_recipe_validates_and_pins_the_researched_serve_shape() -> None:
     assert recipe.serve.pooler_config == {"logit_sigma": 5}
     assert recipe.serve.trust_remote_code is False
     assert recipe.serve.dtype == "bfloat16"
-    assert recipe.serve.max_model_len == 32768 >= recipe.client.max_tokens
+    assert recipe.serve.max_model_len == 32768 >= recipe.client.get("max_tokens")
     assert recipe.serve.plugin is None  # the architecture resolves natively: no plugin wheel
     assert recipe.serve.mm_processor_kwargs == {}  # text-only model: no media policy to pin
     assert recipe.reference.known_deviations == ["anchor_drop_over_cap"]
@@ -239,9 +240,9 @@ def test_template_file_renders_both_call_shapes_to_the_same_ids(tmp_path: Any, m
         result = _fit_pair(recipe, tokenizer, row["query"], row["documents"][0])
         fitted_query, fitted_document = result.contents[0]
         fit_text = result.texts[0]
-        flag = recipe.client.template.adds_special_tokens("pair")
+        flag = TemplateSpec.model_validate(recipe.client.get("template")).adds_special_tokens("pair")
         # The declared budget holds on the assembled render, and the anchor survived every cut.
-        assert tokenizer.count(fit_text, add_special_tokens=flag) <= recipe.client.max_tokens
+        assert tokenizer.count(fit_text, add_special_tokens=flag) <= recipe.client.get("max_tokens")
         assert fit_text.endswith(anchor_tail)
         engine_render = _render_engine_shape(template_text, fitted_query, fitted_document)
         assert engine_render == fit_text, row["query"][:40]
@@ -278,8 +279,8 @@ def test_stage1_on_cpu_passes_anchor_and_template_checks(tmp_path: Any, monkeypa
         for row in rows
         if tokenizer.count(row["query"])
         + tokenizer.count(row["documents"][0])
-        + recipe.client.template.overhead("pair", tokenizer)
-        > recipe.client.max_tokens
+        + TemplateSpec.model_validate(recipe.client.get("template")).overhead("pair", tokenizer)
+        > recipe.client.get("max_tokens")
     ]
     assert len(over_cap) >= 5
     document = stage1_prompts(recipe, _write_pairs(tmp_path, rows), os.environ.get("RCP_ZERANK_REFERENCE_PYTHON"))

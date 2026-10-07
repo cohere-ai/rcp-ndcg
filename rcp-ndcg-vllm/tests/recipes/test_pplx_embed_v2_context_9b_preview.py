@@ -21,6 +21,7 @@ import yaml
 from rcp_ndcg_vllm import load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
 
+from rcp_ndcg.data.templates import TemplateSpec
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.inference.config import PoolingEndpoint
 
@@ -242,18 +243,18 @@ def test_recipe_validates_against_the_product_endpoint() -> None:
     assert recipe.role == "multi_vector"
     assert recipe.input == ["text"]
     assert isinstance(recipe.client, PoolingEndpoint)
-    assert recipe.client.api == "vllm_pooling"
-    assert recipe.client.request_shape == "token_ids"
-    assert recipe.client.tokenizer == TOKENIZER_SPEC
-    assert recipe.client.max_tokens == 262142
-    template = recipe.client.template
+    assert recipe.client.get("api") == "vllm_pooling"
+    assert recipe.client.get("request_shape") == "token_ids"
+    assert recipe.client.get("tokenizer") == TOKENIZER_SPEC
+    assert recipe.client.get("max_tokens") == 262142
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
     assert template is not None and template.shapes() == ("query", "document")
     assert template is not None and template.anchor == "first"
-    assert recipe.client.on_overflow == "cut"
-    assert recipe.client.empty_doc == "send"
-    assert recipe.client.normalize is True
-    assert recipe.client.embed_dtype == "float16"
-    assert recipe.client.dim == 2048
+    assert recipe.client.get("on_overflow") == "cut"
+    assert recipe.client.get("empty_doc") == "send"
+    assert recipe.client.get("normalize") is True
+    assert recipe.client.get("embed_dtype") == "float16"
+    assert recipe.client.get("dim") == 2048
     assert recipe.serve.dtype == "float32"
     assert recipe.serve.max_model_len == 262144
     assert recipe.serve.runner == "pooling"

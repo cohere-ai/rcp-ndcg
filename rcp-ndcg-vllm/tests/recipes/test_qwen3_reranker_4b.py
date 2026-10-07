@@ -21,6 +21,8 @@ import pytest
 import yaml
 from rcp_ndcg_vllm import load_recipe
 
+from rcp_ndcg.data.templates import TemplateSpec
+
 RECIPES = Path(__file__).resolve().parents[2] / "recipes"
 RECIPE_DIR = RECIPES / "qwen3-reranker-4b"
 REVISION = "22e683669bc0f0bd69640a1354a6d0aebcfeede5"
@@ -79,19 +81,22 @@ def test_recipe_validates_against_the_product_schema(recipe) -> None:
     assert recipe.revision == REVISION
     assert isinstance(recipe.client, RerankEndpoint)
     assert recipe.role == "rerank" and recipe.scoring == "pointwise"
-    assert recipe.client.tokenizer == f"Qwen/Qwen3-Reranker-4B@{REVISION}"
-    assert recipe.client.max_tokens == 8192  # MAX_SEQ_LENGTH
-    assert recipe.client.query_max_tokens == 4096  # MAX_QUERY_LENGTH
-    assert recipe.client.on_overflow == "cut"
-    assert recipe.client.instruction == "none"
-    assert recipe.client.use_activation is True  # probability-scale head
-    assert recipe.client.template is not None and recipe.client.template.anchor == "last"
+    assert recipe.client.get("tokenizer") == f"Qwen/Qwen3-Reranker-4B@{REVISION}"
+    assert recipe.client.get("max_tokens") == 8192  # MAX_SEQ_LENGTH
+    assert recipe.client.get("query_max_tokens") == 4096  # MAX_QUERY_LENGTH
+    assert recipe.client.get("on_overflow") == "cut"
+    assert recipe.client.get("instruction") == "none"
+    assert recipe.client.get("use_activation") is True  # probability-scale head
+    assert (
+        TemplateSpec.model_validate(recipe.client.get("template")) is not None
+        and TemplateSpec.model_validate(recipe.client.get("template")).anchor == "last"
+    )
     assert recipe.reference.known_deviations == ["anchor_drop_over_cap"]
     assert recipe.serve.chat_template == "template.jinja"
     assert recipe.serve.hf_overrides["architectures"] == ["Qwen3ForSequenceClassification"]
     assert recipe.serve.hf_overrides["classifier_from_token"] == ["no", "yes"]
     assert recipe.serve.hf_overrides["is_original_qwen3_reranker"] is True
-    assert recipe.serve.max_model_len >= recipe.client.max_tokens
+    assert recipe.serve.max_model_len >= recipe.client.get("max_tokens")
     assert recipe.status.state == "unverified"
     assert recipe.sources
 

@@ -17,6 +17,9 @@ from pathlib import Path
 import httpx
 import pytest
 from rcp_ndcg_vllm import client_config, load_recipe, serve_argv
+from rcp_ndcg_vllm.equivalence.wire import role_client
+
+from rcp_ndcg.data.templates import TemplateSpec
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "ctxl-rerank-v2-instruct-multilingual-2b"
 MODEL_ID = "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b"
@@ -111,7 +114,7 @@ def tokenizer_file(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
 def local_recipe(tokenizer_file: Path):
     """The recipe with the tokenizer pointed at the downloaded file (the Hub spec is runtime)."""
     recipe = load_recipe(RECIPE_DIR)
-    return recipe.model_copy(update={"client": recipe.client.model_copy(update={"tokenizer": str(tokenizer_file)})})
+    return recipe.model_copy(update={"client": {**recipe.client, "tokenizer": str(tokenizer_file)}})
 
 
 def write_pairs(path: Path) -> Path:
@@ -131,15 +134,15 @@ def test_recipe_loads_and_declares_the_served_contract() -> None:
     assert recipe.role == "rerank" and recipe.scoring == "pointwise" and recipe.input == ["text"]
     assert isinstance(recipe.client, RerankEndpoint)
     # The explicit budget and the raw-logit activation, both declared.
-    assert recipe.client.tokenizer == f"{MODEL_ID}@{REVISION}"
-    assert recipe.client.max_tokens == MAX_TOKENS
-    assert recipe.client.query_max_tokens == QUERY_MAX_TOKENS
-    assert recipe.client.use_activation is False
-    assert recipe.client.on_overflow == "cut"
-    assert recipe.client.instruction == "fold"
-    assert recipe.client.listwise is False
+    assert recipe.client.get("tokenizer") == f"{MODEL_ID}@{REVISION}"
+    assert recipe.client.get("max_tokens") == MAX_TOKENS
+    assert recipe.client.get("query_max_tokens") == QUERY_MAX_TOKENS
+    assert recipe.client.get("use_activation") is False
+    assert recipe.client.get("on_overflow") == "cut"
+    assert recipe.client.get("instruction") == "fold"
+    assert recipe.client.get("listwise") is False
     # The declared template: one pair shape, document before query, the trailing anchor.
-    template = recipe.client.template
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
     assert template is not None and template.shapes() == ("pair",)
     assert template.anchor == "last"
     assert template.segments("pair")[-1].fixed == " ??"
@@ -147,7 +150,7 @@ def test_recipe_loads_and_declares_the_served_contract() -> None:
     # The served engine: the shipped template file and the raw-logit pooler default.
     assert recipe.serve.chat_template == "template.jinja"
     assert recipe.serve.pooler_config == {"use_activation": False}
-    assert recipe.serve.max_model_len >= recipe.client.max_tokens
+    assert recipe.serve.max_model_len >= recipe.client.get("max_tokens")
     assert recipe.serve.dtype == "bfloat16"
     assert recipe.serve.plugin is None and recipe.serve.trust_remote_code is False
     assert recipe.serve.hf_overrides["architectures"] == ["Qwen3ForSequenceClassification"]
@@ -239,7 +242,7 @@ def test_stage1_on_cpu_passes_token_id_equality_and_the_anchor_check(tmp_path: P
     # Token-id equality, explicitly: the ids of fit's render equal the ids of the reference's
     # render for every pairs row (the stage-1 render check compares texts; this pins the ids).
     tokenizer = fitting.tokenizer_of(recipe)
-    budget = fitting.budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    budget = role_client(recipe, None)[0]._resolve_budget()[0].model_copy(update={"tokenizer": tokenizer.name})
     rows = [json.loads(line) for line in pairs_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     reference = run_reference(
         sys.executable,
@@ -285,7 +288,7 @@ def test_dropping_the_trailing_anchor_segment_turns_the_anchor_check_red(tmp_pat
     )
 
     mutated = load_recipe(copied)
-    local = mutated.model_copy(update={"client": mutated.client.model_copy(update={"tokenizer": str(tokenizer_file)})})
+    local = mutated.model_copy(update={"client": {**mutated.client, "tokenizer": str(tokenizer_file)}})
     pairs_path = write_pairs(tmp_path / "pairs.jsonl")
     document = stage1_prompts(local, pairs_path, sys.executable, over_length_per_shape=3)
     assert document["anchor_check"]["passed"] is False

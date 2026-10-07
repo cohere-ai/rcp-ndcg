@@ -20,7 +20,11 @@ import pytest
 import yaml
 from rcp_ndcg_vllm import load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
-from rcp_ndcg_vllm.equivalence.fitting import fit_rows, tokenizer_of
+from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
+from rcp_ndcg_vllm.equivalence.wire import role_client
+
+from rcp_ndcg.data.preprocess import fit
+from rcp_ndcg.data.templates import TemplateSpec
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "zerank-1-small-reranker"
 REVISION = "a65fd51c450e9b47fdddab98e31166ecad21af8d"
@@ -184,7 +188,9 @@ def test_the_template_file_renders_the_declared_pair_frame(tmp_path: Path) -> No
     im_end = tokenizer.special_text("im_end")
     for query, document in [("capital of france", "Paris is the capital of France."), ("", "")]:
         plain = render.render(query=query, document=document, instruction="")
-        frame = recipe.client.template.render("pair", tokenizer, query=query, document=document)
+        frame = TemplateSpec.model_validate(recipe.client.get("template")).render(
+            "pair", tokenizer, query=query, document=document
+        )
         assert plain == frame
         # the declared frame, built independently from the tokenizer's added tokens:
         assert frame == (
@@ -205,7 +211,7 @@ def test_stage1_on_cpu_token_ids_anchor_check_and_over_length_pairs(tmp_path: Pa
     # the pinned tokenizer.json (reference.py asserts it again when it loads, on the GPU wave).
     assert tokenizer.ids("Yes") == [9454]
     # The frame's fixed overhead, measured (add_special_tokens adds none for this tokenizer).
-    assert recipe.client.template.overhead("pair", tokenizer) == 13
+    assert TemplateSpec.model_validate(recipe.client.get("template")).overhead("pair", tokenizer) == 13
     document = stage1_prompts(recipe, _pairs_path(tmp_path, _sample_pairs()), sys.executable, over_length_per_shape=5)
     assert document["sampled"] == 25  # 20 pairs + 5 over-length
     assert document["passed"] is True, document
@@ -239,7 +245,15 @@ def test_reference_render_matches_fit_on_over_budget_pairs(tmp_path: Path) -> No
         # an empty document under budget (empty_doc: send)
         {"query": "empty document", "documents": [""]},
     ]
-    fitted = fit_rows(recipe, rows, tokenizer)["per_shape"]["pair"]["texts"]
+    fitted = list(
+        fit(
+            [(row["query"], row["documents"][0]) for row in rows],
+            "pair",
+            role_client(recipe, None)[0]._resolve_budget()[0].model_copy(update={"tokenizer": tokenizer.name}),
+            tokenizer,
+            ids=[str(index) for index in range(len(rows))],
+        ).texts
+    )
     out_path = tmp_path / "reference.json"
     completed = subprocess.run(
         [
@@ -252,7 +266,7 @@ def test_reference_render_matches_fit_on_over_budget_pairs(tmp_path: Path) -> No
             "--out",
             str(out_path),
             "--tokenizer",
-            str(recipe.client.tokenizer),
+            str(recipe.client.get("tokenizer")),
             "--device",
             "cpu",
         ],
@@ -279,10 +293,10 @@ def test_mutation_dropping_the_anchor_segment_turns_the_anchor_check_red(tmp_pat
     """Drop the template's trailing anchor segment: the anchor check fails (empty anchor edge), while
     the untouched recipe's anchor check passes (proven by test_stage1_on_cpu_...)."""
     recipe = _resolved_recipe(tmp_path)
-    template = recipe.client.template
-    client = recipe.client.model_copy(update={"template": template.model_copy(update={"pair": template.pair[:-1]})})
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
+    client = {**recipe.client, "template": template.model_copy(update={"pair": template.pair[:-1]})}
     mutated: Any = recipe.model_copy(update={"client": client})
-    assert len(mutated.client.template.segments("pair")) == 4
+    assert len(mutated.client.get("template").segments("pair")) == 4
     document = stage1_prompts(mutated, _pairs_path(tmp_path, _sample_pairs()[:3]), None, over_length_per_shape=1)
     assert document["anchor_check"]["passed"] is False
     assert document["anchor_check"]["failures"]

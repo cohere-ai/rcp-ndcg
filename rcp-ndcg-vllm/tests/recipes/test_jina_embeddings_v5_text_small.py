@@ -24,10 +24,11 @@ import pytest
 import yaml
 from rcp_ndcg_vllm import Recipe, client_config, default_recipes_root, load_recipe
 from rcp_ndcg_vllm.equivalence import stage1_prompts
-from rcp_ndcg_vllm.equivalence.fitting import budget_of
 from rcp_ndcg_vllm.equivalence.reference import run_reference
+from rcp_ndcg_vllm.equivalence.wire import role_client
 
 from rcp_ndcg.data.preprocess import fit
+from rcp_ndcg.data.templates import TemplateSpec
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.inference.config import EmbeddingEndpoint
 
@@ -188,7 +189,7 @@ def stage1_recipe(path: Path) -> Recipe:
     so they stay offline-capable after the one download.
     """
     recipe = load()
-    client = recipe.client.model_copy(update={"tokenizer": str(path)})
+    client = {**recipe.client, "tokenizer": str(path)}
     return recipe.model_copy(update={"client": client})
 
 
@@ -224,17 +225,19 @@ def test_recipe_loads_with_the_product_endpoint_config() -> None:
     assert recipe.role == "embed" and recipe.input == ["text"] and recipe.licence == "cc-by-nc-4.0"
     assert isinstance(recipe.client, EmbeddingEndpoint)
     # The explicit budget: the Hub spec at the pinned revision, the whole-prompt cap, the policy.
-    assert recipe.client.tokenizer == f"{MODEL}@{REVISION}"
-    assert recipe.client.max_tokens == 32768 == recipe.serve.max_model_len
-    assert recipe.client.on_overflow == "cut"
-    assert recipe.client.request_shape == "text"
-    assert recipe.client.empty_doc == "send"
-    assert recipe.client.normalize is True
-    assert recipe.client.dimensions is None
-    assert recipe.client.query_prompt == "" and recipe.client.doc_prompt == ""  # the template owns the prefixes
+    assert recipe.client.get("tokenizer") == f"{MODEL}@{REVISION}"
+    assert recipe.client.get("max_tokens") == 32768 == recipe.serve.max_model_len
+    assert recipe.client.get("on_overflow") == "cut"
+    assert recipe.client.get("request_shape") == "text"
+    assert recipe.client.get("empty_doc") == "send"
+    assert recipe.client.get("normalize") is True
+    assert recipe.client.get("dimensions") is None
+    assert (
+        recipe.client.get("query_prompt") == "" and recipe.client.get("doc_prompt") == ""
+    )  # the template owns the prefixes
     # The template as data: both shapes, marker + separator fixed segments, the content span,
     # the head anchor and the route's add_special_tokens.
-    template = recipe.client.template
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
     assert template is not None and template.anchor == "first"
     assert template.adds_special_tokens("query") and template.adds_special_tokens("document")
     assert [segment.fixed for segment in template.segments("query")] == ["Query:", " ", None]
@@ -256,7 +259,7 @@ def test_recipe_loads_with_the_product_endpoint_config() -> None:
     config = client_config(recipe, base_url="http://127.0.0.1:8100/v1")
     endpoint = EmbeddingEndpoint.model_validate(config)
     assert endpoint.model == RECIPE_ID and endpoint.revision == recipe.revision
-    assert endpoint.max_tokens == 32768 and endpoint.tokenizer == recipe.client.tokenizer
+    assert endpoint.max_tokens == 32768 and endpoint.tokenizer == recipe.client.get("tokenizer")
 
 
 def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
@@ -297,7 +300,7 @@ def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
     ref_by_key = {(row["index"], row["shape"]): row["text"] for row in reference["rows"]}
     expected_keys = {(index, shape) for index in range(len(PAIRS)) for shape in ("query", "document")}
     assert set(ref_by_key) == expected_keys
-    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    budget = role_client(recipe, None)[0]._resolve_budget()[0].model_copy(update={"tokenizer": tokenizer.name})
     for key, reference_text in ref_by_key.items():
         shape = cast_shape(key[1])
         raw = PAIRS[key[0]]["query"] if key[1] == "query" else PAIRS[key[0]]["documents"][0]

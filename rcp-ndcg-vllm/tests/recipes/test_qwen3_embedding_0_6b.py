@@ -24,11 +24,12 @@ import pytest
 import yaml
 from rcp_ndcg_vllm import default_recipes_root, load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
-from rcp_ndcg_vllm.equivalence.fitting import budget_of, tokenizer_of
+from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 from rcp_ndcg_vllm.equivalence.reference import run_reference
+from rcp_ndcg_vllm.equivalence.wire import role_client
 
 from rcp_ndcg.data.preprocess import fit
-from rcp_ndcg.data.templates import Segment
+from rcp_ndcg.data.templates import Segment, TemplateSpec
 from rcp_ndcg.inference.config import EmbeddingEndpoint
 
 REPO = "Qwen/Qwen3-Embedding-0.6B"
@@ -131,12 +132,14 @@ def test_the_recipe_loads_and_declares_the_served_path() -> None:
     assert recipe.model == REPO and recipe.revision == REVISION
     assert recipe.role == "embed" and recipe.input == ["text"] and recipe.licence == "apache-2.0"
     assert isinstance(recipe.client, EmbeddingEndpoint)
-    assert recipe.client.api == "openai_embeddings"
-    assert recipe.client.tokenizer == f"{REPO}@{REVISION}"
-    assert recipe.client.max_tokens == 8192 and recipe.serve.max_model_len == 32768
-    assert recipe.client.on_overflow == "cut"
-    assert recipe.client.query_prompt == "" and recipe.client.doc_prompt == ""  # the frame is the template
-    template = recipe.client.template
+    assert recipe.client.get("api") == "openai_embeddings"
+    assert recipe.client.get("tokenizer") == f"{REPO}@{REVISION}"
+    assert recipe.client.get("max_tokens") == 8192 and recipe.serve.max_model_len == 32768
+    assert recipe.client.get("on_overflow") == "cut"
+    assert (
+        recipe.client.get("query_prompt") == "" and recipe.client.get("doc_prompt") == ""
+    )  # the frame is the template
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
     assert template is not None
     assert template.shapes() == ("query", "document")
     assert template.anchor == "last"
@@ -162,7 +165,7 @@ def test_the_query_frame_is_the_checkpoint_sentence_transformers_prompt(hub_cach
     from huggingface_hub import hf_hub_download
 
     recipe = load_recipe(RECIPE_DIR)
-    template = recipe.client.template
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
     assert template is not None
     st_path = hf_hub_download(REPO, "config_sentence_transformers.json", revision=REVISION)
     prompts = json.loads(Path(st_path).read_text(encoding="utf-8"))["prompts"]
@@ -205,7 +208,7 @@ def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, hub_cache:
 
     recipe = load_recipe(RECIPE_DIR)
     tokenizer = tokenizer_of(recipe)
-    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    budget = role_client(recipe, None)[0]._resolve_budget()[0].model_copy(update={"tokenizer": tokenizer.name})
     pairs = write_pairs(tmp_path / "pairs.jsonl", pairs_rows()[:1])
     out = tmp_path / "reference.json"
     reference = run_reference(
@@ -218,7 +221,7 @@ def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, hub_cache:
     )
     rows = {(row["index"], row["shape"]): row for row in reference["rows"]}
     query_row, document_row = rows[(0, "query")], rows[(0, "document")]
-    template = recipe.client.template
+    template = TemplateSpec.model_validate(recipe.client.get("template"))
     assert template is not None
     frame = template.segments("query")[0].fixed
     assert query_row["text"] == frame + CARD_QUERY

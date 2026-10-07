@@ -30,6 +30,8 @@ from rcp_ndcg_vllm import load_recipe
 from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg_vllm.recipe import Recipe, default_recipes_root
 
+from rcp_ndcg.data.templates import TemplateSpec
+
 RECIPE_ID = "ctxl-rerank-v2-instruct-multilingual-1b"
 REPO_ID = "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b"
 REVISION = "8fd1edf6a98564cb712064f884b8ef7df5c1b876"
@@ -127,10 +129,13 @@ def test_the_recipe_loads_and_declares_the_served_contract(recipe: Recipe) -> No
     )
     assert recipe.revision == REVISION and len(recipe.revision) == 40
     assert isinstance(recipe.client, RerankEndpoint)
-    assert recipe.client.tokenizer == f"{REPO_ID}@{REVISION}"
-    assert recipe.client.max_tokens == 8192 and recipe.client.query_max_tokens == 4096
-    assert recipe.client.use_activation is False and recipe.client.instruction == "fold"
-    assert recipe.client.template is not None and recipe.client.template.anchor == "last"
+    assert recipe.client.get("tokenizer") == f"{REPO_ID}@{REVISION}"
+    assert recipe.client.get("max_tokens") == 8192 and recipe.client.get("query_max_tokens") == 4096
+    assert recipe.client.get("use_activation") is False and recipe.client.get("instruction") == "fold"
+    assert (
+        TemplateSpec.model_validate(recipe.client.get("template")) is not None
+        and TemplateSpec.model_validate(recipe.client.get("template")).anchor == "last"
+    )
     assert recipe.reference.known_deviations == ["anchor_drop_over_cap"]
     assert recipe.serve.chat_template == "template.jinja"
     assert recipe.serve.pooler_config == {"use_activation": False}

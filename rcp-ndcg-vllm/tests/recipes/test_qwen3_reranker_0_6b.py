@@ -20,6 +20,7 @@ import yaml
 from rcp_ndcg_vllm import client_config, load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
 
+from rcp_ndcg.data.templates import TemplateSpec
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.inference.config import RerankEndpoint
 
@@ -145,7 +146,7 @@ def test_recipe_loads_and_validates() -> None:
     assert recipe.role == "rerank" and recipe.scoring == "pointwise" and recipe.input == ["text"]
     assert recipe.licence == "apache-2.0"
     assert recipe.engine.image == "vllm/vllm-openai:v0.31.0" and recipe.serve.dtype == "bfloat16"
-    assert recipe.serve.max_model_len >= recipe.client.max_tokens  # the engine must not 400 the budget
+    assert recipe.serve.max_model_len >= recipe.client.get("max_tokens")  # the engine must not 400 the budget
     assert recipe.serve.chat_template == "qwen3_reranker.jinja"  # R10: the template file ships
     client = recipe.client
     assert client.tokenizer == f"Qwen/Qwen3-Reranker-0.6B@{REVISION}"
@@ -198,7 +199,9 @@ def test_served_template_renders_the_reference_frame_for_both_callers(tokenizer_
     tokenizer = load_tokenizer(str(tokenizer_dir / "tokenizer.json"))
     assert tokenizer.sha256 == TOKENIZER_SHA256
     query, document = "capital of france", "Paris is the capital of France."
-    declared = recipe.client.template.render("pair", tokenizer, query=query, document=document)
+    declared = TemplateSpec.model_validate(recipe.client.get("template")).render(
+        "pair", tokenizer, query=query, document=document
+    )
     paper = (
         reference["prefix"]
         + f"<Instruct>: {reference['instruction']}\n<Query>: {query}\n<Document>: {document}"
@@ -241,9 +244,9 @@ def test_stage1_pairs_carry_five_over_budget_rows(tmp_path: Path, tokenizer_dir:
     recipe = _local_recipe(tmp_path, tokenizer_dir)
     tokenizer = load_tokenizer(str(tokenizer_dir / "tokenizer.json"))
     _, rows = _pairs(tmp_path)
-    overhead = recipe.client.template.overhead("pair", tokenizer)
+    overhead = TemplateSpec.model_validate(recipe.client.get("template")).overhead("pair", tokenizer)
     counts = [overhead + tokenizer.count(row["query"]) + tokenizer.count(row["documents"][0]) for row in rows]
-    assert sum(count > recipe.client.max_tokens for count in counts) >= 5
+    assert sum(count > recipe.client.get("max_tokens") for count in counts) >= 5
 
 
 def test_dropping_the_trailing_anchor_segment_turns_the_anchor_check_red(tmp_path: Path, tokenizer_dir: Path) -> None:

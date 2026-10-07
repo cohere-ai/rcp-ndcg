@@ -23,6 +23,7 @@ from rcp_ndcg_vllm import load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 
+from rcp_ndcg.data.templates import TemplateSpec
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.inference.config import RerankEndpoint
 
@@ -97,7 +98,7 @@ def stage1_recipe(snapshot: Path):
     bytes from the scratch snapshot, so ``fit`` never needs the network.
     """
     recipe = load_recipe(RECIPE_DIR)
-    return recipe.model_copy(update={"client": recipe.client.model_copy(update={"tokenizer": str(snapshot)})})
+    return recipe.model_copy(update={"client": {**recipe.client, "tokenizer": str(snapshot)}})
 
 
 def write_pairs(path: Path) -> Path:
@@ -139,7 +140,7 @@ def test_recipe_loads_with_the_product_rerank_endpoint() -> None:
     assert recipe.role == "rerank" and recipe.scoring == "pointwise"
     assert recipe.input == ["text", "image"]
     assert isinstance(recipe.client, RerankEndpoint)
-    assert recipe.client.model == recipe.id and recipe.client.revision == REVISION
+    assert recipe.client.get("model") == recipe.id and recipe.client.get("revision") == REVISION
 
 
 def test_recipe_declares_the_binding_fields() -> None:
@@ -209,7 +210,9 @@ def test_stage1_passes_on_cpu_token_ids_anchors_and_reference_render(tmp_path: P
     tokenizer = tokenizer_of(recipe)
     assert load_tokenizer(str(snapshot)).sha256 == tokenizer.sha256
     row = json.loads(pairs.read_text(encoding="utf-8").splitlines()[0])
-    declared = recipe.client.template.render("pair", tokenizer, query=row["query"], document=row["documents"][0])
+    declared = TemplateSpec.model_validate(recipe.client.get("template")).render(
+        "pair", tokenizer, query=row["query"], document=row["documents"][0]
+    )
     env = ImmutableSandboxedEnvironment(
         trim_blocks=True, lstrip_blocks=True, keep_trailing_newline=False, undefined=StrictUndefined
     )
@@ -242,7 +245,7 @@ def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_re
     data["client"]["template"]["pair"] = data["client"]["template"]["pair"][:-1]
     (mutated_dir / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     mutated = load_recipe(mutated_dir)
-    assert mutated.client.template.segments("pair")[-1].content == "document"
+    assert mutated.client.get("template").segments("pair")[-1].content == "document"
 
     document = stage1_prompts(mutated, write_pairs(tmp_path / "pairs.jsonl"), None, over_length_per_shape=2)
     anchor = document["anchor_check"]
