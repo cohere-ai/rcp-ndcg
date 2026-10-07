@@ -1,0 +1,30 @@
+{
+  "schema": "rcp-ndcg.observation-corpus/1",
+  "record_schema": 1,
+  "normalisation_version": 1,
+  "engine": {
+    "name": "vllm",
+    "version": "0.31.0",
+    "note": "a frozen schema-1 sample for the reader's tests; no engine served it"
+  },
+  "recipe": {
+    "id": "fixture-embed"
+  },
+  "collector": {
+    "note": "hand-built frozen sample"
+  },
+  "integrity": {
+    "files": {
+      "nondeterminism.json": {
+        "sha256": "48449964317e5f64726a98010315297589e8956fcb25a7baece7db40f75ad93d",
+        "bytes": 72
+      },
+      "records.jsonl": {
+        "sha256": "5b02eba34e93b3ace30ccfe07960d2df23b23c38d15cbbb4f62de0ad267767a6",
+        "bytes": 5674
+      }
+    },
+    "records_count": 4,
+    "manifest_sha256": "3ff56a17ab95aa9845e0f5b97cee68b106174f5cc673846d65edf0bbe42ef289"
+  }
+}

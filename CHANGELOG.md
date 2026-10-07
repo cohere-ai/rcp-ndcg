@@ -93,7 +93,15 @@ released together.
   `endianness` `native` by default). An extended credential scanner (basic auth, api-key headers, cookie and
   single-quoted or assigned secrets), and `RE_ENGINE_URL` exported from `rcp_ndcg.inference.fake`
   (`rcp_ndcg.testing.engines` is pinned as public API).
-
+- **`rcp_ndcg.testing.corpus`: the observation-corpus format and its one reader** (new module; `rcp_ndcg.testing`
+  is now a package, its names unchanged). `load_corpus` reads a GPU wave's corpus directory -- the full corpus's
+  `records.jsonl` or a repository subset's `records.jsonl.gz` with its `index.json` -- and migrates records of an
+  older `RECORD_SCHEMA` through `register_record_migration` (a record from a newer collector, or one without a
+  migration path, is a `DataError`); `integrity_mismatches` checks every hashed file and the manifest's own digest
+  (`manifest_digest`), `write_subset_index` writes a subset's index, `normalise_body` strips the volatile reply
+  fields (`NORMALISATION_VERSION` 1: request ids and `created` timestamps) and `credential_findings` names the
+  credential shapes a text carries. The collector in `rcp-ndcg-vllm` writes this format; the verified fake
+  engines read it here. A frozen schema-1 sample (`tests/observation_corpus_v1/`) pins that it stays readable.
 - **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
   are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric
   placements whose document has no Bradley-Terry theta, and the queries absent from `bt_scores`, instead of
