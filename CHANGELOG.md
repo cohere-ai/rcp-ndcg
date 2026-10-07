@@ -37,8 +37,9 @@ released together.
   missing member failed only at the first request. `rcp_ndcg.testing.adapter_contract` is the contract-test
   kit the unified-inference design promised: name/role, members, facts, construction, and a recorded round's
   alignment and usage, as one listed failure set.
-- `AuthProfile.home` and `AuthProfile.explicit` (`rcp_ndcg.inference.transport`): the URL a profile's key
-  variables belong to, and whether they are the config's own named `api_key_env` (see Security).
+- `AuthProfile.home`, `AuthProfile.explicit` and `AuthProfile.applies_to(url)` (`rcp_ndcg.inference.transport`):
+  the URL a profile's key variables belong to, whether they are the config's own named `api_key_env`, and
+  whether they may authenticate a request to a replica URL (see Security).
 - `rcp_ndcg.storage.uri.safe_url` (public): the form of a URL that may reach a log, an error or a record
   -- userinfo, query and fragment stripped, the host and path as written. The one redactor: the inference
   layer's logs, errors and engine records and the storage cache's messages (which lower-cased the bucket

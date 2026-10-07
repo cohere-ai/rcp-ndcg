@@ -9168,10 +9168,44 @@
             "name": "header"
           },
           {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "home"
+          },
+          {
+            "annotation": "bool",
+            "default": false,
+            "kind": "positional_or_keyword",
+            "name": "explicit"
+          },
+          {
             "returns": "None"
           }
         ],
-        "kind": "class"
+        "kind": "class",
+        "members": {
+          "applies_to": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "url"
+              },
+              {
+                "returns": "bool"
+              }
+            ]
+          }
+        }
       },
       "Call": {
         "bases": [],
