@@ -195,7 +195,9 @@ def _client_facts(
             # One pair per request: the engine's prompt-token report is then that pair's alone.
             for position, document in enumerate(documents):
                 if query.has_media or document.has_media:
-                    calls.append((["query", f"document {position}"], (query, [document], row.get("instruction"))))
+                    keys = ["query"] if query.has_media else []
+                    keys += [f"document {position}"] if document.has_media else []
+                    calls.append((keys, (query, [document], row.get("instruction"))))
         else:
             if query.has_media:
                 calls.append((["query"], ([query], EncodeRole.QUERY)))
@@ -215,10 +217,8 @@ def _client_facts(
             for exchange in capture.exchanges[start:]:
                 body = exchange.get("request_body") or {}
                 if recipe.role == "rerank":
-                    sent = {
-                        keys[0]: _parts_of(body.get("query")),
-                        keys[1]: _parts_of((body.get("documents") or [""])[0]),
-                    }
+                    document_parts = _parts_of((body.get("documents") or [""])[0])
+                    sent = {key: _parts_of(body.get("query")) if key == "query" else document_parts for key in keys}
                 else:
                     conversation = body.get("messages") or []
                     conversation = (
@@ -352,6 +352,7 @@ def _reference_facts(
         out[(rows[position][0], str(entry["side"]))] = {
             "placement": list(entry.get("placement") or []),
             "media": list(entry.get("media") or []),
+            **({"refused": str(entry["refused"])} if entry.get("refused") else {}),
         }
     return out
 
@@ -359,6 +360,10 @@ def _reference_facts(
 def _compare(key: tuple[int, str], client: dict[str, Any], reference: dict[str, Any]) -> list[dict[str, Any]]:
     """Every difference between the client's and the reference's facts of one side (each item gates)."""
     where = {"row": key[0], "side": key[1]}
+    if reference.get("refused"):
+        # The card cannot consume this input (e.g. an image and a text in one late-interaction document):
+        # what the client sends here reaches the model as an input its reference never defines.
+        return [{**where, "check": "reference_refused", "reason": reference["refused"]}]
     failures: list[dict[str, Any]] = []
     if client["placement"] != reference["placement"]:
         failures.append(

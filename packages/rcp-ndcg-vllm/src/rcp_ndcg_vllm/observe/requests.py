@@ -1074,7 +1074,24 @@ def _validate_and_prune(
             skipped_sources=plan.skipped_sources,
             validation=blocked,
         )
-    media_check = _media_check(recipe, plan, reference_python)
+    media_check, refused = _media_check(recipe, plan, reference_python)
+    if refused:
+        # A media row the recipe's reference refuses (an input its card does not define) is a row problem:
+        # pruned with the reason, and the remaining media rows checked again.
+        kept = []
+        for index, row in enumerate(plan.rows):
+            if index in refused:
+                pruned.append({**row.provenance(), "reason": refused[index]})
+            else:
+                kept.append(row)
+        plan = RecipePlan(
+            recipe_id=plan.recipe_id,
+            rows=kept,
+            strata=plan.strata,
+            skipped_sources=plan.skipped_sources,
+            validation=plan.validation,
+        )
+        media_check, _ = _media_check(recipe, plan, reference_python)
     validation = {**blocked, **plan.validation}
     validation.setdefault("render_check", "passed")
     if media_check is not None:
@@ -1104,10 +1121,11 @@ def _inline_media(row: PlannedRow) -> bool:
     return bool(media_rows([row.to_pairs_row()]))
 
 
-def _media_check(recipe: Any, plan: RecipePlan, reference_python: str) -> Any:
-    """The media stage offline over the plan's media rows: ``"passed"``, the failures (a recipe's media
-    disagreeing with its reference is never a row to prune: it is recorded, and the wave's gate fails on it),
-    or why it could not run; ``None`` for a recipe without media input."""
+def _media_check(recipe: Any, plan: RecipePlan, reference_python: str) -> tuple[Any, dict[int, str]]:
+    """The media stage offline over the plan's media rows: ``("passed" | the failures | why it could not run,
+    the rows the reference refuses)``.  A recipe's media disagreeing with its reference is never a row to
+    prune -- it is recorded, and the wave's gate fails on it; a row whose input the reference's card does
+    not define (``reference_refused``) is returned for pruning.  ``(None, {})`` for a recipe without media."""
     from ..equivalence.media import stage_media
     from ..errors import HarnessError
 
@@ -1117,17 +1135,26 @@ def _media_check(recipe: Any, plan: RecipePlan, reference_python: str) -> Any:
         try:
             document = stage_media(recipe, pairs, reference_python)
         except HarnessError as error:
-            return f"blocked: the media stage could not run: {error}"
+            return f"blocked: the media stage could not run: {error}", {}
     if document is None:
-        return None
-    if document.get("passed"):
-        return "passed"
-    return {
-        "status": document.get("status"),
-        "failures": (document.get("failures") or [])[:8],
-        "refusals": (document.get("refusals") or [])[:8],
-        "reason": document.get("reason"),
+        return None, {}
+    failures = list(document.get("failures") or [])
+    refused = {
+        int(failure["row"]): f"media_check: the reference refuses the {failure['side']}: {failure['reason']}"
+        for failure in failures
+        if failure.get("check") == "reference_refused"
     }
+    if document.get("passed"):
+        return "passed", {}
+    return (
+        {
+            "status": document.get("status"),
+            "failures": failures[:8],
+            "refusals": (document.get("refusals") or [])[:8],
+            "reason": document.get("reason"),
+        },
+        refused,
+    )
 
 
 def _is_contract_drift(failure: dict[str, Any]) -> bool:

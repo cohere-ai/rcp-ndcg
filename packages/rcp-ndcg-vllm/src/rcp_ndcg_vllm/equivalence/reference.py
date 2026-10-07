@@ -23,7 +23,9 @@ The modes, and the JSON each writes to ``--out``:
   that carry ``media``: per row and side that carries media (``query``, ``document <i>``), what the card's
   model consumes -- ``{"rows": [{"index", "side", "placement": ["image", "text", ...], "media": [{"kind",
   "width", "height", "tokens"} | {"kind": "video", "frames", "tokens"}]}]}``: the parts in the card's order,
-  each image's size after the card's own resize and its prompt tokens (its vision markers included).
+  each image's size after the card's own resize and its prompt tokens (its vision markers included).  A side
+  the card cannot consume is reported ``{"index", "side", "refused": "<why>"}`` (the media stage fails it,
+  and the pairs generator prunes its row).
 
 The instruction travels in the pairs file (per row); the reference folds it in the product's
 ``Task: <instruction>\nQuery: <text>`` format for ``instruction: fold``.  On the node the
