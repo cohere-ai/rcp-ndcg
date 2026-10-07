@@ -13,12 +13,12 @@ torch), under the harness's reference contract:
 
 Modes (the JSON each writes to ``--out``):
 
-- ``render`` (stage 1): for every pairs-file row, the prompt text the reference expects the
-  engine to see -- the paper's anchor-preserving render: the 39-token system prefix and the
-  9-token assistant suffix reserved, the pair text right-truncated at
-  ``8192 - 39 - 9 = 8144`` tokens (the paper's ``longest_first`` truncation of the pair only),
-  the frame re-attached.  Measured on the pinned tokenizer to be byte-identical to the served
-  path's ``fit`` render, including over-cap pairs cut to exactly 8192 tokens.
+- ``render`` (stage 1): for every pairs-file row, the wire's cut content spans -- ``{"index",
+  "shape": "pair", "query": str, "documents": [str, ...]}``: the settled query span and the
+  document spans the client ships (the engine's chat template re-assembles the frame around
+  them: the 39-token system prefix, the label text and the 9-token assistant suffix reserved,
+  only the content cut).  Directed on the pinned tokenizer to be byte-identical to what the
+  served client sends, including over-cap pairs cut to exactly 8192 assembled tokens.
 - ``score`` (stage 2): one probability per document per row, ``softmax([no, yes])[yes]`` -- the
   recipe's ``reference.score_scale: probability``.  The instruction is the paper's fixed
   default (the recipe declares ``instruction: none``); a pairs row's ``instruction`` field is
@@ -37,6 +37,8 @@ import json
 from pathlib import Path
 
 MAX_SEQ_LENGTH = 8192  # the paper's budget (rcp_ndcg.retrieval.cross_encoder.MAX_SEQ_LENGTH)
+QUERY_MAX_TOKENS = 4096  # the served client's query share (the recipe's client.query_max_tokens); the
+# wire settles the query at it whenever a query exceeds it, all through the span render below
 BATCH_SIZE = 4  # the paper's 8B config (experiments/paper/rerankers/qwen3_reranker_8b.yaml)
 DTYPE = "bfloat16"  # the paper pipeline's DTYPE (the class default would be float16)
 
@@ -104,28 +106,117 @@ def _raw_tokenizer(spec: str):
 
 
 # ---------------------------------------------------------------------------
-# render mode (stage 1): the paper's anchor-preserving render, no torch.
+# render mode (stage 1): the wire's anchor-preserving cut spans, no torch.
 # ---------------------------------------------------------------------------
 
 
-def render_rows(pairs: list[dict], tokenizer_spec: str) -> list[dict]:
-    """The reference's prompt text per row: prefix + truncated pair + suffix, decoded.
+def _count(text: str, tok, *, add_special_tokens: bool = False) -> int:
+    """How many tokens of ``text`` the engine counts (the post-processor's tokens included)."""
+    return len(tok.encode(text, add_special_tokens=add_special_tokens).ids)
 
-    The pair is truncated exactly as ``QwenOGRerank._process_inputs`` truncates it
-    (``longest_first`` over the pair's own token ids at ``8144``); the text is the decoded
-    render, byte-identical to the served path's ``fit`` render (measured on the pinned
-    tokenizer, including over-cap pairs).
+
+def _offsets(text: str, tok) -> list[tuple[int, int]]:
+    """``(start, end)`` character offsets of each token of ``text``, in order."""
+    return [(offset[0], offset[1]) for offset in tok.encode(text, add_special_tokens=False).offsets]
+
+
+def _token_prefix(
+    text: str,
+    max_tokens: int,
+    tok,
+    *,
+    rendered=None,
+    add_special_tokens: bool = False,
+) -> str:
+    """The longest prefix of ``text`` at one of its first ``max_tokens`` token boundaries that counts
+    at most ``max_tokens`` as the engine counts it (``rendered(piece)`` when given).
+
+    The cut is located on the ORIGINAL text's character offsets, so the result is a verbatim
+    prefix -- never a ``decode(encode(...))`` round trip (not the identity for a normalising
+    tokenizer; the wire carries text).  Port of ``rcp_ndcg.data.preprocess.token_prefix``: the
+    same galloping-then-binary search over token boundaries, the same counting.
+    """
+
+    def count(piece: str) -> int:
+        shown = rendered(piece) if rendered is not None else piece
+        return _count(shown, tok, add_special_tokens=add_special_tokens)
+
+    if count(text) <= max_tokens:
+        return text
+    offsets = _offsets(text, tok)
+
+    def prefix(tokens: int) -> str:
+        return text[: offsets[tokens - 1][1]] if tokens > 0 else ""
+
+    def fits(tokens: int) -> bool:
+        return count(prefix(tokens)) <= max_tokens
+
+    over = min(max_tokens, len(offsets))
+    if fits(over):
+        return prefix(over)
+    fitting, step = over - 1, 1
+    while fitting > 0 and not fits(fitting):
+        over, fitting, step = fitting, max(fitting - step, 0), step * 2
+    while over - fitting > 1:
+        middle = (over + fitting) // 2
+        fitting, over = (middle, over) if fits(middle) else (fitting, middle)
+    return prefix(fitting)
+
+
+def served_spans(tok, query: str, document: str) -> tuple[str, str]:
+    """The cut content spans (query, document) the wire carries for one pair.
+
+    Port of the product's rerank client for this recipe's declaration: the query span settles
+    once per request -- to its declared share (``QUERY_MAX_TOKENS``) whenever it exceeds it (the
+    settle rule the wire carries), then through fit's probe pair (the query with an empty
+    document) that keeps the frame and the appended anchor room even alone -- and each document
+    span gets what remains after the settled query and the fixed frame (the instruction/label
+    text reserved with it).  The engine's chat template re-assembles the frame around these
+    spans; the scored anchor is the suffix's last token.
+    """
+
+    def assemble(q: str, d: str) -> str:
+        return PREFIX + format_instruction(None, q, d) + SUFFIX
+
+    cap = MAX_SEQ_LENGTH
+    # 1. settle at the declared share whenever the query exceeds it:
+    if _count(query, tok) > QUERY_MAX_TOKENS:
+        q_final = _token_prefix(query, QUERY_MAX_TOKENS, tok)
+    else:
+        q_final = query
+    # 2. fit's probe pair (the query with an empty document): the query keeps the frame room.
+    q_final = _token_prefix(
+        q_final, cap, tok, rendered=lambda piece: assemble(piece, ""), add_special_tokens=True
+    )
+    q_min = _count(assemble(q_final, ""), tok, add_special_tokens=True)
+    if q_min >= cap and _count(document, tok) > 0:
+        raise SystemExit(
+            f"the query fills the pair budget of {cap} tokens and leaves the document nothing; "
+            "lower the query share (or raise max_tokens), so the document keeps a share"
+        )
+    # 3. the document gets what remains after the settled query and the frame:
+    d_final = _token_prefix(
+        document, cap, tok, rendered=lambda piece: assemble(q_final, piece), add_special_tokens=True
+    )
+    return q_final, d_final
+
+
+def render_rows(pairs: list[dict], tokenizer_spec: str) -> list[dict]:
+    """The wire's cut content spans per pairs row: the settled query span, the document spans.
+
+    The two cuts (share, remainder) are the served client's own rules ported here (the reference
+    environment has no rcp-ndcg): every kept span is a verbatim prefix at a token boundary, and
+    the frame re-assembled around them keeps the anchor and fits exactly 8192 tokens on over-cap
+    pairs.  Compared byte-identically against the captured wire by stage 1.
     """
     tok = _raw_tokenizer(tokenizer_spec)
-    prefix_ids = tok.encode(PREFIX, add_special_tokens=False).ids
-    suffix_ids = tok.encode(SUFFIX, add_special_tokens=False).ids
-    budget = MAX_SEQ_LENGTH - len(prefix_ids) - len(suffix_ids)
     rows = []
     for index, row in enumerate(pairs):
-        pair = format_instruction(None, str(row["query"]), str(row["documents"][0]))
-        pair_ids = tok.encode(pair).ids  # the reference's own call; Qwen's tokenizer adds nothing
-        ids = prefix_ids + pair_ids[:budget] + suffix_ids
-        rows.append({"index": index, "shape": "pair", "text": tok.decode(ids, skip_special_tokens=False)})
+        query = str(row["query"])
+        documents = [str(document) for document in row["documents"]]
+        query_span, _ = served_spans(tok, query, documents[0])
+        document_spans = [served_spans(tok, query, document)[1] for document in documents]
+        rows.append({"index": index, "shape": "pair", "query": query_span, "documents": document_spans})
     return rows
 
 
