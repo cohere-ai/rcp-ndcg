@@ -1,0 +1,67 @@
+# T4 scenario 3: the identity rerun — the text run (scenario 1's shape), then the same run directory
+# again with every engine port shifted by identity_port_offset: nothing re-runs.
+#
+# Changing engine URLs re-runs nothing because base_url and wait_on_outage_s are runtime fields (the
+# RCP_NDCG_ENGINES overlay); no identity carries them (rcp_ndcg.support.serve, rcp_ndcg.runs.pipeline).
+# The assertion is that every step record, usage count, judgement store and output is identical after the
+# rerun (rcp_ndcg_vllm.e2e.full_facts).
+#
+# Judge (owner, GPU-VALIDATION.md, "Judges for T4"): Qwen/Qwen3.8-27B-FP8.  The revision is the Hub
+# commit (https://huggingface.co/api/models/Qwen/Qwen3.8-27B-FP8), checked 2026-10-07.
+id: identity
+description: >
+  The text run, then the same run directory again with every engine port +100: the rerun recomputes
+  nothing (step records, usage, judgements and outputs identical).
+mode: identity
+identity_port_offset: 100
+dataset:
+  uri: suite:nanobeir
+  subset: NanoNFCorpusRetrieval
+  revision: 4517f2cb9e342479725bf0931a329998b4d35038
+limit: 10
+depth: 30
+steps: [retrieve, rerank, tournament, rubric, calibrate, evaluate]
+encoder_recipe: qwen3-embedding-0.6b
+rerank_recipe: qwen3-reranker-0.6b
+judge:
+  served_name: judge
+  candidate: {model: Qwen/Qwen3.8-27B-FP8, revision: "017b9c7af6b5689d5dd426a76e0bc077eb5ca20a"}
+  command:
+    - vllm
+    - serve
+    - Qwen/Qwen3.8-27B-FP8
+    - --revision
+    - "017b9c7af6b5689d5dd426a76e0bc077eb5ca20a"
+    - --served-model-name
+    - judge
+    - --host
+    - "0.0.0.0"
+    - --port
+    - "{port}"
+    - --tensor-parallel-size
+    - "1"
+    - --reasoning-parser
+    - qwen3
+    - --max-model-len
+    - "131072"
+    - --limit-mm-per-prompt
+    - '{"image": 10}'
+  config:
+    temperature: null
+    max_output_tokens: 16384
+    context_tokens: 131072
+    tokenizer: Qwen/Qwen3.8-27B-FP8@017b9c7af6b5689d5dd426a76e0bc077eb5ca20a
+    concurrency: 64
+    decoding: json_schema
+    image_processor: qwen3_vl
+    max_images: 10
+    wait_on_outage_s: 300
+  slot: {port: 8120, vllm_port: 9120, cuda_visible_devices: "0", gpus: 1,
+         startup_timeout_s: 3600, outage_timeout_s: 300}
+slots:
+  encoder: {port: 8100, vllm_port: 9100, cuda_visible_devices: "0", gpus: 1,
+            startup_timeout_s: 1800, outage_timeout_s: 300}
+  reranker: {port: 8110, vllm_port: 9110, cuda_visible_devices: "0", gpus: 1,
+             startup_timeout_s: 1800, outage_timeout_s: 300}
+runner_options:
+  resources: {gpus: 0, cpus: 8, memory_gb: 32, time_limit_s: 28800}

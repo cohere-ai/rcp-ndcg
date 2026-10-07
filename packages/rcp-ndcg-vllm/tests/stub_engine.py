@@ -6,6 +6,14 @@ It serves ``/v1/models``, ``/v1/embeddings`` (float and base64), ``/pooling`` (f
 ``--noise`` adds seeded noise above the gates.  vLLM's own flags are accepted and ignored, so
 ``rcp_ndcg_vllm.jobs.run_wave --vllm-cmd`` can drive it with a recipe's real ``serve_argv``.
 
+Like vLLM v0.31.0 it honours ``truncate_prompt_tokens`` with ``truncation_side`` (an engine-side cut of the prompt,
+counted in the stub's whitespace tokens) on every role route and ``use_activation`` on ``/rerank`` (``false``: the
+raw logit of the probability; the default comes from ``--pooler-config``'s ``use_activation``, else true).  Two
+flags describe the emulated MODEL, so the negative controls can break it the way a real checkpoint breaks:
+``--model-pooling NAME`` (the pooling the checkpoint was trained with -- serving another ``seq_pooling_type`` or
+``pooling_type`` yields other numbers) and ``--model-needs-template`` (a reranker scored without its served
+``--chat-template`` sees the unframed spans and scores differently).
+
 With ``--port 0`` the stub binds an ephemeral port and prints ``RCPS_STUB_PORT=<n>`` on stdout; the wave runner
 reads that line instead of guessing a port.  An input longer than ``--max-model-len`` tokens gets vLLM's
 over-length 400; an unknown request field gets a 400 validation body, like the error bodies the adapters map.
@@ -27,15 +35,63 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "fixtures"))
 
 from deterministic import score, token_vectors, tokens, vector  # noqa: E402
 
+_CUT = {"truncate_prompt_tokens", "truncation_side"}
 _ALLOWED: dict[str, set[str]] = {
-    "/embeddings": {"input", "encoding_format"},
-    "/pooling": {"input", "task", "encoding_format", "embed_dtype", "endianness"},
-    "/rerank": {"query", "documents", "top_n", "instruction", "use_activation"},
+    "/embeddings": {"input", "encoding_format", *_CUT},
+    "/pooling": {"input", "task", "encoding_format", "embed_dtype", "endianness", *_CUT},
+    "/rerank": {"query", "documents", "top_n", "instruction", "use_activation", *_CUT},
     "/score": {"queries", "documents", "query", "text_1", "text_2"},
 }
 """Keyed on the normalised route: ``do_POST`` strips ``/v1/`` before dispatch."""
 
-_ARGS = argparse.Namespace(served_model_name="stub", max_model_len=512, noise=0.0, tokenizer="")
+_ARGS = argparse.Namespace(
+    served_model_name="stub",
+    max_model_len=512,
+    noise=0.0,
+    tokenizer="",
+    pooler_config="{}",
+    chat_template=None,
+    model_pooling=None,
+    model_needs_template=False,
+)
+
+
+def _pooler() -> dict[str, Any]:
+    try:
+        value = json.loads(_ARGS.pooler_config or "{}")
+    except ValueError:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _wrong_pooling() -> bool:
+    """Whether the served pooling differs from the emulated checkpoint's (``--model-pooling``)."""
+    if not _ARGS.model_pooling:
+        return False
+    pooler = _pooler()
+    served = pooler.get("seq_pooling_type") or pooler.get("pooling_type")
+    return served is not None and str(served).upper() != str(_ARGS.model_pooling).upper()
+
+
+def _cut(text: str, body: dict[str, Any]) -> str:
+    """vLLM's engine-side cut: the first (``right``) or last (``left``) ``truncate_prompt_tokens`` tokens of the
+    prompt, counted with the engine's tokenizer (``--tokenizer``; whitespace words without one)."""
+    limit = body.get("truncate_prompt_tokens")
+    if limit is None or int(limit) < 0:
+        return text
+    limit = int(limit)
+    side = body.get("truncation_side", "right")
+    if _ARGS.tokenizer:
+        offsets = _get_tokenizer_backend().encode(text, add_special_tokens=False).offsets
+        if len(offsets) <= limit:
+            return text
+        return text[: offsets[limit - 1][1]] if side == "right" else text[offsets[-limit][0] :]
+    words = text.split()
+    if len(words) <= limit:
+        return text
+    return " ".join(words[:limit] if side == "right" else words[-limit:])
+
+
 _TOKENIZER_BACKEND: Any = None
 
 
@@ -151,8 +207,9 @@ class _Handler(BaseHTTPRequestHandler):
         self._check_length(inputs)
         fmt = body.get("encoding_format", "float")
         data = []
+        tag = "embed-wrong-pooling" if _wrong_pooling() else "embed"
         for index, text in enumerate(inputs):
-            value = vector(text, "embed", noise=_ARGS.noise).astype(np.float32)
+            value = vector(_cut(text, body), tag, noise=_ARGS.noise).astype(np.float32)
             if fmt == "base64":
                 data.append({"index": index, "embedding": base64.b64encode(value.tobytes()).decode("ascii")})
             elif fmt == "float":
@@ -170,6 +227,7 @@ class _Handler(BaseHTTPRequestHandler):
         code = {"float16": "<f2", "float32": "<f4"}.get(str(dtype))
         if code is None:
             raise _BadRequest(f"embed_dtype {dtype!r} is not served by the stub")
+        inputs = [_cut(text, body) for text in inputs]
         if fmt == "bytes":
             concatenated = b"".join(
                 token_vectors(text, "tok", noise=_ARGS.noise).astype(code).tobytes() for text in inputs
@@ -200,13 +258,29 @@ class _Handler(BaseHTTPRequestHandler):
         if not isinstance(query, str) or not isinstance(documents, list):
             raise _BadRequest("rerank needs a query and documents")
         self._check_length([query] + [str(document) for document in documents])
-        scores = [score(query, str(document), noise=_ARGS.noise) for document in documents]
+        scores = [self._pair_score(query, str(document), body) for document in documents]
         order = sorted(range(len(documents)), key=lambda index: scores[index], reverse=True)
         results = [
             {"index": index, "document": {"text": documents[index]}, "relevance_score": scores[index]}
             for index in order
         ]
         self._send_json({"object": "list", "results": results})
+
+    def _pair_score(self, query: str, document: str, body: dict[str, Any]) -> float:
+        """One pair's score as vLLM serves it: the engine-side cut, the template, the pooling, the activation."""
+        if body.get("truncate_prompt_tokens") is not None:
+            kept = _cut(f"{query} {document}", body)
+            document = kept[len(query) + 1 :] if len(kept) > len(query) else ""
+        if _ARGS.model_needs_template and not _ARGS.chat_template:
+            query, document = "", f"{query} {document}"  # the unframed spans: no template separates them
+        if _wrong_pooling():
+            query = f"{query}\x00wrong-pooling"
+        value = score(query, document, noise=_ARGS.noise)
+        activation = body.get("use_activation", _pooler().get("use_activation", True))
+        if activation is False:
+            clipped = min(max(value, 1e-6), 1 - 1e-6)
+            return float(np.log(clipped / (1 - clipped)))
+        return value
 
     def _score(self, body: dict[str, Any]) -> None:
         """One score per (query, document) pair, in request order."""
@@ -250,6 +324,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-model-len", type=int, default=512)
     parser.add_argument("--noise", type=float, default=0.0)
     parser.add_argument("--tokenizer", default="")
+    parser.add_argument("--pooler-config", default="{}")
+    parser.add_argument("--chat-template", default=None)
+    parser.add_argument("--model-pooling", default=None)
+    parser.add_argument("--model-needs-template", action="store_true")
     args, _unknown = parser.parse_known_args(argv)
     _ARGS = args
     server = ThreadingHTTPServer((args.host, args.port), _Handler)

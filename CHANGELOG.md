@@ -111,6 +111,154 @@ released together.
 - **The role clients expose their text budget**: `EmbeddingClient`, `PoolingClient` and `RerankClient` gain the
   read-only `text_budget` (the `TextBudget` the client fits every request to, as built from its config; `None`
   without `max_tokens`), so harnesses and case loaders read the client's budget instead of rebuilding it.
+- **T4 end to end: the run scenarios the GPU validation drives inside the pod** (`rcp-ndcg-vllm`): the
+  scenario configs `packages/rcp-ndcg-vllm/scenarios/*.yaml` (schema `schema/scenario.schema.json`),
+  the stage `python -m rcp_ndcg_vllm.e2e`, the entry `src/rcp_ndcg_vllm/jobs/e2e.sh` and the submission
+  flag `submit.sh --script e2e` (beside `bootstrap` and `wave0`; the wave list names scenario ids). One
+  scenario materializes a `RunConfig`, renders its phased job script with the SLURM renderer
+  (`container_runtime: none`) and runs it in the pod: the coordinator through `install_argv` from the
+  staged wheelhouse, an `srun` stand-in, the process-boundary probe, and the T0 judge smoke whose
+  verdict picks the scenario's judge or its `fallback` (the Flash-Next NVFP4 candidate to its FP8
+  release). Shipped scenarios: `text-four-phases` (run twice; identical identities and outputs,
+  judged values are never compared, window counts and families only: judgements may differ at temperature > 0), `outage` (the
+  judge killed mid-tournament: parks and recovers; the `wait_on_outage_s` expiry fails with
+  `BackendUnavailableError`; a resume finishes), `identity` (the same run on new ports: nothing
+  recomputes) and `vidore` (ViDoRe v3 page images). Offline counterparts in the root suite: the golden
+  rendered script (harness tests), the four-phase supervision re-run with the verified fake engines as
+  its encoder and reranker engines (`rcp_ndcg.testing.engines` emulators of `qwen3-embedding-0.6b` and
+  `qwen3-reranker-8b` served over HTTP, each coordinator's recorded request answered `replayed`; the judge
+  phase keeps the supervision stub, no judge corpus being recorded;
+  `tests/runners/test_supervision_replay.py`) and the observed outage behaviour as a transport
+  test (`tests/inference/test_outage_observed.py`).
+- **`rcp_ndcg.testing.corpus` is the whole format seam**: `ObservationCorpus.nondeterminism` exposes the
+  corpus's `nondeterminism.json` (parsed; `None` when absent; an unreadable one is a `DataError`), and
+  `rcp_ndcg.testing.engines.corpus_tolerance` reads it there; the append-only `verification.jsonl` lives
+  here (`VERIFICATION_FILE`, `VERIFICATION_SCHEMA`, `append_verification` -- which refuses a record of
+  another schema -- and `verification_records`; moved from `rcp_ndcg.testing.engines`) and no integrity
+  hash covers it (`write_subset_index` and the collector's `write_corpus` leave it out); the one raw-body
+  normaliser `normalise_raw` sits beside `normalise_body` (moved from `rcp_ndcg.testing.engines`); the
+  section-4 provenance check is public (`PROVENANCE_KEYS`, `missing_provenance`; moved from
+  `rcp_ndcg_vllm.observe.corpus`, where it was private); and `credential_findings` also names an
+  `X-Api-Key` header, a cookie and a secret-valued field (`api_key`, `client_secret`, `password`,
+  `access_token`, ... with a string value), never a tokenizer vocabulary's integer ids.
+- **`rcp_ndcg.testing.engines`: the verified fake engines** (GPU-VALIDATION items 2-4, 7 and 8). One
+  emulator per (engine, version, recipe, behaviour fingerprint), selected as
+  `fake://vllm-0.31.0/<recipe>` (`rcp_ndcg.inference.fake` routes engine-version hosts there); the
+  protocol is emulated (routes, request validation, error bodies, result ordering and framing, usage
+  counts and token counting with the recipe's real tokenizer files) and the model outputs are
+  replayed for observed inputs -- a declared deterministic surrogate for unseen ones (`surrogate_vector`
+  and `surrogate_matrix` draw one SHAKE-256 stream per vector, `surrogate_scores` one draw per score;
+  no value is pinned), marked
+  `replayed`/`surrogate`/`mixed` in `x-rcp-ndcg-emulator-source`, recorded per reply in `answer_log`.
+  The emulators read corpora through the format's one reader, `rcp_ndcg.testing.corpus`
+  (`exchanges_of` views its records, `corpus_tolerance` takes the tolerance the corpus's
+  `nondeterminism.json` derived from same-request repetitions -- `None` when none was measured, so a
+  replay is compared exactly, never with an invented tolerance -- and each bound applies jointly);
+  `find_corpora` resolves corpora by scanning manifests, `behaviour_diff` writes the per-input delta
+  report, and
+  the registry (`registry`, `transport_for`, `split_engine_host` -- the one engine-host pattern
+  `rcp_ndcg.inference.fake.RE_ENGINE_URL` routes) resolves by (engine, version, fingerprint) with the
+  `rcp_ndcg.emulators` entry-point group for out-of-tree emulators. An emulator refuses an engine
+  version or recipe revision it was not verified against; the conformance suite
+  (`tests/conformance/`) replays every recorded exchange and the staleness check names the changed
+  fingerprint inputs (waivers: `tests/conformance/waivers.json`, empty at release).
+- **`rcp_ndcg_vllm.fingerprint`: the recipe behaviour fingerprint** (GPU-VALIDATION item 8):
+  `behaviour_fingerprint(recipe)` (rule `rcp-fp/3`: the SHA-256 of the checkpoint id and revision, the
+  serve block, the template file's bytes, the tokenizer's SHA-256 and exactly the client fields that
+  change the request bytes -- `CLIENT_FIELDS` classifies every client config field, so request packing
+  (`batch_size`) and the media caps are in, client-side post-processing of the reply (`normalize`,
+  `aggregation`, `dim`, `mrl_dim`, `document_skip_token_ids`, `outputs`) is out, and an unclassified
+  field is refused) and `fingerprint_inputs(recipe)` (every input named, for staleness messages), with
+  `fingerprint_changes` and the one tokenizer resolution (`load_recipe_tokenizer`,
+  `tokenizer_sha256`, `use_tokenizer_store` -- vendored `tokenizer.json` copies whose SHA-256 is
+  verified on every read).
+- **`rcp_ndcg_vllm.changes`: change handling** (OBSERVATIONS-SPEC section 7): `recipe_state` (one
+  recipe's fingerprint recomputed and compared with every committed corpus of it, found by scanning
+  manifests with `rcp_ndcg.testing.engines.find_corpora`), `resolve_corpus` (the corpus of the current
+  fingerprint, or `StaleCorpusError` naming the changed inputs per recorded corpus), `waiver_covers`
+  (a dated, reasoned, unexpired staleness waiver), `changed_recipes` (the re-record-changed-only
+  selection: `unchanged`/`changed`/`new`/`unloadable` per recipe, the changed inputs named) and
+  `behaviour_report` (the behaviour diff of two corpora of one recipe), as functions and
+  `python -m rcp_ndcg_vllm.changes` (`changed` and `diff`).
+- **The provisional corpora after the families' recipe changes**: three corpora are current as recorded
+  (`octen-embedding-8b`, `qwen3-embedding-0.6b`, `zembed-1-embedding`); two are re-keyed to the current
+  fingerprint because only inputs that shape none of their recorded exchanges moved (`qwen3-reranker-8b`:
+  `client.empty_query`, and `serve.pooler_config` restating vLLM's `use_activation` default;
+  `qwen3-vl-reranker-2b`: the media inputs of a text-only corpus and the same pooler default), each
+  manifest naming the move in `recipe.rekeyed`; seven are declared stale for re-recording in
+  `tests/conformance/stale.json` (`jina-embeddings-v5-text-small`, `jina-reranker-v3`,
+  `qwen3-reranker-0.6b`, `qwen3-reranker-4b`, `qwen3-vl-embedding-2b`, `zerank-1-small-reranker`,
+  `zerank-2-reranker`): the replays skip them and each must fail the staleness gate naming exactly the
+  declared inputs. The NanoBEIR golden's rerank view replays `qwen3-reranker-8b` (same recorded texts;
+  the pinned metrics are unchanged).
+- **The corpora under `tests/contract/engines/`**: the provisional shakedown corpus (12 recipes, 48
+  exchanges) as repository subsets in the observation-corpus format (`records.jsonl.gz`, the manifest
+  with a `provisional` statement -- valid to build and test the emulators, not release evidence --,
+  `nondeterminism.json`, `index.json`; the manifest hashes in the repository's corpus index; a shared
+  vendored tokenizer store), the append-only verification record beside each (`verification.jsonl`),
+  and the
+  golden replays (`tests/e2e/test_golden_replay.py`), **regression pins** labelled as such
+  (`kind: regression-pin`: computed by this code from the provisional corpus, which recorded no subset
+  run -- not independent GPU-run numbers; the RC0 subset corpus replaces them): a NanoBEIR-shaped mini
+  through the retrieval view (two documents, the model's order reversed against the gains, and a
+  moved document vector moves both metrics) and the rerank view, and the ViDoRe-shaped rerank view.
+  The ViDoRe retrieval view is waived -- the corpus observes no page image -- by a tripwire on the
+  corpus content. Every input is observed; the run fails on any surrogate answer, and with its
+  observations deleted.
+- **Conformance details**: the model layer replays an output only for the behaviour-shaping context it
+  was observed under (`FIELD_CLASSES` over vLLM v0.31.0's `ROUTE_FIELDS`: the engine prompt plus
+  `use_activation`, `dimensions`, `add_special_tokens` and `task`); an unobserved context answers the
+  marked surrogate, a field the emulator does not model (`instruction`, `truncate_prompt_tokens`, ...)
+  a 400 marked `refused-unmodelled`, an undeclared field is ignored as the engine ignores it, and a
+  corpus whose one key holds different outputs is refused. `compare_exchange` checks a
+  reply as the transport reads it: the status, the recorded headers that matter (content type, server,
+  the bytes framing's `metadata`), the body, and its raw bytes where the corpus recorded them
+  (`normalise_raw` masks the volatile ids and stamps); an undecodable body
+  is a named difference, and a recorded body the reader cannot decode (a base64 token matrix: vLLM
+  sends no shape) is refused naming the record. Every reply says whether a recording covers its route
+  (`x-rcp-ndcg-emulator-route`, `EMULATED_ROUTES`, `VllmEmulator.unobserved_routes`, listed in the
+  verification record); the unobserved `/pooling` and `/tokenize` follow vLLM v0.31.0's source
+  (`PoolingResponse`, the bytes framing's `metadata`, `TokenizeResponse`; `embed_dtype` `float32`,
+  `endianness` `native` by default). `RE_ENGINE_URL` is exported from `rcp_ndcg.inference.fake`
+  (`rcp_ndcg.testing.engines` is pinned as public API).
+- **`rcp_ndcg.testing.corpus`: the observation-corpus format and its one reader** (new module; `rcp_ndcg.testing`
+  is now a package, its names unchanged). `load_corpus` reads a GPU wave's corpus directory -- the full corpus's
+  `records.jsonl` or a repository subset's `records.jsonl.gz` with its `index.json` -- and migrates records of an
+  older `RECORD_SCHEMA` through `register_record_migration` (a record from a newer collector, or one without a
+  migration path, is a `DataError`); `integrity_mismatches` checks every hashed file and the manifest's own digest
+  (`manifest_digest`), `write_subset_index` writes a subset's index, `normalise_body` strips the volatile reply
+  fields (`NORMALISATION_VERSION` 1: request ids and `created` timestamps) and `credential_findings` names the
+  credential shapes a text carries. The collector in `rcp-ndcg-vllm` writes this format; the verified fake
+  engines read it here. A frozen schema-1 sample (`tests/observation_corpus_v1/`) pins that it stays readable.
+- **The observation corpus, the T3 quality stage and the negative controls (`rcp-ndcg-vllm`)**:
+  `rcp_ndcg_vllm.record.record_corpus` records a corpus in the product's format (`rcp_ndcg.testing.corpus`):
+  the request plan (`observe.requests.corpus_plan`: the pairs rows, the over-length ladder and the long content
+  kinds through the client and uncut, the wire variants, the protocol edges) twice in one engine process and
+  once after a restart, `/tokenize` of the exact prompts, and the section-4 provenance (`observe.provenance`);
+  `observe.corpus` keys it by engine version and `rcp_ndcg_vllm.fingerprint.behaviour_fingerprint`, measures the
+  non-determinism over true repetitions, runs the acceptance checks and cuts the repository subset
+  (`python -m rcp_ndcg_vllm.observe.corpus verify|subset`).  `quality.py` is the T3 stage: the served path
+  through the product's CLI, the `mteb` reference, RCP-nDCG@10 and qrel-nDCG@10 gated vs the reference and the
+  paper's numbers, `QUALITY.md`, and a recording proxy for the golden-replay corpus.  `observe.controls` derives
+  the negative controls (a)-(f) as real vLLM breakages (recipe variants, or request-body patches through
+  `equivalence.wire.patched_wire`).  `run_wave` gains `--record-corpus`, `--changed-since`, `--quality`
+  (`--paper-numbers`) and `--controls`; a passing control fails the recipe.  The format is documented in
+  `packages/rcp-ndcg-vllm/schema/observation-corpus.md`.
+- **`rcp_ndcg_vllm.observe` (the `rcp-ndcg-vllm` distribution)**: the deterministic observation request
+  generator -- `GENERATOR_VERSION`, `SEED`, `PINNED_DATASET_COMMITS`, the synthetic adversarial set stored as
+  text -- writing one stage-2 pairs file per recipe in the harness's pairs format plus `pairs/manifest.json`
+  (per-row provenance, stratum presence records, file hashes, excluded source ids, the recipes that could not
+  load with their error, and what stage-1 validation ran). `python -m rcp_ndcg_vllm.observe.requests` generates
+  it under a stall watchdog (`faulthandler` to stderr every 60 s); runs merge into the manifest per recipe (a
+  recipe a run touched replaces its file, skipped and pruned entries), so one bounded invocation per recipe
+  composes. Stage-1 validation probes the offline fake with a `/pooling` recipe's reply width bounded (`dim` 8
+  without an `mrl_dim`; every request field unchanged); a
+  `/pooling` recipe whose over-length samples exceed 32768 tokens records its render check as blocked (the
+  full-budget stage 1 runs against the engine); a recipe whose validation pruned every row is a skipped
+  recipe with the first failure named, never an empty pairs file. The committed `pairs/` hold all 18
+  recipes, generated in render mode on CPU (no model weights); the manifest records two render checks as
+  blocked (`pplx-embed-v2-context-9b-preview`: the offline probe bound; `qwen3-vl-reranker-2b`: its
+  reference refuses the whitespace-only query the product sends).
 - **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
   are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric
   placements whose document has no Bradley-Terry theta, and the queries absent from `bt_scores`, instead of
@@ -329,6 +477,7 @@ released together.
   engine slot's `TMPDIR` is short enough for vLLM's ZMQ IPC paths (AF_UNIX's 107 characters) whatever the
   recipe id is, and `steps.serve.state` records the serve step's own success (a clean stop is not a failure). The
   `WAVE.md` table keeps one row per recipe whatever the message wraps.
+- **The T4 driver creates its output directory** before it writes the job script (`run_job_script`).
 - **A tokenizer file's embedded truncation and padding no longer cap the counts** (G5): a `tokenizer.json`
   can ship `truncation: {max_length: 1024}` (topk-embed-v1-small does) or fixed-length padding, and an
   un-reset backend silently topped every count and id list at those lengths, so no budget above them could
@@ -1644,6 +1793,9 @@ released together.
   `zerank2_score_template.jinja` are renamed). Each recipe's contract test pins every resolved
   `serve`/`client`/`reference` field through `tests/recipes/_contract.assert_recipe_contract` (two mutants
   per recipe red). The served prompts are unchanged on whitespace-clean inputs.
+- **`packages/rcp-ndcg-vllm/jobs/rc_build.sh` stages the pairs files from `packages/rcp-ndcg-vllm/pairs/`**
+  (their one home, where the request generator writes them): a stray `<checkout-root>/pairs/` is refused with
+  the home named instead of being silently staged, and a checkout without pairs stages none.
 - **The BM25 index is persisted in bm25s' own format, never a pickle** (`rcp_ndcg.retrieval.sparse`): the
   index directory's model is stored with `BM25.save(..., allow_pickle=False)` (npz arrays + JSON parameters)
   and loaded with `allow_pickle=False` -- the index directory comes from ordinary user paths (`retrieval index

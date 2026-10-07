@@ -26,21 +26,22 @@ RC_BUILD = JOBS / "rc_build.sh"
 REPORT_PY = JOBS / "report.py"
 REFERENCE_DEPS = JOBS / "reference_deps.py"
 WAVE0_SH = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_vllm" / "jobs" / "wave0.sh"
+E2E_SH = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_vllm" / "jobs" / "e2e.sh"
 WAVE0_HOST = JOBS / "wave0_host.py"
 
-SCRIPTS = (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH)
+SCRIPTS = (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH, E2E_SH)
 
 needs_shellcheck = pytest.mark.skipif(shutil.which("shellcheck") is None, reason="shellcheck is not installed")
 
 
 @needs_shellcheck
 def test_every_script_passes_shellcheck() -> None:
-    for script in (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH):
+    for script in SCRIPTS:
         completed = subprocess.run(["shellcheck", str(script)], capture_output=True, text=True)
         assert completed.returncode == 0, f"{script.name}: {completed.stdout}{completed.stderr}"
 
 
-@pytest.mark.parametrize("script", [BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH])
+@pytest.mark.parametrize("script", SCRIPTS)
 def test_every_script_parses(script: Path) -> None:
     assert subprocess.run(["bash", "-n", str(script)]).returncode == 0
 
@@ -710,4 +711,104 @@ def test_submit_refuses_an_unknown_script(tmp_path: Path, monkeypatch: pytest.Mo
         tmp_path, monkeypatch, "--script", "deploy", "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves", "wave-a"
     )
     assert completed.returncode == 2
-    assert "bootstrap or wave0" in completed.stderr
+    assert "bootstrap, wave0 or e2e" in completed.stderr
+
+
+def test_submit_e2e_mounts_the_e2e_script_and_names_the_wave(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The T4 submission (a scenario wave): e2e.sh mounted beside bootstrap.sh, the wave's scenario list
+    resolved on the node, and no token value in the plan."""
+    completed = _submit(
+        tmp_path,
+        monkeypatch,
+        "--script",
+        "e2e",
+        "gs://YOUR-BUCKET/rc0",
+        "gs://YOUR-BUCKET/waves",
+        "e2e",
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    words = shlex.split(next(line for line in completed.stdout.splitlines() if line.startswith("echo ")))
+    command = next(word for word in words if word.startswith("worker.command="))
+    assert command == (
+        "worker.command=/bin/bash /etc/rcp/files/e2e/e2e.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves/e2e --wave e2e"
+    )
+    assert any(word.startswith("files.e2e.from_file=") and word.endswith("e2e.sh") for word in words)
+    assert any(word.startswith("files.bootstrap.from_file=") for word in words)
+    for stream in (completed.stdout, completed.stderr):
+        assert FAKE_TOKEN not in stream, "the token's value reached the script's output"
+
+
+def test_the_e2e_dry_plan_names_the_scenarios_and_the_client_mechanism() -> None:
+    """``E2E_DRY=1`` prints what the node would run (the operator's plan), and runs nothing."""
+    completed = subprocess.run(
+        ["bash", str(E2E_SH), "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves/e2e", "--wave", "e2e"],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", "E2E_DRY": "1", "RCP_GCS_AUTH_FILE": "/nonexistent"},
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "text-four-phases | outage | identity | vidore" in completed.stdout
+    assert "python -m rcp_ndcg_vllm.e2e" in completed.stdout
+    assert "bootstrap.sh envs" in completed.stdout
+
+
+def test_the_e2e_script_needs_a_wave_name() -> None:
+    completed = subprocess.run(
+        ["bash", str(E2E_SH), "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves/e2e"],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", "RCP_GCS_AUTH_FILE": "/nonexistent"},
+    )
+    assert completed.returncode == 2
+    assert "--wave" in completed.stderr
+
+
+# --- rc_build.sh: the pairs staging (one home: packages/rcp-ndcg-vllm/pairs/) -------------------------
+
+
+def _stage_pairs(tmp_path: Path, checkout: Path) -> subprocess.CompletedProcess[str]:
+    """Source rc_build.sh and run its ``stage_pairs`` over a scratch checkout and stage."""
+    stage = tmp_path / "stage"
+    stage.mkdir(exist_ok=True)
+    return subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source "{RC_BUILD}" && stage_pairs "{checkout}" "{stage}"',
+            "bash",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_rc_build_stages_pairs_from_the_packages_home(tmp_path: Path) -> None:
+    """The pairs files live at packages/rcp-ndcg-vllm/pairs/: rc_build.sh stages exactly that directory."""
+    checkout = tmp_path / "checkout"
+    pairs = checkout / "packages" / "rcp-ndcg-vllm" / "pairs"
+    pairs.mkdir(parents=True)
+    (pairs / "fixture-embed.jsonl").write_text('{"query": "q", "documents": ["d"]}\n', encoding="utf-8")
+    completed = _stage_pairs(tmp_path, checkout)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    staged = tmp_path / "stage" / "pairs" / "fixture-embed.jsonl"
+    assert staged.is_file(), f"the pairs file was not staged: {sorted((tmp_path / 'stage').rglob('*'))}"
+
+
+def test_rc_build_never_stages_a_root_pairs_directory(tmp_path: Path) -> None:
+    """One home: a stray <checkout-root>/pairs/ is refused (never silently staged), said on stderr."""
+    checkout = tmp_path / "checkout"
+    (checkout / "pairs").mkdir(parents=True)
+    (checkout / "pairs" / "stray.jsonl").write_text('{"query": "q", "documents": ["d"]}\n', encoding="utf-8")
+    completed = _stage_pairs(tmp_path, checkout)
+    assert completed.returncode != 0
+    assert "packages/rcp-ndcg-vllm/pairs" in completed.stderr
+    assert not (tmp_path / "stage" / "pairs").exists()
+
+
+def test_rc_build_without_any_pairs_stages_nothing(tmp_path: Path) -> None:
+    """A checkout without pairs stages no pairs dir (the wave runner then reports its missing pairs)."""
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    completed = _stage_pairs(tmp_path, checkout)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert not (tmp_path / "stage" / "pairs").exists()

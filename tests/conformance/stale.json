@@ -1,0 +1,90 @@
+[
+  {
+    "recipe_id": "jina-embeddings-v5-text-small",
+    "recorded_fingerprint": "31afc0cbb9c08c587f703d9504827cecee042714d1c2f35149d96e00319c2ff8",
+    "changed_inputs": [
+      "client.template"
+    ],
+    "reason": "the families' recipe changes (M2) moved behaviour-shaping inputs: the template's anchor moved (first -> last_content): an over-cap cut keeps another edge",
+    "decided": "2026-10-07",
+    "action": "re-record on the RC0 wave (python -m rcp_ndcg_vllm.changes changed lists it)"
+  },
+  {
+    "recipe_id": "jina-reranker-v3",
+    "recorded_fingerprint": "279e67fbab5d61b271d4f54fb97f0a5db06cd8096959340ac0b244cbe974beb9",
+    "changed_inputs": [
+      "serve.pooler_config"
+    ],
+    "reason": "the families' recipe changes (M2) moved behaviour-shaping inputs: serve.pooler_config now declares use_activation: false: the scores the engine returns can change",
+    "decided": "2026-10-07",
+    "action": "re-record on the RC0 wave (python -m rcp_ndcg_vllm.changes changed lists it)"
+  },
+  {
+    "recipe_id": "qwen3-reranker-0.6b",
+    "recorded_fingerprint": "9884cc4ec5f5413ea63679fc49009607bec790d0992b9a9739902df697424656",
+    "changed_inputs": [
+      "client.empty_query",
+      "client.template",
+      "serve.chat_template",
+      "serve.pooler_config",
+      "template_file"
+    ],
+    "reason": "the families' recipe changes (M2) moved behaviour-shaping inputs: the served chat template file and the client template changed: the engine prompt changes",
+    "decided": "2026-10-07",
+    "action": "re-record on the RC0 wave (python -m rcp_ndcg_vllm.changes changed lists it)"
+  },
+  {
+    "recipe_id": "qwen3-reranker-4b",
+    "recorded_fingerprint": "0a92497fd4040d2cc56eb566529d102f2077852826ea840287b8586617c3f234",
+    "changed_inputs": [
+      "client.batch_size",
+      "client.empty_query",
+      "serve.pooler_config",
+      "template_file"
+    ],
+    "reason": "the families' recipe changes (M2) moved behaviour-shaping inputs: the served chat template file changed and the client batches differently: the engine prompt changes",
+    "decided": "2026-10-07",
+    "action": "re-record on the RC0 wave (python -m rcp_ndcg_vllm.changes changed lists it)"
+  },
+  {
+    "recipe_id": "qwen3-vl-embedding-2b",
+    "recorded_fingerprint": "9f4f62aa91853beb888c13e2f8d7a1ea7015d5b917dbc9575d896b4565151006",
+    "changed_inputs": [
+      "client.image_policy",
+      "client.template",
+      "client.video_policy",
+      "serve.chat_template",
+      "serve.extra_args",
+      "template_file"
+    ],
+    "reason": "the families' recipe changes (M2) moved behaviour-shaping inputs: the client template, the served chat template (now none) and the video arguments changed: the engine prompt changes",
+    "decided": "2026-10-07",
+    "action": "re-record on the RC0 wave (python -m rcp_ndcg_vllm.changes changed lists it)"
+  },
+  {
+    "recipe_id": "zerank-1-small-reranker",
+    "recorded_fingerprint": "35077466c09f27cfadffcd0228587dc509892d22635ba5b0d51722f19eff87f0",
+    "changed_inputs": [
+      "client.empty_query",
+      "client.template",
+      "serve.chat_template",
+      "template_file"
+    ],
+    "reason": "the families' recipe changes (M2) moved behaviour-shaping inputs: the served chat template and the client template (strip normalisation) changed: the engine prompt changes",
+    "decided": "2026-10-07",
+    "action": "re-record on the RC0 wave (python -m rcp_ndcg_vllm.changes changed lists it)"
+  },
+  {
+    "recipe_id": "zerank-2-reranker",
+    "recorded_fingerprint": "c7773e20f3123ceeb7845c7ca00e00079c238084c9e15d883558e8844fcd88fd",
+    "changed_inputs": [
+      "client.empty_query",
+      "client.template",
+      "serve.chat_template",
+      "serve.pooler_config"
+    ],
+    "reason": "the families' recipe changes (M2) moved behaviour-shaping inputs: the served chat template and the client template (strip normalisation) changed: the engine prompt changes",
+    "decided": "2026-10-07",
+    "action": "re-record on the RC0 wave (python -m rcp_ndcg_vllm.changes changed lists it)"
+  }
+]

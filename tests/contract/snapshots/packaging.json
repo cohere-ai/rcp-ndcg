@@ -1,6 +1,7 @@
 {
   "entry_point_groups_read": [
     "rcp_ndcg.adapters",
+    "rcp_ndcg.emulators",
     "rcp_ndcg.runners"
   ],
   "heavy_imports": {

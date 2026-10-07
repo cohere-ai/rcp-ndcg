@@ -30,7 +30,8 @@ under `<prefix>/rc0/` is what the node installs from:
 | `requirements-constraints.txt` | the lock's export — the install's constraints file |
 | `recipes/` | the recipe directories (recipe.yaml, reference.py, templates) |
 | `plugins/` | public plugin packages, when the package ships any |
-| `wave-lists/<wave>.txt` | one recipe id per line, per wave |
+| `wave-lists/<wave>.txt` | one recipe id per line, per wave (the T4 scenario wave's: one scenario id per line) |
+| `scenarios/<id>.yaml` | the T4 run scenarios, for a `--script e2e` wave (stage them beside `recipes/`) |
 | `pairs/` | the stage-2 pairs files, when the checkout has any |
 | `requirements-reference.txt` | what the reference venv installs from the wheelhouse (`--no-deps` under the image's freeze; the image's torch stack stays) |
 | `extra/<name>/` | the `EXTRA_DIRS` entries (private plugins, pairs, wave lists), as they are |
@@ -112,7 +113,7 @@ packages/rcp-ndcg-vllm/jobs/submit.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/wave
 ```
 
 Options: `--max-jobs N` (default 1), `--priority dev-high|dev-medium` (the `priority_class=` override,
-rendered as `<class>-training-priority`; verify with a dry run), `--script bootstrap|wave0`, and
+rendered as `<class>-training-priority`; verify with a dry run), `--script bootstrap|wave0|e2e`, and
 `KJOBS=echo` to print the plan instead of submitting. The job CLI's output goes to a file under
 `RCP_SUBMIT_DIR` (default: a fresh temp directory; the directory is created when it does not exist);
 only job names and states are printed.
@@ -196,3 +197,30 @@ kjobs-go submit -f "$RCP_KJOBS_CONFIG" \
 `WAVE0_SECOND_MODEL`, `WAVE0_BUDGET`, `WAVE0_PORT_BASE`, `WAVE0_STARTUP_TIMEOUT_S`, the minimums) are
 environment variables with the researched defaults; the report is `rcp-ndcg.wave0-report.v1`, its
 schema exported at `packages/rcp-ndcg-vllm/schema/wave0-report.schema.json`.
+
+## The T4 scenario wave (`--script e2e`)
+
+The end-to-end run scenarios of the GPU validation (a full `rcp-ndcg run` with `serve:` by role, its
+phases executed in the pod, engines and coordinators under one supervision block per phase) run as one
+job per wave through `e2e.sh`, which builds the three environments and drives
+`python -m rcp_ndcg_vllm.e2e`. The wave list names **scenario ids** (or paths), one per line:
+
+```bash
+packages/rcp-ndcg-vllm/jobs/submit.sh --script e2e --priority dev-high \
+  "$RCP_STAGE_PREFIX/rc0" gs://YOUR-BUCKET/waves e2e
+```
+
+The four shipped scenarios (`packages/rcp-ndcg-vllm/scenarios/`, schema
+`schema/scenario.schema.json`) are `text-four-phases` (a NanoBEIR subset: served encoder -> served
+reranker -> served judge -> calibrate + evaluate, run twice and compared on identities and outputs),
+`outage` (the judge engine killed mid-tournament: the run parks and recovers once, the
+`wait_on_outage_s` expiry fails with `BackendUnavailableError`, and a resume finishes the run),
+`identity` (the same run directory again on new engine ports: nothing recomputes) and `vidore` (a
+ViDoRe v3 subset with page images). The judge candidates and their pinned commits live in the
+scenarios, each with the `fallback` its T0 smoke concedes to (the Flash-Next NVFP4 candidate falls
+back to its FP8 release). The wave's outputs (`E2E.md`, `status.json`, the run directories) upload to
+the wave's `OUT_URI`.
+
+The stage must carry the scenario YAMLs under `scenarios/` beside `recipes/` (until `rc_build.sh`
+stages them with the recipe data, copy `packages/rcp-ndcg-vllm/scenarios/*.yaml` into the stage).
+`E2E_DRY=1 bash e2e.sh ...` prints the plan the node would run.

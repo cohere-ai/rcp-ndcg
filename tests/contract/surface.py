@@ -184,6 +184,8 @@ PUBLIC_MODULES: tuple[str, ...] = (
     "rcp_ndcg.runners",
     "rcp_ndcg.runs",
     "rcp_ndcg.testing",
+    "rcp_ndcg.testing.corpus",
+    "rcp_ndcg.testing.engines",
 )
 
 

@@ -94,6 +94,19 @@ authors of new recipes start at [add a serving
 recipe](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/add-a-model.md). The judging pipeline and
 the metric are `rcp-ndcg` and `rcp-ndcg-core`.
 
+The T4 end-to-end run scenarios (`scenarios/<id>.yaml`, schema `schema/scenario.schema.json`) and their in-pod
+driver (`python -m rcp_ndcg_vllm.e2e`) are described in [release candidates and the GPU
+waves](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/release-candidates.md).
+
+The stage-2 pairs files (`pairs/<id>.jsonl` and their `manifest.json`) come from the deterministic request
+generator `python -m rcp_ndcg_vllm.observe.requests`; the wave's observation-corpus step, the T3 quality stage
+and the negative controls are `run_wave.py`'s `--record-corpus`, `--quality` and `--controls`. The corpus
+format is documented in `schema/observation-corpus.md`; its one reader is `rcp_ndcg.testing.corpus`. Every
+corpus is keyed by the recipe behaviour fingerprint (`rcp_ndcg_vllm.fingerprint`); `python -m rcp_ndcg_vllm.changes`
+selects the recipes to re-record and diffs two corpora of one recipe. The verified fake engines that replay the
+corpora are `rcp_ndcg.testing.engines` ([use the verified fake
+engines](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/use-verified-fake-engines.md)).
+
 ## License
 
 Apache-2.0: `LICENSE` and `NOTICE` ship in every wheel and sdist.

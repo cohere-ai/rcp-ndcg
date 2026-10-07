@@ -231,3 +231,9 @@ tokenizer the endpoint's config declares (`tokenizer`), under the request's `add
 Without a declared tokenizer, or for a chat conversation (whose template the fake does not render), the fallback
 counts whitespace words. Extra routes (a third party's, or another role's) register with
 `register_fake_route(method, path, handler)`.
+
+A URL whose host names an engine and its version (`fake://vllm-0.31.0/<recipe>`) selects a **verified
+fake engine** instead of these hash-seeded fakes: an emulator of a recorded observation corpus
+(protocol emulated with the recipe's real tokenizer, model outputs replayed for observed inputs and
+marked `replayed`/`surrogate` in every reply). See
+[Use the verified fake engines](../how-to/use-verified-fake-engines.md).

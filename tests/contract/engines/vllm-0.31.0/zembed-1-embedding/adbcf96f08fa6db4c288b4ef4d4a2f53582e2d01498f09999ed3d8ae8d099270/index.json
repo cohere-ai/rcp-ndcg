@@ -1,0 +1,30 @@
+{
+  "schema": "rcp-ndcg.observation-subset/1",
+  "full_corpus": {
+    "path": "unavailable: the shakedown corpus is the recorder's node-local output, never uploaded",
+    "manifest_file_sha256": "abe51383a991f33e379901958059108b4195ea52319718738aedcb412cff0a7f",
+    "manifest_sha256": "b862dc873a7c21b1091ef121ede8998fa8dc69d9ccacf0d5c53ff8db5a2c3d9c"
+  },
+  "sampling": {
+    "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",
+    "budget_bytes": 2097152,
+    "strata_covered": [
+      "probe:ok",
+      "probe:over_length",
+      "probe:provenance",
+      "probe:unknown_field"
+    ],
+    "rows": 4,
+    "of_rows": 4
+  },
+  "files": {
+    "nondeterminism.json": {
+      "sha256": "095a5477e6146d9ffcbab95e9e412f498e6d54f893352b5b8ad03dc55f92447c",
+      "bytes": 653
+    },
+    "records.jsonl.gz": {
+      "sha256": "de88fe4623d1c412e9cf7f520da63ef2c0e6e33df7bea0f3306caa027036b1c8",
+      "bytes": 51811
+    }
+  }
+}

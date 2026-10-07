@@ -45,6 +45,15 @@ def _no_dns(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     assert not tried, f"tests use no network (tried to resolve: {sorted(set(tried))})"
 
 
+@pytest.fixture(autouse=True)
+def _hub_is_offline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No network in tests: every wave's Hub question (the model's bytes) answers "unknown" here, for every
+    test that runs a wave; the tests that need a size monkeypatch their own value on top of this."""
+    from rcp_ndcg_vllm.jobs import weights
+
+    monkeypatch.setattr(weights, "model_disk_bytes", lambda model, revision=None: None)
+
+
 class StubEngine:
     """One stub engine subprocess on an ephemeral port."""
 

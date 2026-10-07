@@ -1,0 +1,69 @@
+{
+  "corpora": {
+    "jina-embeddings-v5-text-small/31afc0cbb9c08c587f703d9504827cecee042714d1c2f35149d96e00319c2ff8": {
+      "behaviour_fingerprint": "31afc0cbb9c08c587f703d9504827cecee042714d1c2f35149d96e00319c2ff8",
+      "manifest_sha256": "8701edf600ce7f14b2a5346619d13e762c856d8747cbfba543a12dd14032ec0e",
+      "recipe_revision": "dd76d535f5447ca3897a9c893fb1e612ead98192"
+    },
+    "jina-reranker-v3/279e67fbab5d61b271d4f54fb97f0a5db06cd8096959340ac0b244cbe974beb9": {
+      "behaviour_fingerprint": "279e67fbab5d61b271d4f54fb97f0a5db06cd8096959340ac0b244cbe974beb9",
+      "manifest_sha256": "e0b4902f0bf9d637f6d6e5c10b6e5f49903c3f0c66153f61421732f617978c25",
+      "recipe_revision": "d7d7e73b6ea138ced340b83865931b5dfb6c97aa"
+    },
+    "octen-embedding-8b/f2398444063db5cc4ee2bef804adc6954810cd3235e542b825bff48c6a57e175": {
+      "behaviour_fingerprint": "f2398444063db5cc4ee2bef804adc6954810cd3235e542b825bff48c6a57e175",
+      "manifest_sha256": "1e04d704dd85081a2b9dab919ef129215fdc19126c27b41196df4221062f71cb",
+      "recipe_revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
+    },
+    "qwen3-embedding-0.6b/a57f7cbd3c9669c3899690796a45fbf39ef649dcb72297f18e53ce30c5d9a556": {
+      "behaviour_fingerprint": "a57f7cbd3c9669c3899690796a45fbf39ef649dcb72297f18e53ce30c5d9a556",
+      "manifest_sha256": "9e695c88ace074357c940b03e539cbb6d7ae6c77dc50fb0dca98f005acc7030e",
+      "recipe_revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
+    },
+    "qwen3-reranker-0.6b/9884cc4ec5f5413ea63679fc49009607bec790d0992b9a9739902df697424656": {
+      "behaviour_fingerprint": "9884cc4ec5f5413ea63679fc49009607bec790d0992b9a9739902df697424656",
+      "manifest_sha256": "324a7cd0b3f580d9087ceb08b31adaaae413ac36a4962bbce2325af3694875be",
+      "recipe_revision": "e61197ed45024b0ed8a2d74b80b4d909f1255473"
+    },
+    "qwen3-reranker-4b/0a92497fd4040d2cc56eb566529d102f2077852826ea840287b8586617c3f234": {
+      "behaviour_fingerprint": "0a92497fd4040d2cc56eb566529d102f2077852826ea840287b8586617c3f234",
+      "manifest_sha256": "4a3aa4b0e6e005ab0b0d2dd5b18965521ff04e1c98b5cbec90605b442638f5c0",
+      "recipe_revision": "22e683669bc0f0bd69640a1354a6d0aebcfeede5"
+    },
+    "qwen3-reranker-8b/bcfe8f25e8191c82ded8c1535a63c6b6c1722f595997b00f95a5b00322582dba": {
+      "behaviour_fingerprint": "bcfe8f25e8191c82ded8c1535a63c6b6c1722f595997b00f95a5b00322582dba",
+      "manifest_sha256": "1bc0904b48697adc3b40334652105f7e5f18cf91e0edc2e1304d7055aecda881",
+      "recipe_revision": "77d193c791ed757ca307ee72715aa132723da912"
+    },
+    "qwen3-vl-embedding-2b/9f4f62aa91853beb888c13e2f8d7a1ea7015d5b917dbc9575d896b4565151006": {
+      "behaviour_fingerprint": "9f4f62aa91853beb888c13e2f8d7a1ea7015d5b917dbc9575d896b4565151006",
+      "manifest_sha256": "9f6cdfca1778422904663eee5b51acbc50dc8f87dd7b93e12e9daf7df01db1cd",
+      "recipe_revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"
+    },
+    "qwen3-vl-reranker-2b/34e4d2d45840645e515d0f3f518d703a2a25b6f2ad2911d8bdcb17c713b392f9": {
+      "behaviour_fingerprint": "34e4d2d45840645e515d0f3f518d703a2a25b6f2ad2911d8bdcb17c713b392f9",
+      "manifest_sha256": "7ee0bf8efdb5b33fd5b1cd44df544a1f7a7bede3302b5184bde1bd71dc64b11a",
+      "recipe_revision": "4bd860ac4f15ad1897a214615cccc700f8f71818"
+    },
+    "zembed-1-embedding/adbcf96f08fa6db4c288b4ef4d4a2f53582e2d01498f09999ed3d8ae8d099270": {
+      "behaviour_fingerprint": "adbcf96f08fa6db4c288b4ef4d4a2f53582e2d01498f09999ed3d8ae8d099270",
+      "manifest_sha256": "abe51383a991f33e379901958059108b4195ea52319718738aedcb412cff0a7f",
+      "recipe_revision": "cf13c81f3274394053d166740294f7eea4586f7a"
+    },
+    "zerank-1-small-reranker/35077466c09f27cfadffcd0228587dc509892d22635ba5b0d51722f19eff87f0": {
+      "behaviour_fingerprint": "35077466c09f27cfadffcd0228587dc509892d22635ba5b0d51722f19eff87f0",
+      "manifest_sha256": "01f0219c9540cf0299dba78a3f1cefea79b64b546f5e469235760d6f43946306",
+      "recipe_revision": "a65fd51c450e9b47fdddab98e31166ecad21af8d"
+    },
+    "zerank-2-reranker/c7773e20f3123ceeb7845c7ca00e00079c238084c9e15d883558e8844fcd88fd": {
+      "behaviour_fingerprint": "c7773e20f3123ceeb7845c7ca00e00079c238084c9e15d883558e8844fcd88fd",
+      "manifest_sha256": "889026310e2eab6dabca71290ce762c1ef1d3dfb8be95df287195c576d8e6380",
+      "recipe_revision": "5eae30d5ee3c6b2df2ef6d723bde45172d761c4c"
+    }
+  },
+  "engine": {
+    "name": "vllm",
+    "version": "0.31.0"
+  },
+  "schema": "rcp-ndcg.corpus-index/1"
+}

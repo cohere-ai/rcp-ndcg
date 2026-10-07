@@ -19,6 +19,7 @@ import functools
 import hashlib
 import json
 import math
+import re
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -30,8 +31,16 @@ import numpy as np
 from rcp_ndcg.errors import ConfigError
 
 #: The URL scheme that selects a fake: ``fake://seed/<n>`` for the judge (``JudgeConfig.fake``), and the
-#: per-role equivalents for the encoder, the pooler and the reranker.
+#: per-role equivalents for the encoder, the pooler and the reranker. A URL with an **engine-version
+#: host** (``fake://vllm-0.31.0/<recipe>``) selects a verified fake engine instead -- see
+#: data:`RE_ENGINE_URL`.
 FAKE_SCHEME = "fake://"
+
+RE_ENGINE_URL = re.compile(r"^fake://[a-z]+-\d+(?:\.\d+)+(?:rc\d+)?/")
+"""The ``fake://`` URLs that name a **verified fake engine**: an engine-version host and a recipe path
+(``fake://vllm-0.31.0/qwen3-embedding-0.6b``). Those are routed to
+:func:`rcp_ndcg.testing.engines.transport_for` (the emulators of the observation corpus); every other
+``fake://`` URL is the hash-seeded offline fake (``fake://seed/<n>`` and friends)."""
 
 #: The dimension of the fake vectors when the URL's query gives none.
 DEFAULT_DIM = 64
@@ -144,6 +153,10 @@ def fake_transport(url: str, *, model: str, tokenizer: str | None = None) -> htt
     Returns:
         The mock transport a :class:`~rcp_ndcg.inference.transport.Transport` sends through.
     """
+    if RE_ENGINE_URL.match(url):
+        from rcp_ndcg.testing.engines import transport_for
+
+        return transport_for(url)
     endpoint = _fake_endpoint(url, model=model, tokenizer=tokenizer)
     return httpx.MockTransport(lambda request: _handle(request, endpoint))
 
@@ -415,6 +428,7 @@ __all__ = [
     "FAKE_SCHEME",
     "FakeEndpoint",
     "FakeRouteHandler",
+    "RE_ENGINE_URL",
     "fake_transport",
     "fake_uniform",
     "hidden_ability",
