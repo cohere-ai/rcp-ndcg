@@ -165,9 +165,11 @@ def _assert_one_environment_per_package(workflow: dict) -> None:
     assert workflow[True]["push"]["tags"] == ["v*"]  # YAML reads the key `on` as true
     assert set(jobs) == {"build", *RELEASE_PUBLISH_JOBS, "github-release"}
     build = str(jobs["build"])
-    assert "uv build --all-packages" in build and "rcp-ndcg-vllm" in build, (
-        "rcp-ndcg-vllm is outside the uv workspace: the build job must build it from its own directory"
+    assert all(f"uv build {name} --out-dir dist" in build for name in ("rcp-ndcg-core", "rcp-ndcg", "rcp-ndcg-vllm")), (
+        "the build job builds the three published distributions from their own directories"
     )
+    assert "uv build rcp-ndcg-test" not in build, "rcp-ndcg-test is unpublished (docs-release Q2)"
+    assert "plugins" not in build, "no plugin wheels: the folded models ship inside rcp-ndcg-vllm"
     assert "twine check" in build and "requirements-constraints.txt" in build
     # One artifact per package, each holding only that package's sdist and wheel.
     uploads = [s for s in jobs["build"]["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact@")]
@@ -188,7 +190,7 @@ def _assert_one_environment_per_package(workflow: dict) -> None:
         assert len(published) == 1 and published[0]["with"]["packages-dir"] == directory
     assert jobs["publish-core"]["needs"] == "build"
     assert jobs["publish-rcp-ndcg"]["needs"] == "publish-core"  # it pins the core exactly: the core goes first
-    assert jobs["publish-vllm"]["needs"] == "build"
+    assert jobs["publish-vllm"]["needs"] == ["build", "publish-rcp-ndcg"]  # the order: core -> rcp-ndcg -> vllm
     assert set(jobs["github-release"]["needs"]) == set(RELEASE_PUBLISH_JOBS)
     tokenised = {name for name, job in jobs.items() if (job.get("permissions") or {}).get("id-token") == "write"}
     assert tokenised == set(RELEASE_PUBLISH_JOBS), "id-token: write belongs to exactly the publish jobs"

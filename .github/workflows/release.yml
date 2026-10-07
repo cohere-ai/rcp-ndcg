@@ -30,11 +30,14 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
-      - name: build rcp-ndcg, rcp-ndcg-core and rcp-ndcg-vllm
+      - name: build rcp-ndcg-core, rcp-ndcg and rcp-ndcg-vllm
         run: |
-          uv build --all-packages --out-dir dist
-          # rcp-ndcg-vllm is deliberately outside the uv workspace: build it from its own directory.
-          (cd rcp-ndcg-vllm && uv build --out-dir ../../dist)
+          # The three published distributions, each from its own directory (the fourth workspace member,
+          # rcp-ndcg-test, is deliberately unpublished). No plugin wheels: the folded models ship inside
+          # rcp-ndcg-vllm (layout-move item 3).
+          uv build rcp-ndcg-core --out-dir dist
+          uv build rcp-ndcg --out-dir dist
+          uv build rcp-ndcg-vllm --out-dir dist
       - name: the versions are the tag's
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -114,7 +117,8 @@ jobs:
         with:
           packages-dir: dist/rcp-ndcg-core
 
-  # rcp-ndcg pins rcp-ndcg-core==<version> exactly, so the core must exist on PyPI first.
+  # The publish order is core -> rcp-ndcg -> vllm (layout-move item 6): rcp-ndcg pins rcp-ndcg-core==<version>
+  # exactly, so the core must exist on PyPI first; rcp-ndcg-vllm waits for rcp-ndcg.
   publish-rcp-ndcg:
     name: publish rcp-ndcg to PyPI
     needs: publish-core
@@ -133,7 +137,7 @@ jobs:
 
   publish-vllm:
     name: publish rcp-ndcg-vllm to PyPI
-    needs: build
+    needs: [build, publish-rcp-ndcg]
     runs-on: ubuntu-latest
     environment: pypi-vllm
     permissions:
