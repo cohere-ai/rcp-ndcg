@@ -6,8 +6,12 @@ starts one ``vllm serve`` per slot from :func:`~rcp_ndcg_vllm.recipe.serve_argv`
 ``VLLM_PORT`` and ``TMPDIR`` (one home per slot: two engines cannot collide), waits for ``GET /v1/models`` within the
 recipe's ``engine.startup_timeout_s`` (an engine that exits early fails that recipe only), then runs smoke,
 equivalence (stages 1 and 2) and — with ``--record`` — the recorder, stops the engine's process group, and moves
-on.  The pod has no persistent volume (node-runtime item 8): before each recipe the runner measures the free
-disk and the model's Hub size and fails the recipe early when it measurably cannot fit; after a recipe whose
+on.  A recipe that cannot run at all — it fails validation when loaded, or the bootstrap recorded its
+``serve.plugin`` among ``--failed-plugins`` (installed from the staged tree or wheelhouse only) — is a failed row
+in the wave report with the validation message or the plugin's exact name; the wave runs the rest.  The pod has no
+persistent volume (node-runtime item 8): before each recipe the runner measures the free
+disk and the model's Hub size and fails the recipe early when it measurably cannot fit (on a fresh pod the cache
+does not exist yet, so the measurement lands on the nearest existing parent); after a recipe whose
 model no later recipe reuses, the model's weights are evicted from the HF cache.  It writes
 ``<out>/<id>/{serve.log, equivalence.json, EQUIVALENCE.md, status.json}``, a wave summary
 (``wave.json`` and ``WAVE.md``), and with ``--upload`` copies ``<out>`` to the URI after each recipe
@@ -34,14 +38,16 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from ..equivalence import run as run_equivalence
 from ..errors import HarnessError, RecipeError
-from ..recipe import Recipe, default_recipes_root, iter_recipes, load_recipe, serve_argv
+from ..recipe import Recipe, default_recipes_root, serve_argv
 from ..record import record as record_exchanges
+from .wavelist import load_wave, parse_ids
 
 __all__ = ["main", "run_wave"]
 
@@ -61,19 +67,37 @@ def run_wave(
     reference_python: str | None = None,
     vllm_cmd: str | None = None,
     port_base: int = 8100,
+    failed_plugins: Iterable[str] = (),
 ) -> dict[str, Any]:
     """Run one wave: every recipe on the node's GPUs, as parallel as the GPUs allow.
 
-    Inputs: the recipe ids (directories under ``recipes_root``; empty means every recipe there), the GPU count and
-    the output directory.  Output: the wave document (also ``wave.json`` and ``WAVE.md`` under ``out_dir``); a
-    recipe's own failure is recorded in its status and never raises.  Raises :class:`HarnessError` only for a bad
-    wave request: an unknown recipe id or a missing recipe root.
+    Inputs: the recipe ids (directories under ``recipes_root``; empty means every recipe there), the GPU count,
+    the output directory, and the plugin specs the bootstrap could not install (the recipes that name one fail
+    early, with its exact name).  Output: the wave document (also ``wave.json`` and ``WAVE.md`` under ``out_dir``);
+    a recipe's own failure — including a recipe that fails validation at load — is recorded in its status and
+    never raises.  Raises :class:`HarnessError` only for a bad wave request: a missing recipe root, or a wave
+    list with no recipes at all (an unknown or invalid id is a failed row, not a wave abort).
     """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     _MODEL_SIZES.clear()  # each wave asks the Hub for its models' sizes once
-    recipes = _resolve_recipes(recipe_ids, recipes_root)
+    recipes, load_failures = _resolve_recipes(recipe_ids, recipes_root)
+    not_installed = frozenset(failed_plugins)
     results: dict[str, dict[str, Any]] = {}
+    # The two early-failure classes that know no engine: a recipe that fails validation, and a recipe
+    # whose plugin the bootstrap could not install.  Both are failed rows; the wave runs the rest.
+    for recipe_id, message in load_failures.items():
+        _record_status(results, out, _failed_row(recipe_id, message))
+    for recipe in list(recipes):
+        spec = _uninstalled_plugin(recipe, not_installed)
+        if spec is not None:
+            error = f"the recipe's plugin {spec} is not staged and not in the staged wheelhouse"
+            _record_status(
+                results,
+                out,
+                _status(recipe, "failed", error=error, steps={"serve": {"state": "failed", "error": error}}),
+            )
+            recipes.remove(recipe)
     used_gpus: set[int] = set()
     pending = list(recipes)
     running: list[_EngineRun] = []
@@ -83,14 +107,8 @@ def run_wave(
         for recipe in list(pending):
             need = recipe.resources.gpus
             if need > gpus:
-                results[recipe.id] = _status(
-                    recipe, "failed", error=f"needs {need} GPUs, the wave has {gpus}", steps={}
-                )
-                directory = out / recipe.id
-                directory.mkdir(parents=True, exist_ok=True)
-                (directory / "status.json").write_text(
-                    json.dumps(results[recipe.id], indent=2) + "\n", encoding="utf-8"
-                )
+                row = _status(recipe, "failed", error=f"needs {need} GPUs, the wave has {gpus}", steps={})
+                _record_status(results, out, row)
                 pending.remove(recipe)
                 progressed = True
                 continue
@@ -99,18 +117,14 @@ def run_wave(
                 # fit fails here, before its engine has started and downloaded anything.
                 disk = _disk_check(recipe)
                 if disk["error"] is not None:
-                    results[recipe.id] = _status(
+                    row = _status(
                         recipe,
                         "failed",
                         error=disk["error"],
                         steps={"serve": {"state": "failed", "error": disk["error"]}},
                         disk=disk,
                     )
-                    directory = out / recipe.id
-                    directory.mkdir(parents=True, exist_ok=True)
-                    (directory / "status.json").write_text(
-                        json.dumps(results[recipe.id], indent=2) + "\n", encoding="utf-8"
-                    )
+                    _record_status(results, out, row)
                     pending.remove(recipe)
                     progressed = True
                     continue
@@ -120,14 +134,8 @@ def run_wave(
                     run = _start(recipe, assigned, slot, out, vllm_cmd, port_base, disk=disk)
                 except HarnessError as start_error:
                     # An engine that cannot even start (no vllm binary) fails that recipe only.
-                    results[recipe.id] = _status(
-                        recipe, "failed", error=str(start_error), steps={"serve": {"state": "failed"}}
-                    )
-                    directory = out / recipe.id
-                    directory.mkdir(parents=True, exist_ok=True)
-                    (directory / "status.json").write_text(
-                        json.dumps(results[recipe.id], indent=2) + "\n", encoding="utf-8"
-                    )
+                    row = _status(recipe, "failed", error=str(start_error), steps={"serve": {"state": "failed"}})
+                    _record_status(results, out, row)
                     used_gpus.difference_update(assigned)
                     pending.remove(recipe)
                     progressed = True
@@ -266,6 +274,27 @@ class _EngineRun:
                 pass
             self.popen.wait()
         self._thread.join(timeout=5)
+
+
+def _failed_row(recipe_id: str, error: str) -> dict[str, Any]:
+    """A failed wave-report row for a recipe that never ran (no :class:`Recipe` could be loaded for it)."""
+    return {"recipe": recipe_id, "state": "failed", "gpus": None, "started": _now(), "error": error, "steps": {}}
+
+
+def _uninstalled_plugin(recipe: Recipe, failed_plugins: frozenset[str]) -> str | None:
+    """The recipe's plugin spec when the bootstrap recorded it as not installable (its exact name)."""
+    spec = recipe.serve.plugin
+    if spec is not None and (spec in failed_plugins or f"{recipe.id}/{spec}" in failed_plugins):
+        return spec
+    return None
+
+
+def _record_status(results: dict[str, dict[str, Any]], out: Path, row: dict[str, Any]) -> None:
+    """Record one recipe's report row and its ``<out>/<id>/status.json``, creating the directory."""
+    results[row["recipe"]] = row
+    directory = out / row["recipe"]
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "status.json").write_text(json.dumps(row, indent=2) + "\n", encoding="utf-8")
 
 
 def _lowest_free(used: set[int], count: int) -> list[int]:
@@ -524,24 +553,15 @@ def _record(recipe: Recipe, base_url: str, out: Path) -> dict[str, Any]:
     return {"state": "passed", "files": [str(path) for path in written]}
 
 
-def _resolve_recipes(recipe_ids: list[str], recipes_root: str | Path | None) -> list[Recipe]:
-    """The wave's recipes: the named ids under the root (every recipe there when the list is empty)."""
+def _resolve_recipes(recipe_ids: list[str], recipes_root: str | Path | None) -> tuple[list[Recipe], dict[str, str]]:
+    """The wave's recipes and its failures: the named ids under the root (every recipe there when the
+    list is empty), loaded tolerantly — a recipe that fails validation lands in the failure map with its
+    validation message and is marked failed by the wave, never a wave abort."""
     root = Path(recipes_root) if recipes_root is not None else default_recipes_root()
-    if recipe_ids:
-        recipes = [_load_one(root, recipe_id) for recipe_id in recipe_ids]
-    else:
-        recipes = list(iter_recipes(root))
-    if not recipes:
+    recipes, failed = load_wave(recipe_ids, root)
+    if not recipes and not failed:
         raise HarnessError(f"no recipes under {root}")
-    return recipes
-
-
-def _load_one(root: Path, recipe_id: str) -> Recipe:
-    """One recipe by id, with a clear wave-level error when the id does not resolve."""
-    try:
-        return load_recipe(root / recipe_id)
-    except RecipeError as error:
-        raise HarnessError(f"unknown recipe id {recipe_id!r} under {root}: {error}") from error
+    return recipes, failed
 
 
 def _upload(out: Path, uri: str) -> None:
@@ -617,7 +637,8 @@ def _wave_markdown(document: dict[str, Any]) -> str:
     ]
     for row in document["recipes"]:
         error = (row.get("error") or "").replace("|", "\\|")
-        lines.append(f"| {row['recipe']} | {row['gpus']} | {row['state']} | {error} |")
+        gpus = row.get("gpus")
+        lines.append(f"| {row['recipe']} | {gpus if gpus is not None else '-'} | {row['state']} | {error} |")
     lines += ["", f"Verdict: **{'PASS' if document['passed'] else 'FAIL'}**"]
     return "\n".join(lines) + "\n"
 
@@ -643,9 +664,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--vllm-cmd", default=None, help="replace the 'vllm serve' launcher (tests: a stub engine)")
     parser.add_argument("--port-base", type=int, default=8100, help="first engine port (0: engines announce theirs)")
+    parser.add_argument(
+        "--failed-plugins",
+        default=None,
+        help="file with one plugin spec per line the bootstrap could not install; the recipes naming "
+        "them fail early with the plugin's exact name, the rest of the wave runs",
+    )
     args = parser.parse_args(argv)
     try:
-        ids = _recipe_ids(args.recipes)
+        ids = parse_ids(args.recipes)
+        failed_plugins = frozenset(parse_ids(f"@{args.failed_plugins}")) if args.failed_plugins else frozenset()
         document = run_wave(
             ids,
             args.recipes_root,
@@ -657,6 +685,7 @@ def main(argv: list[str] | None = None) -> int:
             reference_python=args.reference_python,
             vllm_cmd=args.vllm_cmd,
             port_base=args.port_base,
+            failed_plugins=failed_plugins,
         )
     except (HarnessError, RecipeError) as error:
         print(f"error: {error}", file=sys.stderr)
@@ -665,14 +694,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{row['recipe']}: {row['state']}")
     print(f"wave: {'PASS' if document['passed'] else 'FAIL'}")
     return 0 if document["passed"] else 1
-
-
-def _recipe_ids(value: str) -> list[str]:
-    """``a,b`` or ``@file.txt`` (one id per line, # comments allowed) into a list."""
-    if value.startswith("@"):
-        lines = Path(value[1:]).read_text(encoding="utf-8").splitlines()
-        return [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
-    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 if __name__ == "__main__":

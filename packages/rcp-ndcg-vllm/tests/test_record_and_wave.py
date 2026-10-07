@@ -216,6 +216,30 @@ def test_wave_fails_a_recipe_that_measurably_cannot_fit(tmp_path: Path, monkeypa
     assert not (tmp_path / "wave" / "fixture-embed" / "serve.log").exists()  # no engine ever started
 
 
+def test_wave_runs_on_a_fresh_pod_before_the_cache_exists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """FINDINGS: on a fresh pod the HF cache does not exist before the first download.  The disk check
+    must measure the nearest existing parent (never `FileNotFoundError: .../huggingface/hub`), and the
+    post-recipe eviction of an empty cache is a recorded no-op."""
+    cache = tmp_path / "fresh" / "hub"
+    monkeypatch.setenv("HF_HUB_CACHE", str(cache))
+    assert not cache.exists()
+    document = run_wave(
+        ["fixture-embed"],
+        RECIPES,
+        gpus=1,
+        out_dir=tmp_path / "wave",
+        pairs_dir=_pairs_dir(tmp_path, {"fixture-embed"}),
+        reference_python=REFERENCE_PYTHON,
+        vllm_cmd=f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'} --tokenizer {TOKENIZER}",
+        port_base=0,
+    )
+    row = document["recipes"][0]
+    assert row["state"] == "verified", row
+    assert row["disk"]["free_disk_bytes"] > 0
+    assert row["disk"]["evicted"] is False  # nothing was cached yet; recorded, not an error
+    assert not cache.exists()  # even the eviction did not create the cache directory
+
+
 def test_wave_gives_each_slot_its_own_paths(tmp_path: Path) -> None:
     """Node-runtime item 7: each slot's engine gets its own TMPDIR (test-mode ports are ephemeral)."""
     document = run_wave(
@@ -242,6 +266,69 @@ def _pairs_dir(tmp_path: Path, recipe_ids: set[str]) -> Path:
             "".join(json.dumps(row) + "\n" for row in sample_pairs()[:1]), encoding="utf-8"
         )
     return pairs
+
+
+def test_wave_marks_an_invalid_recipe_failed_with_the_validation_message(tmp_path: Path) -> None:
+    """One failing recipe never stops the wave, end to end: a recipe that fails validation is a failed
+    row in the wave report (with the validation message), and the wave runs the rest."""
+    recipes_root = tmp_path / "recipes"
+    shutil.copytree(RECIPES, recipes_root)
+    shutil.copy2(RECIPES.parent / "tokenizer.json", recipes_root.parent / "tokenizer.json")
+    shutil.copy2(RECIPES.parent / "deterministic.py", recipes_root.parent / "deterministic.py")
+    broken = recipes_root / "broken-recipe"
+    broken.mkdir()
+    broken_text = (RECIPES / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8")
+    (broken / "recipe.yaml").write_text(
+        broken_text.replace("id: fixture-embed", "id: broken-recipe") + "bogus-field: true\n", encoding="utf-8"
+    )
+    out = tmp_path / "wave"
+    document = run_wave(
+        ["fixture-embed", "broken-recipe"],
+        recipes_root,
+        gpus=1,
+        out_dir=out,
+        pairs_dir=_pairs_dir(tmp_path, {"fixture-embed"}),
+        reference_python=REFERENCE_PYTHON,
+        vllm_cmd=f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'} --tokenizer {TOKENIZER}",
+        port_base=0,
+    )
+    by_id = {row["recipe"]: row for row in document["recipes"]}
+    assert by_id["fixture-embed"]["state"] == "verified", by_id
+    assert by_id["broken-recipe"]["state"] == "failed"
+    assert "bogus-field" in (by_id["broken-recipe"].get("error") or "")  # the validation message
+    assert document["passed"] is False
+    assert (out / "broken-recipe" / "status.json").is_file()
+    wave_md = (out / "WAVE.md").read_text(encoding="utf-8")
+    assert "broken-recipe" in wave_md and "failed" in wave_md
+
+
+def test_wave_fails_the_recipes_of_a_plugin_the_bootstrap_could_not_install(tmp_path: Path) -> None:
+    """A plugin found nowhere (the bootstrap records it) fails exactly the recipes that name it, with
+    the plugin's exact name in the message -- the rest of the wave runs."""
+    recipes_root = tmp_path / "recipes"
+    shutil.copytree(RECIPES, recipes_root)
+    shutil.copy2(RECIPES.parent / "tokenizer.json", recipes_root.parent / "tokenizer.json")
+    shutil.copy2(RECIPES.parent / "deterministic.py", recipes_root.parent / "deterministic.py")
+    recipe_yaml = recipes_root / "fixture-embed" / "recipe.yaml"
+    recipe_yaml.write_text(
+        recipe_yaml.read_text(encoding="utf-8").replace("  plugin: null\n", "  plugin: Private-Plugin.Name==1.2.3\n"),
+        encoding="utf-8",
+    )
+    document = run_wave(
+        ["fixture-embed", "fixture-embed-cls"],
+        recipes_root,
+        gpus=1,
+        out_dir=tmp_path / "wave",
+        pairs_dir=_pairs_dir(tmp_path, {"fixture-embed-cls"}),
+        reference_python=REFERENCE_PYTHON,
+        vllm_cmd=f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'} --tokenizer {TOKENIZER}",
+        port_base=0,
+        failed_plugins={"Private-Plugin.Name==1.2.3"},
+    )
+    by_id = {row["recipe"]: row for row in document["recipes"]}
+    assert by_id["fixture-embed-cls"]["state"] == "verified", by_id
+    assert by_id["fixture-embed"]["state"] == "failed"
+    assert "Private-Plugin.Name==1.2.3" in (by_id["fixture-embed"].get("error") or "")  # the exact name
 
 
 def test_wave_recipe_cannot_start_fails_only_itself(tmp_path: Path) -> None:

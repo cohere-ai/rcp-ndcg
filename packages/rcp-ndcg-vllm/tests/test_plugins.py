@@ -62,6 +62,52 @@ def test_collect_skips_recipes_without_a_plugin(tmp_path: Path) -> None:
     assert collect(root, ["fixture-embed"]) == []
 
 
+def _add_broken_recipe(root: Path, recipe_id: str = "broken-recipe") -> Path:
+    """A valid recipe plus one unknown field: the closed schema refuses it and its message names
+    `bogus-field` (the validation message the wave report must carry)."""
+    broken = root / recipe_id
+    broken.mkdir()
+    text = (RECIPES / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8")
+    text = text.replace("id: fixture-embed", f"id: {recipe_id}") + "bogus-field: true\n"
+    (broken / "recipe.yaml").write_text(text, encoding="utf-8")
+    return broken
+
+
+def test_collect_skips_an_invalid_recipe_instead_of_failing(tmp_path: Path) -> None:
+    """One invalid recipe among the wave list: its spec is skipped, the valid recipes' specs are kept
+    (FINDINGS: one recipe that fails validation must never kill the whole job)."""
+    root = _recipes_root(tmp_path, "private-plugin==1.2.3", ["fixture-embed"])
+    _add_broken_recipe(root)
+    assert collect(root, ["fixture-embed", "broken-recipe"]) == ["private-plugin==1.2.3"]
+
+
+def test_collect_cli_reports_an_invalid_recipe_on_stderr_and_exits_zero(tmp_path: Path) -> None:
+    """The CLI reports the skipped recipe with the validation message on stderr and prints the valid
+    specs -- collecting never fails the job."""
+    root = _recipes_root(tmp_path, "plugin_wheel-1.0.0-py3-none-any.whl", ["fixture-embed"])
+    _add_broken_recipe(root)
+    wave_list = tmp_path / "wave.txt"
+    wave_list.write_text("fixture-embed\nbroken-recipe\n", encoding="utf-8")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "rcp_ndcg_vllm.jobs.plugins",
+            "collect",
+            "--recipes-root",
+            str(root),
+            "--recipes",
+            f"@{wave_list}",
+        ],  # fmt: skip
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "fixture-embed/plugin_wheel-1.0.0-py3-none-any.whl"
+    assert "broken-recipe" in completed.stderr
+    assert "bogus-field" in completed.stderr  # the validation message, not just the name
+
+
 def test_collect_cli_prints_one_spec_per_line(tmp_path: Path) -> None:
     """The CLI the bootstrap calls: `python -m rcp_ndcg_vllm.jobs.plugins collect`."""
     root = _recipes_root(tmp_path, "plugin_wheel-1.0.0-py3-none-any.whl", ["fixture-embed"])
