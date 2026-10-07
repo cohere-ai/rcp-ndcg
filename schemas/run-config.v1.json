@@ -205,6 +205,20 @@
       "additionalProperties": false,
       "description": "Cohere's public API: Embed v4 (``embed-v4.0``, which also embeds page images). The key is read from\n``api_key_env``, else ``CO_API_KEY`` or ``COHERE_API_KEY``; ``base_url`` is omitted (the profile's public\nURL) unless it names a proxy.",
       "properties": {
+        "add_generation_prompt": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``true`` sends ``add_generation_prompt: true`` with every ``messages`` request, so the engine's chat template renders its generation prompt (the assistant header) after the user turn -- the frame of a checkpoint whose declared template ends with it (Qwen3-VL-Embedding). vLLM's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237 at v0.31.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other route renders a chat template); ``false`` is that default and declares nothing (stored as ``None``, no re-key). Content.",
+          "title": "Add Generation Prompt"
+        },
         "aggregation": {
           "const": "max",
           "default": "max",
@@ -1063,6 +1077,20 @@
       "additionalProperties": false,
       "description": "Google's Gemini embedding API (``gemini-embedding-001``). The key is read from ``api_key_env``, else\n``GEMINI_API_KEY`` or ``GOOGLE_API_KEY``; ``base_url`` is omitted unless it names a proxy.",
       "properties": {
+        "add_generation_prompt": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``true`` sends ``add_generation_prompt: true`` with every ``messages`` request, so the engine's chat template renders its generation prompt (the assistant header) after the user turn -- the frame of a checkpoint whose declared template ends with it (Qwen3-VL-Embedding). vLLM's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237 at v0.31.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other route renders a chat template); ``false`` is that default and declares nothing (stored as ``None``, no re-key). Content.",
+          "title": "Add Generation Prompt"
+        },
         "aggregation": {
           "const": "max",
           "default": "max",
@@ -2043,6 +2071,20 @@
       "additionalProperties": false,
       "description": "A third-party embed wire: ``api`` names a registered adapter of the embed role that is not a shipped\none, and the role's generic config carries it (the shipped names select their own classes).\n\nThe registry check happens where the config is read (_resolve_embed_api); this class is the shape a\nregistered plugin name builds, every other field inherited from\nEmbeddingEndpoint. A shipped ``api`` is refused here, and ``api`` has\nno default: a plugin config names its adapter, or it does not build.",
       "properties": {
+        "add_generation_prompt": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``true`` sends ``add_generation_prompt: true`` with every ``messages`` request, so the engine's chat template renders its generation prompt (the assistant header) after the user turn -- the frame of a checkpoint whose declared template ends with it (Qwen3-VL-Embedding). vLLM's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237 at v0.31.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other route renders a chat template); ``false`` is that default and declares nothing (stored as ``None``, no re-key). Content.",
+          "title": "Add Generation Prompt"
+        },
         "aggregation": {
           "const": "max",
           "default": "max",
@@ -2400,6 +2442,20 @@
       "additionalProperties": false,
       "description": "A third-party multi-vector wire: ``api`` names a registered adapter of the ``multi_vector`` role that is\nnot a shipped one, and the role's generic config carries it. See PluginEmbedding; a shipped\n``api`` is refused here, so ``vllm_pooling`` always selects ServedPooling.",
       "properties": {
+        "add_generation_prompt": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``true`` sends ``add_generation_prompt: true`` with every ``messages`` request, so the engine's chat template renders its generation prompt (the assistant header) after the user turn -- the frame of a checkpoint whose declared template ends with it (Qwen3-VL-Embedding). vLLM's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237 at v0.31.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other route renders a chat template); ``false`` is that default and declares nothing (stored as ``None``, no re-key). Content.",
+          "title": "Add Generation Prompt"
+        },
         "aggregation": {
           "const": "max",
           "default": "max",
@@ -3610,6 +3666,20 @@
       "additionalProperties": false,
       "description": "A served embedding model: vLLM (``vllm serve``), SGLang, TEI, Infinity, or OpenAI's own API, through\n``POST <base_url>/embeddings``.",
       "properties": {
+        "add_generation_prompt": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``true`` sends ``add_generation_prompt: true`` with every ``messages`` request, so the engine's chat template renders its generation prompt (the assistant header) after the user turn -- the frame of a checkpoint whose declared template ends with it (Qwen3-VL-Embedding). vLLM's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237 at v0.31.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other route renders a chat template); ``false`` is that default and declares nothing (stored as ``None``, no re-key). Content.",
+          "title": "Add Generation Prompt"
+        },
         "aggregation": {
           "const": "max",
           "default": "max",
@@ -3968,6 +4038,20 @@
       "additionalProperties": false,
       "description": "A served multi-vector (late interaction) model, through vLLM's ``POST <base_url>/pooling`` with\n``task: token_embed``.\n\n``base_url`` is ``None`` only when the run's job starts the encoder's engine (``serve.encoder``): the\nengine's URLs then reach the step at runtime, through ``RCP_NDCG_ENGINES``, and setting both is refused\nrather than silently overridden.",
       "properties": {
+        "add_generation_prompt": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``true`` sends ``add_generation_prompt: true`` with every ``messages`` request, so the engine's chat template renders its generation prompt (the assistant header) after the user turn -- the frame of a checkpoint whose declared template ends with it (Qwen3-VL-Embedding). vLLM's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237 at v0.31.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other route renders a chat template); ``false`` is that default and declares nothing (stored as ``None``, no re-key). Content.",
+          "title": "Add Generation Prompt"
+        },
         "aggregation": {
           "const": "max",
           "default": "max",
@@ -5270,6 +5354,20 @@
       "additionalProperties": false,
       "description": "Voyage AI's public API (``voyage-3-large``, ...). The key is read from ``api_key_env``, else\n``VOYAGE_API_KEY``; ``base_url`` is omitted unless it names a proxy.",
       "properties": {
+        "add_generation_prompt": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``true`` sends ``add_generation_prompt: true`` with every ``messages`` request, so the engine's chat template renders its generation prompt (the assistant header) after the user turn -- the frame of a checkpoint whose declared template ends with it (Qwen3-VL-Embedding). vLLM's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237 at v0.31.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other route renders a chat template); ``false`` is that default and declares nothing (stored as ``None``, no re-key). Content.",
+          "title": "Add Generation Prompt"
+        },
         "aggregation": {
           "const": "max",
           "default": "max",
