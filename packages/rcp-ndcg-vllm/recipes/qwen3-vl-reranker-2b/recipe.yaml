@@ -33,6 +33,8 @@ serve:
   plugin: null             # native vLLM class + the conversion covers scoring; no plugin
   mm_processor_kwargs: {min_pixels: 4096, max_pixels: 1310720}   # the reference's numbers (R20);
                                                                  # 1280 tokens/image at max_pixels
+  limit_mm_per_prompt: {"image": 1}        # one media item per request (client.max_images carries the
+                                           # same number): never the engine's multi-item hoist
   extra_args: []           # the wave runner passes --served-model-name <recipe id>; the client's
                            # model field is the same id, so name validation passes
 client:
@@ -53,6 +55,11 @@ client:
                            # the document gets the rest. The reference caps the whole pair, not
                            # the query alone, but a declared share is required so an over-long
                            # query never eats the document's budget
+  max_images: 1            # the same number as serve.limit_mm_per_prompt: one media item per
+                           # request (an image on the query side or on one document side, never
+                           # two -- the engine's multi-item guard is never crossed). Image
+                           # queries and image documents cannot combine in one request; the
+                           # notes' data discipline matches
   template:
     pair:
       - {fixed: "{special:im_start}system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \"yes\" or \"no\".{special:im_end}\n{special:im_start}user\n<Instruct>: Given a search query, retrieve relevant candidates that answer the query.<Query>:"}
