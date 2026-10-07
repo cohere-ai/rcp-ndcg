@@ -146,3 +146,18 @@ def sample_pairs(documents: int = 4) -> list[dict]:
             "documents": [f"another document {index} with tokens a b c {index}" for index in range(documents)],
         },
     ]
+
+
+def hub_cache(root: Path, monkeypatch: pytest.MonkeyPatch, repo: str, revision: str, files: dict[str, str]) -> Path:
+    """An offline Hub cache under ``root`` holding ``files`` for ``repo`` at ``revision`` (the layout
+    huggingface_hub reads a commit-hash revision from without any request); the Hub is offline meanwhile.
+    Calling it again with another root replaces the cache."""
+    import huggingface_hub.constants as constants
+
+    snapshot = root / "hub" / ("models--" + repo.replace("/", "--")) / "snapshots" / revision
+    snapshot.mkdir(parents=True, exist_ok=True)
+    for name, text in files.items():
+        (snapshot / name).write_text(text, encoding="utf-8")
+    monkeypatch.setattr(constants, "HF_HUB_CACHE", str(root / "hub"))
+    monkeypatch.setattr(constants, "HF_HUB_OFFLINE", True)
+    return snapshot

@@ -20,7 +20,7 @@ from rcp_ndcg_vllm.equivalence import stage1_prompts, stage2_scores
 from rcp_ndcg_vllm.equivalence.gates import ResolvedGates
 from rcp_ndcg_vllm.equivalence.metrics import stage3_metrics
 
-from tests.conftest import RECIPES, TOKENIZER, sample_pairs, start_stub, write_pairs
+from tests.conftest import RECIPES, TOKENIZER, hub_cache, sample_pairs, start_stub, write_pairs
 
 REFERENCE_PYTHON = sys.executable
 
@@ -857,17 +857,8 @@ def test_stage1_messages_route_renders_the_declared_generation_prompt(tmp_path: 
 
 
 def _hub_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, files: dict[str, str]) -> None:
-    """An offline Hub cache holding ``fixtures/DenseEmbedder`` at fixture-embed's pinned revision with ``files``
-    (the layout huggingface_hub reads a commit-hash revision from without any request)."""
-    import huggingface_hub.constants as constants
-
-    revision = "0123456789abcdef0123456789abcdef01234567"
-    snapshot = tmp_path / "hub" / "models--fixtures--DenseEmbedder" / "snapshots" / revision
-    snapshot.mkdir(parents=True)
-    for name, text in files.items():
-        (snapshot / name).write_text(text, encoding="utf-8")
-    monkeypatch.setattr(constants, "HF_HUB_CACHE", str(tmp_path / "hub"))
-    monkeypatch.setattr(constants, "HF_HUB_OFFLINE", True)
+    """An offline Hub cache holding ``fixtures/DenseEmbedder`` at fixture-embed's pinned revision with ``files``."""
+    hub_cache(tmp_path, monkeypatch, "fixtures/DenseEmbedder", "0123456789abcdef0123456789abcdef01234567", files)
 
 
 def test_stage1_messages_route_render_checks_the_checkpoints_own_chat_template(
@@ -918,3 +909,30 @@ def test_stage2_on_the_messages_route_through_the_stub(tmp_path: Path) -> None:
             engine.stop()
         assert document["passed"] is passes, (name, document["per_vector"][:2])
         assert document["n_vectors"] == sum(len(row["documents"]) for row in sample_pairs()[:2])
+
+
+def test_a_checkpoint_template_read_error_is_unresolved_never_a_fall_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only an absent file falls through to the next template source: any other failure reading
+    ``chat_template.jinja`` (a broken cache, a refused download) fails the check as unresolved, never
+    renders ``tokenizer_config.json``'s template in its place."""
+    import huggingface_hub
+
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    recipe = _messages_recipe(tmp_path / "own", _CHAT_TEMPLATE)
+    recipe = recipe.model_copy(update={"serve": recipe.serve.model_copy(update={"chat_template": None})})
+    _hub_cache(
+        tmp_path / "config", monkeypatch, {"tokenizer_config.json": json.dumps({"chat_template": _CHAT_TEMPLATE})}
+    )
+    real = huggingface_hub.hf_hub_download
+
+    def broken(repo_id: str, filename: str, **kwargs: Any) -> str:
+        if filename == "chat_template.jinja":
+            raise OSError("the cache's blob is unreadable")
+        return real(repo_id, filename, **kwargs)
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", broken)
+    check = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["status"] == "unresolved" and check["passed"] is False, check
+    assert "chat_template.jinja" in check["failures"][0]["note"]

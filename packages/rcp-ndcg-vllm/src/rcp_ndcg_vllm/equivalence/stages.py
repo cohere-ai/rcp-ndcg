@@ -980,21 +980,19 @@ def checkpoint_chat_template(recipe: Recipe) -> tuple[str, str]:
 
     Inputs: the recipe (``model`` and its 40-hex ``revision``).  Output: ``(source, text)`` -- the source names
     ``<model>@<revision>:<file>`` -- read from the first of :data:`CHECKPOINT_TEMPLATE_FILES` the checkpoint
-    carries, through ``huggingface_hub`` (the local Hub cache answers a pinned revision without a request; the
-    Hub otherwise, unless offline).  A ``tokenizer_config.json`` or ``chat_template.json`` template is its
-    ``chat_template`` value (the ``default`` entry of a named list).  Raises :class:`HarnessError` naming every
-    file tried when none resolves.
+    carries (:func:`~rcp_ndcg_vllm.equivalence.checkpoint.checkpoint_file`: the local Hub cache answers a
+    pinned revision without a request; the Hub otherwise, unless offline).  Only an absent file falls through
+    to the next source.  A ``tokenizer_config.json`` or ``chat_template.json`` template is its ``chat_template``
+    value (the ``default`` entry of a named list).  Raises :class:`HarnessError` naming every file tried when
+    none resolves, or the file whose read failed.
     """
-    try:
-        from huggingface_hub import hf_hub_download
-    except ImportError as error:  # pragma: no cover - huggingface_hub ships with the harness's [test] extra
-        raise HarnessError("reading the checkpoint's chat template needs huggingface_hub") from error
+    from .checkpoint import checkpoint_file
+
     tried: list[str] = []
     for name in CHECKPOINT_TEMPLATE_FILES:
-        try:
-            path = Path(hf_hub_download(recipe.model, name, revision=recipe.revision))
-        except Exception as error:  # noqa: BLE001 - every Hub failure is one more file tried, named below
-            tried.append(f"{name}: {type(error).__name__}")
+        path = checkpoint_file(recipe, name)  # None only when the file is absent; any other failure raises
+        if path is None:
+            tried.append(f"{name}: absent")
             continue
         text = path.read_text(encoding="utf-8")
         if name.endswith(".json"):
