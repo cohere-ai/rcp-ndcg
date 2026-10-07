@@ -185,9 +185,7 @@ def served_spans(tok, query: str, document: str) -> tuple[str, str]:
     else:
         q_final = query
     # 2. fit's probe pair (the query with an empty document): the query keeps the frame room.
-    q_final = _token_prefix(
-        q_final, cap, tok, rendered=lambda piece: assemble(piece, ""), add_special_tokens=True
-    )
+    q_final = _token_prefix(q_final, cap, tok, rendered=lambda piece: assemble(piece, ""), add_special_tokens=True)
     q_min = _count(assemble(q_final, ""), tok, add_special_tokens=True)
     if q_min >= cap and _count(document, tok) > 0:
         raise SystemExit(
