@@ -19,7 +19,8 @@ from pathlib import Path
 import pytest
 from rcp_ndcg_vllm import RecipeError, load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
-from rcp_ndcg_vllm.equivalence.fitting import budget_of
+
+from ._served import served_pair, stage1_facts
 
 REPO = "Qwen/Qwen3-Reranker-8B"
 REVISION = "77d193c791ed757ca307ee72715aa132723da912"
@@ -159,7 +160,6 @@ def test_stage1_on_cpu(tmp_path: Path, tokenizer_dir: Path) -> None:
     """Stage 1 on CPU: token-id equality against the reference render and the template file,
     and every anchor intact on over-length inputs (21 pairs file rows, 5 of them over cap,
     plus the harness's own 5 over-length samples per shape)."""
-    from rcp_ndcg.data.preprocess import fit
     from rcp_ndcg.data.tokenizer import load_tokenizer
 
     recipe = local_recipe(tokenizer_dir)
@@ -184,41 +184,56 @@ def test_stage1_on_cpu(tmp_path: Path, tokenizer_dir: Path) -> None:
     assert document["render_check"]["status"] == "run" and document["render_check"]["passed"] is True
     assert document["template_render_check"]["passed"] is True  # the declared shapes == the file
     assert document["engine_tokenize_check"]["status"] == "not_run"  # no engine on CPU
-    assert document["fit"]["pair"]["overhead"] == OVERHEAD
-    assert document["fit"]["pair"]["cuts"] == 10  # 5 pairs-file rows + 5 harness-padded samples
+    # The cut facts come from the role client's own capture and census (R30: what the client really
+    # sent): the 5 over-length pairs-file rows and the harness's 5 padded samples were cut, and the
+    # product measured the fixed frame's overhead.
+    facts = stage1_facts(recipe, pairs, tokenizer, 5)
+    assert facts["per_shape"]["pair"]["overhead"] == OVERHEAD
+    assert facts["per_shape"]["pair"]["cut_rows"] == 10  # 5 pairs-file rows + 5 harness-padded samples
 
-    # golden: one under-cap render is byte-identical to the paper reference's assembly
-    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    # golden: one under-cap pair ships whole, and its spans re-assemble byte-identically to the
+    # paper reference's prompt (the product's own template render).
+    template = recipe.client.template
+    assert template is not None
     query, doc = pairs[0]["query"], pairs[0]["documents"][0]
-    result = fit([(query, doc)], "pair", budget, tokenizer, ids=["0"])
+    spans = served_pair(recipe, query, [doc])
+    assert spans == {"query": query, "documents": [doc]}
     expected = PREFIX + query + PAIR_MID + doc + SUFFIX
-    assert result.texts[0] == expected
+    assert template.render("pair", tokenizer, query=spans["query"], document=spans["documents"][0]) == expected
 
-    # and one over-cap pair is cut to exactly the paper budget with the anchor intact
-    long_pairs = [row for row in pairs if OVERHEAD + tokenizer.count(row["documents"][0]) > MAX_TOKENS]
-    result = fit([(long_pairs[0]["query"], long_pairs[0]["documents"][0])], "pair", budget, tokenizer, ids=["0"])
-    ids = tokenizer.ids(result.texts[0], add_special_tokens=True)
+    # and one over-cap pair is cut to exactly the paper budget with the anchor intact: the spans
+    # the client ships re-assemble to a render at the budget that ends on the scored suffix.
+    long_row = next(row for row in pairs if OVERHEAD + tokenizer.count(row["documents"][0]) > MAX_TOKENS)
+    spans = served_pair(recipe, long_row["query"], long_row["documents"])
+    rendered = template.render("pair", tokenizer, query=spans["query"], document=spans["documents"][0])
+    ids = tokenizer.ids(rendered, add_special_tokens=True)
     assert len(ids) == MAX_TOKENS
     assert ids[-len(tokenizer.ids(SUFFIX)) :] == tokenizer.ids(SUFFIX)
 
 
-def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_red(
+def test_mutation_dropping_the_trailing_anchor_segment_reddens_the_template_check(
     tmp_path: Path, tokenizer_dir: Path
 ) -> None:
     """Dropping the template's trailing anchor segment loses the assistant suffix -- the
-    scored position -- and the anchor audit must go red on the same inputs."""
-    from rcp_ndcg.data.preprocess import fit
+    scored position -- and the file-vs-declaration check must go red.
+
+    The rerank wire carries the cut content spans (the frame is the engine's own template), so
+    stage 1's anchor audit audits the settled query and the document spans and does not move on a
+    frame change; the frame contract is pinned by ``template_render_check``, which this mutation
+    turns red (the proved frame loses the anchor above).
+    """
     from rcp_ndcg.data.templates import TemplateSpec
     from rcp_ndcg.data.tokenizer import load_tokenizer
 
     recipe = local_recipe(tokenizer_dir)
     tokenizer = load_tokenizer(str(tokenizer_dir))
     template = recipe.client.template
-    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
+    assert template is not None
 
-    # the real render ends with the 9-token assistant suffix (the scored anchor)
-    result = fit([("capital of france", "paris is the capital of france.")], "pair", budget, tokenizer, ids=["0"])
-    real_ids = tokenizer.ids(result.texts[0], add_special_tokens=True)
+    # the real frame ends with the 9-token assistant suffix (the scored anchor), built by the
+    # product's own render
+    golden = template.render("pair", tokenizer, query="capital of france", document="paris is the capital of france.")
+    real_ids = tokenizer.ids(golden, add_special_tokens=True)
     suffix_ids = tokenizer.ids(SUFFIX, add_special_tokens=True)
     assert real_ids[-len(suffix_ids) :] == suffix_ids
 
@@ -230,23 +245,19 @@ def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_re
     )
     client = recipe.client.model_copy(update={"template": anchorless})
     mutated = recipe.model_copy(update={"client": client})
+    assert mutated.client.template is not None
     no_tail_ids = tokenizer.ids(
-        fit(
-            [("capital of france", "paris is the capital of france.")],
-            "pair",
-            budget_of(mutated).model_copy(update={"tokenizer": tokenizer.name}),
-            tokenizer,
-            ids=["0"],
-        ).texts[0],
+        mutated.client.template.render(
+            "pair", tokenizer, query="capital of france", document="paris is the capital of france."
+        ),
         add_special_tokens=True,
     )
     assert no_tail_ids[-len(suffix_ids) :] != suffix_ids, "the mutation must really lose the anchor"
 
     pairs_path = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:3])
     document = stage1_prompts(mutated, pairs_path, sys.executable, over_length_per_shape=2)
-    assert document["anchor_check"]["passed"] is False
-    assert document["anchor_check"]["failures"], "the audit names the failing shape"
-    assert all(entry["shape"] == "pair" for entry in document["anchor_check"]["failures"])
+    assert document["template_render_check"]["passed"] is False, "the file still emits the dropped suffix"
+    assert document["anchor_check"]["passed"] is True  # the wire's spans are unchanged by the frame drop
 
     # and the schema itself refuses an 'anchor: last' shape with neither a fixed tail nor the
     # post-processor declaration

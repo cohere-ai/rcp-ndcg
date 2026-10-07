@@ -3,21 +3,212 @@ Copyright 2026 Cohere Inc.
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
-It includes code derived from the third-party work below, also licensed under
-the Apache License, Version 2.0.
+It includes code, templates and other files ported, adapted or copied from the
+third-party works below, each under the licence named in its entry: Apache-2.0
+for every entry except the ContextualAI (CC-BY-NC-SA-4.0) and Jina AI
+(CC-BY-NC-4.0) ones. None of them ships a NOTICE file of its own. Every entry
+names the upstream URL and the pinned revision its file was taken from; on
+2026-10-07 each upstream file was fetched at that revision again (the Hugging
+Face Hub and GitHub, anonymously), its SHA-256 compared with the one quoted here
+and diffed against the shipped copy, and each licence read at that revision
+(the Hub's model card metadata; the LICENSE file of a GitHub repository). Each
+recipe's `sources`/`notes` record that file's exact deltas. Every distribution
+of this project (rcp-ndcg, rcp-ndcg-core, rcp-ndcg-vllm and the plugin wheels)
+carries this same file.
+
+Hugging Face transformers
+  https://github.com/huggingface/transformers
+  Copyright The HuggingFace Team. The file ported from,
+  src/transformers/models/qwen2_vl/image_processing_qwen2_vl.py, is
+  Copyright 2024 The Qwen team, Alibaba Group and the HuggingFace Inc. team.
+  - src/rcp_ndcg/data/resolution.py: `smart_resize` is a port of `smart_resize`
+    (image_processing_qwen2_vl.py, lines 63-89, at commit 528c267).
+  - tests/data/_media_reference.py: `hf_smart_resize`, copied from the same
+    function at the same commit, as a test oracle.
 
 vLLM
   https://github.com/vllm-project/vllm
   Copyright contributors to the vLLM project.
-  - src/rcp_ndcg_vllm_topk/model.py: `TopkEmbedModel` subclasses
-    `vllm.model_executor.models.colqwen3_5.ColQwen3_5Model` (vLLM v0.31.0) and
-    reuses its weight mapping, pooling wiring and forward pass unmodified.
-  - src/rcp_ndcg_vllm_topk/weights.py: the checkpoint-name mapping table
-    restates the prefix mappings of `vllm/model_executor/models/qwen3_vl.py`
-    (`hf_to_vllm_mapper`) so the tests can verify the served mapping without
-    importing vLLM.
+  - tests/data/_media_reference.py: `vllm_frame_indices`, copied from
+    `VideoBackend.compute_frames_index_to_sample` (vllm/multimodal/video.py,
+    lines 214-238, at commit 3627a6a), as a test oracle.
+  - packages/rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/model.py:
+    `TopkEmbedModel` subclasses `vllm.model_executor.models.colqwen3_5.ColQwen3_5Model`
+    (vLLM v0.31.0) and reuses its weight mapping, pooling wiring and forward
+    pass unmodified.
+  - packages/rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/weights.py: the
+    checkpoint-name mapping table restates the prefix mappings of
+    `vllm/model_executor/models/qwen3_vl.py` (`hf_to_vllm_mapper`) so the tests
+    can verify the served mapping without importing vLLM.
+  - packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/model.py: the model
+    class is a thin subclass of vLLM's own `Qwen3_5ForCausalLMBase` (vLLM
+    v0.31.0); every line that adapts the checkpoint's naming or pooling is this
+    package's own.
+  - packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/pooler.py:
+    `PplxChunkPool` subclasses vLLM's `AllPool` and is modeled on its `StepPool`
+    (vllm/model_executor/layers/pooler/tokwise/methods.py at v0.31.0).
+  - packages/rcp-ndcg-vllm/recipes/qwen3-reranker-0.6b/qwen3_reranker.jinja,
+    packages/rcp-ndcg-vllm/recipes/qwen3-reranker-4b/template.jinja and
+    packages/rcp-ndcg-vllm/recipes/qwen3-reranker-8b/template.jinja: adapted
+    from examples/pooling/score/template/qwen3_reranker.jinja at the v0.31.0
+    tag (https://github.com/vllm-project/vllm/blob/v0.31.0/examples/pooling/score/template/qwen3_reranker.jinja,
+    upstream SHA-256 e1ee98e69aab7b2da366edf1c50efcef37e34b4a0c50fb816336213e68d9047a).
+    The adaptations add the served /rerank route's plain-text query/document
+    branch and bake in (or trim) the fixed instruction and the trailing newline;
+    each recipe's notes record its own delta lines.
+  - packages/rcp-ndcg-vllm/recipes/qwen3-vl-reranker-2b/template.jinja:
+    adapted from examples/pooling/score/template/qwen3_vl_reranker.jinja at the
+    v0.31.0 tag (https://github.com/vllm-project/vllm/blob/v0.31.0/examples/pooling/score/template/qwen3_vl_reranker.jinja,
+    upstream SHA-256 df956086e3ef710a6f792a99ad3f7a7ec717f19114aba061304117fa688dee26).
+    The adaptation rewrites the two expression blocks to the plain-text
+    query/document branch (+2/-12 lines; the recipe's notes record it).
 
-The model class is written for the checkpoint of
-topk-io/topk-embed-v1-small (Apache-2.0) at revision
-e54485ebab921f2c18c4d092b3f4c40dcca26781; it vendors no weights and performs
-no downloads.
+SGLang
+  https://github.com/sgl-project/sglang
+  Copyright 2023-2024 SGLang Team.
+  - tests/data/_media_reference.py: `sglang_smart_resize`, `round_by_factor`,
+    `ceil_by_factor`, `floor_by_factor` and `sglang_frame_indices`, copied from
+    python/sglang/srt/multimodal/processors/qwen_vl.py (lines 59-61, 151-196
+    and 264, at commit 45c8ddd), as a test oracle.
+
+ZeroEntropy zerank
+  https://huggingface.co/zeroentropy/zerank-1-reranker (zeroentropy/zerank-1
+  redirects to it)
+  By ZeroEntropy. Licence: Apache-2.0 (the checkpoint repositories').
+  - experiments/paper/rerankers/reference/zerank.py (moved out of the package's
+    former in-process retrieval module): `ZerankRerank` adapts the input
+    formatting, the "Yes"-logit score and the token-budget batching of
+    modeling_zeranker.py in the model repository (at revision
+    d03c467e29e29c0a16a130a86ce3b62d30116a2c, upstream SHA-256
+    01608a5fddbf300ce0455893bf0c579b685514e969e2defed90f69c823b162ed).
+  - packages/rcp-ndcg-vllm/recipes/zerank-1-reranker/reference.py,
+    packages/rcp-ndcg-vllm/recipes/zerank-1-small-reranker/reference.py and
+    packages/rcp-ndcg-vllm/recipes/zerank-2-reranker/reference.py: the paper's
+    `ZerankRerank` above, ported into each recipe's reference subprocess.
+  - packages/rcp-ndcg-vllm/recipes/zerank-1-reranker/template.jinja: the score
+    frame reduced from the checkpoint's `chat_template` (embedded in
+    tokenizer_config.json) at zeroentropy/zerank-1-reranker@d03c467e29e29c0a16a130a86ce3b62d30116a2c.
+  - packages/rcp-ndcg-vllm/recipes/zerank-1-small-reranker/zerank_score_template.jinja:
+    the same checkpoint `chat_template` at
+    zeroentropy/zerank-1-small-reranker@a65fd51c450e9b47fdddab98e31166ecad21af8d,
+    kept verbatim as the file's fallback branch, plus a score branch derived
+    from it. Both checkpoints embed one shared upstream template, SHA-256
+    a55ee1b1660128b7098723e0abcd92caa0788061051c62d51cbe87d9cf1974d8.
+  - packages/rcp-ndcg-vllm/recipes/zerank-2-reranker/zerank2_score_template.jinja:
+    the score frame derived from the checkpoint's chat_template.jinja at
+    zeroentropy/zerank-2-reranker@5eae30d5ee3c6b2df2ef6d723bde45172d761c4c
+    (upstream SHA-256 77137ede3bb2f14fabaab01c6e86eb49b77cf3db5061246115796b5f55998336).
+
+Qwen3-Reranker
+  https://huggingface.co/Qwen/Qwen3-Reranker-8B (and its 0.6B and 4B siblings)
+  By the Qwen team, Alibaba Cloud. Licence: Apache-2.0 (the checkpoint
+  repositories').
+  - experiments/paper/rerankers/reference/qwen3.py (moved out of the package's
+    former in-process retrieval module): `QwenOGRerank` follows the
+    Transformers usage code of the model card (the prompt prefix and suffix,
+    `format_instruction`, `process_inputs` and the yes/no log-softmax score of
+    `compute_logits`; README.md lines 110-149 at
+    Qwen/Qwen3-Reranker-0.6B@e61197ed45024b0ed8a2d74b80b4d909f1255473, the
+    same code in the 4B card at 22e683669bc0f0bd69640a1354a6d0aebcfeede5 and the
+    8B card at 77d193c791ed757ca307ee72715aa132723da912).
+  - packages/rcp-ndcg-vllm/recipes/qwen3-reranker-0.6b/reference.py,
+    packages/rcp-ndcg-vllm/recipes/qwen3-reranker-4b/reference.py and
+    packages/rcp-ndcg-vllm/recipes/qwen3-reranker-8b/reference.py: the paper's
+    `QwenOGRerank` above, ported into each recipe's reference subprocess.
+
+Qwen3-Embedding-0.6B
+  https://huggingface.co/Qwen/Qwen3-Embedding-0.6B
+  By the Qwen team, Alibaba Cloud. Licence: Apache-2.0 (the checkpoint
+  repository's).
+  - packages/rcp-ndcg-vllm/recipes/qwen3-embedding-0.6b/reference.py:
+    `last_token_pool` and `get_detailed_instruct` follow the model card's
+    Transformers usage code (README.md lines 117-129 at revision
+    97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3, upstream SHA-256
+    c34d9b7e5a267ad3fdd13227a253686bc90844ff4744a2a6a86c7c905e3d06f3).
+
+Qwen3-VL-Embedding-2B
+  https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B
+  By the Qwen team, Alibaba Cloud. Licence: Apache-2.0 (the checkpoint
+  repository's).
+  - packages/rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/qwen3_vl_embedding.py:
+    copied VERBATIM from scripts/qwen3_vl_embedding.py at revision
+    9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda
+    (https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/blob/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/scripts/qwen3_vl_embedding.py,
+    SHA-256 8ffa74a1a6bb759610c57865ea416fd4daf9936cb787520e1112a3e1d547f36a;
+    the shipped copy is byte-identical).
+  - packages/rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/template.jinja: the
+    text frame reduced from the checkpoint's chat_template.jinja at the same
+    revision (upstream SHA-256
+    a47e6afb389f86f45be7810f17d2686fd42b2bec7ba6e6958abf85845af258c5).
+
+Qwen3-VL-Reranker-2B
+  https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B
+  By the Qwen team, Alibaba Cloud. Licence: Apache-2.0 (the checkpoint
+  repository's).
+  - packages/rcp-ndcg-vllm/recipes/qwen3-vl-reranker-2b/reference.py:
+    `format_mm_instruction`, `truncate_tokens_optimized` and the scorer of
+    `Qwen3VLRerankerReference` follow the model card's scripts/qwen3_vl_reranker.py
+    (`Qwen3VLReranker`) at revision 4bd860ac4f15ad1897a214615cccc700f8f71818
+    (upstream SHA-256
+    bd5d2f5d97fc4a738864d93f6b15d8850243e60da4484f3ea78867a46efdebd6).
+
+ContextualAI ctxl-rerank-v2-instruct
+  https://huggingface.co/ContextualAI
+  By Contextual AI. Licence: CC-BY-NC-SA-4.0 (the checkpoint repositories').
+  - experiments/paper/rerankers/reference/contextual.py: `ContextualRerank`
+    follows the model card's Transformers usage code (`format_prompts` and
+    `infer_w_hf`: the two-line prompt and the vocabulary-position-0 logit;
+    README.md lines 201-240 at
+    ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b@8fd1edf6a98564cb712064f884b8ef7df5c1b876,
+    upstream SHA-256 eba79387f10b4135feff89df402d9de7d19f14597af1d1dbf4633af98399e726).
+  - packages/rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-1b/reference.py,
+    packages/rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-2b/reference.py
+    and packages/rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-6b/reference.py:
+    the paper's `ContextualRerank` above, ported into each recipe's reference
+    subprocess.
+  - packages/rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-1b/template.jinja,
+    packages/rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-2b/template.jinja
+    and packages/rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-6b/score-template-6b.jinja:
+    the vendor score templates adapted from each checkpoint's chat_template.jinja
+    at its pinned revision -- ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b@8fd1edf6a98564cb712064f884b8ef7df5c1b876
+    (upstream SHA-256 71212658f6231f4dbd772ff361758fdfb23fe93df9f9868d758642610f512f53),
+    ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b@6ffef5dc552583b8db58dc4a87f79f7aee78d2d9
+    (upstream SHA-256 48cdd3809735930e818f54fb8761bdfd12fa2b024951baa2963fdb4b2d4d397b)
+    and ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b@f14ca1a2fc204dc0934c84a3d2e278f8ff646b80
+    (upstream SHA-256 205dc6813ce869bfeeb28ae9af919f5e8bc54123d13e5d378edd466ad16d721a).
+    The adaptations fold the instruction through the served /rerank route's
+    fields and reshape the score blocks; each recipe's notes record its own
+    delta lines.
+
+Jina AI jina-reranker-v3
+  https://huggingface.co/jinaai/jina-reranker-v3
+  By Jina AI. Licence: CC-BY-NC-4.0 (the checkpoint repository's).
+  - packages/rcp-ndcg-vllm/recipes/jina-reranker-v3/reference.py:
+    `format_docs_prompt`, `_sanitize` and `_truncate_text` port
+    `format_docs_prompts_func`, `sanitize_input` and the per-text rule of
+    `JinaForRanking._truncate_texts` from the checkpoint's modeling.py at
+    revision d7d7e73b6ea138ced340b83865931b5dfb6c97aa (lines 17-60 and
+    134-158; upstream SHA-256
+    d185cdb8ce9b0593f150b5fa1ffc839f2dde1d2c25c7b2524030d77e543b65a7).
+
+topk-io topk-embed-v1-small
+  https://huggingface.co/topk-io/topk-embed-v1-small
+  By topk-io. Licence: Apache-2.0 (the checkpoint repository's).
+  - packages/rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/config.py:
+    `TopkEmbedConfig` restates `TopkEmbedConfig` of the checkpoint's remote
+    modeling_topk_embed.py (lines 12-29) at revision
+    e54485ebab921f2c18c4d092b3f4c40dcca26781 line for line (upstream SHA-256
+    a0d82b0bc4119473e086409563e33849e70e14a7c09d6ded46b68810adf4a132).
+
+Perplexity pplx-embed-v2-context-9b-preview
+  https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview
+  By Perplexity AI. Licence: MIT (the checkpoint repository's model card
+  metadata; the repository ships no LICENSE file).
+  - packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/pooling_core.py:
+    re-implements, for vLLM's token-id pooling, the query and per-chunk span
+    pooling and the int8 head (`round(tanh(x) * 127).clamp(-128, 127)`) of the
+    checkpoint's remote modeling_pplx_contextual.py (`_pool`, `encode`) at
+    revision b667039ee8b438a6350fbc91bbcecd86f9d363ba (upstream SHA-256
+    090f68c9907f2b055b3f41bd0dfc94ef8250e8a98e390e6d308b8fa34702bd45).
+
+The plugins vendor no model weights and perform no downloads.

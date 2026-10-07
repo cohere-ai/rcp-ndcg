@@ -37,8 +37,11 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
   applies to the content spans only, inside a budget computed after reserving every fixed template token, and
   the template is re-attached after the cut. Engine-side truncation of a rendered prompt cannot honour this in
   either direction, so the schema has no engine-truncation field at all: a recipe whose reference deliberately
-  drops anchors declares `reference.known_deviations: [anchor_drop_over_cap]` and the harness reports those
-  pairs separately, outside the gates. The declared shape's `anchor` is `last`, `first`, `mean` or `marker`
+  drops anchors declares `reference.known_deviations: [anchor_drop_over_cap]`, and one whose reference keeps the
+  anchors but cuts over-cap content its own way (a joint `longest_first` truncation, say, where the client settles
+  the query at its share) declares `[over_cap_cut_differs]`; either way the harness reports those pairs
+  separately, outside the gates. The reference stays the paper's or the model card's: it never copies the
+  client's cut to make an over-cap pair pass. The declared shape's `anchor` is `last`, `first`, `mean` or `marker`
   (with `anchor_markers`), and stage 1 samples over-length inputs (at least 20 per shape) and asserts every
   anchor survived — reported as `anchor_check`, separately from token-id mismatches.
 - **Segments: `fixed` and `content`, nothing else.** A shape is an ordered list of segments with exactly two
@@ -111,7 +114,7 @@ reference:
   kind: transformers             # transformers | sentence_transformers | remote_code | stored_scores
   score_scale: probability       # probability | logit | cosine; vectors compare per vector
   entry: reference.py
-  known_deviations: []           # e.g. [anchor_drop_over_cap]: the over-cap pairs are reported non-gating
+  known_deviations: []           # or [over_cap_cut_differs] etc.: over-cap pairs reported non-gating
 gates: {}                        # overrides of the stage-2 defaults for this score_scale
 status: {state: unverified, image: null, date: null, report: null}
 sources: []                      # URLs and path:line references the recipe rests on
@@ -200,8 +203,8 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
 - `render_check` compares the reference subprocess's `render` output against the captured texts, zero
   tolerance — every declared shape of every pairs-file row (a row carrying the per-row `shape` field is
   compared too; the injected over-length samples are audited, not compared). Under a declared
-  `reference.known_deviations: [anchor_drop_over_cap]`, the rows the client had to cut are reported in a
-  separate non-gating table here as well (the reference renders them its own way by declaration);
+  over-cap deviation, the rows the client had to cut are reported in a separate non-gating table here as
+  well (the reference renders them its own way by declaration);
 - `engine_tokenize_check` (R29, needs the engine) requires the engine's `/tokenize` ids and counts of every
   captured text to equal the recipe tokenizer's; reported `not_run` without an engine, never as passed;
 - `template_render_check`, when `serve.chat_template` is set: the template file's jinja2 render (the engine's
@@ -212,10 +215,9 @@ Stage 2 sends the same pairs through the product's role clients (`EmbeddingClien
 served path does (for a reranker, the shared query span settles once per call) — and applies the gates:
 probability |Δ| ≤ 0.02 for 99% of documents and ≤ 0.05 for all; logit |Δ| ≤ 0.05·(1 + |s|); cosine scores
 |Δ| ≤ 0.01; vectors cosine ≥ 1 − 1e-3 per vector (per token, after the same float16 cast); median per-query
-Kendall τ ≥ 0.98. A recipe's `gates` section overrides any of these. With
-`reference.known_deviations: [anchor_drop_over_cap]`, the inputs the client had to cut (decided on the
-client's own census) are reported in a separate, non-gating table — in stage 2 for every role — and the gates
-run on the under-cap pairs only.
+Kendall τ ≥ 0.98. A recipe's `gates` section overrides any of these. With a declared over-cap deviation,
+the inputs the client had to cut (decided on the client's own census) are reported in a separate, non-gating
+table — in stage 2 for every role — and the gates run on the under-cap pairs only.
 
 Stage 3 (optional) scores rankings per subset with `rcp-ndcg eval score` as a subprocess (the package depends
 on `rcp-ndcg`, so the command is always available) and requires the mean |Δ nDCG@10| over subsets ≤ 2e-3.

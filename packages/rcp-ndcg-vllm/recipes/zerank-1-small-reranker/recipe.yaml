@@ -88,6 +88,9 @@ client:
                              # in the reference alike (the paper pipeline never passed one)
   on_overflow: cut
   empty_doc: send            # the paper sends an empty document as the empty string; no omit rule
+  empty_query: send          # declared: the product's post-refusal default is `refuse` (p1-tail 2f), but the
+                             # paper path scores an empty query against every candidate as given (its chat
+                             # template renders the empty system turn); the recipe's row 20 pins that edge
   request_shape: text
   listwise: false
   use_activation: true       # the served score is the probability sigmoid(l_Yes / 5) (the reference's

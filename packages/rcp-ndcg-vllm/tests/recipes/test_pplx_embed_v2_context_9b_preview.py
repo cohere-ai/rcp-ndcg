@@ -35,18 +35,14 @@ N_PAIRS = 20
 
 RECIPES = Path(__file__).resolve().parents[2] / "recipes" / RECIPE_ID
 
-# The lane's scratch directory (outside the checkout): the tokenizer files are
-# downloaded here once and reused. On this workspace the lane scratch is the
-# default; elsewhere (or via RCP_NDCG_LANE_SCRATCH) the system temp directory
-# holds the cache instead, so no machine-specific path is created. When the
-# pinned snapshot is already cached the load runs offline; a fresh machine
-# downloads on the first run and skips cleanly with no network.
-LANE_SCRATCH = Path("/root/repos/rcp-ndcg-lanes/rec-pplx-embed-v2-context-9b-preview/scratch")
-DEFAULT_SCRATCH = (
-    LANE_SCRATCH if LANE_SCRATCH.parent.is_dir() else Path(tempfile.gettempdir()) / "rcp-ndcg-pplx-recipe-scratch"
+# The tokenizer cache: ``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when set (the lane's scratch dir -- the
+# marker's downloads land there), else the system temp directory. When the pinned snapshot is
+# already cached the load runs offline; a fresh machine downloads on the first run and skips
+# cleanly with no network.
+CACHE = Path(
+    os.environ.get("RCP_NDCG_VLLM_TOKENIZER_CACHE") or Path(tempfile.gettempdir()) / "rcp-ndcg-pplx-tokenizers"
 )
-SCRATCH = Path(os.environ.get("RCP_NDCG_LANE_SCRATCH", str(DEFAULT_SCRATCH)))
-HF_CACHE = SCRATCH / "hf-cache"
+HF_CACHE = CACHE / "hf-cache"
 _CACHED_SNAPSHOT = HF_CACHE / f"models--perplexity-ai--{RECIPE_ID}" / "snapshots" / REVISION / "tokenizer.json"
 
 # huggingface_hub reads its cache directory (and the offline flag) at import time; this

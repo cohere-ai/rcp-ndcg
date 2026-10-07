@@ -25,6 +25,11 @@ released together.
 
 ### Public surface
 
+- **`rcp-ndcg-vllm` recipes: `reference.known_deviations` accepts `over_cap_cut_differs`** beside
+  `anchor_drop_over_cap`: a reference that keeps the anchors but cuts over-cap content its own way (a joint
+  `longest_first` truncation where the client settles the query at its share) declares it, and the harness
+  reports those inputs outside the gates. A reference stays the paper's or the model card's; it never
+  copies the client's cut to make an over-cap row pass. `schema/recipe.schema.json` carries the new value.
 - **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
   are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric
   placements whose document has no Bradley-Terry theta, and the queries absent from `bt_scores`, instead of
@@ -81,6 +86,18 @@ released together.
 
 ### Fixed
 
+- **NOTICE attributes every third-party file the recipes and plugins carry**, each re-checked at its pinned
+  revision (upstream SHA-256 and licence): the reference modules that port model-card or remote code
+  (ctxl, jina-reranker-v3, qwen3-embedding-0.6b, the qwen3-reranker and zerank families,
+  qwen3-vl-reranker-2b), the topk plugin's restated config class and the pplx plugin's pooling core and
+  pooler join the templates and the vendored Qwen3-VL-Embedding script; the pplx plugin's paths are
+  corrected. Two packaging tests keep it so: every repository path NOTICE names exists, and every recipe
+  template, vendored recipe module and audited port is named.
+- **The equivalence harness's stage-1 over-length sampler is bounded** (`rcp-ndcg-vllm`): it measures the
+  padding's token rate once and sizes each append from the measured deficit (at most 8 passes), instead of
+  re-tokenizing the growing text at every step -- quadratic at 32768-token budgets, the network recipe tests'
+  hang. A recipe tokenizer whose count never reaches twice the budget (a truncation ceiling in the file) is
+  refused with a `HarnessError` instead of yielding a sample that was never over the cap.
 - **A tokenizer file's embedded truncation and padding no longer cap the counts** (G5): a `tokenizer.json`
   can ship `truncation: {max_length: 1024}` (topk-embed-v1-small does) or fixed-length padding, and an
   un-reset backend silently topped every count and id list at those lengths, so no budget above them could

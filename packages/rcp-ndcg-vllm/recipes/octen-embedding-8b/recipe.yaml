@@ -31,8 +31,8 @@ client:
     document:
       - {fixed: "- "}        # the paper's document prompt, one string with the content (BPE: never separate ids)
       - {content: document}
-      - {fixed: ""}          # tail marker: the anchor is the appended end-of-text token alone (see notes)
-    anchor: last             # the model pools the last token: the post-processor's appended end-of-text id
+    anchor: last             # the model pools the last token: the post-processor's appended end-of-text id, whose
+                             # place this content-final shape declares with add_special_tokens: true below
     add_special_tokens: true # the /v1/embeddings route adds the post-processor tokens; the budget reserves them
   on_overflow: cut
   empty_doc: send            # the paper embeds an empty document as the bare "- " prefix
@@ -79,11 +79,10 @@ notes: >-
   the tokenizer's post-processor tokens (renderers/params.py:183), which append the end-of-text
   anchor (added-token name endoftext, id 151643; NOT the tokenizer_config eos, which is the chat
   end-of-turn marker 151645) -- declared with add_special_tokens: true, so the budget reserves it,
-  and it is the token the model pools. The document shape's trailing empty fixed segment marks the
-  tail for the harness's anchor audit: the audit derives the anchor edge from the last fixed segment
-  plus the post-processor block, and this shape's anchor is the appended token alone; the empty
-  segment renders no text and changes no ids (without it the audit would read the head prefix as a
-  tail anchor, which the prefix's BPE merge into the first content word makes unsatisfiable). The
+  and it is the token the model pools. The shape ends on its content span and pins
+  add_special_tokens: true, declaring the appended token as the shape's anchor: the harness's
+  anchor audit reads the post-processor's tail alone there (the product's TemplateSpec refuses an
+  empty fixed segment, and this content-final declaration is what it offers instead). The
   checkpoint's ChatML chat template must NOT be served (chat_template: null): vLLM applies no
   template on /v1/embeddings, and the research's chat-template counterfactual (r-octen
   check_tokens.py) measured the template render at 26 ids vs 7 bare on the sample query under the

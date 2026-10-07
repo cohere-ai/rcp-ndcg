@@ -9,7 +9,6 @@ test drops the template's trailing anchor segment and shows the anchor check red
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -20,45 +19,32 @@ import pytest
 import yaml
 from rcp_ndcg_vllm import load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
-from rcp_ndcg_vllm.equivalence.fitting import fit_rows, tokenizer_of
+from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
+
+from ._served import served_rows, stage1_facts, tokenizer_cache
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "zerank-1-small-reranker"
 REVISION = "a65fd51c450e9b47fdddab98e31166ecad21af8d"
 REPO = "zeroentropy/zerank-1-small-reranker"
-#: The lane's scratch directory (COMMON.md); the download target when it exists, tmp_path otherwise.
-SCRATCH_TOKENIZER = Path("/root/repos/rcp-ndcg-lanes/rec-zerank-1-small-reranker/scratch/tokenizer/tokenizer.json")
 
 _RECIPE_FILES = ("recipe.yaml", "zerank_score_template.jinja", "reference.py")
 
 
-def _tokenizer_cached() -> bool:
-    """Whether the recipe tokenizer's file is already in the lane's scratch directory."""
-    return SCRATCH_TOKENIZER.is_file()
-
-
-#: Stage 1 on CPU needs the real tokenizer files: cached in the scratch dir, or downloaded from the
-#: Hub (network). The marker names the network need; the skip covers the offline case with a reason.
-stage1_env = pytest.mark.skipif(
-    not os.environ.get("RCP_NDCG_NETWORK_TESTS") and not _tokenizer_cached(),
-    reason="needs the zerank-1-small-reranker tokenizer files: cached in the lane scratch dir, or set "
-    "RCP_NDCG_NETWORK_TESTS=1 to download them",
-)
-
-
 def _tokenizer_file(tmp_path: Path) -> Path:
-    """The tokenizer.json the recipe names, from the scratch cache or downloaded into it (CI: tmp_path)."""
-    if _tokenizer_cached():
-        return SCRATCH_TOKENIZER
-    target_dir = SCRATCH_TOKENIZER.parent if SCRATCH_TOKENIZER.parent.parent.is_dir() else tmp_path / "tokenizer"
+    """The tokenizer.json the recipe names, in the shared tokeniser cache (``RCP_NDCG_VLLM_TOKENIZER_CACHE``
+    when set, the test's ``tmp_path`` otherwise): the download lands there and nowhere else."""
     try:
         from huggingface_hub import hf_hub_download
 
-        return Path(hf_hub_download(REPO, "tokenizer.json", revision=REVISION, local_dir=str(target_dir)))
+        target = tokenizer_cache(tmp_path / "tokenizer")
+        return Path(hf_hub_download(REPO, "tokenizer.json", revision=REVISION, local_dir=str(target)))
     except Exception as error:  # offline (CI) and not cached
-        pytest.skip(
-            f"offline: the zerank-1-small-reranker tokenizer.json is neither cached in {target_dir} "
-            f"nor downloadable ({error})"
-        )
+        pytest.skip(f"offline: the zerank-1-small-reranker tokenizer.json is not downloadable ({error})")
+
+
+#: Stage 1 on CPU needs the real tokenizer files: downloaded into the shared tokeniser cache
+#: (network). The conftest marks and skips these tests without ``RCP_NDCG_NETWORK_TESTS=1``.
+stage1_env = pytest.mark.network
 
 
 def _resolved_recipe(tmp_path: Path) -> Any:
@@ -209,9 +195,15 @@ def test_stage1_on_cpu_token_ids_anchor_check_and_over_length_pairs(tmp_path: Pa
     document = stage1_prompts(recipe, _pairs_path(tmp_path, _sample_pairs()), sys.executable, over_length_per_shape=5)
     assert document["sampled"] == 25  # 20 pairs + 5 over-length
     assert document["passed"] is True, document
-    assert document["fit"]["pair"]["overhead"] == 13
-    assert document["fit"]["pair"]["cuts"] == 5  # exactly the over-length samples were cut
-    assert document["anchor_check"]["passed"] is True and document["anchor_check"]["checked"] == 25
+    # The cut facts come from the role client's own capture and census: exactly the over-length
+    # samples were cut (one row each: the settled query span and the document span), and the
+    # product measured the frame's fixed overhead.
+    facts = stage1_facts(recipe, _sample_pairs(), tokenizer, 5)
+    assert facts["per_shape"]["pair"]["overhead"] == 13
+    assert facts["per_shape"]["pair"]["cut_rows"] == 5
+    assert document["anchor_check"]["passed"] is True and document["anchor_check"]["checked"] == 49
+    # audited: one settled query + one document span per 25 pairs (row 20's empty query is not
+    # a span the audit counts), on the captured wire
     assert document["template_render_check"]["passed"] is True
     assert document["engine_tokenize_check"]["status"] == "not_run"  # CPU: never reported as passed
     render_check = document["render_check"]
@@ -222,13 +214,12 @@ def test_stage1_on_cpu_token_ids_anchor_check_and_over_length_pairs(tmp_path: Pa
 @stage1_env
 @pytest.mark.network
 def test_reference_render_matches_fit_on_over_budget_pairs(tmp_path: Path) -> None:
-    """The reference's anchor-preserving render (its --mode render) is the product's fit, byte for
-    byte, including over-budget pairs: the query cut to its share, the document to the rest, the
-    assistant header (the anchor) always re-attached."""
+    """The reference's anchor-preserving cut spans (its --mode render) are the client's own wire
+    spans, byte for byte, including over-budget pairs: the query cut to its share, the document to
+    the rest -- and the engine's frame around them keeps the assistant header (the anchor)."""
     recipe = _resolved_recipe(tmp_path)
     tokenizer = tokenizer_of(recipe)
     im_start = tokenizer.special_text("im_start")
-    im_end = tokenizer.special_text("im_end")
     rows = _sample_pairs()[:2] + [
         # over budget, both spans: the query alone is past its 4096-token share, the document past
         # the 8192 budget ("alfa " re-tokenizes to 2 tokens and "bravo " to 3, so the pairs are
@@ -239,7 +230,7 @@ def test_reference_render_matches_fit_on_over_budget_pairs(tmp_path: Path) -> No
         # an empty document under budget (empty_doc: send)
         {"query": "empty document", "documents": [""]},
     ]
-    fitted = fit_rows(recipe, rows, tokenizer)["per_shape"]["pair"]["texts"]
+    fitted = served_rows(recipe, rows, tokenizer)["per_shape"]["pair"]["spans"]
     out_path = tmp_path / "reference.json"
     completed = subprocess.run(
         [
@@ -262,30 +253,42 @@ def test_reference_render_matches_fit_on_over_budget_pairs(tmp_path: Path) -> No
     )
     assert completed.returncode == 0, completed.stderr[-500:]
     rows_out = json.loads(out_path.read_text(encoding="utf-8"))["rows"]
-    assert [row["text"] for row in rows_out] == fitted
+    # The reference's cut spans are the client's own, byte for byte (compared like the harness: on
+    # the spans the wire carries).
+    assert [{"query": row["query"], "documents": list(row["documents"])} for row in rows_out] == fitted
     header = f"{im_start}assistant\n"
-    # The two over-budget renders keep the anchor (the paper's whole-prompt cut would drop it).
-    for text in fitted[2:4]:
-        assert text.endswith(header), "the anchor must survive an over-budget cut"
-    assert len(tokenizer.ids(fitted[2], add_special_tokens=True)) <= 8192  # the budget held
-    assert "alfa " * 5999 not in fitted[2]  # the query span was cut to its declared share
-    assert "bravo " * 5999 not in fitted[2]  # the document span was cut to the remainder
-    assert fitted[4] == (f"{im_start}system\nempty document{im_end}\n{im_start}user\n{im_end}\n{im_start}assistant\n")
+    template = recipe.client.template
+    # The frame the engine assembles around the two over-budget rows' spans keeps the anchor (the
+    # paper's whole-prompt cut would drop it) and fits the declared budget.
+    for span in fitted[2:4]:
+        assert template is not None
+        frame = template.render("pair", tokenizer, query=span["query"], document=span["documents"][0])
+        assert frame.endswith(header), "the anchor must survive an over-budget cut"
+        assert len(tokenizer.ids(frame, add_special_tokens=True)) <= 8192  # the budget held
+    assert "alfa " * 5999 not in fitted[2]["query"]  # the query span was cut to its declared share
+    assert "bravo " * 5999 not in fitted[2]["documents"][0]  # the document span was cut to the remainder
+    assert fitted[4] == {"query": "empty document", "documents": [""]}  # empty_doc: send keeps the empty string
 
 
 @stage1_env
 @pytest.mark.network
-def test_mutation_dropping_the_anchor_segment_turns_the_anchor_check_red(tmp_path: Path) -> None:
-    """Drop the template's trailing anchor segment: the anchor check fails (empty anchor edge), while
-    the untouched recipe's anchor check passes (proven by test_stage1_on_cpu_...)."""
+def test_mutation_dropping_the_anchor_segment_reddens_the_template_check(tmp_path: Path) -> None:
+    """Drop the template's trailing anchor segment: the file-vs-declaration check reds.
+
+    The rerank wire carries the cut CONTENT spans (the frame is the engine's own template), so
+    stage 1's anchor audit audits the settled query and the document spans -- a frame change does
+    not move it; the frame contract is pinned by ``template_render_check`` (the declared shape
+    must end with the header the file emits), which this mutation turns red.
+    """
     recipe = _resolved_recipe(tmp_path)
     template = recipe.client.template
     client = recipe.client.model_copy(update={"template": template.model_copy(update={"pair": template.pair[:-1]})})
     mutated: Any = recipe.model_copy(update={"client": client})
     assert len(mutated.client.template.segments("pair")) == 4
-    document = stage1_prompts(mutated, _pairs_path(tmp_path, _sample_pairs()[:3]), None, over_length_per_shape=1)
-    assert document["anchor_check"]["passed"] is False
-    assert document["anchor_check"]["failures"]
-    assert all(failure["check"] == "tail" for failure in document["anchor_check"]["failures"])
-    # The declared shape no longer ends with the header the file emits: the template check is red too.
+    document = stage1_prompts(
+        mutated, _pairs_path(tmp_path, _sample_pairs()[:3]), sys.executable, over_length_per_shape=1
+    )
+    # The declared shape no longer ends with the header the file emits: the template check is red.
     assert document["template_render_check"]["passed"] is False
+    # The spans themselves are unchanged (the query and document contents ship as before).
+    assert document["anchor_check"]["passed"] is True

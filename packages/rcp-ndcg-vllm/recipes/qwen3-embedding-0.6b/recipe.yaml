@@ -60,16 +60,12 @@ client:
       # (the card's own TEI curl example carries a space -- a measured id drift at index 19).
       - {fixed: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"}
       - {content: query}
-      # The anchor position: the frame ends here and the tokenizer's post-processor appends the
-      # endoftext anchor after it (add_special_tokens: true below). The segment renders empty -- it
-      # declares where the anchor sits, and stage 1's anchor audit reads the post-processor tail
-      # after it. Dropping it makes the audit's edge fall back to the frame ids and go red.
-      - {fixed: ""}
     document:
       # Documents are embedded bare ("No need to add instruction for retrieval documents", card);
       # config_sentence_transformers.json prompts.document is "".
       - {content: document}
-    anchor: last
+    anchor: last             # the model pools the last token: the post-processor's appended endoftext anchor,
+                             # whose place this content-final shape declares with add_special_tokens: true
     add_special_tokens: true # both routes: vLLM's pooling routes add the post-processor tokens
   on_overflow: cut
   empty_doc: send # no empty-document rule exists in the checkpoint's own config; the served engine
@@ -114,8 +110,10 @@ notes: >
   frame IS the instruction (config_sentence_transformers.json prompts.query); specialising the task
   means rewriting the frame in this recipe (a new content identity), never a per-run or server-side
   instruction field. Anchor: the served route appends the tokenizer's post-processor endoftext (id
-  151643) and last-token pooling reads it -- the query shape's trailing empty fixed segment declares
-  that position, and the shape pins add_special_tokens: true. Truncation: client.max_tokens is 8192
+  151643) and last-token pooling reads it -- the query shape ends on its content span and pins
+  add_special_tokens: true, declaring that appended token as the shape's anchor (the harness's
+  anchor audit reads the post-processor's tail alone there; the product refuses an empty fixed
+  segment, and this content-final declaration is what it offers instead). Truncation: client.max_tokens is 8192
   (the card's example budget); the cut applies to the query span only, after reserving the frame
   (19 content ids + the appended anchor: overhead 20 and 1 for query and document, measured) and
   re-attaching the frame, so the anchor always survives -- the card's own HF truncation keeps the

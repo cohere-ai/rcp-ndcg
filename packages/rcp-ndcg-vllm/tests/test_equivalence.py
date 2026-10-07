@@ -161,11 +161,12 @@ def test_stage1_without_a_reference_python_reports_not_run(tmp_path: Path) -> No
     assert document["anchor_check"]["passed"] is True
 
 
-def test_stage1_carves_over_cap_rows_out_of_the_render_check_when_declared(tmp_path: Path) -> None:
-    """With anchor_drop_over_cap declared, over-cap pairs-file rows are reported non-gating in stage 1 too."""
+@pytest.mark.parametrize("deviation", ["anchor_drop_over_cap", "over_cap_cut_differs"])
+def test_stage1_carves_over_cap_rows_out_of_the_render_check_when_declared(tmp_path: Path, deviation: str) -> None:
+    """With an over-cap deviation declared, over-cap pairs-file rows are reported non-gating in stage 1 too."""
     recipe = load("fixture-rerank-pointwise")
     deviating = recipe.model_copy(
-        update={"reference": recipe.reference.model_copy(update={"known_deviations": ["anchor_drop_over_cap"]})}
+        update={"reference": recipe.reference.model_copy(update={"known_deviations": [deviation]})}
     )
     over_cap_row = {"query": "over the cap " * 40, "documents": ["document tokens"]}
     pairs = write_pairs(tmp_path / "pairs.jsonl", [over_cap_row, *sample_pairs(1)])
@@ -235,11 +236,12 @@ def test_stage2_multi_vector_compares_every_text_and_fails_on_noise(tmp_path: Pa
         noisy.stop()
 
 
-def test_stage2_gates_only_under_cap_pairs_when_the_deviation_is_declared(tmp_path: Path) -> None:
-    """With anchor_drop_over_cap, over-cap pairs (the client's own census) are non-gating; the rest gate."""
+@pytest.mark.parametrize("deviation", ["anchor_drop_over_cap", "over_cap_cut_differs"])
+def test_stage2_gates_only_under_cap_pairs_when_the_deviation_is_declared(tmp_path: Path, deviation: str) -> None:
+    """With an over-cap deviation, over-cap pairs (the client's own census) are non-gating; the rest gate."""
     recipe = load("fixture-rerank-pointwise")
     deviating = recipe.model_copy(
-        update={"reference": recipe.reference.model_copy(update={"known_deviations": ["anchor_drop_over_cap"]})}
+        update={"reference": recipe.reference.model_copy(update={"known_deviations": [deviation]})}
     )
     pairs = write_pairs(
         tmp_path / "pairs.jsonl",
@@ -415,3 +417,65 @@ def test_stage3_metrics_compares_served_against_reference(tmp_path: Path) -> Non
     )
     document = stage3_metrics(rankings_dir, gates)
     assert document["passed"] is True
+
+
+class CountingWords:
+    """A whitespace-word tokenizer that counts its calls (the sampler's TokenizerAdapter surface)."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.char_work = 0
+
+    def count(self, text: str) -> int:
+        """Tokens of ``text`` -- one per word -- and the recorded re-tokenization work, in characters."""
+        self.calls += 1
+        self.char_work += len(text)
+        return len(text.split()) or 1
+
+
+def test_over_length_padding_is_bounded_and_over_budget() -> None:
+    """The sampler pads to >= 2x the budget in whole words with a RUNTIME BOUND (the hang fix).
+
+    A 32768-token budget once re-tokenized the growing text at every step (one count per ~7 removed
+    words), and one stage-1 sample of 10 over-length texts sat in ``tokenizer.count`` for minutes.  The
+    bound is what makes the six network-gated files finish: at most 8 measured passes, so the counted
+    characters stay a small multiple of the padded length instead of quadratic.
+    """
+    from rcp_ndcg_vllm.equivalence.stages import _over_length
+
+    for budget in (64, 2048, 32768):
+        tokenizer = CountingWords()
+        seed = "How fast does light travel in a vacuum?"
+        text = _over_length(seed, budget, tokenizer, 2)
+        assert tokenizer.count(text) >= budget * 2  # the contract: at least twice the budget, still text
+        assert text.startswith(seed)  # seed preserved, padding appended
+        assert all(word == "pad2" for word in text.split()[len(seed.split()) :])  # whole words of the marker
+        assert tokenizer.calls <= 12, (budget, tokenizer.calls)  # bounded pass count, not a re-tokenizing loop
+        assert tokenizer.char_work <= 24 * len(text), (budget, tokenizer.char_work, len(text))
+
+
+class CeilingWords(CountingWords):
+    """A whitespace-word tokenizer whose count saturates at a ceiling (an embedded truncation, recipe G5)."""
+
+    def __init__(self, ceiling: int) -> None:
+        super().__init__()
+        self.ceiling = ceiling
+
+    def count(self, text: str) -> int:
+        """Tokens of ``text``, never more than the ceiling."""
+        return min(super().count(text), self.ceiling)
+
+
+def test_over_length_padding_refuses_a_counter_that_never_reaches_the_target() -> None:
+    """A tokenizer whose count stops at a ceiling below twice the budget cannot yield an over-length sample.
+
+    The bounded sampler must say so instead of returning a text it never measured over the target: such a
+    sample would audit an uncut input as if it were over the cap (nothing passes silently).
+    """
+    from rcp_ndcg_vllm.equivalence.stages import _over_length
+    from rcp_ndcg_vllm.errors import HarnessError
+
+    tokenizer = CeilingWords(ceiling=1024)
+    with pytest.raises(HarnessError, match=r"2048 tokens.*1024"):
+        _over_length("How fast does light travel in a vacuum?", 1024, tokenizer, 0)
+    assert tokenizer.calls <= 12  # the refusal comes after the bounded passes, not after a hang

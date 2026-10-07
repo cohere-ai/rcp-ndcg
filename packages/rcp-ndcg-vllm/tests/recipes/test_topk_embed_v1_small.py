@@ -19,10 +19,12 @@ import pytest
 import yaml
 from rcp_ndcg_vllm import load_recipe
 from rcp_ndcg_vllm.equivalence import stage1_prompts
-from rcp_ndcg_vllm.equivalence.fitting import fit_rows, load_pairs
+from rcp_ndcg_vllm.equivalence.fitting import load_pairs
 from rcp_ndcg_vllm.recipe import serve_argv
 
 from rcp_ndcg.data.tokenizer import load_tokenizer
+
+from ._served import served_rows
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "topk-embed-v1-small"
 REVISION = "e54485ebab921f2c18c4d092b3f4c40dcca26781"
@@ -108,6 +110,31 @@ def _mutated_recipe(tmp_path: Path, change: Callable[[dict], dict]) -> Path:
     return target
 
 
+def _probe_recipe(tmp_path: Path, change: Callable[[dict], dict] | None = None) -> Path:
+    """A probe copy of the recipe at a tiny vector width (``dim: 8``): the runtime bound on stage 1.
+
+    The offline fake generates one ``dim``-wide hash-seeded unit vector per KEPT TOKEN of a
+    multi-vector request (``rcp_ndcg.inference.fake._pooling`` -> ``_unit_vector`` ->
+    ``fake_uniform``: one sha256 per scalar), so at the shipped width (2048) the stage-1 samples'
+    2x8192-token inputs cost ~33.5M hash draws per probed text -- tens of minutes per test (the
+    network run's known hang; faulthandler dumps it inside ``fake.fake_uniform``). A width of 8
+    bounds every probe to a second, and every assertion these tests make is width-independent
+    (texts, ids, cuts, anchors, the render comparison); the shipped 2048 is pinned by
+    test_recipe_validates. ``test_cut_preserves_the_frame_head`` bounds the same cost by shrinking
+    ``max_tokens`` instead (its point is the budget).
+
+    Args:
+        tmp_path: the test's temporary directory (the recipe copy lives there).
+        change: an optional further YAML mutation, applied after the width bound.
+    """
+
+    def bound(data: dict) -> dict:
+        narrowed = {**data, "client": {**data["client"], "dim": 8}}
+        return change(narrowed) if change else narrowed
+
+    return _mutated_recipe(tmp_path, bound)
+
+
 def _write_reference_pairs(sampled: list[dict[str, Any]], work: Path) -> Path:
     """The pairs-file rows of a sampled set, as the pairs file the reference subprocess reads."""
     work.mkdir(parents=True, exist_ok=True)
@@ -160,7 +187,7 @@ def test_serve_argv_carries_the_serving_facts() -> None:
 
 def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer) -> None:
     """The harness's stage 1 on CPU: fits, anchor audit and the reference render all agree."""
-    recipe = load_recipe(RECIPE_DIR)
+    recipe = load_recipe(_probe_recipe(tmp_path))
     document = stage1_prompts(
         recipe,
         _pairs_file(tmp_path),
@@ -169,7 +196,7 @@ def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer) -> None:
     )
     assert document["sampled"] >= 25, document["sampled"]  # 20 pairs + 5 over-length per shape
     assert document["anchor_check"]["passed"] is True, document["anchor_check"]["failures"][:1]
-    assert document["anchor_check"]["checked"] == document["sampled"]
+    assert document["anchor_check"]["checked"] == 2 * 20 + 10  # one text per shape per pairs row + samples
     assert document["render_check"]["status"] == "run"
     assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
     assert document["render_check"]["rows"] == 2 * 20  # one render per declared shape per pair
@@ -189,10 +216,10 @@ def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(tmp_path:
     from rcp_ndcg_vllm.equivalence.reference import run_reference
     from rcp_ndcg_vllm.equivalence.stages import _sampled_rows
 
-    recipe = load_recipe(RECIPE_DIR)
+    recipe = load_recipe(_probe_recipe(tmp_path))
     rows = load_pairs(_pairs_file(tmp_path))
     sampled = _sampled_rows(recipe, rows, tokenizer, 5)
-    fitted = fit_rows(recipe, sampled, tokenizer)
+    fitted = served_rows(recipe, sampled, tokenizer)
     work = tmp_path / "ref"
     reference = run_reference(
         sys.executable,
@@ -220,20 +247,15 @@ def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(tmp_path:
             assert text.startswith(QUERY_HEAD if shape == "query" else DOCUMENT_HEAD)
             ids = tokenizer.ids(text, add_special_tokens=True)
             assert ids[: len(head_ids)] == head_ids  # the fixed head survived
-            # The sample is genuinely over the declared budget as the ENGINE reads it (an uncapped
-            # clone of the same tokenizer file; the shipped one caps the product's counting at 1024,
-            # recipe notes G5).
-            uncapped = type(tokenizer.backend).from_str(tokenizer.backend.to_str())
-            uncapped.no_truncation()
-            true_count = len(uncapped.encode(text).ids)
-            assert true_count > recipe.client.max_tokens, (true_count, shape)
-            if len(text) == len(uncut):
-                # G5 as shipped: no cut fired, so the whole text goes out while the product's own id
-                # view stops at the file's ceiling -- exactly the divergence the wave's /tokenize
-                # check must surface.
-                assert len(ids) < true_count
-            else:
-                assert len(text) < len(uncut)  # a ceiling-free counter cuts: a true prefix
+            # The sample is genuinely over the declared budget and the cut fired: G5 is FIXED in the
+            # product's tokenizer loading (the file's embedded truncation is reset at load), so the
+            # counter sees past the old 1024-token ceiling and the fit cuts at the declared 8192
+            # budget.
+            whole_count = len(tokenizer.backend.encode(uncut).ids)
+            true_count = len(tokenizer.backend.encode(text).ids)
+            assert whole_count > recipe.client.max_tokens, (whole_count, shape)
+            assert true_count <= recipe.client.max_tokens, (true_count, shape)
+            assert len(text) < len(uncut)  # the cut fired: a true prefix
     assert n_over_length == 10  # 5 per declared shape
 
 
@@ -350,10 +372,10 @@ def test_document_keep_mask_drops_skip_positions(tokenizer, checkpoint) -> None:
 def test_cut_preserves_the_frame_head(tmp_path: Path, tokenizer) -> None:
     """At a budget the counting can see, the cut hits the content span only and the head survives.
 
-    The checkpoint's tokenizer file caps the product's counting at 1024 tokens (recipe notes, G5), so
-    the declared 8192 budget cannot fire a cut today; this test shrinks the budget to 64 in a mutated
-    copy so the cut path actually runs, and asserts the anchor rule on its output: the fixed head
-    ("Query: " / "Document: ") opens every cut render, and the render stays within the budget.
+    The test shrinks the budget to 64 in a mutated copy so the cut path runs cheaply (G5 is fixed in
+    the product's tokenizer loading, so the real 8192 budget fires too -- see the over-length test),
+    and asserts the anchor rule on its output: the fixed head ("Query: " / "Document: ") opens every
+    cut render, and the render stays within the budget.
     """
     from rcp_ndcg_vllm.equivalence.stages import _over_length
 
@@ -371,7 +393,7 @@ def test_cut_preserves_the_frame_head(tmp_path: Path, tokenizer) -> None:
             "documents": [padded if shape == "document" else "Q3 revenue was $12 million."],
             "shape": shape,
         }
-        fitted = fit_rows(recipe, [row], tokenizer)
+        fitted = served_rows(recipe, [row], tokenizer)
         body = fitted["per_shape"][shape]
         assert body["cuts"] == 1, body  # the cut fired
         text = body["texts"][0]
@@ -393,7 +415,7 @@ def test_mutation_anchor_to_last_makes_the_anchor_check_red(tmp_path: Path, toke
         data["client"]["template"]["anchor"] = "last"
         return data
 
-    recipe = load_recipe(_mutated_recipe(tmp_path, mutate))
+    recipe = load_recipe(_probe_recipe(tmp_path, mutate))
     document = stage1_prompts(recipe, _pairs_file(tmp_path), None, over_length_per_shape=1)
     assert document["anchor_check"]["passed"] is False
     failures = document["anchor_check"]["failures"]
@@ -413,7 +435,7 @@ def test_mutation_drop_frame_segments_makes_the_render_check_red(tmp_path: Path,
         data["client"]["template"]["document"] = [{"content": "document"}]
         return data
 
-    recipe = load_recipe(_mutated_recipe(tmp_path, mutate))
+    recipe = load_recipe(_probe_recipe(tmp_path, mutate))
     document = stage1_prompts(recipe, _pairs_file(tmp_path), sys.executable, over_length_per_shape=1)
     assert document["render_check"]["status"] == "run"
     assert document["render_check"]["passed"] is False

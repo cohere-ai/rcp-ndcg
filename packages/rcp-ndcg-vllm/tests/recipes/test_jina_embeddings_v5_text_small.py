@@ -24,12 +24,12 @@ import pytest
 import yaml
 from rcp_ndcg_vllm import Recipe, client_config, default_recipes_root, load_recipe
 from rcp_ndcg_vllm.equivalence import stage1_prompts
-from rcp_ndcg_vllm.equivalence.fitting import budget_of
 from rcp_ndcg_vllm.equivalence.reference import run_reference
 
-from rcp_ndcg.data.preprocess import fit
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.inference.config import EmbeddingEndpoint
+
+from ._served import served_texts, stage1_facts
 
 RECIPE_ID = "jina-embeddings-v5-text-small"
 MODEL = "jinaai/jina-embeddings-v5-text-small"
@@ -272,15 +272,19 @@ def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
         document["anchor_check"]["failures"][:1],
         document["render_check"]["failures"][:1],
     )
-    # The anchor check covered every sampled input, over-length ones included.
+    # The anchor check covered every sampled input, over-length ones included (one text per
+    # declared shape per pairs row -- the query, and EVERY document of the row -- one per sample).
     assert document["anchor_check"]["passed"] is True
-    assert document["anchor_check"]["checked"] == document["sampled"]
+    assert document["anchor_check"]["checked"] == len(PAIRS) + sum(len(row["documents"]) for row in PAIRS) + 10
     assert document["anchor_check"]["anchor"] == "first"
     # Both declared shapes carried their five over-length samples and cut them (the content span
-    # only; the fixed frame is reserved, which the anchor check just asserted).
+    # only; the fixed frame is reserved, which the anchor check just asserted). The facts come from
+    # the role client's own capture and census (what the served path really sent).
+    facts = stage1_facts(recipe, PAIRS, tokenizer, 5)
     for shape in ("query", "document"):
-        assert document["fit"][shape]["overhead"] == 3  # "Query:"/"Document:" + the separator space
-        assert document["fit"][shape]["cuts"] >= 5
+        body = facts["per_shape"][shape]
+        assert body["overhead"] == 3  # "Query:"/"Document:" + the separator space
+        assert body["cuts"] >= 5
     # The engine-side /tokenize check is reported not_run without an engine, never passed.
     assert document["engine_tokenize_check"]["status"] == "not_run"
     # Token-id equality, asserted on ids: the reference subprocess's rendered prompts, tokenized
@@ -297,11 +301,9 @@ def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
     ref_by_key = {(row["index"], row["shape"]): row["text"] for row in reference["rows"]}
     expected_keys = {(index, shape) for index in range(len(PAIRS)) for shape in ("query", "document")}
     assert set(ref_by_key) == expected_keys
-    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
     for key, reference_text in ref_by_key.items():
-        shape = cast_shape(key[1])
         raw = PAIRS[key[0]]["query"] if key[1] == "query" else PAIRS[key[0]]["documents"][0]
-        fit_text = fit([raw], shape, budget, tokenizer, ids=["0"]).texts[0]
+        fit_text = served_texts(recipe, [raw], key[1])[0]
         assert fit_text == reference_text, key
         assert tokenizer.ids(fit_text, add_special_tokens=True) == tokenizer.ids(
             reference_text, add_special_tokens=True
