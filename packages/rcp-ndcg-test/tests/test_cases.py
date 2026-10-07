@@ -25,8 +25,9 @@ DOCS_BLOCK = """      documents:
         - {id: d2, text: calibrated judgements}"""
 
 
-def _tiny_png() -> bytes:
-    """One syntactically valid 16x16 RGBA PNG (155 bytes): a media case's placeholder file."""
+def _tiny_png_bytes() -> bytes:
+    """One syntactically valid 16x16 RGBA PNG (79 bytes): the same bytes as the committed fixture
+    media (`fixtures/cases/*/media/pixel.png`), so a declared hash matches a copy of it."""
     import binascii
     import struct
     import zlib
@@ -708,7 +709,7 @@ def test_a_media_path_may_not_escape_the_media_directory_even_when_the_target_ex
           status: pending_gpu
     """
     case_file = write_case(tmp_path / "cases", "fake-pool", "escape", body)
-    (case_file.parent / "outside.png").write_bytes(_tiny_png())  # the escape TARGET EXISTS
+    (case_file.parent / "outside.png").write_bytes(_tiny_png_bytes())  # the escape TARGET EXISTS
     (case_file.parent / "media").mkdir()
     recipe = load_recipe(tmp_path / "recipes" / "fake-pool")
     with pytest.raises(CaseError, match="escapes the media directory"):
@@ -743,7 +744,7 @@ def test_a_mixed_length_label_is_measured_on_every_batch_label(tmp_path: Path) -
     """
     case_file = write_case(tmp_path, "fake-pool", "mixed-lie", body)
     (case_file.parent / "media").mkdir()
-    (case_file.parent / "media" / "pixel.png").write_bytes(_tiny_png())
+    (case_file.parent / "media" / "pixel.png").write_bytes(_tiny_png_bytes())
     recipe = load_recipe(TEST_RECIPES / "fake-pool")
     with pytest.raises(CaseError, match="holds no mixed lengths"):
         load_cases(tmp_path, recipe, recipes_root=TEST_RECIPES, check_lengths=True)
@@ -830,7 +831,7 @@ def test_a_media_case_needs_the_recipe_to_declare_its_media_policy(tmp_path: Pat
     """
     case_file = write_case(tmp_path / "cases", "fake-pool", "policy-missing", body)
     (case_file.parent / "media").mkdir()
-    (case_file.parent / "media" / "pixel.png").write_bytes(_tiny_png())
+    (case_file.parent / "media" / "pixel.png").write_bytes(_tiny_png_bytes())
     recipe = load_recipe(tmp_path / "recipes" / "fake-pool")
     with pytest.raises(CaseError, match="does not declare it reads images"):
         load_cases(tmp_path / "cases", recipe, recipes_root=tmp_path / "recipes", check_lengths=False)

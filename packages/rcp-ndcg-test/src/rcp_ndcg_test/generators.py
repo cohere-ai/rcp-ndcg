@@ -26,7 +26,7 @@ from typing import Any
 
 from .errors import CaseError
 
-__all__ = ["GENERATORS", "materialize"]
+__all__ = ["GENERATORS", "GENERATOR_VERSION", "materialize"]
 
 
 def _sha256(text: str) -> str:
@@ -139,26 +139,6 @@ def zembed_ledger(params: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 # topk-embed-v1-small: a template-bank sentence stream (random.Random(seed)), the first N words
 # ---------------------------------------------------------------------------
-
-_TOPK_ADJECTIVES = (
-    "quarterly",
-    "annual",
-    "regional",
-    "technical",
-    "internal",
-    "preliminary",
-    "final",
-    "operational",
-    "financial",
-    "independent",
-    "statutory",
-    "structural",
-    "comparative",
-    "environmental",
-    "seasonal",
-    "regional",
-)
-
 
 # The topk template bank, verbatim from the lane's committed generator (the one home for the bank;
 # the case directory's make_long_inputs.py keeps its own build script for re-running the lane).

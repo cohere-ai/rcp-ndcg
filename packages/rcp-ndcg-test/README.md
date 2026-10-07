@@ -58,13 +58,18 @@ labels are cross-checked against the case's own inputs at load (a `modality: ima
 document, or a `mixed_length` batch whose text inputs all measure the same, is refused), so a mislabel
 cannot satisfy the grid.
 Generated cases start `origin: reference, status: pending_gpu, values: null`; the GPU waves fill them from
-the reference implementation and the engine. Long inputs are deterministic (their construction is
+the reference implementation and the engine. `origin: engine` means one recorded run of the recipe's
+engine produced the values -- for the *shipped fixture cases* that engine is their recipe's named
+deterministic test fake (each fixture's `notes` names it), never a real model. Long inputs are deterministic (their construction is
 recorded in `notes`), measured with the recipe's tokenizer; media files live under the case's
-`media/` directory (`cases/<recipe-id>/media/<slug>.<ext>`), and nothing is fetched at test time. A
-media case carries its files to the wire through the adaptation step's `prepare_image`/`prepare_video`
-and out as `image_url` content parts (one media item per encode call on the pooling route) — it *runs*
-on the pool, rerank and gate routes and *skips* (checked before every send, reason recorded) only on
-the embed route, whose `EmbeddingEndpoint` refuses media at gate level.
+`media/` directory (`cases/<recipe-id>/media/<slug>.<ext>`), and nothing is fetched at test time. An
+image media case carries its file to the wire through the adaptation step's `prepare_image` and out
+as `image_url` content parts (one media item per encode call on the pooling route) — it *runs* on
+the pool and rerank routes (the wire shapes whose clients prepare media). Two declared *skips*
+(recorded before every send, each with its reason): a `video` case on every route (the product's
+media lowering sends images; a video container is refused until a frames reader lands), and any media
+case on the embed route (its `EmbeddingClient` takes text only and refuses media before
+preparation).
 
 A generated text may be stored **by reference** instead of literally: `text_ref:
 {generator: <name>@<version>, params: {...}, sha256: <hex of the UTF-8 text>}` — usable wherever a case
