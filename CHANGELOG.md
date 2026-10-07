@@ -31,7 +31,10 @@ released together.
   count an image. Declaring `engine_pixel_pinning: true` admits the budget, and the policy's re-resize check
   then uses the pinned budget (the engine's own) instead of the stock range; the descriptor says `pinned`.
   `false` is stored as `None`, so no existing policy re-keys; a declared pinning is a different instrument (it
-  enters the family key). A policy without a budget refuses the declaration. `rcp_ndcg_vllm`'s recipe
+  enters the family key). A policy without a budget refuses the declaration. The media fit's shrink step
+  carries the declared policy's every field (the pinning included) into its minimum policy, so a pinned budget
+  below the stock floor shrinks to its own minimum; a shrink the policy cannot express is a typed `DataError`
+  naming the budget. `rcp_ndcg_vllm`'s recipe
   validator checks both sides: a pinned client needs `serve.mm_processor_kwargs.images_kwargs` with both
   numbers, and every pixel number serve pins (nested or flat) must equal the client's.
 - **A per-document cap beside the pair budget** (`RerankEndpoint.document_max_tokens`,
