@@ -194,11 +194,11 @@ def _probe_dimensions(payload: bytes) -> tuple[int | None, int | None]:
         return None, None
 
 
-#: Image suffixes read as media, and the MIME type each is recorded and sent under.
 DEFAULT_IMAGE_MIME = "image/png"
 """The MIME type an image with no recorded ``mime`` is sent under (the one home; the preparation and the
 wire lowerings import it from here)."""
 
+#: Image suffixes read as media, and the MIME type each is recorded and sent under.
 IMAGE_MIME_BY_SUFFIX = {
     ".png": "image/png",
     ".jpg": "image/jpeg",

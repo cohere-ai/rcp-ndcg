@@ -252,4 +252,4 @@ def adapter_contract(
                     "provider error"
                 )
     if failures:
-        raise AssertionError("the adapter contract failed:\n  - " + "\n  ".join(failures))
+        raise AssertionError("the adapter contract failed:\n  - " + "\n  - ".join(failures))

@@ -294,9 +294,10 @@ class OpenAIEmbeddings(_EmbedAdapter):
     config sets one; the reply is read from ``data[].embedding`` in ``data[].index`` order, as float lists or
     base64 float32 strings. This shape declares no client-side batch cap (it serves engines as well as the
     hosted OpenAI route): an over-count engine answers its own refusal (TEI's HTTP 413), which maps to a
-    :class:`~rcp_ndcg.errors.CapabilityError` naming ``batch_size``, and the hosted route's own refusal is
-    read the same way (the historical 128 constant went with this: the number was stale and its check could
-    never apply to a served engine).
+    :class:`~rcp_ndcg.errors.CapabilityError` naming ``batch_size``; the hosted OpenAI route answers an
+    over-count batch with its own HTTP 400, which surfaces as a
+    :class:`~rcp_ndcg.errors.RequestRejectedError` carrying the API's message (the historical 128 constant
+    went: its check could never apply to a served engine, and its number was stale for the hosted route).
     """
 
     name: ClassVar[str] = "openai_embeddings"

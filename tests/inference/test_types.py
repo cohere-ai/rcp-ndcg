@@ -816,6 +816,8 @@ class TestAdapterContractKit:
         message = str(caught.value)
         assert "credential fact HOSTED" in message and "DEFAULT_BASE_URL" in message
         assert "did not construct" in message, "the constructor convention is part of the contract"
+        listed = message.splitlines()[1:]
+        assert len(listed) > 1 and all(line.startswith("  - ") for line in listed), "one bullet per failure"
 
     def test_a_recorded_round_is_checked(self) -> None:
         from rcp_ndcg.testing import adapter_contract

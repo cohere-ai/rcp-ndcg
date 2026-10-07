@@ -148,7 +148,7 @@ class PreparedRequest(NamedTuple):
 
     content_tokens: tuple[MediaTokenCount, ...] = ()
     """Per content, its own media token counts (the same rule as :attr:`tokens`). A per-content slice of a
-    request (:meth:`select`) needs them; :func:`prepare_request` fills them."""
+    request (:meth:`per_content`) needs them; :func:`prepare_request` fills them."""
 
     def per_content(self) -> tuple[PreparedRequest, ...]:
         """The preparation of each content on its own, in one pass: its media items (the flat list is in

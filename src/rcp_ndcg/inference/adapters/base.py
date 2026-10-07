@@ -88,8 +88,9 @@ class AdapterBase:
             ``None``: ``base_url`` is required (a served endpoint has no public root). The profile's default
             key variables apply only at this host (any other ``base_url`` carries a key only through the
             config's ``api_key_env``).
-        MAX_BATCH: The texts/items-per-request cap the API publishes; ``None`` lets the server decide (its
-            over-count refusal is mapped to :class:`~rcp_ndcg.errors.CapabilityError`).
+        MAX_BATCH: The texts/items-per-request cap a HOSTED profile's API publishes, refused client-side
+            above it on HOSTED profiles only (a served engine answers its own over-count refusal, and a cap
+            declared on a non-hosted wire is never enforced); ``None`` lets the server decide.
         SUPPORTS_DIMENSIONS: Whether this route takes a ``dimensions`` parameter (a Matryoshka cut).
         ENCODING_FORMAT: The ``encoding_format`` request field; ``None`` leaves it out (the routes that have
             no such field).
