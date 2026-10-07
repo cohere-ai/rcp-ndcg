@@ -10,9 +10,22 @@ here instead of silently corrupting weight loading.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
-from conftest import CENSUS_PREFIX_COUNTS, PLUGIN_ROOT  # noqa: I001 - conftest prepends src/
-from rcp_ndcg_vllm_topk import weights
+from rcp_ndcg_vllm_topk import weights  # noqa: I001 - conftest prepends src/
+
+#: The plugin's distribution root. Defined here, never imported ``from conftest``: CI collects both
+#: plugins' suites in one process, where the bare module name ``conftest`` names whichever suite's
+#: conftest was imported first.
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+
+#: The checkpoint's tensor counts per name prefix (the identity the mapping must preserve).
+CENSUS_PREFIX_COUNTS = {
+    "head.weight": 1,
+    "model.language_model": 320,
+    "model.visual": 297,
+}
 
 VLLM_MISSING_REASON = (
     "vLLM is not importable on this CPU environment; the served model "

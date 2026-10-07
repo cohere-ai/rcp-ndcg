@@ -20,8 +20,9 @@ from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 import pytest
-from conftest import PLUGIN_ROOT
 
+#: The plugin's distribution root (never ``from conftest``: see test_weight_mapping.PLUGIN_ROOT).
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 CHECK_SCRIPT = Path(__file__).resolve().parent / "check_no_deps_install.py"
 
 
