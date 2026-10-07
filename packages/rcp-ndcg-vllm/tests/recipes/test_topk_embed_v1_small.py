@@ -110,6 +110,31 @@ def _mutated_recipe(tmp_path: Path, change: Callable[[dict], dict]) -> Path:
     return target
 
 
+def _probe_recipe(tmp_path: Path, change: Callable[[dict], dict] | None = None) -> Path:
+    """A probe copy of the recipe at a tiny vector width (``dim: 8``): the runtime bound on stage 1.
+
+    The offline fake generates one ``dim``-wide hash-seeded unit vector per KEPT TOKEN of a
+    multi-vector request (``rcp_ndcg.inference.fake._pooling`` -> ``_unit_vector`` ->
+    ``fake_uniform``: one sha256 per scalar), so at the shipped width (2048) the stage-1 samples'
+    2x8192-token inputs cost ~33.5M hash draws per probed text -- tens of minutes per test (the
+    network run's known hang; faulthandler dumps it inside ``fake.fake_uniform``). A width of 8
+    bounds every probe to a second, and every assertion these tests make is width-independent
+    (texts, ids, cuts, anchors, the render comparison); the shipped 2048 is pinned by
+    test_recipe_validates. ``test_cut_preserves_the_frame_head`` bounds the same cost by shrinking
+    ``max_tokens`` instead (its point is the budget).
+
+    Args:
+        tmp_path: the test's temporary directory (the recipe copy lives there).
+        change: an optional further YAML mutation, applied after the width bound.
+    """
+
+    def bound(data: dict) -> dict:
+        narrowed = {**data, "client": {**data["client"], "dim": 8}}
+        return change(narrowed) if change else narrowed
+
+    return _mutated_recipe(tmp_path, bound)
+
+
 def _write_reference_pairs(sampled: list[dict[str, Any]], work: Path) -> Path:
     """The pairs-file rows of a sampled set, as the pairs file the reference subprocess reads."""
     work.mkdir(parents=True, exist_ok=True)
@@ -162,7 +187,7 @@ def test_serve_argv_carries_the_serving_facts() -> None:
 
 def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer) -> None:
     """The harness's stage 1 on CPU: fits, anchor audit and the reference render all agree."""
-    recipe = load_recipe(RECIPE_DIR)
+    recipe = load_recipe(_probe_recipe(tmp_path))
     document = stage1_prompts(
         recipe,
         _pairs_file(tmp_path),
@@ -191,7 +216,7 @@ def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(tmp_path:
     from rcp_ndcg_vllm.equivalence.reference import run_reference
     from rcp_ndcg_vllm.equivalence.stages import _sampled_rows
 
-    recipe = load_recipe(RECIPE_DIR)
+    recipe = load_recipe(_probe_recipe(tmp_path))
     rows = load_pairs(_pairs_file(tmp_path))
     sampled = _sampled_rows(recipe, rows, tokenizer, 5)
     fitted = served_rows(recipe, sampled, tokenizer)
@@ -390,7 +415,7 @@ def test_mutation_anchor_to_last_makes_the_anchor_check_red(tmp_path: Path, toke
         data["client"]["template"]["anchor"] = "last"
         return data
 
-    recipe = load_recipe(_mutated_recipe(tmp_path, mutate))
+    recipe = load_recipe(_probe_recipe(tmp_path, mutate))
     document = stage1_prompts(recipe, _pairs_file(tmp_path), None, over_length_per_shape=1)
     assert document["anchor_check"]["passed"] is False
     failures = document["anchor_check"]["failures"]
@@ -410,7 +435,7 @@ def test_mutation_drop_frame_segments_makes_the_render_check_red(tmp_path: Path,
         data["client"]["template"]["document"] = [{"content": "document"}]
         return data
 
-    recipe = load_recipe(_mutated_recipe(tmp_path, mutate))
+    recipe = load_recipe(_probe_recipe(tmp_path, mutate))
     document = stage1_prompts(recipe, _pairs_file(tmp_path), sys.executable, over_length_per_shape=1)
     assert document["render_check"]["status"] == "run"
     assert document["render_check"]["passed"] is False
