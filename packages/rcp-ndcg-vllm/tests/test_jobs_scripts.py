@@ -241,7 +241,11 @@ def test_bootstrap_installs_a_named_plugin_from_the_staged_wheelhouse_only(tmp_p
     log = (tmp_path / "engine-python.log").read_text(encoding="utf-8")
     assert "my-plugin==1.2.3" in log
     assert "--no-index" in log and "--find-links" in log
-    assert str(tmp_path / "stage" / "wheelhouse") in log
+    argv = log.split()
+    links = [argv[index + 1] for index, word in enumerate(argv) if word == "--find-links"]
+    # Exactly the stage's wheelhouse: with no extra/ entry the extra-wheelhouse glob matches nothing, and its
+    # unexpanded pattern is never passed on as a link.
+    assert links == [str(tmp_path / "stage" / "wheelhouse")]
     assert (tmp_path / "allowed.txt").read_text(encoding="utf-8").strip() == "my-plugin"
     assert not (tmp_path / "failed.txt").exists() or not (tmp_path / "failed.txt").read_text(encoding="utf-8").strip()
 
