@@ -2169,3 +2169,38 @@ class TestEmptyDocumentsBeforeTheFrame:
         else:
             PoolingClient(PoolingEndpoint(**settings, dim=2), sender=sender).encode(texts(""), EncodeRole.DOCUMENT)
         assert sender.bodies[-1]["input"] == ["passage: NULL"]
+
+
+class TestDeclaredNormalisationIsNoChange:
+    """Declared normalisation (``strip``, ``lowercase``) is policy both sides apply, never a change: the rerank
+    settlement compares the normalised query with the normalised settled span, and records a cut only when
+    content was actually removed."""
+
+    @staticmethod
+    def _client(tokenizer_json: str, **fields: Any) -> RerankClient:
+        template = TemplateSpec(
+            pair=(Segment(content="query"), Segment(fixed=" | "), Segment(content="document")),
+            normalize=("strip", "lowercase"),
+        )
+        return RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                use_activation=False,
+                template=template,
+                **{"max_tokens": 64, **fields},
+            ),
+            sender=RecordingSender(),
+        )
+
+    def test_a_normalised_query_under_its_share_is_no_change(self, tokenizer_json: str) -> None:
+        client = self._client(tokenizer_json)
+        client.rerank("  The Query  ", ["a b c", "the document"])
+        assert client.processing == [] and len(client.census) == 0
+
+    def test_a_normalised_query_over_its_share_is_a_query_share_cut(self, tokenizer_json: str) -> None:
+        client = self._client(tokenizer_json, query_max_tokens=3)
+        client.rerank(" The Query Of The Evidence ", ["a b c"])
+        (record,) = client.processing
+        assert (record.input_id, record.mechanisms) == (QUERY_DOC_ID, ("query_share",))

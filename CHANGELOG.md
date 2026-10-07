@@ -202,7 +202,9 @@ released together.
   resize or drop; a reranker's query settlement changes the query span (and, in stage 2, the score) of every
   pair of its row, a document's change only that document -- and the report names each change's mechanisms,
   the uncut and kept request totals and the budget. Every text the client sent uncut gates exactly, also
-  beside a changed sibling in the same row.
+  beside a changed sibling in the same row. Declared normalisation (`strip`, `lowercase`) is policy both sides
+  apply, never a change: the rerank settlement compares the normalised query with the settled span and
+  records a cut only when content was removed.
 - **The offline fake draws one seeded stream per vector**: `rcp_ndcg.inference.fake`'s `/embeddings` and
   `/pooling` vectors are one SHAKE-256 stream of the same parts each (read as `dim` uniforms), no longer one
   SHA-256 per component, so a 16k-token text at 2048 dimensions answers in seconds instead of minutes. The

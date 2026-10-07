@@ -451,7 +451,19 @@ class RerankClient(RoleClient):
                 media_tokens=[query_media + max(pair_media, default=0)],
                 record=False,
             ).contents[0][0]
-            if settled != original_query:
+            # Like with like: fit returns the span under the template's declared normalisation (strip,
+            # lowercase), which both sides apply and which is never a change -- the settled span is compared
+            # with the normalised query, and only content actually removed is a cut.
+            template = self._budget.template
+            normalised_query = (
+                template.normalize_text("pair", original_query)
+                if template is not None and template.normalisers("pair")
+                else original_query
+            )
+            if settled != normalised_query and (
+                len(settled) < len(normalised_query)
+                or self._tokenizer.count(settled) < self._tokenizer.count(normalised_query)
+            ):
                 # The row names why the query changed (its declared share, else the budget the probe pair
                 # bounds it by) and the uncut probe request's whole size: the frame with the uncut query and an
                 # empty document, plus the media the probe reserved -- the settlement rides every pair, so it is
@@ -463,7 +475,7 @@ class RerankClient(RoleClient):
                     else "budget_cut"
                 )
                 uncut_probe = rendered_pair_tokens(
-                    self._budget, self._tokenizer, query=original_query, document="", instruction=instruction or ""
+                    self._budget, self._tokenizer, query=normalised_query, document="", instruction=instruction or ""
                 )
                 settle_cut = self.census.record(
                     corpus=self.ROLE,
