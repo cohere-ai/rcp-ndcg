@@ -208,3 +208,9 @@ role's wire, deterministically (every draw is a hash of the endpoint's seed and 
 The fakes sit *below* the transport, so routing, retries, parking and usage run in every offline test. A seed
 comes from the URL's numeric path tail (`fake://seed/3`); the vector dimension from its `?dim=` query. Extra
 routes (a third party's, or another role's) register with `register_fake_route(method, path, handler)`.
+
+A URL whose host names an engine and its version (`fake://vllm-0.31.0/<recipe>`) selects a **verified
+fake engine** instead of these hash-seeded fakes: an emulator of a recorded observation corpus
+(protocol emulated with the recipe's real tokenizer, model outputs replayed for observed inputs and
+marked `replayed`/`surrogate` in every reply). See
+[Use the verified fake engines](../how-to/use-verified-fake-engines.md).

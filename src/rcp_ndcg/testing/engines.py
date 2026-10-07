@@ -41,7 +41,7 @@ import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from urllib.parse import parse_qsl, urlsplit
 
 import httpx
@@ -1251,8 +1251,9 @@ class EmulatorRegistry:
         for entry in entry_points(group="rcp_ndcg.emulators"):
             provider = entry.load()
             built = provider() if callable(provider) else provider
-            for emulator in built if isinstance(built, Iterable) else (built,):
-                self.register(emulator)
+            items = built if isinstance(built, Iterable) else (built,)
+            for emulator in items:
+                self.register(cast(VllmEmulator, emulator))
             loaded.append(entry.name)
         self._entry_points_loaded = True
         return loaded

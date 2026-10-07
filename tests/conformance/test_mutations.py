@@ -77,9 +77,7 @@ def test_the_over_length_threshold_moving_by_one_token_makes_conformance_red() -
     # the mutation: the over-length threshold moved by one token (the cap reads one less)
     mutant = replace(emulator, facts=replace(emulator.facts, max_model_len=7))
     answer = mutant.answer("/v1/embeddings", "POST", _body(EDGE))
-    problems = compare_exchange(
-        recorded_ok, "POST", "/v1/embeddings", answer.status_code, answer.json(), (0.0, 0.0)
-    )
+    problems = compare_exchange(recorded_ok, "POST", "/v1/embeddings", answer.status_code, answer.json(), (0.0, 0.0))
     assert problems and problems[0].startswith("status 400"), problems
     # and the boundary is exactly one token wide: the 8-token edge now refuses where 7 still fits
     assert mutant.answer("/v1/embeddings", "POST", _body(SHORT)).status_code == 200

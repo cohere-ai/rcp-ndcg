@@ -91,7 +91,20 @@ def test_a_judging_step_records_what_the_judges_endpoint_serves(
     manifest = pipeline.run()
     (engine,) = manifest.step("tournament").engines
     assert (engine.model, engine.max_model_len, engine.system_fingerprint) == ("m", 32768, "engine-3.1")
-    assert "engines" not in json.dumps(manifest.step("tournament").identity)
+    # Engine facts live in the step's ``engines``, never in its content identity. Checked over the
+    # identity's KEYS: a serialized identity embeds paths (a workspace directory can spell "engines").
+
+    def _keys(value: object):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                yield key
+                yield from _keys(item)
+        elif isinstance(value, list):
+            for item in value:
+                yield from _keys(item)
+
+    identity_keys = list(_keys(manifest.step("tournament").identity))
+    assert not [key for key in identity_keys if "fingerprint" in key or "engine" in key], identity_keys
 
 
 class TestResume:
