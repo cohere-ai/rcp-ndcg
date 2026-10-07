@@ -196,11 +196,13 @@ released together.
   and the census counts content only -- so a row whose framed request was over the budget while its content
   was under it, and a reranker's query settled at its share inside a pair the budget takes whole, were gated
   although the client had cut them (stage 2 skipped the shared query's settlement row altogether). Stage 1
-  and stage 2 now read the client's own processing records (`RoleClient.processing`): a row is reported,
-  under the declared over-cap deviation, exactly when the client changed it -- any mechanism: a budget cut
-  counted with the frame, the query share (which changes every pair of its call), a per-document cap, an
-  empty-document substitution, a media resize or drop -- and the report names each change's mechanisms, the
-  uncut and kept request totals and the budget. A row the client sent uncut gates exactly.
+  and stage 2 now read the client's own processing records (`RoleClient.processing`), per TEXT, never per
+  row: a text is reported, under the declared over-cap deviation, exactly when the client changed it -- any
+  mechanism: a budget cut counted with the frame, a per-document cap, an empty-document substitution, a media
+  resize or drop; a reranker's query settlement changes the query span (and, in stage 2, the score) of every
+  pair of its row, a document's change only that document -- and the report names each change's mechanisms,
+  the uncut and kept request totals and the budget. Every text the client sent uncut gates exactly, also
+  beside a changed sibling in the same row.
 - **The offline fake draws one seeded stream per vector**: `rcp_ndcg.inference.fake`'s `/embeddings` and
   `/pooling` vectors are one SHAKE-256 stream of the same parts each (read as `dim` uniforms), no longer one
   SHA-256 per component, so a 16k-token text at 2048 dimensions answers in seconds instead of minutes. The

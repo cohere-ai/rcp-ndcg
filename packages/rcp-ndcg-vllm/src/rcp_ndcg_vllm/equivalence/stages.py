@@ -184,10 +184,12 @@ def _probe(recipe: Recipe, sampled: list[dict[str, Any]], base_url: str | None, 
     Outputs: per row, the request texts the client produced (per declared shape: the rendered prompt for the
     embed roles; the settled query span and the document spans for the rerank wire) and the client's
     processing records of the row (:attr:`~rcp_ndcg.inference.clients._base.RoleClient.processing`, one per
-    input the client changed): ``over_cap`` is whether the client changed what it sends for the row (any
-    record), ``changes`` those records (each change's mechanism, the uncut and kept request totals, the
-    budget).  The probe talks to the engine when ``base_url`` is given, to the product's offline fake
-    otherwise.
+    input the client changed): ``changes`` those records (each change's mechanism, the uncut and kept request
+    totals, the budget), ``over_cap`` whether the row holds any.  Gating is per TEXT, never per row: each shape
+    body carries which of its texts the client changed -- ``changed`` per text for the embed roles;
+    ``query_changed`` and ``documents_changed`` for a reranker, whose shared-query settlement changes the
+    query span of every pair of its row and whose document records change only their document.  The probe
+    talks to the engine when ``base_url`` is given, to the product's offline fake otherwise.
     """
     client, capture = role_client(recipe, base_url)
     per_row: list[dict[str, Any]] = []
@@ -217,9 +219,14 @@ def _probe(recipe: Recipe, sampled: list[dict[str, Any]], base_url: str | None, 
 
 def _probe_rerank(client: Any, capture: Capture, row: dict[str, Any], entry: dict[str, Any]) -> None:
     """One rerank call per row: the client settles the query once and fits every pair; the captured bodies
-    carry the settled query span and the document spans it ships."""
+    carry the settled query span and the document spans it ships, and the call's processing records say
+    which of them the client changed (the settlement: the query span; a document's record: that document)."""
+    from rcp_ndcg.inference.clients.rerank import QUERY_DOC_ID
+
     start = len(capture.exchanges)
+    records_start = len(client.processing)
     client.rerank(row["query"], row["documents"], instruction=row.get("instruction"))
+    changed_ids = {record.input_id for record in client.processing[records_start:] if record.changed}
     queries: list[str] = []
     documents: list[str] = []
     for exchange in capture.exchanges[start:]:
@@ -228,7 +235,13 @@ def _probe_rerank(client: Any, capture: Capture, row: dict[str, Any], entry: dic
             queries.append(texts["query"])
         documents.extend(texts.get("documents", []))
     settled = queries[0] if queries else ""
-    entry["shapes"]["pair"] = {"query": settled, "queries": queries, "documents": documents}
+    entry["shapes"]["pair"] = {
+        "query": settled,
+        "queries": queries,
+        "documents": documents,
+        "query_changed": QUERY_DOC_ID in changed_ids,
+        "documents_changed": [str(position) in changed_ids for position in range(len(row["documents"]))],
+    }
 
 
 def _probe_vectors(
@@ -268,21 +281,24 @@ def _probe_vectors(
         if shape == "pair":
             continue  # the embed roles have no pair wire; a rerank recipe owns that shape
         conversations: list[Any] = []
-        if shape == "query":
-            start = len(capture.exchanges)
-            client.encode([Content.from_text(row["query"])], EncodeRole.QUERY)
-            texts = _captured(start, shape, conversations)
-        elif shape == "document":
-            # One call per text: the client's fan-out runs concurrently, so the captured exchange order is a
-            # completion order, not an input order -- per-call captures keep the position attribution exact.
-            texts = []
-            for document in row["documents"]:
-                start = len(capture.exchanges)
-                client.encode([Content.from_text(document)], EncodeRole.DOCUMENT)
-                texts.extend(_captured(start, shape, conversations))
-        else:  # pragma: no cover - the declared shapes are the template's
-            continue
-        entry["shapes"][shape] = {"texts": texts, **({"conversations": conversations} if conversations else {})}
+        inputs = [row["query"]] if shape == "query" else list(row["documents"])
+        role = EncodeRole.QUERY if shape == "query" else EncodeRole.DOCUMENT
+        texts: list[Any] = []
+        changed: list[bool] = []
+        # One call per text: the client's fan-out runs concurrently, so the captured exchange order is a
+        # completion order, not an input order -- per-call captures keep the position attribution exact, and
+        # the call's processing records say whether the client changed that one text.
+        for text in inputs:
+            start, records_start = len(capture.exchanges), len(client.processing)
+            client.encode([Content.from_text(text)], role)
+            sent = _captured(start, shape, conversations)
+            texts.extend(sent)
+            changed.extend([any(record.changed for record in client.processing[records_start:])] * len(sent))
+        entry["shapes"][shape] = {
+            "texts": texts,
+            "changed": changed,
+            **({"conversations": conversations} if conversations else {}),
+        }
 
 
 def _content_ids(tokenizer: Any, body: str | list[int], flag: bool) -> list[int]:
@@ -636,8 +652,7 @@ def _render_check(
         if served is None:
             failures.append({"row": row, "note": "the reference rendered a row the harness did not sample"})
             continue
-        # Rows the client changed (its processing records say so) compare differently by declaration.
-        over = bool(probe["rows"][key[0]]["over_cap"])
+        entry = probe["rows"][key[0]]
         if recipe.role == "rerank":
             mismatches = _span_mismatches(row, served)
         elif isinstance(served, list):
@@ -667,17 +682,14 @@ def _render_check(
                         "text": str(row.get("query", ""))[:_SNIPPET],
                     }
                 )
-        if mismatches and over and deviation:
+        # Per text, never per row: only a text the client changed (its processing records say so) compares
+        # differently by declaration; every other text of the row gates exactly.
+        reported = [mismatch for mismatch in mismatches if deviation and _text_changed(entry, key[1], mismatch)]
+        failures.extend(mismatch for mismatch in mismatches if mismatch not in reported)
+        if reported:
             over_cap.append(
-                {
-                    "index": key[0],
-                    "shape": key[1],
-                    "mismatches": mismatches,
-                    "changes": probe["rows"][key[0]].get("changes", []),
-                }
+                {"index": key[0], "shape": key[1], "mismatches": reported, "changes": entry.get("changes", [])}
             )
-        else:
-            failures.extend(mismatches)
     for key in sorted(set(served_by_key) - seen):
         failures.append({"index": key[0], "shape": key[1], "note": "the reference did not render this declared shape"})
     summary: dict[str, Any] = {
@@ -700,6 +712,27 @@ def _render_check(
             "of gated",
         }
     return summary
+
+
+def _text_changed(entry: dict[str, Any], shape: str, mismatch: dict[str, Any]) -> bool:
+    """Whether the client changed the one text a render mismatch is about (the probe's per-text flags).
+
+    A rerank mismatch names its span: the query span is changed when the row's shared query was settled (the
+    settlement changes it in every pair of the row), ``document <i>`` when document ``i`` has a record, and a
+    document-count mismatch (a chunked or omitted document) when any document has one.  An embed mismatch is
+    about the shape's first input (the one the reference contract renders)."""
+    body = entry["shapes"].get(shape, {})
+    span = str(mismatch.get("span", ""))
+    if "query_changed" in body:
+        documents = list(body.get("documents_changed", []))
+        if span == "query":
+            return bool(body["query_changed"])
+        if span.startswith("document "):
+            position = int(span.removeprefix("document "))
+            return bool(documents[position]) if position < len(documents) else any(documents)
+        return any(documents)
+    changed = list(body.get("changed", []))
+    return bool(changed[0]) if changed else False
 
 
 def _span_mismatches(row: dict[str, Any], served: dict[str, Any]) -> list[dict[str, Any]]:

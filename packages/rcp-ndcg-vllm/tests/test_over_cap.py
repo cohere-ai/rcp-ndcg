@@ -217,3 +217,50 @@ def test_the_rerank_audit_holds_every_document_span_to_its_declared_cap(tmp_path
     probe = {"rows": [{"shapes": {"pair": over}, "cuts": 1, "over_cap": True}]}
     failures = stages_module._anchor_check(recipe, probe, TOK)["failures"]
     assert [failure["check"] for failure in failures] == ["document_share"]
+
+
+def _divergent(tmp_path: Path, recipe_id: str, old: str, new: str) -> Any:
+    """``recipe_id`` copied with a reference that diverges on every text (``old`` replaced by ``new``)."""
+    name = f"{recipe_id}-divergent"
+    root = tmp_path / name
+    directory = root / "recipes" / name
+    directory.mkdir(parents=True)
+    shutil.copy(RECIPES.parent / "deterministic.py", root / "deterministic.py")
+    for extra in (RECIPES / recipe_id).glob("*.jinja"):
+        shutil.copy(extra, directory / extra.name)
+    source = (RECIPES / recipe_id / "reference.py").read_text(encoding="utf-8")
+    assert source.count(old) == 1
+    (directory / "reference.py").write_text(source.replace(old, new), encoding="utf-8")
+    manifest = (RECIPES / recipe_id / "recipe.yaml").read_text(encoding="utf-8")
+    manifest = _rebased(manifest, name)
+    (directory / "recipe.yaml").write_text(manifest, encoding="utf-8")
+    return load_recipe(directory)
+
+
+@pytest.mark.parametrize(
+    ("recipe_id", "old", "new"),
+    [
+        ("fixture-embed", 'SUFFIX = " [END]"', 'SUFFIX = " [END] "'),
+        (
+            "fixture-rerank-pointwise",
+            '"documents": [str(document) for document in row["documents"]],',
+            '"documents": [str(document) + " " for document in row["documents"]],',
+        ),
+    ],
+)
+def test_stage1_gates_every_text_the_client_sent_uncut_beside_a_changed_sibling(
+    tmp_path: Path, recipe_id: str, old: str, new: str
+) -> None:
+    """Gating is per text, never per row: one cut document in a row makes only ITS comparison non-gating. The
+    reference diverges on every text; the row's first document is sent uncut, its second is cut -- the first's
+    mismatch must fail the render check, the second's is reported."""
+    recipe = _deviating(_divergent(tmp_path, recipe_id, old, new))
+    row = {"query": "capital of france", "documents": ["cities and rivers", _words(60)]}
+    pairs = write_pairs(tmp_path / "pairs.jsonl", [row])
+    render = stage1_prompts(recipe, pairs, REFERENCE_PYTHON, over_length_per_shape=1)["render_check"]
+    assert render["passed"] is False, "the uncut document's mismatch gates"
+    gated = render["failures"]
+    assert gated and all(failure.get("span", "document 0") == "document 0" for failure in gated), gated
+    if recipe_id == "fixture-rerank-pointwise":
+        reported = [m["span"] for entry in render["over_cap"]["rows"] for m in entry["mismatches"]]
+        assert reported == ["document 1"], reported
