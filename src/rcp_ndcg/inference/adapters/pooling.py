@@ -52,7 +52,7 @@ import numpy as np
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError, RequestRejectedError
-from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, register_adapter
+from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, _aligned_by_index, register_adapter
 from rcp_ndcg.inference.types import Call, Embeddings, PoolRequest, Reply, TokenCount
 
 _TASK: Final = "token_embed"
@@ -95,31 +95,6 @@ def _error_message(reply: Reply) -> str:
         if error is not None:
             return str(error)[:_MAX_MESSAGE_CHARS]
     return str(body)[:_MAX_MESSAGE_CHARS]
-
-
-def _response_index(item: dict[str, Any]) -> int:
-    """Sort key restoring request order; absent on some builds, hence the default."""
-    return int(item.get("index", 0))
-
-
-def _validate_indices(items: Sequence[dict[str, Any]], *, where: str) -> list[dict[str, Any]]:
-    """The reply's items realigned by ``index``, exactly the embeddings parser's rule (one home): a request's
-    vectors must align to its items, and a reply that names an index on only some entries -- or anything but
-    exactly one int ``0..n-1`` per entry -- is refused, never read positionally (two ``index: 7`` rows would
-    silently hand item 0 another item's vectors)."""
-    present = [isinstance(item, dict) and "index" in item for item in items]
-    if all(present):
-        values = [item["index"] for item in items]
-        whole = all(isinstance(value, int) and not isinstance(value, bool) for value in values)
-        if not whole or sorted(values) != list(range(len(items))):
-            raise RequestRejectedError(
-                f"/pooling answered {[str(value) for value in values]!r} indices in its {where}; exactly one "
-                f"int 0..{len(items) - 1} index per entry, in any order"
-            )
-        return sorted(items, key=_response_index)
-    if any(present):
-        raise RequestRejectedError(f"/pooling answered an 'index' on only some of its {where}")
-    return list(items)
 
 
 def _decoded_tokens(arrays: Sequence[np.ndarray]) -> int:
@@ -342,7 +317,7 @@ class VllmPooling(AdapterBase):
             raise ProviderError(
                 f"the /pooling reply's data holds entries that are not items: {str(body)[:_MAX_MESSAGE_CHARS]}"
             )
-        items = _validate_indices(body["data"], where="data")
+        items = _aligned_by_index(body["data"], source="/pooling", where="data")
         if len(items) != expected_items:
             raise RequestRejectedError(
                 f"the pooling endpoint returned {len(items)} item(s) for {expected_items} input(s); "
@@ -424,7 +399,7 @@ class VllmPooling(AdapterBase):
         items = metadata.get("data") or []
         if any(not isinstance(item, dict) for item in items):
             raise ProviderError(f"the /pooling bytes framing metadata is incomplete: {metadata!r}")
-        items = _validate_indices(items, where="bytes framing")
+        items = _aligned_by_index(items, source="/pooling", where="bytes framing")
         if len(items) != expected_items:
             raise RequestRejectedError(
                 f"the pooling endpoint framed {len(items)} item(s) for {expected_items} input(s); "

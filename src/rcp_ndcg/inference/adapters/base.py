@@ -15,7 +15,7 @@ from collections.abc import Sequence
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol, TypeVar, runtime_checkable
 
-from rcp_ndcg.errors import ConfigError
+from rcp_ndcg.errors import ConfigError, RequestRejectedError
 from rcp_ndcg.inference.types import Call, Reply, TokenCount
 
 if TYPE_CHECKING:
@@ -199,6 +199,41 @@ def _check_role(role: Any) -> None:
             hint=f"an adapter's role is one of {', '.join(ROLES)}",
             details={"role": role, "known": list(ROLES)},
         )
+
+
+def _aligned_by_index(entries: Sequence[Any], *, source: str, where: str) -> list[Any]:
+    """A list reply's entries in ``index`` order: the one rule the OpenAI-shaped list replies are read by
+    (the embeddings ``data``, the ``/pooling`` ``data`` and its bytes framing).
+
+    The endpoint may answer the entries out of order; a request's vectors must align to its items, so the
+    ``index`` field sorts them back. A reply that names an index on only some entries, or anything but
+    exactly one int ``0..n-1`` per entry, is refused -- two ``index: 7`` rows would silently hand an item
+    another item's vectors; a reply with no index at all is read in reply order.
+
+    Args:
+        entries: The reply's entries.
+        source: How the message names the answering endpoint (the adapter's name, ``/pooling``).
+        where: How the message names the list (``'data'``, ``bytes framing``).
+
+    Returns:
+        The entries, realigned.
+
+    Raises:
+        RequestRejectedError: the indices are partial, duplicated, out of range or not ints.
+    """
+    present = [isinstance(entry, dict) and "index" in entry for entry in entries]
+    if all(present):
+        values = [entry["index"] for entry in entries]
+        whole = all(isinstance(value, int) and not isinstance(value, bool) for value in values)
+        if not whole or sorted(values) != list(range(len(entries))):
+            raise RequestRejectedError(
+                f"{source} answered indices {[str(value) for value in values]} in its {where}; exactly one int "
+                f"0..{len(entries) - 1} index per entry, in any order"
+            )
+        return sorted(entries, key=lambda entry: entry["index"])
+    if any(present):
+        raise RequestRejectedError(f"{source} answered an 'index' on only some of its {where} entries")
+    return list(entries)
 
 
 def _check_adapter_shape(cls: Any, *, entry: str | None = None) -> None:

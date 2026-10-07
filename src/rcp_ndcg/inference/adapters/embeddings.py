@@ -31,7 +31,7 @@ import numpy as np
 from rcp_ndcg_core.content import Content, ImagePart, VideoPart
 
 from rcp_ndcg.errors import CapabilityError, ProviderError, RequestRejectedError
-from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, register_adapter
+from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, _aligned_by_index, register_adapter
 from rcp_ndcg.inference.types import Call, Embeddings, EmbedRequest, Reply, TokenCount
 
 #: The substring of vLLM's (and SGLang's) over-length answer: an HTTP 400 naming the model's context window.
@@ -118,11 +118,10 @@ def _one_vector(raw: Any, *, adapter: str, where: str) -> Any:
 def _data_vectors(body: dict[str, Any], *, adapter: str) -> list[Any]:
     """The vectors of the OpenAI-shaped reply ``{'data': [{'index', 'embedding'}, ...]}``, in ``index`` order.
 
-    The endpoint may answer the entries out of order; a request's vectors must align to its items, so the
-    ``index`` field (present on every entry of the OpenAI, vLLM, SGLang and TEI replies) sorts them back. A
-    reply that names an index on only some entries, or names anything but exactly one int ``0..n-1`` per
-    entry, is refused; a reply with no index at all is read in reply order. A silent misalignment would hand
-    a request's item the wrong vector.
+    The endpoint may answer the entries out of order; the ``index`` field (present on every entry of the
+    OpenAI, vLLM, SGLang and TEI replies) realigns them under the one rule
+    (``adapters.base._aligned_by_index``): partial, duplicated or non-int indices are
+    refused, a reply with no index at all is read in reply order.
     """
     data = body.get("data")
     if not isinstance(data, list):
@@ -130,18 +129,7 @@ def _data_vectors(body: dict[str, Any], *, adapter: str) -> list[Any]:
             f"{adapter} answered without a 'data' list; the OpenAI embeddings shape is "
             "{'data': [{'index', 'embedding'}, ...]}"
         )
-    present = [isinstance(item, dict) and "index" in item for item in data]
-    if all(present):
-        values = [item["index"] for item in data]
-        whole = all(isinstance(value, int) and not isinstance(value, bool) for value in values)
-        if not whole or sorted(values) != list(range(len(data))):
-            raise RequestRejectedError(
-                f"{adapter} answered indices {[str(value) for value in values]}; exactly one int "
-                f"0..{len(data) - 1} index per entry, in any order"
-            )
-        data = sorted(data, key=lambda item: item["index"])
-    elif any(present):
-        raise RequestRejectedError(f"{adapter} answered an 'index' on only some of its 'data' entries")
+    data = _aligned_by_index(data, source=adapter, where="'data'")
     return [
         _one_vector(item.get("embedding") if isinstance(item, dict) else None, adapter=adapter, where="embedding")
         for item in data
