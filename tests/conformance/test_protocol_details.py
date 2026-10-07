@@ -17,7 +17,7 @@ DOCUMENTS = {"documents": ["Paris is the capital of France.", "Berlin is the cap
 def test_top_n_zero_returns_the_whole_ranked_list() -> None:
     """vLLM v0.31.0: ``top_n`` defaults to 0, which means every document
     (``vllm/entrypoints/pooling/scoring/serving.py``: ``top_n if top_n > 0 else len(...)``)."""
-    emulator = emulator_for("qwen3-reranker-0.6b")
+    emulator = emulator_for("qwen3-reranker-8b")
     answer = emulator.answer("/rerank", "POST", {**QUERY, **DOCUMENTS, "top_n": 0, "use_activation": True})
     assert len(answer.json()["results"]) == 2
     one = emulator.answer("/rerank", "POST", {**QUERY, **DOCUMENTS, "top_n": 1, "use_activation": True})
@@ -69,22 +69,22 @@ def test_the_registry_names_only_the_requested_engine_versions_fingerprints() ->
 
     from rcp_ndcg.testing.engines import registry
 
-    emulator = emulator_for("zerank-2-reranker")
+    emulator = emulator_for("qwen3-reranker-8b")
     assert emulator.verified is not None
     other = replace(
         emulator, verified=replace(emulator.verified, engine_version="0.32.0", behaviour_fingerprint="9" * 64)
     )
     registry.register(other)
     try:
-        assert registry.fingerprints("vllm", "0.31.0", "zerank-2-reranker") == [emulator.verified.behaviour_fingerprint]
+        assert registry.fingerprints("vllm", "0.31.0", "qwen3-reranker-8b") == [emulator.verified.behaviour_fingerprint]
         with pytest.raises(ConfigError) as error:
-            registry.resolve("vllm", "0.31.0", "f" * 64, "zerank-2-reranker")
+            registry.resolve("vllm", "0.31.0", "f" * 64, "qwen3-reranker-8b")
         assert "9999" not in str(error.value), error.value
     finally:
         registry.clear()
 
 
-@pytest.mark.parametrize("url", ["fake://vllm-1/zerank-2-reranker", "fake://vllm-0.31/zerank-2-reranker"])
+@pytest.mark.parametrize("url", ["fake://vllm-1/qwen3-reranker-8b", "fake://vllm-0.31/qwen3-reranker-8b"])
 def test_the_engine_host_is_one_pattern(url: str) -> None:
     """``rcp_ndcg.inference.fake`` routes a URL to the emulators exactly when the emulators read its
     host as an engine and version (one pattern, never two)."""

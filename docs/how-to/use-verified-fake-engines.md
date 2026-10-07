@@ -75,7 +75,12 @@ bytes. The staleness check recomputes each recipe's **behaviour fingerprint**
 the template file's bytes, the tokenizer's SHA-256 and the client fields that change the request
 bytes) and fails **naming the changed inputs** when no committed corpus carries it; the only way past
 is a dated, reasoned, unexpired entry in `tests/conformance/waivers.json`, which the release checklist
-requires to be empty. `RCP_APPEND_VERIFICATION=1` appends the suite's result to every corpus's
+requires to be empty. A corpus left stale by a recipe change and awaiting its re-recording is declared in
+`tests/conformance/stale.json` (the recipe, the recorded fingerprint, the inputs that moved, why and when):
+the replays skip it, and the suite checks that it fails the staleness gate naming exactly those inputs;
+the release checklist requires that list empty too. A corpus whose moved inputs shape none of its recorded
+exchanges (metadata only, such as a pooler setting restating the engine's default) is re-keyed instead:
+its manifest carries the current fingerprint and a `rekeyed` entry naming what moved and why. `RCP_APPEND_VERIFICATION=1` appends the suite's result to every corpus's
 verification record.
 
 The golden replays (`tests/e2e/test_golden_replay.py`) run a NanoBEIR-shaped and a ViDoRe-shaped mini

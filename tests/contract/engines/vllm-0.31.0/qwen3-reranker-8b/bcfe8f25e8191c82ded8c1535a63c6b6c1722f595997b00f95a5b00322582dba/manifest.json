@@ -68,7 +68,7 @@
   "recipe": {
     "id": "qwen3-reranker-8b",
     "file_sha256": "efe8b9429d17917bc43970b9a0e9469519cd31809e902835a2075ce3811ae8e5",
-    "behaviour_fingerprint": "589754d62edd1eef81d42c0e41990d5cc12bc69761b82efb1e2e46f1833b04fc",
+    "behaviour_fingerprint": "bcfe8f25e8191c82ded8c1535a63c6b6c1722f595997b00f95a5b00322582dba",
     "fingerprint_inputs": {
       "fingerprint_schema": "rcp-fp/3",
       "model": "Qwen/Qwen3-Reranker-8B",
@@ -83,14 +83,14 @@
       "serve.max_model_len": "10000",
       "serve.mm_processor_kwargs": "{}",
       "serve.plugin": "null",
-      "serve.pooler_config": "{}",
+      "serve.pooler_config": "{\"use_activation\":true}",
       "serve.runner": "pooling",
       "serve.trust_remote_code": "false",
       "template_file": "sha256:e1f4d1a21a33c635ab6c4a496e3f51333073f1af8d6856f075a58090baa656eb",
       "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
       "client.api": "rerank",
       "client.empty_doc": "send",
-      "client.empty_query": "refuse",
+      "client.empty_query": "send",
       "client.instruction": "none",
       "client.listwise": "false",
       "client.max_images": "0",
@@ -109,7 +109,24 @@
       "date": null,
       "report": null
     },
-    "declared_dim": null
+    "declared_dim": null,
+    "rekeyed": [
+      {
+        "from_behaviour_fingerprint": "589754d62edd1eef81d42c0e41990d5cc12bc69761b82efb1e2e46f1833b04fc",
+        "changed_inputs": {
+          "client.empty_query": [
+            "refuse",
+            "send"
+          ],
+          "serve.pooler_config": [
+            "{}",
+            "{\"use_activation\":true}"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: client.empty_query (refuse -> send) changes only what the client sends for an empty query, and no recorded query is empty; serve.pooler_config {} -> {use_activation: true} restates vLLM v0.31.0's default (PoolingParams._set_default_parameters: classify use_activation None -> True; every recorded request that names it says true)",
+        "date": "2026-10-07"
+      }
+    ]
   },
   "collector": {
     "package": "rcp-ndcg-vllm",
@@ -163,6 +180,6 @@
       }
     },
     "records_count": 4,
-    "manifest_sha256": "cab7a2cc2410717bbd94947cf6174febaecd8f2b247800ffbeba0df455abe5a9"
+    "manifest_sha256": "510ede84c92202d213e5a1cb851358d4574dc32d60ee1e8708a8ae1c728a0e71"
   }
 }

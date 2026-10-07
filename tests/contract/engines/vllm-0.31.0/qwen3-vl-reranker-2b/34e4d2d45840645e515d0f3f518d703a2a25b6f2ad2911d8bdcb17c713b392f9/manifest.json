@@ -71,7 +71,7 @@
   "recipe": {
     "id": "qwen3-vl-reranker-2b",
     "file_sha256": "47d26b7ce2acf9ec3bcfd303ff1df11d15bdf69707bee355e29da0d64165f66f",
-    "behaviour_fingerprint": "104f225bef53f79a889b609588458e0585702577d6c917ec846a3f1b88de32a8",
+    "behaviour_fingerprint": "34e4d2d45840645e515d0f3f518d703a2a25b6f2ad2911d8bdcb17c713b392f9",
     "fingerprint_inputs": {
       "fingerprint_schema": "rcp-fp/3",
       "model": "Qwen/Qwen3-VL-Reranker-2B",
@@ -82,11 +82,11 @@
       "serve.extra_args": "[]",
       "serve.hf_overrides": "{\"architectures\":[\"Qwen3VLForSequenceClassification\"],\"classifier_from_token\":[\"no\",\"yes\"],\"is_original_qwen3_reranker\":true}",
       "serve.io_processor_plugin": "null",
-      "serve.limit_mm_per_prompt": "null",
+      "serve.limit_mm_per_prompt": "{\"image\":1}",
       "serve.max_model_len": "32768",
-      "serve.mm_processor_kwargs": "{\"max_pixels\":1310720,\"min_pixels\":4096}",
+      "serve.mm_processor_kwargs": "{\"images_kwargs\":{\"max_pixels\":1310720,\"min_pixels\":4096}}",
       "serve.plugin": "null",
-      "serve.pooler_config": "{}",
+      "serve.pooler_config": "{\"use_activation\":true}",
       "serve.runner": "pooling",
       "serve.trust_remote_code": "false",
       "template_file": "sha256:3f8373557f57b9d775557323cadf4dadf83e388fc922025fa6e5e26cbe3d2188",
@@ -95,6 +95,7 @@
       "client.empty_doc": "send_text",
       "client.empty_doc_text": "NULL",
       "client.empty_query": "refuse",
+      "client.image_policy": "{\"max_px\":1310720,\"min_px\":4096}",
       "client.instruction": "none",
       "client.listwise": "false",
       "client.max_images": "1",
@@ -113,7 +114,32 @@
       "date": null,
       "report": null
     },
-    "declared_dim": null
+    "declared_dim": null,
+    "rekeyed": [
+      {
+        "from_behaviour_fingerprint": "104f225bef53f79a889b609588458e0585702577d6c917ec846a3f1b88de32a8",
+        "changed_inputs": {
+          "client.image_policy": [
+            null,
+            "{\"max_px\":1310720,\"min_px\":4096}"
+          ],
+          "serve.limit_mm_per_prompt": [
+            "null",
+            "{\"image\":1}"
+          ],
+          "serve.mm_processor_kwargs": [
+            "{\"max_pixels\":1310720,\"min_pixels\":4096}",
+            "{\"images_kwargs\":{\"max_pixels\":1310720,\"min_pixels\":4096}}"
+          ],
+          "serve.pooler_config": [
+            "{}",
+            "{\"use_activation\":true}"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: the corpus records text-only /rerank and /v1/models exchanges, so the media inputs (client.image_policy, serve.limit_mm_per_prompt, serve.mm_processor_kwargs moved under images_kwargs) shape no recorded request or output; serve.pooler_config {} -> {use_activation: true} restates vLLM v0.31.0's default for classify (None -> True)",
+        "date": "2026-10-07"
+      }
+    ]
   },
   "collector": {
     "package": "rcp-ndcg-vllm",
@@ -167,6 +193,6 @@
       }
     },
     "records_count": 4,
-    "manifest_sha256": "0c387f9f20e72af1053a835c2b6a0c25da19dbfbc275b5293f00b8e50eae38f7"
+    "manifest_sha256": "5f5d8ead4ce795dc3848d0dc3bb6062357230c1c672dbfb495e6de4f2e255b5a"
   }
 }

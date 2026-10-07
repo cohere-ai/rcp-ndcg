@@ -62,15 +62,16 @@ def test_every_recorded_embedding_request_renders_from_the_current_recipe() -> N
     from rcp_ndcg_vllm.fingerprint import load_recipe_tokenizer
 
     from rcp_ndcg.testing.corpus import load_corpus
-    from rcp_ndcg.testing.engines import exchanges_of, find_corpora
-    from tests._engines import load_recipe
+    from rcp_ndcg.testing.engines import exchanges_of
+    from tests._engines import current_corpora, load_recipe
 
-    checked = 0
-    for directory in find_corpora(ENGINES):
+    checked = expected = 0
+    for directory in current_corpora():  # a declared-stale corpus fails the staleness gate instead
         corpus = load_corpus(directory)
         recipe = load_recipe(corpus.manifest["recipe"]["id"])
         if recipe.role != "embed":
             continue
+        expected += 1
         role_request = next(
             exchange.request_body
             for exchange in exchanges_of(corpus)
@@ -84,7 +85,7 @@ def test_every_recorded_embedding_request_renders_from_the_current_recipe() -> N
         rendered = template.render(shape, load_recipe_tokenizer(recipe), query=text, document=text)
         assert role_request["input"] == [rendered], f"{recipe.id}: the recorded prompt no longer renders"
         checked += 1
-    assert checked == 5
+    assert checked == expected >= 1
 
 
 def test_every_corpus_manifest_states_it_is_provisional() -> None:

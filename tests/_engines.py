@@ -21,6 +21,31 @@ ROOT = Path(__file__).resolve().parents[1]
 ENGINES_ROOT = ROOT / "tests" / "contract" / "engines"
 RECIPES_ROOT = ROOT / "packages" / "rcp-ndcg-vllm" / "recipes"
 _VLLM_SRC = str(ROOT / "packages" / "rcp-ndcg-vllm" / "src")
+STALE_FILE = ROOT / "tests" / "conformance" / "stale.json"
+"""The corpora declared stale for re-recording: each entry names the recipe, the recorded fingerprint, the
+fingerprint inputs that moved, why and when it was decided (the release checklist requires it empty)."""
+
+
+def stale_corpora() -> dict[str, dict[str, Any]]:
+    """The declared stale corpora by recipe id (``tests/conformance/stale.json``)."""
+    import json
+
+    return {str(entry["recipe_id"]): entry for entry in json.loads(STALE_FILE.read_text(encoding="utf-8"))}
+
+
+def current_corpora() -> list[Path]:
+    """Every committed corpus a conformance replay runs on: the ones not declared stale (found by scanning
+    manifests). A declared-stale corpus is checked to fail the staleness gate instead."""
+    import json
+
+    from rcp_ndcg.testing.engines import find_corpora
+
+    stale = stale_corpora()
+    return [
+        directory
+        for directory in find_corpora(ENGINES_ROOT)
+        if json.loads((directory / "manifest.json").read_text(encoding="utf-8"))["recipe"]["id"] not in stale
+    ]
 
 
 def harness() -> Any:

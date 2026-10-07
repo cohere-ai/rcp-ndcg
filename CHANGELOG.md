@@ -126,6 +126,17 @@ released together.
   selection: `unchanged`/`changed`/`new`/`unloadable` per recipe, the changed inputs named) and
   `behaviour_report` (the behaviour diff of two corpora of one recipe), as functions and
   `python -m rcp_ndcg_vllm.changes` (`changed` and `diff`).
+- **The provisional corpora after the families' recipe changes**: three corpora are current as recorded
+  (`octen-embedding-8b`, `qwen3-embedding-0.6b`, `zembed-1-embedding`); two are re-keyed to the current
+  fingerprint because only inputs that shape none of their recorded exchanges moved (`qwen3-reranker-8b`:
+  `client.empty_query`, and `serve.pooler_config` restating vLLM's `use_activation` default;
+  `qwen3-vl-reranker-2b`: the media inputs of a text-only corpus and the same pooler default), each
+  manifest naming the move in `recipe.rekeyed`; seven are declared stale for re-recording in
+  `tests/conformance/stale.json` (`jina-embeddings-v5-text-small`, `jina-reranker-v3`,
+  `qwen3-reranker-0.6b`, `qwen3-reranker-4b`, `qwen3-vl-embedding-2b`, `zerank-1-small-reranker`,
+  `zerank-2-reranker`): the replays skip them and each must fail the staleness gate naming exactly the
+  declared inputs. The NanoBEIR golden's rerank view replays `qwen3-reranker-8b` (same recorded texts;
+  the pinned metrics are unchanged).
 - **The corpora under `tests/contract/engines/`**: the provisional shakedown corpus (12 recipes, 48
   exchanges) as repository subsets in the observation-corpus format (`records.jsonl.gz`, the manifest
   with a `provisional` statement -- valid to build and test the emulators, not release evidence --,

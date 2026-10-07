@@ -24,7 +24,7 @@ from rcp_ndcg.testing.engines import (
     find_corpora,
     verification_records,
 )
-from tests._engines import ROOT, corpus_of, emulator_for, load_recipe
+from tests._engines import ROOT, corpus_of, current_corpora, emulator_for, load_recipe, stale_corpora
 
 ENGINES_ROOT = ROOT / "tests" / "contract" / "engines"
 INDEX = ENGINES_ROOT / "vllm-0.31.0" / "index.json"
@@ -32,7 +32,14 @@ WAIVERS = Path(__file__).resolve().parent / "waivers.json"
 
 
 def corpus_dirs() -> list[Path]:
-    """Every committed corpus directory, found by scanning manifests."""
+    """Every committed corpus directory the replay runs on: found by scanning manifests, the ones declared
+    stale for re-recording (``tests/conformance/stale.json``) left out -- those must fail the staleness gate
+    by name instead (:func:`test_a_declared_stale_corpus_fails_the_staleness_gate_by_name`)."""
+    return current_corpora()
+
+
+def all_corpus_dirs() -> list[Path]:
+    """Every committed corpus directory, stale or not (integrity and credential scans cover them all)."""
     return find_corpora(ENGINES_ROOT)
 
 
@@ -104,8 +111,8 @@ def test_manifest_and_index_hashes_hold() -> None:
     import hashlib
 
     corpora = json.loads(INDEX.read_text(encoding="utf-8"))["corpora"]
-    assert len(corpora) == len(corpus_dirs())
-    for directory in corpus_dirs():
+    assert len(corpora) == len(all_corpus_dirs())
+    for directory in all_corpus_dirs():
         corpus = load_corpus(directory)
         assert integrity_mismatches(corpus) == [], directory
         key = f"{directory.parent.name}/{directory.name}"
@@ -127,20 +134,22 @@ def test_no_credential_shaped_string_is_in_any_corpus() -> None:
             text = (gzip.decompress(raw) if path.suffix == ".gz" else raw).decode("utf-8", errors="replace")
             assert credential_findings(text) == [], path
             scanned += 1
-    assert scanned >= 5 * len(corpus_dirs())
+    assert scanned >= 5 * len(all_corpus_dirs())
     assert credential_findings('{"headers": {"Authorization": "Bearer abcdefghijklmnopqrstuvwx"}}')
     assert credential_findings('{"authorization":12345}') == []  # a tokenizer vocabulary entry
 
 
 def test_staleness_passes_for_the_unmoved_recipes() -> None:
-    """Every committed corpus is keyed by a fingerprint the repository reproduces exactly -- or a dated,
-    unexpired waiver covers exactly what moved (the release checklist requires the file empty)."""
+    """Every committed corpus not declared stale is keyed by a fingerprint the repository reproduces exactly
+    -- or a dated, unexpired waiver covers exactly what moved (the release checklist requires the file
+    empty). A corpus that goes stale without being declared fails here, naming the inputs that moved."""
     import datetime
 
     from rcp_ndcg_vllm.changes import recipe_state, waiver_covers
 
     waivers = json.loads(WAIVERS.read_text(encoding="utf-8"))
     today = datetime.date.today()
+    assert corpus_dirs(), "no current corpus left: every conformance replay would be vacuous"
     for directory in corpus_dirs():
         recipe_id = load_corpus(directory).manifest["recipe"]["id"]
         state = recipe_state(load_recipe(recipe_id), ENGINES_ROOT / "vllm-0.31.0")
@@ -151,8 +160,37 @@ def test_staleness_passes_for_the_unmoved_recipes() -> None:
             continue  # a dated, unexpired, recipe-specific waiver is the only way past staleness
         assert state["state"] == "unchanged", (
             f"{recipe_id}: stale corpus, changed fingerprint inputs {changed} -- re-record the recipe "
-            "(python -m rcp_ndcg_vllm.changes changed) or add a dated entry to tests/conformance/waivers.json"
+            "(python -m rcp_ndcg_vllm.changes changed), declare it in tests/conformance/stale.json, or add a "
+            "dated entry to tests/conformance/waivers.json"
         )
+
+
+@pytest.mark.parametrize("recipe_id", sorted(stale_corpora()))
+def test_a_declared_stale_corpus_fails_the_staleness_gate_by_name(recipe_id: str) -> None:
+    """A corpus the families' recipe changes left stale fails the staleness gate, naming the recipe and every
+    fingerprint input that moved -- exactly the declared ones (a further drift fails here, and a corpus
+    re-recorded under the current fingerprint fails here until its declaration is removed)."""
+    from rcp_ndcg_vllm.changes import StaleCorpusError, recipe_state, resolve_corpus
+
+    declared = stale_corpora()[recipe_id]
+    recipe = load_recipe(recipe_id)
+    corpora_root = ENGINES_ROOT / "vllm-0.31.0"
+    with pytest.raises(StaleCorpusError) as error:
+        resolve_corpus(recipe, corpora_root)
+    message = str(error.value)
+    assert f"recipe {recipe_id}: stale corpus" in message
+    for name in declared["changed_inputs"]:
+        assert name in message, f"{recipe_id}: the staleness message does not name {name}"
+    state = recipe_state(recipe, corpora_root)
+    assert state["recorded_fingerprints"] == [declared["recorded_fingerprint"]], state["recorded_fingerprints"]
+    assert state["changed_inputs"] == declared["changed_inputs"], state["changed_inputs"]
+    assert declared["reason"].strip() and declared["decided"], declared
+
+
+def test_the_stale_declarations_name_committed_corpora_only() -> None:
+    """Every declaration names a recipe with a committed corpus (a retired corpus leaves the list too)."""
+    recorded = {load_corpus(directory).manifest["recipe"]["id"] for directory in all_corpus_dirs()}
+    assert set(stale_corpora()) <= recorded, sorted(set(stale_corpora()) - recorded)
 
 
 def test_staleness_names_the_changed_inputs_and_the_waiver_file_must_be_empty_at_release() -> None:
@@ -233,12 +271,12 @@ def test_the_registry_resolves_by_engine_version_and_fingerprint() -> None:
     from rcp_ndcg.errors import ConfigError
     from rcp_ndcg.testing.engines import registry
 
-    emulator = emulator_for("zerank-2-reranker")
+    emulator = emulator_for("qwen3-reranker-8b")
     assert emulator.verified is not None
     fingerprint = emulator.verified.behaviour_fingerprint
-    assert registry.resolve("vllm", "0.31.0", fingerprint, "zerank-2-reranker") is emulator
+    assert registry.resolve("vllm", "0.31.0", fingerprint, "qwen3-reranker-8b") is emulator
     with pytest.raises(ConfigError) as error:
-        registry.resolve("vllm", "0.31.0", "f" * 64, "zerank-2-reranker")
+        registry.resolve("vllm", "0.31.0", "f" * 64, "qwen3-reranker-8b")
     assert fingerprint[:12] in str(error.value)  # the message names the registered fingerprint
 
 
@@ -281,7 +319,7 @@ def test_out_of_tree_emulators_register_through_the_entry_point_group(monkeypatc
         @staticmethod
         def load():
             def provide():
-                return [emulator_for("zerank-2-reranker")]
+                return [emulator_for("qwen3-reranker-8b")]
 
             return provide
 
@@ -294,9 +332,9 @@ def test_out_of_tree_emulators_register_through_the_entry_point_group(monkeypatc
     monkeypatch.setattr(metadata, "entry_points", fake_entry_points)
     try:
         assert registry.load_entry_points() == ["example-out-of-tree"]
-        verified = emulator_for("zerank-2-reranker").verified
+        verified = emulator_for("qwen3-reranker-8b").verified
         assert verified is not None
-        assert registry.fingerprints("vllm", "0.31.0", "zerank-2-reranker") == [verified.behaviour_fingerprint]
+        assert registry.fingerprints("vllm", "0.31.0", "qwen3-reranker-8b") == [verified.behaviour_fingerprint]
     finally:
         registry.clear()
 

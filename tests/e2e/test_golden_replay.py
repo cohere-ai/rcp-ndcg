@@ -18,7 +18,8 @@ model ranks last), so both metrics move whenever a rank moves.
 * NanoBEIR-shaped: the retrieval view over two documents (qwen3-embedding-0.6b: the corpus observes
   two distinct prompts, the instructed query and the bare question, so the documents are the bare
   question and the instructed string as a document -- documents render bare) and the rerank view
-  (qwen3-reranker-0.6b).
+  (qwen3-reranker-8b: the 0.6b corpus is declared stale for re-recording, ``tests/conformance/stale.json``;
+  both recorded the same text pool).
 * ViDoRe-shaped: the rerank view only (qwen3-vl-reranker-2b over the recorded text pool). **Waiver**:
   the retrieval view needs page-image embeddings and the provisional corpus observes none (its VL
   embedder saw text only); ``test_the_vidore_retrieval_view_waiver_holds`` fails, naming the work, as
@@ -63,7 +64,7 @@ CASES = {
             "qrels": [1, 0],
         },
         "rerank": {
-            "model": "qwen3-reranker-0.6b",
+            "model": "qwen3-reranker-8b",
             "query_text": QUESTION,
             "doc_texts": ["Paris is the capital of France.", "Berlin is the capital of Germany."],
             "gains": [0.25, 0.75],

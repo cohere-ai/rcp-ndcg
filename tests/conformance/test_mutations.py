@@ -147,8 +147,8 @@ def test_an_edited_recipe_fails_the_gate_naming_the_changed_input(tmp_path: Path
     import pytest
     from rcp_ndcg_vllm.changes import StaleCorpusError
 
-    copy = tmp_path / "qwen3-reranker-0.6b"
-    shutil.copytree(RECIPES_ROOT / "qwen3-reranker-0.6b", copy)
+    copy = tmp_path / "qwen3-reranker-8b"
+    shutil.copytree(RECIPES_ROOT / "qwen3-reranker-8b", copy)
     recipe = copy / "recipe.yaml"
     text = recipe.read_text(encoding="utf-8")
     budget = re.search(r"^  max_tokens: (\d+)$", text, flags=re.MULTILINE)

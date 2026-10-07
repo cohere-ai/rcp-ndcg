@@ -40,8 +40,8 @@ def test_an_observed_request_replays() -> None:
         ("qwen3-embedding-0.6b", 1, "dimensions", 64),  # a Matryoshka cut never observed
         ("qwen3-embedding-0.6b", 1, "add_special_tokens", False),  # another tokenization of the prompt
         ("qwen3-embedding-0.6b", 1, "use_activation", False),
-        ("qwen3-reranker-0.6b", 1, "use_activation", False),  # raw logit instead of the probability
-        ("jina-reranker-v3", 1, "use_activation", True),
+        ("qwen3-reranker-8b", 1, "use_activation", False),  # raw logit instead of the probability
+        ("qwen3-vl-reranker-2b", 1, "use_activation", False),
     ],
 )
 def test_an_unobserved_context_answers_the_marked_surrogate(
@@ -67,9 +67,9 @@ def test_the_add_special_tokens_field_changes_the_counted_prompt() -> None:
 @pytest.mark.parametrize(
     ("recipe_id", "field", "value"),
     [
-        ("qwen3-reranker-0.6b", "instruction", "Judge the passage."),  # folded into the template by the engine
-        ("qwen3-reranker-0.6b", "truncate_prompt_tokens", 16),  # the engine cuts instead of refusing
-        ("qwen3-reranker-0.6b", "max_tokens_per_doc", 8),
+        ("qwen3-reranker-8b", "instruction", "Judge the passage."),  # folded into the template by the engine
+        ("qwen3-reranker-8b", "truncate_prompt_tokens", 16),  # the engine cuts instead of refusing
+        ("qwen3-reranker-8b", "max_tokens_per_doc", 8),
         ("qwen3-embedding-0.6b", "truncate_prompt_tokens", 16),
         ("qwen3-embedding-0.6b", "mm_processor_kwargs", {"max_pixels": 1024}),
     ],
