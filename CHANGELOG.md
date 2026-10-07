@@ -858,6 +858,9 @@ released together.
   role's `messages` route now fits its media like the pooling route: one preparation sliced per item (a second
   preparation re-inlined the prepared bytes and recorded census rows against `data:` URIs), the kept media
   recorded, and the allowance reserving the shape's fixed frame.
+- **A hosted rerank profile under `empty_doc: omit_zero` scores the documents after an omitted one.** The
+  vendor path (a documented `max_tokens`, no tokenizer) named its fit outputs by kept position while the
+  client reads original positions, so any omitted document before the last raised a bare `KeyError`.
 - **The judge's engine media check is the served roles' delta check.** The judge's probe now sends the probe
   image and the same request without it, so a served chat template cancels and an honest engine passes; the
   delta counts no text, so the check no longer needs (or loads) the judge's tokenizer.

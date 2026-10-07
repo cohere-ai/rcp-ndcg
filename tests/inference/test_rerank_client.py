@@ -243,6 +243,20 @@ class TestRefusalsAndPassthrough:
         client.rerank("q", ["a"])
         assert server.calls[0].json == {"model": "rerank-2.5", "query": "q", "documents": ["a"]}
 
+    def test_a_hosted_profile_omits_an_empty_document_and_aligns_the_rest(self) -> None:
+        """The vendor path (a documented ``max_tokens``, no tokenizer: nothing is measured) under ``empty_doc:
+        omit_zero``: the empty document is never sent and scores 0.0, and every other score lands on its own
+        document -- the fit's ids name the documents' original positions on this path too."""
+        server = _server()
+        client = RerankClient(
+            RerankEndpoint(api="voyage", model="rerank-2.5", max_tokens=16000, empty_doc="omit_zero"), sender=server
+        )
+
+        result = client.rerank("q", ["aaa", "", "bbbbbb"])
+
+        assert server.calls[0].json["documents"] == ["aaa", "bbbbbb"]
+        assert list(result.scores) == pytest.approx([server.score("aaa"), 0.0, server.score("bbbbbb")])
+
     def test_empty_documents_are_sent_as_given(self) -> None:
         """Nothing is filtered: an empty document scores whatever the server returns."""
         server = _server()

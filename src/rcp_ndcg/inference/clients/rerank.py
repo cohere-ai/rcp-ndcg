@@ -470,6 +470,7 @@ class RerankClient(RoleClient):
                 [(settled, document.text) for document in kept_documents],
                 "pair",
                 instruction=instruction,
+                ids=[str(position) for position in kept_positions],
             )
         contents = [pair if isinstance(pair, tuple) else (pair, "") for pair in result.contents]
         # The settled span is the one every output carries: the probe pair reserved every pair's media, so
