@@ -96,6 +96,10 @@ client:
   embed_dtype: float16           # the owner's transfer precision (Q11); MaxSim accumulates in float32
   dim: 2048                      # config.json:100 dim / :101 output_dim; rebuilds the flat base64
                                  # frame of /pooling and is cross-checked against usage.prompt_tokens
+  max_images: 1                  # one image per document, mirroring serve.limit_mm_per_prompt (G3);
+                                 # the load-time rule refuses an image recipe with no client media
+                                 # capacity. The client media policy's other fields (media_sides on
+                                 # documents only, the pixel numbers) are the topk family's follow-up
 reference:
   kind: sentence_transformers    # the model card's own path: sentence-transformers MultiVectorEncoder
                                  # over the checkpoint's trusted code (topk_embed_st.py)
