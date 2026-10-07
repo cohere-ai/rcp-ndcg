@@ -1,14 +1,12 @@
 # Recipe: Qwen/Qwen3-VL-Embedding-2B served with stock vLLM (vllm/vllm-openai:v0.31.0).
-# Research lane r-qwen3vl-emb (report.md, digest.md), corrected by audit-synth's r-qwen3vl-emb rows;
-# REVIEW-LOG R10 (the template file ships) and R20 (the media pixel budget is pinned on both sides) applied.
-# The CPU stage-1 numbers come from the research's check_tokens.py (6 cases, A==B==D identical ids).
-# fam-vl: the R20 pixel pin rides ONE shape across the media recipes -- nested images_kwargs (decided from
-# the v0.31.0 tag source, cited in sources) -- and the video policy is one declared rule on every side.
+# Research lane r-qwen3vl-emb (report.md, digest.md), corrected by audit-synth's r-qwen3vl-emb rows.
+# The R20 pixel pin rides ONE shape across the media recipes -- nested images_kwargs, decided from the
+# v0.31.0 tag source (cited in sources) -- and the video sampling is one declared rule on every side.
 id: qwen3-vl-embedding-2b
 model: Qwen/Qwen3-VL-Embedding-2B
-revision: "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"   # the HF api/models sha, re-checked 2026-10-06; quote: 40 hex reads as a number otherwise
+revision: "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"   # the HF api/models sha, re-checked 2026-10-07; quote: 40 hex reads as a number otherwise
 role: embed
-input: [text, image, video]     # the model's capability (card); what travels is the client's media policy below: one image or one video container per request (notes)
+input: [text, image, video]     # the model's capability (card); what travels today is text only -- see notes, "Media"
 licence: apache-2.0
 engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0"}   # min_version = the image actually verified (the family convention)
 resources: {gpus: 1}            # 2B bf16 (~4.0 GiB weights) fits one GPU; the card states no multi-GPU requirement
@@ -16,135 +14,132 @@ serve:
   runner: pooling
   convert: embed                # a generative VLM as an embedder; auto would resolve to embed, explicit silences the log (v0.31.0 config/model.py:113)
   hf_overrides: {}              # none needed: Qwen3VLForConditionalGeneration is natively registered (v0.31.0 registry.py:591)
-  chat_template: template.jinja # R10: the frame ships with the recipe; see notes for the route's template behaviour
+  chat_template: null           # no template file: the text rows ride the completion-style route, which applies no chat template (the frame is the client's declared template); a chat-shaped request resolves the checkpoint's own chat_template.jinja at the pinned revision (see notes, "Frame")
   pooler_config: {seq_pooling_type: LAST}   # the default seq pooler, pinned explicitly; the head is the default PoolerNormalize (L2, v0.31.0 seqwise/poolers.py:97-110)
   trust_remote_code: false      # no auto_map in config.json; the native class needs none (the card's script passes true, inert there too)
   max_model_len: 8192           # == the reference's MAX_LENGTH; an over-length prompt is an HTTP 400, never a silent engine cut
   dtype: bfloat16               # the checkpoint's dtype
   plugin: null                  # no out-of-tree model class: stock vLLM serves it
-  mm_processor_kwargs: {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1843200}}   # R20, ONE shape (nested images_kwargs): the reference's qwen_vl_utils budget (card script MIN/MAX_PIXELS, 4*32^2 / 1800*32^2). Nested because at the tag the nested dict reaches the HF processor verbatim (context.py:293-309) and overlays the vLLM-side image reads (qwen3_vl.py:958-970), while flat min_pixels/max_pixels are the shared namespace and leak into the VIDEO size override (qwen3_vl.py:1369-1377), silently re-budgeting the clip path. Load-bearing: at the checkpoint default max_pixels=1310720 a 1700x2200 page renders 1240 image-pad tokens vs the reference's 1776 (research check_tokens pixel_budgets)
-  limit_mm_per_prompt: {"image": 1, "video": 1}   # one media item per request (the client's max_images/max_videos carry the same numbers): never the engine's multi-item hoist (notes)
+  mm_processor_kwargs: {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1843200}}   # R20, the ONE shape (nested images_kwargs): the card script's MIN/MAX_PIXELS (4*32^2 / 1800*32^2). At the tag the nested dict reaches the HF processor's images_kwargs and the vLLM-side image token budget alike, while flat keys also re-size every VIDEO clip (qwen3_vl.py:1371-1382) -- see sources. Load-bearing: at the checkpoint default max_pixels=1310720 a 1700x2200 page renders 1240 image-pad tokens vs the reference's 1776 (research check_tokens pixel_budgets)
+  limit_mm_per_prompt: {"image": 1, "video": 1}   # one media item per request (the client's max_images/max_videos carry the same numbers): never the engine's multi-item hoist
   extra_args:                  # the ONE video policy's engine half: a container is sampled to exactly the declared 64 frames
     - "--media-io-kwargs"
     - '{"video": {"num_frames": 64}}'      # v0.31.0 config/multimodal.py:159-162 + multimodal/video.py:202-241 (num_frames sampled uniformly, np.linspace over the clip)
 client:
   api: openai_embeddings
-  request_shape: text           # the text rows go out as fit's rendered frame on the completion-style input; a media-bearing row rides the messages route (p1-tail 2e) with the same rendered text (the research validated identical ids for both shapes, report section 4)
+  request_shape: text           # fit's rendered frame goes out as the completion-style input string; this route carries no media parts (the product refuses an image or video item here with a typed CapabilityError) -- see notes, "Media"
   tokenizer: "Qwen/Qwen3-VL-Embedding-2B@9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"
   max_tokens: 8192              # the declared budget: the frame's fixed tokens (including the instruction and the post-processor anchor) are reserved, only the content span is cut (on_overflow: cut). No query_max_tokens: the card caps the WHOLE prompt (MAX_LENGTH 8192), queries and documents alike
+  image_policy: {min_px: 4096, max_px: 1843200}   # R20's client half: the same numbers as serve.mm_processor_kwargs. No image_processor: the product's qwen3_vl geometry refuses a budget below its stock floor (65536 px), so the client can neither resize nor count an image under this budget -- media stay refused, loudly (notes, "Media")
   max_images: 1                 # the same number as serve.limit_mm_per_prompt: one media item per request
   max_videos: 1                 # ditto (R20's capacity half)
-  video_policy: {num_frames: 64, wire: video_url, engine_video_pinning: true}   # THE video policy, one rule on every side: 64 uniformly spaced frames per clip (the product's VideoPolicy rule), the container sent as video_url (the multimodal-embeddings lowering DOES emit video_url per the policy) and the engine pinned to the same 64 by serve.extra_args --media-io-kwargs, which engine_video_pinning declares. Supersedes both older samplers (served resampling fps 2 / max_frames 768; the card's fps 1 / 64): see notes
+  video_policy: {num_frames: 64, wire: video_url, engine_video_pinning: true}   # THE video sampling policy, one rule on every side: 64 uniformly spaced frames per clip, the container sent as video_url and the engine pinned to the same 64 by serve.extra_args --media-io-kwargs (engine_video_pinning). Supersedes both older samplers (the served default fps 2 / max_frames 768; the card's fps 1 / max_frames 64): see notes
   template:
+    query:
+      - {fixed: "{special:im_start}system\nRepresent the user's input.{special:im_end}\n{special:im_start}user\n"}   # the card frames a query exactly like a document: its default instruction (format_model_input; config_sentence_transformers.json prompts.default) -- every usage example on the card encodes queries with it
+      - {content: query}
+      - {fixed: "{special:im_end}\n{special:im_start}assistant\n"}
     document:
-      - {fixed: "{special:im_start}system\nRepresent the user's input.{special:im_end}\n{special:im_start}user\n"}   # the model's default instruction (the card's and config_sentence_transformers.json prompts.default), part of the fixed frame
+      - {fixed: "{special:im_start}system\nRepresent the user's input.{special:im_end}\n{special:im_start}user\n"}   # the same default instruction, part of the fixed frame
       - {content: document}
       - {fixed: "{special:im_end}\n{special:im_start}assistant\n"}   # the trailing fixed segment + the post-processor's endoftext are the anchor the model pools from
     anchor: last
-    add_special_tokens: true    # the completion-style /v1/embeddings route adds the tokenizer's post-processor tokens (default true, v0.31.0 base/protocol.py CompletionRequestMixin): the appended endoftext (id 151643) is the pooled last token
+    add_special_tokens: true    # the completion-style /v1/embeddings route adds the tokenizer's post-processor tokens (default true, v0.31.0 base/protocol.py CompletionRequestMixin): the appended endoftext (id 151643, tokenizer.json TemplateProcessing) is the pooled last token
   on_overflow: cut
   empty_doc: send_text
   empty_doc_text: "NULL"        # the card's empty-input rule: format_model_input renders the text "NULL" when text, image and video are all empty
   normalize: true               # the server L2-normalises (PoolerNormalize); the client normalising again is harmless
-  recipe: "vLLM 0.31.0 pooling runner (--convert embed), seq_pooling_type LAST with the default PoolerNormalize head; media: nested images_kwargs min_pixels=4096 max_pixels=1843200 (serve.mm_processor_kwargs, the R20 one shape), one media item per request (serve.limit_mm_per_prompt image=1 video=1 = client.max_images/max_videos 1/1), video_policy 64 uniform frames per clip as video_url with --media-io-kwargs video num_frames 64 pinned (engine_video_pinning); request_shape text: fit's rendered frame goes out as the input string and the engine's post-processor appends the end anchor"
+  recipe: "vLLM 0.31.0 pooling runner (--convert embed), seq_pooling_type LAST with the default PoolerNormalize head; no served chat template (completion-style text route, the frame is the client's); media: nested images_kwargs min_pixels=4096 max_pixels=1843200 (serve.mm_processor_kwargs, the R20 one shape), one media item per request (serve.limit_mm_per_prompt image=1 video=1 = client.max_images/max_videos 1/1), video_policy 64 uniform frames per clip as video_url with --media-io-kwargs video num_frames 64 pinned (engine_video_pinning); request_shape text: fit's rendered frame goes out as the input string and the engine's post-processor appends the end anchor"
 reference:
   kind: transformers            # the model card's scripts/qwen3_vl_embedding.py (Qwen3VLEmbedder, transformers), vendored verbatim beside reference.py
   score_scale: cosine
   entry: reference.py
-  known_deviations: [anchor_drop_over_cap]   # the card's processor truncation (truncation=True at MAX_LENGTH=8192) right-cuts the whole prompt and drops the trailing anchor on over-cap inputs; reference.py's render mode implements the anchor-preserving cut instead; the vector path's stage 2 has no over-cap exclusion, so an over-cap stage-2 pair fails the cosine gate loudly (see notes)
+  known_deviations: [anchor_drop_over_cap]   # the card's processor truncation (truncation=True at MAX_LENGTH=8192) right-cuts the rendered prompt: the frame's tail (im_end, the assistant header) is cut and only the post-processor's endoftext is re-appended. reference.py renders exactly that cut; the client keeps the whole frame. Over-cap rows are reported, not gated (see notes)
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
-  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B (card README, revision 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda)"
+  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B (card README, revision 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda: lines 105-151 the sentence-transformers usage -- queries and documents alike under the default 'Represent the user's input.' system prompt; lines 155-205 the transformers usage, queries without an instruction)"
   - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/config.json (architectures, no auto_map)"
-  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/chat_template.jinja (the frame this recipe declares and template.jinja pins)"
-  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/scripts/qwen3_vl_embedding.py (the reference path; MAX_LENGTH 8192, MIN/MAX_PIXELS 4096/1843200; FPS 1, MAX_FRAMES 64 -- the card's own video numbers, superseded by the declared policy per notes)"
+  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/chat_template.jinja (SHA-256 a47e6afb389f86f45be7810f17d2686fd42b2bec7ba6e6958abf85845af258c5: the frame both declared shapes reproduce, pinned by the recipe's test)"
+  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/scripts/qwen3_vl_embedding.py (the reference path; MAX_LENGTH 8192, MIN/MAX_PIXELS 4096/1843200; FPS 1, MAX_FRAMES 64, total_pixels 7864320 -- the card's own video numbers; _preprocess_inputs calls the processor with truncation=True at max_length)"
+  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/tokenizer.json (post_processor TemplateProcessing: every single sequence ends with <|endoftext|> 151643)"
   - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/preprocessor_config.json (checkpoint image defaults min 4096 / max 1310720, overridden above)"
+  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/video_preprocessor_config.json (fps 2, min_frames 4, max_frames 768, size 4096..25165824 px per clip: the served defaults the declared policy supersedes for the frame count)"
   - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/config_sentence_transformers.json (prompts.default, similarity cosine)"
-  - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/modules.json (no Dense projector; Transformer + Pooling + Normalize)"
   - "vllm v0.31.0 (= db9527a46873454610df6dbedf79a36d6bf1a7f6) vllm/model_executor/models/registry.py:591 (native Qwen3VL entry)"
   - "vllm v0.31.0 vllm/config/model.py:113 (_RUNNER_CONVERTS pooling -> embed/classify)"
   - "vllm v0.31.0 vllm/model_executor/layers/pooler/seqwise/poolers.py:97-110 (embed head LAST + PoolerNormalize)"
   - "vllm v0.31.0 vllm/entrypoints/pooling/base/protocol.py CompletionRequestMixin (completion-style add_special_tokens defaults true; the chat mixins default false)"
   - "vllm v0.31.0 vllm/entrypoints/pooling/base/io_processor.py get_request_factory_online (completion-style input never applies a chat template; chat input does)"
-  - "vllm v0.31.0 vllm/multimodal/processing/context.py:45-82 (HuggingFace processors accept the nested images_kwargs/videos_kwargs scopes beside the shared flat namespace; overlay_modality_mm_kwargs overlays one modality so a video size bump never leaks into the image budget -- flat keys keep the shared-namespace behaviour)"
-  - "vllm v0.31.0 vllm/multimodal/processing/context.py:293-336 (get_merged_mm_kwargs omits the overlay at processor construction and HF __call__, so the nested images_kwargs dict reaches the HF processor; call_hf_processor passes it through get_allowed_kwarg_only_overrides)"
-  - "vllm v0.31.0 vllm/model_executor/models/qwen3_vl.py:958-970 (_get_vision_info reads min_pixels/max_pixels through the modality overlay: the nested images_kwargs values reach the vLLM-side token budget)"
-  - "vllm v0.31.0 vllm/model_executor/models/qwen3_vl.py:1369-1377 (the video path folds flat min_pixels/max_pixels into the VIDEO size override -- the leak the nested shape avoids)"
+  - "the R20 shape, vllm v0.31.0: vllm/multimodal/processing/context.py:44-84 (overlay_modality_mm_kwargs: a nested images_kwargs dict is overlaid onto the flat namespace for the image modality only), :293-309 (get_merged_mm_kwargs: no overlay at processor construction and HF __call__, so the nested dict reaches the HF processor), :311-331 (call_hf_processor filters through get_allowed_kwarg_only_overrides with allow_var_kwargs=True: both shapes pass the processor's **kwargs); vllm/utils/func_utils.py:47-96,122-181 (the filter); vllm/transformers_utils/processor.py:340-387 (images_kwargs is a dynamic key, filtered out at construction); vllm/model_executor/models/qwen3_vl.py:939-985 (_get_vision_info reads min_pixels/max_pixels through the image overlay: the vLLM-side token budget), :1371-1382 (the video loop folds FLAT min_pixels/max_pixels into the video size override -- nested images_kwargs never reaches it), :1482-1489 (the image call: the merged kwargs, nested dict included, go to the HF processor)"
+  - "the R20 shape, transformers 5.17.0 (inside the image's pin >=5.10.4,<5.18.0, vllm requirements/common.txt:10): processing_utils.py:657-683 (ProcessorMixin.__call__ merges the kwargs and calls the image processor with images_kwargs), :1513-1630 (_merge_kwargs: a nested images_kwargs dict lands in images_kwargs only; a flat key lands in every modality that declares it); models/qwen2_vl/image_processing_qwen2_vl.py:120-129 (_standardize_kwargs: min_pixels and max_pixels together become the resize size), :139-157 (resize through smart_resize)"
   - "vllm v0.31.0 vllm/config/multimodal.py:159-162 and vllm/multimodal/video.py:202-241 (--media-io-kwargs video num_frames pins the loader's uniform frame sample: compute_frames_index_to_sample takes np.linspace over the clip)"
-  - "vllm v0.31.0 vllm/utils/func_utils.py get_allowed_kwarg_only_overrides / _supports_kw (the call-time filter: named params and, with allow_var_kwargs, whatever the HF __call__'s kwargs scopes accept)"
-  - "transformers Qwen3VLVideoProcessor (models/qwen3_vl, within the engine pin >=5.10.4,<5.18.0): fps = 2, min_frames = 4, max_frames = 768 -- the HF resampling defaults the declared policy supersedes"
   - "vllm v0.31.0 examples/pooling/embed/vision_embedding_online.py (run_qwen3_vl: the request shape the research reproduced)"
+  - "rcp-ndcg: src/rcp_ndcg/inference/clients/embed.py (_media_is_on_wire: media rides request_shape messages only), src/rcp_ndcg/inference/adapters/embeddings.py (_refuse_media on the text route), src/rcp_ndcg/data/resolution.py (PROCESSORS qwen3_vl min_pixels 65536; _budget_problem; ImagePolicy.image_tokens needs a processor)"
   - "research/r-qwen3vl-emb/out/report.md (sections 3-5: the request shape, the CPU token-id checks, the mutation guards)"
   - "research/audit-synth/out/corrections.md, table r-qwen3vl-emb (the client.max_tokens enforcement framing; the reference provenance requirements)"
   - "research/ANCHOR-FINDING.md (the cut reserves fixed tokens and re-attaches the frame)"
-  - "REVIEW-LOG.md R10 (the template file ships; the engine only warns without it) and R20 (the pixel budget is pinned on serve and mirrored client-side)"
+  - "REVIEW-LOG.md R10 (the served frame is pinned) and R20 (the pixel budget is pinned on serve and mirrored client-side)"
 notes: >-
   Frame: the model reads every input through its chat template - a system turn carrying the
   instruction, a user turn carrying the content, then the assistant header; the pooled token is the
-  tokenizer post-processor's endoftext (id 151643) appended after it. Query and document use the SAME
-  frame (the card encodes both sides identically; the report's section 4 shows identical ids), so the
-  template declares the document shape and the client fills it with the item's text whichever side it
-  is; the recipe's test proves the query text renders byte-identically through the declared shape.
-  Stage 1 proves the declared shape against template.jinja (the file the engine is started with, R10)
-  and against the reference's render. The engine applies a chat template only to chat-shaped requests;
-  text rows ride the completion-style text wire (request_shape: text), whose add_special_tokens
-  default on that route is true - the appended anchor the template declares; a media-bearing row rides
-  the messages wire (p1-tail's multimodal embeddings) with the same rendered text (the research
-  validated identical ids for both shapes). The template pins the
-  model's default instruction, "Represent the user's input.", as fixed frame text: the card applies it
-  whenever an input carries none (and appends '.' to any instruction whose last character is not
-  Unicode punctuation), and the product's embed role has no instruction plumbing, so this recipe's
-  served form is the default-instruction one; a custom instruction is a different serving mode -
-  a new template and judgement family, not this recipe (the stage-1 pairs file carries no instruction
-  field, and the reference refuses rows that carry one). The card's empty-input rule renders the text
-  NULL, hence empty_doc: send_text. No query_max_tokens: the card caps the WHOLE prompt (MAX_LENGTH
-  8192) for both sides alike, mirrored by client.max_tokens and nothing narrower.
+  tokenizer post-processor's endoftext (id 151643) appended after it. The card frames a query exactly
+  like a document: every usage example encodes queries without an instruction of their own, so the
+  default "Represent the user's input." applies to both sides (format_model_input; the
+  sentence-transformers prompts.default). The template therefore declares a query shape and a
+  document shape with the same frame; the recipe's test renders the checkpoint's own
+  chat_template.jinja at the pinned revision (hash-pinned) for one query and one document and
+  requires both declared shapes to render the same strings. No template file ships (serve.chat_template
+  null): the text rows ride the completion-style route, which applies no chat template at all - the
+  frame is the client's declared template and the engine's post-processor appends the anchor - and a
+  chat-shaped request would resolve the checkpoint's own chat_template.jinja at the pinned revision.
+  The harness's template-render check renders one string per row and cannot tell two shapes apart, so
+  it does not run here; the recipe's test takes its place against the checkpoint's file. A custom
+  instruction is a different serving mode - a new template and judgement family, not this recipe (the
+  pairs files carry no instruction field, and the reference refuses rows that carry one). The card's
+  empty-input rule renders the text NULL, hence empty_doc: send_text. No query_max_tokens: the card
+  caps the WHOLE prompt (MAX_LENGTH 8192) for both sides alike, mirrored by client.max_tokens.
 
-  Budgets: client.max_tokens is the declared policy, reserved
-  frame-first with the content span cut (on_overflow: cut); the embed client fits every request to it
-  before shipping. The reference's own truncation (processor
-  truncation=True) right-cuts the whole prompt on over-cap inputs, the declared anchor_drop_over_cap
-  deviation - stage-1 pairs must sit under the budget. On the vector path stage 2 implements no over-cap
-  exclusion today (the deviation table is wired for the rerank path only): an over-cap pair in a stage-2
-  pairs file fails the cosine gate loudly by design, so the stage-2 pairs must sit under the budget too.
+  Budgets: client.max_tokens is the declared policy, reserved frame-first with the content span cut
+  (on_overflow: cut); the embed client fits every request to it before shipping. The card's own
+  truncation (the processor's truncation=True at max_length 8192) right-cuts the whole prompt: the
+  frame's tail is cut and only the post-processor's endoftext is re-appended - the declared
+  anchor_drop_over_cap deviation. reference.py renders exactly that cut (by character offsets on the
+  rendered prompt, never a decode); over-cap rows are reported, not gated, and under-cap rows gate
+  exactly. On the vector path stage 2 implements no over-cap exclusion today: an over-cap pair in a
+  stage-2 pairs file fails the cosine gate loudly, so the stage-2 pairs must sit under the budget.
 
-  Media (R20, both halves). Serve: serve.mm_processor_kwargs pins {min_pixels: 4096, max_pixels:
-  1843200} under the nested images_kwargs scope - ONE shape across the media recipes, decided from the
-  v0.31.0 tag source (the nested dict reaches the HF processor verbatim and scopes the pin to images;
-  the flat form is the shared namespace and leaks into the video size override - see sources).
-  Capacity: one media item per request (serve.limit_mm_per_prompt image=1 video=1; client.max_images
-  and max_videos carry the same numbers). Pixel budget client-side (the mirror half of R20): the
-  product's ImagePolicy cannot mirror 4096-1843200px yet - its stock-engine guard refuses any budget
-  outside the stock qwen3_vl envelope (65536-16777216px), even when serve.mm_processor_kwargs pins the
-  engine to the very same budget (rcp_ndcg.data.resolution ImagePolicy.for_processor) - so this recipe
-  deliberately declares no image_processor/image_policy rather than a default that would change
-  numbers silently: image-bearing requests fail loudly at the media token count until the product
-  accepts a pinned budget (product change requested in the lane report). The GPU wave must run
-  the R20 probe-image engine check (the served prompt-token count for one probe image at the pinned
-  pixel budget) to prove client/engine agreement; the resize-divergence caveat holds only for inputs
-  with one dimension <= 16 px (check_resize_grid_out.json).
+  Media (R20). Serve: serve.mm_processor_kwargs pins {min_pixels: 4096, max_pixels: 1843200} under the
+  nested images_kwargs scope - ONE shape across the media recipes, decided from the v0.31.0 tag source:
+  the nested dict reaches the HF processor's images_kwargs (and through it the resize) and the vLLM-side
+  image token budget, while the flat form also re-sizes every video clip (see sources). Capacity: one
+  media item per request (serve.limit_mm_per_prompt image=1 video=1; client.max_images and max_videos
+  carry the same numbers). Client half: client.image_policy declares the same pixel numbers, but the
+  product cannot apply them yet - its qwen3_vl geometry refuses any budget below the stock floor
+  (65536 px), even when serve pins the engine to the very same budget, so no image_processor is
+  declared and the client can neither resize nor count an image here. On top of that the declared
+  request_shape text carries no media parts: the product refuses an image or video item on this route
+  with a typed CapabilityError, and its messages route would wrap the already-framed text in the chat
+  template a second time. Media therefore travel nowhere today - loudly refused, never silently
+  changed. Two product changes unblock them (lane report): an image budget the client may declare
+  below the family's stock floor when the engine is pinned to it, and a messages lowering that sends
+  the content and leaves the frame to the engine's template. The GPU wave must then run the R20
+  probe-image engine check (the served prompt-token count for one probe image at the pinned budget).
 
-  Video, ONE declared policy on every side (the reconciliation): a clip is sampled to 64 uniformly
-  spaced frames over its whole length - client.video_policy {num_frames: 64, wire: video_url,
-  engine_video_pinning: true}: the client sends the container as a video_url part (the multimodal
-  embeddings lowering does emit video_url per the policy - the older "the lowering never emits
-  video_url" reading is gone since p1-tail 2e) and the engine samples exactly those 64 frames,
-  pinned with --media-io-kwargs '{"video": {"num_frames": 64}}' (serve.extra_args), which
-  engine_video_pinning declares and the GPU wave must verify at /tokenize. The one rule is the
-  product's VideoPolicy one (num_frames uniformly spaced over the clip, the frame count fixed by the
-  policy), and it supersedes both previous samplers: the HF Qwen3VL video processor's resampling
-  defaults an unpinned served path applies (fps 2, min_frames 4, max_frames 768) and the card
-  script's own container route (fps 1, max_frames 64 - FPS/MAX_FRAMES in the vendored script). The
-  reference side follows the same declared rule: a pairs row carrying a video must carry its 64
-  sampled frames (pre-extracted at the policy's uniform rule at ingest), and reference.py refuses a
-  container-bearing row loudly instead of silently sampling it at the card's fps-1 default (a frames
-  row at 64 entries passes through the card's own list route at num_segments 64 unchanged). Loud
-  refusal, never a silent drift - the same discipline as instruction rows.
+  Video, ONE declared sampling policy on every side (the reconciliation): a clip is sampled to 64
+  uniformly spaced frames over its whole length - client.video_policy {num_frames: 64, wire:
+  video_url, engine_video_pinning: true}: the client sends the container as a video_url part (the
+  multimodal embeddings lowering emits video_url per the policy) and the engine samples exactly those
+  64 frames, pinned with --media-io-kwargs '{"video": {"num_frames": 64}}' (serve.extra_args), which
+  engine_video_pinning declares and the GPU wave must verify at /tokenize. It supersedes both older
+  samplers: the served defaults of the checkpoint's video processor (fps 2, min_frames 4, max_frames
+  768) and the card script's container route (fps 1, max_frames 64). The reference side follows the
+  same rule through the card's frame-list route (sample_frames at num_segments 64 keeps a 64-frame list
+  unchanged), and reference.py refuses media rows loudly until a media wave supplies them. Not
+  reconciled, and open for that wave: the per-clip pixel budget - the engine and the client's
+  container count use the checkpoint's video size (4096..25165824 px per clip), the card script caps a
+  clip at total_pixels 7864320 (and 786432 px per frame).
 
   Media equivalence is token-level only (research check_tokens: identical ids for text, image,
-  image+text, video template, page image); the pairs files for both stages carry
-  plain non-empty text and no instruction field: the card renders the text NULL for an empty input (the
-  client-side empty_doc policy) while fit renders the empty span, and an instruction row is refused by
-  the reference (silently ignored by fit without a reference python - the harness gap named in the
-  report's open questions), so both are loud stage failures, never silent drifts.
+  image+text, video template, page image); the pairs files for both stages carry plain non-empty text
+  and no instruction field.
