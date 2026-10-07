@@ -307,7 +307,9 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
 
     The embed roles render the full prompt on the wire: the audit asserts the declared edge (the fixed
     segment at the anchor side, plus the post-processor tokens ``add_special_tokens`` puts there) sits at its
-    declared position of every captured text's ids.  The rerank wire ships spans -- the engine assembles the
+    declared position of every captured body's ids -- an ``anchor: first`` head as the engine reads it in the
+    assembled render (:func:`_head_edge_ids`), an ``anchor: marker`` shape's markers in the sent content
+    without the post-processor's tokens (:func:`_content_ids`).  The rerank wire ships spans -- the engine assembles the
     frame -- so its audit asserts the client's settle-once: one query span per row, identical across the row's
     pointwise requests, within its declared ``query_max_tokens``, and no cut on an in-budget pair (a cut
     recorded in the client's census for a pair under budget would mean the client shortened something the
