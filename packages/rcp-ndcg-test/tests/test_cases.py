@@ -534,6 +534,42 @@ def test_an_unknown_generator_or_version_is_refused(tmp_path: Path) -> None:
         load_case(path)
 
 
+def test_a_text_ref_long_input_measures_its_stratum(tmp_path: Path) -> None:
+    """A text_ref long_under case is measured through its MATERIALIZED text: the rendered input must
+    sit within 5% under the budget and be uncut.
+
+    The raw ``.text`` field of a text_ref item is ``None`` by design -- measuring the placeholder would
+    see an empty input and refuse every long_under stratum. The materialized text renders at 127 of
+    128 tokens (uncut), so the length rule accepts the stratum and the load moves on to the coverage
+    check (which this single-case directory fails, by design: that message is the proof the length
+    rule passed).
+    """
+    body = """
+        id: fake-embed/ref-long-under
+        recipe: fake-embed
+        role: embed
+        source: {kind: generated}
+        strata: {modality: text, length: long_under, batch: single}
+        inputs:
+          queries: [{id: q1, text: a query}]
+          documents:
+            - id: d1
+              text_ref:
+                generator: qwen3vl_wordlist@1
+                params: {seed: 7, words: 25}
+                sha256: 0dbc9bde16cf3caa5d2dfb93d77a939205e621b6d7c4679b7b462d0e0bf13b6a
+        expected:
+          kind: similarity_matrix
+          values: null
+          tolerance: {abs: 0.01}
+          origin: reference
+          status: pending_gpu
+    """
+    write_case(tmp_path, "fake-embed", "ref-long-under", body)
+    with pytest.raises(CaseError, match="the strata grid is incomplete"):
+        load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
+
+
 def test_a_multi_query_rerank_case_measures_every_query(tmp_path: Path) -> None:
     """The length strata measure every query's pair fit, not just the first query's."""
     rerank = load_recipe(TEST_RECIPES / "fake-rerank")

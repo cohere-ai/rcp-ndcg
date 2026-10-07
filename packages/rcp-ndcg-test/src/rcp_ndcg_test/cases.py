@@ -760,8 +760,8 @@ def _fit_outcome(recipe: Recipe, case: Case) -> tuple[int, list[int]]:
             renders.extend(tokenizer.count(text, add_special_tokens=True) for text in result.texts)
         return cuts, renders
     for shape, texts in (
-        ("query", [query.text for query in case.inputs.queries]),
-        ("document", [document.text or "" for document in case.inputs.documents]),
+        ("query", [text_of(query) or "" for query in case.inputs.queries]),
+        ("document", [text_of(document) or "" for document in case.inputs.documents]),
     ):
         fitted = fit(texts, shape, budget, tokenizer, ids=[str(index) for index in range(len(texts))])  # type: ignore[arg-type]  # the literal shapes are RequestShape values
         cuts += len(fitted.cuts)
