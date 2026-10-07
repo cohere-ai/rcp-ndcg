@@ -36,7 +36,9 @@ released together.
   below the stock floor shrinks to its own minimum; a shrink the policy cannot express is a typed `DataError`
   naming the budget. `rcp_ndcg_vllm`'s recipe
   validator checks both sides: a pinned client needs `serve.mm_processor_kwargs.images_kwargs` with both
-  numbers, and every pixel number serve pins (nested or flat) must equal the client's.
+  numbers, and every pixel number serve pins (nested or flat, `min_pixels`/`max_pixels` or the HF processor's
+  `size: {shortest_edge, longest_edge}`) must equal the client's -- a serve pin beside a client that declares
+  no pixel budget is refused too.
 - **A per-document cap beside the pair budget** (`RerankEndpoint.document_max_tokens`,
   `TextBudget.document_max_tokens`): a reranker whose checkpoint cuts each document itself (jina-reranker-v3
   reads 2048 document tokens beside its 512-token query share) declares it, mirroring `query_max_tokens`.
@@ -207,7 +209,8 @@ released together.
   the uncut and kept request totals and the budget. Every text the client sent uncut gates exactly, also
   beside a changed sibling in the same row. Declared normalisation (`strip`, `lowercase`) is policy both sides
   apply, never a change: the rerank settlement compares the normalised query with the settled span and
-  records a cut only when content was removed.
+  records a cut only when content was removed; the pair fit's residual re-fit at a shorter query span records
+  that settlement too. A record under no input position is attributed to every input of its call.
 - **The offline fake draws one seeded stream per vector**: `rcp_ndcg.inference.fake`'s `/embeddings` and
   `/pooling` vectors are one SHAKE-256 stream of the same parts each (read as `dim` uniforms), no longer one
   SHA-256 per component, so a 16k-token text at 2048 dimensions answers in seconds instead of minutes. The

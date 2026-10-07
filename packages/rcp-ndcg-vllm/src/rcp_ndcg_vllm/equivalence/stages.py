@@ -227,6 +227,7 @@ def _probe_rerank(client: Any, capture: Capture, row: dict[str, Any], entry: dic
     records_start = len(client.processing)
     client.rerank(row["query"], row["documents"], instruction=row.get("instruction"))
     changed_ids = {record.input_id for record in client.processing[records_start:] if record.changed}
+    unattributed = any(not (input_id.isdigit() or input_id == QUERY_DOC_ID) for input_id in changed_ids)
     queries: list[str] = []
     documents: list[str] = []
     for exchange in capture.exchanges[start:]:
@@ -239,8 +240,10 @@ def _probe_rerank(client: Any, capture: Capture, row: dict[str, Any], entry: dic
         "query": settled,
         "queries": queries,
         "documents": documents,
-        "query_changed": QUERY_DOC_ID in changed_ids,
-        "documents_changed": [str(position) in changed_ids for position in range(len(row["documents"]))],
+        "query_changed": QUERY_DOC_ID in changed_ids or unattributed,
+        "documents_changed": [
+            unattributed or str(position) in changed_ids for position in range(len(row["documents"]))
+        ],
     }
 
 
@@ -1366,7 +1369,9 @@ def _changed_rows(client: Any, start: int, n_documents: int) -> list[bool]:
     for record in client.processing[start:]:
         if not record.changed:
             continue  # pragma: no cover - a client emits records for changed rows only
-        if record.input_id == QUERY_DOC_ID:
+        if record.input_id == QUERY_DOC_ID or not record.input_id.isdigit():
+            # The shared query's settlement changes every pair; a record under no position (the media fit's
+            # owner fallback) cannot be attributed to one input, so every input of the call counts as changed.
             return [True] * n_documents
         position = int(record.input_id)
         if 0 <= position < n_documents:

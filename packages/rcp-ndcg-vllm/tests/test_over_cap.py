@@ -264,3 +264,17 @@ def test_stage1_gates_every_text_the_client_sent_uncut_beside_a_changed_sibling(
     if recipe_id == "fixture-rerank-pointwise":
         reported = [m["span"] for entry in render["over_cap"]["rows"] for m in entry["mismatches"]]
         assert reported == ["document 1"], reported
+
+
+def test_a_record_under_no_position_changes_every_input_of_its_call() -> None:
+    """A processing record whose id names no position (the media fit's owner fallback, the role's name) is not
+    attributable to one input: every input of the call is reported changed -- never a crash, never a pass."""
+    from types import SimpleNamespace
+
+    from rcp_ndcg_vllm.equivalence import stages as stages_module
+
+    from rcp_ndcg.data.preprocess import ProcessingRecord
+
+    record = ProcessingRecord(corpus="rerank", input_id="rerank", shape="pair", mechanisms=("media_drop",))
+    client = SimpleNamespace(processing=[record])
+    assert stages_module._changed_rows(client, 0, 3) == [True, True, True]
