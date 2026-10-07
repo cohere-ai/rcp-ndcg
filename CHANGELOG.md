@@ -25,6 +25,15 @@ released together.
 
 ### Public surface
 
+- **Recipe follow-ups**: `qwen3-vl-embedding-2b` moves to the `messages` route with `add_generation_prompt: true`
+  and the pinned `qwen3_vl` image policy (images and video now travel; its notes say so); `qwen3-vl-reranker-2b`
+  declares the same pinned `qwen3_vl` image policy (its images were refused) and its reference reads a
+  whitespace-only query as the card does (verbatim); both references, and `topk-embed-v1-small`'s, gain
+  `--mode media` (the cards' own image resize; NOTICE attributes the restated `smart_resize` of qwen-vl-utils
+  0.0.14 and of transformers); `jina-reranker-v3` declares `document_max_tokens: 2048` (the checkpoint's
+  per-document cap); `jina-embeddings-v5-text-small`'s notes no longer describe the last_content gap lane H
+  closed. The `qwen3-vl-reranker-2b` corpus is re-keyed (its new client media inputs shape no recorded
+  exchange); the `qwen3-vl-embedding-2b` and `jina-reranker-v3` stale declarations name the inputs that moved.
 - **The media request set is generated and recorded** (`rcp_ndcg_vllm.observe.media_set`, `MEDIA_SET_VERSION` 1,
   versioned apart from the text sampling so no recipe's text rows move): a recipe with image input plans one
   pairs row per image size bucket of OBSERVATIONS-SPEC section 1 (tiny, icon, A4 at 72/150/300 dpi, a 16:9
@@ -599,9 +608,12 @@ released together.
   mode needs no torch and no transformers; the recipe directory carries its `requirements-reference.txt`.
 - New serving recipe `rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/` (`Qwen/Qwen3-VL-Embedding-2B` at revision
   `9f2f7e71…`, role `embed`, stock `vllm/vllm-openai:v0.31.0`, no plugin): the chat frame declared as product
-  `TemplateSpec` data with the model's default instruction pinned as fixed text, the template file shipped
-  (`serve.chat_template: template.jinja`, R10), the media pixel budget pinned on both sides
-  (`serve.mm_processor_kwargs` `images_kwargs` min 4096 / max 1843200, mirrored in `client.recipe`, R20),
+  `TemplateSpec` data with the model's default instruction pinned as fixed text, every item sent on the
+  `messages` route and framed once by the checkpoint's own chat template (no template file ships;
+  `add_generation_prompt` and `add_special_tokens` sent true), the media pixel budget pinned on both sides
+  (`serve.mm_processor_kwargs` `images_kwargs` min 4096 / max 1843200; the client's `image_processor:
+  qwen3_vl` and `image_policy` with `engine_pixel_pinning`, R20), its reference's `--mode media` for the
+  media stage,
   explicit `client.tokenizer` + `max_tokens: 8192` with `on_overflow: cut`, `empty_doc: send_text "NULL"`
   (the card's NULL rule), and the subprocess reference running the card's `Qwen3VLEmbedder` (vendored
   verbatim, sha256-pinned; the render mode mirrors the anchor-preserving cut, and the card's whole-prompt

@@ -29,6 +29,10 @@ Hugging Face transformers
     port of `smart_resize` in
     src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py (lines
     75-108, at commit 2c8526d).
+  - packages/rcp-ndcg-vllm/recipes/topk-embed-v1-small/reference.py:
+    `card_resize` restates the same `smart_resize` (image_processing_qwen2_vl.py,
+    lines 63-89, at commit 528c267), the resize the topk-embed-v1-small
+    wrapper's `_image_row` calls through its image processor's module.
 
 vLLM
   https://github.com/vllm-project/vllm
@@ -66,6 +70,18 @@ vLLM
     upstream SHA-256 df956086e3ef710a6f792a99ad3f7a7ec717f19114aba061304117fa688dee26).
     The adaptation rewrites the two expression blocks to the plain-text
     query/document branch (+2/-12 lines; the recipe's notes record it).
+
+qwen-vl-utils
+  https://github.com/QwenLM/Qwen2-VL/tree/main/qwen-vl-utils (the PyPI package
+  qwen-vl-utils 0.0.14, the vision preprocessing the Qwen3-VL model cards call)
+  By the Qwen team, Alibaba Cloud. Licence: Apache-2.0 (the package's).
+  - packages/rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/reference.py and
+    packages/rcp-ndcg-vllm/recipes/qwen3-vl-reranker-2b/reference.py:
+    `card_resize` restates `smart_resize` (with `round_by_factor`,
+    `ceil_by_factor` and `floor_by_factor` inlined) from
+    qwen_vl_utils/vision_process.py, lines 41-81, in the qwen-vl-utils 0.0.14
+    wheel (upstream SHA-256
+    f3710ced8ffe735da57d08cf5236cf9d326ff646ed1bdad2e62593a7801adc33).
 
 SGLang
   https://github.com/sgl-project/sglang
