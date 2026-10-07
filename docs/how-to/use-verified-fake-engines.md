@@ -88,8 +88,10 @@ naming what moved and why. A re-key touches no record, by this procedure:
    the manifest's `recipe.fingerprint_inputs` (`fingerprint_changes`); go on only when the changed names
    are exactly the ones you declare metadata-only.
 2. In `manifest.json`, set `recipe.behaviour_fingerprint` and `recipe.fingerprint_inputs` to the current
-   values and append to `recipe.rekeyed` an entry with `from_behaviour_fingerprint`, `changed_inputs`
-   (each name with its old and new value), `reason` and `date`.
+   values and append to `recipe.rekeyed` an entry with `from_behaviour_fingerprint`, `from_manifest_sha256`
+   and `from_manifest_file_sha256` (the old manifest's digest and file SHA-256: they keep the link to the full
+   corpus the subset was cut from), `changed_inputs` (each name with its old and new value), `reason` and
+   `date`.
 3. Recompute `integrity.manifest_sha256` with `rcp_ndcg.testing.corpus.manifest_digest`, then the
    corpus's `index.json` (`full_corpus.manifest_sha256` and `manifest_file_sha256`, the file's SHA-256).
 4. `git mv` the directory to the new fingerprint and move its entry in the engine's `index.json`

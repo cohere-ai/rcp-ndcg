@@ -118,6 +118,8 @@
     "rekeyed": [
       {
         "from_behaviour_fingerprint": "104f225bef53f79a889b609588458e0585702577d6c917ec846a3f1b88de32a8",
+        "from_manifest_sha256": "0c387f9f20e72af1053a835c2b6a0c25da19dbfbc275b5293f00b8e50eae38f7",
+        "from_manifest_file_sha256": "8cff691c45e7d5729fab41357397bfa0a062d182026a48c0b047d8562c9a976d",
         "changed_inputs": {
           "client.image_policy": [
             null,
@@ -193,6 +195,6 @@
       }
     },
     "records_count": 4,
-    "manifest_sha256": "5f5d8ead4ce795dc3848d0dc3bb6062357230c1c672dbfb495e6de4f2e255b5a"
+    "manifest_sha256": "a5876a7d4403e779bcc49589f664606dfe1f292c603abe1fc2005d2cf3231047"
   }
 }

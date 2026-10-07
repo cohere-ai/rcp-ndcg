@@ -25,6 +25,24 @@ released together.
 
 ### Public surface
 
+- **A recipe that declares a key twice is refused** (`rcp_ndcg_vllm.load_recipe`): YAML keeps the last of two equal
+  keys silently, so a recipe declaring a field twice served whichever came last. The loader raises
+  `RecipeError` naming the key and its line; the `fixture-rerank-noisy` fixture declared `use_activation` twice
+  (both `true`) and now declares it once.
+- **Change handling reads corpora through the one reader**: `rcp_ndcg_vllm.changes` (the committed-corpora
+  selection and staleness) reads each manifest through `rcp_ndcg.testing.corpus.load_corpus` and refuses a
+  corpus whose hashes do not hold (`HarnessError` naming the mismatches) instead of parsing `manifest.json`
+  itself; the conformance wiring (`tests/_engines.py`) reads through the same reader. The two re-record
+  selections state their scopes: `changes changed` compares the corpora committed in the repository, the
+  wave runner's `--changed-since <wave.json>` a previous wave's index (`observe.corpus.changed_since`).
+- **`rcp_ndcg.runs.execution.stage_run(pipeline)`**: the one staging of a run directory before a job runs it (the
+  layout, the resolved `run.yaml`, the manifest in status `submitted`). `submit_run` calls it, and
+  `rcp_ndcg_vllm.e2e.stage_run_dir` -- the GPU end-to-end driver, which runs the job itself -- now calls it
+  instead of the pipeline's private `run.yaml` writer.
+- **Re-keyed corpora name the manifest they were re-keyed from**: each `recipe.rekeyed` entry carries
+  `from_manifest_sha256` and `from_manifest_file_sha256` beside `from_behaviour_fingerprint`, the link from the
+  repository subset to the full corpus it was cut from (`qwen3-reranker-8b`, `qwen3-vl-reranker-2b`; their
+  manifest digests and the corpus indexes recomputed). The conformance suite requires both on every entry.
 - **The stub engine speaks vLLM's chat path, and stage 2 runs on the messages route**: `rcp-ndcg-vllm`'s test stub
   engine refused `messages` bodies, so stage 2 on the `messages` route was untested. It now frames each
   conversation as vLLM v0.31.0's chat path does (parts handed to the served chat template as their modality,
