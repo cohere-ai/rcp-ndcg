@@ -89,7 +89,7 @@ def conformance_params(
     Inputs: the ``target`` (``fake`` resolves the recipe's fake through the registry; ``engine`` needs
     ``base_url``), where the recipe directories and the case directories live (the product's
     ``recipes/`` and the package's ``cases/`` when ``None``), and ``check_lengths`` for the load (the
-    run itself loads the recipe's tokenizer through the fit bridge for every send, so a Hub-backed
+    run itself loads the recipe's tokenizer through the product's wired client for every send, so a Hub-backed
     tokenizer needs the cache or a network run either way; ``check_lengths`` only bounds the load-time
     measurement).
 

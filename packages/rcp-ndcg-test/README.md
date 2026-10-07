@@ -51,8 +51,7 @@ outputs, the case declares `expected.kind: none` (it exercises the path only) or
 the card's text — say which in `notes`. A `generated` case fills a
 stratum the cards do not cover: every recipe needs at least one case per applicable cell of
 modality × length × batch — `short`, `long_under` (within 5% under `client.max_tokens`, never cut),
-`long_over` (over it; the budget cuts it — through the product's `fit` until the role clients carry the
-text budget, see the bridge note under The conformance suite — and the anchors must survive),
+`long_over` (over it; the budget cuts it — and the anchors must survive),
 `mixed_length` batches, and for
 vision-language recipes `image` / `video` (if the model takes video) and `mixed_modality` batches. The
 labels are cross-checked against the case's own inputs at load (a `modality: image` case with no image
@@ -60,8 +59,12 @@ document, or a `mixed_length` batch whose text inputs all measure the same, is r
 cannot satisfy the grid.
 Generated cases start `origin: reference, status: pending_gpu, values: null`; the GPU waves fill them from
 the reference implementation and the engine. Long inputs are deterministic (their construction is
-recorded in `notes`), measured with the recipe's tokenizer; media files live under the recipe's
-`media/` directory, and nothing is fetched at test time.
+recorded in `notes`), measured with the recipe's tokenizer; media files live under the case's
+`media/` directory (`cases/<recipe-id>/media/<slug>.<ext>`), and nothing is fetched at test time. A
+media case carries its files to the wire through the adaptation step's `prepare_image`/`prepare_video`
+and out as `image_url` content parts (one media item per encode call on the pooling route) — it *runs*
+on the pool, rerank and gate routes and *skips* (checked before every send, reason recorded) only on
+the embed route, whose `EmbeddingEndpoint` refuses media at gate level.
 
 A generated text may be stored **by reference** instead of literally: `text_ref:
 {generator: <name>@<version>, params: {...}, sha256: <hex of the UTF-8 text>}` — usable wherever a case
@@ -131,11 +134,10 @@ Both targets send through the **product's role clients** built from the recipe's
 `EmbeddingClient`, `PoolingClient` or `RerankClient` over the product's adapter and transport. The
 engine is reached with a real `httpx` pool; a fake sits *below* the transport (an `httpx` transport the
 product's `Transport` sends through), so routing, retries and the adapters are the product's in both.
-One bridge is declared while the role clients do not carry the text budget yet (the `clients-final`
-wiring): the runner pre-fits every input with the product's `fit` — the recipe's own tokenizer, template
-and budget — and sends the fitted contents through a client whose budget fields are cleared; a recipe
-with per-side prompts is refused with that reason. When the wiring lands, drop the pre-fit and send the
-raw contents.
+Both targets send the case's **raw** contents: the product's role client runs the recipe's own
+tokenizer, template and `max_tokens` in its adaptation (the snapshot & send) step and names the fit in
+`notes`; a recipe with per-side prompts reaches the wire untouched. Media documents go out as
+`image_url` content parts prepared by the same step (see What a case is).
 
 ## Fake engines
 
@@ -143,9 +145,11 @@ raw contents.
 (`recipe_id`, `name`, `handle(method, path, body) -> FakeReply`) and the registry by recipe id. A fake
 must answer the role's route(s) plus `GET /models` and `POST /tokenize` (the engine's tokenization ground
 truth, so anything that cross-checks the client's `fit` can do it offline). No model-level fake ships
-yet — the verified emulators are built from the GPU recordings later. What ships is one test fake for the
-packaged fixture recipe (`fake-embed`: recipe, tokenizer and cases under `rcp_ndcg_test/fixtures/`, all
-in the wheel), registered on import:
+yet — the verified emulators are built from the GPU recordings later. What ships is one registered test
+fake for the packaged fixture recipe (`fake-embed`: recipe, tokenizer and cases under
+`rcp_ndcg_test/fixtures/`, all in the wheel), registered on import; the package's own tests rebuild
+deterministic pool and rerank test fakes for its `fake-pool` and `fake-rerank` fixture recipes
+(`tests/fakes_fixture.py`):
 
 ```python
 from rcp_ndcg_test.fakes import FakeEmbedEngine, fake_engine_for
