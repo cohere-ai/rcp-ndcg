@@ -6,9 +6,11 @@ submit.sh); what can be exercised on CPU is their plan, their guards and their r
 
 from __future__ import annotations
 
+import json
 import shlex
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -173,6 +175,210 @@ def test_freeze_name_of_parses_wheel_names_and_specs(bootstrap_functions: str) -
         assert completed.stdout.strip() == expected, argument
 
 
+# --- the recipe plugin wheels (the staged tree and the staged wheelhouse, never an index) ------------
+
+
+def _fake_engine_python(tmp_path: Path, *, fail_spec: str) -> Path:
+    """A fake ENGINE_PYTHON: logs every invocation's argv, fails the install of ``fail_spec``."""
+    log = tmp_path / "engine-python.log"
+    failure = ""
+    if fail_spec:
+        failure = (
+            f'if [[ "$*" == *"{fail_spec}"* ]]; then '
+            f'echo "ERROR: No matching distribution for {fail_spec}" >&2; exit 1; fi\n'
+        )
+    script = tmp_path / "fake-engine-python"
+    script.write_text(
+        f'#!/usr/bin/env bash\necho "$*" >> {log!s}\n{failure}exit 0\n',
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    return script
+
+
+def _install_plugin_wheels(tmp_path: Path, specs: str, *, fail_spec: str = "") -> subprocess.CompletedProcess[str]:
+    """Run bootstrap's install_plugin_wheels (its functions, by sourcing) with a fake engine python."""
+    stage = tmp_path / "stage"
+    (stage / "wheelhouse").mkdir(parents=True)
+    recipes = tmp_path / "recipes"
+    recipes.mkdir()
+    specs_file = tmp_path / "specs.txt"
+    specs_file.write_text(specs, encoding="utf-8")
+    allowed = tmp_path / "allowed.txt"
+    failed = tmp_path / "failed.txt"
+    fake = _fake_engine_python(tmp_path, fail_spec=fail_spec)
+    completed = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source "{BOOTSTRAP}" && ENGINE_PYTHON="{fake}" STAGE_DIR="{stage}" RECIPES_ROOT="{recipes}" '
+            f'install_plugin_wheels "{specs_file}" "{allowed}" "{failed}"',
+        ],
+        capture_output=True,
+        text=True,
+    )
+    return completed
+
+
+def test_bootstrap_installs_a_named_plugin_from_the_staged_wheelhouse_only(tmp_path: Path) -> None:
+    """A plugin named by a recipe and not staged as a file installs from the staged wheelhouse only
+    (--no-index --find-links <stage>/wheelhouse) - never an index (FINDINGS: pip found no match on an
+    index although the wheel sat in the staged wheelhouse)."""
+    completed = _install_plugin_wheels(tmp_path, "my-plugin==1.2.3\n")
+    assert completed.returncode == 0, completed.stderr
+    log = (tmp_path / "engine-python.log").read_text(encoding="utf-8")
+    assert "my-plugin==1.2.3" in log
+    assert "--no-index" in log and "--find-links" in log
+    assert str(tmp_path / "stage" / "wheelhouse") in log
+    assert (tmp_path / "allowed.txt").read_text(encoding="utf-8").strip() == "my-plugin"
+    assert not (tmp_path / "failed.txt").exists() or not (tmp_path / "failed.txt").read_text(encoding="utf-8").strip()
+
+
+def test_bootstrap_a_plugin_found_nowhere_is_recorded_with_its_exact_name(tmp_path: Path) -> None:
+    """A plugin found nowhere never fails the job: it is recorded with its exact name (the wave then
+    fails exactly the recipes that name it) and the rest of the plugins still install."""
+    exact = "Private-Plugin.Name==1.2.3"
+    completed = _install_plugin_wheels(tmp_path, f"{exact}\nother-plugin\n", fail_spec=exact)
+    assert completed.returncode == 0, completed.stderr  # the loop carries on; the job never dies here
+    assert exact in completed.stderr  # reported, with the exact name (not a canonicalised one)
+    assert (tmp_path / "failed.txt").read_text(encoding="utf-8").splitlines() == [exact]
+    assert (tmp_path / "allowed.txt").read_text(encoding="utf-8").splitlines() == ["other-plugin"]
+    assert "other-plugin" in (tmp_path / "engine-python.log").read_text(encoding="utf-8")
+
+
+# --- the reference venv: the image's torch stack, kept by constraint and checked after install ------
+
+
+def _bash_bootstrap_function(body: str) -> subprocess.CompletedProcess[str]:
+    """Run bootstrap.sh's sourced shell functions (one per concept under test)."""
+    return subprocess.run(["bash", "-c", f'source "{BOOTSTRAP}" && {body}'], capture_output=True, text=True)
+
+
+def test_image_torch_pins_the_image_stack_from_the_engine_freeze(tmp_path: Path) -> None:
+    """The reference install's constraint file: the image's own torch/torchvision/torchaudio/triton
+    versions from the engine python's freeze, nothing else."""
+    freeze = tmp_path / "freeze.txt"
+    freeze.write_text(
+        "pip==25.2\ntorch==2.13.0\ntorchvision==0.28.0\ntorchaudio==2.13.0\ntriton==3.5.0\nvllm==0.31.0\n",
+        encoding="utf-8",
+    )
+    pins = tmp_path / "pins.txt"
+    completed = _bash_bootstrap_function(f'image_torch_pins "{freeze}" "{pins}"')
+    assert completed.returncode == 0, completed.stderr
+    assert pins.read_text(encoding="utf-8").splitlines() == [
+        "torch==2.13.0",
+        "torchvision==0.28.0",
+        "torchaudio==2.13.0",
+        "triton==3.5.0",
+    ]
+
+
+def test_image_torch_pins_refuses_to_leave_the_install_unconstrained(tmp_path: Path) -> None:
+    """A freeze with no torch== pin: an unconstrained install could silently swap the image's CUDA
+    torch for the wheelhouse's CPU torch -- an error with a hint, not a default."""
+    freeze = tmp_path / "freeze.txt"
+    freeze.write_text("pip==25.2\nvllm==0.31.0\n", encoding="utf-8")
+    pins = tmp_path / "pins.txt"
+    completed = _bash_bootstrap_function(f'image_torch_pins "{freeze}" "{pins}"')
+    assert completed.returncode != 0
+    assert "torch==" in completed.stderr and "REFERENCE_REQUIREMENTS" in completed.stderr
+
+
+def _fake_reference_python(tmp_path: Path, *, fail: bool) -> Path:
+    """A fake reference interpreter: logs its argv (optionally failing every install)."""
+    log = tmp_path / "reference-python.log"
+    failure = "exit 1\n" if fail else "exit 0\n"
+    script = tmp_path / "fake-reference-python"
+    script.write_text(
+        f'#!/usr/bin/env bash\necho "$*" >> {log!s}\n{failure}',
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    return script
+
+
+def test_reference_install_uses_the_staged_wheelhouse_under_the_image_pins(tmp_path: Path) -> None:
+    """The reference install: from the staged wheelhouse only, held to the image's pins (so a
+    requirement that would replace the image's torch stack fails instead of replacing it)."""
+    fake = _fake_reference_python(tmp_path, fail=False)
+    pins, requirements = tmp_path / "pins.txt", tmp_path / "req.txt"
+    pins.write_text("torch==2.13.0\n", encoding="utf-8")
+    requirements.write_text("transformers==4.57.0\n", encoding="utf-8")
+    wheelhouse = tmp_path / "wheelhouse"
+    wheelhouse.mkdir()
+    completed = _bash_bootstrap_function(f'reference_install "{fake}" "{pins}" "{requirements}" "{wheelhouse}"')
+    assert completed.returncode == 0, completed.stderr
+    log = (tmp_path / "reference-python.log").read_text(encoding="utf-8")
+    assert "pip install" in log
+    assert "--no-index" in log and f"--find-links {wheelhouse}" in log
+    assert f"-c {pins}" in log and f"-r {requirements}" in log
+
+
+def test_reference_install_conflict_fails_loudly(tmp_path: Path) -> None:
+    """A requirement that would replace the image's torch stack: the install fails loudly (the pip
+    conflict surfaces, with the way out in the bootstrap's message), never a silent swap."""
+    fake = _fake_reference_python(tmp_path, fail=True)
+    pins, requirements = tmp_path / "pins.txt", tmp_path / "req.txt"
+    pins.write_text("torch==2.13.0\n", encoding="utf-8")
+    requirements.write_text("torch==2.14.0\n", encoding="utf-8")
+    wheelhouse = tmp_path / "wheelhouse"
+    wheelhouse.mkdir()
+    completed = _bash_bootstrap_function(f'reference_install "{fake}" "{pins}" "{requirements}" "{wheelhouse}"')
+    assert completed.returncode != 0
+    assert "replace the image's torch" in completed.stderr and "REFERENCE_REQUIREMENTS" in completed.stderr
+
+
+def _torch_json(tmp_path: Path, name: str, version: str | None, cuda: str | None) -> Path:
+    path = tmp_path / name
+    path.write_text(json.dumps({"version": version, "cuda": cuda}) + "\n", encoding="utf-8")
+    return path
+
+
+def test_check_reference_torch_accepts_the_image_build(tmp_path: Path) -> None:
+    """The reference sees exactly the image's CUDA torch: torch_is_image_build is true, no failure."""
+    image = _torch_json(tmp_path, "image.json", "2.13.0+cu128", "12.8")
+    reference = _torch_json(tmp_path, "reference.json", "2.13.0+cu128", "12.8")
+    completed = _bash_bootstrap_function(f'check_reference_torch "{reference}" "{image}"')
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "true"
+
+
+def test_check_reference_torch_rejects_a_cpu_torch_on_a_gpu_node(tmp_path: Path) -> None:
+    """A CPU torch where the image ships CUDA torch (the shakedown's blocker): a failed bootstrap."""
+    image = _torch_json(tmp_path, "image.json", "2.13.0+cu128", "12.8")
+    reference = _torch_json(tmp_path, "reference.json", "2.14.0+cpu", None)
+    completed = _bash_bootstrap_function(f'check_reference_torch "{reference}" "{image}"')
+    assert completed.returncode != 0
+    assert completed.stdout.strip() == "false"
+    assert "a CPU torch on a GPU node is a failed bootstrap" in completed.stderr
+
+
+def test_check_reference_torch_rejects_a_replaced_torch(tmp_path: Path) -> None:
+    """A requirement that replaced the image's torch with another CUDA build is still a failure: the
+    reference must keep the image's own torch stack."""
+    image = _torch_json(tmp_path, "image.json", "2.13.0+cu128", "12.8")
+    reference = _torch_json(tmp_path, "reference.json", "2.14.0+cu129", "12.9")
+    completed = _bash_bootstrap_function(f'check_reference_torch "{reference}" "{image}"')
+    assert completed.returncode != 0
+    assert completed.stdout.strip() == "false"
+    assert "2.13.0+cu128" in completed.stderr and "2.14.0+cu129" in completed.stderr
+
+
+def test_torch_probe_reports_the_seen_torch_build() -> None:
+    """The probe both sides run: the interpreter's torch version and whether it is a CUDA build.  The
+    comparison happens in subprocesses - this harness process must stay free of torch (test_no_torch)."""
+    completed = _bash_bootstrap_function(f'torch_probe "{sys.executable}"')
+    assert completed.returncode == 0, completed.stderr
+    probe = json.loads(completed.stdout)
+    assert set(probe) == {"version", "cuda"}
+    if probe["version"] is None:
+        pytest.skip("torch is not importable in this environment")
+    expected = subprocess.run(
+        [sys.executable, "-c", "import torch; print(torch.__version__)"], capture_output=True, text=True, check=True
+    )
+    assert probe["version"] == expected.stdout.strip()
+
+
 # --- submit.sh: the operator's submission, KJOBS=echo prints the plan ----------------------------------
 
 
@@ -290,6 +496,27 @@ def test_submit_wave0_mounts_the_wave0_script(tmp_path: Path, monkeypatch: pytes
     assert any(word.startswith("files.wave0host.from_file=") for word in words)
     command = next(word for word in words if word.startswith("worker.command="))
     assert "/etc/rcp/files/wave0/wave0.sh" in command
+
+
+def test_submit_creates_the_submit_dir_when_it_does_not_exist(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """RCP_SUBMIT_DIR is created when missing (nested paths included); the job CLI's log lands there."""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    kjobs = fake_bin / "kjobs-go"
+    kjobs.write_text('#!/usr/bin/env bash\necho "submitted; follow with: kjobs logs rcp-wave-a"\n')
+    kjobs.chmod(0o755)
+    out_dir = tmp_path / "nested" / "submit-out"
+    completed = _submit(
+        tmp_path, monkeypatch,
+        "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves", "wave-a",
+        env_overrides={
+            "KJOBS": str(kjobs),
+            "RCP_SUBMIT_DIR": str(out_dir),
+            "RCP_IMAGE_DIGEST": "sha256:" + "0" * 64,
+        },
+    )  # fmt: skip
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert (out_dir / "kjobs-wave-a.log").is_file()
 
 
 def test_submit_fails_with_a_usage_message_without_the_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

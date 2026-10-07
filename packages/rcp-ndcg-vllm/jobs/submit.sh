@@ -26,7 +26,8 @@
 #   RCP_SHARED_MEMORY  the job's worker.shared_memory (defaults to 128Gi, sized for eight engines)
 #   KJOBS              the job CLI, "kjobs-go" by default; KJOBS=echo prints every command instead of
 #                      running it (the plan, with the secret value elided)
-#   RCP_SUBMIT_DIR     where the job CLI's output files land (default: a mktemp dir)
+#   RCP_SUBMIT_DIR     where the job CLI's output files land (default: a mktemp dir; created when it
+#                      does not exist)
 
 set -euo pipefail
 
@@ -77,7 +78,15 @@ done
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KJOBS="${KJOBS:-kjobs-go}"
 SHARED_MEMORY="${RCP_SHARED_MEMORY:-128Gi}"
-OUT_DIR="${RCP_SUBMIT_DIR:-$(mktemp -d /tmp/rcp-submit.XXXXXX)}"
+OUT_DIR="${RCP_SUBMIT_DIR:-}"
+SCRATCH_OUT_DIR=false
+if [[ -z "$OUT_DIR" ]]; then
+  OUT_DIR="$(mktemp -d /tmp/rcp-submit.XXXXXX)"
+  SCRATCH_OUT_DIR=true
+else
+  # The operator's directory: created when it does not exist, so the job CLI's log always lands.
+  mkdir -p "$OUT_DIR"
+fi
 ECHO_ONLY=false
 if [[ "$KJOBS" == "echo" ]]; then
   ECHO_ONLY=true
@@ -240,7 +249,9 @@ for wave in "${WAVES[@]}"; do
 done
 
 if $ECHO_ONLY; then
-  rmdir "$OUT_DIR" 2>/dev/null || true  # the plan wrote nothing into it
+  if $SCRATCH_OUT_DIR; then
+    rmdir "$OUT_DIR" 2>/dev/null || true  # the plan wrote nothing into the scratch dir
+  fi
   echo "submit.sh: KJOBS=echo printed the plan; nothing was submitted"
 else
   echo "submit.sh: $SUBMITTED job(s) submitted; the job CLI's outputs are under $OUT_DIR (grep them, never echo them)"
