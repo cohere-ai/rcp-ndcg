@@ -3,13 +3,16 @@
 This is an exact port of the rcp-ndcg paper's encoder path -- not of the model card. Line numbers
 grep-verified against the repository 2026-10-06:
 
-- ``src/rcp_ndcg/retrieval/hf_dense.py:21`` ``MAX_LENGTH = 8192`` ("longer texts are truncated on
-  the right", the HF default truncation side); ``:49`` the tokenizer loads with
-  ``padding_side="left"``; ``:50`` the model loads with ``dtype=torch.bfloat16``; ``:59`` per-batch
-  ``tokenizer(padding=True, truncation=True, max_length=8192)``; ``:62`` the embedding is
+- ``experiments/paper/rerankers/reference/octen.py`` (the paper's encoder today; the line cites
+  below name it, with the pre-unification ``src/rcp_ndcg/retrieval/hf_dense.py`` follows kept in
+  parentheses where useful): ``:33`` ``MAX_LENGTH = 8192`` ("longer texts are truncated on
+  the right", the HF default truncation side); ``:54`` the tokenizer loads with
+  ``padding_side="left"``; ``:55`` the model loads with ``dtype=torch.bfloat16``; ``:64`` per-batch
+  ``tokenizer(padding=True, truncation=True, max_length=8192)``; ``:67`` the embedding is
   ``outputs.last_hidden_state[:, -1, :].float()`` then L2-normalised in float32 (the repo helper's
-  exact expression: norms clamped at 1e-12, so a zero row stays zero).
-- ``src/rcp_ndcg/retrieval/encoders/torch_dense.py:69-70``: the document prefix ``"- "`` is
+  exact expression: norms clamped at 1e-12 at ``:22-30``, so a zero row stays zero).
+- ``experiments/paper/rerankers/reference/octen.py:112,122-126,151-152``: the document prefix
+  ``"- "`` is
   prepended to documents only (``f"{self.document_prefix}{text}"``, ONE string tokenised once);
   queries are encoded as they are. The paper defines NO query instruction: the
   ``"Instruct: ...\nQuery:"`` prompt in the checkpoint's ``config_sentence_transformers.json`` is
@@ -62,10 +65,10 @@ if TYPE_CHECKING:
 MODEL = "Octen/Octen-Embedding-8B"
 REVISION = "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
 
-MAX_LENGTH = 8192  # tokens per text; longer texts are truncated on the right (hf_dense.py:21)
-DOCUMENT_PREFIX = "- "  # prepended to documents only (octen.yaml:10; torch_dense.py:70)
-DTYPE = "bfloat16"  # hf_dense.py:50; also the checkpoint's config.json "dtype"
-PAD_SIDE = "left"  # hf_dense.py:49 -- the last position of every row is a real token
+MAX_LENGTH = 8192  # tokens per text; longer texts are truncated on the right (reference/octen.py:33)
+DOCUMENT_PREFIX = "- "  # prepended to documents only (octen.yaml:10; reference/octen.py:151-152)
+DTYPE = "bfloat16"  # reference/octen.py:55; also the checkpoint's config.json "dtype"
+PAD_SIDE = "left"  # reference/octen.py:54 -- the last position of every row is a real token
 BATCH_SIZE = 32  # octen.yaml:11
 
 #: The request shapes the recipe's template declares, with the role each is embedded as.

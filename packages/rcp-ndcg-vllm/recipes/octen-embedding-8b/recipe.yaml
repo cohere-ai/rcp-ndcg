@@ -23,6 +23,9 @@ serve:
   extra_args: []
 client:
   api: openai_embeddings     # plain /v1/embeddings; NOT the Cohere-shaped /v2/embed (see notes: route trap)
+  # Identity content (client_config keeps it, and fills the recipe id when absent): the merged
+  # product's serving settings the client cannot read.
+  recipe: "vllm v0.31.0: --runner pooling (convert auto -> embed); the pooler resolves from the checkpoint's modules.json (last-token + normalize); bare strings on /v1/embeddings with the post-processor anchor appended"
   tokenizer: "Octen/Octen-Embedding-8B@5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
   max_tokens: 8192           # the whole input sequence as the engine sees it, in the pinned tokenizer's tokens
   template:
@@ -51,8 +54,8 @@ sources:
   - "https://huggingface.co/Octen/Octen-Embedding-8B/blob/5adcfa292e712091dfc30f0e97f0b2282e6cc66c/modules.json and 1_Pooling/config.json (pooling_mode_lasttoken) and 2_Normalize/config.json (vLLM reads modules.json: seq_pooling_type LAST, use_activation from the Normalize entry)"
   - "https://huggingface.co/Octen/Octen-Embedding-8B/blob/5adcfa292e712091dfc30f0e97f0b2282e6cc66c/tokenizer_config.json (pad = the endoftext added token 151643; eos_token is the chat end-of-turn marker 151645; add_bos_token false; model_max_length 131072)"
   - "https://huggingface.co/Octen/Octen-Embedding-8B/blob/5adcfa292e712091dfc30f0e97f0b2282e6cc66c/README.md:99 (the card's 40,960-token claim; its results table claims 32,768 -- the eval budget is the paper's 8192)"
-  - "src/rcp_ndcg/retrieval/hf_dense.py:21 (MAX_LENGTH 8192, right side), :49 (padding_side left), :50 (dtype bfloat16), :59 (truncation=True, max_length=8192), :62 (last_hidden_state[:, -1, :] then L2 in float32)"
-  - "src/rcp_ndcg/retrieval/encoders/torch_dense.py:69-70 (the document prefix '- ' is prepended to documents only; queries unchanged)"
+  - "experiments/paper/rerankers/reference/octen.py (the paper's exact in-process encoder, moved unchanged out of the removed src/rcp_ndcg/retrieval/hf_dense.py and encoders/torch_dense.py when retrieval unified -- the old line cites name that pre-unification tree): :33 (MAX_LENGTH 8192, right side), :54 (padding side left), :55 (dtype bfloat16), :64 (truncation=True, max_length=8192), :67 (last_hidden_state[:, -1, :] then L2 in float32; the 1e-12 clamp at :22-30)"
+  - "experiments/paper/rerankers/reference/octen.py:112,122-126,151-152 (the document prefix '- ' is prepended to documents only; queries unchanged)"
   - "experiments/paper/retrieval/octen.yaml:9-11 (pooling: last, doc_prompt: '- ', batch_size: 32)"
   - "vLLM at d0d6e5f3a26f484786e7f20490152e911fd4e220 (the research's pinned ref; the mechanisms re-verified at the shipped v0.31.0 tag by the research's reviewer): vllm/config/model.py:2327 (the ('Model', ('pooling', 'embed')) suffix rule; :2288 at the tag), vllm/model_executor/models/adapters.py:250-255 (as_embedding_model: last token, normalised), vllm/transformers_utils/config.py:1023-1055 (ST modules.json -> LAST + use_activation), vllm/renderers/params.py:183 (add_special_tokens defaults true), :485-510 (over-length input is HTTP 400, never a silent cut), vllm/entrypoints/pooling/embed/io_processor.py:77-82,84-100,373-392 (only Cohere/chat requests get the ST prompts; /v1/embeddings renders the string as-is)"
   - "research record: research/r-octen/out/report.md and the r-octen table of research/audit-synth/out/corrections.md (applied: no client-side truncation exists on the dense embeddings path today; pad is the endoftext token 151643, eos is the chat end-of-turn marker 151645; suffix-rule line :2327 not :2332; the card's 40,960 claim is README.md:99)"
@@ -69,7 +72,7 @@ notes: >-
   Qwen3-Embedding-8B has the identical untied, headless shape and is documented-supported).
 
   The template declares the paper's request shapes as data. Documents are encoded as the ONE string
-  "- " + text (torch_dense.py:70; octen.yaml:10) -- the prefix is the document shape's fixed head
+  "- " + text (experiments/paper/rerankers/reference/octen.py:151-152; octen.yaml:10) -- the prefix is the document shape's fixed head
   segment, and query_prompt/doc_prompt stay empty so the prefix is not also applied by the client and
   doubled. Queries run as they are; the paper defines no instruction, and the checkpoint's
   config_sentence_transformers.json query prompt is NOT part of the recipe. The prefix must ride in
@@ -96,23 +99,25 @@ notes: >-
   "- " prefix, the content and the appended end-of-text anchor together, in the pinned tokenizer's
   tokens. The content is cut on the client (on_overflow: cut) and the frame is re-attached, so every
   over-length input keeps the prefix at the head and the anchor at the tail. The paper path makes the
-  same anchor-preserving cut (hf_dense.py:21,59: truncation=True, max_length=8192, right side; HF reserves
+  same anchor-preserving cut (experiments/paper/rerankers/reference/octen.py:33,64: truncation=True, max_length=8192, right side; HF reserves
   the post-processor's token -- the research's truncation check verified 8191 content ids + the appended
   anchor), so reference.known_deviations stays empty; the cut BOUNDARY on an over-length input can differ
   by a token between the two paths (fit cuts at content-token boundaries of the original text and re-renders,
   the paper cuts the assembled ids), which stage 1 deliberately does not compare and stage 2's vector gate
-  decides on the GPU wave. Wiring status (audit-synth correction, applied):
-  the dense embeddings path has no client-side truncation today -- the product's budget mechanism
-  (rcp_ndcg.data.preprocess.fit) is what these fields declare, the served role clients refuse a
-  budget until the clients-final wiring lands, and until then the only enforced guard is the engine's
-  over-length HTTP 400 (renderers/params.py:485-510), which is loud, not a silent number change.
+  decides on the GPU wave. Wiring status (post-merge): every request is fitted to the declared
+  budget on the wire by the merged product's embedding client (rcp_ndcg.data.preprocess.fit:
+  content spans cut, frame re-attached), audited in stage 1 against the captured wire; the
+  engine's over-length HTTP 400 (renderers/params.py:485-510) is defense in depth -- loud, never a
+  silent number change. Per-shape query caps (checked for the sweep's query_max_tokens item): no
+  separate query cap exists in the referent -- the paper path truncates queries and documents alike
+  at 8192 -- so query_max_tokens is not declared and both shapes draw on max_tokens.
   serve.max_model_len 8192 is defense in depth on the same budget; raising it to serve longer inputs
   for other clients is a deliberate change (the architecture allows 40960). tokenizer_config.json's
   model_max_length 131072 exceeds the architecture's max_position_embeddings 40960; the recipe never
   relies on the tokenizer's limit, and the card's context claims disagree among themselves
   (README.md:99 says 40,960; its results table says 32,768).
 
-  dtype bfloat16 (config.json; the paper loads bf16 explicitly, hf_dense.py:50); vLLM's pooled head
+  dtype bfloat16 (config.json; the paper loads bf16 explicitly, experiments/paper/rerankers/reference/octen.py:55); vLLM's pooled head
   normalises in fp32 on both paths. empty_doc: send -- the paper embeds an empty document as the bare
   "- " prefix; omit_zero would score it 0.0 without sending, which the paper does not do. The
   reference runs as a subprocess in its own environment (its requirements-reference.txt: torch,
@@ -121,4 +126,4 @@ notes: >-
   (its render mode needs no torch and no transformers; its only third-party imports are numpy,
   lazily in the embed/score paths, and PyYAML, to read the recipe's declared shapes). Stage 2
   compares L2-normalised float32 vectors with the cosine gate; the reference applies the same
-  last-token pooling and the same 1e-12-clamped float32 normalisation as hf_dense.py:62.
+  last-token pooling and the same 1e-12-clamped float32 normalisation as experiments/paper/rerankers/reference/octen.py:22-30,:67.
