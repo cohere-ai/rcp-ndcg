@@ -1291,15 +1291,30 @@ released together.
   present four paths (score, serve and score, re-judge, reproduce), state the rankings-file column contract
   with its accepted aliases, and describe `recipe: <id>`, `rcp-ndcg-vllm serve` and the judge text policy. The
   exit-code table's one home is `docs/reference/cli.md`; the skill links it.
-- **qwen3-vl recipes (`fam-vl`)**: `qwen3-vl-embedding-2b` and `qwen3-vl-reranker-2b` now declare the R20
-  media pin in ONE `mm_processor_kwargs` shape (nested `images_kwargs`, decided from the vLLM v0.31.0 tag
-  source), one video sampling policy on every side (64 uniformly spaced frames per clip:
-  `client.video_policy` + `--media-io-kwargs` engine pinning), and the client media capacity beside
-  `serve.limit_mm_per_prompt` (`max_images`/`max_videos`); the reranker pins `pooler_config.use_activation`
-  beside `client.use_activation`, states the settled-query rule for `query_max_tokens`, and its reference
-  renders the wire's content spans (stage 1's render contract) while both references refuse media-bearing
-  pairs rows loudly. The mirror half of R20 (the client's pixel budget) is blocked on a product change:
-  `ImagePolicy` refuses a pinned budget outside the stock engine envelope.
+- **The qwen3-vl recipes are one declared family** (`packages/rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/`,
+  `qwen3-vl-reranker-2b/`): one R20 pixel-pin shape for every media recipe, `serve.mm_processor_kwargs:
+  {images_kwargs: {...}}` -- at the vLLM v0.31.0 tag both shapes reach the HF image resize (measured: 1776
+  vs 1240 image tokens on one page), but flat keys also re-size every video clip on vLLM's video path (a
+  64-frame clip measured 672 instead of 7040 tokens); `client.image_policy` declares the same pixel numbers
+  (the client cannot apply them yet: the product's `qwen3_vl` geometry refuses a budget below its 65536 px
+  floor, so media stay a typed refusal); one video sampling policy on every side (64 uniformly spaced
+  frames per clip: `client.video_policy` with `--media-io-kwargs` engine pinning). qwen3-vl-embedding-2b
+  declares a `query` shape after the model card (the card frames queries exactly like documents, with its
+  default instruction) and serves no template file (the completion route applies none; its test renders the
+  checkpoint's own `chat_template.jinja` instead). Both references render the card's own over-cap cut, never
+  the client's: the embedding's `truncation=True` right cut (`anchor_drop_over_cap`), the reranker's
+  `truncate_tokens_optimized` cut, which keeps the anchor (`over_cap_cut_differs`, no longer the mislabelled
+  `anchor_drop_over_cap`). Each contract test pins every resolved field (two mutants per recipe red).
+- **The late-interaction recipes and their plugins** (`packages/rcp-ndcg-vllm/recipes/topk-embed-v1-small/`,
+  `pplx-embed-v2-context-9b-preview/`, `packages/rcp-ndcg-vllm/plugins/{topk,pplx}`): topk serves through
+  `serve.plugin: rcp-ndcg-vllm-topk` with the product's fields (`query_max_tokens: 1024`, the checkpoint's 41
+  `scoring_skip_ids` as `document_skip_token_ids`, `media_sides: [document]`, `normalize: [strip]`) and the
+  nested R20 shape; its plugin marks the bias-less checkpoint's zero projection bias as loaded (vLLM
+  v0.31.0's weight tracker refused `custom_text_proj.bias`). Neither recipe passes `--trust-remote-code`:
+  each plugin registers the checkpoint's configuration class with transformers, so a `config.json` that
+  names remote code resolves locally with the flag off. pplx serves `dtype: bfloat16` (vLLM v0.31.0's GDN
+  kernels refuse float32; the reference keeps the card's float32, a declared deviation). The pplx NOTICE
+  entry for the restated config class is added; the plugin suites run together in one process.
 - **The qwen3-reranker recipes are one declared family** (`packages/rcp-ndcg-vllm/recipes/qwen3-reranker-0.6b/`,
   `qwen3-reranker-4b/`, `qwen3-reranker-8b/`): one over-cap policy -- every reference is the paper's
   `QwenOGRerank` cut (the pair string right-cut at 8144 tokens, both anchors re-attached) and never the
