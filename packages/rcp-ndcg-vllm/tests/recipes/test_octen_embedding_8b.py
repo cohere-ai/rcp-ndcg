@@ -324,9 +324,7 @@ def test_mutation_declaring_the_wrong_anchor_position_reddens_the_anchor_check(t
     # anchor position is wrong.
     healthy_facts = stage1_facts(recipe, PAIRS, tokenizer_of(recipe), 2)
     mutated_facts = stage1_facts(mutated, PAIRS, tokenizer_of(mutated), 2)
-    assert (
-        mutated_facts["per_shape"]["document"]["texts"] == healthy_facts["per_shape"]["document"]["texts"]
-    )
+    assert mutated_facts["per_shape"]["document"]["texts"] == healthy_facts["per_shape"]["document"]["texts"]
     assert mutated_facts["per_shape"]["query"]["texts"] == healthy_facts["per_shape"]["query"]["texts"]
     # The query shape has no fixed head segment: its declared edge cannot hold.
     shapes = {failure["shape"] for failure in mutated_document["anchor_check"]["failures"]}
