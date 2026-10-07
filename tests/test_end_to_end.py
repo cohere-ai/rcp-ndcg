@@ -31,7 +31,7 @@ def world(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
     data = root / "rows.jsonl"
     data.write_text(
         "".join(
-            json.dumps({"query_id": r.id, "query": r.query, "doc_ids": r.doc_ids, "docs": r.docs, "qrels": r.qrels})
+            json.dumps({"query_id": r.id, "query": r.text, "doc_ids": r.doc_ids, "docs": r.docs, "qrels": r.qrels})
             + "\n"
             for r in rows
         ),
@@ -115,13 +115,13 @@ def test_a_job_runner_runs_the_same_pipeline_started_over_mcp(
     deadline = time.monotonic() + 120
     while True:
         status = mcp.call_tool("run_status", {"run": data["run_dir"]})["structuredContent"]
-        if status["jobs"][0]["status"] in ("succeeded", "failed", "cancelled"):
+        if status["jobs"][0]["status"] in ("completed", "failed", "cancelled"):
             break
         assert time.monotonic() < deadline, status
         time.sleep(0.2)
     logged = _json("run", "logs", "--run", data["run_dir"])
 
-    assert status["jobs"][0]["status"] == "succeeded" and status["runner"] == "local"
+    assert status["jobs"][0]["status"] == "completed" and status["runner"] == "local"
     assert status["status"] == "completed"
     assert "[run] evaluate: starting" in logged["text"]
     assert json.loads(Path(data["run_dir"], "logs", "jobs.json").read_text())["jobs"][0]["handle"]

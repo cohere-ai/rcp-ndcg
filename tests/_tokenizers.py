@@ -69,6 +69,18 @@ def framed_bpe_tokenizer(name: str = "test/framed-bpe") -> TextTokenizer:
     return TextTokenizer.from_backend(backend, name=name)
 
 
+@functools.cache
+def spaced_special_tokenizer(name: str = "test/spaced-special") -> TextTokenizer:
+    """A byte-level BPE whose added tokens carry significant whitespace: ``[Q] `` and ``[D] `` end in a
+    space, the way pplx-embed-v2-contextual's added tokens ship (one id each; a stripped name cannot be
+    written in a template)."""
+    from tokenizers import Tokenizer
+
+    backend = Tokenizer.from_str(byte_bpe_tokenizer().backend.to_str())
+    backend.add_special_tokens(["[Q] ", "[D] "])
+    return TextTokenizer.from_backend(backend, name=name)
+
+
 def save(tokenizer: TextTokenizer, directory: Path) -> Path:
     """Write ``tokenizer`` as ``directory/tokenizer.json`` and return the file."""
     path = directory / "tokenizer.json"

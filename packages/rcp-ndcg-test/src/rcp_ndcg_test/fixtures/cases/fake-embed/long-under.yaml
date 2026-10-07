@@ -1,0 +1,28 @@
+id: fake-embed/long-under
+recipe: fake-embed
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: long_under
+  batch: single
+inputs:
+  queries:
+  - id: q1
+    text: long document under the budget
+  documents:
+  - id: d1
+    text: budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
+      budgetpad budgetpad budgetpad
+expected:
+  kind: similarity_matrix
+  tolerance:
+    abs: 0.005
+  origin: reference
+  status: pending_gpu
+  values: null
+notes: 'The long document is the word ''budgetpad'' joined by single spaces, 13 repeats: 117 tokens as
+  a raw span, rendered whole at 125 of the 128-token budget (the recipe''s template and the tokenizer''s
+  specials included, >= 95%), never cut by the product''s fit -- the budget bounds the rendered input
+  the engine sees. values stay null until a real engine''s wave fills them.'

@@ -43,6 +43,12 @@ class TestPolicyVocabulary:
         assert TextPolicy(on_overflow="fail").max_tokens == DEFAULT_MAX_TOKENS
         assert TextPolicy(on_overflow="truncate", max_tokens=1234).max_tokens == 1234
 
+    def test_the_default_cap_is_pinned(self) -> None:
+        """The cap is identity-bearing (it enters the preprocessing digest), so its default is pinned as a
+        literal: 2**15 tokens, the 0.0.1 default for a policy that does not declare one."""
+        assert DEFAULT_MAX_TOKENS == 32768
+        assert TextPolicy(on_overflow="truncate").max_tokens == 32768
+
     def test_unknown_mode_is_refused(self) -> None:
         with pytest.raises(ValidationError, match="chunky"):
             TextPolicy(on_overflow="chunky")  # type: ignore[arg-type]
@@ -92,6 +98,14 @@ class TestTokenPrefix:
         escaped = token_prefix(text, 5, WORDS, rendered=lambda piece: piece.replace("&", "&amp;"))
         assert text.startswith(escaped) and len(escaped) < len(plain)
         assert WORDS.count(escaped.replace("&", "&amp;")) <= 5
+
+    def test_a_cut_that_fits_nothing_is_empty(self) -> None:
+        """The zero boundary (the QA survivor 1): when no prefix fits the budget -- the search lands on the
+        empty prefix -- the cut is empty, never the whole text. One token whose text re-tokenizes longer
+        alone (a multi-byte character split across byte tokens), capped at 1 token, is exactly that case."""
+        assert BPE.count("日") > 1  # the single token re-tokenizes longer on its own
+        assert token_prefix("日", 1, BPE) == ""
+        assert token_prefix(TEXT, 0, WORDS, rendered=lambda piece: piece) == ""
 
 
 class TestApplyTextPolicy:

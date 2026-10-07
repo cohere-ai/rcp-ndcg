@@ -1,0 +1,34 @@
+id: qwen3-embedding-0.6b/gen-short-uniform
+recipe: qwen3-embedding-0.6b
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: short
+  batch: uniform
+inputs:
+  instruction: Given a web search query, retrieve relevant passages that answer the query
+  queries:
+  - id: q1
+    text: What is the capital of Japan?
+  - id: q2
+    text: Which gas do plants absorb from the air?
+  documents:
+  - id: d1
+    text: The capital of Japan is Tokyo.
+  - id: d2
+    text: Tokyo is the capital city of Japan.
+  - id: d3
+    text: Plants absorb carbon dioxide from the air.
+  - id: d4
+    text: Photosynthesis draws carbon dioxide from the atmosphere.
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance:
+    abs: 0.02
+  origin: reference
+  status: pending_gpu
+notes: |-
+  Two queries of near-equal length, four documents of near-equal length: a uniform short batch. Inputs are embedded verbatim in this file (never generated at test time). Rendered lengths measured with the recipe's tokenizer (client.tokenizer: Qwen/Qwen3-Embedding-0.6B @ 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3); the rendered query shape is the 19-id frame (Instruct: ... Query:) + the query content + the post-processor anchor (id 151643), except that the frame's trailing colon fuses with a capital first letter of the content into one token (e.g. ':M'), so every rendered count below is measured, never derived; the rendered document shape is content + anchor. Measured: q1 = 27 rendered ids, q2 = 29 rendered ids, d1 = 8 rendered ids, d2 = 10 rendered ids, d3 = 10 rendered ids, d4 = 10 rendered ids.

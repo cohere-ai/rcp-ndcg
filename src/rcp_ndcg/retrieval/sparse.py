@@ -3,23 +3,33 @@
 
 Stemming is stated, never inferred from what happens to be installed: :class:`~rcp_ndcg.retrieval.BM25Config`
 names the stemmer language (or none), the index identity records it, and a requested stemmer without PyStemmer is
-a :class:`~rcp_ndcg.errors.DependencyError`.
+a :class:`~rcp_ndcg.errors.DependencyError`. The stemmer is stored beside the model (``meta.json``) and read back
+at search time, so a search uses the index's own stemmer, never whatever happens to be configured.
+
+The index is persisted with bm25s' own format (npz arrays and JSON parameters), never a pickle: an index
+directory comes from ordinary user paths (``retrieval index --out``, ``retrieval search --index``), and
+unpickling one somebody else wrote would run their code.
 """
 
 from __future__ import annotations
 
 import json
-import pickle
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 from rcp_ndcg_core.content import Content
 
-from rcp_ndcg.errors import ConfigError, DependencyError, MissingInputError
+from rcp_ndcg.errors import ConfigError, DataError, DependencyError, MissingInputError
 
 STOPWORDS = "en"
 """The bm25s stop list the corpus is tokenized with."""
+
+_MODEL_PARAMS = "params.index.json"
+"""The parameters file of bm25s' own save format (``BM25.save``); the marker of a stored model."""
+
+_LEGACY_PICKLE = "bm25.pkl"
+"""The pickle name of the earlier build's format, refused with a rebuild hint."""
 
 
 def _bm25s() -> Any:
@@ -64,16 +74,25 @@ def build_bm25_index(corpus: Sequence[Content | str], dataset_dir: Path, *, stem
         corpus: The documents, in index row order; BM25 reads their text (an image-only document is empty).
         dataset_dir: The index directory.
         stemmer: A PyStemmer language (``"english"``), or ``None`` for no stemming.
+
+    Raises:
+        DataError: No document of the corpus has an indexable token (every one is empty, or its tokens are all
+            stop words): bm25s builds an empty vocabulary and would crash inside itself.
     """
     stemmer_object = stemmer_for(stemmer)
     engine = _bm25s()
     bm_dir = Path(dataset_dir) / "bm25s"
     bm_dir.mkdir(parents=True, exist_ok=True)
-    model = engine.BM25()
     texts = [item if isinstance(item, str) else item.text for item in corpus]
-    model.index(engine.tokenize(texts, stopwords=STOPWORDS, stemmer=stemmer_object))
-    with (bm_dir / "bm25.pkl").open("wb") as handle:
-        pickle.dump(model, handle)
+    tokenized = engine.tokenize(texts, stopwords=STOPWORDS, stemmer=stemmer_object, show_progress=False)
+    if not any(tokenized.ids):
+        raise DataError(
+            "the corpus has no indexable tokens: every document is empty, or only stop words after removal",
+            hint="check the corpus texts; BM25 tokenizes with the 'en' stop list and the configured stemmer",
+        )
+    model = engine.BM25()
+    model.index(tokenized, show_progress=False)
+    model.save(str(bm_dir), allow_pickle=False)
     (bm_dir / "meta.json").write_text(json.dumps({"stemmer": stemmer}, indent=2), encoding="utf-8")
 
 
@@ -89,24 +108,44 @@ def search_bm25(dataset_dir: Path, queries: Sequence[str], *, k: int) -> list[li
         One list per query of ``(row, score)``, the score descending.
 
     Raises:
-        MissingInputError: No index under ``dataset_dir``.
+        MissingInputError: No stored model under ``dataset_dir`` (one written by the earlier build's pickle
+            format is refused with a rebuild hint: it is not loaded, so its code never runs).
     """
     bm_dir = Path(dataset_dir) / "bm25s"
-    model_path = bm_dir / "bm25.pkl"
+    model_path = bm_dir / _MODEL_PARAMS
     if not model_path.is_file():
+        hint = "build it with index()"
+        if (bm_dir / _LEGACY_PICKLE).is_file():
+            hint = (
+                "this index was written in an earlier build's pickle format, which is no longer read "
+                "(loading it would run its code); rebuild it with index()"
+            )
         raise MissingInputError(
             f"BM25 index not found at {model_path}",
-            hint="build it with index()",
+            hint=hint,
             cli_hint="build it with `rcp-ndcg retrieval index`",
         )
-    stemmer = stemmer_for(json.loads((bm_dir / "meta.json").read_text(encoding="utf-8"))["stemmer"])
-    engine = _bm25s()  # unpickling the model needs the package
-    with model_path.open("rb") as handle:
-        model = pickle.load(handle)
+    meta_path = bm_dir / "meta.json"
+    if not meta_path.is_file():
+        raise MissingInputError(
+            f"the BM25 index at {bm_dir} has no meta.json naming its stemmer",
+            hint="build it with index() (stemming is stated, never inferred from the model)",
+            cli_hint="build it with `rcp-ndcg retrieval index`",
+        )
+    try:
+        stemmer = stemmer_for(json.loads(meta_path.read_text(encoding="utf-8"))["stemmer"])
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise MissingInputError(
+            f"the BM25 index's {meta_path} is unreadable or does not name a stemmer",
+            hint="rebuild the index with index()",
+            cli_hint="rebuild it with `rcp-ndcg retrieval index`",
+        ) from exc
+    engine = _bm25s()
+    model = engine.BM25.load(str(bm_dir), allow_pickle=False, load_corpus=False)
     out = []
     for query in queries:
-        tokens = engine.tokenize(query, stemmer=stemmer)  # stop words are absent from the index anyway
-        ids, scores = model.retrieve(tokens, k=k)
+        tokens = engine.tokenize(query, stemmer=stemmer, show_progress=False)  # stop words are absent from the index
+        ids, scores = model.retrieve(tokens, k=k, show_progress=False)
         hits = [(int(ids[0, i]), float(scores[0, i])) for i in range(ids.shape[1])]
         out.append(sorted(hits, key=lambda hit: hit[1], reverse=True))
     return out

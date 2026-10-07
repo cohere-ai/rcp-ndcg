@@ -7,14 +7,16 @@ so it exercises the same code paths as ``gs://`` without the network.
 
 from __future__ import annotations
 
+import fcntl
 import importlib.util
 import json
+import logging
 from pathlib import Path
 
 import pytest
 
 from rcp_ndcg import storage
-from rcp_ndcg.errors import DataError, DependencyError, classify
+from rcp_ndcg.errors import ConfigError, DataError, DependencyError, MissingInputError, classify
 
 
 @pytest.fixture(autouse=True)
@@ -139,6 +141,87 @@ class TestListing:
         assert storage.ls("memory://nothing/here") == []
 
 
+class TestRelative:
+    def test_returns_the_path_below_the_root(self, tmp_path: Path) -> None:
+        (tmp_path / "root" / "sub").mkdir(parents=True)
+        (tmp_path / "root" / "sub" / "x.txt").write_text("x")
+        assert storage.relative(tmp_path / "root" / "sub" / "x.txt", tmp_path / "root") == "sub/x.txt"
+
+    def test_refuses_a_parent_escape(self) -> None:
+        """``..`` defeated the prefix check and handed the caller a path outside the root."""
+        with pytest.raises(DataError, match="not below"):
+            storage.relative("/base/root/../../etc/passwd", "/base/root")
+
+    def test_refuses_a_sibling_escape(self, tmp_path: Path) -> None:
+        (tmp_path / "root").mkdir()
+        (tmp_path / "sibling").mkdir()
+        (tmp_path / "sibling" / "x.txt").write_text("x")
+        with pytest.raises(DataError, match="not below"):
+            storage.relative(tmp_path / "root" / ".." / "sibling" / "x.txt", tmp_path / "root")
+
+    @pytest.mark.parametrize("root", ["memory://bucket/root"])
+    def test_refuses_escapes_on_a_remote_spelling_too(self, root: str) -> None:
+        """The remote spellings keep (or drop) the scheme in fsspec's own stripping; either way the
+        escape is refused, not returned."""
+        with pytest.raises(DataError, match="not below"):
+            storage.relative(f"{root}/../../etc/passwd", root)
+        with pytest.raises(DataError, match="not below"):
+            storage.relative(f"{root}/../sibling/x.txt", root)
+        assert storage.relative(f"{root}/a/../b.txt", root) == "b.txt"
+
+
+class TestFileUris:
+    """``file://`` is a spelling the product accepts (wheelhouse URLs); the local fast paths
+    used to answer it literally (``Path('file:///x')``), so ``exists`` was False for a live
+    file and ``makedirs`` grew a junk ``file:`` tree in the working directory."""
+
+    def test_exists_info_and_get_understand_file_uris(self, tmp_path: Path) -> None:
+        source = tmp_path / "d1"
+        source.mkdir()
+        (source / "live.txt").write_text("hello")
+        uri = f"file://{source}/live.txt"
+        assert storage.exists(uri)
+        assert storage.info(uri)["size"] == 5
+        target = tmp_path / "out.txt"
+        assert storage.get(uri, target) == target
+        assert target.read_text(encoding="utf-8") == "hello"
+
+    def test_makedirs_and_open_path_write_the_real_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        storage.makedirs(f"file://{tmp_path}/abs/target/dir")
+        assert (tmp_path / "abs" / "target" / "dir").is_dir()
+        storage.write_text(f"file://{tmp_path}/abs/target/f.txt", "data")
+        assert (tmp_path / "abs" / "target" / "f.txt").read_text(encoding="utf-8") == "data"
+        assert not (tmp_path / "file:").exists(), "no junk tree in the working directory"
+
+
+class TestPublish:
+    """The one home of temp-file + rename publication (the media cache and the PDF render
+    used to grow their own copies)."""
+
+    def test_a_local_target_is_replaced_whole(self, tmp_path: Path) -> None:
+        target = tmp_path / "out" / "f.bin"
+        storage.publish_bytes(target, b"v1")
+        storage.publish_bytes(target, b"v2")
+        assert target.read_bytes() == b"v2"
+        assert [p.name for p in target.parent.iterdir() if p.name != "f.bin"] == [], "no temp file left behind"
+
+    def test_a_streaming_write_is_renamed_into_place(self, tmp_path: Path) -> None:
+        target = tmp_path / "out" / "f.bin"
+        storage.publish(target, lambda tmp: tmp.write_bytes(b"stream"))
+        assert target.read_bytes() == b"stream"
+
+    def test_a_streaming_publish_needs_a_local_target(self) -> None:
+        with pytest.raises(ConfigError, match="local"):
+            storage.publish("memory://x", lambda tmp: tmp.write_text("x"))
+
+    def test_a_remote_target_publishes_through_the_backend(self) -> None:
+        storage.publish_bytes("memory://published.bin", b"payload")
+        assert storage.read_bytes("memory://published.bin") == b"payload"
+
+
 class TestCache:
     @pytest.fixture(autouse=True)
     def _cache_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -148,6 +231,11 @@ class TestCache:
         source = tmp_path / "already-local.jsonl"
         source.write_text("{}", encoding="utf-8")
         assert storage.cache(source) == source
+
+    def test_a_file_uri_is_returned_as_its_path(self, tmp_path: Path) -> None:
+        source = tmp_path / "already-local.jsonl"
+        source.write_text("{}", encoding="utf-8")
+        assert storage.cache(f"file://{source}") == source, "not the literal 'file:/...' string, which names no file"
 
     def test_remote_object_is_downloaded_once(self) -> None:
         storage.write_text("memory://corpus.jsonl", '{"id": 1}\n')
@@ -168,15 +256,81 @@ class TestCache:
 
         assert storage.cache("memory://corpus.jsonl").read_text(encoding="utf-8") == "a much longer payload"
 
+    def test_a_same_size_remote_change_invalidates_the_cache(self) -> None:
+        """The identity is not size alone: a backend exposing only ``created`` + ``size`` (the
+        in-memory stand-in) served the old bytes forever after a same-length overwrite."""
+        storage.write_text("memory://corpus.jsonl", "first")
+        storage.cache("memory://corpus.jsonl")
+
+        storage.write_text("memory://corpus.jsonl", "secon")  # same length
+
+        assert storage.cache("memory://corpus.jsonl").read_text(encoding="utf-8") == "secon"
+
+    def test_a_backend_without_identity_warns_and_never_reuses(self, monkeypatch: pytest.MonkeyPatch, caplog) -> None:
+        # configure_logging (run by other tests) silences the package logger's propagation.
+        monkeypatch.setattr(logging.getLogger("rcp_ndcg"), "propagate", True)
+        calls: list[str] = []
+        real_get = storage.core.get
+
+        def counting_get(remote, local):
+            calls.append(str(remote))
+            return real_get(remote, local)
+
+        monkeypatch.setattr(storage.core, "get", counting_get)
+        monkeypatch.setattr(storage.core, "info", lambda uri: {"name": "no freshness field here"})
+        storage.write_text("memory://anonymous.bin", "abc")
+
+        storage.cache("memory://anonymous.bin")
+        storage.cache("memory://anonymous.bin")
+
+        assert len(calls) == 2, "with no comparable identity the object is re-downloaded, never trusted"
+        assert any("identity" in record.getMessage().lower() for record in caplog.records)
+
+    def test_a_missing_remote_object_is_a_missing_input(self) -> None:
+        with pytest.raises(MissingInputError):
+            storage.cache("memory://absent.jsonl")
+
+    def test_a_publishing_writer_locks_the_pair(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The payload and its identity sidecar are renamed under one exclusive lock, so two
+        ranks resolving the same corpus cannot interleave two publications and leave one
+        writer's payload under the other's identity (which the staleness check would then
+        validate and serve forever)."""
+        uri = "memory://lock.bin"
+        storage.write_text(uri, "payload")
+        cached = storage.cache_path_for(uri)
+        lockfile = cached.with_name(f"{cached.name}.lock")
+        seen: dict[str, bool] = {}
+        real_get = storage.core.get
+
+        def observing_get(remote, local):
+            result = real_get(remote, local)
+            with open(lockfile, "a") as handle:
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    seen["locked_during_publish"] = False
+                    fcntl.flock(handle, fcntl.LOCK_UN)
+                except BlockingIOError:
+                    seen["locked_during_publish"] = True
+            return result
+
+        monkeypatch.setattr(storage.core, "get", observing_get)
+        storage.cache(uri)
+        assert seen["locked_during_publish"], "the publication (payload + sidecar) holds an exclusive lock"
+        with open(lockfile, "a") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)  # released after the call
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
     def test_distinct_uris_never_share_a_cache_file(self) -> None:
         """'/' and ':' once became '_', so .../a/b_c and .../a_b/c evicted each other."""
         assert storage.cache_path_for("gs://YOUR-BUCKET/a/b_c") != storage.cache_path_for("gs://YOUR-BUCKET/a_b/c")
         assert storage.cache_path_for("gs://YOUR-BUCKET/a/b_c").name.endswith("_b_c")
         assert len(storage.cache_path_for("gs://YOUR-BUCKET/" + "x" * 400).name) < 255
 
-    def test_missing_remote_object_raises(self) -> None:
-        with pytest.raises(FileNotFoundError):
-            storage.cache("memory://absent.jsonl")
+    def test_the_cache_name_leaks_no_query_string(self) -> None:
+        """A presigned URL's signature used to land in the cache file name of a shared directory."""
+        name = storage.cache_path_for("https://storage.example/bucket/corpus.jsonl?X-Amz-Signature=SECRET").name
+        assert "SECRET" not in name and "Signature" not in name
+        assert name.endswith("_corpus.jsonl")
 
 
 class TestBackendErrors:
@@ -202,3 +356,33 @@ class TestBackendErrors:
             storage.exists("s3://b/k")
         error = classify(raised.value)
         assert error.exit_code == 10 and error.hint == 'pip install "rcp-ndcg[s3]"'
+
+
+class TestPublishConcurrency:
+    def test_a_reader_sees_the_old_or_the_new_file_never_a_partial_one(self, tmp_path: Path) -> None:
+        target = tmp_path / "data.json"
+        target.write_text("old", encoding="utf-8")
+        storage.publish(target, lambda tmp: tmp.write_text("new", encoding="utf-8"))
+        assert target.read_text(encoding="utf-8") == "new"
+        assert [path.name for path in tmp_path.iterdir()] == ["data.json"], "the temp file is gone after the rename"
+
+    def test_concurrent_writers_never_share_a_temp_file(self, tmp_path: Path) -> None:
+        import threading
+
+        target = tmp_path / "shared"
+        errors: list[BaseException] = []
+
+        def writer(name: str) -> None:
+            try:
+                storage.publish(target, lambda tmp: tmp.write_text(name, encoding="utf-8"))
+            except BaseException as exc:  # noqa: BLE001 - the test reports it
+                errors.append(exc)
+
+        threads = [threading.Thread(target=writer, args=(f"w{index}",)) for index in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        assert not errors
+        assert target.read_text(encoding="utf-8").startswith("w")
+        assert [path.name for path in tmp_path.iterdir()] == ["shared"]

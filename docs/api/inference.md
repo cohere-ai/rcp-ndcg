@@ -50,7 +50,9 @@ lifecycle: `close()` synchronous, `await aclose()` asynchronous, both context ma
 
 - `rerank(query, documents, *, instruction=None) -> RerankResult` -- one query's scores (and `arerank`, the
   async half). Empty documents are sent as given and score whatever the server returns; an empty candidate
-  set makes no request and scores nothing.
+  set makes no request and scores nothing. An empty QUERY is refused by default (`empty_query: refuse`, a
+  typed error naming the query id; `send` keeps the empty string), and media on a side the config's
+  `media_sides` does not name is refused naming the field.
 - `rerank_many(examples, *, checkpoint=None) -> list[RerankResult]` -- every example, `concurrency` queries
   in flight, results in input order. The `checkpoint` callable is called once per query as it lands, with the
   query id and its (pooled) scores aligned to the example's `doc_ids`: write the record and flush there, and a
@@ -76,18 +78,15 @@ re-attached so the anchors survive, every cut recorded in the census, and a chun
 candidate-set row per chunk, scored in the query's request(s), with the chunks' scores pooled back by
 `max`. The wire carries the cut spans (the engine
 renders the template itself), and no `truncate_prompt_tokens` or `max_tokens_per_doc` is ever sent: the client
-cut already, so there is nothing left for the engine to truncate. A config without `max_tokens` sends every
-pair whole.
+cut already, so there is nothing left for the engine to truncate. A hosted profile that declares no limit sends
+every pair whole; a self-hosted config must declare its budget (`tokenizer` + `max_tokens`).
 
 ## Identity
 
 A rerank endpoint keys on its `api`, `model` and `revision` (content); where and how fast it is asked
-(`base_url`, `concurrency`, timeouts, `batch_size`) never enters an identity. `max_tokens` is content, and
-with it the tokenizer's SHA-256: `identity_extra()` (inherited from `Endpoint`) returns `{"tokenizer_sha256": ...}` of the
-named `tokenizer.json` (the name itself stays runtime), so two passes whose tokenizers differ never pool.
-Every role config with a `tokenizer` -- the judge's, the embedding, pooling and rerank configs -- carries the
-digest under this one key (`Endpoint.identity_extra()`), computed by the one helper in
-`rcp_ndcg.data.tokenizer`; the judge's own identity payload keeps its existing keys and is unchanged.
+(`base_url`, `concurrency`, timeouts, `batch_size`) never enters an identity. `max_tokens` is content, and with
+it the tokenizer's digest ([the tokenizer's digest](../concepts/text-budgets.md#the-tokenizers-digest)); the
+judge's own identity payload keeps its existing keys and is unchanged.
 
 ```python
 from pathlib import Path
@@ -143,3 +142,8 @@ result = client.rerank("what does rcp-ndcg measure", ["a metric", "a fruit"], in
 print(result.scores)  # aligned to the input documents, whatever order the server answered in
 client.close()
 ```
+
+
+A served endpoint's config must declare its text budget (`tokenizer` and `max_tokens`: the package cuts
+itself, never the engine) -- the client fits every request through `rcp_ndcg.data.preprocess.fit` and
+records the cuts in the census; the engine never truncates.

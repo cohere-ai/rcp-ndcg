@@ -25,6 +25,20 @@ def _json(*args: str) -> dict:
     return json.loads(result.stdout)["data"]
 
 
+def test_the_plan_switch_is_dry_run_and_plan_is_the_plan_file() -> None:
+    """`--plan` means one thing in the CLI: the plan file `judge tournament` asks exactly the windows of.
+    `calibration insert` plans with `--dry-run`, like every other command's no-side-effects switch."""
+    from rcp_ndcg.cli.introspect import command_index
+
+    commands = command_index().commands
+    insert = {flag.flag: flag for flag in commands["calibration insert"].flags}
+    tournament = {flag.flag: flag for flag in commands["judge tournament"].flags}
+
+    assert insert["--dry-run"].type == "boolean"
+    assert "--plan" not in insert
+    assert tournament["--plan"].type == "text"
+
+
 def test_a_new_document_is_inserted_by_judging_exactly_the_planned_windows_into_the_store(tmp_path: Path) -> None:
     rows = [json.loads(line) for line in ROWS.read_text(encoding="utf-8").splitlines()]
     pools = tmp_path / "pools.jsonl"
@@ -47,14 +61,14 @@ def test_a_new_document_is_inserted_by_judging_exactly_the_planned_windows_into_
 
     # The window size comes from the store's schedule; the plan says how many calls judging it takes.
     plan_file = tmp_path / "plan.json"
-    plan = _json("calibration", "insert", "--calibration", calibration, "--judgements", store, "--plan",
+    plan = _json("calibration", "insert", "--calibration", calibration, "--judgements", store, "--dry-run",
                  "--query", "q1", "--doc", "q1-d1", "--n", "6", "--out", str(plan_file))["plan"]  # fmt: skip
     assert [len(window) for window in plan["windows"]] == [4, 4]
     assert all(window[0] == "q1-d1" for window in plan["windows"])
     assert plan["calls"] == 4  # two windows, each mirrored by the store's schedule
     assert (plan["opponents"], plan["capped"]) == (6, False)
     # q1 has seven other documents: a larger --n cannot plan more, and the plan says so.
-    capped = _json("calibration", "insert", "--calibration", calibration, "--judgements", store, "--plan",
+    capped = _json("calibration", "insert", "--calibration", calibration, "--judgements", store, "--dry-run",
                    "--query", "q1", "--doc", "q1-d1", "--n", "100")["plan"]  # fmt: skip
     assert (capped["opponents"], capped["capped"]) == (7, True)
 
@@ -89,7 +103,7 @@ def test_two_new_documents_of_one_query_are_inserted_one_after_the_other(tmp_pat
     inserted = []
     for doc in new:
         plan = str(tmp_path / f"plan_{doc}.json")
-        _json("calibration", "insert", "--calibration", calibration, "--judgements", store, "--plan",
+        _json("calibration", "insert", "--calibration", calibration, "--judgements", store, "--dry-run",
               "--query", "q1", "--doc", doc, "--n", "5", "--out", plan)  # fmt: skip
         _json("judge", "tournament", *dataset, "--plan", plan, "--out", store)
         extended = str(tmp_path / f"extended_{doc}")

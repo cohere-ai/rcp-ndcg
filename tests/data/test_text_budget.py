@@ -28,10 +28,11 @@ from rcp_ndcg.data.preprocess import (
 from rcp_ndcg.data.templates import Segment, TemplateSpec
 from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.support.identity import check_declarations, identity_payload
-from tests._tokenizers import framed_bpe_tokenizer, word_tokenizer
+from tests._tokenizers import framed_bpe_tokenizer, spaced_special_tokenizer, word_tokenizer
 
 FRAMED = framed_bpe_tokenizer()
 WORDS = word_tokenizer()
+SPACED = spaced_special_tokenizer()
 
 #: The two special tokens the framed fixture adds: a template's suffix anchor and the post-processor's,
 #: written in templates by name and resolved to these literals from the tokenizer's added tokens.
@@ -147,6 +148,18 @@ class TestTemplateSpec:
         with pytest.raises(ValueError, match="exactly one"):
             Segment()
 
+    def test_an_empty_fixed_segment_is_refused(self) -> None:
+        """A fixed segment that renders no tokens is a workaround marker, not a frame piece: it is refused.
+
+        The declared-end-token escape hatch needs no marker: a shape that ends in content with
+        ``add_special_tokens: true`` has the post-processor's own token as its anchor, and the audit expects
+        the post-processor's tail alone there.
+        """
+        with pytest.raises(ValueError, match="empty"):
+            Segment(fixed="")
+        with pytest.raises(ValueError, match="empty"):
+            TemplateSpec(query=(Segment(fixed="q: "), Segment(content="query"), Segment(fixed="")))
+
     def test_an_anchor_of_marker_declares_markers_and_nothing_else_does(self) -> None:
         with pytest.raises(ValueError, match="anchor_markers"):
             TemplateSpec(query=(Segment(content="query"),), anchor="marker")
@@ -188,6 +201,25 @@ class TestTemplateSpec:
                 "query", FRAMED, query="q"
             )
 
+    def test_a_special_name_is_resolved_exactly_keeping_its_whitespace(self) -> None:
+        """An added token named ``[Q] `` (a trailing space, as pplx-embed's ship) is resolved as written: the
+        resolver strips nothing, or the name could not be written at all."""
+        spec = TemplateSpec(query=(Segment(fixed="{special:[Q] }"), Segment(content="query")))
+        assert spec.render("query", SPACED, query="the query") == "[Q] the query"
+        assert spec.render("query", SPACED, query="") == "[Q] "
+
+    def test_an_unknown_special_names_the_nearest_ones(self) -> None:
+        with pytest.raises(ConfigError) as caught:
+            TemplateSpec(query=(Segment(fixed="{special:end_tur}"), Segment(content="query"))).render(
+                "query", FRAMED, query="q"
+            )
+        assert "did you mean" in caught.value.hint and "end_turn" in caught.value.hint
+        with pytest.raises(ConfigError) as caught:
+            TemplateSpec(query=(Segment(fixed="{special:Q}"), Segment(content="query"))).render(
+                "query", SPACED, query="q"
+            )
+        assert "[Q] " in caught.value.hint
+
     def test_the_overhead_is_the_empty_render_counted_once(self) -> None:
         spec = document_template()
         empty = spec.render("document", FRAMED, document="")
@@ -199,6 +231,90 @@ class TestTemplateSpec:
     def test_the_render_refuses_an_undeclared_shape(self) -> None:
         with pytest.raises(ConfigError, match="pair"):
             query_template().render("pair", FRAMED, query="q")
+
+    def test_a_last_content_anchor_needs_no_fixed_tail(self) -> None:
+        """``anchor: last_content`` (jina-embeddings-v5): the model pools the last real token of raw text, so
+        the shape may end on a content span -- which ``anchor: last`` refuses, because there the model reads
+        a fixed position. Fixed segments (the head marker) are still reserved and audited; the cut keeps a
+        content prefix, so the last kept content token always survives."""
+        shape = (Segment(fixed="Query: "), Segment(content="query"))
+        with pytest.raises(ValueError, match="anchor: last"):
+            TemplateSpec(query=shape, anchor="last", add_special_tokens=False)
+        spec = TemplateSpec(query=shape, anchor="last_content", add_special_tokens=False)
+        assert spec.shapes() == ("query",)
+        # The fixed head marker is still part of the frame: rendered whole, and reserved by the budget.
+        assert spec.render("query", FRAMED, query="the query") == "Query: the query"
+        result = fit(["the query " * 30], shape="query", budget=budget(spec, max_tokens=12), tokenizer=FRAMED)
+        assert result.texts[0].startswith("Query: ")  # the head marker survived the cut
+        assert result.texts[0].endswith(result.contents[0])  # and the shape ends on the (kept) content
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Declared content normalisation: the template's per-shape strip/lowercase, applied by fit
+# ---------------------------------------------------------------------------------------------------------------
+
+
+class TestDeclaredNormalisation:
+    def test_the_reference_and_the_engine_see_the_same_normalised_text(self) -> None:
+        """G4: the model's wrapper strips the query text and the whole document (topk); Cobble checkpoints
+        lowercase. Declared per shape on the template, applied by fit before measuring, so the reference and
+        the engine read the same text."""
+        spec = TemplateSpec(
+            query=(Segment(content="query"),),
+            document=(Segment(fixed="Document: "), Segment(content="document")),
+            normalize={"query": ("strip",), "document": ("strip", "lowercase")},
+        )
+        query = fit(["  the QUERY  "], shape="query", budget=budget(spec), tokenizer=FRAMED)
+        assert query.contents[0] == "the QUERY"  # stripped, case kept
+        assert query.texts[0] == "the QUERY"
+        document = fit(["  The DOCUMENT  "], shape="document", budget=budget(spec), tokenizer=FRAMED)
+        assert document.contents[0] == "the document"  # stripped and lowercased
+        assert document.texts[0] == "Document: the document"
+
+    def test_a_tuple_declares_the_same_ops_for_every_declared_shape(self) -> None:
+        spec = TemplateSpec(
+            query=(Segment(content="query"),),
+            document=(Segment(content="document"),),
+            normalize=("strip",),
+        )
+        assert spec.normalisers("query") == ("strip",)
+        assert spec.normalisers("document") == ("strip",)
+
+    def test_a_per_shape_mapping_must_name_every_declared_shape(self) -> None:
+        with pytest.raises(ValueError, match="document"):
+            TemplateSpec(
+                query=(Segment(content="query"),),
+                document=(Segment(content="document"),),
+                normalize={"query": ("strip",)},
+            )
+        with pytest.raises(ValueError, match="pair"):
+            TemplateSpec(query=(Segment(content="query"),), normalize={"pair": ("strip",), "query": ()})
+
+    def test_normalisation_applies_to_both_pair_spans_before_measuring(self) -> None:
+        spec = TemplateSpec(
+            pair=(Segment(content="query"), Segment(fixed="\n"), Segment(content="document")),
+            normalize=("strip", "lowercase"),
+        )
+        result = fit(
+            [("  The QUERY  ", "  The DOCUMENT ")], shape="pair", budget=budget(spec, max_tokens=64), tokenizer=FRAMED
+        )
+        assert result.contents[0] == ("the query", "the document")
+        assert result.texts[0] == "the query\nthe document"
+
+    def test_the_cut_is_taken_from_the_normalised_text_and_the_row_names_both_ends(self) -> None:
+        spec = TemplateSpec(document=(Segment(content="document"),), normalize=("strip", "lowercase"))
+        census = TextTruncationCensus()
+        result = fit(["  " + LONG], shape="document", budget=budget(spec), tokenizer=FRAMED, census=census)
+        assert result.contents[0] == result.contents[0].lower()  # the cut was measured on the normalised text
+        row = census.cuts(mechanism=TextTruncationCensus.TEXT_BUDGET)[0].as_row()
+        assert row["original_chars"] == len(LONG) + 2  # the input as given
+        assert row["kept_chars"] == len(result.contents[0])  # the normalised, cut text as sent
+
+    def test_the_normalisation_enters_the_template_identity(self) -> None:
+        one = identity_payload(TemplateSpec(query=(Segment(content="query"),), normalize=("strip",)))
+        other = identity_payload(TemplateSpec(query=(Segment(content="query"),), normalize=("strip", "lowercase")))
+        assert one["normalize"] == ["strip"]
+        assert other["normalize"] == ["strip", "lowercase"]  # the ops and their order are content
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -312,11 +428,13 @@ class TestPairSplit:
         with pytest.raises(TextBudgetExceededError, match="query_max_tokens"):
             fit([(LONG, "the document")], shape="pair", budget=split, tokenizer=FRAMED)
 
-    def test_query_max_tokens_at_or_over_max_tokens_is_refused(self) -> None:
-        with pytest.raises(ValueError, match="max_tokens"):
-            TextBudget(tokenizer="t", max_tokens=40, query_max_tokens=40)
-        with pytest.raises(ValueError, match="max_tokens"):
+    def test_query_max_tokens_above_max_tokens_is_refused_and_equal_is_legal(self) -> None:
+        """A share above the whole budget is refused; EQUAL is legal -- the per-shape budgets cap both shapes
+        the same (the rerank config refuses an at-or-over pair share one layer up)."""
+        with pytest.raises(ValueError, match="whole input budget"):
             TextBudget(tokenizer="t", max_tokens=40, query_max_tokens=41)
+        equal = TextBudget(tokenizer="t", max_tokens=40, query_max_tokens=40)
+        assert equal.query_max_tokens == 40
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -405,6 +523,18 @@ class TestFailAndCut:
         with pytest.raises(TextBudgetExceededError):
             fit([LONG], shape="document", budget=budget_, tokenizer=FRAMED)
 
+    def test_the_fail_hint_names_the_budget_that_binds(self) -> None:
+        """On a query shape budgeted by a declared share, raising ``max_tokens`` moves nothing: the hint
+        names ``query_max_tokens``."""
+        split = TextBudget(tokenizer="test/framed-bpe", max_tokens=64, query_max_tokens=8, on_overflow="fail")
+        with pytest.raises(TextBudgetExceededError) as caught:
+            fit([LONG], shape="query", budget=split, tokenizer=FRAMED)
+        assert "raise query_max_tokens" in (caught.value.hint or "")
+        whole = TextBudget(tokenizer="test/framed-bpe", max_tokens=24, on_overflow="fail")
+        with pytest.raises(TextBudgetExceededError) as caught:
+            fit([LONG], shape="document", budget=whole, tokenizer=FRAMED)
+        assert "raise max_tokens" in (caught.value.hint or "")
+
     def test_a_cut_is_recorded_with_its_budget_source_and_shape(self) -> None:
         census = TextTruncationCensus()
         result = fit([LONG], shape="document", budget=budget(document_template()), tokenizer=FRAMED, census=census)
@@ -483,10 +613,46 @@ class TestVendorBudget:
         with pytest.raises(ConfigError, match="template"):
             TextBudget(tokenizer=None, max_tokens=4096, template=document_template())
 
-    def test_query_max_tokens_is_refused_for_a_non_pair_shape(self) -> None:
-        """The share splits a pair budget; on a query or document shape it would be silently inert."""
-        split = TextBudget(tokenizer="test/framed-bpe", max_tokens=64, query_max_tokens=6, template=query_template())
-        with pytest.raises(ConfigError, match="pair"):
+
+# ---------------------------------------------------------------------------------------------------------------
+# Per-shape budgets: query_max_tokens caps the query shape on the embedding roles
+# ---------------------------------------------------------------------------------------------------------------
+
+
+class TestPerShapeBudget:
+    def test_query_max_tokens_is_the_query_shapes_whole_budget(self) -> None:
+        """Per-shape budgets (the topk hand-off): on the query shape ``query_max_tokens`` IS the budget (its
+        whole budget there), and ``max_tokens`` keeps capping the document shape."""
+        spec = TemplateSpec(
+            query=(Segment(fixed="Q: "), Segment(content="query")),
+            document=(Segment(fixed="D: "), Segment(content="document")),
+        )
+        split = TextBudget(tokenizer="test/framed-bpe", max_tokens=64, query_max_tokens=10, template=spec)
+        query = fit([LONG], shape="query", budget=split, tokenizer=FRAMED)
+        assert len(engine_ids(query.texts[0], spec, "query")) <= 10
+        assert FRAMED.count(query.contents[0]) < FRAMED.count(LONG)
+        document = fit([LONG], shape="document", budget=split, tokenizer=FRAMED, ids=["d"])
+        # The same budget, document shape: capped at max_tokens (64), not at the query's 10.
+        assert 10 < len(engine_ids(document.texts[0], spec, "document")) <= 64
+
+    def test_the_census_rows_name_the_shapes_budget(self) -> None:
+        census = TextTruncationCensus()
+        spec = TemplateSpec(
+            query=(Segment(fixed="Q: "), Segment(content="query")),
+            document=(Segment(fixed="D: "), Segment(content="document")),
+        )
+        split = TextBudget(tokenizer="test/framed-bpe", max_tokens=64, query_max_tokens=10, template=spec)
+        fit([LONG], shape="query", budget=split, tokenizer=FRAMED, census=census)
+        rows = [cut.as_row() for cut in census.cuts(mechanism=TextTruncationCensus.TEXT_BUDGET)]
+        assert rows and rows[0]["budget_tokens"] == 10 and rows[0]["shape"] == "query"
+        document_census = TextTruncationCensus()
+        fit([LONG], shape="document", budget=split, tokenizer=FRAMED, census=document_census, ids=["d"])
+        document_rows = [cut.as_row() for cut in document_census.cuts(mechanism=TextTruncationCensus.TEXT_BUDGET)]
+        assert document_rows[0]["budget_tokens"] == 64
+
+    def test_a_query_shape_refuses_a_budget_the_frame_alone_fills(self) -> None:
+        split = TextBudget(tokenizer="test/framed-bpe", max_tokens=64, query_max_tokens=4, template=query_template())
+        with pytest.raises(ConfigError, match="4"):
             fit([LONG], shape="query", budget=split, tokenizer=FRAMED)
 
     def test_an_undeclared_shape_is_a_typed_error_even_with_a_per_shape_flag(self) -> None:

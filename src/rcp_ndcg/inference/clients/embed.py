@@ -36,6 +36,7 @@ from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.data.prepare import MediaCensus
 from rcp_ndcg.data.preprocess import TextTruncationCensus
+from rcp_ndcg.data.templates import RequestShape
 from rcp_ndcg.errors import ConfigError, RequestRejectedError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
 from rcp_ndcg.inference.adapters.base import get_adapter
@@ -83,12 +84,14 @@ class EmbeddingClient(RoleClient):
     Raises:
         ConfigError: ``api`` names no registered adapter of the embed role (the hint lists that role's
             names), ``batch_size`` exceeds the profile's cap, ``dimensions`` is set on a profile that takes
-            none, or ``on_overflow: chunk`` is declared (vector roles do not pool chunks).
+            none, ``request_shape`` names a shape the wire does not implement, ``token_ids`` is declared
+            without a tokenizer, or ``on_overflow: chunk`` is declared (vector roles do not pool chunks).
     """
 
     ROLE = "embed"
 
-    #: The embed role's shipped adapters are text-only: media is refused before it is fetched.
+    #: The embed role's shipped adapters are text-only by default: media rides the ``messages`` route only
+    #: (2e), and only when the wire implements it (the adapter's ``REQUEST_SHAPES``).
     MEDIA_ON_WIRE = False
 
     def __init__(
@@ -113,8 +116,26 @@ class EmbeddingClient(RoleClient):
                 hint="use on_overflow: cut (the content is cut to the budget), or chunk the corpus at load "
                 "(the retrieval index keeps one slice per chunk)",
             )
+        supported = getattr(adapter_cls, "REQUEST_SHAPES", frozenset({"text"}))
+        if config.request_shape not in supported:
+            raise ConfigError(
+                f"request_shape {config.request_shape!r} is declared, but the "
+                f"{getattr(adapter_cls, 'name', config.api)} wire implements {sorted(supported)}",
+                hint="declare a request shape the wire implements (the default is text)",
+            )
+        if config.request_shape == "token_ids" and config.tokenizer is None:
+            raise ConfigError(
+                "request_shape 'token_ids' needs a tokenizer: the ids are the client's tokenisation of the "
+                "fitted text, and a hosted profile without one cannot tokenise",
+                hint="declare the tokenizer (with max_tokens), or drop request_shape (the default sends text)",
+            )
         super().__init__(config, sender=sender, census=census, media_census=media_census)
         self._adapter: Any = self._adapter_cls(self.endpoint)
+
+    def _media_is_on_wire(self) -> bool:
+        """Whether this client's wire carries media (2e): the ``messages`` route lowers image and video
+        parts; the text and token-ids routes carry none (the adapters refuse them)."""
+        return self.config.request_shape == "messages"
 
     # -- the public calls ---------------------------------------------------
     def encode(self, contents: Sequence[Content], role: EncodeRole, *, batch_size: int | None = None) -> Embeddings:
@@ -149,15 +170,20 @@ class EmbeddingClient(RoleClient):
             # zero vector per input -- the score an omitted document contributes.
             return Embeddings.single(np.zeros((len(contents), 0), dtype=np.float32))
 
+        token_ids = self._token_ids_of(prepared.items, role)
         requests = [
             EmbedRequest(
                 contents=tuple(prepared.items[offset : offset + size]),
                 role=role,
                 dimensions=self.config.dimensions,
+                request_shape=self.config.request_shape,
+                token_ids=token_ids[offset : offset + size],
             )
             for offset in range(0, len(prepared.items), size)
         ]
         calls = [list(self._adapter.calls(request, model=self.config.model)) for request in requests]
+        for batch_calls in calls:
+            self._gate_media_calls(batch_calls)
 
         gate = asyncio.Semaphore(self.config.concurrency)
 
@@ -197,10 +223,26 @@ class EmbeddingClient(RoleClient):
             The items to send (each with the side's prompt and -- when the config declares a budget -- the
             content fitted to it: only content spans cut, the template re-attached, cuts recorded), each
             with its original position, and the positions ``empty_doc: omit_zero`` never sends (they score
-            0.0). Media is refused before it is fetched: this role's wires are text-only.
+            0.0). Media rides the ``messages`` route (2e): there each item's media is prepared with the
+            request (``prepare_request``), its tokens counted and reserved whole beside the fitted text;
+            on the text and token-ids routes media is refused before it is fetched.
         """
         prompt = self.config.query_prompt if role is EncodeRole.QUERY else self.config.doc_prompt
         prepared = tuple(content.with_text_prefix(prompt) for content in contents)
+        self._refuse_media_off_its_side(role.value, prepared)
+        if self._media_is_on_wire():
+            # Media on the messages wire (2e): one preparation path, each item's media sized exactly as the
+            # judge's, its tokens reserved whole beside the item's text (the embeddings budget is per item:
+            # each input must fit the served context, the batch is how fast).
+            request = self._prepare_request(list(prepared))
+            fitted_pairs = [
+                self._fit_media_for_request([content], doc_ids=[str(index)])
+                for index, content in enumerate(request.contents)
+            ]
+            prepared = tuple(pair[0][0] for pair in fitted_pairs)
+            media_tokens = [pair[1] for pair in fitted_pairs]
+        else:
+            media_tokens = [0] * len(prepared)
         if self._budget is None:
             kept, omitted = list(prepared), []
             return PreparedItems(
@@ -210,7 +252,9 @@ class EmbeddingClient(RoleClient):
             )
         if self._budget is not None:
             result = self._fit(
-                [content.text for content in prepared], "query" if role is EncodeRole.QUERY else "document"
+                [content.text for content in prepared],
+                "query" if role is EncodeRole.QUERY else "document",
+                media_tokens=media_tokens,
             )
             prepared = tuple(
                 self._with_text(content, text) for content, text in zip(prepared, result.texts, strict=True)
@@ -223,6 +267,17 @@ class EmbeddingClient(RoleClient):
             omitted=tuple(omitted),
         )
 
+    def _token_ids_of(self, items: Sequence[Content], role: EncodeRole) -> tuple[tuple[int, ...], ...]:
+        """The token ids of each sent text, as the engine reads it, for ``request_shape: token_ids`` (3):
+        the client's tokenisation of the fitted render, under the shape's ``add_special_tokens`` flag --
+        the same count the fit verified."""
+        if self.config.request_shape != "token_ids":
+            return ()
+        assert self._tokenizer is not None  # refused at construction without one
+        shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
+        flag = self.config.template.adds_special_tokens(shape) if self.config.template is not None else True
+        return tuple(tuple(self._tokenizer.ids(item.text, add_special_tokens=flag)) for item in items)
+
     def _request_size(self, batch_size: int | None) -> int:
         """The request size of one call: ``batch_size``, else the config's; below 1 or above the profile's
         cap is refused (typed, R12)."""
@@ -233,8 +288,9 @@ class EmbeddingClient(RoleClient):
         return size
 
     async def probe(self) -> Any:
-        """The role's startup probe: the transport's replica probe. The embed role's wires carry no media,
-        so there is no engine media check to run (media is refused before it is fetched)."""
+        """The role's startup probe: the transport's replica probe. The embed role sends no media probe
+        request, so no engine media check runs here (the ``text`` and ``token_ids`` routes refuse media
+        before it is fetched; the ``messages`` route counts its media on the declared policy)."""
         return await self._sender.probe()
 
 

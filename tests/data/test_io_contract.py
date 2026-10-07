@@ -22,7 +22,7 @@ from rcp_ndcg_core.content import Content, ImagePart, MediaRef
 from rcp_ndcg.data.io import available_readers, available_writers, get_reader, get_writer
 from rcp_ndcg.data.io.base import SourceReader
 from rcp_ndcg.data.io.hf import HfReader
-from rcp_ndcg.errors import ConfigError, DataError
+from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
 
 PIL = pytest.importorskip("PIL.Image")
 
@@ -439,7 +439,7 @@ class TestBeirSpecifics:
 
     def test_a_missing_corpus_names_what_it_looked_for(self, tmp_path):
         (tmp_path / "empty").mkdir()
-        with pytest.raises(FileNotFoundError, match="corpus.jsonl"):
+        with pytest.raises(MissingInputError, match="corpus.jsonl"):
             list(get_reader("beir", uri=str(tmp_path / "empty")).documents())
 
 
@@ -481,7 +481,7 @@ def test_a_fractional_qrels_label_is_kept_as_a_float(beir_dir, tmp_path) -> None
 
     assert reader.qrels() == {"q1": {"d1": 0.7, "d2": 2.0}}
     get_writer("beir").write_corpus(reader.documents(), reader.queries(), reader.qrels(), str(tmp_path / "out"))
-    assert (tmp_path / "out" / "qrels" / "test.tsv").read_text().splitlines()[1:] == ["q1\td1\t0.7", "q1\td2\t2"]
+    assert (tmp_path / "out" / "qrels" / "test.tsv").read_text().splitlines()[1:] == ["q1\td1\t0.7", "q1\td2\t2.0"]
 
 
 def test_a_non_numeric_qrels_label_is_a_data_error(beir_dir) -> None:
@@ -513,3 +513,153 @@ def test_image_dir_qrels_keep_fractional_labels(image_dir) -> None:
     reader = get_reader("images", uri=image_dir, qrels_uri=str(qrels))
 
     assert reader.qrels() == {"q1": {"docA/page_1": 0.5}}
+
+
+# ---------------------------------------------------------------------------
+# Nothing is cut or defaulted silently: the readers' refusals
+# ---------------------------------------------------------------------------
+
+
+def test_an_idless_beir_row_is_refused_with_its_line(beir_dir) -> None:
+    """A row without an id (or with an empty one) vanished with no message; a corpus that
+    silently loses documents produces confident wrong numbers."""
+    corpus = Path(beir_dir) / "corpus.jsonl"
+    corpus.write_text(json.dumps({"title": "no id", "text": "body"}) + "\n")
+    with pytest.raises(DataError, match="corpus.jsonl:1.*no id"):
+        list(get_reader("beir", uri=beir_dir).documents())
+
+    queries = Path(beir_dir) / "queries.jsonl"
+    queries.write_text(json.dumps({"_id": "", "text": "empty id"}) + "\n")
+    with pytest.raises(DataError, match="queries.jsonl:1"):
+        list(get_reader("beir", uri=beir_dir).queries())
+
+
+def test_an_idless_sidecar_row_is_refused_not_dropped(image_dir) -> None:
+    qrels = Path(image_dir.replace("/images", "/qrels.jsonl"))
+    qrels.write_text('{"query_id": "", "qrels": {"docA/page_1": 1}}\n')
+    reader = get_reader("images", uri=image_dir, qrels_uri=str(qrels))
+    with pytest.raises(DataError, match="qrels.jsonl:1.*no id"):
+        reader.qrels()
+
+
+def test_a_missing_beir_file_is_a_missing_input(tmp_path) -> None:
+    """A bare FileNotFoundError slipped past the typed hierarchy (and load_dataset's promised
+    raises list); a library caller catching RcpNdcgError missed it."""
+    (tmp_path / "empty").mkdir()
+    reader = get_reader("beir", uri=str(tmp_path / "empty"))
+    with pytest.raises(MissingInputError, match="corpus"):
+        list(reader.documents())
+    with pytest.raises(MissingInputError, match="queries"):
+        list(reader.queries())
+    with pytest.raises(MissingInputError, match="qrels"):
+        reader.qrels()
+
+
+def test_a_labelled_pair_twice_is_refused_not_last_wins(beir_dir) -> None:
+    """The in-memory path refuses a label given twice; the file readers silently took the last."""
+    qrels = Path(beir_dir) / "qrels" / "test.tsv"
+    qrels.write_text("query-id\tcorpus-id\tscore\nq1\td1\t2\nq1\td1\t5\n")
+    with pytest.raises(DataError, match="twice"):
+        get_reader("beir", uri=beir_dir).qrels()
+
+
+def test_a_ranking_row_labelling_a_pair_twice_is_refused_not_last_wins(ranking_jsonl, tmp_path) -> None:
+    """Two ranking rows for one query, each labelling q1/d1, silently merged last-wins through
+    the derived qrels of the ranking layout."""
+    rows = list(Path(ranking_jsonl).read_text().splitlines())
+    extra = json.loads(rows[0])
+    extra["qrels"] = {"d1": 5}
+    out = tmp_path / "dup.jsonl"
+    out.write_text(rows[0] + "\n" + json.dumps(extra) + "\n")
+    with pytest.raises(DataError, match="twice"):
+        get_reader("jsonl", uri=str(out)).qrels()
+
+
+def test_a_sidecar_qrels_shape_error_names_the_row(image_dir) -> None:
+    """``jsonl:`` refused a malformed qrels row; ``images:`` crashed with a bare AttributeError
+    on the same format -- one format, one error."""
+    qrels = Path(image_dir.replace("/images", "/qrels.jsonl"))
+    qrels.write_text('{"query_id": "q1", "qrels": [5]}\n')
+    reader = get_reader("images", uri=image_dir, qrels_uri=str(qrels))
+    with pytest.raises(DataError, match="qrels"):
+        reader.qrels()
+
+
+def test_a_rankings_file_that_is_one_json_array_is_a_data_error(tmp_path) -> None:
+    """A single-line JSON array of otherwise-valid rows fell into the per-row branch of the
+    rankings loader and raised a raw AttributeError past load_rankings' promised DataError."""
+    from rcp_ndcg.data import load_rankings
+
+    path = tmp_path / "runs.json"
+    path.write_text(json.dumps([{"query_id": "q1", "doc_id": "d1", "score": 1.0}]))
+    with pytest.raises(DataError, match="JSON object"):
+        load_rankings(str(path))
+
+
+def test_a_jsonl_dataset_name_stops_at_the_suffix_not_the_first_dot(tmp_path) -> None:
+    assert get_reader("jsonl", uri=str(tmp_path / "nfcorpus.v2.jsonl")).dataset_name == "nfcorpus.v2"
+
+
+def test_unknown_corpus_row_keys_are_refused(tmp_path) -> None:
+    """A BEIR-shaped corpus row's title was silently ignored; the strict and lenient record
+    paths sat side by side under one docstring."""
+    (tmp_path / "c").mkdir()
+    (tmp_path / "c" / "corpus.jsonl").write_text(json.dumps({"doc_id": "d1", "title": "T", "text": "b"}) + "\n")
+    (tmp_path / "c" / "queries.jsonl").write_text("")
+    with pytest.raises(DataError, match="title"):
+        list(get_reader("jsonl", uri=str(tmp_path / "c")).documents())
+
+
+def test_frame_indices_record_the_source_frames(frame_dir) -> None:
+    """``frame_indices`` says which frames of the source these frames were sampled at; positions
+    in the directory cannot say that once the numbering has gaps (``000001, 000007, 000042``)."""
+    clip = Path(frame_dir) / "clip_a"
+    for stale in clip.iterdir():
+        stale.unlink()
+    for number in (1, 7, 42):
+        PIL.new("RGB", (16, 12)).save(clip / f"{number:06d}.jpg")
+
+    document = next(iter(get_reader("frames", uri=frame_dir).documents()))
+
+    part = document.as_content.parts[0]
+    assert part.frame_indices == [1, 7, 42]
+
+
+def test_a_headerless_qrels_row_that_is_not_a_header_is_not_eaten(beir_dir) -> None:
+    """A headerless file whose first label failed the digit check lost its first row as a "header":
+    the same label with a header raised the typed DataError -- two behaviours for one input. Now the
+    first row is only a header when it names the columns; a ``nan`` label is refused, a ``+1`` or
+    ``1e-3`` label is a valid grade and stays.
+    """
+    qrels = Path(beir_dir) / "qrels" / "test.tsv"
+    qrels.write_text("q1\td1\tnan\nq1\td2\t2\n")
+    with pytest.raises(DataError, match="not a finite number"):
+        get_reader("beir", uri=beir_dir).qrels()
+    for first_label, expected in (("+1", 1.0), ("1e-3", 0.001)):
+        qrels.write_text(f"q1\td1\t{first_label}\nq1\td2\t2\n")
+        assert get_reader("beir", uri=beir_dir).qrels() == {"q1": {"d1": expected, "d2": 2.0}}
+
+
+def test_the_beir_writer_refuses_a_media_query_too(tmp_path, beir_dir) -> None:
+    """A media-bearing document was refused loudly; a media-bearing query was written as an
+    empty-text query silently -- the silent half of the asymmetry."""
+    source = get_reader("beir", uri=beir_dir)
+    queries = list(source.queries())
+    image = tmp_path / "query.png"
+    PIL.new("RGB", (8, 8)).save(image)
+    media_query = queries[0].model_copy(update={"text": "", "content": Content.from_image(str(image))})
+    with pytest.raises(ConfigError, match="cannot express"):
+        get_writer("beir").write_corpus(source.documents(), [media_query], source.qrels(), str(tmp_path / "b"))
+
+
+def test_a_query_instruction_round_trips_through_beir(tmp_path, beir_dir) -> None:
+    """A BRIGHT-style query written without its instruction reads back as bare text: the text
+    the encoder or judge sees silently changed."""
+    source = get_reader("beir", uri=beir_dir)
+    queries = list(source.queries())
+    queries[0] = queries[0].model_copy(update={"instruction": "Given a claim, find documents that refute it"})
+    out = str(tmp_path / "beir-out")
+    get_writer("beir").write_corpus(source.documents(), queries, source.qrels(), out)
+
+    restored = {query.id: query for query in get_reader("beir", uri=out).queries()}
+    assert restored["q1"].instruction == "Given a claim, find documents that refute it"

@@ -11,8 +11,9 @@ all take the same code path, and every function takes and returns the data layer
 
 Reranking checkpoints per query: every scored query is recorded under ``out`` (``rank000.jsonl``, one JSON
 record, flushed and fsynced) as it finishes, and a rerun with the same reranker over the same candidates skips
-the queries the checkpoint already holds. The record format and the checkpoint key are the served path's
-historical ones, so a rerun resumes checkpoints an earlier release wrote.
+the queries the checkpoint already holds. The record format is the served path's historical one; the key is
+the reranker's content identity plus the exact texts sent (the earlier release keyed on ids and historical
+budget constants only -- such checkpoints are scored again, not resumed).
 """
 
 from __future__ import annotations
@@ -205,7 +206,12 @@ def retrieve(
 
         out = cache_dir() / "indexes" / identity[:16]
     record = Path(out) / "index.json"
-    built = load_index(out) if record.is_file() else None
+    built: Index | None = None
+    if record.is_file():
+        try:
+            built = load_index(out)
+        except ConfigError:
+            pass  # an index.json of another shape (or a corrupt one) is a cache miss: rebuild over it
     if built is None or built.identity != identity:
         built = index(dataset, retriever, out=out)
     return search(built, dataset, depth=depth)
@@ -239,9 +245,15 @@ def rerank(
     Returns:
         :class:`~rcp_ndcg.data.Rankings` with one system named after the reranker's model, its rows naming the
         dataset the candidates' rows name.
+
+    Raises:
+        ConfigError: ``depth`` is not positive (as :func:`search` refuses it).
+        DataError: A ranked document is not in the corpus, or a ranked query is not in the dataset.
     """
     from rcp_ndcg_core._records import RankingExample
 
+    if depth <= 0:
+        raise ConfigError(f"depth must be positive, got {depth}")
     candidates = rankings.top(depth).queries(system=system, dataset=dataset.name)
     corpus, queries = dataset.corpus, dataset.queries
     missing = sorted({d for docs in candidates.values() for d in docs if d not in corpus})
@@ -285,13 +297,16 @@ def fuse(rankings: Sequence[Rankings], *, rrf_k: int = 60, depth: int = 150, sys
         :class:`~rcp_ndcg.data.Rankings` with one system; its scores are the RRF scores.
 
     Raises:
-        DataError: No rankings, or systems that rank different queries.
+        DataError: No rankings to fuse, or two rankings that share a subset ranking different queries.
+        ConfigError: ``depth`` or ``rrf_k`` is not positive.
     """
     from rcp_ndcg_core._records import RankingExample
 
     from rcp_ndcg.retrieval.fusion import reciprocal_rank_fusion
 
     datasets = list(dict.fromkeys(name for ranking in rankings for name in ranking.datasets))
+    if not datasets:
+        raise DataError("fuse needs rankings to fuse; got none")
     fused_rows: list[dict[str, Any]] = []
     for dataset in datasets:
         runs = [
@@ -300,6 +315,7 @@ def fuse(rankings: Sequence[Rankings], *, rrf_k: int = 60, depth: int = 150, sys
                 for q, docs in ranking.queries(system=name, dataset=dataset).items()
             ]
             for ranking in rankings
+            if ranking.resolve_dataset(dataset) is not None  # a ranking with no rows for the subset stays out
             for name in ranking.systems
         ]
         fused = reciprocal_rank_fusion(runs, top_k=depth, rrf_k=rrf_k)
@@ -308,8 +324,6 @@ def fuse(rankings: Sequence[Rankings], *, rrf_k: int = 60, depth: int = 150, sys
             for e in fused
             for d, score in zip(e.doc_ids, e.scores or [], strict=True)
         ]
-    if not datasets:
-        raise DataError("fuse needs rankings to fuse; got none")
     return Rankings.from_records(fused_rows)
 
 
@@ -317,34 +331,40 @@ def fuse(rankings: Sequence[Rankings], *, rrf_k: int = 60, depth: int = 150, sys
 # The rerank driver: the clients score, this module checkpoints and aligns.
 # ---------------------------------------------------------------------------
 
-_CHECKPOINT_MAX_SEQ_LENGTH = 8192
-"""The pair budget the checkpoint keys record: the served path's historical ``MAX_SEQ_LENGTH``, kept so a
-resumed rerank reads an old checkpoint. A config's ``max_tokens`` (once the text-budget mechanism wires the
-clients) keys instead of this default."""
 
-_CHECKPOINT_MAX_QUERY_LENGTH = 4096
-"""The query budget the checkpoint keys record: the served path's historical ``MAX_QUERY_LENGTH``."""
+def _checkpoint_key(config: RerankerConfig, example: Any, *, tokenizer_sha256: str | None = None) -> str:
+    """What a checkpointed query's scores are valid for: the reranker's content identity and the exact texts.
 
+    The payload is :func:`~rcp_ndcg.support.identity.identity_payload` of the config (the model, its revision,
+    the wire adapter, the recipe, the instruction mode, the activation switch and the budgets), the
+    tokenizer's SHA-256, and what goes over the wire for this query: its id, its raw text and instruction,
+    and the candidate ids with a digest of their contents. A rerun after any of these changed -- or over a
+    different candidate set or depth -- computes another key and scores the query again.
 
-def _checkpoint_key(config: RerankerConfig, example: Any) -> str:
-    """What a checkpointed query's scores are valid for: the reranker, the budgets, the query and its candidates.
+    The key is not the earlier release's (that payload named only the model, revision, the historical budget
+    constants and the ids, so a rerun after any content change silently resumed stale scores). A checkpoint
+    written before this key existed is therefore re-scored, not resumed; nothing is released yet, so no
+    checkpoint in the wild carries the old key.
 
-    A rerun with another reranker, another depth or other candidates has another key and is scored again. The
-    payload spells the budgets and the served framework exactly as the earlier release that wrote today's
-    checkpoint files did, so a resumed rerank reads them. When the config sets no budget, the historical
-    ``8192``/``4096`` defaults stand in only to keep those pre-0.0.1 checkpoint keys stable: they are never
-    sent to an endpoint and never used to cut text (the clients cut nothing until the text-budget mechanism
-    wires the declared tokenizer; a config that sets a budget is refused there, not cut by these numbers).
+    Args:
+        config: The reranker; its CONTENT fields and tokenizer digest enter the payload.
+        example: The query to score, with its documents populated (the digest reads ``doc_contents``).
+        tokenizer_sha256: The config's tokenizer digest, resolved once by the caller; ``None`` resolves it
+            here (an identity-like cost per query otherwise).
     """
-    payload = {
-        "model": config.model,
-        "framework": "vllm",
-        "revision": config.revision,
-        "max_seq_length": getattr(config, "max_tokens", None) or _CHECKPOINT_MAX_SEQ_LENGTH,
-        "max_query_length": getattr(config, "query_max_tokens", None) or _CHECKPOINT_MAX_QUERY_LENGTH,
-        "query_id": str(example.id),
-        "doc_ids": [str(doc_id) for doc_id in example.doc_ids],
-    }
+    payload = identity_payload(config)
+    digest = tokenizer_sha256 if tokenizer_sha256 is not None else config.identity_extra().get("tokenizer_sha256")
+    if digest:
+        payload["tokenizer_sha256"] = digest
+    payload.update(
+        {
+            "query_id": str(example.id),
+            "query": example.as_content.model_dump_json(),
+            "query_instruction": example.instruction,
+            "doc_ids": [str(doc_id) for doc_id in example.doc_ids],
+            "docs": hash_strings([content.model_dump_json() for content in example.doc_contents]),
+        }
+    )
     return short(hash_payload(payload), 16)
 
 
@@ -373,13 +393,40 @@ def _checkpoint_scores(ckpt_dir: Path) -> dict[str, dict[str, float]]:
     """``{checkpoint key: {doc_id: score}}`` across all rank checkpoints (:func:`_checkpoint_key`).
 
     Per *query* rather than per pair: a rerank request is atomic at the query level, so a partially-written query
-    has nothing usable to resume from. Records without a key are not reused.
+    has nothing usable to resume from. Records without a key are not reused, and one with a value that is not a
+    number is dropped whole (the reader takes historical and hand-edited files as it finds them; one bad value
+    poisons only its own record, which the rerun then scores again).
     """
     by_key: dict[str, dict[str, float]] = {}
     for record in _iter_checkpoint_records(ckpt_dir):
         if isinstance(record, dict) and isinstance(record.get("k"), str) and isinstance(record.get("s"), dict):
-            by_key[record["k"]] = {str(doc_id): float(score) for doc_id, score in record["s"].items()}
+            scores: dict[str, float] = {}
+            for doc_id, score in record["s"].items():
+                try:
+                    scores[str(doc_id)] = float(score)
+                except (TypeError, ValueError):
+                    break
+            else:
+                by_key[record["k"]] = scores
     return by_key
+
+
+def _reusable_scores(
+    by_key: dict[str, dict[str, float]], examples: Sequence[Any], keys: Sequence[str]
+) -> dict[str, dict[str, float]]:
+    """The checkpointed scores a rerun may reuse: those covering their example's whole candidate set.
+
+    The writer records one complete score map per query, but the reader takes historical and hand-edited files
+    as it finds them: a record that misses one of its example's documents is dropped here and the query is
+    scored again, instead of resuming into a refusal whose hint -- rerun the rerank -- replayed the identical
+    failure forever.
+    """
+    out: dict[str, dict[str, float]] = {}
+    for example, key in zip(examples, keys, strict=True):
+        scores = by_key.get(key)
+        if scores is not None and all(str(doc_id) in scores for doc_id in example.doc_ids):
+            out[key] = scores
+    return out
 
 
 def _rerank_examples(
@@ -405,7 +452,8 @@ def _rerank_examples(
             neither dropped nor given a made-up score.
     """
     client = RerankClient(config)
-    keys = [_checkpoint_key(config, example) for example in examples]
+    tokenizer_sha256 = config.identity_extra().get("tokenizer_sha256")
+    keys = [_checkpoint_key(config, example, tokenizer_sha256=tokenizer_sha256) for example in examples]
     meta = {
         str(example.id): (key, [str(doc_id) for doc_id in example.doc_ids])
         for example, key in zip(examples, keys, strict=True)
@@ -414,6 +462,8 @@ def _rerank_examples(
     if ckpt_dir is not None:
         ckpt_dir.mkdir(parents=True, exist_ok=True)
     by_key = _checkpoint_scores(ckpt_dir) if ckpt_dir is not None else {}
+    if by_key:
+        by_key = _reusable_scores(by_key, examples, keys)
     pending = [example for example, key in zip(examples, keys, strict=True) if key not in by_key]
     if by_key and len(pending) < len(examples):
         logger.info(f"rerank resume: {len(examples) - len(pending)}/{len(examples)} queries already scored")

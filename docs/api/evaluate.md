@@ -4,8 +4,13 @@
   count_gains=None, systems=None, bootstrap=1000, seed=0)` returns an `EvalReport`: RCP-nDCG, qrel-nDCG and
   Count-nDCG of `rcp_ndcg.data.Rankings` under a scoring protocol, per query, per dataset and as a summary with a
   query-clustered bootstrap interval. The gains come from `gains` (a `{query_id: {doc_id: gain}}` mapping or a
-  `Calibration`), else from the dataset's released `gain` column. Integer qrels are never used as RCP gains:
-  without gains, RCP-nDCG raises `DataError`. The protocol defaults to the suite's or the dataset's, else `plain`.
+  `Calibration`), else from the dataset's released `gain` column; `count_gains` (required for `"count_ndcg"`)
+  follows the same keying rule. For a suite, `gains` and `count_gains` keys may be `"<subset>/<query_id>"` -- and
+  must be when subsets share query ids, and one style only for each subset (a mix is refused, as bare ids over
+  shared ids are, with the subsets named; a prefixed key for one subset and bare ids for another are each read
+  where they belong; a key naming no subset of the suite is refused, so a typo'd prefix cannot silently drop a
+  subset from the aggregate). Integer qrels are never used as RCP gains: without gains, RCP-nDCG raises
+  `DataError`. The protocol defaults to the suite's or the dataset's, else `plain`.
   `systems` scores only the named systems (`--system` on the command line, repeatable): one system of a
   multi-system file whose rankings match nothing of the dataset is refused (every score would be 0), and this
   scores the others; an unknown name raises `ConfigError` listing the systems the file names.
@@ -19,14 +24,28 @@
 - `explain(report, query_id, *, calibration=None, k=10, dataset=None)` returns a `QueryExplanation`: each system's
   top k with gains, grades, abilities and per-criterion pass probabilities (the criteria's item parameters once,
   in `items`), and the gap between every system and the first at cutoff `k`, split into selection (which documents
-  reach the top k) and ordering (how they are arranged).
+  reach the top k) and ordering (how they are arranged). The gaps come from the query's RCP gains, or from its
+  qrel grades when the query has none, and are empty when the query has no labels, no positive grade, or every
+  labelled document of it is excluded.
+- `score_delta(order_a, order_b, gains, *, k=10)`, imported with `from rcp_ndcg.eval.explain import score_delta`
+  (`rcp_ndcg.eval` exports `explain`, the function, so the module is spelled `rcp_ndcg.eval.explain`), splits one
+  nDCG@k gap between two orders (B minus A)
+  the same way, returning `(total, selection, ordering)` -- the primitive the `deltas` are built on.
+- `bootstrap_interval(datasets, *, resamples, seed, alpha=0.05)`, imported with
+  `from rcp_ndcg.eval.evaluate import bootstrap_interval`, is the summary interval's primitive: the
+  percentile interval of the dataset-mean-then-mean aggregate over `alpha/2` and `1 - alpha/2` quantiles of the
+  draws, resampling queries within each dataset (query-clustered, stratified by dataset, fixed seed);
+  `(None, None)` without resamples or values.
 - `rcp_ndcg.eval.mteb.get_tasks(suite, names=None, *, mode="reranking", revision=None)` returns the public suites
-  as mteb tasks with `ndcg_float_at_k` ([MTEB integration](../tutorials/mteb-integration.md)).
+  as mteb tasks with `ndcg_float_at_k` ([MTEB integration](../how-to/mteb-integration.md)); `names` lists
+  subsets (each once; empty is refused, `None` is all of them).
 
 `EvalReport` and `Comparison` have `.to_json()` and `.to_pandas()`, and `EvalReport.value(system, metric, k)` gives
 one summary value. `EvalReport.leaderboard(metric="rcp_ndcg", k=None)` is the wide table: a row per system, a
-column per dataset and the summary as `mean`, best first. A report records the protocol it was computed under
-(`report.protocol`) and where its gains came from (`report.gains_source`); a report written by
+column per dataset and the summary as `mean`, best first. A `(metric, k)` the report never computed is refused
+with a `DataError` naming the cutoffs it has -- by `value`, `leaderboard`, `compare` and `sensitivity` alike, so
+a wrong k never reads as an empty table or a message about shared queries. A report records the protocol it was
+computed under (`report.protocol`) and where its gains came from (`report.gains_source`); a report written by
 `rcp-ndcg eval score --out` also records its input files (`report.inputs`).
 
 **Inputs in memory.** `Rankings.from_records(records)` and `Dataset.from_records(name=..., queries=..., corpus=...,

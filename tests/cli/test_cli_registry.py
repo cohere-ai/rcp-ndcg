@@ -48,3 +48,21 @@ def test_short_help_is_one_line_of_single_spaces():
     for path, command in _commands(cli):
         short = command.get_short_help_str(limit=10_000)
         assert "  " not in short and "\n" not in short, f"`rcp-ndcg {' '.join(path)}`: {short!r}"
+
+
+def test_mcp_group_serves_only() -> None:
+    """`mcp tools` is gone: the MCP surface is `mcp serve`; a tool call goes through an MCP client or
+    `rcp_ndcg.mcp.call_tool()` in Python."""
+    from rcp_ndcg.cli.mcp import mcp_group
+
+    assert set(mcp_group.list_commands(click.Context(mcp_group))) == {"serve"}
+
+
+def test_the_command_index_renders_a_switch_as_flag_and_no_flag() -> None:
+    """A boolean that defaults on is a `--x/--no-x` switch, what `describe` and `schema show commands` expose."""
+    from rcp_ndcg.cli.introspect import command_index
+
+    flags = {flag.flag: flag for flag in command_index().commands["run resume"].flags}
+
+    assert "--resume/--no-resume" in flags
+    assert flags["--resume/--no-resume"].type == "boolean"

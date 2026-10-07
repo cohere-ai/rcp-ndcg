@@ -125,6 +125,17 @@ def test_validate_is_a_library_call_over_any_dataset_and_rankings() -> None:
     assert counts["UNKNOWN_QUERIES"] == (1, ["q9"])
 
 
+def test_an_excluded_pooled_document_without_a_positive_label_is_not_excluded_relevant() -> None:
+    """``_positive`` filters ``g > 0`` so an excluded zero-label pool document (a pooled but
+    unjudged one) does not raise EXCLUDED_RELEVANT; the filter is what keeps the check honest."""
+    dataset = _dataset(candidates={"q1": ["a", "b"]}, excluded={"q1": ["b"]})  # b's grade is 0
+
+    report = rcp.data.validate(dataset)
+
+    assert report.ok
+    assert not any(check.code == "EXCLUDED_RELEVANT" for check in report.checks)
+
+
 def test_validate_checks_the_rows_that_rank_the_dataset() -> None:
     """A suite-wide file validated against one subset: the other subsets' rows are not this dataset's."""
     biology = Dataset.from_records(

@@ -29,7 +29,7 @@ from typing import Any, Literal
 from rcp_ndcg_core.metric import ndcg
 
 from rcp_ndcg.data.dataset import SUITES
-from rcp_ndcg.errors import ConfigError, DataError
+from rcp_ndcg.errors import CapabilityError, ConfigError, DataError, MissingInputError
 
 K_VALUES = (1, 3, 5, 10, 20, 100, 1000)
 
@@ -51,16 +51,32 @@ def ndcg_float_scores(
         results: ``{query_id: {doc_id: score}}`` of the model; every query needs gains. An empty ranking scores 0.
         k_values: The cutoffs.
 
+    Returns:
+        ``{"ndcg_float_at_<k>": value}``, the mean nDCG@k over the queries (5 decimals), plus mteb's abstention
+        nAUCs of the per-query values when mteb is installed.
+
     Raises:
-        ValueError: A non-finite or negative gain, a non-finite score, or a query without gains.
+        DataError: A non-finite or negative gain, a non-finite score, or a query of ``results`` without gains.
     """
     per_k: dict[int, list[float]] = defaultdict(list)
     for query_id, scores in results.items():
-        query_gains = gains[query_id]  # KeyError on purpose: every scored query needs gains
+        try:
+            query_gains = gains[query_id]
+        except KeyError:
+            raise DataError(
+                f"query {query_id!r} has no gains, and every scored query needs them",
+                hint="pass gains covering every query of results (a calibration's per-dataset gains for a suite)",
+            ) from None
         if any(not math.isfinite(g) or g < 0 for g in query_gains.values()):
-            raise ValueError(f"Non-finite or negative gain for query {query_id}.")
+            raise DataError(
+                f"Non-finite or negative gain for query {query_id!r}.",
+                hint="the float-gain metric scores gains in [0, 1]; grades belong in the integer-qrels metrics",
+            )
         for k in k_values:
-            per_k[k].append(ndcg(scores, query_gains, k=k, ties="group_mean"))
+            try:
+                per_k[k].append(ndcg(scores, query_gains, k=k, ties="group_mean"))
+            except ValueError as exc:  # the scores come from the model; core's validation is a data problem
+                raise DataError(str(exc), hint="the model's scores must be finite numbers") from exc
     summary = {f"ndcg_float_at_{k}": round(math.fsum(v) / len(v), 5) for k, v in per_k.items() if v}
     try:  # mteb's abstention nAUCs of the per-query values, as mteb PR 5516 reports them
         from mteb._evaluators.retrieval_metrics import evaluate_abstention
@@ -92,6 +108,18 @@ def get_tasks(
         raise ConfigError(f"unknown suite {suite!r}; expected one of {sorted(SUITES)}")
     if mode not in ("reranking", "retrieval"):
         raise ConfigError("mode must be 'reranking' or 'retrieval'")
+    if names is not None and not names:
+        raise ConfigError(
+            "names is empty; pass subset names, or None for all of them",
+            hint="available subsets: task_metadata on the suite's rcp_ndcg_tasks.py, or pass no names for all of them",
+        )
+    if names is not None:
+        repeated = sorted({name for name in names if list(names).count(name) > 1})
+        if repeated:
+            raise ConfigError(
+                f"names {repeated} appear twice; pass each subset once",
+                hint="drop the repeated names, or pass no names for all of them",
+            )
     repo = SUITES[suite].repo
     released, metadata = task_metadata(_hub_text(repo, "rcp_ndcg_tasks.py"))
     revision = revision or released
@@ -116,7 +144,10 @@ def _hub_text(repo: str, path: str) -> str:
 
     local = _hub_file(repo, path, None)
     if local is None:
-        raise FileNotFoundError(f"hf://{repo}: {path} does not exist")
+        raise MissingInputError(
+            f"hf://{repo}: {path} does not exist",
+            hint="the suite's published task file is missing: check the suite name, or the revision",
+        )
     return local.read_text(encoding="utf-8")
 
 
@@ -225,7 +256,7 @@ def _task_base() -> type:
                 from mteb.models import CrossEncoderProtocol, SearchProtocol
 
                 if isinstance(model, CrossEncoderProtocol) and not isinstance(model, SearchProtocol):
-                    raise ValueError(
+                    raise CapabilityError(
                         f"{self.metadata.name}: cross-encoders cannot do full-corpus retrieval; "
                         "use the reranking view (mode='reranking')."
                     )
@@ -235,7 +266,7 @@ def _task_base() -> type:
             if self.rcp_mode != "reranking":
                 return {}
             if getattr(self, "skip_first_result", False):
-                raise ValueError("skip_first_result is not supported by the float-gains metric.")
+                raise CapabilityError("skip_first_result is not supported by the float-gains metric.")
             gains = self._gains[hf_subset][hf_split]
             # the queries mteb's integer metrics average over: those present in `results`
             scored = {q: results[q] for q in qrels if q in results}

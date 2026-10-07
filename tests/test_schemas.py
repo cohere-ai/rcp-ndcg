@@ -29,13 +29,13 @@ def test_a_command_output_schema_requires_its_tag() -> None:
     assert schema["required"][0] == "schema"
 
 
-def test_the_kinds_cover_configs_artifacts_outputs_and_mcp() -> None:
+def test_the_kinds_cover_configs_artifacts_and_outputs() -> None:
     kinds = {entry.name: entry.kind for entry in schemas.entries()}
 
     assert kinds["run-config"] == "config"
     assert kinds["run-manifest"] == "artifact"
     assert kinds["cli"] == kinds["commands"] == kinds["dataset-summary"] == "cli-output"
-    assert kinds["mcp-manifest"] == "mcp"
+    assert set(kinds.values()) == {"config", "artifact", "cli-output"}
 
 
 def test_a_record_that_names_its_schema_names_its_entry() -> None:
@@ -118,7 +118,7 @@ def _runner_sections_of_the_docs() -> list[tuple[str, dict]]:
     for page in sorted((repo / "docs").rglob("*.md")):
         for index, block in enumerate(re.findall(r"```yaml\n(.*?)```", page.read_text(encoding="utf-8"), re.S)):
             for data in yaml.safe_load_all(block):  # a Kubernetes example holds several documents
-                if isinstance(data, dict) and "runner" in data:
+                if isinstance(data, dict) and ("runner" in data or {"dataset", "steps"} <= data.keys()):
                     blocks.append((f"{page.name}#{index}", data))
     return blocks
 
@@ -144,5 +144,7 @@ def test_a_written_run_config_and_the_docs_runner_examples_validate_against_the_
     for where, data in documented:
         for key, value in data.items():
             assert problems(schema["properties"][key], value, root=schema) == [], (where, key)
+        if "dataset" in data and "steps" in data:  # a complete run config, not a runner fragment
+            RunConfig.model_validate(data)  # the loader `run start` uses: a documented example must load today
     typo = {"name": "slurm", "options": {"partitoin": "gpu"}}
     assert problems(schema["properties"]["runner"], typo, root=schema) != []

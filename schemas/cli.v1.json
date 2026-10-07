@@ -132,7 +132,7 @@
     },
     "data": {
       "default": null,
-      "description": "The result, present when ok; its 'schema' names its JSON Schema.",
+      "description": "The result, present when ok; a command with a result model tags it with its 'schema' id (a free-form one, `schema show <name>`, names it in 'x-rcp-ndcg-schema' of its exported schema).",
       "title": "Data"
     },
     "error": {

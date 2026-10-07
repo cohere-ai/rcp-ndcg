@@ -28,7 +28,7 @@ rcp-ndcg judge rubric --dataset <uri> --judge <judge> --docs q2:q2-d10 --docs q2
 rcp-ndcg calibration score --calibration <calibration> --judgements <store> --out <extended-calibration>
 
 # a new document: let the calibration plan its windows, judge exactly those, then insert
-rcp-ndcg calibration insert --calibration <calibration> --judgements <store> --plan --query q1 --doc q1-new \
+rcp-ndcg calibration insert --calibration <calibration> --judgements <store> --dry-run --query q1 --doc q1-new \
     --n 36 --out plan.json --json
 rcp-ndcg judge tournament --dataset <uri> --judge <judge> --plan plan.json --out <store> --estimate
 rcp-ndcg judge tournament --dataset <uri> --judge <judge> --plan plan.json --out <store>
@@ -38,10 +38,11 @@ rcp-ndcg calibration insert --calibration <calibration> --judgements <store> --o
 rcp-ndcg calibration fit --judgements <store> --judgements <second-store> --judges pooled --out <calibration>
 ```
 
-In the second recipe, `--plan` picks `--n` opponents across the query's ability range and splits them into
-windows of the store's `schedule.window` (read from its `identity.json`), each holding the new document; `--out`
-writes the plan, and `data.plan.calls` says how many judge calls it takes (each window twice when the schedule
-mirrors). `judge tournament --plan` asks exactly those windows, with the store's schedule and into the store,
+In the second procedure, `calibration insert --dry-run` picks `--n` opponents across the query's ability range and
+splits them into windows of the store's `schedule.window` (read from its `identity.json`), each holding the new
+document; `--out` writes the plan, and `data.plan.calls` says how many judge calls it takes (each window twice
+when the schedule mirrors). `judge tournament --plan` asks exactly those windows, with the store's schedule and
+into the store,
 which must be the calibration's own tournament store judged by the same judge (anything else is exit 11).
 `calibration insert` then reads that store: the windows the calibration was fitted on and the new ones. The new
 document must be in the dataset's corpus; appending it to a local dataset is fine. Each opponent is compared once
@@ -101,7 +102,8 @@ judge's logit shifted by its severity $s_j$. A document that failed
 (or passed) every criterion in every placement has no interior maximum of the
 likelihood; its score is prior-bounded and flagged (`flags.degenerate` is `all_fail`
 or `all_pass`); a document whose own evidence misses the standard-error target is
-flagged `low_information`.
+flagged `low_information`. Pass counts are counts: a NaN or fractional one is
+refused where it is scored, not read as a share.
 
 The judgements must come from the calibration's rubric family (the same prompt,
 judge and parse), or the call raises `IdentityError`. A document the calibration
@@ -167,7 +169,8 @@ is a new, complete calibration that `save` writes like any other
 | `coverage.json`, `diagnostics.json`, `identity.json` | as the calibration's |
 
 Scoring recomputes no row of the calibration, so nothing already in it can move. An
-insertion carries an **anchor report**: the calibration's own tournament windows are
+insertion carries an **anchor report** -- the *insertion anchor report*, distinct from the template anchors of the
+[text budgets](text-budgets.md): the calibration's own tournament windows are
 refitted, and every document of the calibration is compared with its published ability,
 in theta and in gain. The call fails if any gain moved more than `max_gain_shift` (0.01
 by default), because then the windows passed are not the ones the calibration was

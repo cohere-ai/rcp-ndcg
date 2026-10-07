@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 from rcp_ndcg_core.content import Content
 
-from rcp_ndcg.errors import RequestRejectedError
+from rcp_ndcg.errors import ConfigError, RequestRejectedError
 from rcp_ndcg.inference.clients.pool import PoolingClient
 from rcp_ndcg.inference.config import PoolingEndpoint
 from rcp_ndcg.inference.types import EncodeRole
@@ -125,11 +125,42 @@ class TestEncode:
         np.testing.assert_allclose(norms, [1.0, 1.0], atol=1e-3)
 
     def test_normalize_false_keeps_the_vectors_as_decoded(self) -> None:
-        sender = _GatedSender(PoolingServer({}, default=np.array([[3.0, 4.0]], dtype=np.float16)))
+        sender = _GatedSender(PoolingServer({}, default=np.array([[3.0, 4.0], [1.0, 0.0]], dtype=np.float16)))
         client = _client(sender, normalize=False)
 
         embeddings = asyncio.run(client.aencode([Content.from_text("a")], EncodeRole.DOCUMENT))
-        np.testing.assert_allclose(np.asarray(embeddings.vectors), [[3.0, 4.0]], rtol=1e-3)
+        np.testing.assert_allclose(np.asarray(embeddings.vectors), [[3.0, 4.0], [1.0, 0.0]], rtol=1e-3)
+
+    def test_the_mrl_cut_is_slice_then_renormalise(self) -> None:
+        """The card's order (2g, hand-computed): the model's vector [3, 4] (unit norm [0.6, 0.8]) cut to one
+        dimension renormalises to [1.0]; a cut after the normalisation would ship [0.6] -- wrong."""
+        sender = _GatedSender(PoolingServer({}, default=np.array([[3.0, 4.0], [1.0, 0.0]], dtype=np.float16)))
+        client = _client(sender, normalize=True, mrl_dim=1)
+
+        embeddings = asyncio.run(client.aencode([Content.from_text("a")], EncodeRole.DOCUMENT))
+        np.testing.assert_allclose(np.asarray(embeddings.vectors, dtype=np.float32), [[1.0], [1.0]], atol=1e-3)
+
+    def test_the_mrl_cut_renormalises_whatever_normalize_says(self) -> None:
+        """The cut destroys unit-ness, so it renormalises even when the config's ``normalize`` is false (the
+        field governs the uncut vectors): [3, 4] cut to one dimension ships [1.0], not the un-normalised
+        [3.0]."""
+        sender = _GatedSender(PoolingServer({}, default=np.array([[3.0, 4.0]], dtype=np.float16)))
+        client = _client(sender, normalize=False, mrl_dim=1)
+
+        embeddings = asyncio.run(client.aencode([Content.from_text("a")], EncodeRole.DOCUMENT))
+        np.testing.assert_allclose(np.asarray(embeddings.vectors, dtype=np.float32), [[1.0]], atol=1e-3)
+
+    def test_an_mrl_dim_at_or_over_dim_is_refused_at_the_config(self) -> None:
+        with pytest.raises(ConfigError, match="mrl_dim") as caught:
+            PoolingEndpoint(
+                base_url="http://engine:8000/v1",
+                model="colqwen",
+                dim=2,
+                tokenizer=_budget.DEFAULT_TOKENIZER,
+                max_tokens=8192,
+                mrl_dim=2,
+            )
+        assert "mrl_dim" in (caught.value.hint or ""), "the refusal names the field to change"
 
     def test_the_declared_dim_shapes_the_decode(self) -> None:
         """The config's dim rebuilds (tokens, dim) from the flat frame: 8 values at dim 4 are two vectors."""
@@ -260,6 +291,95 @@ def _png_bytes() -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", (1, 1), (255, 0, 0)).save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+class TestDocumentSkipIds:
+    """``document_skip_token_ids`` (2, the topk hand-off): the pooling client drops document vectors at the
+    positions whose token id is listed (the reference drops punctuation/special vectors before MaxSim;
+    queries keep all their vectors); a count mismatch between the sent ids and the returned vectors is a
+    typed error, never a silent misalignment."""
+
+    @staticmethod
+    def _client(sender: Any, **config: Any) -> PoolingClient:
+        settings: dict[str, Any] = {
+            "base_url": "http://engine:8000/v1",
+            "model": "colqwen",
+            "dim": 2,
+            "normalize": False,
+            "tokenizer": _budget.DEFAULT_TOKENIZER,
+            "max_tokens": 8192,
+            "document_skip_token_ids": (2,),  # the word-level fixture's id of 'a'
+        }
+        settings.update(config)
+        return PoolingClient(PoolingEndpoint(**settings), sender=sender)
+
+    def test_document_vectors_are_dropped_at_the_skip_positions(self) -> None:
+        from tests._tokenizers import word_tokenizer
+
+        words = word_tokenizer()
+        text = "the a of to"  # four word tokens; ids [1, 2, 3, 4]
+        assert words.ids(text) == [1, 2, 3, 4]
+        sender = _GatedSender(PoolingServer({}, default=np.ones((4, 2), dtype=np.float16)))
+        client = self._client(sender)
+        embeddings = asyncio.run(client.aencode([Content.from_text(text)], EncodeRole.DOCUMENT))
+        assert embeddings.num_items == 1
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 3]  # 'a' dropped
+        np.testing.assert_array_equal(embeddings.vectors[0], [1.0, 1.0])  # position 0 ('the') kept
+        np.testing.assert_array_equal(embeddings.vectors[2], [1.0, 1.0])  # position 2 ('of') kept
+
+    def test_query_vectors_are_all_kept(self) -> None:
+        from tests._tokenizers import word_tokenizer
+
+        text = "the a of to"
+        assert word_tokenizer().count(text) == 4
+        sender = _GatedSender(PoolingServer({}, default=np.ones((4, 2), dtype=np.float16)))
+        client = self._client(sender)
+        embeddings = asyncio.run(client.aencode([Content.from_text(text)], EncodeRole.QUERY))
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 4]
+
+    def test_a_count_mismatch_between_sent_ids_and_vectors_is_a_typed_error(self) -> None:
+        """The engine returned five token vectors where the client sent four ids: refusing beats a silent
+        misalignment (the skip positions would drop the wrong tokens)."""
+        from rcp_ndcg.errors import ProviderError
+
+        sender = _GatedSender(PoolingServer({}, default=np.ones((5, 2), dtype=np.float16)))
+        client = self._client(sender)
+        with pytest.raises(ProviderError, match=r"5 token vector\(s\).*4 token id"):
+            asyncio.run(client.aencode([Content.from_text("the a of to")], EncodeRole.DOCUMENT))
+
+    def test_media_documents_are_refused_under_skip_ids(self, tmp_path: Any) -> None:
+        """A media request's positions are the server's chat-template render, which the client cannot
+        tokenise: refused, never silently unskipped."""
+        from rcp_ndcg.errors import CapabilityError
+
+        image = tmp_path / "page.png"
+        image.write_bytes(_png_bytes())
+        sender = _GatedSender(
+            PoolingServer({}, default=np.ones((1, 2), dtype=np.float16), media_vector=np.ones((1, 2), dtype=np.float16))
+        )
+        client = self._client(
+            sender,
+            image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            max_images=4,
+        )
+        with pytest.raises(CapabilityError, match="media"):
+            asyncio.run(client.aencode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT))
+        assert sender.sent == []  # refused before anything is sent
+
+    def test_token_ids_travel_as_the_input_and_skip_ids_still_apply(self) -> None:
+        """3 (pplx): the pooling wire sends the ids the fit tokenised, and the document skip drops the same
+        positions (the ids sent are the ids checked)."""
+        from tests._tokenizers import word_tokenizer
+
+        text = "the a of to"  # four word tokens; the skip drops 'a' (id 2)
+        sender = _GatedSender(PoolingServer({}, default=np.ones((4, 2), dtype=np.float16)))
+        client = self._client(sender, request_shape="token_ids")
+
+        embeddings = asyncio.run(client.aencode([Content.from_text(text)], EncodeRole.DOCUMENT))
+
+        sent = sender.sent[0][0]["input"]
+        assert sent == [word_tokenizer().ids(text)]
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 3]
 
 
 def _media_chunk_client(sender: Any) -> PoolingClient:

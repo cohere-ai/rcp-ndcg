@@ -53,6 +53,7 @@ def step_states(layout: RunLayout, manifest: RunManifest) -> list[StepState]:
     """Every step the run's config plans, in run order, with its recorded status (``pending`` before it starts)
     and, for a judging step, the windows judged so far against the windows its schedule plans."""
     from rcp_ndcg.runs.config import JUDGE_STEPS, STEPS
+    from rcp_ndcg.runs.manifest import StepStatus
     from rcp_ndcg.runs.run import StepState
 
     wanted = set(manifest.config.get("steps") or []) | {record.name for record in manifest.steps}
@@ -62,12 +63,12 @@ def step_states(layout: RunLayout, manifest: RunManifest) -> list[StepState]:
         record = manifest.step(name)
         progress = _judge_progress(layout, manifest, name) if name in JUDGE_STEPS else None
         if record is None:
-            states.append(StepState(name=name, status="pending", progress=progress))
+            states.append(StepState(name=name, status=StepStatus.PENDING, progress=progress))
         else:
             states.append(
                 StepState(
                     name=name,
-                    status=record.status.value,
+                    status=record.status,
                     duration_s=record.duration_s,
                     error=record.error,
                     progress=progress,
@@ -83,13 +84,11 @@ def _judge_progress(layout: RunLayout, manifest: RunManifest, stage: str) -> Ste
     (``candidates.parquet``): the schedule's calls per query summed over the judged queries (the first ``limit``,
     each cut to ``depth``), without chunking, where a query shows more units than documents.
     """
+    from rcp_ndcg.llm.store import records_stored
     from rcp_ndcg.runs.run import StepProgress
 
     store = Path(layout.judgements) / f"{stage}.jsonl"
-    done = 0
-    if store.exists():
-        with store.open(encoding="utf-8") as handle:
-            done = sum(1 for line in handle if line.strip())
+    done = records_stored(store)
     return StepProgress(done=done, planned=_planned_windows(layout, manifest, stage))
 
 

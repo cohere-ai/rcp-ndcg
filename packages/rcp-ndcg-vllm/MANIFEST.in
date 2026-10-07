@@ -1,0 +1,9 @@
+# The sdist ships the whole package surface: tests (with the stub engine and the fixture recipes), the
+# exported JSON Schema, the recipes and the job scripts. Without this the published test suite cannot run.
+include requirements-reference.txt
+graft schema
+graft recipes
+graft jobs
+graft tests
+global-exclude __pycache__ *.py[cod]
+prune build

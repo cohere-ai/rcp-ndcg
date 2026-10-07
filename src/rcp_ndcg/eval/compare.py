@@ -24,7 +24,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from rcp_ndcg_core.protocol import MetricName
 
 from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.eval.evaluate import EvalReport, _aggregate_values, _one_k, bootstrap_interval
+from rcp_ndcg.eval.evaluate import (
+    EvalReport,
+    _aggregate_values,
+    _has_cutoff,
+    _one_k,
+    _refuse_missing_cutoff,
+    bootstrap_interval,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -142,7 +149,8 @@ def compare(
 
     Raises:
         ConfigError: The baseline or a named system is not in the report (or not among ``systems``).
-        DataError: Fewer than two systems to compare.
+        DataError: Fewer than two systems to compare, or a ``(metric, k)`` the report never computed (the
+            error names the cutoffs it has).
     """
     k = _one_k(report, k)
     values = _values(report, metric, k)
@@ -150,19 +158,31 @@ def compare(
     if systems is not None:
         unknown = sorted(set(systems) - set(compared))
         if unknown:
-            raise ConfigError(f"systems {unknown} are not in the report; systems: {compared}")
+            raise ConfigError(
+                f"systems {unknown} are not in the report; systems: {compared}",
+                hint="compare the systems the report scored, or score more into it with `eval score --out`",
+            )
         compared = [s for s in compared if s in set(systems)]
     if baseline is not None and baseline not in compared:
-        raise ConfigError(f"baseline {baseline!r} is not a compared system; systems: {compared}")
+        raise ConfigError(
+            f"baseline {baseline!r} is not a compared system; systems: {compared}",
+            hint="pass one of the compared systems as the baseline, or leave it unset to compare every pair",
+        )
     if len(compared) < 2:
-        raise DataError(f"a comparison needs at least two systems; compared: {compared}")
+        raise DataError(
+            f"a comparison needs at least two systems; compared: {compared}",
+            hint="score a second system into the report (--system repeatable on `eval score`), or, for a run, add "
+            "--include-reference for its reference systems",
+        )
     pairs = (
         [(baseline, s) for s in compared if s != baseline]
         if baseline is not None
         else list(itertools.combinations(compared, 2))
     )
     other = "qrel_ndcg" if metric == "rcp_ndcg" else "rcp_ndcg" if metric == "qrel_ndcg" else None
-    other_values = _values(report, other, k) if other in report.metrics else None
+    # The sign flips are a bonus: a metric the report lists that has no values at this cutoff (it matched no
+    # labelled query) drops out of them, where the requested metric above is refused.
+    other_values = _values(report, other, k) if other is not None and _has_cutoff(report, other, k) else None
     return Comparison(
         metric=metric,
         k=k,
@@ -196,7 +216,8 @@ def sensitivity(
         The mean over datasets of the separated share of (dataset, system pair) comparisons, in ``[0, 1]``.
 
     Raises:
-        DataError: fewer than two systems, or no dataset where a pair shares two queries.
+        DataError: fewer than two systems, no dataset where a pair shares two queries, or a ``(metric, k)``
+            the report never computed (the error names the cutoffs it has).
     """
     k = _one_k(report, k)
     values = _values(report, metric, k)
@@ -228,7 +249,11 @@ Values = dict[str, dict[str, dict[str, float]]]
 
 def _values(report: EvalReport, metric: str, k: int) -> Values:
     if metric not in report.metrics:
-        raise DataError(f"the report has no {metric}; it has {report.metrics}")
+        raise DataError(
+            f"the report has no {metric}; it has {report.metrics}",
+            hint="compare a metric the report holds (--metric); score the others into a new report with --out",
+        )
+    _refuse_missing_cutoff(report, metric, k)  # without it, a wrong k read as 'share no scored query' below
     out: Values = {}
     for row in report.per_query:
         if row.metric == metric and row.k == k and row.value is not None:
@@ -274,7 +299,10 @@ def _compare_pair(
     }
     per_dataset = {d: xy for d, xy in per_dataset.items() if len(xy[0])}
     if not per_dataset:
-        raise DataError(f"systems {a!r} and {b!r} share no scored query")
+        raise DataError(
+            f"systems {a!r} and {b!r} share no scored query",
+            hint="compare systems of the same report (both scored the report's queries and datasets)",
+        )
     value_a = _aggregate_values({d: x for d, (x, _) in per_dataset.items()})
     value_b = _aggregate_values({d: y for d, (_, y) in per_dataset.items()})
     t, p = _paired_t(np.concatenate([y - x for x, y in per_dataset.values()]))

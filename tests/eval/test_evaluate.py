@@ -222,6 +222,86 @@ def test_gains_keyed_by_bare_query_ids_are_refused_over_subsets_that_share_them(
     assert evaluate(_oracle(divided=True), dataset=suite, gains=keyed, k=1, bootstrap=0).value("system") == 1.0
 
 
+def test_count_gains_keyed_by_bare_query_ids_are_refused_over_subsets_that_share_them() -> None:
+    """The keying rule is the gains': bare ids over subsets that share query ids silently scored one subset's
+    query with another subset's document gains (the sweep's repro: earth_science scored biology's map)."""
+    suite = _bright_like()
+    bare = {"0": {"biology-a": 1.0, "biology-b": 0.0}}
+
+    with pytest.raises(DataError, match="bare query ids"):
+        evaluate(_oracle(divided=True), dataset=suite, metrics=["count_ndcg"], count_gains=bare, k=1, bootstrap=0)
+
+
+def test_gains_mixing_prefixed_and_bare_keys_are_refused() -> None:
+    """A prefixed key wins ``_gains_for``'s first branch, so with mixed styles the bare-keyed queries would
+    silently lose their gains and their RCP rows."""
+    mixed = {"toy/q0": {"d1": 1.0}, "q1": {"d1": 0.5}}
+
+    with pytest.raises(DataError, match="mix") as caught:
+        evaluate(_rankings(), dataset=_dataset(), gains=mixed, k=1, bootstrap=0)
+    assert "<subset>/<query_id>" in (caught.value.hint or "")
+
+
+def test_a_gains_only_query_is_labelled_over_a_suite() -> None:
+    """A query with gains but no qrel row is labelled (the module's own definition): its RCP value is scored,
+    not silently dropped by the bare-key fallback's qrel filter."""
+    parts = (
+        Dataset(name="a", qrels={"q1": {"d1": 1.0}}, gains={"q1": {"d1": 0.9}, "q2": {"d1": 0.4}}),
+        Dataset(name="b", qrels={"p1": {"d1": 1.0}}),
+    )
+    rankings = Rankings.from_scores({"q1": {"d1": 2.0}, "q2": {"d1": 1.0}, "p1": {"d1": 1.0}}, system="s")
+    gains = {"q1": {"d1": 0.9}, "q2": {"d1": 0.4}}
+
+    report = evaluate(
+        rankings, dataset=Dataset(name="s", subsets=parts), gains=gains, metrics=["rcp_ndcg"], k=1, bootstrap=0
+    )
+
+    scored = sorted(row.query_id for row in report.per_query if row.metric == "rcp_ndcg" and row.dataset == "a")
+    assert scored == ["q1", "q2"], "the gains-only query keeps its row"
+
+
+def test_one_dataset_scores_every_bare_gains_key_and_checks_its_bounds() -> None:
+    """One dataset scored alone has no subset ambiguity, so every bare key is its: a query id outside the
+    qrels keeps its row (a typo reads as a 0 score, not a silent drop), and its gains' bounds are checked."""
+    dataset = _dataset()
+    gains = {**GAINS, "qX-typo": {"d1": 5.0}}
+
+    with pytest.raises(DataError, match=r"outside \[0, 1\]"):
+        evaluate(_rankings(), dataset=dataset, gains=gains, k=1, bootstrap=0)
+
+    scored = evaluate(
+        _rankings(),
+        dataset=dataset,
+        gains={**GAINS, "qX-typo": {"d1": 0.5}},
+        metrics=["rcp_ndcg"],
+        k=1,
+        bootstrap=0,
+    )
+    assert "qX-typo" in {row.query_id for row in scored.per_query if row.metric == "rcp_ndcg"}
+
+
+def test_count_gains_matching_no_labelled_query_are_refused() -> None:
+    """Count gains that match nothing produced a report with no count rows and a refusal naming the cutoffs
+    instead of the cause; they are refused like RCP gains matching nothing."""
+    suite = _bright_like()
+    stray = {"nope": {"biology-a": 1.0}}  # bare, but not one of the shared ids: no subset's labels hold it
+
+    with pytest.raises(DataError, match="count gains match no labelled query"):
+        evaluate(_oracle(divided=True), dataset=suite, metrics=["count_ndcg"], count_gains=stray, k=1, bootstrap=0)
+
+
+def test_gains_keyed_by_an_unknown_subset_prefix_are_refused() -> None:
+    """A typo'd subset prefix ('biolog/0' for 'biology') used to silently drop that subset's gains from the
+    aggregate -- one dataset's rows, no warning, and its gains' bounds unchecked; it is refused by name."""
+    suite = _bright_like()
+    typo = {"biolog/0": {"biology-a": 9.9}}
+    valid = {f"earth_science/{q}": docs for q, docs in (suite.subsets[1].gains or {}).items()}
+
+    with pytest.raises(DataError, match="no subset") as caught:
+        evaluate(_oracle(divided=True), dataset=suite, gains={**typo, **valid}, k=1, bootstrap=0)
+    assert "biolog" in caught.value.message
+
+
 def test_rcp_ndcg_never_falls_back_to_integer_qrels() -> None:
     with pytest.raises(DataError, match="integer qrels are not RCP gains"):
         evaluate(_rankings(), dataset=_dataset())
@@ -311,10 +391,13 @@ def test_the_summary_interval_is_seeded_and_brackets_the_value() -> None:
 
 def test_the_bootstrap_interval_is_the_alpha_over_2_quantiles_of_the_draws() -> None:
     """Hand-computed: ten datasets of two queries 0.0/1.0 resample to k/20 with k ~ Bin(20, 1/2), so
-    the 2.5% quantile is 6/20 and the 97.5% quantile is 14/20 -- the levels (alpha/2, 1 - alpha/2)
-    decide it (a different alpha splits the draws at neighbouring cells: 5/20 and 15/20)."""
+    the 2.5% quantile is 6/20 and the 97.5% quantile is 14/20 -- and the levels decide it: at alpha=0.2 the
+    quantiles (0.1, 0.9) fall one cell in, at 7/20 and 13/20 (P(k<=6)=0.058 < 0.1 <= P(k<=7)=0.132)."""
     datasets = {f"d{i}": [0.0, 1.0] for i in range(10)}
     assert bootstrap_interval(datasets, resamples=500_000, seed=7, alpha=0.05) == pytest.approx((0.3, 0.7))
+    assert bootstrap_interval(datasets, resamples=500_000, seed=7, alpha=0.2) == pytest.approx((0.35, 0.65)), (
+        "a different alpha splits the draws at a neighbouring cell, so the alpha/2 levels are pinned"
+    )
 
 
 def test_evaluate_reproduces_the_papers_per_query_values() -> None:
@@ -587,12 +670,60 @@ def test_all_pairs_follow_the_report_order_and_list_sign_flips() -> None:
 
 
 def test_compare_refuses_what_it_cannot_do(report: EvalReport) -> None:
-    with pytest.raises(DataError, match="pass k="):
+    with pytest.raises(DataError, match="pass k=") as caught:
         compare(report)
-    with pytest.raises(ConfigError, match="baseline"):
+    assert caught.value.hint and caught.value.cli_hint
+    with pytest.raises(ConfigError, match="baseline") as caught:
         compare(report, baseline="nobody", k=2)
-    with pytest.raises(DataError, match="count_ndcg"):
+    assert caught.value.hint
+    with pytest.raises(DataError, match="count_ndcg") as caught:
         compare(report, metric="count_ndcg", k=2)
+    assert caught.value.hint
+
+
+def test_every_argument_refusal_names_the_next_step() -> None:
+    """The evaluation layer's argument refusals carry their ``hint`` (the CLI and the MCP server show it as
+    ``error.hint``); the ones the command line words differently carry a ``cli_hint`` too."""
+    with pytest.raises(ConfigError) as caught:
+        evaluate(_rankings(), dataset=_dataset(), k=0)
+    assert caught.value.hint and caught.value.cli_hint
+    with pytest.raises(ConfigError) as caught:
+        evaluate(_rankings(), dataset=_dataset(), metrics=["nope"])
+    assert caught.value.hint
+    with pytest.raises(ConfigError) as caught:
+        evaluate(_rankings(), suite="nanobeir", dataset=_dataset())
+    assert caught.value.hint and caught.value.cli_hint
+    with pytest.raises(ConfigError) as caught:
+        evaluate(_rankings())
+    assert caught.value.hint and caught.value.cli_hint
+    with pytest.raises(ConfigError) as caught:
+        evaluate(_rankings(), dataset=_dataset(), systems=[])
+    assert caught.value.hint and caught.value.cli_hint
+
+
+def test_a_cutoff_the_report_never_computed_is_refused_everywhere(report: EvalReport) -> None:
+    """A k outside the report's cutoffs passes the metric check and used to come back as an all-NaN
+    leaderboard or a misleading 'share no scored query': one refusal names it everywhere."""
+    for call in (
+        lambda: report.leaderboard("rcp_ndcg", k=99),
+        lambda: compare(report, k=99),
+        lambda: sensitivity(report, k=99),
+    ):
+        with pytest.raises(DataError, match="no rcp_ndcg@99"):
+            call()
+
+
+def test_compare_ignores_a_sign_flip_metric_with_no_values_at_the_cutoff() -> None:
+    """A metric the report lists but that matched no labelled query (a gains-only dataset's qrel_ndcg) drops
+    out of the sign flips, as it did before the cutoff refusal; the requested metric is still refused."""
+    report = evaluate(_rankings(), dataset=_dataset(qrels={}, gains=GAINS), gains=GAINS, k=[2], bootstrap=0)
+    assert "qrel_ndcg" in report.metrics and not any(row.metric == "qrel_ndcg" for row in report.summary)
+
+    comparison = compare(report, bootstrap=0)
+
+    assert all(pair.sign_flips == [] for pair in comparison.pairs)
+    with pytest.raises(DataError, match="no qrel_ndcg@2"):
+        compare(report, metric="qrel_ndcg", k=2)
 
 
 def test_sensitivity_is_the_share_of_pairs_a_paired_t_test_separates(report: EvalReport) -> None:
@@ -691,3 +822,28 @@ def test_explain_refuses_a_report_that_scored_no_systems() -> None:
     assert empty.systems == []
     with pytest.raises(DataError, match="scored no systems"):
         explain(empty, "q0")
+
+
+def test_explain_deltas_fall_back_to_the_qrel_grades() -> None:
+    """A report without RCP gains still gets deltas: they compare the systems by the qrel grades the query
+    has (the docstring and the docs promise the gap between every system and the first; it used to be [])."""
+    qrel_report = evaluate(_rankings(), dataset=_dataset(), metrics=["qrel_ndcg"], k=[2], bootstrap=0)
+
+    result = explain(qrel_report, "q1", k=2)
+
+    assert result.deltas, "the gap between every system and the first, from the qrel grades"
+    delta = next(d for d in result.deltas if d.system_b == "bad")
+    # good ranks [d1, d2, ...] (grades 2, 1, ...), bad reverses it: the qrel-nDCG@2 gap is 0 - 1, all selection.
+    assert delta.total == pytest.approx(-1.0)
+    assert delta.selection == pytest.approx(-1.0) and delta.ordering == pytest.approx(0.0)
+
+
+def test_explain_names_the_known_queries_when_it_refuses_one(report: EvalReport) -> None:
+    """An unknown `--query-id` names the next step (one of the report's query ids), on both explain paths."""
+    from rcp_ndcg.eval import explain
+
+    with pytest.raises(DataError) as caught:
+        explain(report, "nosuch")
+
+    assert caught.value.hint and caught.value.cli_hint
+    assert caught.value.details["known"][:1]

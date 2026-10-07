@@ -24,7 +24,7 @@ from collections.abc import Iterator
 
 import numpy as np
 import pandas as pd
-from checks import Checker, paper_values
+from checks import Checker, KnownDeviation, paper_values
 from fetch_data import BRIGHT_SUBSETS, NANOBEIR_SUBSETS, TRECDL_SUBSETS, VIDORE_NATIVE, fetch_group, local_path
 from rcp_ndcg_core.protocol import candidate_docs, score_query
 from scipy.stats import kendalltau, ttest_rel
@@ -49,17 +49,35 @@ RERANKERS = {
 
 # Tolerance for a table cell, in nDCG points: the printed rounding (0.05) plus one unit of float noise.
 CELL_TOL = 0.05 + 1e-6
-# Documented deviations: (suite, metric, dataset or "mean") -> (bound in points, reason).
+
+_NANOBEIR_GAINS = (
+    "hub gains come from a refit that differs from the paper's by <= 0.0065 in gain; 10 cells move <= 0.07"
+)
+_THQA_GOLD_IDS = "paper used the gold ids of a later BRIGHT revision on 27 of 58 ThQA-T queries; hub keeps a75a0eb4"
+_MEAN_CARRIES = "carries the ThQA-T qrel difference into the mean"
+
+# Documented deviations: (suite, metric, dataset or "mean") -> (bound in points, reason, documented cells).
+# The cell populations are ``experiments/README.md``'s "Known deviations": NanoBEIR 5 FEVER + 2 Quora + 2
+# NFCorpus + 1 HotpotQA cells of the 196, BRIGHT 13 of the 14 TheoremQA Theorems qrel cells and 12 of the 14 qrel
+# means -- 35 rows in total (`run_all.py`). No other cell may deviate at all, and every count here is exact:
+# ``Checker.finish`` fails the run when the populations do not materialise as documented.
 KNOWN = {
-    ("nanobeir", "rcp_ndcg10", "*"): (
-        0.08,
-        "hub gains come from a refit that differs from the paper's by <= 0.0065 in gain; 10 cells move <= 0.07",
+    ("nanobeir", "rcp_ndcg10", "NanoFEVERRetrieval"): KnownDeviation(
+        0.08, _NANOBEIR_GAINS, 5, "nanobeir rcp_ndcg10 NanoFEVERRetrieval"
     ),
-    ("bright", "qrel_ndcg10", "theoremqa_theorems"): (
-        2.6,
-        "paper used the gold ids of a later BRIGHT revision on 27 of 58 ThQA-T queries; hub keeps a75a0eb4",
+    ("nanobeir", "rcp_ndcg10", "NanoQuoraRetrieval"): KnownDeviation(
+        0.08, _NANOBEIR_GAINS, 2, "nanobeir rcp_ndcg10 NanoQuoraRetrieval"
     ),
-    ("bright", "qrel_ndcg10", "mean"): (0.25, "carries the ThQA-T qrel difference into the mean"),
+    ("nanobeir", "rcp_ndcg10", "NanoNFCorpusRetrieval"): KnownDeviation(
+        0.08, _NANOBEIR_GAINS, 2, "nanobeir rcp_ndcg10 NanoNFCorpusRetrieval"
+    ),
+    ("nanobeir", "rcp_ndcg10", "NanoHotpotQARetrieval"): KnownDeviation(
+        0.08, _NANOBEIR_GAINS, 1, "nanobeir rcp_ndcg10 NanoHotpotQARetrieval"
+    ),
+    ("bright", "qrel_ndcg10", "theoremqa_theorems"): KnownDeviation(
+        2.6, _THQA_GOLD_IDS, 13, "bright qrel_ndcg10 theoremqa_theorems"
+    ),
+    ("bright", "qrel_ndcg10", "mean"): KnownDeviation(0.25, _MEAN_CARRIES, 12, "bright qrel_ndcg10 mean"),
 }
 
 
@@ -148,8 +166,14 @@ def check_table(suite: str, pq: pd.DataFrame, paper: dict, chk: Checker) -> None
         for rr, cells in paper[suite][metric].items():
             for col, pv in cells.items():
                 val = per_ds.loc[rr, metric].mean() if col == "mean" else per_ds.loc[(rr, col), metric]
-                known = KNOWN.get((suite, metric, col)) or KNOWN.get((suite, metric, "*"))
-                chk.compare(f"{suite} {metric} {rr} {col}", pv, float(val), CELL_TOL, known=known, quiet=True)
+                chk.compare(
+                    f"{suite} {metric} {rr} {col}",
+                    pv,
+                    float(val),
+                    CELL_TOL,
+                    known=KNOWN.get((suite, metric, col)),
+                    quiet=True,
+                )
     for rr in paper[suite]["rcp_ndcg10"]:
         q, r = per_ds.loc[rr].mean()
         pq_, pr_ = paper[suite]["qrel_ndcg10"][rr]["mean"], paper[suite]["rcp_ndcg10"][rr]["mean"]
@@ -161,7 +185,26 @@ def check_trecdl(pq: pd.DataFrame, paper: dict, chk: Checker) -> None:
     print("\n== trecdl (pool panel, 14 rerankers)")
     for year, ds in (("dl19", "trec_dl_2019"), ("dl20", "trec_dl_2020")):
         sub = pq[pq.dataset == ds]
+        duplicated = sub[sub.duplicated(["query_id", "reranker"], keep=False)]
+        if not duplicated.empty:
+            pairs = sorted(
+                {(str(q), str(r)) for q, r in zip(duplicated["query_id"], duplicated["reranker"], strict=True)}
+            )
+            raise ValueError(f"{ds}: (query, reranker) score rows must be unique; duplicated: {pairs}")
         mats = {m: sub.pivot(index="query_id", columns="reranker", values=m) for m in ("qrel_ndcg10", "rcp_ndcg10")}
+        for metric, mat in mats.items():
+            if not mat.notna().all().all():
+                # A dropped score leaves a NaN hole, which the t-test counts as "not separated", sign(NaN) == NaN
+                # counts as disagreement, and DataFrame.mean() skips silently. A doubled row is refused above; a
+                # query or reranker absent from the panel entirely is caught by the exact-count compares below.
+                holes = sorted(
+                    (str(mat.index[i]), str(mat.columns[j]))
+                    for i, j in zip(*np.where(mat.isna().to_numpy()), strict=True)
+                )
+                raise ValueError(
+                    f"{ds}: the {metric} (query, reranker) matrix is ragged; missing scores for {holes}: "
+                    "every pool query must carry one score per reranker"
+                )
         systems = sorted(mats["rcp_ndcg10"].columns)
         sep = {"qrel_ndcg10": 0, "rcp_ndcg10": 0}
         decisive = agree = 0
@@ -198,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     fetch_group("leaderboards")
     pv = paper_values()
-    chk = Checker("leaderboards")
+    chk = Checker("leaderboards", tuple(KNOWN.values()))
     frames = []
     for suite in args.suite:
         pq = per_query(suite)

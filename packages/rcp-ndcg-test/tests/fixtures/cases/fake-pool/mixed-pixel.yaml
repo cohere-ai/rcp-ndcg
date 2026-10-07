@@ -1,0 +1,31 @@
+id: fake-pool/mixed-pixel
+recipe: fake-pool
+role: multi_vector
+source:
+  kind: generated
+strata:
+  modality: mixed
+  length: mixed
+  batch: mixed_modality
+inputs:
+  queries:
+  - id: q1
+    text: late interaction
+  - id: q2
+    text: one vector per token, scored by max similarity over a ragged buffer of token vectors, then pooled
+  documents:
+  - id: d1
+    text: a text-only candidate
+  - id: d2
+    text: the placeholder square
+    image: media/pixel.png
+expected:
+  kind: none
+  values: null
+  origin: reference
+  status: reproduced
+notes: >-
+  A path-only fixture case (expected.kind none) - one batch mixes modalities (a text-only document
+  and an image document) and query lengths, against the tests' deterministic fake. Nothing is
+  compared; the case covers the recipe's batch-mixed_modality grid cell and exercises the media
+  path in a mixed batch.

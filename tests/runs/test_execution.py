@@ -157,7 +157,7 @@ class TestPaths:
 
 class TestStatus:
     @pytest.mark.parametrize(
-        ("job", "derived"), [("failed", "failed"), ("cancelled", "cancelled"), ("succeeded", "failed")]
+        ("job", "derived"), [("failed", "failed"), ("cancelled", "cancelled"), ("completed", "failed")]
     )
     def test_a_run_whose_job_ended_without_recording_it_is_done(
         self, data: Path, tmp_path: Path, scheduler, job: str, derived: str
@@ -185,7 +185,7 @@ class TestStatus:
 
         pod = tmp_path / "pod" / Path(started["run_dir"]).name  # what the job does in its pod
         _ok("run", "resume", "--run", str(pod), "--mirror", remote)
-        scheduler.state = "succeeded"
+        scheduler.state = "completed"
 
         state = _ok("run", "status", "--run", started["run_dir"])
         assert (state["status"], state["done"]) == ("completed", True) and "mirror" in state["note"]

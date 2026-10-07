@@ -398,7 +398,7 @@ class OpenAIChat(AdapterBase):
                     f"the judge endpoint refused the number of {kind}s in a window ({message})",
                     hint=f"the server accepts fewer {kind}s per request than the judge's max_{kind}s: raise the "
                     "server's per-request media limit (its limit on images and videos per prompt; "
-                    f"docs/concepts/serving.md shows the setting), or lower max_{kind}s and the window size to "
+                    f"docs/concepts/judges.md shows the setting), or lower max_{kind}s and the window size to "
                     "what the server accepts",
                     details={"kind": kind, "status": code},
                 )
@@ -424,7 +424,7 @@ class OpenAIChat(AdapterBase):
                 "the first %d answers of %s under the stage's answer schema (decoding: json_schema) carried no "
                 "reasoning: the server probably runs the model without its reasoning parser, so the schema "
                 "constrains the reasoning too. Start the server with the model's reasoning parser (see "
-                "docs/concepts/serving.md); a model that does not reason, or an API that does not return its "
+                "docs/concepts/judges.md); a model that does not reason, or an API that does not return its "
                 "reasoning, can ignore this.",
                 REASONING_WATCH,
                 self.config.model,

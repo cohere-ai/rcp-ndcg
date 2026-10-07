@@ -1,0 +1,32 @@
+id: qwen3-vl-embedding-2b/video-short-single
+recipe: qwen3-vl-embedding-2b
+role: embed
+source:
+  kind: generated
+strata:
+  modality: video
+  length: short
+  batch: single
+inputs:
+  instruction: Represent the user's input.
+  queries:
+    - id: q1
+      text: A bird flying over the ocean.
+  documents:
+    - id: d1
+      video: media/clip.mp4
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance: {abs: 0.002}
+  origin: reference
+  status: pending_gpu
+notes: >-
+  Generated video/short cell: one text query, one video document (media/clip.mp4, synthetic via
+  media/make_media.py - 448x256, 2 fps, 2 s, 4 frames; no third-party material). Declared caveats
+  the wave must measure, not assume: (1) the served video sampling (checkpoint Qwen3VLVideoProcessor,
+  fps 2 / max_frames 768 -> all 4 frames) is unreconciled with the reference (qwen_vl_utils, fps 1 /
+  max_frames 64 -> 2 frames; recipe known_deviations); (2) rcp-ndcg's lowering never emits video_url
+  today, so this case is reachable only engine-side (video_url chat part, research report section 6)
+  or through the reference; (3) one video per prompt (limit_mm_per_prompt video=1). Tokenizer
+  revision 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda; tolerance abs 2e-3 is the declared bf16 margin.

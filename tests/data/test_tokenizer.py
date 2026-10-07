@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from rcp_ndcg.data import tokenizer as tokenizer_module
-from rcp_ndcg.data.tokenizer import load_tokenizer
+from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
 from rcp_ndcg.errors import DependencyError, MissingInputError
 from tests._tokenizers import save, word_tokenizer
 
@@ -62,3 +62,31 @@ def test_a_missing_library_names_the_extra(tmp_path: Path, monkeypatch: pytest.M
     with pytest.raises(DependencyError) as caught:
         tokenizer_module.load_tokenizer(path)
     assert caught.value.hint == 'pip install "rcp-ndcg[hf]"'
+
+
+def test_embedded_truncation_and_padding_do_not_cap_the_counts(tmp_path: Path) -> None:
+    """A tokenizer.json that embeds truncation/padding (topk-embed-v1-small ships truncation at 1024) must not
+    cap every count at the embedded length: the caps are reset at load, as transformers resets them per call."""
+    from tokenizers import Tokenizer
+
+    embedded = Tokenizer.from_str(word_tokenizer().backend.to_str())
+    embedded.enable_truncation(max_length=4)  # direction Right, the shape the reference ships
+    embedded.enable_padding(length=9)  # fixed-length padding, the other silent cap
+    path = save(TextTokenizer.from_backend(embedded, name="test/embedded-caps"), tmp_path)
+    loaded = load_tokenizer(str(path))
+    text = "the relevant document answers the query with evidence and page one"
+    assert loaded.count(text) > 4  # the embedded truncation (max_length=4) no longer tops the count out
+    assert loaded.count(text) == word_tokenizer().count(text)  # and it is the tokenizer's own count
+    assert len(loaded.ids(text)) == loaded.count(text)  # the embedded padding (length=9) added no ids
+    assert loaded.offsets(text) == word_tokenizer().offsets(text)
+
+
+def test_a_backend_handed_over_is_reset_the_same_way() -> None:
+    """``from_backend`` funnels through the same load, so an in-memory backend's caps are reset too."""
+    from tokenizers import Tokenizer
+
+    embedded = Tokenizer.from_str(word_tokenizer().backend.to_str())
+    embedded.enable_truncation(max_length=3)
+    wrapped = TextTokenizer.from_backend(embedded, name="test/embedded-caps-memory")
+    text = "the relevant document answers the query with evidence"
+    assert wrapped.count(text) == word_tokenizer().count(text)

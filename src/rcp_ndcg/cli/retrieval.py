@@ -97,9 +97,16 @@ def retrieval_search(request: RetrievalSearchRequest) -> RankingsFile:
     from rcp_ndcg.retrieval import load_index, retrieve, search
 
     if (request.retriever is None) == (request.index is None):
-        raise UsageError("pass exactly one of --retriever and --index")
+        raise UsageError(
+            "pass exactly one of --retriever and --index",
+            hint="index a corpus with `rcp-ndcg retrieval index --retriever`, or pass --retriever to search it "
+            "directly",
+        )
     if request.index is not None and request.set:
-        raise UsageError("--set overrides the --retriever YAML; an --index was built with its retriever already")
+        raise UsageError(
+            "--set overrides the --retriever YAML; an --index was built with its retriever already",
+            hint="drop --set and search the index, or rebuild it from a --retriever with the override",
+        )
     dataset = request.load()
     if request.index is not None:
         rankings = search(load_index(request.index), dataset, depth=request.depth)

@@ -270,6 +270,13 @@ class TestEdgeCases:
         with pytest.raises(RuntimeError, match="Cannot add observations after finalize"):
             cal.add_observation("q1", "d2", 0.5, {"C1": 0, "C2": 1})
 
+    def test_a_non_finite_theta_bt_is_refused_not_fitted(self) -> None:
+        """A NaN theta_bt flows straight into the observation tensor and NaNs the whole fit;
+        a missing Bradley-Terry score is refused where the observation is added."""
+        cal = Tournament2PLCalibrator(num_criteria=2)
+        with pytest.raises(ValueError, match="finite"):
+            cal.add_observation("q1", "d1", float("nan"), {"C1": 1, "C2": 0})
+
     def test_finalize_with_no_observations_raises(self) -> None:
         cal = Tournament2PLCalibrator(num_criteria=3)
         with pytest.raises(ValueError, match="No observations"):

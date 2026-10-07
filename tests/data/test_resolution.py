@@ -66,6 +66,16 @@ class TestSmartResize:
         with pytest.raises(DataError, match="positive"):
             smart_resize(0, 100, factor=28, min_pixels=56 * 56, max_pixels=1280 * 28 * 28)
 
+    def test_an_aspect_ratio_exactly_at_200_is_accepted(self):
+        """The exact boundary (the QA survivor 9): the processor refuses an aspect ratio ABOVE 200; at it,
+        the resize runs."""
+        assert smart_resize(200, 1, factor=1, min_pixels=1, max_pixels=400) == (200, 1)
+
+    def test_an_area_exactly_at_the_budget_is_kept(self):
+        """The exact boundary (the QA survivor 9): a snapped area exactly at ``max_pixels`` is kept, not
+        scaled down -- 12x7 snaps to 16x8 = 128px, exactly the budget."""
+        assert smart_resize(12, 7, factor=8, min_pixels=1, max_pixels=128) == (16, 8)
+
     def test_matches_the_transformers_implementation(self):
         """Our port must agree with the processor, or token estimates are fiction."""
         transformers_qwen = pytest.importorskip("transformers.models.qwen2_vl.image_processing_qwen2_vl")

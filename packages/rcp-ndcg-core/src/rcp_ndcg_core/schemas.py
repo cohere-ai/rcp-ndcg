@@ -22,9 +22,9 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import datetime
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from rcp_ndcg_core._hashing import hash_payload, short
 
@@ -110,6 +110,15 @@ class QueryParams(BaseModel):
     tau: float = Field(gt=0)
     alpha: float
 
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if not (math.isfinite(self.tau) and math.isfinite(self.alpha)):
+            raise ValueError(
+                f"tau and alpha must be finite numbers (tau > 0), got tau={self.tau}, alpha={self.alpha}: "
+                "a non-finite one calibrates every ability to NaN"
+            )
+        return self
+
     def calibrated(self, theta_bt: float) -> float:
         """A Bradley-Terry ability of this query on the calibrated scale (logits)."""
         return self.tau * theta_bt + self.alpha
@@ -156,6 +165,13 @@ class DocumentEstimate(BaseModel):
     information: float
     flags: EstimateFlags = EstimateFlags()
 
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        bad = [name for name in ("theta", "se", "information") if not math.isfinite(getattr(self, name))]
+        if bad:
+            raise ValueError(f"estimate {bad[0]} must be a finite number, got {getattr(self, bad[0])!r}")
+        return self
+
 
 class Placement(BaseModel):
     """One document shown in one judged window.
@@ -176,6 +192,16 @@ class Placement(BaseModel):
     chunk_id: str | None = None
     score: float | None = None
     criteria: dict[str, int] | None = None
+
+    @field_validator("score")
+    @classmethod
+    def _finite_score(cls, value: float | None) -> float | None:
+        if value is not None and not math.isfinite(value):
+            raise ValueError(
+                f"score must be a finite number (the judge's stated scale, -5 to 5), got {value!r}: "
+                "a NaN score would flow into the fits as a valid window and NaN them"
+            )
+        return value
 
     @property
     def unit_id(self) -> str:
@@ -206,6 +232,15 @@ class Family(BaseModel):
         tokenizer: SHA-256 of the judge's ``tokenizer.json``, in whose tokens the text limits and the window
             budget were counted, or ``None`` when the judge names no tokenizer. It is the judge's, so
             :attr:`rubric_key` leaves it out with the model.
+        temperature: The judge's sampling temperature, when it declared one (``None``: the server's default
+            applies, and the field stays out of the digest).
+        max_output_tokens: The judge's completion-token cap per request, when declared.
+        context_tokens: The judge's prompt-plus-completion budget (the window text budget's basis), when
+            declared.
+        extra_body: The judge's extra request fields, when any are declared.
+        api: The judge's wire adapter name, when the pass was given one other than its default wire (the
+            judging pass normalizes the default wire's own name away, so families judged on the default keep
+            their key whatever its spelling).
     """
 
     model_config = _FROZEN
@@ -219,6 +254,11 @@ class Family(BaseModel):
     decoding: Decoding = "free"
     preprocessing: str | None = None
     tokenizer: str | None = None
+    temperature: float | None = None
+    max_output_tokens: int | None = None
+    context_tokens: int | None = None
+    extra_body: dict[str, Any] | None = None
+    api: str | None = None
 
     @property
     def num_criteria(self) -> int:
@@ -229,15 +269,38 @@ class Family(BaseModel):
     def key(self) -> str:
         """16-hex digest of every field: judgements sharing it may be fitted together.
 
-        ``tokenizer`` enters the digest only when it is set.
+        ``tokenizer`` and the judge's optional settings (``temperature``, ``max_output_tokens``,
+        ``context_tokens``, ``extra_body``, ``api``) enter the digest only when they are set: a family judged
+        under the defaults digests exactly as one that predates the fields, and a family judged under a declared
+        value never pools with it.
         """
-        unset = {"tokenizer"} if self.tokenizer is None else set()
+        unset = {
+            name
+            for name, value in (
+                ("tokenizer", self.tokenizer),
+                ("temperature", self.temperature),
+                ("max_output_tokens", self.max_output_tokens),
+                ("context_tokens", self.context_tokens),
+                ("extra_body", self.extra_body),
+                ("api", self.api),
+            )
+            if value is None or (name == "extra_body" and not value)
+        }
         return short(hash_payload(self.model_dump(mode="json", exclude=unset)), 16)
 
     @property
     def rubric_key(self) -> str:
         """16-hex digest of the family without the judge: the instrument several judges can share."""
-        judge = {"judge_model", "judge_revision", "tokenizer"}
+        judge = {
+            "judge_model",
+            "judge_revision",
+            "tokenizer",
+            "temperature",
+            "max_output_tokens",
+            "context_tokens",
+            "extra_body",
+            "api",
+        }
         return short(hash_payload(self.model_dump(mode="json", exclude=judge)), 16)
 
 
@@ -248,14 +311,15 @@ def judgement_record_id(
     window_seq: int | None,
     placement_ids: Sequence[str],
     *,
+    dataset: str,
     schedule_key: str | None = None,
 ) -> str:
     """The append-only store's key of one window.
 
-    A window of the schedule is keyed ``H(family_key, query_id, stage, window_seq, placement ids)``. A planned window
-    (``window_seq`` ``None``: asked outside the schedule's phases, e.g. an insertion plan) is keyed by its content
-    alone, ``H(family_key, query_id, stage, schedule_key, placement ids)``, so the same window maps to one record
-    however a command groups it.
+    A window of the schedule is keyed ``H(family_key, query_id, stage, dataset, window_seq, placement ids)``.
+    A planned window (``window_seq`` ``None``: asked outside the schedule's phases, e.g. an insertion plan) is
+    keyed by its content alone, ``H(family_key, query_id, stage, dataset, schedule_key, placement ids)``, so the
+    same window maps to one record however a command groups it.
 
     Args:
         family_key: :attr:`Family.key`.
@@ -263,6 +327,9 @@ def judgement_record_id(
         stage: The stage.
         window_seq: The window's index in the query's schedule, or ``None`` for a planned window.
         placement_ids: The ids the judge saw, in prompt order (chunk ids when chunked).
+        dataset: The dataset's identity key: a digest naming the dataset and, when it has one, its revision
+            (a store identity's ``dataset`` entry), so two corpora that share query and document ids never
+            share a record id.
         schedule_key: The digest of the schedule a planned window was asked under; required when ``window_seq``
             is ``None``.
 
@@ -276,6 +343,7 @@ def judgement_record_id(
             "family_key": family_key,
             "query_id": query_id,
             "stage": stage,
+            "dataset": dataset,
             "planned": schedule_key,
             "placements": list(placement_ids),
         }
@@ -284,6 +352,7 @@ def judgement_record_id(
             "family_key": family_key,
             "query_id": query_id,
             "stage": stage,
+            "dataset": dataset,
             "window_seq": window_seq,
             "placements": list(placement_ids),
         }
@@ -343,6 +412,11 @@ class Judgement(BaseModel):
 
     @model_validator(mode="after")
     def _check(self) -> Self:
+        if self.recorded_at.tzinfo is None or self.recorded_at.tzinfo.utcoffset(self.recorded_at) is None:
+            raise ValueError(
+                "recorded_at must be timezone-aware (the store and supersedes order windows by it "
+                "across hosts; a naive datetime cannot be compared with an aware one)"
+            )
         if not self.valid:
             if not self.invalid_reason or self.invalid_category is None:
                 raise ValueError("an invalid judgement must say why (invalid_reason and invalid_category)")
@@ -357,12 +431,21 @@ class Judgement(BaseModel):
             if missing or not self.placements:
                 raise ValueError(f"a valid rubric judgement needs criteria on every placement (missing at {missing})")
             for placement in self.placements:
-                assert placement.criteria is not None
-                bad = {c: v for c, v in placement.criteria.items() if v not in (0, 1)}
+                if placement.score is not None:
+                    raise ValueError(
+                        f"placement {placement.position} of a rubric judgement carries a score {placement.score!r}: "
+                        "a rubric placement's verdicts are its criteria; a parser emitting both shapes is a bug"
+                    )
+                bad = {c: v for c, v in (placement.criteria or {}).items() if v not in (0, 1)}
                 if bad:
                     raise ValueError(f"criterion verdicts must be 0 or 1, got {bad}")
         elif not self.placements or any(p.score is None for p in self.placements):
             raise ValueError("a valid tournament judgement needs a score on every placement")
+        elif any(p.criteria is not None for p in self.placements):
+            raise ValueError(
+                "a tournament judgement's placements carry scores, not rubric criteria: a parser emitting "
+                "both shapes is a bug"
+            )
         if self.ranking is not None and sorted(self.ranking) != sorted(positions):
             raise ValueError(f"ranking {list(self.ranking)} is not a permutation of the positions {positions}")
         return self

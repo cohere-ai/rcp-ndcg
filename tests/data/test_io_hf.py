@@ -110,6 +110,26 @@ class TestDocumentParts:
             list(reader.documents())
 
 
+class TestQrels:
+    def test_an_unrecognised_score_column_is_refused_not_read_as_one(self, monkeypatch) -> None:
+        """A qrels split whose grade column is none of the known names silently labelled every
+        row 1.0 -- a 0 counted positive and a 2 flattened; TREC's ``rel`` column is not exotic."""
+        split = datasets.Dataset.from_dict({"query-id": ["q1", "q1"], "corpus-id": ["d1", "d2"], "rel": [0, 2]})
+        reader = HfReader(uri="x", corpus_split="corpus", queries_split=None, qrels_split="qrels")
+        monkeypatch.setattr(type(reader), "_split", lambda self, s: split, raising=False)
+
+        with pytest.raises(DataError, match="score column"):
+            reader.qrels()
+
+    def test_a_pair_labelled_twice_is_refused_not_last_wins(self, monkeypatch) -> None:
+        split = datasets.Dataset.from_dict({"query-id": ["q1", "q1"], "corpus-id": ["d1", "d1"], "score": [2, 5]})
+        reader = HfReader(uri="x", corpus_split="corpus", queries_split=None, qrels_split="qrels")
+        monkeypatch.setattr(type(reader), "_split", lambda self, s: split, raising=False)
+
+        with pytest.raises(DataError, match="twice"):
+            reader.qrels()
+
+
 class TestMediaPersistence:
     def test_pages_are_written_content_addressed(self, reader_factory, tmp_path: Path) -> None:
         refs = [ref for doc in reader_factory(document_parts="image").documents() for ref in doc.media]

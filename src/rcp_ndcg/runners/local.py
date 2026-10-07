@@ -110,7 +110,7 @@ class LocalRunner:
                 raise ConfigError(
                     f"job {job.name!r} starts engine(s) for role(s) {', '.join(serving)}, and the local runner "
                     "starts no engine",
-                    hint="start the engine(s) yourself (docs/concepts/serving.md) and pass the URLs: "
+                    hint="start the engine(s) yourself (docs/concepts/runs.md) and pass the URLs: "
                     "rcp-ndcg run resume --run <run dir> --engine <role>=<url>[,<url>]",
                 )
         return {
@@ -140,7 +140,7 @@ class LocalRunner:
             if rc != 0:
                 self._statuses[job.name] = JobStatus.FAILED
                 raise self._failure(job.name, rc)
-            self._statuses[job.name] = JobStatus.SUCCEEDED
+            self._statuses[job.name] = JobStatus.COMPLETED
         return handles
 
     def _failure(self, name: str, rc: int) -> RcpNdcgError:
@@ -204,7 +204,7 @@ class LocalRunner:
             return JobStatus.UNKNOWN
         exit_path = self.log_dir / f"{handle}.exit"
         if exit_path.is_file():
-            return JobStatus.SUCCEEDED if exit_path.read_text(encoding="utf-8").strip() == "0" else JobStatus.FAILED
+            return JobStatus.COMPLETED if exit_path.read_text(encoding="utf-8").strip() == "0" else JobStatus.FAILED
         session = self._session(handle)
         if session is None:
             return JobStatus.UNKNOWN
@@ -238,7 +238,7 @@ class LocalRunner:
                 it cannot be found or stopped.
         """
         state = self.status(handle)
-        if state in (JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED):
+        if state in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
             return
         session = self._session(handle) if self.log_dir is not None else None
         if session is None:

@@ -126,21 +126,32 @@ def candidate_docs(
         query_id: The query's id (for ``drop_identical_ids``).
 
     Returns:
-        The entering ids: in pool order when ``candidates`` is given, else in the
-        order of ``scored``.
+        The entering ids: in pool order when ``candidates`` is given, else in the order of ``scored``. A
+        duplicated id keeps its first occurrence (the entering ids are the ids a ranking may hold, and a
+        ranking may not repeat one).
     """
     rules = resolve_protocol(protocol)
     drop = _excluded(rules, excluded, query_id)
-    scored_ids = [doc_id for doc_id in scored if doc_id not in drop]
+    scored_ids: list[str] = []
+    seen: set[str] = set()
+    for doc_id in scored:
+        if doc_id in drop or doc_id in seen:
+            continue
+        seen.add(doc_id)
+        scored_ids.append(doc_id)
     if candidates is None:
         if rules.restrict_to_candidates or rules.ties == "input_order":
             raise ValueError(f"protocol {rules.name!r} needs the query's judged pool (candidates=...)")
         return scored_ids
     entering = set(scored_ids)
-    in_pool = [doc_id for doc_id in candidates if doc_id in entering]
+    in_pool: list[str] = []
+    pooled: set[str] = set()
+    for doc_id in candidates:
+        if doc_id in entering and doc_id not in pooled:
+            pooled.add(doc_id)
+            in_pool.append(doc_id)
     if rules.restrict_to_candidates:
         return in_pool
-    pooled = set(in_pool)
     return in_pool + [doc_id for doc_id in scored_ids if doc_id not in pooled]
 
 

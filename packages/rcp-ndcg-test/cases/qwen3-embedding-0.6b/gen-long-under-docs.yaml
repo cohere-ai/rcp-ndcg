@@ -1,0 +1,55 @@
+id: qwen3-embedding-0.6b/gen-long-under-docs
+recipe: qwen3-embedding-0.6b
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: long_under
+  batch: uniform
+inputs:
+  instruction: Given a web search query, retrieve relevant passages that answer the query
+  queries:
+  - id: q1
+    text: What instruments did sailors use to navigate by the stars?
+  - id: q2
+    text: How did crews keep time on long ocean voyages?
+  documents:
+  - id: d1
+    text_ref:
+      generator: qwen3_emb_corpus@1
+      params:
+        offset: 4416
+        words: 4367
+      sha256: 2b7155dcda96e393c0e0c9a3ac95510b3fca4d486a98765ce841109f4b95f535
+  - id: d2
+    text_ref:
+      generator: qwen3_emb_corpus@1
+      params:
+        offset: 8783
+        words: 4417
+      sha256: ac1ff7b636f1ee9b07873eafae1f8af56e51dce135eb4c2b8c30b851ce88e6fa
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance:
+    abs: 0.02
+  origin: reference
+  status: pending_gpu
+notes: 'Documents within 5% under max_tokens 8192 (no cut), distinct slices of the generator stream at
+  the same target token count. Generated long/medium inputs were built once by a seeded generator (never
+  generated at test time; the exact texts are embedded verbatim in this file): Python random.Random(20251006)
+  (Mersenne Twister, stable across CPython versions) over a fixed 32-word vocabulary (sailing and observation
+  terms: harbour lantern merchant anchorage tide current compass latitude longitude cargo expedition cartographer
+  isthmus monsoon vessel provisioning reef soundings azimuth sextant astrolabe keelballast bowsprit mizzen
+  topsail windward leeward fathom nautical almanac observatory chronometer), sentences of 8-14 words;
+  each generated input is a consecutive, non-overlapping slice of that single word stream, trimmed to
+  its target token count, and no two inputs of a case share words (the two medium documents and the longest
+  document are reused verbatim in the other mixed-length batch cases). Short inputs are hand-written topical
+  sentences. Inputs are embedded verbatim in this file (never generated at test time). Rendered lengths
+  measured with the recipe''s tokenizer (client.tokenizer: Qwen/Qwen3-Embedding-0.6B @ 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3);
+  the rendered query shape is the 19-id frame (Instruct: ... Query:) + the query content + the post-processor
+  anchor (id 151643), except that the frame''s trailing colon fuses with a capital first letter of the
+  content into one token (e.g. '':M''), so every rendered count below is measured, never derived; the
+  rendered document shape is content + anchor. Measured: q1 = 31 rendered ids, q2 = 31 rendered ids, d1
+  = 8100 rendered ids, 98.9% of the 8192 budget, d2 = 8099 rendered ids, 98.9% of the 8192 budget.'

@@ -65,8 +65,18 @@ class TextTokenizer:
 
     @classmethod
     def from_json(cls, data: bytes, *, name: str) -> TextTokenizer:
-        """The tokenizer serialised in ``data`` (the bytes of a ``tokenizer.json``)."""
+        """The tokenizer serialised in ``data`` (the bytes of a ``tokenizer.json``).
+
+        The backend's embedded truncation and padding are reset at load (G5): a ``tokenizer.json`` can ship
+        ``truncation: {max_length: 1024}`` (topk-embed-v1-small does) or fixed-length padding, and an
+        un-reset backend silently tops every count and id list at those lengths -- no budget above them could
+        ever cut, and no failure would name the cause. transformers resets the same caps per call; this is
+        the load-time equivalent, the one construction site in the package (``load_tokenizer``,
+        ``from_backend`` and every caller funnel through here).
+        """
         backend = _backend_class().from_str(data.decode("utf-8"))
+        backend.no_truncation()
+        backend.no_padding()
         return cls(name=name, sha256=hashlib.sha256(data).hexdigest(), backend=backend)
 
     @classmethod
@@ -109,18 +119,25 @@ class TextTokenizer:
     def special_text(self, name: str) -> str:
         """The literal text of the tokenizer's added token named ``name`` (the bare name or the wrapped
         form), for splicing into a rendered template; the engine's tokenizer then matches it back to one id.
+        The name is taken exactly as written: an added token may carry significant whitespace (``"[Q] "``
+        ships on pplx-embed-v2-contextual), and a stripped lookup could never resolve it.
 
         Raises:
-            ConfigError: the tokenizer has no added token by that name; the message lists the names it has.
+            ConfigError: the tokenizer has no added token by that name; the hint names the nearest ones it
+                has, then all of them.
         """
         tokens = self.added_tokens()
         try:
             return tokens[name]
         except KeyError:
+            import difflib
+
             known = sorted({key for key in tokens if not key.startswith("<|")})
+            nearest = difflib.get_close_matches(name, sorted(tokens), n=3, cutoff=0.6)
             raise ConfigError(
                 f"the tokenizer {self.name!r} has no special token named {name!r}",
-                hint=f"its added tokens are named {known}; write one as {{special:<name>}} in the template",
+                hint=("did you mean " + ", ".join(repr(match) for match in nearest) + "? " if nearest else "")
+                + f"its added tokens are named {known}; write one as {{special:<name>}} in the template",
             ) from None
 
     def special_id(self, name: str) -> int:

@@ -155,7 +155,7 @@ def _phased_job(
     if any(phase.engines for phase in phases) and not getattr(backend, "renders_phases", False):
         raise ConfigError(
             f"the {runner} runner does not start a phase's engines (it renders no phases)",
-            hint="start the engines yourself (docs/concepts/serving.md) and resume with --engine <role>=<url>[,<url>]",
+            hint="start the engines yourself (docs/concepts/runs.md) and resume with --engine <role>=<url>[,<url>]",
         )
     if phases and getattr(backend, "renders_phases", False):
         commands: dict[str, Any] = {
@@ -314,16 +314,16 @@ def status(run_dir: str | Path) -> RunState:
     jobs = []
     for job in record["jobs"]:
         live = JobStatus(backend.status(job["handle"])) if job["handle"] else JobStatus.UNKNOWN
-        jobs.append(JobState(name=job["name"], handle=job["handle"] or "", status=live.value))
+        jobs.append(JobState(name=job["name"], handle=job["handle"] or "", status=live))
     update: dict[str, Any] = {"jobs": jobs}
     ended = [JobStatus(job.status) for job in jobs]
     if (
         manifest.status in (RunStatus.SUBMITTED, RunStatus.RUNNING)
         and ended
-        and all(status in (JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED) for status in ended)
+        and all(status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED) for status in ended)
     ):
         derived = next((_ENDED[s] for s in (JobStatus.FAILED, JobStatus.CANCELLED) if s in ended), RunStatus.FAILED)
-        update.update(status=derived.value, done=True)
+        update.update(status=derived, done=True)
         notes.append(
             f"every job of the run has ended ({', '.join(s.value for s in ended)}), and the run's manifest was left "
             f"{manifest.status.value}: the job stopped before it recorded the end; see `rcp-ndcg run logs`, and "
@@ -476,7 +476,7 @@ def refuse_serving_here(config: RunConfig) -> None:
     if config.serve is not None:
         raise ConfigError(
             "this run has a serve: section, and a run in this process (or on the local runner) starts no engine",
-            hint="start the engine(s) yourself (docs/concepts/serving.md), drop serve:, and pass the URLs with "
+            hint="start the engine(s) yourself (docs/concepts/runs.md), drop serve:, and pass the URLs with "
             "RCP_NDCG_ENGINES (or run resume --engine <role>=<url>[,<url>])",
         )
 

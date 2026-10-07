@@ -6,7 +6,7 @@ re-judges a subset. ``--estimate`` counts the pass's calls and tokens (of ``--do
 calling the judge.
 ``judge reparse`` reads a store's stored answers again with the current parser into a new store
 (:func:`rcp_ndcg.llm.reparse`), without calling the judge. Serving the model is the user's: any
-OpenAI-compatible URL judges (see ``docs/concepts/serving.md``).
+OpenAI-compatible URL judges (see ``docs/concepts/judges.md``).
 
 The judge is ``--judge fake`` (the offline judge), ``--judge <config.yaml>``, ``--judge <name>`` (a shipped
 config, :mod:`rcp_ndcg.llm.judges`), or an ad-hoc endpoint ``--judge-url URL --judge-model ID``. ``--set``
@@ -65,12 +65,21 @@ class JudgeSource(BaseModel):
 
         if self.judge_url is not None:
             if self.judge is not None:
-                raise UsageError("pass --judge or --judge-url, not both")
+                raise UsageError(
+                    "pass --judge or --judge-url, not both",
+                    hint="drop --judge, or point a judge config at the endpoint with --set judge.base_url=...",
+                )
             if self.judge_model is None:
-                raise UsageError("--judge-url needs --judge-model (the served model name)")
+                raise UsageError(
+                    "--judge-url needs --judge-model (the served model name)",
+                    hint="pass the endpoint and its model: --judge-url .../v1 --judge-model ID",
+                )
             judge: dict[str, Any] = {"base_url": self.judge_url, "model": self.judge_model}
         elif self.judge is None:
-            raise UsageError("name the judge: --judge fake | <config.yaml> | <name>, or --judge-url and --judge-model")
+            raise UsageError(
+                "name the judge: --judge fake | <config.yaml> | <name>, or --judge-url and --judge-model",
+                hint="--judge fake runs the offline judge; `judge` with no other flag lists the shipped names",
+            )
         elif self.judge == "fake":
             judge = self._fake()
             if self.judge_model is not None:  # two offline judges pool only under two names
@@ -82,7 +91,10 @@ class JudgeSource(BaseModel):
         unknown = [o for o in self.set if o.split("=", 1)[0].split(".", 1)[0] not in self.SECTIONS]
         if unknown:
             keys = ", ".join(f"{section}." for section in self.SECTIONS)
-            raise UsageError(f"--set {unknown[0]!r}: the key starts with one of {keys}")
+            raise UsageError(
+                f"--set {unknown[0]!r}: the key starts with one of {keys}",
+                hint="override a field of one of these sections: --set schedule.window=4",
+            )
         return apply_overrides({"judge": judge, **{section: {} for section in self.SECTIONS[1:]}}, self.set)
 
     def judge_config(self, sections: dict[str, Any] | None = None) -> JudgeConfig:
@@ -132,8 +144,8 @@ class JudgeRequest(JudgeSource, DatasetInput):
 class TournamentRequest(JudgeRequest):
     plan: list[str] = Field(
         default_factory=list,
-        description="Ask exactly the windows of these plan files (`calibration insert --plan --out FILE`), with the "
-        "schedule of the --out store (repeatable; no --docs, --set schedule.* or --seed).",
+        description="Ask exactly the windows of these plan files (`calibration insert --dry-run --out FILE`), with "
+        "the schedule of the --out store (repeatable; no --docs, --set schedule.* or --seed).",
     )
 
 
@@ -161,7 +173,10 @@ def _pools(request: JudgeRequest, dataset: Any) -> dict[str, list[str]]:
         rankings = load_rankings(request.candidates)
         system = request.system or (rankings.systems[0] if len(rankings.systems) == 1 else None)
         if system is None:
-            raise UsageError(f"{request.candidates} holds systems {rankings.systems}; pass --system")
+            raise UsageError(
+                f"{request.candidates} holds systems {rankings.systems}; pass --system",
+                hint="judge one system's pools: --system NAME",
+            )
         queries = rankings.queries(system=system, dataset=dataset.name)
         pools = {q: sorted(s, key=lambda d: (s[d], d), reverse=True) for q, s in queries.items()}
     elif dataset.candidates is not None:
@@ -181,12 +196,18 @@ def _docs(request: JudgeRequest, pools: dict[str, list[str]]) -> dict[str, list[
         query, sep, doc = item.partition(":")
         if sep:
             if doc not in pools.get(query, ()):
-                raise UsageError(f"--docs {item}: {doc!r} is not among the candidates of query {query!r}")
+                raise UsageError(
+                    f"--docs {item}: {doc!r} is not among the candidates of query {query!r}",
+                    hint="pass QUERY_ID:DOC_ID pairs the candidate pools hold (--docs QUERY_ID:DOC_ID)",
+                )
             wanted.setdefault(query, []).append(doc)
             continue
         holders = [q for q, pool in pools.items() if item in pool]
         if not holders:
-            raise UsageError(f"--docs {item}: no candidate pool holds {item!r}")
+            raise UsageError(
+                f"--docs {item}: no candidate pool holds {item!r}",
+                hint="name a document of the pools, or pass the query too: --docs QUERY_ID:DOC_ID",
+            )
         for q in holders:
             wanted.setdefault(q, []).append(item)
     return wanted
@@ -200,7 +221,8 @@ def _planned(request: TournamentRequest, sections: dict[str, Any]) -> tuple[dict
     if request.docs or sections["schedule"] or request.seed is not None:
         raise UsageError(
             "with --plan the windows are the plan's and the schedule is the --out store's: drop --docs, "
-            "--set schedule.* and --seed"
+            "--set schedule.* and --seed",
+            hint="the windows come from the plan file; seed and schedule overrides apply without --plan",
         )
     schedule = JudgementStore(request.out).schedule("tournament")
     if schedule is None:

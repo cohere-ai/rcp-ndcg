@@ -109,7 +109,12 @@ class RerankClient(RoleClient):
 
     # -- the synchronous API -------------------------------------------------
     def rerank(
-        self, query: str | Content, documents: Sequence[str | Content], *, instruction: str | None = None
+        self,
+        query: str | Content,
+        documents: Sequence[str | Content],
+        *,
+        instruction: str | None = None,
+        query_id: str = "",
     ) -> RerankResult:
         """Relevance scores for *documents* against *query*, in the order the documents were given.
 
@@ -120,19 +125,23 @@ class RerankClient(RoleClient):
                 server returns; ``omit_zero`` never sends it and scores 0.0; ``send_text`` sends the
                 placeholder).
             instruction: The task instruction, folded or sent per the config's ``instruction`` mode.
+            query_id: The query's id, for the empty-query refusal's message (``arerank_many`` passes the
+                example's id); ``""`` names it ``<unnamed>``.
 
         Returns:
             One relevance score per document, aligned to the input order (never the server's ranking order).
 
         Raises:
             ConfigError: The config cannot serve this request (see :meth:`__init__`).
+            DataError: the query is empty and the config's ``empty_query: refuse`` (the default) declines
+                it, naming the query id.
             TextBudgetExceededError: ``on_overflow: fail`` and a pair over budget, or a query that fills the
                 budget with no split declared.
             CapabilityError: The endpoint refused the request as too long.
             RequestRejectedError: The endpoint refused this one request.
             ProviderError: The endpoint failed after its retries, or its answer was unusable.
         """
-        return self._run(self.arerank(query, documents, instruction=instruction))
+        return self._run(self.arerank(query, documents, instruction=instruction, query_id=query_id))
 
     def rerank_many(
         self, examples: Sequence[RankingExample], *, checkpoint: Checkpoint | None = None
@@ -161,7 +170,12 @@ class RerankClient(RoleClient):
 
     # -- the async core ------------------------------------------------------
     async def arerank(
-        self, query: str | Content, documents: Sequence[str | Content], *, instruction: str | None = None
+        self,
+        query: str | Content,
+        documents: Sequence[str | Content],
+        *,
+        instruction: str | None = None,
+        query_id: str = "",
     ) -> RerankResult:
         """The async half of :meth:`rerank`: prepare (media, gates, budget), send, and read the scores back
         aligned to the documents.
@@ -169,8 +183,42 @@ class RerankClient(RoleClient):
         ``empty_doc: omit_zero`` omits an empty document from the request and scores it 0.0: the returned
         scores stay aligned to the documents as given, and a candidate set whose every document is omitted
         makes no request (an empty request never goes out).
+
+        Args:
+            query: The query, as text or content parts.
+            documents: The candidates, as text or content parts. An empty document follows the config's
+                ``empty_doc`` policy (``send`` sends the empty string as it is and scores whatever the
+                server returns; ``omit_zero`` never sends it and scores 0.0; ``send_text`` sends the
+                placeholder).
+            instruction: The task instruction, folded or sent per the config's ``instruction`` mode.
+            query_id: The query's id, for the empty-query refusal's message (``arerank_many`` passes the
+                example's id); ``""`` names it ``<unnamed>``.
+
+        Returns:
+            One relevance score per document, aligned to the input order (never the server's ranking order).
+
+        Raises:
+            ConfigError: The config cannot serve this request (see :meth:`__init__`).
+            DataError: the query is empty and the config's ``empty_query: refuse`` (the default) declines
+                it, naming the query id.
+            TextBudgetExceededError: ``on_overflow: fail`` and a pair over budget, or a query that fills the
+                budget with no split declared.
+            CapabilityError: The endpoint refused the request as too long, or media rides a side the
+                config's ``media_sides`` does not allow.
+            RequestRejectedError: The endpoint refused this one request.
+            ProviderError: The endpoint failed after its retries, or its answer was unusable.
         """
         prepared_query = self._prepare([query], EncodeRole.QUERY, instruction=instruction)[0]
+        if (
+            getattr(self.config, "empty_query", "send") == "refuse"
+            and not prepared_query.text
+            and not prepared_query.has_media
+        ):
+            raise DataError(
+                f"the query {query_id or '<unnamed>'!r} is empty, and the config refuses an empty query "
+                "(empty_query: refuse): scoring an empty query against every candidate would rank by nothing",
+                hint="declare empty_query: send on the rerank config, or drop the empty query from the run",
+            )
         prepared_documents = self._prepare(documents, EncodeRole.DOCUMENT)
         if not documents:
             return RerankResult(scores=())  # an empty candidate set is not a request (as on the served path)
@@ -204,7 +252,12 @@ class RerankClient(RoleClient):
 
         async def score(index: int, example: RankingExample) -> None:
             async with limit:
-                result = await self.arerank(example.as_content, example.doc_contents, instruction=example.instruction)
+                result = await self.arerank(
+                    example.as_content,
+                    example.doc_contents,
+                    instruction=example.instruction,
+                    query_id=str(example.id),
+                )
             results[index] = result
             if checkpoint is not None:
                 checkpoint(str(example.id), result.scores)
@@ -276,6 +329,12 @@ class RerankClient(RoleClient):
         Raises:
             TextBudgetExceededError: the declared overflow policy refuses to shorten a pair.
         """
+        # Media on a side the config does not allow (2b) is refused here, before anything is prepared.
+        self._refuse_media_off_its_side("query", [query])
+        document_contents = [
+            document if isinstance(document, Content) else Content.from_text(document) for document in documents
+        ]
+        self._refuse_media_off_its_side("document", document_contents)
         # ONE preparation of the whole request (the query's and every document's media): the census rows it
         # writes name their own doc id, and the per-pair fits below slice it (no second preparation, whose
         # rows would name data: URIs).
@@ -391,6 +450,9 @@ class RerankClient(RoleClient):
                     mechanism=TextTruncationCensus.TEXT_BUDGET,
                     budget_source="tokenizer",
                     shape="pair",
+                    # The row names the budget that bounded the settlement, exactly as fit's pair rows do:
+                    # the pair budget (the settled share applies inside it).
+                    budget_tokens=self._budget.max_tokens,
                 )
             pairs = [(settled, document.text) for document in kept_documents]
             result = self._fit(
@@ -398,6 +460,7 @@ class RerankClient(RoleClient):
                 "pair",
                 media_tokens=kept_pair_media,
                 instruction=instruction,
+                ids=[str(position) for position in kept_positions],
             )
         else:
             # The vendor path: no tokenizer, so nothing is measured or settled; fit sends the pairs uncut
@@ -419,6 +482,7 @@ class RerankClient(RoleClient):
                 "pair",
                 media_tokens=kept_pair_media,
                 instruction=instruction,
+                ids=[str(position) for position in kept_positions],
             )
             contents = [pair if isinstance(pair, tuple) else (pair, "") for pair in result.contents]
             if len({left for left, _ in contents}) != 1:
@@ -429,9 +493,12 @@ class RerankClient(RoleClient):
                 )
         # A chunked document is one wire document per chunk, each carrying its input's media parts beside
         # the piece (the media tokens are reserved per chunk: fit's cap subtracts the pair's media, and
-        # every chunk's text is verified against it).
+        # every chunk's text is verified against it).  The fit ids are the documents' ORIGINAL positions
+        # (the census rows name them); the wire document's media comes from the kept document at that
+        # original position.
         mapping = result.chunk_mapping or {}
-        chunk_origin = [int(mapping.get(out_id, out_id)) for out_id in result.ids]
+        original_to_kept = {position: kept for kept, position in enumerate(kept_positions)}
+        chunk_origin = [original_to_kept[int(mapping.get(out_id, out_id))] for out_id in result.ids]
         shipped_query = contents[0][0]  # the span the fit verified -- what ships, not the probe's alone
         # Each chunk output carries its input's media beside the piece, so the per-output media are the
         # kept pair's (a chunked document's media ride every chunk).
@@ -526,10 +593,10 @@ class RerankClient(RoleClient):
             per_chunk = dict(zip(fitted.ids, result.scores, strict=True))
             pooled = max_pool_scores_by_document(per_chunk, fitted.chunk_mapping)
             for kept_id, score in pooled.items():
-                original_index = (
-                    int(kept_id.rsplit(CHUNK_ID_SEPARATOR, 1)[0]) if CHUNK_ID_SEPARATOR in kept_id else int(kept_id)
-                )
-                scores[kept_positions[original_index]] = score
+                # The fit ids are the documents' ORIGINAL positions (the census rows name them); a chunk's
+                # id carries its origin before the separator, so the pooled score lands on its document.
+                original_index = int(kept_id.rsplit(CHUNK_ID_SEPARATOR, 1)[0])
+                scores[original_index] = score
         return RerankResult(scores=tuple(scores))
 
     async def _send(self, calls: Sequence[Call]) -> list[Any]:

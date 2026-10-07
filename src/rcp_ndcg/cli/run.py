@@ -15,12 +15,13 @@ from pathlib import Path
 from typing import Any, Literal
 
 import click
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from rcp_ndcg.cli.command import command
 from rcp_ndcg.errors import RcpNdcgWarning, UsageError
 from rcp_ndcg.llm.cost import CostEstimate
 from rcp_ndcg.llm.judges import judge_names
+from rcp_ndcg.runs.manifest import RunManifest, RunStatus
 from rcp_ndcg.runs.run import RunState
 from rcp_ndcg.support.paths import RUNS_DIR_ENV, runs_dir
 from rcp_ndcg.support.serve import EngineRole, EngineURLs
@@ -31,13 +32,28 @@ class RunListRequest(BaseModel):
     limit: int = Field(default=50, ge=1, description="At most this many runs, newest first.")
 
 
+class RunListRow(BaseModel):
+    """One run of ``run list``: the manifest's summary. A manifest that does not parse is listed with
+    ``status: "unreadable"`` (the one value outside :class:`~rcp_ndcg.runs.manifest.RunStatus`) and its error."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    status: RunStatus | Literal["unreadable"]
+    created_at: str | None = Field(default=None, description="When the run was created (a readable manifest).")
+    dataset: str | None = None
+    judges: list[str] | None = None
+    metrics: dict[str, float] | None = None
+    requests: int | None = None
+    steps: dict[str, str] | None = None
+    error: str | None = Field(default=None, description="Why the manifest is unreadable (status 'unreadable').")
+
+
 class RunList(BaseModel):
     """The runs under a runs directory, newest first."""
 
     runs_dir: str
-    runs: list[dict[str, Any]] = Field(
-        description="Per run: run_id, status, created_at, dataset, judges, metrics, requests, steps."
-    )
+    runs: list[RunListRow]
 
 
 class RunShowRequest(BaseModel):
@@ -48,7 +64,7 @@ class RunSummary(BaseModel):
     """One run: its manifest and which artifacts exist."""
 
     run_dir: str
-    manifest: dict[str, Any]
+    manifest: RunManifest
     artifacts: dict[str, bool]
 
 
@@ -57,36 +73,34 @@ def _list_text(result: RunList) -> str:
         return f"no runs under {result.runs_dir}"
     lines = [f"{'run_id':<40} {'status':<10} {'dataset':<20} {'requests':>9}  metrics"]
     for row in result.runs:
-        metrics = ", ".join(f"{key}={value:.4f}" for key, value in (row.get("metrics") or {}).items())
-        requests = row.get("requests")
+        metrics = ", ".join(f"{key}={value:.4f}" for key, value in (row.metrics or {}).items())
         lines.append(
-            f"{row['run_id']:<40} {row.get('status', '?'):<10} {str(row.get('dataset') or '-'):<20} "
-            f"{f'{requests:,}' if requests is not None else '-':>9}  {metrics}"
+            f"{row.run_id:<40} {str(row.status):<10} {str(row.dataset or '-'):<20} "
+            f"{f'{row.requests:,}' if row.requests is not None else '-':>9}  {metrics}"
         )
     return "\n".join(lines)
 
 
 def _show_text(result: RunSummary) -> str:
     manifest = result.manifest
-    code = manifest["code"]
     lines = [
-        f"Run {manifest['run_id']} ({manifest['status']})",
+        f"Run {manifest.run_id} ({manifest.status})",
         f"  directory   {result.run_dir}",
-        f"  created     {manifest['created_at']}",
-        f"  code        {code['package_version']} @ {code.get('git_commit') or 'unknown'}"
-        + (" (dirty)" if code.get("git_dirty") else ""),
-        f"  requests    {manifest['usage']['requests']:,} judge requests",
+        f"  created     {manifest.created_at}",
+        f"  code        {manifest.code.package_version} @ {manifest.code.git_commit or 'unknown'}"
+        + (" (dirty)" if manifest.code.git_dirty else ""),
+        f"  requests    {manifest.usage.requests:,} judge requests",
         "  steps",
     ]
-    for record in manifest["steps"]:
-        duration = record.get("duration_s")
+    for record in manifest.steps:
+        duration = record.duration_s
         lines.append(
-            f"    {record['name']:<12} {record['status']:<10} "
-            f"{f'{duration:.1f}s' if duration else '':>8}" + (f"  {record['error']}" if record.get("error") else "")
+            f"    {record.name:<12} {str(record.status):<10} "
+            f"{f'{duration:.1f}s' if duration else '':>8}" + (f"  {record.error}" if record.error else "")
         )
     present = [name for name, exists in result.artifacts.items() if exists]
     lines.append(f"  artifacts   {', '.join(present) or 'none'}")
-    for key, value in (manifest.get("metrics") or {}).items():
+    for key, value in manifest.metrics.items():
         lines.append(f"    {key:<24} {value:.4f}")
     return "\n".join(lines)
 
@@ -110,7 +124,7 @@ def run_list(request: RunListRequest) -> RunList:
                 RcpNdcgWarning("UNREADABLE_RUN", f"{row['run_id']}: manifest unreadable ({row.get('error')})"),
                 stacklevel=1,
             )
-    return RunList(runs_dir=directory, runs=rows)
+    return RunList(runs_dir=directory, runs=[RunListRow.model_validate(row) for row in rows])
 
 
 @command("run show", request=RunShowRequest, result=RunSummary, text=_show_text)
@@ -151,9 +165,15 @@ class RunJudgeFields(BaseModel):
             )
         if self.judge_url is not None:
             if self.judge is not None:
-                raise UsageError("pass --judge or --judge-url, not both")
+                raise UsageError(
+                    "pass --judge or --judge-url, not both",
+                    hint="drop --judge, or point a judge config at the endpoint with --set judge.base_url=...",
+                )
             if self.judge_model is None:
-                raise UsageError("--judge-url needs --judge-model (the served model name)")
+                raise UsageError(
+                    "--judge-url needs --judge-model (the served model name)",
+                    hint="pass the endpoint and its model: --judge-url .../v1 --judge-model ID",
+                )
             return ["judge=" + json.dumps({"base_url": self.judge_url, "model": self.judge_model})]
         if self.judge is not None:
             return [f"judge={json.dumps(self.judge)}"]
@@ -510,6 +530,7 @@ __all__ = [
     "PlanStep",
     "RunList",
     "RunListRequest",
+    "RunListRow",
     "RunLog",
     "RunLogsRequest",
     "RunRef",

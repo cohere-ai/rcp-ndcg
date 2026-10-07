@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -107,6 +108,16 @@ class TestConfig:
             with pytest.raises(ValidationError):
                 JudgeConfig(base_url=bad, model="m")
 
+    def test_an_empty_base_url_is_refused_like_any_endpoint(self) -> None:
+        """The judge config's base URL rule is the Endpoint's, not a drifted copy: an empty string would be
+        a config that validates and can never be sent to."""
+        from rcp_ndcg.inference.config import Endpoint as EndpointConfig
+
+        with pytest.raises(ValidationError):
+            JudgeConfig(base_url="", model="m")
+        with pytest.raises(ValidationError):
+            EndpointConfig(base_url="", model="m")
+
     def test_a_floating_alias_on_the_openai_api_is_refused(self) -> None:
         with pytest.raises(ValidationError, match="floating alias"):
             JudgeConfig(base_url="https://api.openai.com/v1", model="gpt-5")
@@ -115,11 +126,13 @@ class TestConfig:
         assert JudgeConfig(base_url="http://localhost:8000/v1", model="gpt-oss-120b")
 
     def test_an_api_of_another_role_is_refused_by_the_registry(self) -> None:
+        """The judge's adapter resolves through the shared client base's role-scoped registry, at construction
+        like every other role's (a wrong ``api`` never reaches the wire)."""
         from rcp_ndcg.inference.adapters import known_adapters
 
-        client = _client(Endpoint(), api="openai_embeddings")
+        settings = {"base_url": "http://judge.test/v1", "model": "m", "max_retries": 0, "api": "openai_embeddings"}
         with pytest.raises(ConfigError) as caught:
-            _ask(client)
+            JudgeClient(JudgeConfig(**settings), httpx_transport=httpx.MockTransport(Endpoint()))
         message = str(caught.value)
         assert "openai_embeddings" in message and "judge" in message
         assert "openai_chat" in (caught.value.hint or ""), "the hint lists the judge role's own adapters"
@@ -262,7 +275,7 @@ class TestServerChecks:
         client = JudgeClient(config, httpx_transport=httpx.MockTransport(refuse))
         with pytest.raises(CapabilityError, match="refused the number of") as caught:
             _ask(client)
-        assert "per-request media limit" in (caught.value.hint or "") and "serving.md" in caught.value.hint
+        assert "per-request media limit" in (caught.value.hint or "") and "judges.md" in caught.value.hint
 
     def test_a_pixel_refusal_is_not_a_media_count_refusal(self) -> None:
         def refuse(request: httpx.Request) -> httpx.Response:
@@ -358,3 +371,80 @@ class TestProbe:
 
     def test_the_fake_judge_has_no_engine(self) -> None:
         assert asyncio.run(JudgeClient.from_config(JudgeConfig.fake(0)).probe()) == []
+
+
+class TestProbeMediaCheck:
+    """When the pass's effective preprocessing declares an image policy, the probe runs the engine media
+    check (the same one the served roles run): the engine's media delta against the counted media tokens,
+    never silent."""
+
+    @staticmethod
+    def _client(serve, word_tokenizer_file, **config) -> JudgeClient:
+        settings = {
+            "base_url": "http://judge.test/v1",
+            "model": "m",
+            "max_retries": 0,
+            "image_processor": "qwen2_vl",
+            "max_images": 4,
+            **config,
+        }
+        if word_tokenizer_file is not None:
+            settings["tokenizer"] = str(word_tokenizer_file)
+        from rcp_ndcg.data.resolution import ImagePolicy
+
+        client = JudgeClient(JudgeConfig(**settings), httpx_transport=httpx.MockTransport(serve))
+        client.image_policy = ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl")
+        return client
+
+    def test_a_mismatch_between_the_engine_and_the_counted_tokens_is_typed(self, tmp_path, word_tokenizer_file) -> None:
+        from rcp_ndcg.errors import ProviderError
+
+        def serve(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"object": "list", "data": [{"id": "m"}]})
+            return httpx.Response(200, json={**_answer(), "usage": {"prompt_tokens": 99999, "completion_tokens": 5}})
+
+        client = self._client(serve, word_tokenizer_file)
+        with pytest.raises(ProviderError, match="prompt tokens"):
+            asyncio.run(client.probe())
+
+    def test_no_declared_policy_checks_nothing(self, tmp_path, word_tokenizer_file) -> None:
+        def serve(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"object": "list", "data": [{"id": "m"}]})
+            return httpx.Response(200, json={**_answer(), "usage": {"prompt_tokens": 99999, "completion_tokens": 5}})
+
+        client = self._client(serve, word_tokenizer_file)
+        client.image_policy = None  # a pass without a declared pixel budget: nothing the check can probe
+        assert len(asyncio.run(client.probe())) == 1  # the engine media check is a no-op
+
+    @staticmethod
+    def _honest_chat_engine(seen: list[dict]) -> Any:
+        """A served chat engine: every completion rides a chat template (137 tokens), and a request that
+        carries the probe image adds its media block -- a 224x224 image under qwen2_vl is 8x8 = 64 patches
+        plus the two vision markers = 66 tokens, hand-verified, not the client's arithmetic."""
+
+        def serve(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"object": "list", "data": [{"id": "m"}]})
+            body = json.loads(request.content)
+            seen.append(body)
+            content = body["messages"][-1]["content"]
+            carries_image = isinstance(content, list) and any(block.get("type") == "image_url" for block in content)
+            tokens = 137 + (66 if carries_image else 0)
+            return httpx.Response(200, json={**_answer(), "usage": {"prompt_tokens": tokens, "completion_tokens": 5}})
+
+        return serve
+
+    @pytest.mark.parametrize("with_tokenizer", [True, False])
+    def test_the_judge_checks_the_media_delta_against_its_baseline(self, word_tokenizer_file, with_tokenizer) -> None:
+        """The judge's probe runs the shared delta check: the probe image AND the same request without it,
+        so a served chat template cancels and an honest engine passes. The delta counts no text, so the
+        check needs no tokenizer."""
+        seen: list[dict] = []
+        client = self._client(self._honest_chat_engine(seen), word_tokenizer_file if with_tokenizer else None)
+        asyncio.run(client.probe())
+        with_image = [body for body in seen if isinstance(body["messages"][-1]["content"], list)]
+        without_image = [body for body in seen if isinstance(body["messages"][-1]["content"], str)]
+        assert len(with_image) == 1 and len(without_image) == 1, "the probe and its no-media baseline were sent"
+        assert not [row for row in client.media_census.recorded() if "not_checked" in row[1]], "the check ran"

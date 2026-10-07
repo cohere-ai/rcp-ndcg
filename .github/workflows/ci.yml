@@ -61,6 +61,23 @@ jobs:
           git status --porcelain --untracked-files=all
           test -z "$(git status --porcelain --untracked-files=all)"
 
+  gated:
+    name: gated tests (pdf, datasets, transformers parity, MCP SDK)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+      # Every dependency gate in tests/ is open here (the other jobs see those tests skip): the pdf and hf
+      # readers ([data]: pypdfium2, datasets), the image-policy transformers parity (mteb's own dependency,
+      # [mteb]) and the MCP SDK round trip. `mcp` is no package extra -- the server speaks the protocol itself,
+      # the SDK only verifies the wire against it -- so the SDK installs directly. The [docs] extra is what the
+      # tests/docs tree runs on.
+      - run: .github/scripts/cpu-env.sh dev data mteb docs
+      - run: uv pip install mcp ./packages/rcp-ndcg-vllm
+      - run: uv run --no-sync pytest tests/ -q -n 4
+
   contract:
     name: public surface
     runs-on: ubuntu-latest
@@ -87,6 +104,16 @@ jobs:
       - run: uv run --no-sync pytest tests/docs -q
       - run: uv run --no-sync mkdocs build --strict --site-dir "$RUNNER_TEMP/site"
 
+  constraints:
+    name: the constraints file is the lock's export
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      # One semantic comparison (the pins, as a dict), shared with the release: a uv re-serialisation of the
+      # same export cannot fail it, a moved pin cannot escape it, and no tag is the check's first run.
+      - run: python3 .github/scripts/check_constraints.py
+
   core-standalone:
     name: core installs alone
     runs-on: ubuntu-latest
@@ -110,6 +137,73 @@ jobs:
           assert "torch" not in sys.modules, "rcp_ndcg_core imported torch"
           print("rcp_ndcg_core alone:", ndcg(scores, gains, k=10))
           PY
+
+  vllm-recipes:
+    name: rcp-ndcg-vllm recipes (CPU)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+      # The package is outside the uv workspace on purpose (the engine image carries vLLM and torch): its own
+      # venv, its own editable install, its own pytest. The test extra adds pytest and jinja2; the reference and
+      # metrics extras stay uninstalled (a torch pin would fight the image's). The package pins rcp-ndcg, which
+      # the harness drives, so rcp-ndcg and rcp-ndcg-core install from this checkout, never from an index.
+      - run: uv venv "$RUNNER_TEMP/vllm-pkg" --python 3.12
+      - run: >-
+          uv pip install --python "$RUNNER_TEMP/vllm-pkg/bin/python"
+          -e packages/rcp-ndcg-core -e . -e 'packages/rcp-ndcg-vllm[test]'
+      - run: '"$RUNNER_TEMP/vllm-pkg/bin/python" -m pytest packages/rcp-ndcg-vllm/tests -q'
+
+  vllm-plugins:
+    name: rcp-ndcg-vllm plugins (CPU)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+      # The model plugins are pip-installed into the engine image with --no-deps beside vLLM and torch; on CPU
+      # their tests need only torch and transformers (tests that import vLLM skip themselves), and each plugin
+      # installs the way the image does. Every plugin that has landed under
+      # packages/rcp-ndcg-vllm/plugins/*/tests runs here; the plugins fold into rcp-ndcg-vllm with the layout
+      # move and then run under the vllm-recipes job, which makes this job's target empty (it says so and
+      # passes -- the job's pytest is the plugin suite, never a guard that cannot fail).
+      - run: uv venv "$RUNNER_TEMP/plugins" --python 3.12
+      - run: uv pip install --python "$RUNNER_TEMP/plugins/bin/python" pytest pyyaml pydantic numpy transformers
+      - run: uv pip install --python "$RUNNER_TEMP/plugins/bin/python" torch --index-url https://download.pytorch.org/whl/cpu
+      - run: |
+          shopt -s nullglob
+          targets=(packages/rcp-ndcg-vllm/plugins/*/tests)
+          if ((${#targets[@]} == 0)); then
+            echo "::notice::no plugin test suite has landed yet: nothing to run"
+            exit 0
+          fi
+          for plugin in packages/rcp-ndcg-vllm/plugins/*; do
+            if [[ -f "$plugin/pyproject.toml" ]]; then
+              uv pip install --python "$RUNNER_TEMP/plugins/bin/python" --no-deps -e "$plugin"
+            fi
+          done
+          "$RUNNER_TEMP/plugins/bin/python" -m pytest "${targets[@]}" -q
+
+  test-pkg:
+    name: rcp-ndcg-test cases and conformance (CPU)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+      # The unpublished test package is a workspace member: the dev environment's dependency group installs
+      # it (with the serving-recipes harness, editable), and its tests run from the root venv in their own
+      # pytest invocation (the two tests/ trees are both named tests and are never collected together).
+      - run: .github/scripts/cpu-env.sh dev
+      - run: uv run --no-sync pytest packages/rcp-ndcg-test/tests -q
+      - name: the tests left the checkout clean
+        run: |
+          git status --porcelain --untracked-files=all
+          test -z "$(git status --porcelain --untracked-files=all)"
 
   mteb:
     name: mteb tasks (non-blocking)

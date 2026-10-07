@@ -187,8 +187,11 @@ def _models(endpoint: FakeEndpoint) -> httpx.Response:
 
 
 def _items(body: dict) -> list[str]:
-    """The texts of a request's ``input`` (one string, or a list; non-string items by their text or as str)."""
+    """The items of a request: its ``input`` (text, token ids or part lists), else the ``messages``
+    contents (the chat-style embeddings input, 2e; an image part keys by its rendered form)."""
     items = body.get("input")
+    if items is None and isinstance(body.get("messages"), list):
+        items = [message.get("content") for message in body["messages"]]
     if isinstance(items, str):
         return [items]
     return [_text(item) for item in items] if isinstance(items, list) else []

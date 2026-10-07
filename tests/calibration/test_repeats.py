@@ -59,7 +59,9 @@ def test_a_refit_pools_the_new_windows_of_a_re_judged_document(judgements: Judge
                 judgement,
                 window_seq=seq,
                 placements=placements,
-                record_id=judgement_record_id(judgement.family_key, judgement.query_id, "rubric", seq, ids),
+                record_id=judgement_record_id(
+                    judgement.family_key, judgement.query_id, "rubric", seq, ids, dataset=judgement.dataset
+                ),
             )
         )
     before = calibrate(rubric, mode="rubric_only")

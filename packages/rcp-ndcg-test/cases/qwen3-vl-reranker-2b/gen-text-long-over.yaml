@@ -1,0 +1,39 @@
+id: qwen3-vl-reranker-2b/gen-text-long-over
+recipe: qwen3-vl-reranker-2b
+role: rerank
+source:
+  kind: generated
+strata:
+  modality: text
+  length: long_over
+  batch: single
+inputs:
+  instruction: null
+  queries:
+  - id: q1
+    text: How do vaccines train the immune system?
+  documents:
+  - id: d1
+    text_ref:
+      generator: qwen3vl_rer_filler@1
+      params:
+        seed: 20261007
+        intro: vaccine
+        filler_words: 7303
+      sha256: c5812091d5701d9766ff8caf0947abf2c1eea4938b6502a49691571357d4e5cb
+expected:
+  kind: scores
+  values: null
+  tolerance:
+    abs: 0.01
+  origin: reference
+  status: pending_gpu
+notes: 'Whole rendered prompt over the recipe''s 8192-token budget, so the client cuts client-side before
+  sending (anchor: the assistant tail survives the cut): measured 9100 tokens (recipe tokenizer at 4bd860ac4f15ad1897a214615cccc700f8f71818,
+  add_special_tokens=True). deterministic filler: a fixed 201-word list shuffled once with random.Random(20261007)
+  and repeated cyclically, trimmed so the full rendered prompt measures 9100 tokens with the recipe tokenizer
+  at 4bd860ac4f15ad1897a214615cccc700f8f71818 (add_special_tokens=True). First sentences are on-topic;
+  the filler is synthetic seeded word-list text. NON-GATING by the recipe''s known_deviations [anchor_drop_over_cap]:
+  the reference''s truncation (keep specials, re-append the last 5 ids) and the client''s offset-based
+  cut keep different content, so reference and engine scores are recorded side by side and are expected
+  to differ; the case checks the cut path and anchor survival, not score equality.'

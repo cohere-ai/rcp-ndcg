@@ -688,8 +688,8 @@ class TestUsageAccounting:
         assert client.usage.input_tokens == 1  # the /pooling cross-check pins the report to the frame
 
     def test_the_embed_client_probes_the_transport(self, tokenizer_json: str) -> None:
-        """The embed role's startup probe is the transport's replica probe (its wires carry no media, so
-        there is no engine media check to run)."""
+        """The embed role's startup probe is the transport's replica probe (the role sends no media probe
+        request, so no engine media check runs)."""
         client = EmbeddingClient(
             EmbeddingEndpoint(api="openai_embeddings", model="m", tokenizer=tokenizer_json, max_tokens=8192),
             sender=RecordingSender(),

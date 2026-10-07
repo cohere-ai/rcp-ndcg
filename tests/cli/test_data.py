@@ -354,3 +354,44 @@ def test_fetch_tiny_copies_the_packaged_example(runner: CliRunner, tmp_path: Pat
     assert result.exit_code == 0, result.output
     assert (data["repo_id"], data["files"]) == (None, 3)
     assert (tmp_path / "tiny" / "systems.jsonl").read_text() == (tiny() / "systems.jsonl").read_text()
+
+
+def test_a_limited_conversion_records_the_limit(runner: CliRunner, ranking_jsonl: str, tmp_path: Path) -> None:
+    """A `--limit` smoke conversion records the cap, so its record is not mistaken for a complete small corpus."""
+    limited = runner.invoke(
+        data_group,
+        [
+            "convert",
+            "--format",
+            "jsonl",
+            "--source",
+            ranking_jsonl,
+            "--out",
+            str(tmp_path / "limited.parquet"),
+            "--shape",
+            "ranking",
+            "--limit",
+            "1",
+            "--json",
+        ],  # fmt: skip
+    )
+    full = runner.invoke(
+        data_group,
+        [
+            "convert",
+            "--format",
+            "jsonl",
+            "--source",
+            ranking_jsonl,
+            "--out",
+            str(tmp_path / "full.parquet"),
+            "--shape",
+            "ranking",
+            "--json",
+        ],  # fmt: skip
+    )
+
+    assert limited.exit_code == 0 and full.exit_code == 0, (limited.output, full.output)
+    assert json.loads(limited.stdout)["data"]["limit"] == 1
+    assert json.loads(full.stdout)["data"]["limit"] is None
+    assert json.loads(limited.stdout)["data"]["written"] == 1

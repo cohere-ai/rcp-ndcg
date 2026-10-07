@@ -155,6 +155,10 @@ class VllmPooling(AdapterBase):
     KEY_REQUIRED: ClassVar[bool] = False
     AUTH_HEADER: ClassVar[str | None] = None
 
+    #: The request shapes this wire implements (3): text (the rendered string), token_ids (the ids the
+    #: client fitted; vLLM's ``/pooling`` takes token-id prompts) and messages (a media item's only route).
+    REQUEST_SHAPES: ClassVar[frozenset[str]] = frozenset({"text", "messages", "token_ids"})
+
     _PATH: Final = "/pooling"
 
     def calls(self, request: PoolRequest, *, model: str) -> Sequence[Call]:
@@ -184,6 +188,18 @@ class VllmPooling(AdapterBase):
                     },
                 )
                 for content in request.contents
+            ]
+        if request.request_shape == "token_ids":
+            return [
+                Call(
+                    method="POST",
+                    path=self._PATH,
+                    json={
+                        **wire,
+                        "model": model,
+                        "input": [list(ids) for ids in request.token_ids],
+                    },
+                )
             ]
         return [
             Call(
@@ -260,7 +276,13 @@ class VllmPooling(AdapterBase):
             if reply.status != 200:
                 raise self._refused(reply)
             arrays.extend(
-                self._decode_reply(reply, expected_items=count, embed_dtype=request.embed_dtype, dim=request.dim)
+                self._decode_reply(
+                    reply,
+                    expected_items=count,
+                    embed_dtype=request.embed_dtype,
+                    dim=request.dim,
+                    outputs=request.outputs,
+                )
             )
         if not arrays:
             return Embeddings.empty(0, multi_vector=True, dtype=request.embed_dtype)
@@ -304,12 +326,16 @@ class VllmPooling(AdapterBase):
 
     # -- decoding ----------------------------------------------------------
     def _decode_reply(
-        self, reply: Reply, *, expected_items: int, embed_dtype: str, dim: int | None
+        self, reply: Reply, *, expected_items: int, embed_dtype: str, dim: int | None, outputs: str = "per_token"
     ) -> list[np.ndarray]:
-        """One reply into one array per item, in request order: JSON (float lists or base64) or framed bytes."""
+        """One reply into one array per item, in request order: JSON (float lists or base64) or framed bytes.
+
+        ``outputs: per_chunk`` (a per-chunk multi-output model) skips the usage cross-check: several outputs
+        per input do not map to prompt tokens (2g).
+        """
         body = reply.body
         if isinstance(body, bytes):
-            return self._decode_bytes_reply(reply, expected_items=expected_items)
+            return self._decode_bytes_reply(reply, expected_items=expected_items, outputs=outputs)
         if not isinstance(body, dict) or not isinstance(body.get("data"), list):
             raise ProviderError(f"/pooling response has no 'data': {str(body)[:_MAX_MESSAGE_CHARS]}")
         if any(not isinstance(item, dict) for item in body["data"]):
@@ -323,7 +349,7 @@ class VllmPooling(AdapterBase):
                 "refusing to return misaligned vectors"
             )
         arrays = [self._decode_item(item.get("data"), embed_dtype=embed_dtype, dim=dim) for item in items]
-        self._check_usage(body.get("usage"), arrays)
+        self._check_usage(body.get("usage"), arrays, outputs=outputs)
         return arrays
 
     def _decode_item(self, data: Any, *, embed_dtype: str, dim: int | None) -> np.ndarray:
@@ -374,7 +400,7 @@ class VllmPooling(AdapterBase):
             return flat.reshape(-1, dim)
         raise ProviderError(f"unsupported /pooling data payload: {type(data).__name__}")
 
-    def _decode_bytes_reply(self, reply: Reply, *, expected_items: int) -> list[np.ndarray]:
+    def _decode_bytes_reply(self, reply: Reply, *, expected_items: int, outputs: str = "per_token") -> list[np.ndarray]:
         """A ``bytes`` reply: per-item frames split by the ``metadata`` header's ``start``/``end``/``shape``.
 
         The framing (``vllm/entrypoints/pooling/utils.py::encode_pooling_bytes``) is recorded here; the
@@ -423,17 +449,20 @@ class VllmPooling(AdapterBase):
                     f"{needed} byte(s) inside a body of {len(reply.body)}, the framing allots {end - start}"
                 )
             arrays.append(np.frombuffer(reply.body[start:end], dtype=frame_dtype).reshape(shape))
-        self._check_usage(metadata.get("usage"), arrays)
+        self._check_usage(metadata.get("usage"), arrays, outputs=outputs)
         return arrays
 
-    def _check_usage(self, usage: Any, arrays: Sequence[np.ndarray]) -> None:
+    def _check_usage(self, usage: Any, arrays: Sequence[np.ndarray], *, outputs: str = "per_token") -> None:
         """The decoded token counts must sum to the reply's own ``usage.prompt_tokens``.
 
         A ``token_embed`` answer has one vector per prompt token, so this catches a mistyped ``dim`` (every
         vector would be silently mis-shaped) and a server that answered a pooled task after all. A usage the
         reply cannot honestly report (a string, a dict, a null) is a malformed reply, never a reason to skip
-        the check.
+        the check. A recipe that declares ``outputs: per_chunk`` (2g) opts out: several outputs per input
+        (one vector per chunk), so the token count cross-check cannot apply.
         """
+        if outputs == "per_chunk":
+            return
         if usage is None:
             return  # the bytes framing may report none at all: there is nothing to check against
         if not isinstance(usage, dict):

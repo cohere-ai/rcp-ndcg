@@ -11,6 +11,8 @@ import logging
 import sys
 from pathlib import Path
 
+from rcp_ndcg.errors import ConfigError
+
 BASE_LOGGER_NAME = "rcp_ndcg"
 _FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 
@@ -74,6 +76,11 @@ def configure_logging(
         logger.removeHandler(handler)
         handler.close()
     stderr_level = logging.getLevelName(level.upper()) if isinstance(level, str) else level
+    if isinstance(level, str) and not isinstance(stderr_level, int):
+        raise ConfigError(
+            f"unknown log level {level!r}; expected one of {', '.join(sorted(logging.getLevelNamesMapping()))} "
+            "(or the numeric value)"
+        )
     stderr = _StderrHandler(level=stderr_level)
     stderr.setFormatter(logging.Formatter(_FORMAT) if tracebacks else _NoTracebackFormatter(_FORMAT))
     handlers: list[logging.Handler] = [stderr]

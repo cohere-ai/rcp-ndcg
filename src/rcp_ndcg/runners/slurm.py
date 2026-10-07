@@ -73,7 +73,7 @@ _STATES = {
     "RUNNING": JobStatus.RUNNING,
     "COMPLETING": JobStatus.RUNNING,
     "STAGE_OUT": JobStatus.RUNNING,
-    "COMPLETED": JobStatus.SUCCEEDED,
+    "COMPLETED": JobStatus.COMPLETED,
     "CANCELLED": JobStatus.CANCELLED,
     "FAILED": JobStatus.FAILED,
     "TIMEOUT": JobStatus.FAILED,
@@ -100,7 +100,7 @@ def _aggregate(states: Sequence[JobStatus]) -> JobStatus:
     for status in (JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.RUNNING, JobStatus.PENDING):
         if status in states:
             return status
-    return JobStatus.SUCCEEDED if all(s is JobStatus.SUCCEEDED for s in states) else JobStatus.UNKNOWN
+    return JobStatus.COMPLETED if all(s is JobStatus.COMPLETED for s in states) else JobStatus.UNKNOWN
 
 
 def _pyxis_image(image: str) -> str:
@@ -302,7 +302,9 @@ class SlurmRunner:
             engines_env = shlex.quote(
                 engines_env_value(
                     phase.engines,
-                    {role: [f"http://127.0.0.1:{phase.engines[role].port}/v1"] for role in roles},
+                    # The shape is the ServeConfig's (the one home of http://host:port/v1); the run-time
+                    # builder below is a bare-python script that cannot import it, and names the same shape.
+                    {role: [phase.engines[role].url("127.0.0.1")] for role in roles},
                 )
             )
         else:
@@ -347,11 +349,7 @@ class SlurmRunner:
         # request is its coordinator plus its largest engine; every other node hosts one replica. The job asks
         # for the maximum of that over the phases (SLURM's --gres is per node).
         gpus = max(
-            [
-                (res.gpus if phase.engines else res.gpus)
-                + max((e.resources.gpus for e in phase.engines.values()), default=0)
-                for phase in phases
-            ],
+            [res.gpus + max((e.resources.gpus for e in phase.engines.values()), default=0) for phase in phases],
             default=res.gpus,
         )
         if gpus:
@@ -430,9 +428,16 @@ class SlurmRunner:
         return handles
 
     def status(self, handle: JobHandle) -> JobStatus:
-        """``squeue`` while the job is queued or running, ``sacct`` once it has left the queue."""
+        """``squeue`` while the job is queued or running, ``sacct`` once it has left the queue.
+
+        A non-zero ``squeue`` is what standard Slurm answers for a job that has left the queue (``Invalid job
+        id specified``), so it means "not in queue" and the ``sacct`` fallback runs -- it is not an error."""
         states: list[JobStatus] = []
-        for line in run_cli(["squeue", "-h", "-o", "%i %T", "-j", handle]).splitlines():
+        try:
+            queue = run_cli(["squeue", "-h", "-o", "%i %T", "-j", handle])
+        except RunnerError:
+            queue = ""
+        for line in queue.splitlines():
             job_id, _, state = line.strip().partition(" ")
             if job_id == handle:
                 states.append(_STATES.get(state.strip(), JobStatus.UNKNOWN))

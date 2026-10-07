@@ -40,7 +40,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
-import json
 import os
 import threading
 from collections.abc import Sequence
@@ -550,48 +549,23 @@ class MediaCensus:
     The dedup key names the outcome (``dropped`` or not) beside the source, so a budget that first kept an
     item and a later one that refused it are both on record -- a kept pass must not hide a later drop.
 
-    A torn last line of the shared log (a writer killed mid-append, the same failure class the judgement
-    store's journal repairs) is skipped with a warning, never fatal: resumability survives it. Rows from a
-    schema older than the current fields are read defensively (a missing field reads as "unset"). Writes are
-    serialised by a lock, so concurrent recorders cannot double-write a row.
+    The sink is read and appended through the census's one reader and writer
+    (:func:`~rcp_ndcg.data.preprocess.read_census_rows`, :func:`~rcp_ndcg.data.preprocess.append_census_rows`):
+    a torn last line is skipped with a warning, and appends run under the sink's writer lock. Within one
+    census, ``record`` (a check-then-append) is serialised by the instance's lock, so concurrent recorders
+    cannot double-write a row.
     """
-
-    #: One process-wide lock per census instance: ``record`` is a check-then-append, and two concurrent
-    #: recorders (concurrent tasks in one process, thread runners later) must not double-write a row.
-    _lock = threading.Lock()
 
     def __init__(self, *, sink: str | Path | None = None) -> None:
         self.sink = Path(sink) if sink is not None else None
+        self._lock = threading.Lock()
         self._seen: set[tuple[str, str, str, bool]] = set()
-        self._warned_torn = False
-        if self.sink is not None and self.sink.is_file():
-            self._seen = self._read()
+        if self.sink is not None:
+            from rcp_ndcg.data.preprocess import read_census_rows
 
-    def _read(self) -> set[tuple[str, str, str, bool]]:
-        """The media rows already in the sink, read defensively; an unparsable line is a torn tail (a
-        half-written record from a crash), warned once and skipped -- never a dead store."""
-        seen: set[tuple[str, str, str, bool]] = set()
-        assert self.sink is not None
-        for line in self.sink.read_text(encoding="utf-8").splitlines():
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError:
-                if not self._warned_torn:
-                    get_logger(__name__).warning(
-                        "media census: %s holds a line that is not JSON (a torn tail from a killed writer); "
-                        "skipping it -- the store stays readable and the next pass rewrites the row",
-                        self.sink,
-                    )
-                self._warned_torn = True
-                continue
-            if not isinstance(row, dict) or row.get("mechanism") != MEDIA_MECHANISM:
-                continue
-            # A row from an older schema or an interrupted write: a missing field reads as "unset".
-            corpus, doc_id, uri = row.get("corpus"), row.get("doc_id"), row.get("uri")
-            if not isinstance(corpus, str) or not isinstance(doc_id, str) or not isinstance(uri, str):
-                continue
-            seen.add((corpus, doc_id, uri, bool(row.get("dropped", False))))
-        return seen
+            for row in read_census_rows(self.sink):
+                if row.get("mechanism") == MEDIA_MECHANISM:
+                    self._seen.add((row["corpus"], row["doc_id"], row["uri"], bool(row.get("dropped", False))))
 
     def recorded(self) -> tuple[tuple[str, str, str, bool], ...]:
         """What is on record, as ``(corpus, doc_id, uri, dropped)`` rows -- the dedup keys, ascending. A
@@ -616,8 +590,12 @@ class MediaCensus:
                 self._seen.add(key)
                 fresh.append(item.as_row(corpus=corpus, doc_id=doc_id, dropped=dropped))
             if fresh and self.sink is not None:
-                with open(self.sink, "a", encoding="utf-8") as handle:
-                    handle.writelines(json.dumps(row, sort_keys=True) + "\n" for row in fresh)
+                from rcp_ndcg.data.preprocess import append_census_rows
+
+                # The one census append: the torn tail cut and the rows written under the sink's writer lock,
+                # on every append (a peer killed after this writer started leaves a tail only its next append
+                # merges).
+                append_census_rows(self.sink, fresh)
 
 
 __all__ = [

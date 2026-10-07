@@ -173,6 +173,7 @@ PUBLIC_MODULES: tuple[str, ...] = (
     "rcp_ndcg.calibration",
     "rcp_ndcg.data",
     "rcp_ndcg.data.preprocess",
+    "rcp_ndcg.data.revisions",
     "rcp_ndcg.errors",
     "rcp_ndcg.eval",
     "rcp_ndcg.eval.mteb",

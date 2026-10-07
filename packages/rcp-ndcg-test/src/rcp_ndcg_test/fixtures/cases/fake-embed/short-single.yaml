@@ -1,0 +1,28 @@
+id: fake-embed/short-single
+recipe: fake-embed
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: short
+  batch: single
+inputs:
+  queries:
+  - id: q1
+    text: capital of france
+  documents:
+  - id: d1
+    text: paris is the capital of france
+  - id: d2
+    text: the rhine flows through germany
+expected:
+  kind: similarity_matrix
+  tolerance:
+    abs: 0.0001
+  origin: engine
+  status: reproduced
+  values:
+  - - -0.07516386
+    - -0.01025641
+notes: 'The runner''s minimal exercise: one query, two documents, the shipped fake''s vectors.'

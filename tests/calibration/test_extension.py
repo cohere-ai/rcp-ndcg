@@ -212,3 +212,24 @@ def test_a_pooled_calibration_scores_each_document_once_from_every_judge(world: 
     assert len({r.record_key for r in extension.records}) == len(extension.records)
     scored = [(r.query_id, r.doc_id) for r in pooled.extended(extension).thetas if r.source == "scored"]
     assert sorted(scored) == [("q2", doc) for doc in sorted(world.rejudged_docs)]
+
+
+def test_the_record_key_digest_recipe_is_pinned(inserted: object) -> None:
+    """``record_key`` names a record in the calibration's own fit evidence (it is re-checked on a refit); its
+    digest recipe is pinned so it cannot drift silently under a changed payload."""
+    from rcp_ndcg.support.identity import hash_payload, short
+
+    (record,) = sorted(inserted.records, key=lambda r: (r.dataset, r.query_id, r.doc_id))
+    expected = short(
+        hash_payload(
+            {
+                "source": record.source,
+                "slot": [record.dataset, record.query_id, record.doc_id],
+                "calibration": record.calibration,
+                "judgements": record.judgements,
+                "estimate": record.estimate.model_dump(mode="json"),
+            }
+        ),
+        16,
+    )
+    assert record.record_key == expected, "the recipe: source, slot, calibration, judgements and the estimate"

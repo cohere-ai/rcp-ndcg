@@ -741,35 +741,6 @@ class TestConfigFamilyRefusals:
             )
         assert "drop dimensions" in (caught.value.hint or "")
 
-    def test_a_video_url_policy_is_refused_on_a_retrieval_role(self) -> None:
-        """``wire: video_url`` on a retrieval role is a request that can never be sent (the lowerings send
-        sampled frames only); the refusal is at the config, not after the fetch and the fit."""
-        from rcp_ndcg.errors import ConfigError
-
-        with pytest.raises(ConfigError, match="video_url") as caught:
-            RerankEndpoint(
-                base_url="http://a:8000/v1",
-                model="m",
-                tokenizer="t",
-                max_tokens=8192,
-                use_activation=False,
-                video_policy={"num_frames": 4, "wire": "video_url", "engine_video_pinning": True},
-                max_videos=2,
-            )
-        assert "wire: frames" in (caught.value.hint or "")
-
-    def test_a_frames_video_policy_constructs(self) -> None:
-        config = RerankEndpoint(
-            base_url="http://a:8000/v1",
-            model="m",
-            tokenizer="t",
-            max_tokens=8192,
-            use_activation=False,
-            video_policy={"num_frames": 4, "wire": "frames"},
-            max_videos=2,
-        )
-        assert config.video_policy is not None and config.video_policy.wire == "frames"
-
     @pytest.mark.parametrize(
         ("kwargs", "message"),
         [
@@ -797,33 +768,6 @@ class TestConfigFamilyRefusals:
                 use_activation=False,
             )
         assert "below max_tokens" in (caught.value.hint or "")
-
-    def test_an_unimplemented_request_shape_is_refused_at_the_config(self) -> None:
-        """One home for the refusal (the config): a declared shape no shipped wire sends would be silently
-        ignored by one of the three clients and refused by the other two."""
-        from rcp_ndcg.errors import ConfigError
-
-        for build in (
-            lambda: EmbeddingEndpoint(api="cohere", model="m", max_tokens=1024, request_shape="messages"),
-            lambda: PoolingEndpoint(
-                base_url="http://a:8000/v1",
-                model="colqwen",
-                dim=128,
-                tokenizer="t",
-                max_tokens=8192,
-                request_shape="token_ids",
-            ),
-            lambda: RerankEndpoint(
-                base_url="http://a:8000/v1",
-                model="m",
-                tokenizer="t",
-                max_tokens=8192,
-                use_activation=False,
-                request_shape="messages",
-            ),
-        ):
-            with pytest.raises(ConfigError, match="request_shape"):
-                build()
 
 
 class TestAdapterContractKit:

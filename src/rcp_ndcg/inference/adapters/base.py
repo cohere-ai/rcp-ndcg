@@ -93,6 +93,10 @@ class AdapterBase:
         SUPPORTS_DIMENSIONS: Whether this route takes a ``dimensions`` parameter (a Matryoshka cut).
         ENCODING_FORMAT: The ``encoding_format`` request field; ``None`` leaves it out (the routes that have
             no such field).
+        REQUEST_SHAPES: The request shapes this wire implements: ``text`` (the rendered string) for every
+            adapter; the served OpenAI embeddings and pooling shapes add ``messages`` (the chat-style input,
+            image and video parts included) and ``token_ids`` (pre-tokenised ids). The client refuses a
+            declared shape outside this set at construction, instead of silently sending text.
     """
 
     name: ClassVar[str]
@@ -106,6 +110,7 @@ class AdapterBase:
     MAX_BATCH: ClassVar[int | None] = None
     SUPPORTS_DIMENSIONS: ClassVar[bool] = True
     ENCODING_FORMAT: ClassVar[str | None] = None
+    REQUEST_SHAPES: ClassVar[frozenset[str]] = frozenset({"text"})
 
     def __init__(self, config: Any = None) -> None:
         """Build the adapter for ``config`` -- the role config whose ``api`` selected it (an adapter whose

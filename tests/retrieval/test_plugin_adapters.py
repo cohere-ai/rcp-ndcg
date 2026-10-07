@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from rcp_ndcg.data import Rankings, load_dataset
 from rcp_ndcg.errors import ConfigError
@@ -29,14 +30,9 @@ from rcp_ndcg.retrieval import (
     validate_retriever,
 )
 from rcp_ndcg.retrieval import _api as retrieval_api
-from rcp_ndcg.retrieval.config import PluginEmbedding, PluginReranker
+from rcp_ndcg.retrieval.config import PluginEmbedding, PluginPooling, PluginReranker
 from tests.conftest import SESSION_TOKENIZER
-
-DOCS = {
-    "d1": "tortoises move slowly across the sand",
-    "d2": "hares run fast in open fields",
-    "d3": "the sand dunes of the desert",
-}
+from tests.retrieval.conftest import DOCS
 
 
 @register_adapter
@@ -283,6 +279,17 @@ def test_a_wrong_role_name_is_refused_with_the_registrys_message() -> None:
     assert "rerank" in (caught.value.hint or ""), "the hint says the name is registered for the rerank role"
     with pytest.raises(ConfigError, match="unknown rerank adapter 'slow_embed'"):
         validate_reranker({"api": "slow_embed", "model": "m", "base_url": "http://h/v1"})
+
+
+def test_a_plugin_config_without_an_api_is_refused() -> None:
+    """Constructed directly (a public name), a plugin config used to inherit its role's shipped ``api``
+    default -- a "plugin" built around a shipped wire, exactly what the class refuses for an explicit one."""
+    for plugin, model in ((PluginEmbedding, "stub"), (PluginPooling, "colqwen"), (PluginReranker, "stub")):
+        with pytest.raises(ValidationError, match="api"):
+            plugin(model=model)  # type: ignore[call-arg]
+    with pytest.raises(ValidationError, match="shipped wire"):
+        PluginEmbedding(api="openai_embeddings", model="m")
+    assert PluginEmbedding(api="slow_embed", model="m").api == "slow_embed"
 
 
 def test_a_plugin_config_survives_a_yaml_round_trip(tmp_path: Path) -> None:

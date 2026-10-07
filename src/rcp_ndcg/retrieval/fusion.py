@@ -102,7 +102,7 @@ def reciprocal_rank_fusion(
         fused.append(
             RankingExample(
                 query_id=qid,
-                query=head.query,
+                query=head.text,
                 instruction=head.instruction,
                 qrels=head.qrels,
                 doc_ids=[d for d, _ in sorted_docs],

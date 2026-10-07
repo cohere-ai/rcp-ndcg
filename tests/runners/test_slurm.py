@@ -129,7 +129,7 @@ def test_submit_sends_each_script_to_sbatch_in_order(monkeypatch, tmp_path: Path
     [
         ("101 RUNNING\n", "", JobStatus.RUNNING),
         ("101 PENDING\n", "", JobStatus.PENDING),
-        ("", "101|COMPLETED\n", JobStatus.SUCCEEDED),
+        ("", "101|COMPLETED\n", JobStatus.COMPLETED),
         ("", "101|FAILED\n", JobStatus.FAILED),
         ("", "101|CANCELLED by 1000\n", JobStatus.CANCELLED),
         ("", "101|TIMEOUT\n", JobStatus.FAILED),
@@ -140,6 +140,22 @@ def test_status_maps_scheduler_states(monkeypatch, squeue: str, sacct: str, expe
     fake = _FakeCli({"squeue": squeue, "sacct": sacct})
     monkeypatch.setattr("rcp_ndcg.runners.slurm.run_cli", fake)
     assert SlurmRunner().status("101") is expected
+
+
+def test_a_failing_squeue_falls_through_to_sacct(monkeypatch) -> None:
+    """Standard Slurm answers a finished job's ``squeue`` with exit 1 ("Invalid job id specified"); the sacct
+    fallback exists for exactly that, so a non-zero squeue is 'not in queue', not an error."""
+    calls: list[list[str]] = []
+
+    def fake(argv, input_text=None):
+        calls.append(list(argv))
+        if argv[0] == "squeue":
+            raise RunnerError("`squeue -h -o %i %T -j 101` exited 1: slurm_load_jobs error: Invalid job id specified")
+        return "101|COMPLETED\n"
+
+    monkeypatch.setattr("rcp_ndcg.runners.slurm.run_cli", fake)
+    assert SlurmRunner().status("101") is JobStatus.COMPLETED
+    assert [argv[0] for argv in calls] == ["squeue", "sacct"]
 
 
 def test_logs_and_cancel(monkeypatch, tmp_path: Path) -> None:

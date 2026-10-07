@@ -1,0 +1,32 @@
+id: fake-pool/short-mixed-length
+recipe: fake-pool
+role: multi_vector
+source:
+  kind: generated
+strata:
+  modality: text
+  length: short
+  batch: mixed_length
+inputs:
+  queries:
+  - id: q1
+    text: ragged batches
+  documents:
+  - id: d1
+    text: tiny
+  - id: d2
+    text: one vector per token of a somewhat longer document
+  - id: d3
+    text: budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
+expected:
+  kind: similarity_matrix
+  values:
+  - - 5.67724419
+    - 10.12248516
+    - 11.20751476
+  tolerance:
+    abs: 0.0001
+  origin: engine
+  status: reproduced
+notes: A mixed-length batch over /pooling; the MaxSim matrix covers documents of 1, 9 and 54 tokens (rendered
+  whole at 57 of the 64-token budget).

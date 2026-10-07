@@ -32,26 +32,29 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, ClassVar, Self
 from urllib.parse import urlsplit
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, model_validator
 from rcp_ndcg_core.schemas import Decoding
 
-from rcp_ndcg.data.resolution import ImageProcessor
+from rcp_ndcg.data.preprocess import TextBudget
+from rcp_ndcg.data.resolution import ImagePolicy, ImageProcessor, VideoPolicy
+from rcp_ndcg.data.tokenizer import TextTokenizer
 from rcp_ndcg.errors import (
     BackendUnavailableError,
     CredentialsError,
     RequestRejectedError,
 )
-from rcp_ndcg.inference.adapters import get_adapter
-from rcp_ndcg.inference.adapters.base import Adapter
+from rcp_ndcg.inference.adapters.base import AdapterRole
 from rcp_ndcg.inference.adapters.chat import REASONING_KEYS, REASONING_WATCH, OpenAIChat
+from rcp_ndcg.inference.clients import RoleClient
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.fake import FAKE_SCHEME
 from rcp_ndcg.inference.transport import Transport
-from rcp_ndcg.inference.types import Completion, CompletionInput, EngineInfo, Usage
+from rcp_ndcg.inference.types import Call, Completion, CompletionInput, EngineInfo, TokenCount, Usage
 from rcp_ndcg.support.identity import FieldRole, identity_payload
 from rcp_ndcg.support.logging import get_logger
 
@@ -151,24 +154,10 @@ class JudgeConfig(Endpoint):
     tokenizer: str | None = Field(default=None, min_length=1)
     allow_floating_model: bool = False
 
-    @field_validator("base_url")
-    @classmethod
-    def _strip_trailing_slash(cls, value: str | list[str]) -> str | list[str]:  # type: ignore[override]
-        if isinstance(value, str):
-            return value.rstrip("/")
-        if not value:
-            raise ValueError("base_url: give one URL or a non-empty list of replica URLs")
-        urls = [url.rstrip("/") for url in value]
-        if len(set(urls)) < len(urls):
-            raise ValueError(f"base_url lists a replica twice: {urls}")
-        if len(urls) > 1 and any(url.startswith(FAKE_URL_SCHEME) for url in urls):
-            raise ValueError("the offline judge (fake://) is one URL, not a replica list")
-        return urls
-
-    @property
-    def urls(self) -> tuple[str, ...]:
-        """The replica URLs: ``base_url`` as a tuple (one element for a single URL or a gateway)."""
-        return (self.base_url,) if isinstance(self.base_url, str) else tuple(self.base_url)
+    # base_url's trailing-slash stripping, the empty-URL refusal and the replica-list rules are
+    # :class:`~rcp_ndcg.inference.endpoint.Endpoint`'s (and its ``urls`` property is): a judge is an endpoint,
+    # and the copies here had drifted to accept ``base_url: "" -- a config that validates and can never be
+    # sent to.
 
     @model_validator(mode="after")
     def _snapshot_is_pinned(self) -> Self:
@@ -210,8 +199,21 @@ class JudgeConfig(Endpoint):
         return cls.model_validate(load_config(judge_config_path(path)))
 
     def identity(self) -> dict[str, Any]:
-        """The CONTENT fields: who judges, and how they are asked to answer."""
-        return identity_payload(self)
+        """The CONTENT fields: who judges, and how they are asked to answer.
+
+        Naming the default wire is a spelling of the default, not a different instrument: the payload leaves
+        it out exactly as an unset one (the store identity and the step identities then key the same whatever
+        the spelling; another wire's name stays in)."""
+        payload = identity_payload(self)
+        if self.api_key_for_identity() is None:
+            payload.pop("api", None)
+        return payload
+
+    def api_key_for_identity(self) -> str | None:
+        """The wire adapter's name for identity purposes: the default wire's own name counts as unset (a
+        spelling of the default, not a different instrument), another name as it is given. The one home of
+        that rule; the judgement family's ``api`` field reads it too."""
+        return None if self.api in (None, "openai_chat") else self.api
 
     def api_key(self) -> str:
         """The API key from :attr:`api_key_env`, or ``"EMPTY"`` when none is configured.
@@ -231,16 +233,24 @@ class JudgeConfig(Endpoint):
         return value
 
 
-class JudgeClient:
+class JudgeClient(RoleClient[JudgeConfig]):
     """The judge client: sends one prompt, returns one :class:`Completion`.
 
-    Build it with :meth:`from_config`. The client is thin over the layers below it: the request body, the
-    answer parsing and the wire checks are the ``openai_chat`` adapter's
-    (:mod:`rcp_ndcg.inference.adapters.chat`), and the routing, retries, parking, credentials and token
-    accounting are the shared :class:`~rcp_ndcg.inference.transport.Transport`'s. Safe to share across the
-    coroutines of one event loop (each new loop gets a fresh semaphore and pool); ``usage`` accumulates over
-    every call.
+    Build it with :meth:`from_config`. It is the judge role's :class:`~rcp_ndcg.inference.clients.RoleClient`:
+    the adapter lookup (its ``api`` resolves within the judge role, ``None`` meaning the ``openai_chat`` wire
+    and staying out of the identity), the profile's base URL, the transport/Sender bridge, the auth profile
+    and the close/``aclose``/``gather`` lifecycle are the shared client base's; the thin layer here is the
+    judge's own content decisions -- the request body, the answer parsing and the wire checks are the
+    ``openai_chat`` adapter's (:mod:`rcp_ndcg.inference.adapters.chat`), and the routing, retries, parking,
+    credentials and token accounting are the shared :class:`~rcp_ndcg.inference.transport.Transport`'s. Safe
+    to share across the coroutines of one event loop (each new loop gets a fresh semaphore and pool);
+    ``usage`` accumulates over every call.
     """
+
+    ROLE: ClassVar[AdapterRole] = "judge"
+
+    #: A judge config's ``api`` is ``None``-means-``openai_chat`` (an unset one stays out of the identity).
+    DEFAULT_API: ClassVar[str | None] = "openai_chat"
 
     def __init__(self, config: JudgeConfig, *, httpx_transport: Any = None) -> None:
         """A client of ``config``'s replicas; ``httpx_transport`` replaces the endpoint below the transport
@@ -248,15 +258,64 @@ class JudgeClient:
         if config.is_fake:
             from rcp_ndcg.llm import _fake  # noqa: F401  # registers the fake:// chat completions route
 
-        self._config = config
         self._httpx_transport = httpx_transport
-        self._adapter: Adapter[CompletionInput, Completion] | None = None
-        self._transport: Transport | None = None
+        self._adapter: OpenAIChat | None = None
         self._wired_for: JudgeConfig | None = None
         self._answered = 0
         self._refused = 0
         self._input_tokens = 0
         self._output_tokens = 0
+        self._config = config  # the property's backing: super()'s assignment is then a no-op, no rewire
+        # The pass's effective image policy (the run's ``preprocessing`` section, resolved under the judge's
+        # ``image_processor``): set by the pass (``judging._plan``); the probe's engine media check probes
+        # with exactly what the pass sends. A client built without a pass checks nothing.
+        self.image_policy: ImagePolicy | None = None
+        self._sender = Transport(config, httpx_transport=httpx_transport)
+        super().__init__(config, sender=self._sender)
+
+    def _resolve_budget(self) -> tuple[TextBudget | None, TextTokenizer | None]:
+        """The judge declares no ``max_tokens`` request budget (its per-window text budget is the pass's,
+        counted over ``context_tokens`` in :mod:`rcp_ndcg.llm.judging`), and nothing loads here: the judge
+        keeps the other roles' fail-at-construction contract for its wire fields, while its tokenizer is
+        judged at the pass (the engine media check counts no text: it takes the engine's media delta)."""
+        return None, None
+
+    def _media_policies(self) -> tuple[ImagePolicy | None, VideoPolicy | None]:
+        """The pass's effective image policy (the judge config declares none: the run's ``preprocessing``
+        section does, resolved under the judge's ``image_processor``); the media check probes with exactly
+        what the pass sends. ``None`` (a client built without a pass): nothing to check."""
+        return getattr(self, "image_policy", None), None
+
+    # The property overrides RoleClient's plain attribute: the swap rewires, as it always did.
+    # (basedpyright reports the override at the setter's def line.)
+    @property
+    def config(self) -> JudgeConfig:  # pyright: ignore[reportIncompatibleVariableOverride, reportAttributeAccessIssue]
+        """The judge's config; assigning a new one (a ``model_copy``) rebuilds the adapter and the transport
+        from it at the next call, as the offline fakes' tests do."""
+        return self._config
+
+    @config.setter
+    def config(self, config: JudgeConfig) -> None:  # pyright: ignore[reportIncompatibleVariableOverride]
+        if getattr(self, "_config", None) is config:
+            return
+        self._config = config
+        self._rewire()
+
+    def _rewire(self) -> None:
+        """Drop the wire built for the previous config, closing its transport's pool and keeping its failures
+        counted (a config swap must not reset what the endpoint already refused)."""
+        transport = self._sender
+        self._adapter = self._wired_for = None
+        if transport is not None:
+            self._refused += transport.usage.failed_requests
+            transport.close()  # the sync twin (R15: an async caller awaits aclose())
+        self._sender = Transport(self._config, httpx_transport=self._httpx_transport)
+        self._point_sender_at_the_profile()
+
+    @property
+    def model(self) -> str:
+        """The served model name."""
+        return self._config.model
 
     @classmethod
     def from_config(cls, config: JudgeConfig) -> JudgeClient:
@@ -265,34 +324,9 @@ class JudgeClient:
         return cls(config)
 
     @property
-    def config(self) -> JudgeConfig:
-        """The judge's config; assigning a new one (a ``model_copy``) rebuilds the adapter and the transport
-        from it at the next call, as the offline fakes' tests do."""
-        return self._config
-
-    @config.setter
-    def config(self, config: JudgeConfig) -> None:
-        self._config = config
-        self._rewire()
-
-    def _rewire(self) -> None:
-        """Drop the wire built for the previous config, closing its transport's pool and keeping its failures
-        counted (a config swap must not reset what the endpoint already refused)."""
-        transport = self._transport
-        self._adapter = self._transport = self._wired_for = None
-        if transport is not None:
-            self._refused += transport.usage.failed_requests
-            transport.close()  # the sync twin (R15: an async caller awaits aclose())
-
-    @property
-    def model(self) -> str:
-        """The served model name."""
-        return self._config.model
-
-    @property
     def engines(self) -> list[EngineInfo]:
         """What each replica reported (:meth:`probe`), with the fingerprint of its first completion."""
-        transport = self._transport
+        transport = self._sender
         return [] if transport is None else transport.engines
 
     @property
@@ -304,7 +338,7 @@ class JudgeClient:
         a status the shared status map raises on). A request parked out by ``wait_on_outage_s``, and one the
         rejection rule refuses, are the outage's: neither count.
         """
-        transport = self._transport
+        transport = self._sender
         failed = 0 if transport is None else transport.usage.failed_requests
         return Usage(
             requests=self._answered,
@@ -319,18 +353,16 @@ class JudgeClient:
     # ------------------------------------------------------------------
 
     def _wire(self) -> tuple[OpenAIChat, Transport]:
-        """The adapter and transport of the current config, built once and rebuilt when the config is replaced."""
-        if self._adapter is None or self._transport is None or self._wired_for is not self._config:
-            self._rewire()
-            # The registry is role-scoped: the judge's ``api`` name resolves within the judge role, and a name
-            # of another role is refused there (with that role's known names in the hint).
-            adapter_cls = get_adapter(self._config.api or "openai_chat", role="judge")
+        """The adapter and transport of the current config, built once and rebuilt when the config is replaced.
+
+        The adapter resolves through the shared client base's role lookup (the constructor's
+        ``self._adapter_cls``); the transport is the sender that base built for the resolved config."""
+        if self._adapter is None or self._wired_for is not self._config:
             # The Adapter protocol fixes no constructor: the caller instantiates it with the role config its
             # request fields depend on, and the shipped judge adapter takes the JudgeConfig.
-            self._adapter = adapter_cls(self._config)  # pyright: ignore[reportCallIssue]
-            self._transport = Transport(self._config, httpx_transport=self._httpx_transport)
+            self._adapter = self._adapter_cls(self._config)  # pyright: ignore[reportCallIssue]
             self._wired_for = self._config
-        return self._adapter, self._transport  # type: ignore[return-value]
+        return self._adapter, self._sender  # type: ignore[return-value]
 
     # ------------------------------------------------------------------
     # Provenance
@@ -339,13 +371,39 @@ class JudgeClient:
     async def probe(self) -> list[EngineInfo]:
         """Ask each replica what it serves (``GET <base_url>/models``), best effort; the result is :attr:`engines`.
 
-        Never raises: an endpoint that cannot be read is recorded with its ``error``, and judging goes on (the
-        requests themselves park while it is down).
+        Never raises for an endpoint that cannot be read: it is recorded with its ``error``, and judging goes
+        on (the requests themselves park while it is down). When the pass's effective preprocessing declares an
+        image policy, the engine media check runs after the probe (one prepared probe image beside its no-media
+        baseline; the engine's media delta compared with the counted media tokens, as every served role's
+        probe does) -- a mismatch is the typed :class:`~rcp_ndcg.errors.ProviderError`, never a silent budget
+        on the wrong footing.
         """
         if self._config.is_fake:
             return []
-        _, transport = self._wire()
-        return await transport.probe()
+        infos = await self._sender.probe()
+        if getattr(self, "image_policy", None) is not None and self._config.image_processor is not None:
+            await self.check_engine_media()
+        return infos
+
+    # ------------------------------------------------------------------
+    # The media check's wire shape (RoleClient's probe hooks)
+    # ------------------------------------------------------------------
+
+    def _probe_calls(self, content: Any) -> Sequence[Call]:
+        """The wire calls one prepared probe item is sent as: one chat completion carrying the image."""
+        adapter, _ = self._wire()
+        return adapter.calls(CompletionInput(user_prompt="probe", user_content=content), model=self.model)
+
+    def _probe_baseline_calls(self, content: Any) -> Sequence[Call] | None:
+        """The probe request without its media: the same chat completion with the probe content's text as
+        its plain prompt (the engine's two prompt-token reports differ by the media block alone)."""
+        adapter, _ = self._wire()
+        return adapter.calls(CompletionInput(user_prompt=content.text), model=self.model)
+
+    def _probe_usage(self, reply: Any) -> TokenCount | None:
+        """The probe reply's prompt-token report (the judge adapter's, ``None`` when it reported none)."""
+        adapter, _ = self._wire()
+        return adapter.usage(reply)
 
     # ------------------------------------------------------------------
     # The call

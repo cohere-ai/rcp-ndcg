@@ -1,0 +1,27 @@
+id: fake-pool/long-over
+recipe: fake-pool
+role: multi_vector
+source:
+  kind: generated
+strata:
+  modality: text
+  length: long_over
+  batch: single
+inputs:
+  queries:
+  - id: q1
+    text: cut the span, keep the frame
+  documents:
+  - id: d1
+    text: budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
+expected:
+  kind: similarity_matrix
+  values:
+  - - 17.85066986
+  tolerance:
+    abs: 0.0001
+  origin: engine
+  status: reproduced
+notes: The document is the word 'budgetpad' joined by single spaces, 9 repeats, measured 81 tokens (over
+  max_tokens 64); the product's fit cuts the span and re-attaches the template. Values are the tests'
+  FakePoolEngine answers for the cut render.

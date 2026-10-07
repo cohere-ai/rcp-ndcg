@@ -1,0 +1,35 @@
+id: zembed-1-embedding/long-under-single
+recipe: zembed-1-embedding
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: long_under
+  batch: single
+inputs:
+  instruction: null
+  queries:
+  - id: q1
+    text: What does the ledger describe?
+  documents:
+  - id: d1
+    text_ref:
+      generator: zembed_ledger@1
+      params:
+        blocks: 725
+      sha256: bc25fce9cf585a723e5431a4dfa75412cf80027a7a2c75fef319c7f115eb304e
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance:
+    abs: 0.002
+  origin: reference
+  status: pending_gpu
+notes: 'Long text built deterministically: 725 paragraph blocks, each ''Entry NNNNN of the ledger.'' plus
+  two of 7 fixed sentences in rotation (generator kept with the lane; no RNG). Rendered length measured
+  with the recipe tokenizer zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a: 32220
+  tokens (fixed prefix 9 + content + suffix 2). Within 5% under the 32768 cap -> no cut anywhere in the
+  path; verifies near-cap behaviour without truncation. Tolerance: bf16 serve (recipe dtype) vs bf16 sentence-transformers
+  reference; expected cosine deviation ~1e-3 (research r-zembed1), headroom to 2e-3. Values are filled
+  by the GPU wave (reference + engine recorded).'

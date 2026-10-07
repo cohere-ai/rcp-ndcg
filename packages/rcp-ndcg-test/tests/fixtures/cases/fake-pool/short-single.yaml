@@ -1,0 +1,32 @@
+id: fake-pool/short-single
+recipe: fake-pool
+role: multi_vector
+source:
+  kind: generated
+strata:
+  modality: text
+  length: short
+  batch: single
+inputs:
+  queries:
+  - id: q1
+    text: late interaction
+  - id: q2
+    text: maxsim
+  documents:
+  - id: d1
+    text: one vector per token, scored by max similarity
+  - id: d2
+    text: a ragged buffer of token vectors
+expected:
+  kind: similarity_matrix
+  values:
+  - - 11.39446354
+    - 11.26942825
+  - - 5.81467104
+    - 4.60084391
+  tolerance:
+    abs: 0.0001
+  origin: engine
+  status: reproduced
+notes: MaxSim through the product's blocked scorer over the tests' FakePoolEngine base64 float16 frames.

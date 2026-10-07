@@ -1,0 +1,37 @@
+id: zembed-1-embedding/long-over-single
+recipe: zembed-1-embedding
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: long_over
+  batch: single
+inputs:
+  instruction: null
+  queries:
+  - id: q1
+    text: What does the ledger describe?
+  documents:
+  - id: d1
+    text_ref:
+      generator: zembed_ledger@1
+      params:
+        blocks: 900
+      sha256: d257bbd5ef0be02a97d59499c5c5fa8e2b1e8e0829fbdd1fa1f883e28ff03a45
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance:
+    abs: 0.002
+  origin: reference
+  status: pending_gpu
+notes: 'Long text built deterministically: 900 paragraph blocks, each ''Entry NNNNN of the ledger.'' plus
+  two of 7 fixed sentences in rotation (generator kept with the lane; no RNG). Rendered length measured
+  with the recipe tokenizer zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a: 39995
+  tokens (fixed prefix 9 + content + suffix 2). Over the 32768-token cap by 7227: the client cuts the
+  content spans only and re-attaches the fixed frame, so the pooled final-token anchor survives (recipe
+  client.template anchor: last, on_overflow: cut); the reference applies the same anchor-preserving cut
+  (recipe note 5). The engine must never see an over-length request (vLLM would 400). Tolerance: bf16
+  serve (recipe dtype) vs bf16 sentence-transformers reference; expected cosine deviation ~1e-3 (research
+  r-zembed1), headroom to 2e-3. Values are filled by the GPU wave (reference + engine recorded).'

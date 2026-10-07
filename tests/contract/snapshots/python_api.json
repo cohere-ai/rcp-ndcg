@@ -1083,6 +1083,20 @@
               }
             ]
           },
+          "api_key_for_identity": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "str | None"
+              }
+            ]
+          },
           "fake": {
             "kind": "classmethod",
             "signature": [
@@ -1137,8 +1151,7 @@
                 "returns": "JudgeConfig"
               }
             ]
-          },
-          "urls": "property"
+          }
         }
       },
       "JudgementSet": {
@@ -4791,7 +4804,7 @@
             "default": "last",
             "frozen": false,
             "required": false,
-            "type": "Literal['last', 'first', 'mean', 'marker']"
+            "type": "Literal['last', 'first', 'last_content', 'mean', 'marker']"
           },
           "anchor_markers": {
             "alias": null,
@@ -4806,6 +4819,13 @@
             "frozen": false,
             "required": false,
             "type": "tuple[rcp_ndcg.data.templates.Segment, Ellipsis] | None"
+          },
+          "normalize": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['strip', 'lowercase'], Ellipsis] | dict[str, tuple[Literal['strip', 'lowercase'], Ellipsis]]"
           },
           "pair": {
             "alias": null,
@@ -4842,6 +4862,52 @@
               },
               {
                 "returns": "bool"
+              }
+            ]
+          },
+          "normalisers": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "RequestShape",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "shape"
+              },
+              {
+                "returns": "tuple[ContentNormalizer, ...]"
+              }
+            ]
+          },
+          "normalize_text": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "RequestShape",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "shape"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "text"
+              },
+              {
+                "returns": "str"
               }
             ]
           },
@@ -5668,7 +5734,7 @@
       "DEFAULT_MAX_TOKENS": {
         "kind": "constant",
         "type": "int",
-        "value": 20000
+        "value": 32768
       },
       "DEFAULT_TEXT_POLICY": {
         "kind": "constant",
@@ -6026,6 +6092,12 @@
             "name": "shape"
           },
           {
+            "annotation": "int | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "budget_tokens"
+          },
+          {
             "returns": "None"
           }
         ],
@@ -6191,11 +6263,38 @@
                 "name": "shape"
               },
               {
+                "annotation": "int | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "budget_tokens"
+              },
+              {
                 "returns": "TextCutRecord"
               }
             ]
           }
         }
+      },
+      "append_census_rows": {
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "sink"
+          },
+          {
+            "annotation": "Sequence[Mapping[str, Any]]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "rows"
+          },
+          {
+            "returns": "None"
+          }
+        ]
       },
       "apply_text_policy": {
         "defined_in": "rcp_ndcg.data.preprocess",
@@ -6308,6 +6407,21 @@
           },
           {
             "returns": "list[str]"
+          }
+        ]
+      },
+      "drop_torn_last_line": {
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "returns": "int"
           }
         ]
       },
@@ -6446,6 +6560,21 @@
           },
           {
             "returns": "dict[str, float]"
+          }
+        ]
+      },
+      "read_census_rows": {
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "returns": "Iterator[dict[str, Any]]"
           }
         ]
       },
@@ -6596,6 +6725,124 @@
           },
           {
             "returns": "str"
+          }
+        ]
+      }
+    }
+  },
+  "rcp_ndcg.data.revisions": {
+    "all": {
+      "ResolvedRevision": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.data.revisions",
+        "init": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "repo_id"
+          },
+          {
+            "annotation": "str | None",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "commit"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "identity": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, Any]"
+              }
+            ]
+          },
+          "verified": "property"
+        }
+      },
+      "dataset_uri_revision": {
+        "defined_in": "rcp_ndcg.data.revisions",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | None",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "uri"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "revision"
+          },
+          {
+            "returns": "dict[str, Any] | None"
+          }
+        ]
+      },
+      "hub_cache_dir": {
+        "defined_in": "rcp_ndcg.data.revisions",
+        "kind": "function",
+        "signature": [
+          {
+            "returns": "Path"
+          }
+        ]
+      },
+      "hub_offline": {
+        "defined_in": "rcp_ndcg.data.revisions",
+        "kind": "function",
+        "signature": [
+          {
+            "returns": "bool"
+          }
+        ]
+      },
+      "is_commit": {
+        "defined_in": "rcp_ndcg.data.revisions",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | None",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "revision"
+          },
+          {
+            "returns": "bool"
+          }
+        ]
+      },
+      "resolve_revision": {
+        "defined_in": "rcp_ndcg.data.revisions",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "repo_id"
+          },
+          {
+            "annotation": "str | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "revision"
+          },
+          {
+            "returns": "ResolvedRevision"
           }
         ]
       }
@@ -9051,6 +9298,18 @@
             "name": "dimensions"
           },
           {
+            "annotation": "Literal['text', 'messages', 'token_ids']",
+            "default": "text",
+            "kind": "positional_or_keyword",
+            "name": "request_shape"
+          },
+          {
+            "annotation": "tuple[tuple[int, ...], ...]",
+            "default": [],
+            "kind": "positional_or_keyword",
+            "name": "token_ids"
+          },
+          {
             "returns": "None"
           }
         ],
@@ -9312,6 +9571,16 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -9332,6 +9601,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "query_prompt": {
             "alias": null,
@@ -9909,6 +10185,24 @@
             "name": "dim"
           },
           {
+            "annotation": "Literal['per_token', 'per_chunk']",
+            "default": "per_token",
+            "kind": "positional_or_keyword",
+            "name": "outputs"
+          },
+          {
+            "annotation": "Literal['text', 'messages', 'token_ids']",
+            "default": "text",
+            "kind": "positional_or_keyword",
+            "name": "request_shape"
+          },
+          {
+            "annotation": "tuple[tuple[int, ...], ...]",
+            "default": [],
+            "kind": "positional_or_keyword",
+            "name": "token_ids"
+          },
+          {
             "returns": "None"
           }
         ],
@@ -10114,6 +10408,13 @@
             "required": false,
             "type": "str"
           },
+          "document_skip_token_ids": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis]"
+          },
           "embed_dtype": {
             "alias": null,
             "default": "float16",
@@ -10184,12 +10485,29 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
             "frozen": false,
             "required": true,
             "type": "str"
+          },
+          "mrl_dim": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "normalize": {
             "alias": null,
@@ -10204,6 +10522,20 @@
             "frozen": false,
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "outputs": {
+            "alias": null,
+            "default": "per_token",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['per_token', 'per_chunk']"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "query_prompt": {
             "alias": null,
@@ -10398,6 +10730,12 @@
                 "name": "instruction"
               },
               {
+                "annotation": "str",
+                "default": "",
+                "kind": "keyword_only",
+                "name": "query_id"
+              },
+              {
                 "returns": "RerankResult"
               }
             ]
@@ -10468,6 +10806,12 @@
                 "default": null,
                 "kind": "keyword_only",
                 "name": "instruction"
+              },
+              {
+                "annotation": "str",
+                "default": "",
+                "kind": "keyword_only",
+                "name": "query_id"
               },
               {
                 "returns": "RerankResult"
@@ -10579,6 +10923,13 @@
             "required": false,
             "type": "str | None"
           },
+          "empty_query": {
+            "alias": null,
+            "default": "refuse",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['refuse', 'send']"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -10641,6 +10992,16 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
           },
           "model": {
             "alias": null,
@@ -10894,6 +11255,21 @@
               }
             ]
           },
+          "media_sides": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "frozenset[str]"
+              }
+            ]
+          },
+          "text_budget": "property",
           "usage": "property"
         }
       },
@@ -11575,7 +11951,9 @@
         "kind": "pydantic_model"
       },
       "JudgeClient": {
-        "bases": [],
+        "bases": [
+          "rcp_ndcg.inference.clients._base.RoleClient"
+        ],
         "defined_in": "rcp_ndcg.llm.client",
         "init": [
           {
@@ -11828,6 +12206,20 @@
               }
             ]
           },
+          "api_key_for_identity": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "str | None"
+              }
+            ]
+          },
           "fake": {
             "kind": "classmethod",
             "signature": [
@@ -11882,8 +12274,7 @@
                 "returns": "JudgeConfig"
               }
             ]
-          },
-          "urls": "property"
+          }
         }
       },
       "JudgementStore": {
@@ -12898,6 +13289,16 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -12918,6 +13319,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "query_prompt": {
             "alias": null,
@@ -13063,6 +13471,13 @@
             "required": false,
             "type": "str | None"
           },
+          "empty_query": {
+            "alias": null,
+            "default": "refuse",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['refuse', 'send']"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -13125,6 +13540,16 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
           },
           "model": {
             "alias": null,
@@ -13548,6 +13973,16 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -13568,6 +14003,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "query_prompt": {
             "alias": null,
@@ -13731,9 +14173,9 @@
           },
           "api": {
             "alias": null,
-            "default": "openai_embeddings",
+            "default": "<required>",
             "frozen": false,
-            "required": false,
+            "required": true,
             "type": "str"
           },
           "api_key_env": {
@@ -13855,6 +14297,16 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -13875,6 +14327,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "query_prompt": {
             "alias": null,
@@ -13960,9 +14419,9 @@
           },
           "api": {
             "alias": null,
-            "default": "vllm_pooling",
+            "default": "<required>",
             "frozen": false,
-            "required": false,
+            "required": true,
             "type": "str"
           },
           "api_key_env": {
@@ -14027,6 +14486,13 @@
             "frozen": false,
             "required": false,
             "type": "str"
+          },
+          "document_skip_token_ids": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis]"
           },
           "embed_dtype": {
             "alias": null,
@@ -14098,12 +14564,29 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
             "frozen": false,
             "required": true,
             "type": "str"
+          },
+          "mrl_dim": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "normalize": {
             "alias": null,
@@ -14118,6 +14601,20 @@
             "frozen": false,
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "outputs": {
+            "alias": null,
+            "default": "per_token",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['per_token', 'per_chunk']"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "query_prompt": {
             "alias": null,
@@ -14203,9 +14700,9 @@
           },
           "api": {
             "alias": null,
-            "default": "rerank",
+            "default": "<required>",
             "frozen": false,
-            "required": false,
+            "required": true,
             "type": "str"
           },
           "api_key_env": {
@@ -14263,6 +14760,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "empty_query": {
+            "alias": null,
+            "default": "refuse",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['refuse', 'send']"
           },
           "headers_env": {
             "alias": null,
@@ -14326,6 +14830,16 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
           },
           "model": {
             "alias": null,
@@ -14564,6 +15078,16 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -14584,6 +15108,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "query_prompt": {
             "alias": null,
@@ -14737,6 +15268,13 @@
             "required": false,
             "type": "str"
           },
+          "document_skip_token_ids": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis]"
+          },
           "embed_dtype": {
             "alias": null,
             "default": "float16",
@@ -14807,12 +15345,29 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
             "frozen": false,
             "required": true,
             "type": "str"
+          },
+          "mrl_dim": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "normalize": {
             "alias": null,
@@ -14827,6 +15382,20 @@
             "frozen": false,
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "outputs": {
+            "alias": null,
+            "default": "per_token",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['per_token', 'per_chunk']"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "query_prompt": {
             "alias": null,
@@ -14973,6 +15542,13 @@
             "required": false,
             "type": "str | None"
           },
+          "empty_query": {
+            "alias": null,
+            "default": "refuse",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['refuse', 'send']"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -15035,6 +15611,16 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
           },
           "model": {
             "alias": null,
@@ -15265,6 +15851,16 @@
             "required": false,
             "type": "int"
           },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
+          },
           "model": {
             "alias": null,
             "default": "<required>",
@@ -15285,6 +15881,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['cut', 'chunk', 'fail']"
+          },
+          "query_max_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "query_prompt": {
             "alias": null,
@@ -15430,6 +16033,13 @@
             "required": false,
             "type": "str | None"
           },
+          "empty_query": {
+            "alias": null,
+            "default": "refuse",
+            "frozen": false,
+            "required": false,
+            "type": "Literal['refuse', 'send']"
+          },
           "headers_env": {
             "alias": null,
             "default": "<factory dict>",
@@ -15492,6 +16102,16 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "media_sides": {
+            "alias": null,
+            "default": [
+              "query",
+              "document"
+            ],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['query', 'document'], Ellipsis]"
           },
           "model": {
             "alias": null,
@@ -16154,7 +16774,7 @@
         "values": [
           "pending",
           "running",
-          "succeeded",
+          "completed",
           "failed",
           "cancelled",
           "unknown"
@@ -18299,6 +18919,7 @@
         "defined_in": "rcp_ndcg.runs.manifest",
         "kind": "enum",
         "values": [
+          "pending",
           "running",
           "completed",
           "failed",
@@ -18764,6 +19385,20 @@
         "defined_in": "rcp_ndcg_core.schemas",
         "extra": "forbid",
         "fields": {
+          "api": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "context_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
           "criteria": {
             "alias": null,
             "default": [],
@@ -18778,6 +19413,13 @@
             "required": false,
             "type": "Literal['json_schema', 'free']"
           },
+          "extra_body": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, Any] | None"
+          },
           "judge_model": {
             "alias": null,
             "default": "<required>",
@@ -18791,6 +19433,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "max_output_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
           },
           "parse_version": {
             "alias": null,
@@ -18819,6 +19468,13 @@
             "frozen": false,
             "required": true,
             "type": "Literal['tournament', 'rubric']"
+          },
+          "temperature": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
           },
           "tokenizer": {
             "alias": null,
@@ -20074,6 +20730,20 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "skipped_observations": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
+          },
+          "skipped_queries": {
+            "alias": null,
+            "default": 0,
+            "frozen": false,
+            "required": false,
+            "type": "int"
           }
         },
         "frozen": true,

@@ -1,0 +1,78 @@
+# Workstream 04: the CPU side of GPU validation — observation corpus code, verified fake engines, T4 driver
+
+Read `handover/00-MASTER.md` first. Specs: `handover/specs/gpu-validation.md` (whole file; especially "Node runtime"
+and "The GPU run is also the test suite's audit" items 1-8), `observations-spec.md` (binding for the corpus and the
+fakes), `brief-gpu-quality.md`, `brief-fake-engines.md`, `brief-gpu-e2e.md`, `gpu-findings.md`.
+GPU runs themselves are out of scope: everything here must be built and verified on CPU (stub engines, fixtures, the
+provisional corpus). All three branches are based on `5359655` (= `wip/int-recipes` + `rfc-0001`@`d8a7002`), so they
+carry the recipes: merge them into `rfc-0001` only after `wip/int-recipes` has landed there (workstream 03), and take
+the families' version of every recipe file these branches touched.
+
+## A. `wip/gpu-quality` — the request generator, stage-2 pairs, the corpus, T3, the negative controls
+Commits: `a837b87` stage 1's over-length padding as one tokenization on a bounded pass (DUPLICATE of
+`wip/recipe-sweep` `3c9d4e6`: keep exactly one implementation, with a runtime-bound test); `1d3aa6f` the request
+generator `rcp_ndcg_vllm.observe.requests` (versioned `GENERATOR_VERSION`, seeded, pinned dataset revisions)
+writes every loadable recipe's stage-2 pairs file under `packages/rcp-ndcg-vllm/pairs/`; `d005514` the observation
+corpus (raw records, a hash-chained manifest, the checks); `0f91ac1` the wave's corpus step and re-record-changed-only
+mode; `bfc02c0` the T3 quality stage (rcp-ndcg's served path vs the reference through `mteb`, the comparison table)
+and the negative controls (a)-(f) (deliberately broken recipe variants the gates must fail); `d964601` docs and
+CHANGELOG. Its first review round was running when it stopped: review it yourself against
+`observations-spec.md` sections 1-7 and the brief, item by item, with the usual evidence standard. Known history: an
+earlier generator version ran for 40+ minutes at 100% CPU on long BRIGHT documents (repeated full tokenization to hit
+target lengths); confirm the committed generator has a runtime-bound test on a long synthetic document. Also make
+`packages/rcp-ndcg-vllm/jobs/rc_build.sh` stage `packages/rcp-ndcg-vllm/pairs/` (it staged a root `pairs/` only) if the
+branch has not done so. The behaviour fingerprint belongs to `wip/fake-engines` (`rcp_ndcg_vllm.fingerprint`); if
+this branch defines its own, unify on one.
+
+## B. `wip/fake-engines` — `rcp_ndcg.testing.engines`, conformance, golden replays, fingerprint
+Commits: `040cd5c` the behaviour fingerprint (named inputs, one hash); `c621bfb` four recipes made loadable (take the
+families' versions instead); `fa17b8e` the corpus seam, the vLLM emulator replaying outputs, the conformance suite over
+a provisional corpus; `e8ac552` golden replays (NanoBEIR, ViDoRe minis) and the mutations; `1a8f55d`
+re-record-changed-only selection and a behaviour-diff report; `ba175da` docs; WIP snapshot `b0e63fb` (fixing review
+findings; the corpus was rebuilt under fingerprint scheme `rcp-fp/2`; 48 new corpus files, 222 KB).
+
+The provisional corpus under `tests/contract/engines/vllm-0.31.0/<recipe>/<fingerprint>/` comes from a GPU shakedown
+that served some recipes with temporary patches (see `gpu-findings.md`); it is valid to BUILD and TEST the emulators,
+not as release evidence. Every manifest must say so; the release checklist must list the re-recording.
+
+Round-1 review FAILED; all findings below are agreed and must be fixed (evidence was reproduced):
+- **B1 (blocker)**: the replay key drops behaviour-shaping request fields — observations are keyed on the prompt
+  string only, so a never-observed `use_activation: false` or a request-level `instruction` is answered with another
+  request's output and labelled `replayed`; committed corpora already contain colliding keys with different outputs.
+  Key observations on the full behaviour-shaping context (prompt set, `use_activation`, instruction mode,
+  `add_special_tokens`, ...) or answer `surrogate` / a 400 for an unobserved context.
+- **B2 (blocker)**: the staleness gate dies with "no manifest.json" instead of naming the changed fingerprint inputs
+  (the corpus directory is derived from the recomputed fingerprint). Resolve corpora by scanning manifests, compare the
+  recorded vs the recomputed fingerprint inputs, fail naming them.
+- **M1**: non-determinism is "measured" across different requests (bodies differing in `use_activation`/`top_n`), and
+  the tolerance OR-window allows ~48x the measured drift. Measure only true same-request repetitions (keyed by request
+  digest; the corpus has none yet, so the tolerance must be declared unmeasured, not invented), and bound each value by
+  the joint condition.
+- **M2**: the golden replays: the retrieval golden is vacuous (one document equal to the query; metrics unchanged with
+  all observations deleted), the ViDoRe retrieval view is absent, and the goldens are generated by the code under test.
+  Use a retrieval case where rank moves with the vectors (>= 2 documents, reversed gains), add the ViDoRe view or a
+  documented scope waiver, and label goldens as regression pins until a GPU run supplies independent numbers.
+- **M3**: framing and headers are never compared (a wrong `content-type` passes), binary/base64 `/pooling` bodies are
+  silently dropped, `/pooling` has zero recordings yet is not declared unverified. Compare headers and raw bytes,
+  refuse undecodable bodies loudly, declare unobserved routes.
+- **M4**: the fingerprint over- and under-keys GPU-VALIDATION item 8's inputs: it includes client-side
+  post-processing that does not change the request or the model output (`normalize`, `aggregation`) and misses
+  request-packing fields (`batch_size`). Key exactly what changes request bytes or model outputs; test both directions.
+- Minors F1-F14, m1-m5 from the same review: re-derive them by reviewing the branch (they are the usual hygiene:
+  provenance wording, waiver wiring, log resets, naming).
+Also: the offline fake's per-scalar hashing (workstream 02 C) affects these emulators' surrogate path too.
+
+## C. `wip/gpu-e2e` — the T4 scenarios and the in-pod driver (DONE, accepted)
+Four scenarios (`packages/rcp-ndcg-vllm/scenarios/{text-four-phases,outage,identity,vidore}.yaml`, schema
+`schema/scenario.schema.json`), the driver `rcp_ndcg_vllm.e2e` rendering the run's phased job through the product's
+renderer and install path, the in-pod entry `jobs/e2e.sh`, a golden rendered script, the observed outage behaviour as a
+transport test, CPU tests with the supervision stubs; two review rounds, all findings fixed. Judge pins verified on the
+Hub (`Qwen/Qwen3.8-27B-FP8` @ `017b9c7a...`, `nvidia/Qwen3.8-Flash-Next-NVFP4` @ `fc694b54...`,
+`Qwen/Qwen3.8-Flash-Next-FP8` @ `236dfdf2...`). At merge: the four scenario files say the commits were "checked
+2026-10-13" — wrong date; write the actual check date. Its recipe edits (`7a99abc`) and NOTICE sync (`fc62153`) yield to
+the families' versions. Its open item: the supervision re-run "with the verified fake engines as its engines" needs
+`rcp_ndcg.testing.engines` (part B); wire it once B lands.
+
+## Landing order
+After workstream 03 landed `wip/int-recipes` in `rfc-0001`: merge C, then A, then B (B consumes A's corpus format if
+both exist; keep one corpus reader seam). Quality bar after each; push; CI. Report in `handover/reports/04-*.md`.

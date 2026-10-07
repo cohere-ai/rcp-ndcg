@@ -1,0 +1,38 @@
+id: qwen3-vl-embedding-2b/mixed-modality-batch
+recipe: qwen3-vl-embedding-2b
+role: embed
+source:
+  kind: generated
+strata:
+  modality: mixed
+  length: short
+  batch: mixed_modality
+inputs:
+  instruction: Represent the user's input.
+  queries:
+    - id: q1
+      text: Which image shows a person with a dog?
+    - id: q2
+      text: A photo of a document page.
+  documents:
+    - id: d1
+      text: A woman shares a happy moment with her golden retriever on a sunny beach.
+    - id: d2
+      image: media/stand_in.png
+    - id: d3
+      text: A woman shares a happy moment with her golden retriever on a sunny beach.
+      image: media/page.png
+expected:
+  kind: similarity_matrix
+  values: null
+  tolerance: {abs: 0.002}
+  origin: reference
+  status: pending_gpu
+notes: >-
+  Generated mixed/mixed_modality cell: one batch holding a text document, an image document and a
+  text+image document (d3 pairs the 1700x2200 synthetic page with the same text as d1, so the wave
+  can isolate the image's contribution). Every item carries at most one image (limit_mm_per_prompt
+  image=1); d3 renders ~1776 image-pad tokens at the recipe's pixel budget (research-measured).
+  Wave: media goes through the chat-messages shape (image_url part; research report section 3);
+  tokenizer revision 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda; tolerance abs 2e-3 is the declared
+  bf16 margin.

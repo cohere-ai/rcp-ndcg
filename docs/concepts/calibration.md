@@ -135,7 +135,8 @@ their rubric verdicts with `score_documents` (`rcp-ndcg calibration score`), or 
 ## Repeated judgements
 
 The unit of evidence is the window. Each window has a `record_id`, a hash of its judgement family, query, stage,
-position in the schedule and the documents it showed, in order. When the judgements passed to `calibrate` (or read
+the dataset's identity key (so two corpora that share query and document ids never share a window), position in the
+schedule (or, for a planned window, the schedule it was asked under) and the documents it showed, in order. When the judgements passed to `calibrate` (or read
 from several stores by `read_judgements`) hold one window more than once, it counts once: its latest valid
 judgement (by `recorded_at`) is used, and an invalid copy is used only when the window has no valid one. No window
 is counted twice.

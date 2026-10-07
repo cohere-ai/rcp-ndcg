@@ -84,11 +84,16 @@ class PreparedItems(NamedTuple):
             from); every input not in :attr:`omitted` appears exactly once.
         omitted: The input indices ``empty_doc: omit_zero`` never sends -- ascending; the caller places the
             missing result (a zero vector, an empty slice, a 0.0 score) at each.
+        token_ids: For each item, the token ids of its sent text as the engine reads it (the client's
+            tokenisation of the fitted render under the shape's ``add_special_tokens`` flag), when the role
+            tracks them -- the pooling role's ``document_skip_token_ids`` needs the positions. Empty when
+            not tracked.
     """
 
     items: tuple[Content, ...]
     positions: tuple[int, ...]
     omitted: tuple[int, ...]
+    token_ids: tuple[tuple[int, ...], ...] = ()
 
 
 class RoleClient[C: Endpoint]:
@@ -109,6 +114,11 @@ class RoleClient[C: Endpoint]:
     #: the engine role of the configs it serves (the two vocabularies are mapped in one place, in
     #: :func:`~rcp_ndcg.inference.adapters.base.check_engine_api`).
     ROLE: ClassVar[AdapterRole]
+
+    #: The adapter a config's unset ``api`` resolves to, per client class. The other roles default the field
+    #: on the config class itself; the judge's ``api`` is ``None``-means-default (its ``openai_chat`` wire)
+    #: so an unset one stays out of the identity payload. ``None``: the config must name the adapter.
+    DEFAULT_API: ClassVar[str | None] = None
 
     #: Whether this role's wires carry media. ``False`` (the embed role: its adapters are text-only)
     #: refuses a media-carrying request before the media is fetched or counted, with the adapter's own
@@ -149,7 +159,7 @@ class RoleClient[C: Endpoint]:
                 a hosted profile is left without a base URL and its adapter declares none, or a non-transport
                 sender has no sync bridge (``run``).
         """
-        api = getattr(config, "api", None)
+        api = getattr(config, "api", None) or type(self).DEFAULT_API
         if not isinstance(api, str) or not api:
             raise ConfigError(
                 f"{type(config).__name__} declares no wire adapter (api)", hint="api names the wire adapter"
@@ -257,6 +267,12 @@ class RoleClient[C: Endpoint]:
             self._sender.set_auth(self._auth_profile())
 
     # -- the text budget ----------------------------------------------------
+    @property
+    def text_budget(self) -> TextBudget | None:
+        """The text budget every request of this client is fitted to, as built from its config (``None``: the
+        config declares no ``max_tokens``, so nothing is fitted or cut)."""
+        return self._budget
+
     def _resolve_budget(self) -> tuple[TextBudget | None, TextTokenizer | None]:
         """The client's text budget, from the role config's fields, with the tokenizer it names loaded once.
 
@@ -291,6 +307,35 @@ class RoleClient[C: Endpoint]:
     def _media_policies(self) -> tuple[ImagePolicy | None, VideoPolicy | None]:
         """The effective media policies of this client's config (the one shared rule, no per-client code)."""
         return media_policies_for(self.config)
+
+    def media_sides(self) -> frozenset[str]:
+        """The sides this config allows media on: the config's ``media_sides`` field (the default: both).
+        An explicitly EMPTY field allows NO side -- the default applies only when the config has no such
+        field at all, so ``media_sides: []`` refuses every side exactly as the config documents."""
+        sides = getattr(self.config, "media_sides", None)
+        if sides is None:
+            sides = ("query", "document")
+        return frozenset(sides)
+
+    def _refuse_media_off_its_side(self, side: str, contents: Sequence[Content]) -> None:
+        """Media on a side the config does not allow (2b, G3) is refused naming the ``media_sides`` field,
+        before the media is fetched, sized or counted.
+
+        Raises:
+            CapabilityError: an item of ``contents`` carries media and ``side`` is not in the config's
+                ``media_sides``.
+        """
+        allowed = self.media_sides()
+        if side in allowed:
+            return
+        sides = f"the {' and '.join(sorted(allowed))} side(s)" if allowed else "no side"
+        for index, content in enumerate(contents):
+            if content.has_media:
+                raise CapabilityError(
+                    f"item {index} of this request's {side} side carries media, but {self.config.model} takes "
+                    f"media on {sides} only (media_sides)",
+                    hint=f"declare {side!r} in media_sides on the role config, or drop the media from the {side}",
+                )
 
     def _gate_media_calls(self, calls: Sequence[Call]) -> None:
         """The per-request media gates, as the judge's: each wire CALL's image and video parts against the
@@ -355,7 +400,7 @@ class RoleClient[C: Endpoint]:
 
         The media gates are each wire call's (see :meth:`_gate_media_calls`), not this call's.
         """
-        if not self.MEDIA_ON_WIRE and any(content.has_media for content in contents):
+        if not self._media_is_on_wire() and any(content.has_media for content in contents):
             self._refuse_media_before_preparation(contents)
         image, video = self._media_policies()
         prepared = prepare_request(contents, image, video)
@@ -373,6 +418,11 @@ class RoleClient[C: Endpoint]:
                 if items:
                     self.media_census.record(corpus=self.ROLE, doc_id=doc_id, media=items, dropped=False)
         return prepared
+
+    def _media_is_on_wire(self) -> bool:
+        """Whether this client's wire carries media: the class flag (the pool and rerank wires lower media
+        parts on every shape). The embed role overrides it -- its ``messages`` route only."""
+        return self.MEDIA_ON_WIRE
 
     def _refuse_media_before_preparation(self, contents: Sequence[Content]) -> None:
         """Refuse media for a text-only role before the media is fetched, sized or counted.
@@ -510,13 +560,16 @@ class RoleClient[C: Endpoint]:
         media_tokens: Sequence[int] | None = None,
         instruction: str | None = None,
         record: bool = True,
+        ids: Sequence[str] | None = None,
     ) -> FitResult:
         """One :func:`~rcp_ndcg.data.preprocess.fit` call for this client's budget: the shared mechanism the
-        brief wires into every ``_prepare``. ``corpus`` is the client's role name; ids are positional. The
-        ``instruction`` reserves the instruction's tokens in the fixed overhead where the declared template
-        frames it (the reranker's ``instruction: field`` and ``system`` modes -- the instruction is then
-        engine-rendered into the frame, never inside the cut spans); ``record=False`` makes a probe call,
-        whose spans are decided without recording census rows."""
+        brief wires into every ``_prepare``. ``corpus`` is the client's role name; ids are positional (the
+        caller's ``ids`` when given -- the census rows then name the caller's own inputs, so an omitted
+        document's position is never taken by a later one). The ``instruction`` reserves the instruction's
+        tokens in the fixed overhead where the declared template frames it (the reranker's ``instruction:
+        field`` and ``system`` modes -- the instruction is then engine-rendered into the frame, never inside
+        the cut spans); ``record=False`` makes a probe call, whose spans are decided without recording census
+        rows."""
         budget, tokenizer = self._budget, self._tokenizer
         assert budget is not None  # callers only fit when a budget is declared
         return fit(
@@ -524,7 +577,7 @@ class RoleClient[C: Endpoint]:
             shape,
             budget,
             tokenizer,
-            ids=[str(index) for index in range(len(inputs))],
+            ids=list(ids) if ids is not None else [str(index) for index in range(len(inputs))],
             instruction=instruction,
             media_tokens=media_tokens,
             corpus=self.ROLE,
