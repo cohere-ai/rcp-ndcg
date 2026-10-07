@@ -218,6 +218,13 @@ class CaseInputs(BaseModel):
     documents: list[CaseDocument] = Field(min_length=1)
 
     @model_validator(mode="after")
+    def _no_empty_instruction(self) -> CaseInputs:
+        """A present-but-empty instruction is refused: its absence is the drop-nothing state."""
+        if self.instruction == "":
+            raise ValueError("an empty instruction is refused: drop the field (its absence means nothing is sent)")
+        return self
+
+    @model_validator(mode="after")
     def _unique_ids(self) -> CaseInputs:
         """The queries (and the documents) are identified by their ids; a duplicate would make an
         alignment error look like a result."""
@@ -537,12 +544,23 @@ def _check_media(case: Case, recipe_cases_dir: Path) -> None:
     exists** (the file's bytes are later inlined into wire payloads, so an escape would leak bytes
     off-tree).
     """
+    from rcp_ndcg.data.media import IMAGE_MIME_BY_SUFFIX, VIDEO_MIME_BY_SUFFIX
+
+    known = {"image": frozenset(IMAGE_MIME_BY_SUFFIX), "video": frozenset(VIDEO_MIME_BY_SUFFIX)}
+    other = {"image": "video", "video": "image"}
     media_dir = (recipe_cases_dir / _MEDIA_PREFIX).resolve()
     for document in case.inputs.documents:
         for field in ("image", "video"):
             value = getattr(document, field)
             if value is None:
                 continue
+            suffix = Path(value).suffix.lower()
+            if suffix not in known[field]:
+                kind = other[field] if suffix in known[other[field]] else "media"
+                raise CaseError(
+                    f"case {case.id!r}: document {document.id!r} names a {kind} ({value!r}) in its "
+                    f"{field} field ({suffix!r} is not a known {field} type: {sorted(known[field])})"
+                )
             resolved = (recipe_cases_dir / value).resolve()
             if not resolved.is_relative_to(media_dir):
                 raise CaseError(

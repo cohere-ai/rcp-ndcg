@@ -112,6 +112,18 @@ def test_a_spearman_tolerance_passes_the_order_and_fails_the_reversal() -> None:
     assert failing.failed and "spearman" in (failing.detail or "")
 
 
+def test_the_run_refuses_a_case_whose_recipe_disagrees() -> None:
+    """(round-2 F4) ``run_case(recipe, case)`` refuses a case belonging to a different recipe: a run
+    under the wrong scorer is an identity lie that can pass as a numbers check."""
+    from rcp_ndcg_test.errors import ConformanceError
+
+    recipe = load_recipe(RECIPES / "fake-pool")
+    case = load_case(PACKAGED / "fake-embed" / "short-single.yaml")
+    assert case.recipe == "fake-embed"
+    with pytest.raises(ConformanceError, match="belongs to recipe"):
+        run_case(recipe, case, target="fake", fake_engine=FakePoolEngine())
+
+
 def test_a_spearman_prefix_expectation_is_not_a_free_pass_when_displaced() -> None:
     """(v1-F5) A ``kind: ranking`` row under ``spearman_min`` names the derived **top-k prefix** (its
     documents must hold the top-k positions exactly); correlating absolute ranks is shift-invariant

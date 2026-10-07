@@ -679,6 +679,60 @@ def test_a_mixed_length_batch_measures_differing_lengths(tmp_path: Path) -> None
         load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
 
 
+def test_an_empty_instruction_is_refused_not_silently_dropped(tmp_path: Path) -> None:
+    """(round-2 F3) ``instruction: ""`` claims the nothing-to-send state -- the field is dropped by
+    its absence; a present-but-empty one is refused (the wire carries no instruction, silently)."""
+    body = """
+        id: fake-embed/empty-instruction
+        recipe: fake-embed
+        role: embed
+        source: {kind: generated}
+        strata: {modality: text, length: short, batch: single}
+        inputs:
+          instruction: ""
+          queries: [{id: q1, text: a query}]
+          documents: [{id: d1, text: graded gains and a rank-sensitive metric}]
+        expected:
+          kind: similarity_matrix
+          values: null
+          tolerance: {abs: 0.01}
+          origin: reference
+          status: pending_gpu
+    """
+    case_file = write_case(tmp_path, "fake-embed", "empty-instruction", body)
+    with pytest.raises(CaseError, match="empty instruction"):
+        load_case(case_file)
+
+
+def test_an_image_field_may_name_an_image_only(tmp_path: Path) -> None:
+    """(round-2 F5) ``image:`` names an image the product's image table knows (``.mp4`` is a video):
+    the field-kind cross-check runs at load, not as an opaque decode failure mid-run."""
+    body = """
+        id: fake-pool/field-kind
+        recipe: fake-pool
+        role: multi_vector
+        source: {kind: generated}
+        strata: {modality: image, length: short, batch: single}
+        inputs:
+          queries: [{id: q1, text: describe the clip}]
+          documents:
+            - id: d1
+              text: the placeholder square
+              image: media/clip.mp4
+        expected:
+          kind: similarity_matrix
+          values: null
+          tolerance: {abs: 0.01}
+          origin: reference
+          status: pending_gpu
+    """
+    case_file = write_case(tmp_path, "fake-pool", "field-kind", body)
+    (case_file.parent / "media").mkdir()
+    (case_file.parent / "media" / "clip.mp4").write_bytes(b"not-a-real-clip")
+    with pytest.raises(CaseError, match="names a video"):
+        load_case(case_file)
+
+
 def test_a_textless_media_document_does_not_supply_the_mixed_lengths(tmp_path: Path) -> None:
     """(round-2 F2, R1a) A media-only document measures nothing (it is not measured) -- it must NOT
     count as a 0-token "length" that satisfies ``length: mixed``. All text-bearing inputs measuring

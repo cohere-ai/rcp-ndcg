@@ -154,6 +154,11 @@ def run_case(
     base_url: str | None = None,
     fake_engine: Any | None = None,
 ) -> CaseResult:
+    if case.recipe != recipe.id:
+        raise ConformanceError(
+            f"case {case.id!r} belongs to recipe {case.recipe!r} but the run plans recipe "
+            f"{recipe.id!r}: a run under the wrong scorer is an identity lie"
+        )
     """Run one case against one target (see :func:`run_suite` for the arguments and the errors)."""
     resolved = _resolve(recipe, target, base_url, fake_engine)
     try:
