@@ -21,25 +21,115 @@ from rcp_ndcg_vllm import load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 
-from ._served import served_rows, stage1_facts, tokenizer_cache
+from ._contract import assert_recipe_contract
+from ._served import fetch_tokenizer, served_rows, stage1_facts
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "zerank-1-small-reranker"
 REVISION = "a65fd51c450e9b47fdddab98e31166ecad21af8d"
 REPO = "zeroentropy/zerank-1-small-reranker"
+TOKENIZER_URL = f"https://huggingface.co/{REPO}/resolve/{REVISION}/tokenizer.json"
+TOKENIZER_SHA256 = "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+
+#: The recipe's full resolved contract: every field of every block, exactly as the product models
+#: resolve it (authored values and schema defaults alike). Nothing may ride unpinned.
+CONTRACT: dict[str, Any] = {
+    "serve": {
+        "runner": "pooling",
+        "convert": None,
+        "hf_overrides": {
+            "architectures": ["Qwen3ForSequenceClassification"],
+            "classifier_from_token": ["Yes"],
+            "method": "no_post_processing",
+        },
+        "chat_template": "zerank_score_template.jinja",
+        "pooler_config": {"logit_sigma": 5, "use_activation": True},
+        "trust_remote_code": False,
+        "max_model_len": 32768,
+        "dtype": "bfloat16",
+        "plugin": None,
+        "io_processor_plugin": None,
+        "mm_processor_kwargs": {},
+        "limit_mm_per_prompt": None,
+        "extra_args": [],
+    },
+    "client": {
+        "api": "rerank",
+        "model": "zerank-1-small-reranker",
+        "revision": REVISION,
+        "api_key_env": None,
+        "headers_env": {},
+        "concurrency": 64,
+        "timeout_s": 600.0,
+        "connect_timeout_s": 5.0,
+        "max_retries": 2,
+        "wait_on_outage_s": None,
+        "image_processor": None,
+        "image_policy": None,
+        "video_policy": None,
+        "max_images": 0,
+        "max_videos": 0,
+        "media_sides": ["query", "document"],
+        "recipe": (
+            "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + "
+            "classifier_from_token [Yes] + method no_post_processing, --chat-template "
+            "zerank_score_template.jinja, pooler logit_sigma 5 + use_activation true "
+            "(sigmoid(l_Yes/5) at the last token, 1-label head)"
+        ),
+        "tokenizer": f"{REPO}@{REVISION}",
+        "max_tokens": 8192,
+        "instruction": "none",
+        "use_activation": True,
+        "query_max_tokens": 4096,
+        "template": {
+            "query": None,
+            "document": None,
+            "pair": [
+                {"fixed": "{special:im_start}system\n", "content": None},
+                {"fixed": None, "content": "query"},
+                {"fixed": "{special:im_end}\n{special:im_start}user\n", "content": None},
+                {"fixed": None, "content": "document"},
+                {"fixed": "{special:im_end}\n{special:im_start}assistant\n", "content": None},
+            ],
+            "anchor": "last",
+            "anchor_markers": [],
+            "add_special_tokens": True,
+            "normalize": ["strip"],
+        },
+        "on_overflow": "cut",
+        "chunk": None,
+        "aggregation": "max",
+        "empty_doc": "send",
+        "empty_doc_text": None,
+        "empty_query": "send",
+        "request_shape": "text",
+        "listwise": False,
+        "batch_size": None,
+    },
+    "reference": {
+        "kind": "transformers",
+        "score_scale": "probability",
+        "entry": "reference.py",
+        "known_deviations": ["anchor_drop_over_cap"],
+    },
+}
+
+TOP = {
+    "id": "zerank-1-small-reranker",
+    "model": REPO,
+    "revision": REVISION,
+    "role": "rerank",
+    "input": ["text"],
+    "scoring": "pointwise",
+    "licence": "apache-2.0",
+}
 
 _RECIPE_FILES = ("recipe.yaml", "zerank_score_template.jinja", "reference.py")
 
 
 def _tokenizer_file(tmp_path: Path) -> Path:
-    """The tokenizer.json the recipe names, in the shared tokeniser cache (``RCP_NDCG_VLLM_TOKENIZER_CACHE``
-    when set, the test's ``tmp_path`` otherwise): the download lands there and nowhere else."""
-    try:
-        from huggingface_hub import hf_hub_download
-
-        target = tokenizer_cache(tmp_path / "tokenizer")
-        return Path(hf_hub_download(REPO, "tokenizer.json", revision=REVISION, local_dir=str(target)))
-    except Exception as error:  # offline (CI) and not cached
-        pytest.skip(f"offline: the zerank-1-small-reranker tokenizer.json is not downloadable ({error})")
+    """The pinned tokenizer.json in the shared tokeniser cache (``RCP_NDCG_VLLM_TOKENIZER_CACHE``
+    when set, the test's ``tmp_path`` otherwise): one download per recipe name, SHA-256 pinned."""
+    return fetch_tokenizer(TOKENIZER_URL, f"{RECIPE_DIR.name}-tokenizer.json", tmp_path, sha256=TOKENIZER_SHA256)
 
 
 #: Stage 1 on CPU needs the real tokenizer files: downloaded into the shared tokeniser cache
@@ -101,30 +191,39 @@ def _sample_pairs() -> list[dict]:
 def test_recipe_validates_against_the_schema_and_the_product() -> None:
     """The recipe loads: role-aware client block, explicit budget, the template file, the deviation."""
     recipe = load_recipe(RECIPE_DIR)
-    assert recipe.id == "zerank-1-small-reranker" == RECIPE_DIR.name
-    assert recipe.model == "zeroentropy/zerank-1-small-reranker"
-    assert recipe.revision == REVISION
-    assert recipe.role == "rerank" and recipe.input == ["text"] and recipe.scoring == "pointwise"
-    assert recipe.licence == "apache-2.0"
-    client = recipe.client
-    assert client.tokenizer == f"{REPO}@{REVISION}"
-    assert client.max_tokens == 8192 and client.query_max_tokens == 4096
-    assert client.on_overflow == "cut" and client.use_activation is True and client.listwise is False
-    assert client.instruction == "none" and client.empty_doc == "send"
-    template = client.template
+    assert_recipe_contract(
+        recipe, serve=CONTRACT["serve"], client=CONTRACT["client"], reference=CONTRACT["reference"], top=TOP
+    )
+    template = recipe.client.template
+    assert template is not None
     assert template.shapes() == ("pair",) and template.anchor == "last"
     assert template.adds_special_tokens("pair") is True
+    assert template.normalisers("pair") == ("strip",)  # the family's declared normalisation
     assert [segment.content for segment in template.segments("pair") if segment.content] == ["query", "document"]
-    assert recipe.serve.chat_template == "zerank_score_template.jinja"
     assert (RECIPE_DIR / recipe.serve.chat_template).is_file()
-    assert recipe.serve.hf_overrides["classifier_from_token"] == ["Yes"]
-    assert recipe.serve.pooler_config == {"logit_sigma": 5, "use_activation": True}
-    assert recipe.serve.dtype == "bfloat16" and recipe.serve.trust_remote_code is False
-    assert recipe.serve.max_model_len >= client.max_tokens
-    assert recipe.reference.known_deviations == ["anchor_drop_over_cap"]
-    assert recipe.reference.score_scale == "probability"
     assert recipe.status.state == "unverified"
     assert any("r-zerank1" in source for source in recipe.sources)
+
+
+def test_the_contract_reds_on_two_mutants() -> None:
+    """Two mutants of the declared contract must red the pin (the sweep's surviving mutants)."""
+    recipe = load_recipe(RECIPE_DIR)
+    serve_mutant = recipe.model_copy(update={"serve": recipe.serve.model_copy(update={"max_model_len": 40960})})
+    with pytest.raises(AssertionError, match="max_model_len"):
+        assert_recipe_contract(
+            serve_mutant, serve=CONTRACT["serve"], client=CONTRACT["client"], reference=CONTRACT["reference"], top=TOP
+        )
+    reference_mutant = recipe.model_copy(
+        update={"reference": recipe.reference.model_copy(update={"kind": "remote_code"})}
+    )
+    with pytest.raises(AssertionError, match="kind"):
+        assert_recipe_contract(
+            reference_mutant,
+            serve=CONTRACT["serve"],
+            client=CONTRACT["client"],
+            reference=CONTRACT["reference"],
+            top=TOP,
+        )
 
 
 def test_serve_argv_renders_the_pinned_serving_command() -> None:
@@ -268,6 +367,31 @@ def test_reference_render_matches_fit_on_over_budget_pairs(tmp_path: Path) -> No
     assert "alfa " * 5999 not in fitted[2]["query"]  # the query span was cut to its declared share
     assert "bravo " * 5999 not in fitted[2]["documents"][0]  # the document span was cut to the remainder
     assert fitted[4] == {"query": "empty document", "documents": [""]}  # empty_doc: send keeps the empty string
+
+
+@stage1_env
+@pytest.mark.network
+def test_padded_inputs_strip_through_the_declared_normalisation(tmp_path: Path) -> None:
+    """Whitespace-padded inputs: the wire ships the declared normalisation (``normalize: [strip]``)
+    - the paper's ``query.strip()``/``doc.strip()`` - as the content spans, and the reference's spans
+    agree byte for byte (one rule for the family: the strip is declared, never a template filter).
+    """
+    from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
+
+    recipe = _resolved_recipe(tmp_path)
+    tokenizer = tokenizer_of(recipe)
+    rows = [{"query": "  padded query \n\t", "documents": ["\n leading document "]}]
+    spans = served_rows(recipe, rows, tokenizer)["per_shape"]["pair"]["spans"]
+    assert spans == [{"query": "padded query", "documents": ["leading document"]}]
+    im_start = tokenizer.special_text("im_start")
+    im_end = tokenizer.special_text("im_end")
+    template = recipe.client.template
+    assert template is not None
+    built = template.render("pair", tokenizer, query=spans[0]["query"], document=spans[0]["documents"][0])
+    assert built == (
+        f"{im_start}system\npadded query{im_end}\n{im_start}user\nleading document{im_end}\n{im_start}assistant\n"
+    )
+    assert built.endswith(f"{im_end}\n{im_start}assistant\n")
 
 
 @stage1_env

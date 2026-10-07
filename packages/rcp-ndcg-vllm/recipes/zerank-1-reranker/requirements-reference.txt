@@ -7,14 +7,16 @@
 # that slot is up and releases its memory when it exits. It is documented, not installed, by the
 # harness.
 #
-# The paper's own versions (the paper-exact reference ran with the package's former [local] extra):
-# torch 2.9.1 and transformers 4.57.6. score mode needs torch (the 4B bf16 causal LM); render mode
-# needs only the tokenizer side of transformers. scipy is the paper's expit (sigmoid via math.exp
-# would overflow on very negative logits).
+# Stage 1 (--mode render) needs only tokenizers + huggingface_hub (both below; both are
+# transformers' own dependencies -- one convention for the whole zerank family). Stage 2
+# (--mode score) needs torch and the ~8 GB zeroentropy/zerank-1-reranker weights. torch,
+# transformers and scipy are the paper's own versions (the paper-exact reference ran with the
+# package's former [local] extra): torch 2.9.1, transformers 4.57.6. scipy is the paper's expit
+# (sigmoid via math.exp would overflow on very negative logits). The paper file's flash-attn and
+# accelerate pins are deliberately not carried: this reference passes neither attn_implementation
+# nor device_map.
 torch==2.9.1
 transformers==4.57.6
 scipy>=1.11
-# The render mode's anchor-preserving render is the product's own budget mechanism (fit): the
-# reference environment needs rcp-ndcg too. Before the release exists on PyPI, install it from the
-# wave's wheelhouse (rc-build stages it next to the release wheels).
-rcp-ndcg==0.0.1
+tokenizers>=0.21
+huggingface_hub>=0.30

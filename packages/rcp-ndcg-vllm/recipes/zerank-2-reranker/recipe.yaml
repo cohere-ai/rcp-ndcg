@@ -16,7 +16,7 @@
 #     --runner pooling \
 #     --hf-overrides '{"architectures": ["Qwen3ForSequenceClassification"], "classifier_from_token":
 #                      ["Yes"], "method": "no_post_processing"}' \
-#     --pooler-config '{"logit_sigma": 5}' \
+#     --pooler-config '{"logit_sigma": 5, "use_activation": true}' \
 #     --chat-template zerank2_score_template.jinja \
 #     --max-model-len 8192
 # --chat-template is LOAD-BEARING: without it the score path falls back to raw query+document
@@ -43,6 +43,8 @@ serve:
   chat_template: zerank2_score_template.jinja
   pooler_config:
     logit_sigma: 5         # sigmoid(l_Yes / 5); logit_mean stays None
+    use_activation: true   # pinned SERVER-side as well as on the wire (client.use_activation): the
+                           # engine's activation must run for every caller of the engine
   trust_remote_code: false
   max_model_len: 8192      # the paper's truncation budget
   dtype: bfloat16          # the checkpoint config's dtype
@@ -50,10 +52,17 @@ serve:
   extra_args: []
 client:
   api: rerank
+  recipe: "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + classifier_from_token [Yes] + method no_post_processing, --chat-template zerank2_score_template.jinja, pooler logit_sigma 5 + use_activation true (sigmoid(l_Yes/5) at the last token, 1-label head)"
   tokenizer: "zeroentropy/zerank-2-reranker@5eae30d5ee3c6b2df2ef6d723bde45172d761c4c"
   max_tokens: 8192         # the paper's whole-pair budget (external_rerankers MAX_SEQ_LENGTH)
-  query_max_tokens: 4096   # the served path's query share (the paper config's MAX_QUERY_LENGTH);
-                           # the in-process reference caps only the whole prompt - see notes
+  query_max_tokens: 4096   # the query's share of the pair budget (the paper's query cap; the pair
+                           # cap is its MAX_SEQ_LENGTH 8192, both as the paper config declares them,
+                           # experiments/paper/rerankers/zerank_2.yaml). The settle rule, read from the
+                           # merged rerank client (one rule for the family): the pair fit binds on
+                           # overflow; the client settles the shared query ONCE per request, at this
+                           # share whenever the query exceeds it, then each (query, document) pair is
+                           # fitted under the budget. An over-share query ships cut at the share while
+                           # the in-process reference keeps it whole: a declared divergence row (notes)
   template:
     pair:
       - {fixed: "{special:im_start}system\n"}
@@ -64,10 +73,16 @@ client:
     anchor: last           # the assistant generation prompt: the position the score head reads
     add_special_tokens: true   # the scoring route adds the post-processor's tokens (a no-op for
                            # this tokenizer - measured equal, so the overhead is the frame alone)
+    normalize: [strip]     # one rule for the family: the paper's query.strip()/doc.strip() is the
+                           # DECLARED content normalisation (TemplateSpec.normalize), applied by fit
+                           # before measuring and shipped on the wire -- never a jinja trim filter in
+                           # the template file
   instruction: none        # the family takes no instruction parameter; a dataset "Task:" text, when
                            # present, is part of the query string
   on_overflow: cut
   empty_doc: send
+  empty_query: send        # one rule for the family: the paper's path scores an empty query against
+                           # every candidate as given (the product's post-refusal default is `refuse`)
   request_shape: text
   use_activation: true     # the served score is the probability sigmoid(l_Yes / 5); the engine applies
                            # its activation for the 1-label head, the reference's scale
@@ -94,17 +109,17 @@ sources:
     the d0d6e5f ref checkout, four differ by unrelated additions - research report r-zerank2
     section 1 as corrected by audit-synth's corrections.md r-zerank2 row, which supersedes the
     report's own section-1 wording for this count)"
-  - "rcp-ndcg: src/rcp_ndcg/retrieval/external_rerankers.py:231,260-262 (logit/5, expit), :188 (right
-    padding), :210,211 (strip); experiments/paper/rerankers/reference/zerank.py (the paper-exact
-    reference); experiments/paper/rerankers/zerank_2.yaml (the served-path config: budgets and
-    instruction: none); research /root/repos/rcp-ndcg-lanes/research/r-zerank2/out/ (report, digest,
+  - "rcp-ndcg: experiments/paper/rerankers/reference/zerank.py (the paper-exact reference: strip + chat
+    template :78-87, the whole-prompt 8192 cap :47, yes-logit/5 :103, expit :132-134);
+    experiments/paper/rerankers/zerank_2.yaml (the served-path config: budgets and instruction: none);
+    research /root/repos/rcp-ndcg-lanes/research/r-zerank2/out/ (report, digest,
     cpu_check 10 PASS, mutation-tested template)"
 notes: >
   CPU evidence (research lane r-zerank2): the derived template renders byte-identically through
   transformers' own apply_chat_template and a hand-rolled environment, token ids match the paper's
   render with add_special_tokens True==False, truncation at 8192 is identical, the prompt ends with
-  the assistant header, and the strip asymmetry is pinned (10 PASS, 0 failures; the mutation
-  re-gating the generation prompt fails). This recipe declares that template and adds the
+  the assistant header, and the paper's strip is the family's declared normalisation (below) (10 PASS,
+  0 failures; the mutation re-gating the generation prompt fails). This recipe declares that template and adds the
   `messages is defined` guard so the harness's stage-1 template check (which renders the file from
   the plain request texts) and the engine's score route (which renders it over query/document
   messages) execute different branches that produce the same prompt: stage 1 asserts the
@@ -112,15 +127,17 @@ notes: >
   recipe's tests additionally render the engine's messages context with the serving
   environment's jinja settings and assert byte-identity with it and with the declared shape's
   render for every sampled row, and stage 2 on the GPU wave exercises the engine branch end to
-  end. Known served-vs-reference differences, all inherited from the paper's served path and recorded in
-  the research report section 6: (1) the reference strips query and document before rendering, the
-  served path renders the client's text as sent - whitespace-padded inputs tokenize differently;
-  (2) the reference truncates only the whole rendered prompt at 8192 (declared known_deviations:
-  anchor_drop_over_cap), the served path cuts the content spans and keeps the anchor; the declared
-  query_max_tokens 4096 is the served path's query share (experiments/paper/rerankers/zerank_2.yaml),
-  so a query over 4096 tokens is cut served-side while the reference keeps it whole - the GPU wave
-  should check the workload's query lengths or drop the share; (3) the score-head matmul runs in
-  fp32 on the engine (head_dtype default for pooling) and bf16 in the reference - expected well
+  end. The paper's query.strip()/doc.strip() is the declared content normalisation (client.template
+  normalize: [strip]): fit strips the spans before measuring, the wire ships the stripped spans and
+  the reference's spans agree byte for byte (the r-zerank2 "strip asymmetry" closes as declared
+  policy, one rule for the family). Known served-vs-reference differences, all inherited from the
+  paper's served path and recorded in the research report section 6: (1) the reference truncates
+  only the whole rendered prompt at 8192 (declared known_deviations: anchor_drop_over_cap), the
+  served path cuts the content spans and keeps the anchor; (2) the settle rule (above) settles a
+  query over its 4096-token share served-side while the in-process reference keeps it whole
+  (experiments/paper/rerankers/zerank_2.yaml); over-share queries are declared divergence rows: keep
+  them out of the wave's pairs file or drop the share (the schema's known_deviations vocabulary has
+  no entry for it yet: recorded product gap); (3) the score-head matmul runs in fp32 on the (head_dtype default for pooling) and bf16 in the reference - expected well
   inside the probability gates; (4) reference.py implements the recipe's anchor-preserving render
   itself (the reference environment has no rcp-ndcg), pinned byte-identical to the product's fit by
   the recipe tests. GPU wave must also: run the negative control (serve without --chat-template

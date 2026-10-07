@@ -1,24 +1,33 @@
-"""The zerank-2-reranker recipe: load validation, CPU stage 1, the anchor audit, and the mutation.
+"""The zerank-2-reranker recipe: the declared contract, CPU stage 1, the reference spans, the mutation.
 
-Stage 1 runs the harness's own machinery against the committed recipe (the product's fit, the
-anchor audit, the served-template check and the reference subprocess). The tokenizer files are
-the only download (into this test's scratch directory, never into the checkout); offline, the
-tests that need them skip with a clear reason. The reference's score mode needs torch and the
-checkpoint weights -- it runs on the GPU wave, never here.
+The contract test pins every resolved ``serve``/``client``/``reference`` field through the recipe
+lanes' shared helper (``_contract.assert_recipe_contract``), with a two-mutant negative control.
+Stage 1 runs the harness's own machinery on the real tokenizer (downloaded into
+``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when set, else ``tmp_path``, pinned by SHA-256; public Hub file,
+never a token file). The reference's ``--mode render`` speaks the rerank reference contract -- the
+wire's cut content spans -- including the settle rule (the query settles at its declared share
+whenever it exceeds it) and the declared normalisation (``normalize: [strip]``, the paper's strip).
+The reference's score mode needs torch and the checkpoint weights -- it runs on the GPU wave.
 """
 
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
-import urllib.request
 from pathlib import Path
+from typing import Any
 
 import pytest
-from rcp_ndcg_vllm import load_recipe, serve_argv
+import yaml
+from rcp_ndcg_vllm import RecipeError, load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
+from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 from rcp_ndcg_vllm.recipe import Recipe
+
+from ._contract import assert_recipe_contract
+from ._served import fetch_tokenizer, served_rows, stage1_facts
 
 TESTS = Path(__file__).resolve().parent  # packages/rcp-ndcg-vllm/tests/recipes
 PACKAGE = TESTS.parent.parent  # packages/rcp-ndcg-vllm
@@ -31,6 +40,100 @@ TEMPLATE = "zerank2_score_template.jinja"
 MAX_TOKENS = 8192
 QUERY_MAX_TOKENS = 4096
 TOKENIZER_URL = f"https://huggingface.co/{MODEL}/resolve/{REVISION}/tokenizer.json"
+TOKENIZER_SHA256 = "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+
+#: The recipe's full resolved contract: every field of every block, exactly as the product models
+#: resolve it (authored values and schema defaults alike). Nothing may ride unpinned.
+CONTRACT: dict[str, Any] = {
+    "serve": {
+        "runner": "pooling",
+        "convert": None,
+        "hf_overrides": {
+            "architectures": ["Qwen3ForSequenceClassification"],
+            "classifier_from_token": ["Yes"],
+            "method": "no_post_processing",
+        },
+        "chat_template": "zerank2_score_template.jinja",
+        "pooler_config": {"logit_sigma": 5, "use_activation": True},
+        "trust_remote_code": False,
+        "max_model_len": 8192,
+        "dtype": "bfloat16",
+        "plugin": None,
+        "io_processor_plugin": None,
+        "mm_processor_kwargs": {},
+        "limit_mm_per_prompt": None,
+        "extra_args": [],
+    },
+    "client": {
+        "api": "rerank",
+        "model": "zerank-2-reranker",
+        "revision": REVISION,
+        "api_key_env": None,
+        "headers_env": {},
+        "concurrency": 64,
+        "timeout_s": 600.0,
+        "connect_timeout_s": 5.0,
+        "max_retries": 2,
+        "wait_on_outage_s": None,
+        "image_processor": None,
+        "image_policy": None,
+        "video_policy": None,
+        "max_images": 0,
+        "max_videos": 0,
+        "media_sides": ["query", "document"],
+        "recipe": (
+            "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + "
+            "classifier_from_token [Yes] + method no_post_processing, --chat-template "
+            "zerank2_score_template.jinja, pooler logit_sigma 5 + use_activation true "
+            "(sigmoid(l_Yes/5) at the last token, 1-label head)"
+        ),
+        "tokenizer": f"{MODEL}@{REVISION}",
+        "max_tokens": 8192,
+        "instruction": "none",
+        "use_activation": True,
+        "query_max_tokens": 4096,
+        "template": {
+            "query": None,
+            "document": None,
+            "pair": [
+                {"fixed": "{special:im_start}system\n", "content": None},
+                {"fixed": None, "content": "query"},
+                {"fixed": "{special:im_end}\n{special:im_start}user\n", "content": None},
+                {"fixed": None, "content": "document"},
+                {"fixed": "{special:im_end}\n{special:im_start}assistant\n", "content": None},
+            ],
+            "anchor": "last",
+            "anchor_markers": [],
+            "add_special_tokens": True,
+            "normalize": ["strip"],
+        },
+        "on_overflow": "cut",
+        "chunk": None,
+        "aggregation": "max",
+        "empty_doc": "send",
+        "empty_doc_text": None,
+        "empty_query": "send",
+        "request_shape": "text",
+        "listwise": False,
+        "batch_size": None,
+    },
+    "reference": {
+        "kind": "transformers",
+        "score_scale": "probability",
+        "entry": "reference.py",
+        "known_deviations": ["anchor_drop_over_cap"],
+    },
+}
+
+TOP = {
+    "id": RECIPE_ID,
+    "model": MODEL,
+    "revision": REVISION,
+    "role": "rerank",
+    "input": ["text"],
+    "scoring": "pointwise",
+    "licence": "apache-2.0",
+}
 
 
 def committed() -> Recipe:
@@ -42,8 +145,8 @@ def with_local_tokenizer(tokenizer_path: Path) -> Recipe:
     """The committed recipe, reading its tokenizer from the downloaded file.
 
     The committed recipe names the Hub spec (what production resolves); the stage-1 checks run on
-    the same tokenizer.json, downloaded into this test's scratch, so they stay offline-capable
-    after the one download.
+    the same tokenizer.json, downloaded into the shared cache, so they stay offline-capable after
+    the one download.
     """
     recipe = committed()
     client = recipe.client.model_copy(update={"tokenizer": str(tokenizer_path)})
@@ -51,19 +154,14 @@ def with_local_tokenizer(tokenizer_path: Path) -> Recipe:
 
 
 @pytest.fixture(scope="session")
-def zerank_tokenizer(tmp_path_factory) -> Path:
-    """The recipe tokenizer's file, downloaded into this test's scratch directory.
+def zerank_tokenizer(tmp_path_factory: Any) -> Path:
+    """The recipe tokenizer's file, pinned by SHA-256, in the shared tokeniser cache or ``tmp_path``.
 
     Skips with a clear reason when offline (CI): stage 1 on CPU is meaningless without the
     tokenizer the recipe declares.
     """
-    target = tmp_path_factory.mktemp("zerank-tokenizer") / "tokenizer.json"
-    try:
-        with urllib.request.urlopen(TOKENIZER_URL, timeout=120) as response:
-            target.write_bytes(response.read())
-    except OSError as error:
-        pytest.skip(f"offline: cannot fetch {MODEL}@{REVISION} tokenizer.json ({error}); stage 1 on CPU needs it")
-    return target
+    tmp_path = Path(tmp_path_factory.mktemp("zerank-tokenizer"))
+    return fetch_tokenizer(TOKENIZER_URL, f"{RECIPE_DIR.name}-tokenizer.json", tmp_path, sha256=TOKENIZER_SHA256)
 
 
 def write_pairs(path: Path, rows: list[dict]) -> Path:
@@ -97,6 +195,10 @@ def sample_pairs() -> list[dict]:
         {"query": f"what does the {words[index]} of row {index} mean", "documents": [document(random.randint(15, 150))]}
         for index in range(13)
     ]
+    # The harness's over-length sampler pads rows[0]'s spans marker-wise, re-counting the growing
+    # text per step (stages._over_length): a many-word seed makes that loop spin for minutes.
+    # Keep row 0 short; the length variety lives in the rows behind it.
+    rows[0] = {"query": "what does the alpha of row 0 mean", "documents": ["the short seed document"]}
     rows.append(
         {"query": "instruction-bearing query", "documents": [document(40)], "instruction": "Rank by relevance."}
     )
@@ -112,34 +214,47 @@ def sample_pairs() -> list[dict]:
 # -----------------------------------------------------------------------------------------------
 
 
-def test_recipe_loads_and_declares_the_paper_path() -> None:
+def test_recipe_contract_pins_every_field() -> None:
+    """Every resolved serve/client/reference field (and every top-level fact) is pinned exactly."""
     recipe = committed()
-    assert recipe.id == RECIPE_ID
-    assert recipe.model == MODEL
-    assert recipe.revision == REVISION  # the 40-hex commit the research pinned (live API re-checked)
-    assert recipe.role == "rerank" and recipe.scoring == "pointwise"
-    assert recipe.input == ["text"]
-    assert recipe.licence == "apache-2.0"
-    assert recipe.engine.image == "vllm/vllm-openai:v0.31.0"
-    assert recipe.client.tokenizer == f"{MODEL}@{REVISION}"
-    assert recipe.client.max_tokens == MAX_TOKENS
-    assert recipe.client.query_max_tokens == QUERY_MAX_TOKENS
-    assert recipe.client.on_overflow == "cut"
-    assert recipe.client.instruction == "none"
-    assert recipe.client.use_activation is True  # the served score is the probability, like the reference
-    assert recipe.reference.kind == "transformers"
-    assert recipe.reference.score_scale == "probability"
-    assert recipe.reference.known_deviations == ["anchor_drop_over_cap"]
-    assert recipe.status.state == "unverified"
+    assert_recipe_contract(
+        recipe, serve=CONTRACT["serve"], client=CONTRACT["client"], reference=CONTRACT["reference"], top=TOP
+    )
+    assert recipe.serve.max_model_len == recipe.client.max_tokens
+    assert (RECIPE_DIR / TEMPLATE).is_file()  # R10: without the file vLLM warns and concatenates
+    assert (RECIPE_DIR / "requirements-reference.txt").is_file()
     assert recipe.sources
+
+
+def test_the_contract_reds_on_two_mutants() -> None:
+    """Two mutants of the declared contract must red the pin (the sweep's surviving mutants)."""
+    recipe = committed()
+    serve_mutant = recipe.model_copy(update={"serve": recipe.serve.model_copy(update={"max_model_len": 40960})})
+    with pytest.raises(AssertionError, match="max_model_len"):
+        assert_recipe_contract(
+            serve_mutant, serve=CONTRACT["serve"], client=CONTRACT["client"], reference=CONTRACT["reference"], top=TOP
+        )
+    reference_mutant = recipe.model_copy(
+        update={"reference": recipe.reference.model_copy(update={"kind": "remote_code"})}
+    )
+    with pytest.raises(AssertionError, match="kind"):
+        assert_recipe_contract(
+            reference_mutant,
+            serve=CONTRACT["serve"],
+            client=CONTRACT["client"],
+            reference=CONTRACT["reference"],
+            top=TOP,
+        )
 
 
 def test_template_declares_specials_by_name_and_the_anchor_tail() -> None:
     """The frame is data: specials by name (never a literal), the anchor is the assistant header."""
     template = committed().client.template
+    assert template is not None
     assert template.shapes() == ("pair",)
     assert template.anchor == "last"
     assert template.adds_special_tokens("pair") is True
+    assert template.normalisers("pair") == ("strip",)  # the family's declared normalisation
     fixed = [segment.fixed for segment in template.pair if segment.fixed is not None]
     assert len(fixed) == 3
     assert all("{special:" in segment for segment in fixed), fixed
@@ -150,13 +265,13 @@ def test_template_declares_specials_by_name_and_the_anchor_tail() -> None:
 
 def test_the_template_file_ships_and_the_argv_carries_the_serving_facts() -> None:
     recipe = committed()
-    assert (RECIPE_DIR / TEMPLATE).is_file()  # R10: without the file vLLM warns and concatenates
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
     joined = " ".join(argv)
     assert "--chat-template" in argv and str(RECIPE_DIR / TEMPLATE) in argv
     assert "--runner pooling" in joined
+    assert "--convert" not in argv, "a rerank recipe never flags --convert"
     assert "--max-model-len 8192" in joined
-    assert "--pooler-config" in joined and '"logit_sigma": 5' in joined
+    assert "--pooler-config" in joined and '"logit_sigma": 5' in joined and '"use_activation": true' in joined
     assert "--dtype bfloat16" in joined
     assert "--trust-remote-code" not in joined
     overrides = json.loads(argv[argv.index("--hf-overrides") + 1])
@@ -165,214 +280,7 @@ def test_the_template_file_ships_and_the_argv_carries_the_serving_facts() -> Non
     assert overrides["method"] == "no_post_processing"
 
 
-# -----------------------------------------------------------------------------------------------
-# Stage 1 on CPU: the product's fit, the anchor audit, the served-template check, the reference
-# subprocess's render, and explicit token-id equality.
-# -----------------------------------------------------------------------------------------------
-
-
-def test_stage1_passes_on_cpu(tmp_path: Path, zerank_tokenizer: Path) -> None:
-    recipe = with_local_tokenizer(zerank_tokenizer)
-    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs())
-    document = stage1_prompts(recipe, pairs, sys.executable, over_length_per_shape=5)
-    assert document["passed"] is True
-    # At least 20 sampled pairs incl. 5 over-length ones (the pair shape is the declared one).
-    assert document["sampled"] == 22
-    assert document["anchor_check"]["passed"] is True, document["anchor_check"]["failures"][:1]
-    assert document["anchor_check"]["checked"] == 22
-    assert document["render_check"]["status"] == "run"
-    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
-    assert document["render_check"]["rows"] == 17
-    assert document["template_render_check"]["passed"] is True, document["template_render_check"]["failures"][:1]
-    assert document["engine_tokenize_check"]["status"] == "not_run"  # no engine on CPU; never reported passed
-    # The declared budget: the frame overhead is 13 tokens, measured, not assumed.
-    assert document["fit"]["pair"]["overhead"] == 13
-    assert document["fit"]["pair"]["cuts"] > 0  # the over-budget rows were cut, not sent whole
-
-
-def test_stage1_token_ids_are_equal_across_the_reference_the_fit_and_the_served_template(
-    tmp_path: Path, zerank_tokenizer: Path
-) -> None:
-    """Token-id equality: the reference subprocess's render, the product's fit and the served
-    template file's render tokenize to the same ids, per sampled row."""
-    import jinja2
-    from jinja2.sandbox import ImmutableSandboxedEnvironment
-    from rcp_ndcg_vllm.equivalence.fitting import budget_of
-
-    from rcp_ndcg.data.preprocess import fit
-    from rcp_ndcg.data.tokenizer import load_tokenizer
-
-    recipe = with_local_tokenizer(zerank_tokenizer)
-    tokenizer = load_tokenizer(str(zerank_tokenizer))
-    rows = sample_pairs()
-    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
-    template_text = (RECIPE_DIR / TEMPLATE).read_text(encoding="utf-8")
-    env = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True, undefined=jinja2.StrictUndefined)
-
-    for index, row in enumerate(rows[:4]):
-        inputs = [(row["query"], row["documents"][0])]
-        result = fit(inputs, "pair", budget, tokenizer, ids=[str(index)])
-        fitted = result.texts[0]
-        # The served template file renders the same prompt from the plain texts (the harness's check).
-        jinja_text = env.from_string(template_text).render(
-            query=row["query"], document=row["documents"][0], instruction=""
-        )
-        assert jinja_text == fitted, index
-        # The reference subprocess renders the same prompt text for the row.
-        rendered = subprocess.run(
-            [
-                sys.executable,
-                str(RECIPE_DIR / "reference.py"),
-                "--mode",
-                "render",
-                "--pairs",
-                write_pairs(tmp_path / f"pairs-{index}.jsonl", [row]),
-                "--out",
-                str(tmp_path / f"reference-{index}.json"),
-                "--tokenizer",
-                str(zerank_tokenizer),
-                "--device",
-                "cpu",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=True,
-        )
-        assert rendered.returncode == 0, rendered.stderr
-        document = json.loads((tmp_path / f"reference-{index}.json").read_text(encoding="utf-8"))
-        assert document["rows"][0]["shape"] == "pair"
-        assert document["rows"][0]["text"] == fitted, index
-        # Token-id equality, explicitly: fit's ids == the jinja render's ids == the reference's ids.
-        flag = recipe.client.template.adds_special_tokens("pair")
-        ids = tokenizer.ids(fitted, add_special_tokens=flag)
-        assert ids == tokenizer.ids(jinja_text, add_special_tokens=flag)
-        assert ids == tokenizer.ids(document["rows"][0]["text"], add_special_tokens=flag)
-        # The anchor: the trailing fixed segment sits at the tail of every rendered id list.
-        anchor = recipe.client.template.segments("pair")[-1].render(tokenizer)
-        assert ids[-len(tokenizer.ids(anchor)) :] == tokenizer.ids(anchor)
-
-
-def test_stage1_anchor_check_survives_over_length_inputs(tmp_path: Path, zerank_tokenizer: Path) -> None:
-    """The anchor audit samples over-length inputs on purpose (5 here) and every cut keeps the anchor."""
-    recipe = with_local_tokenizer(zerank_tokenizer)
-    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:2])
-    document = stage1_prompts(recipe, pairs, None, over_length_per_shape=5)
-    assert document["sampled"] == 7  # 2 pairs rows + 5 over-length samples
-    assert document["anchor_check"]["passed"] is True, document["anchor_check"]["failures"][:1]
-    assert document["anchor_check"]["checked"] == 7
-
-
-def test_the_served_template_renders_identically_for_the_engine_and_the_harness(
-    tmp_path: Path, zerank_tokenizer: Path
-) -> None:
-    """The served file's two branches and the declared pair shape render byte-identically, per row.
-
-    The engine's score route renders the file over query/document `messages` (tools=None) with
-    transformers' serving environment (trim_blocks/lstrip_blocks, NOT StrictUndefined); the
-    harness's stage-1 check renders it from the plain texts under StrictUndefined; the declared
-    shape is what the product's fit assembles. All three must agree for every sampled row - the
-    harness's own check sees only the plain-text branch on CPU (no engine), so this test pins
-    the engine branch too.
-    """
-    import jinja2
-    from jinja2.sandbox import ImmutableSandboxedEnvironment
-    from rcp_ndcg_vllm.equivalence.fitting import budget_of
-
-    from rcp_ndcg.data.preprocess import fit
-    from rcp_ndcg.data.tokenizer import load_tokenizer
-
-    recipe = with_local_tokenizer(zerank_tokenizer)
-    tokenizer = load_tokenizer(str(zerank_tokenizer))
-    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
-    template_text = (RECIPE_DIR / TEMPLATE).read_text(encoding="utf-8")
-    engine_env = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True)
-    harness_env = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True, undefined=jinja2.StrictUndefined)
-    flag = recipe.client.template.adds_special_tokens("pair")
-    for index, row in enumerate(sample_pairs()):
-        result = fit([(row["query"], row["documents"][0])], "pair", budget, tokenizer, ids=[str(index)])
-        fitted = result.texts[0]
-        cut_query, cut_document = result.contents[0]  # what the client sends; the engine renders these
-        plain = harness_env.from_string(template_text).render(query=cut_query, document=cut_document, instruction="")
-        engine = engine_env.from_string(template_text).render(
-            messages=[
-                {"role": "query", "content": cut_query},
-                {"role": "document", "content": cut_document},
-            ],
-            tools=None,
-        )
-        assert plain == engine == fitted, index
-        assert tokenizer.ids(engine, add_special_tokens=flag) == tokenizer.ids(fitted, add_special_tokens=flag), index
-
-
-def test_reference_cli_renders_the_anchor_preserving_prompt_and_refuses_embed(
-    tmp_path: Path, zerank_tokenizer: Path
-) -> None:
-    """The subprocess contract: exit 0, the JSON shape, and the over-cap row's cut prompt byte-equal
-    to the product's fit (the reference implements the anchor-preserving render without rcp-ndcg)."""
-    from rcp_ndcg.data.preprocess import TextBudget, fit
-    from rcp_ndcg.data.tokenizer import load_tokenizer
-
-    recipe = with_local_tokenizer(zerank_tokenizer)
-    tokenizer = load_tokenizer(str(zerank_tokenizer))
-    rows = sample_pairs()
-    over_cap = rows[-1]  # the far-over-cap row: the pair overflows, both sides cut the document
-    pairs_path = write_pairs(tmp_path / "pairs.jsonl", [over_cap])
-    out_path = tmp_path / "reference.json"
-    completed = subprocess.run(
-        [
-            sys.executable,
-            str(RECIPE_DIR / "reference.py"),
-            "--mode",
-            "render",
-            "--pairs",
-            str(pairs_path),
-            "--out",
-            str(out_path),
-            "--tokenizer",
-            str(zerank_tokenizer),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=300,
-    )
-    assert completed.returncode == 0, completed.stderr
-    document = json.loads(out_path.read_text(encoding="utf-8"))
-    assert set(document["rows"][0]) == {"index", "shape", "text"}
-    budget = TextBudget(
-        tokenizer=str(zerank_tokenizer),
-        max_tokens=recipe.client.max_tokens,
-        query_max_tokens=recipe.client.query_max_tokens,
-        template=recipe.client.template,
-        on_overflow=recipe.client.on_overflow,
-    )
-    fitted = fit([(over_cap["query"], over_cap["documents"][0])], "pair", budget, tokenizer, ids=["0"])
-    assert document["rows"][0]["text"] == fitted.texts[0]
-    assert len(tokenizer.ids(fitted.texts[0], add_special_tokens=True)) == recipe.client.max_tokens
-
-    refused = subprocess.run(
-        [
-            sys.executable,
-            str(RECIPE_DIR / "reference.py"),
-            "--mode",
-            "embed",
-            "--pairs",
-            str(pairs_path),
-            "--out",
-            str(tmp_path / "refused.json"),
-            "--tokenizer",
-            str(zerank_tokenizer),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    assert refused.returncode != 0
-    assert "reranker" in (refused.stderr + refused.stdout)
-
-
-@pytest.mark.usefixtures("zerank_tokenizer")
-def test_reference_cli_reports_a_missing_local_tokenizer(tmp_path: Path) -> None:
+def test_a_recipe_naming_a_missing_local_tokenizer_is_refused(tmp_path: Path) -> None:
     """A local tokenizer spec whose file is absent is refused with the missing-file message, not
     with a Hub download attempt of a path-shaped repo id."""
     missing = tmp_path / "absent.json"
@@ -399,26 +307,261 @@ def test_reference_cli_reports_a_missing_local_tokenizer(tmp_path: Path) -> None
 
 
 # -----------------------------------------------------------------------------------------------
-# The mutation: dropping the template's trailing anchor segment turns the anchor check red.
+# Stage 1 on CPU: the product's client capture, the anchor audit, the served-template check and the
+# reference subprocess's spans.
 # -----------------------------------------------------------------------------------------------
 
 
-def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_red(
-    tmp_path: Path, zerank_tokenizer: Path
-) -> None:
-    """The anchor audit must fail when the pair shape loses its trailing fixed segment (the assistant
-    header the score head reads): a cut there would pool the score from an interior token."""
+def test_stage1_passes_on_cpu(tmp_path: Path, zerank_tokenizer: Path) -> None:
+    recipe = with_local_tokenizer(zerank_tokenizer)
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs())
+    document = stage1_prompts(recipe, pairs, sys.executable, over_length_per_shape=5)
+    assert document["passed"] is True, document
+    # At least 20 sampled pairs incl. 5 over-length ones (the pair shape is the declared one).
+    assert document["sampled"] == 22
+    assert document["anchor_check"]["passed"] is True, document["anchor_check"]["failures"][:1]
+    assert document["anchor_check"]["checked"] == 44  # a settled query + a document span per row
+    assert document["render_check"]["status"] == "run"
+    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
+    assert document["render_check"]["rows"] == 17
+    assert document["template_render_check"]["passed"] is True, document["template_render_check"]["failures"][:1]
+    assert document["engine_tokenize_check"]["status"] == "not_run"  # no engine on CPU; never reported passed
+    # The declared budget: the frame overhead is 13 tokens, measured, not assumed; the over-budget
+    # rows were cut (the product's own census), not sent whole.
+    facts = stage1_facts(recipe, sample_pairs(), tokenizer_of(recipe), 5)
+    assert facts["per_shape"]["pair"]["overhead"] == 13
+    assert facts["per_shape"]["pair"]["cuts"] > 0
+
+
+def test_the_reference_spans_the_fit_ids_and_the_served_template_agree(tmp_path: Path, zerank_tokenizer: Path) -> None:
+    """Token-id equality: the reference subprocess's spans, the wire's captured spans and the
+    served template file's render tokenize to the same ids, per sampled row."""
+    import jinja2
+    from jinja2.sandbox import ImmutableSandboxedEnvironment
+
+    recipe = with_local_tokenizer(zerank_tokenizer)
+    tokenizer = tokenizer_of(recipe)
+    rows = sample_pairs()
+    template_text = (RECIPE_DIR / TEMPLATE).read_text(encoding="utf-8")
+    env = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True, undefined=jinja2.StrictUndefined)
+    served = served_rows(recipe, rows, tokenizer)["per_shape"]["pair"]["spans"]
+    flag = recipe.client.template.adds_special_tokens("pair")
+    template = recipe.client.template
+    assert template is not None
+
+    for index, row in enumerate(rows[:4]):
+        inputs = [(row["query"], row["documents"][0])]
+        del inputs  # the wire's spans are the fit's render; nothing is re-derived here (R30)
+        span = served[index]
+        fitted = template.render("pair", tokenizer, query=span["query"], document=span["documents"][0])
+        # The served template file renders the same prompt from the wire's spans (the harness's check).
+        jinja_text = env.from_string(template_text).render(
+            query=span["query"], document=span["documents"][0], instruction=""
+        )
+        assert jinja_text == fitted, index
+        ids = tokenizer.ids(fitted, add_special_tokens=flag)
+        assert ids == tokenizer.ids(jinja_text, add_special_tokens=flag)
+        # The anchor: the trailing fixed segment sits at the tail of every rendered id list.
+        anchor = template.segments("pair")[-1].render(tokenizer)
+        assert ids[-len(tokenizer.ids(anchor)) :] == tokenizer.ids(anchor), index
+
+
+def test_stage1_anchor_check_survives_over_length_inputs(tmp_path: Path, zerank_tokenizer: Path) -> None:
+    """The anchor audit samples over-length inputs on purpose (5 here) and every cut keeps the
+    settled query within its share and the document within the budget."""
     recipe = with_local_tokenizer(zerank_tokenizer)
     pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:2])
+    document = stage1_prompts(recipe, pairs, None, over_length_per_shape=5)
+    assert document["sampled"] == 7  # 2 pairs rows + 5 over-length samples
+    assert document["anchor_check"]["passed"] is True, document["anchor_check"]["failures"][:1]
+    assert document["anchor_check"]["checked"] == 14  # a settled query + a document span per row
 
-    healthy = stage1_prompts(recipe, pairs, None, over_length_per_shape=2)
-    assert healthy["anchor_check"]["passed"] is True
 
+def test_the_served_template_renders_identically_for_the_engine_and_the_harness(
+    tmp_path: Path, zerank_tokenizer: Path
+) -> None:
+    """The served file's two branches and the declared pair shape render byte-identically, per row.
+
+    The engine's score route renders the file over query/document `messages` (tools=None) with
+    transformers' serving environment (trim_blocks/lstrip_blocks, NOT StrictUndefined); the
+    harness's stage-1 check renders it from the plain texts under StrictUndefined; the declared
+    shape is what the product's template assembles around the wire's spans. All three must agree
+    for every sampled row - the harness's own check sees only the plain-text branch on CPU (no
+    engine), so this test pins the engine branch too.
+    """
+    import jinja2
+    from jinja2.sandbox import ImmutableSandboxedEnvironment
+
+    recipe = with_local_tokenizer(zerank_tokenizer)
+    tokenizer = tokenizer_of(recipe)
+    template_text = (RECIPE_DIR / TEMPLATE).read_text(encoding="utf-8")
+    engine_env = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True)
+    harness_env = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True, undefined=jinja2.StrictUndefined)
     template = recipe.client.template
-    mutated_template = template.model_copy(update={"pair": template.pair[:-1]})
-    assert mutated_template.pair[-1].fixed is None  # the shape now ends with the raw content
-    mutated = recipe.model_copy(update={"client": recipe.client.model_copy(update={"template": mutated_template})})
-    document = stage1_prompts(mutated, pairs, None, over_length_per_shape=2)
-    assert document["anchor_check"]["passed"] is False
-    failures = document["anchor_check"]["failures"]
-    assert failures and failures[0]["check"] == "tail"
+    assert template is not None
+    flag = template.adds_special_tokens("pair")
+    served = served_rows(recipe, sample_pairs(), tokenizer)["per_shape"]["pair"]["spans"]
+    for index, span in enumerate(served):
+        cut_query, cut_document = span["query"], span["documents"][0]  # what the client sends
+        fitted = template.render("pair", tokenizer, query=cut_query, document=cut_document)
+        plain = harness_env.from_string(template_text).render(query=cut_query, document=cut_document, instruction="")
+        engine = engine_env.from_string(template_text).render(
+            messages=[
+                {"role": "query", "content": cut_query},
+                {"role": "document", "content": cut_document},
+            ],
+            tools=None,
+        )
+        assert plain == engine == fitted, index
+        assert tokenizer.ids(engine, add_special_tokens=flag) == tokenizer.ids(fitted, add_special_tokens=flag), index
+
+
+def test_reference_cli_renders_the_wire_spans_and_refuses_embed(tmp_path: Path, zerank_tokenizer: Path) -> None:
+    """The subprocess contract: exit 0, the JSON shape (the rerank reference contract: the wire's
+    content spans), and the over-cap row's spans byte-equal to the product's own capture (the
+    reference implements the anchor-preserving cut without rcp-ndcg)."""
+    recipe = with_local_tokenizer(zerank_tokenizer)
+    tokenizer = tokenizer_of(recipe)
+    rows = sample_pairs()
+    over_cap = rows[-1]  # the far-over-cap row: the pair overflows, both sides cut the document
+    pairs_path = write_pairs(tmp_path / "pairs.jsonl", [over_cap])
+    out_path = tmp_path / "reference.json"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(RECIPE_DIR / "reference.py"),
+            "--mode",
+            "render",
+            "--pairs",
+            str(pairs_path),
+            "--out",
+            str(out_path),
+            "--tokenizer",
+            str(zerank_tokenizer),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert completed.returncode == 0, completed.stderr[-500:]
+    document = json.loads(out_path.read_text(encoding="utf-8"))
+    assert set(document["rows"][0]) == {"index", "shape", "query", "documents"}
+    spans = served_rows(recipe, [over_cap], tokenizer)["per_shape"]["pair"]["spans"]
+    assert {"query": document["rows"][0]["query"], "documents": list(document["rows"][0]["documents"])} == spans[0]
+    template = recipe.client.template
+    assert template is not None
+    frame = template.render("pair", tokenizer, query=spans[0]["query"], document=spans[0]["documents"][0])
+    assert frame.endswith(f"{tokenizer.special_text('im_start')}assistant\n"), "the anchor survives the cut"
+    assert len(tokenizer.ids(frame, add_special_tokens=True)) <= MAX_TOKENS  # the budget held
+
+    refused = subprocess.run(
+        [
+            sys.executable,
+            str(RECIPE_DIR / "reference.py"),
+            "--mode",
+            "embed",
+            "--pairs",
+            str(pairs_path),
+            "--out",
+            str(tmp_path / "refused.json"),
+            "--tokenizer",
+            str(zerank_tokenizer),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert refused.returncode != 0
+    assert "reranker" in (refused.stderr + refused.stdout)
+
+
+def test_settle_rule_and_declared_normalisation_match_the_wire(tmp_path: Path, zerank_tokenizer: Path) -> None:
+    """The wire's settle-once query and the reference's spans agree byte for byte.
+
+    (1) An over-share query (over ``query_max_tokens``) in an under-budget pair is settled at its
+    share by the rerank client (settle-once) and the reference mirrors the wire's spans; (2)
+    whitespace-padded inputs round through the declared normalisation (``normalize: [strip]``: the
+    paper's strip) on both sides.
+    """
+    recipe = with_local_tokenizer(zerank_tokenizer)
+    rows = [
+        # over the 4096-token share, the pair itself under the 8192 budget: the query settles at its share
+        {"query": "alphagammaepsilon" * 1200, "documents": ["short document"]},
+        # whitespace-padded: both sides strip through the declared normalisation
+        {"query": "  padded query \n\t", "documents": ["\n leading document "]},
+    ]
+    spans = served_rows(recipe, rows, tokenizer_of(recipe))["per_shape"]["pair"]["spans"]
+    shares_ok = tokenizer_of(recipe).count(spans[0]["query"]) == QUERY_MAX_TOKENS
+    assert shares_ok and spans[0]["query"] != rows[0]["query"], spans[0]["query"][:80]
+    assert spans[0]["query"] == rows[0]["query"][: len(spans[0]["query"])]  # a verbatim prefix
+    assert spans[0]["documents"] == ["short document"]
+    assert spans[1] == {"query": "padded query", "documents": ["leading document"]}
+    # the reference's --mode render emits the wire's own spans (the rerank reference contract)
+    out_path = tmp_path / "reference.json"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(RECIPE_DIR / "reference.py"),
+            "--mode",
+            "render",
+            "--pairs",
+            write_pairs(tmp_path / "pairs.jsonl", rows),
+            "--out",
+            str(out_path),
+            "--tokenizer",
+            str(zerank_tokenizer),
+            "--device",
+            "cpu",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert completed.returncode == 0, completed.stderr[-500:]
+    rows_out = json.loads(out_path.read_text(encoding="utf-8"))["rows"]
+    assert [{"query": row["query"], "documents": list(row["documents"])} for row in rows_out] == spans
+
+
+# -----------------------------------------------------------------------------------------------
+# The mutation: dropping the template's trailing anchor segment turns the frame check red.
+# -----------------------------------------------------------------------------------------------
+
+
+def test_mutation_dropping_the_anchor_segment_reddens_the_template_check(
+    tmp_path: Path, zerank_tokenizer: Path
+) -> None:
+    """Drop the template's trailing anchor segment: the file-vs-declaration check reds.
+
+    The rerank wire carries the cut CONTENT spans (the frame is the engine's own template), so
+    stage 1's anchor audit audits the settled query and the document spans -- a frame change does
+    not move it; the frame contract is pinned by ``template_render_check`` (the declared shape
+    must end with the header the file emits), which this mutation turns red.
+    """
+    mutated = tmp_path / "zerank-2-reranker"
+    mutated.mkdir()
+    for name in ("recipe.yaml", TEMPLATE, "reference.py", "requirements-reference.txt"):
+        shutil.copy(RECIPE_DIR / name, mutated / name)
+    data = yaml.safe_load((mutated / "recipe.yaml").read_text(encoding="utf-8"))
+    data["client"]["tokenizer"] = str(zerank_tokenizer)  # same pinned tokenizer, no Hub at run time
+    segments = data["client"]["template"]["pair"]
+    assert segments[-1]["fixed"].endswith("assistant\n")  # the anchor being dropped
+    data["client"]["template"]["pair"] = segments[:-1]  # drop the trailing anchor segment entirely
+    (mutated / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    recipe = load_recipe(mutated)  # still loadable: add_special_tokens allows a content tail
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:3])
+    healthy = stage1_prompts(with_local_tokenizer(zerank_tokenizer), pairs, None, over_length_per_shape=2)
+    assert healthy["template_render_check"]["passed"] is True
+    document = stage1_prompts(recipe, pairs, None, over_length_per_shape=2)
+    assert document["template_render_check"]["passed"] is False
+    assert document["template_render_check"]["failures"], "the check must name the failing renders"
+    assert document["anchor_check"]["passed"] is True  # the spans themselves are unchanged
+
+
+def test_a_recipe_whose_template_file_is_missing_is_refused(tmp_path: Path) -> None:
+    """R10: the template file must ship - the schema refuses a recipe naming a missing file."""
+    broken = tmp_path / "zerank-2-reranker"
+    broken.mkdir()
+    for name in ("recipe.yaml", "reference.py"):
+        shutil.copy(RECIPE_DIR / name, broken / name)
+    with pytest.raises(RecipeError, match="chat_template"):
+        load_recipe(broken)
