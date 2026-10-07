@@ -997,15 +997,17 @@ class TestMediaGates:
                 ),
             ]
         )
-        with pytest.raises(CapabilityError, match="accepts 1"):
+        with pytest.raises(CapabilityError, match="accepts 1") as caught:
             asyncio.run(client.aencode([content], EncodeRole.DOCUMENT))
+        assert "max_images" in (caught.value.hint or ""), "the refusal's hint names the knob"
 
     def test_media_for_a_model_that_reads_none_is_refused(self, tokenizer_json: str, tmp_path: Any) -> None:
         from rcp_ndcg.errors import CapabilityError
 
         client = self._pool_client(tokenizer_json, max_images=0)
-        with pytest.raises(CapabilityError, match="max_images"):
+        with pytest.raises(CapabilityError, match="max_images") as caught:
             asyncio.run(client.aencode([_png_content(tmp_path, 0)], EncodeRole.DOCUMENT))
+        assert "declare max_images" in (caught.value.hint or ""), "the refusal's hint names the knob"
 
 
 def _png_content(tmp_path: Any, index: int) -> Any:

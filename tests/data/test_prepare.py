@@ -17,7 +17,9 @@ from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoP
 from rcp_ndcg.data import Preprocessing
 from rcp_ndcg.data.prepare import (
     MediaCensus,
+    MediaFit,
     PreparedMedia,
+    apply_media_fit,
     fit_media_to_budget,
     prepare_content,
     prepare_image,
@@ -229,6 +231,19 @@ class TestFrames:
         ours = uniform_frame_indices(total, wanted)
         assert ours == ref.vllm_frame_indices(total, duration=total / 2.0, num_frames=wanted, fps=-1)
         assert ours == ref.sglang_frame_indices(total, min(wanted, total))
+
+    def test_a_frame_drop_keeps_the_sampled_indices_aligned(self, tmp_path: Path):
+        """A media fit that drops frames drops their sampled-index entries with them: the sent part's frames
+        and its ``frame_indices`` stay aligned (a part that kept 2 of 4 frames must not claim 4 indices)."""
+        frames = [_png(tmp_path / "clip" / f"{i:03d}.png", (640, 360), color=(i, i, i)) for i in range(4)]
+        content = Content.from_parts([VideoPart(frames=frames, frame_indices=[10, 20, 30, 40])])
+        fit = MediaFit(media=[], tokens=0, dropped=[], decisions=(frames[0], None, frames[2], None))
+
+        (out,) = apply_media_fit([content], fit)
+
+        (part,) = out.parts
+        assert [frame.uri for frame in part.frames] == [frames[0].uri, frames[2].uri]
+        assert part.frame_indices == [10, 30]
 
     def test_frames_are_sampled_and_each_prepared_as_an_image(self, tmp_path: Path):
         frames = [_png(tmp_path / "clip" / f"{i:03d}.png", (640, 360), color=(i, i, i)) for i in range(10)]
@@ -447,6 +462,22 @@ class TestDroppedCensusRows:
         (row,) = [json.loads(line) for line in sink.read_text().splitlines()]
         assert row["dropped"] is True and row["uri"] == page.uri
         assert row["sent_width"] == 992  # the size it was refused at, not a fiction
+
+    def test_a_drop_after_a_kept_pass_of_the_same_item_is_still_recorded(self, tmp_path: Path):
+        """The outcome is part of the dedup key: a budget that first kept an item and a later one that refused
+        it are both on record -- a kept row must not hide the later drop, in the sink or on resume."""
+        page = _png(tmp_path / "p.png", (1700, 2200))
+        policy = ImagePolicy(min_px=65536, max_px=1280 * 32 * 32, processor="qwen3_vl")
+        item = prepare_image(page, policy)
+        sink = tmp_path / "preprocessing.jsonl"
+
+        census = MediaCensus(sink=sink)
+        census.record(corpus="c", doc_id="d1", media=[item])
+        census.record(corpus="c", doc_id="d1", media=[item], dropped=True)
+        MediaCensus(sink=sink).record(corpus="c", doc_id="d1", media=[item], dropped=True)  # a resumed pass
+
+        rows = [json.loads(line) for line in sink.read_text().splitlines()]
+        assert sorted(row["dropped"] for row in rows) == [False, True]
 
     def test_a_kept_row_says_it_was_sent(self, tmp_path: Path):
         page = _png(tmp_path / "p.png", (1700, 2200))

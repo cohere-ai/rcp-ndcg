@@ -879,33 +879,48 @@ class TestCloseWhileRunsRace:
         assert not errors, errors[:3]
         assert not failures, failures[:3]
 
-    def test_the_background_loop_is_started_once_under_concurrent_notebooks(self) -> None:
-        """Two threads in their own running loops do not double-start the private background loop."""
-        import asyncio as _asyncio
+    def test_the_background_loop_is_started_once_under_concurrent_notebooks(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Four threads in their own running loops (notebooks) share ONE private background loop. The lazy
+        start's check-then-create window is widened (a slow loop factory), so an unguarded start creates a
+        loop (and a thread) per caller instead of one."""
         import threading
+        import time
 
         transport = _transport(ReplicaScript())
-        loops: list[Any] = []
+        notebook_loops = [asyncio.new_event_loop() for _ in range(4)]  # created before the factory is slowed
+        created: list[Any] = []
+        real_new_event_loop = asyncio.new_event_loop
 
-        def notebook() -> None:
-            loop = _asyncio.new_event_loop()
+        def slow_new_event_loop() -> asyncio.AbstractEventLoop:
+            time.sleep(0.2)
+            loop = real_new_event_loop()
+            created.append(loop)
+            return loop
+
+        monkeypatch.setattr(transport_module.asyncio, "new_event_loop", slow_new_event_loop)
+        errors: list[str] = []
+
+        def notebook(loop: asyncio.AbstractEventLoop) -> None:
+            async def inside() -> None:
+                # a sync call from inside a running loop: the transport bridges on its background loop
+                transport.run(transport.send([Call("POST", "/n", {})]))
+
             try:
-
-                async def inside() -> None:
-                    # a sync call from inside a running loop: the transport bridges on its background loop
-                    transport.run(transport.send([Call("POST", "/n", {})]))
-
-                _asyncio.set_event_loop(loop)
                 loop.run_until_complete(inside())
-                loops.append(transport._background_loop)
+            except Exception as exc:  # noqa: BLE001 - recorded, asserted below
+                errors.append(f"{type(exc).__name__}: {exc}")
             finally:
                 loop.close()
 
-        threads = [threading.Thread(target=notebook) for _ in range(4)]
+        threads = [threading.Thread(target=notebook, args=(loop,)) for loop in notebook_loops]
         for thread in threads:
             thread.start()
         for thread in threads:
             thread.join(30)
+        monkeypatch.undo()
         transport.close()
-        started = [entry for entry in loops if entry is not None]
-        assert started and all(entry is started[0] for entry in started), "one background loop for all callers"
+
+        assert not errors, errors
+        assert len(created) == 1, f"one background loop for all callers, not {len(created)}"

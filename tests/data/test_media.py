@@ -269,3 +269,22 @@ class TestTruncatedContainerHeaders:
         truncated = bytes(payload[: len(payload) // 2])
         assert probe_video_header(truncated) is None
         assert probe_video_header(payload) is not None, "the intact header still probes"
+
+    @pytest.mark.parametrize("cut", [0, 4])
+    def test_a_box_whose_fields_were_cut_returns_none(self, cut: int) -> None:
+        """The boxes are intact -- every size field is true -- but the video track's last box (``mdhd``)
+        ends before the fields the probe peeks (a download cut inside the last box): the probe returns
+        ``None``, where an unguarded peek raised ``IndexError`` (no version byte) or ``struct.error``."""
+        import struct
+
+        from rcp_ndcg.data.media import probe_video_header
+
+        def box(kind: bytes, body: bytes) -> bytes:
+            return struct.pack(">I", 8 + len(body)) + kind + body
+
+        tkhd = box(b"tkhd", b"\0\0\0\x03" + b"\0" * 72 + struct.pack(">II", 320 << 16, 240 << 16))
+        hdlr = box(b"hdlr", b"\0" * 8 + b"vide" + b"\0" * 12 + b"video\0")
+        mdhd = box(b"mdhd", b"\0" * cut)  # the version byte and the timescale fields are gone
+        payload = box(b"ftyp", b"isom\0\0\0\0isom") + box(b"moov", box(b"trak", tkhd + box(b"mdia", hdlr + mdhd)))
+
+        assert probe_video_header(payload) is None
