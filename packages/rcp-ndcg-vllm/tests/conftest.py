@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -86,6 +87,27 @@ def stub() -> Iterator[StubEngine]:
         yield engine
     finally:
         engine.stop()
+
+
+def sandbox_path(fakes: Path, *tools: str) -> str:
+    """A hermetic ``PATH`` for a node-script test: the test's fakes, then a sandbox of the named system tools.
+
+    No system bin directory is on it, so a tool the machine has on its ``PATH`` (a real ``gcloud`` in
+    ``/usr/bin``) is not found through it. Each named tool is symlinked from the caller's ``PATH`` into
+    ``<fakes>/../sandbox-bin``; a tool the machine lacks fails the test here, by name. This closes the
+    ``PATH`` only: a script that adds directories itself must be told not to -- the node scripts' Cloud SDK
+    search (``gcs_sdk_on_path`` in ``jobs/gcs.sh``, which would put e.g. ``/usr/lib/google-cloud-sdk/bin``
+    first) is switched off with ``RCP_GCLOUD_SDK_DIRS`` set empty.
+    """
+    sandbox = fakes.parent / "sandbox-bin"
+    sandbox.mkdir(exist_ok=True)
+    for tool in tools:
+        target = shutil.which(tool)
+        assert target is not None, f"the sandbox needs {tool!r}, and this machine has none on PATH"
+        link = sandbox / tool
+        if not link.is_symlink():
+            link.symlink_to(target)
+    return f"{fakes}:{sandbox}"
 
 
 def write_pairs(path: Path, pairs: list[dict]) -> Path:

@@ -25,7 +25,9 @@
 # nothing), RCP_REPORT_PY / RCP_HOST_PY / RCP_BOOTSTRAP_SH / RCP_GCS_HELPER_SH / RCP_GCS_HELPER_PY (the mounted
 # helpers) and the WAVE0_* knobs. The transfer runs gcloud or gsutil when either is present, else the
 # python helper (gcsfs into a tools directory outside the engine environment, ADC); the auth script runs
-# before anything else and the transfer path is recorded in the report's host fragment.
+# before anything else and the transfer path is recorded in the report's host fragment. A Cloud SDK the
+# auth script installs is put on PATH from the first of RCP_GCLOUD_SDK_DIRS holding a CLI (jobs/gcs.sh:
+# colon-separated, the SDK's usual locations when unset, no search when empty).
 #
 # Assumes about the node (checked, not assumed): nvidia-smi and python3 on PATH; at least
 # WAVE0_MIN_GPUS GPUs; /dev/shm of at least WAVE0_MIN_SHM_GIB (submit sizes it); free disk above
@@ -112,16 +114,10 @@ if ((auth_status != 0)); then
   echo "wave0: the GCS auth script failed with exit code $auth_status (its output is not echoed)"
   exit 1
 fi
-for sdk_bin in "$HOME/google-cloud-sdk/bin" /root/google-cloud-sdk/bin /opt/google-cloud-sdk/bin \
-  /usr/lib/google-cloud-sdk/bin /usr/local/google-cloud-sdk/bin; do
-  if [[ -x "$sdk_bin/gcloud" || -x "$sdk_bin/gsutil" ]]; then
-    export PATH="$sdk_bin:$PATH"
-    break
-  fi
-done
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/rcp-wave0.XXXXXX")"
 # shellcheck disable=SC1090  # the helper is mounted at a job-specific path
 source "$GCS_SH"
+gcs_sdk_on_path  # an SDK the auth script installed, searched in RCP_GCLOUD_SDK_DIRS (gcs.sh)
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/rcp-wave0.XXXXXX")"
 export GCS_PY="${GCS_PY:-$(command -v python3)}"
 export GCS_TOOLS_DIR="$WORK/gcs-tools"  # outside the engine environment (pip --target, like uv)
 TRANSFER="$(gcs_transfer_detect)"

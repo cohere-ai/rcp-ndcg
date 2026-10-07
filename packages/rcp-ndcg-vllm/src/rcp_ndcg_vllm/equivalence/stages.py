@@ -75,7 +75,7 @@ def stage1_prompts(
         "checked": probe["checked"],
         "client": probe["client"],
         "anchor_check": _anchor_check(recipe, probe, tokenizer),
-        "render_check": _render_check(recipe, reference_python, sampled, probe),
+        "render_check": _render_check(recipe, reference_python, sampled, probe, tokenizer),
         "template_render_check": _template_check(recipe, rows, probe, tokenizer),
         "engine_tokenize_check": _engine_tokenize_check(recipe, probe, tokenizer, base_url),
         "passed": False,
@@ -238,6 +238,28 @@ def _probe_vectors(
             entry["shapes"]["document"] = {"texts": texts}
 
 
+def _content_ids(tokenizer: Any, body: str | list[int], flag: bool) -> list[int]:
+    """A captured body's ids without the post-processor's tokens: a text body tokenized without them, a
+    ``token_ids`` body (sent with the shape's ``flag``) with the post-processor's prefix and tail stripped
+    from its edges (measured on a sentinel, as :func:`_post_processor_prefix` measures them)."""
+    if isinstance(body, str):
+        return list(tokenizer.ids(body, add_special_tokens=False))
+    ids = list(body)
+    if flag:
+        prefix = _post_processor_prefix(tokenizer, "x")
+        tail = _post_processor_tail(tokenizer, "x")
+        if prefix and ids[: len(prefix)] == prefix:
+            ids = ids[len(prefix) :]
+        if tail and ids[len(ids) - len(tail) :] == tail:
+            ids = ids[: len(ids) - len(tail)]
+    return ids
+
+
+def _head_of(body: str | list[int]) -> str | list[int]:
+    """A sent body's head for a report: the text's first characters, or a ``token_ids`` body's first ids."""
+    return body[:_SNIPPET] if isinstance(body, str) else list(body[:24])
+
+
 def _probe_texts(entry: dict[str, Any]) -> list[str]:
     """Every text one probe entry carries, in order (the audit and the /tokenize check read them)."""
     texts: list[str] = []
@@ -261,6 +283,7 @@ def _captured_heads(capture: Capture, sampled: list[dict[str, Any]]) -> dict[str
                 "url": exchange["url"],
                 "status": exchange["status"],
                 "texts_head": [text[:_SNIPPET] for text in _flatten(texts)],
+                **({"media": texts["media"]} if any(texts.get("media") or ()) else {}),
             }
         )
     return {"exchanges": len(capture.exchanges), "first": heads, "sampled": len(sampled)}
@@ -284,7 +307,9 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
 
     The embed roles render the full prompt on the wire: the audit asserts the declared edge (the fixed
     segment at the anchor side, plus the post-processor tokens ``add_special_tokens`` puts there) sits at its
-    declared position of every captured text's ids.  The rerank wire ships spans -- the engine assembles the
+    declared position of every captured body's ids -- an ``anchor: first`` head as the engine reads it in the
+    assembled render (:func:`_head_edge_ids`), an ``anchor: marker`` shape's markers in the sent content
+    without the post-processor's tokens (:func:`_content_ids`).  The rerank wire ships spans -- the engine assembles the
     frame -- so its audit asserts the client's settle-once: one query span per row, identical across the row's
     pointwise requests, within its declared ``query_max_tokens``, and no cut on an in-budget pair (a cut
     recorded in the client's census for a pair under budget would mean the client shortened something the
@@ -301,32 +326,69 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
                 checked += _audit_rerank_span(index, shape, shape_body, share, max_tokens, entry, failures, tokenizer)
                 continue
             flag = _add_specials_flag(recipe, shape)
-            edge = _anchor_edge_ids(recipe, tokenizer, shape)
+            at_start = template is not None and template.anchor == "first"
+            edge = [] if at_start else _anchor_edge_ids(recipe, tokenizer, shape)
+            head, prefix = _head_parts(recipe, tokenizer, shape) if at_start else ("", [])
+            stable = _stable_head_tokens(tokenizer, head) if at_start else []
             for text in shape_body["texts"]:
-                ids = tokenizer.ids(text, add_special_tokens=flag)
+                # A ``token_ids`` body carries the ids as sent: the client tokenized its render with the
+                # shape's flag, so they already hold the edge and the post-processor's tokens (G1).
+                ids = list(text) if isinstance(text, list) else tokenizer.ids(text, add_special_tokens=flag)
                 checked += 1
                 if template is None or template.anchor == "mean":
                     continue
                 if template.anchor == "marker":
+                    # Counted in the sent content only: a post-processor that adds the same special (an
+                    # appended end token) must not stand in for a marker the client dropped.
+                    content_ids = _content_ids(tokenizer, text, flag)
                     missing = sorted(
-                        name for name in template.anchor_markers if tokenizer.special_text(name) not in text
+                        name for name in template.anchor_markers if tokenizer.special_id(name) not in content_ids
                     )
                     if missing:
                         failures.append({"shape": shape, "check": "markers", "missing_names": missing, "row": index})
                     continue
-                at_start = template.anchor == "first"
-                actual = ids[: len(edge)] if at_start else ids[-len(edge) :]
+                if at_start:
+                    # The head edge is the head's own tokens in the ASSEMBLED render (G3): where the head meets
+                    # the content a byte-level BPE re-tokenizes across the join (a trailing space reads
+                    # ``Ġdocument``, a Qwen-style ``:`` reads ``:Paris``), as the fit's assembled-render count
+                    # allows, so the head's standalone ids are not what the engine reads.
+                    head_edge = _head_edge_ids(tokenizer, head, prefix, stable, text)
+                    actual = ids[: len(head_edge)] if head_edge is not None else []
+                    if head_edge is None or not head_edge or actual != head_edge:
+                        failures.append(
+                            {
+                                "shape": shape,
+                                "check": "head",
+                                "row": index,
+                                "expected_head_text": head[:_SNIPPET],
+                                "expected_edge_ids": head_edge,
+                                "actual_edge_ids": actual,
+                                "text": _head_of(text),
+                            }
+                        )
+                    continue
+                actual = ids[-len(edge) :] if edge else []
                 if not edge or actual != edge:
                     failures.append(
                         {
                             "shape": shape,
-                            "check": "head" if at_start else "tail",
+                            "check": "tail",
                             "row": index,
                             "expected_edge_ids": edge,
                             "actual_edge_ids": actual,
-                            "text": text[:_SNIPPET],
+                            "text": _head_of(text),
                         }
                     )
+    if not checked:
+        # An audit that read no input proves nothing: an extraction gap (a wire shape the capture does not
+        # read) must fail here, never pass vacuously.
+        failures.append(
+            {
+                "check": "nothing_checked",
+                "note": "the anchor audit read no captured input: the client's requests carried no text the "
+                "capture could extract",
+            }
+        )
     return {
         "anchor": template.anchor if template is not None else None,
         "checked": checked,
@@ -392,14 +454,20 @@ def _audit_rerank_span(
 
 
 def _render_check(
-    recipe: Recipe, reference_python: str | None, sampled: list[dict[str, Any]], probe: dict[str, Any]
+    recipe: Recipe,
+    reference_python: str | None,
+    sampled: list[dict[str, Any]],
+    probe: dict[str, Any],
+    tokenizer: Any,
 ) -> dict[str, Any] | None:
     """The reference render comparison, via the reference subprocess (stage 1's reference side).
 
     Only the pairs file's rows are compared (the injected over-length samples are audited for the cut, not
     compared: the reference cuts over-cap inputs its own way by declaration).  The comparison is on the
     client's captured texts: the rendered prompts the embed roles send, the settled query span and the
-    document spans for the rerank wire.  Under a declared ``anchor_drop_over_cap`` deviation, over-cap rows
+    document spans for the rerank wire.  A ``token_ids`` body is compared on ids: the ids it sent against
+    the reference text's ids under the shape's ``add_special_tokens`` flag (the product tokenizer, the ids
+    the client would have sent for that text).  Under a declared ``anchor_drop_over_cap`` deviation, over-cap rows
     are reported separately and do not gate (the reference cuts them differently by declaration).
     """
     if reference_python is None:
@@ -437,6 +505,21 @@ def _render_check(
         over = bool(probe["rows"][key[0]]["over_cap"])
         if recipe.role == "rerank":
             mismatches = _span_mismatches(row, served)
+        elif isinstance(served, list):
+            reference_text = str(row.get("text", ""))
+            reference_ids = list(tokenizer.ids(reference_text, add_special_tokens=_add_specials_flag(recipe, key[1])))
+            mismatches = []
+            if reference_ids != list(served):
+                mismatches.append(
+                    {
+                        "index": row["index"],
+                        "shape": key[1],
+                        "served_ids_head": list(served[:24]),
+                        "reference_ids_head": reference_ids[:24],
+                        "reference_text_head": reference_text[:_SNIPPET],
+                        "text": str(row.get("query", ""))[:_SNIPPET],
+                    }
+                )
         else:
             mismatches = []
             if row.get("text", "") != served:
@@ -528,7 +611,7 @@ def _served_texts_by_row(
     A pairs row without a ``shape`` is captured under every declared shape (the reference contract renders
     one row per declared shape at the row's index); a row that declares its shape is captured under that one.
     A rerank row's value is ``{"query": str, "documents": [...]}`` (the spans); an embed row's is the rendered
-    prompt string.
+    prompt string, or a ``token_ids`` body's sent ids (a list of ints).
     """
     out: dict[tuple[int, str], Any] = {}
     for index, entry in enumerate(probe["rows"]):
@@ -627,9 +710,13 @@ def _engine_tokenize_check(
         }
     failures: list[dict[str, Any]] = []
     checked = 0
+    sent_as_ids = 0
     for shape, body in _captured_texts_per_shape(recipe, probe).items():
         add_flag = _add_specials_flag(recipe, shape) if recipe.role != "rerank" else False
         for text in body:
+            if isinstance(text, list):
+                sent_as_ids += 1  # a token_ids body: the engine reads these ids as sent and tokenizes nothing
+                continue
             engine_ids = _engine_tokenize(recipe, base_url, text, add_special_tokens=add_flag)
             fit_ids = tokenizer.ids(text, add_special_tokens=add_flag)
             checked += 1
@@ -644,6 +731,13 @@ def _engine_tokenize_check(
                         "text": text[:_SNIPPET],
                     }
                 )
+    if sent_as_ids and not checked:
+        return {
+            "status": "not_run",
+            "passed": None,
+            "reason": "request_shape token_ids: the client sends ids, so the engine tokenizes no text "
+            "(the anchor audit reads the sent ids)",
+        }
     return {
         "status": "run",
         "checked": checked,
@@ -779,6 +873,72 @@ def _anchor_edge_ids(recipe: Recipe, tokenizer: Any, shape: Any) -> list[int]:
         else:
             ids = (*ids, *_post_processor_tail(tokenizer, text))
     return list(ids)
+
+
+_JOIN_PROBES = ("a", "Z", "é", "中", "0", ".", ":", "'s", "(", "-", "_", " a", "  a", " ", "\n", "\t", "🙂")
+"""The continuations a ``token_ids`` body's head edge is measured against (letters, digits, punctuation,
+contractions, spaces, newlines, non-Latin scripts, emoji): its text is not on the wire, so the edge is the head
+tokens that lie wholly inside the head in the assembled render with every one of them."""
+
+
+def _head_parts(recipe: Recipe, tokenizer: Any, shape: Any) -> tuple[str, list[int]]:
+    """An ``anchor: first`` shape's head: its fixed head segment's render ("" when the shape opens with
+    content: the post-processor's prefix alone is the edge) and the ids the shape's ``add_special_tokens``
+    flag puts before it (measured as :func:`_anchor_edge_ids` measures them)."""
+    template = recipe.client.template
+    if template is None:
+        return "", []
+    segments = template.segments(shape)
+    fixed = next((segment for segment in segments if segment.fixed is not None), None)
+    rendered = fixed.render(tokenizer) if fixed is not None else ""
+    head = rendered if segments and segments[0].fixed is not None else ""
+    prefix = _post_processor_prefix(tokenizer, rendered) if template.adds_special_tokens(shape) else []
+    return head, list(prefix)
+
+
+def _head_tokens_in(tokenizer: Any, render: str, head: str) -> list[int]:
+    """The ids of ``render``'s leading tokens that lie wholly inside its first ``len(head)`` characters
+    (the product tokenizer's offsets, no post-processor): the head's own tokens in that assembled render."""
+    kept: list[int] = []
+    for token_id, (_, end) in zip(tokenizer.ids(render), tokenizer.offsets(render), strict=True):
+        if end > len(head):
+            break
+        kept.append(token_id)
+    return kept
+
+
+def _head_edge_ids(
+    tokenizer: Any, head: str, prefix: list[int], stable: list[int], body: str | list[int]
+) -> list[int] | None:
+    """The head edge one captured body must open with: the post-processor's prefix, then the head's own tokens.
+
+    A text body IS the assembled render: it must start with the head's characters (``None`` when it does
+    not: the head was cut or changed), and the edge is its tokens lying wholly inside them.  A ``token_ids``
+    body carries no text, so its edge is ``stable`` (:func:`_stable_head_tokens`): the head tokens that lie
+    wholly inside the head in the assembled render with every :data:`_JOIN_PROBES` continuation.
+    """
+    if not head:
+        return list(prefix)
+    if isinstance(body, str):
+        if not body.startswith(head):
+            return None
+        return [*prefix, *_head_tokens_in(tokenizer, body, head)]
+    return [*prefix, *stable]
+
+
+def _stable_head_tokens(tokenizer: Any, head: str) -> list[int]:
+    """The head tokens that lie wholly inside the head in its assembled render with every probe continuation
+    (their longest common prefix): the edge of a ``token_ids`` body, whose text is not on the wire."""
+    if not head:
+        return []
+    stable = _head_tokens_in(tokenizer, head + _JOIN_PROBES[0], head)
+    for probe in _JOIN_PROBES[1:]:
+        run = _head_tokens_in(tokenizer, head + probe, head)
+        common = 0
+        while common < min(len(stable), len(run)) and stable[common] == run[common]:
+            common += 1
+        stable = stable[:common]
+    return stable
 
 
 # ---------------------------------------------------------------------------

@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import sandbox_path
+
 JOBS = Path(__file__).resolve().parents[1] / "jobs"
 BOOTSTRAP = JOBS / "bootstrap.sh"
 SUBMIT = JOBS / "submit.sh"
@@ -199,10 +201,17 @@ def _fake_engine_python(tmp_path: Path, *, fail_spec: str) -> Path:
     return script
 
 
-def _install_plugin_wheels(tmp_path: Path, specs: str, *, fail_spec: str = "") -> subprocess.CompletedProcess[str]:
-    """Run bootstrap's install_plugin_wheels (its functions, by sourcing) with a fake engine python."""
+def _install_plugin_wheels(
+    tmp_path: Path, specs: str, *, fail_spec: str = "", extra: tuple[str, ...] = ()
+) -> subprocess.CompletedProcess[str]:
+    """Run bootstrap's install_plugin_wheels (its functions, by sourcing) with a fake engine python.
+
+    ``extra`` names EXTRA_DIRS entries staged under ``<stage>/extra/<name>/``; a name ending in ``/wheelhouse``
+    stages that entry with a wheelhouse directory, any other name without one."""
     stage = tmp_path / "stage"
     (stage / "wheelhouse").mkdir(parents=True)
+    for entry in extra:
+        (stage / "extra" / entry).mkdir(parents=True)
     recipes = tmp_path / "recipes"
     recipes.mkdir()
     specs_file = tmp_path / "specs.txt"
@@ -232,9 +241,29 @@ def test_bootstrap_installs_a_named_plugin_from_the_staged_wheelhouse_only(tmp_p
     log = (tmp_path / "engine-python.log").read_text(encoding="utf-8")
     assert "my-plugin==1.2.3" in log
     assert "--no-index" in log and "--find-links" in log
-    assert str(tmp_path / "stage" / "wheelhouse") in log
+    argv = log.split()
+    links = [argv[index + 1] for index, word in enumerate(argv) if word == "--find-links"]
+    # Exactly the stage's wheelhouse: with no extra/ entry the extra-wheelhouse glob matches nothing, and its
+    # unexpanded pattern is never passed on as a link.
+    assert links == [str(tmp_path / "stage" / "wheelhouse")]
     assert (tmp_path / "allowed.txt").read_text(encoding="utf-8").strip() == "my-plugin"
     assert not (tmp_path / "failed.txt").exists() or not (tmp_path / "failed.txt").read_text(encoding="utf-8").strip()
+
+
+def test_bootstrap_finds_a_named_plugin_in_every_staged_extra_wheelhouse(tmp_path: Path) -> None:
+    """A plugin wheel staged through EXTRA_DIRS lands under <stage>/extra/<name>/wheelhouse: the named install
+    also finds links there -- each existing extra wheelhouse, still never an index."""
+    completed = _install_plugin_wheels(tmp_path, "my-plugin\n", extra=("one/wheelhouse", "two", "three/wheelhouse"))
+    assert completed.returncode == 0, completed.stderr
+    argv = (tmp_path / "engine-python.log").read_text(encoding="utf-8").split()
+    links = [argv[index + 1] for index, word in enumerate(argv) if word == "--find-links"]
+    stage = tmp_path / "stage"
+    assert links == [
+        str(stage / "wheelhouse"),
+        str(stage / "extra" / "one" / "wheelhouse"),
+        str(stage / "extra" / "three" / "wheelhouse"),
+    ]
+    assert "--no-index" in argv and argv[-1] == "my-plugin"
 
 
 def test_bootstrap_a_plugin_found_nowhere_is_recorded_with_its_exact_name(tmp_path: Path) -> None:
@@ -330,6 +359,36 @@ def test_reference_complete_installs_the_venvs_own_missing_deps(tmp_path: Path) 
     assert "requirements-reference.txt" in completed.stderr and "wheelhouse" in completed.stderr
 
 
+@pytest.mark.parametrize(("sdk_dirs", "expected"), [("", "python"), ("planted", "gcloud")])
+def test_bootstrap_searches_only_the_declared_sdk_dirs(tmp_path: Path, sdk_dirs: str, expected: str) -> None:
+    """bootstrap.sh's own Cloud SDK search (after the auth script) reads RCP_GCLOUD_SDK_DIRS: an SDK under
+    $HOME (the default list's first entry) stays off PATH when the list is empty, and is used when named."""
+    sdk_bin = tmp_path / "google-cloud-sdk" / "bin"
+    sdk_bin.mkdir(parents=True)
+    (sdk_bin / "gcloud").write_text("#!/usr/bin/env true\n", encoding="utf-8")
+    (sdk_bin / "gcloud").chmod(0o755)
+    (tmp_path / "fakes").mkdir()
+    auth = tmp_path / "gcs_auth.sh"
+    auth.write_text("# placeholder auth: not the real script\n", encoding="utf-8")
+    completed = subprocess.run(
+        ["bash", str(BOOTSTRAP), "envs", str(tmp_path / "stage"), "--state", str(tmp_path / "state")],
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": sandbox_path(tmp_path / "fakes", "bash", "mkdir", "mktemp", "rm", "date"),
+            "HOME": str(tmp_path),
+            "TMPDIR": str(tmp_path),
+            "RCP_GCLOUD_SDK_DIRS": str(sdk_bin) if sdk_dirs == "planted" else sdk_dirs,
+            "RCP_GCS_AUTH_FILE": str(auth),
+            "RCP_GCS_HELPER_SH": str(JOBS / "gcs.sh"),
+            "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
+            "RCP_REPORT_PY": str(REPORT_PY),
+            "RCP_REFERENCE_DEPS_PY": str(REFERENCE_DEPS),
+        },
+    )
+    assert f"bootstrap: GCS transfer path: {expected}\n" in completed.stderr, completed.stderr
+
+
 def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     """Drive bootstrap main (envs mode, what wave 0 calls) end to end with stubbed externals - guards
     the whole run, not just sourced functions: every mounted helper resolves through its RCP_*
@@ -344,7 +403,9 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     if not real_python.is_file():
         pytest.skip("no /usr/bin/python3 (the venv's python has no ensurepip)")
     # the stub GCS helper (sourced) + an empty auth script (executed, never printed)
-    (work / "gcs" / "gcs.sh").write_text('gcs_transfer_detect() { echo "stub"; }\ngcs_cp() { :; }\n', encoding="utf-8")
+    (work / "gcs" / "gcs.sh").write_text(
+        'gcs_sdk_on_path() { :; }\ngcs_transfer_detect() { echo "stub"; }\ngcs_cp() { :; }\n', encoding="utf-8"
+    )
     (work / "gcs" / "gcs.py").write_text("", encoding="utf-8")
     auth = work / "gcs_auth.sh"
     auth.write_text("", encoding="utf-8")
