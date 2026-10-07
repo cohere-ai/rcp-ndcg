@@ -4,9 +4,10 @@ The contract test pins every resolved ``serve``/``client``/``reference`` field t
 lanes' shared helper (``_contract.assert_recipe_contract``), with a two-mutant negative control.
 Stage 1 runs the harness's own machinery on the real tokenizer (downloaded into
 ``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when set, else ``tmp_path``, pinned by SHA-256; public Hub file,
-never a token file). The reference's ``--mode render`` speaks the rerank reference contract -- the
-wire's cut content spans -- including the settle rule (the query settles at its declared share
-whenever it exceeds it) and the declared normalisation (``normalize: [strip]``, the paper's strip).
+never a token file). The reference's ``--mode render`` writes the paper's own cut (the whole rendered
+prompt right-cut at 8192 tokens, after the paper's strip) in the harness's span format -- never the
+client's cut (decision 9): under-cap rows equal the wire byte for byte, over-cap rows are the declared
+``anchor_drop_over_cap`` (reported non-gating), and an over-share query under the budget gates red.
 The reference's score mode needs torch and the checkpoint weights -- it runs on the GPU wave.
 """
 
@@ -36,7 +37,7 @@ RECIPE_DIR = RECIPES / "zerank-2-reranker"
 RECIPE_ID = "zerank-2-reranker"
 MODEL = "zeroentropy/zerank-2-reranker"
 REVISION = "5eae30d5ee3c6b2df2ef6d723bde45172d761c4c"
-TEMPLATE = "zerank2_score_template.jinja"
+TEMPLATE = "template.jinja"
 MAX_TOKENS = 8192
 QUERY_MAX_TOKENS = 4096
 TOKENIZER_URL = f"https://huggingface.co/{MODEL}/resolve/{REVISION}/tokenizer.json"
@@ -53,7 +54,7 @@ CONTRACT: dict[str, Any] = {
             "classifier_from_token": ["Yes"],
             "method": "no_post_processing",
         },
-        "chat_template": "zerank2_score_template.jinja",
+        "chat_template": TEMPLATE,
         "pooler_config": {"logit_sigma": 5, "use_activation": True},
         "trust_remote_code": False,
         "max_model_len": 8192,
@@ -84,7 +85,7 @@ CONTRACT: dict[str, Any] = {
         "recipe": (
             "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + "
             "classifier_from_token [Yes] + method no_post_processing, --chat-template "
-            "zerank2_score_template.jinja, pooler logit_sigma 5 + use_activation true "
+            "template.jinja, pooler logit_sigma 5 + use_activation true "
             "(sigmoid(l_Yes/5) at the last token, 1-label head)"
         ),
         "tokenizer": f"{MODEL}@{REVISION}",
@@ -416,10 +417,10 @@ def test_the_served_template_renders_identically_for_the_engine_and_the_harness(
         assert tokenizer.ids(engine, add_special_tokens=flag) == tokenizer.ids(fitted, add_special_tokens=flag), index
 
 
-def test_reference_cli_renders_the_wire_spans_and_refuses_embed(tmp_path: Path, zerank_tokenizer: Path) -> None:
-    """The subprocess contract: exit 0, the JSON shape (the rerank reference contract: the wire's
-    content spans), and the over-cap row's spans byte-equal to the product's own capture (the
-    reference implements the anchor-preserving cut without rcp-ndcg)."""
+def test_reference_cli_renders_the_papers_spans_and_refuses_embed(tmp_path: Path, zerank_tokenizer: Path) -> None:
+    """The subprocess contract: exit 0, the JSON shape (the harness's rerank span format), and the
+    over-cap row's spans are the PAPER's cut -- the whole prompt right-cut at the budget, the anchor
+    dropped -- never the client's anchor-preserving cut, which keeps the anchor within the budget."""
     recipe = with_local_tokenizer(zerank_tokenizer)
     tokenizer = tokenizer_of(recipe)
     rows = sample_pairs()
@@ -447,7 +448,14 @@ def test_reference_cli_renders_the_wire_spans_and_refuses_embed(tmp_path: Path, 
     document = json.loads(out_path.read_text(encoding="utf-8"))
     assert set(document["rows"][0]) == {"index", "shape", "query", "documents"}
     spans = served_rows(recipe, [over_cap], tokenizer)["per_shape"]["pair"]["spans"]
-    assert {"query": document["rows"][0]["query"], "documents": list(document["rows"][0]["documents"])} == spans[0]
+    paper_span = document["rows"][0]
+    im_start, im_end = tokenizer.special_text("im_start"), tokenizer.special_text("im_end")
+    head, mid = f"{im_start}system\n", f"{im_end}\n{im_start}user\n"
+    whole = f"{head}{over_cap['query']}{mid}{over_cap['documents'][0].strip()}{im_end}\n{im_start}assistant\n"
+    kept = f"{head}{paper_span['query']}{mid}{paper_span['documents'][0]}"
+    assert tokenizer.ids(kept) == tokenizer.ids(whole)[:MAX_TOKENS]  # the paper's right cut, anchor dropped
+    assert paper_span["documents"][0].startswith(spans[0]["documents"][0])  # the client cuts shorter
+    assert paper_span["documents"][0] != spans[0]["documents"][0]
     template = recipe.client.template
     assert template is not None
     frame = template.render("pair", tokenizer, query=spans[0]["query"], document=spans[0]["documents"][0])
@@ -475,17 +483,20 @@ def test_reference_cli_renders_the_wire_spans_and_refuses_embed(tmp_path: Path, 
     assert "reranker" in (refused.stderr + refused.stdout)
 
 
-def test_settle_rule_and_declared_normalisation_match_the_wire(tmp_path: Path, zerank_tokenizer: Path) -> None:
-    """The wire's settle-once query and the reference's spans agree byte for byte.
+def test_settle_rule_and_declared_normalisation_against_the_papers_spans(
+    tmp_path: Path, zerank_tokenizer: Path
+) -> None:
+    """The wire's settle-once query and the declared normalisation, against the paper's own spans.
 
-    (1) An over-share query (over ``query_max_tokens``) in an under-budget pair is settled at its
-    share by the rerank client (settle-once) and the reference mirrors the wire's spans; (2)
+    (1) An over-share query (over ``query_max_tokens``) in an under-budget pair is settled at its share
+    by the rerank client (settle-once) while the paper keeps it whole: an under-cap row, so stage 1's
+    render check gates it red -- the reference never ports the settle rule (decision 9); (2)
     whitespace-padded inputs round through the declared normalisation (``normalize: [strip]``: the
-    paper's strip) on both sides.
+    paper's strip) on both sides, byte for byte.
     """
     recipe = with_local_tokenizer(zerank_tokenizer)
     rows = [
-        # over the 4096-token share, the pair itself under the 8192 budget: the query settles at its share
+        # over the 4096-token share, the pair itself under the 8192 budget
         {"query": "alphagammaepsilon" * 1200, "documents": ["short document"]},
         # whitespace-padded: both sides strip through the declared normalisation
         {"query": "  padded query \n\t", "documents": ["\n leading document "]},
@@ -496,8 +507,8 @@ def test_settle_rule_and_declared_normalisation_match_the_wire(tmp_path: Path, z
     assert spans[0]["query"] == rows[0]["query"][: len(spans[0]["query"])]  # a verbatim prefix
     assert spans[0]["documents"] == ["short document"]
     assert spans[1] == {"query": "padded query", "documents": ["leading document"]}
-    # the reference's --mode render emits the wire's own spans (the rerank reference contract)
     out_path = tmp_path / "reference.json"
+    pairs = write_pairs(tmp_path / "pairs.jsonl", rows)
     completed = subprocess.run(
         [
             sys.executable,
@@ -505,7 +516,7 @@ def test_settle_rule_and_declared_normalisation_match_the_wire(tmp_path: Path, z
             "--mode",
             "render",
             "--pairs",
-            write_pairs(tmp_path / "pairs.jsonl", rows),
+            str(pairs),
             "--out",
             str(out_path),
             "--tokenizer",
@@ -519,7 +530,11 @@ def test_settle_rule_and_declared_normalisation_match_the_wire(tmp_path: Path, z
     )
     assert completed.returncode == 0, completed.stderr[-500:]
     rows_out = json.loads(out_path.read_text(encoding="utf-8"))["rows"]
-    assert [{"query": row["query"], "documents": list(row["documents"])} for row in rows_out] == spans
+    assert rows_out[0]["query"] == rows[0]["query"]  # the paper keeps the whole query
+    assert {"query": rows_out[1]["query"], "documents": rows_out[1]["documents"]} == spans[1]
+    document = stage1_prompts(recipe, pairs, sys.executable, over_length_per_shape=1)
+    failures = document["render_check"]["failures"]
+    assert document["render_check"]["passed"] is False and {failure["index"] for failure in failures} == {0}
 
 
 # -----------------------------------------------------------------------------------------------

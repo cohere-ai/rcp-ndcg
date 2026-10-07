@@ -5,10 +5,12 @@ lanes' shared helper (``_contract.assert_recipe_contract``), with a two-mutant n
 serve or reference field that drifts reds, naming the field path. Stage 1 runs the harness's own
 machinery on the real tokenizer (downloaded into ``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when set, else
 ``tmp_path``, pinned by SHA-256; public Hub file, never a token file), and the reference's
-tokenizer-only ``--mode render`` runs here: the rerank reference contract is the wire's own content
-spans, and the paper's ``query.strip()``/``doc.strip()`` is the recipe's declared normalisation
-(``normalize: [strip]``), never a jinja trim filter. The paper-exact score mode needs the reference
-environment and the GPU wave.
+tokenizer-only ``--mode render`` runs here: it writes the paper's own cut (the whole rendered prompt
+right-cut at 8192 tokens) in the harness's span format -- never the client's cut (decision 9), so
+under-cap rows equal the wire byte for byte and over-cap rows are the declared ``anchor_drop_over_cap``,
+reported non-gating. The paper's ``query.strip()``/``doc.strip()`` is the recipe's declared
+normalisation (``normalize: [strip]``), never a jinja trim filter. The paper-exact score mode needs
+the reference environment and the GPU wave.
 """
 
 from __future__ import annotations
@@ -187,9 +189,10 @@ def _paper_render(tokenizer: Any, query: str, document: str) -> str:
 
 
 def _sample_pairs() -> list[dict[str, Any]]:
-    """The sampled pairs: 20 in-budget rows and 6 over-budget rows (a long document, queries past
+    """The sampled pairs: 20 in-budget rows and 5 over-budget rows (a long document, queries past
     the declared share, unicode and CJK), plus one whitespace-padded row and one empty-document row
-    for the declared normalisation and ``empty_doc: send``."""
+    for the declared normalisation and ``empty_doc: send``. An over-share query in an UNDER-budget
+    pair gates red by design (the reference never ports the settle rule): it has its own test."""
     rows: list[dict[str, Any]] = [
         {
             "query": f"query {index}: what does the reranker read",
@@ -202,10 +205,10 @@ def _sample_pairs() -> list[dict[str, Any]]:
         [
             # document over the pair budget: the document span is cut, the anchor kept
             {"query": _QUERY, "documents": ["parisisthecapitaloffranceandeurope" * 3100]},
-            # query over the declared share with a short document: the pair still fits the budget whole
-            {"query": "alphagammaepsilon" * 1200, "documents": [_DOCUMENT]},
-            # query over the share AND the pair over budget: the query is cut to its share first
-            {"query": "alphagammaepsilon" * 1400, "documents": ["thequickbrownfoxjumpsover" * 400]},
+            # query over the share AND the pair over budget even after the settle: the query is cut to its
+            # share first, then the document to what remains (the harness's over-cap census needs that
+            # document cut: a pair that only the settle brings under budget is classified under-cap)
+            {"query": "alphagammaepsilon" * 1400, "documents": ["thequickbrownfoxjumpsover" * 800]},
             # unicode, emoji and CJK over the cap
             {"query": _QUERY, "documents": ["北京上海广州深圳🦜\U0001f600" * 2400]},
             # a second query-over-share row, over the cap: the document span gets what remains
@@ -275,7 +278,7 @@ def test_serve_argv_matches_the_measured_vllm_invocation() -> None:
         "--tensor-parallel-size": "1",
     }.items():
         assert argv[argv.index(flag) + 1] == value, flag
-    assert "--convert" not in argv, "a rerank recipe never flags --convert classise"
+    assert "--convert" not in argv, "a rerank recipe never flags --convert"
     overrides = json.loads(argv[argv.index("--hf-overrides") + 1])
     assert overrides == {
         "architectures": ["Qwen3ForSequenceClassification"],
@@ -339,14 +342,8 @@ def test_stage1_on_cpu_passes_the_anchor_template_and_render_checks(tmp_path: Pa
     assert document["engine_tokenize_check"]["status"] == "not_run"  # no engine on CPU; never reported passed
 
 
-@pytest.mark.network
-def test_reference_render_emits_the_wire_content_spans(tmp_path: Path) -> None:
-    """The reference's ``--mode render`` emits the wire's cut content spans byte for byte: the
-    rerank reference contract (the query settled at its share whenever it exceeds it, the declared
-    normalisation applied, the document cut to what remains)."""
-    recipe, tokenizer = _recipe_and_tokenizer(tmp_path)
-    rows = _sample_pairs()
-    spans = served_rows(recipe, rows, tokenizer)["per_shape"]["pair"]["spans"]
+def _reference_render(tmp_path: Path, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The reference subprocess's ``--mode render`` rows for ``rows`` (tokenizer only, no torch)."""
     out_path = tmp_path / "reference.json"
     completed = subprocess.run(
         [
@@ -368,12 +365,53 @@ def test_reference_render_emits_the_wire_content_spans(tmp_path: Path) -> None:
         timeout=600,
     )
     assert completed.returncode == 0, completed.stderr[-500:]
-    rows_out = json.loads(out_path.read_text(encoding="utf-8"))["rows"]
-    assert [{"query": row["query"], "documents": list(row["documents"])} for row in rows_out] == spans
-    # the over-share-under-budget row (index 21): the query span is settled at its share
-    share_row = spans[21]
-    assert 0 < tokenizer.count(share_row["query"]) == recipe.client.query_max_tokens
-    assert share_row["query"] == ("alphagammaepsilon" * 1200)[: len(share_row["query"])]  # a verbatim prefix
+    return json.loads(out_path.read_text(encoding="utf-8"))["rows"]
+
+
+@pytest.mark.network
+def test_the_reference_renders_the_papers_cut_never_the_clients(tmp_path: Path) -> None:
+    """Decision 9 on this reference: under the cap its spans are the wire's, byte for byte (the paper's
+    strip is the declared normalisation); over the cap they are the paper's own cut -- the whole rendered
+    prompt right-cut at 8192 tokens, the assistant header (the anchor) dropped -- never the client's
+    anchor-preserving cut, and stage 1 reports those rows non-gating under ``anchor_drop_over_cap``."""
+    recipe, tokenizer = _recipe_and_tokenizer(tmp_path)
+    rows: list[dict[str, Any]] = [
+        {"query": _QUERY, "documents": [_DOCUMENT, "  Lyon is a city in France.  "]},
+        {"query": _QUERY, "documents": ["parisisthecapitaloffranceandeurope" * 3100]},
+    ]
+    reference = _reference_render(tmp_path, rows)
+    served = served_rows(recipe, rows, tokenizer)["per_shape"]["pair"]["spans"]
+    assert {"query": reference[0]["query"], "documents": reference[0]["documents"]} == served[0]
+    assert served[0] == {"query": _QUERY, "documents": [_DOCUMENT, "Lyon is a city in France."]}
+    # over the cap: the paper's prompt, right-cut at the budget -- the anchor tail is gone
+    paper = _paper_render(tokenizer, rows[1]["query"], rows[1]["documents"][0])
+    kept = _paper_render(tokenizer, reference[1]["query"], reference[1]["documents"][0])
+    tail = tokenizer.special_text("im_end") + "\n" + tokenizer.special_text("im_start") + "assistant\n"
+    assert kept.endswith(tail)  # the frame helper re-attaches it: strip it to compare with the cut
+    assert tokenizer.ids(kept[: -len(tail)]) == tokenizer.ids(paper)[: recipe.client.max_tokens]
+    # the client reserves the anchor and cuts the document shorter: the two cuts differ by declaration
+    assert reference[1]["documents"][0].startswith(served[1]["documents"][0])
+    assert len(served[1]["documents"][0]) < len(reference[1]["documents"][0])
+    document = stage1_prompts(recipe, _write_pairs(tmp_path, rows), sys.executable, over_length_per_shape=1)
+    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
+    assert document["render_check"]["over_cap"]["known_deviation"] is True
+    assert {row["index"] for row in document["render_check"]["over_cap"]["rows"]} == {1}
+
+
+@pytest.mark.network
+def test_an_over_share_query_under_the_budget_gates_red(tmp_path: Path) -> None:
+    """Under-cap rows gate exactly: an over-share query in an under-budget pair ships settled at its
+    share while the paper keeps it whole, so the render check goes red -- the reference never ports the
+    client's settle rule to make the row pass (the waves' pairs files keep queries within the share)."""
+    recipe, tokenizer = _recipe_and_tokenizer(tmp_path)
+    rows = [{"query": "alphagammaepsilon" * 1200, "documents": [_DOCUMENT]}]
+    query_tokens = tokenizer.count(rows[0]["query"])
+    assert (recipe.client.query_max_tokens or 0) < query_tokens < (recipe.client.max_tokens or 0) - 100
+    reference = _reference_render(tmp_path, rows)
+    assert reference[0]["query"] == rows[0]["query"]  # the paper keeps it whole
+    document = stage1_prompts(recipe, _write_pairs(tmp_path, rows), sys.executable, over_length_per_shape=1)
+    assert document["render_check"]["passed"] is False
+    assert document["passed"] is False
 
 
 @pytest.mark.network
