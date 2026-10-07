@@ -35,7 +35,10 @@ released together.
   The corpus seam (`load_corpus`, `register_corpus_format`, `register_line_migration`,
   `NORMALISATION_VERSION`) reads the shakedown's recorder format today and takes
   `rcp_ndcg_vllm.observe`'s writer when it lands; `behaviour_diff` writes the per-input delta report,
-  `measure_non_determinism` derives the verification tolerances from the corpus's own repeats, and
+  `measure_non_determinism` measures only true same-request repetitions (one `request_digest`) and
+  derives the verification tolerance from them under `NON_DETERMINISM_RULE` -- each measured bound
+  applies jointly, and without a repetition the tolerance is declared unmeasured (`None`: a replay is
+  compared exactly) instead of being invented -- and
   the registry (`registry`, `transport_for`) resolves by (engine, version, fingerprint) with the
   `rcp_ndcg.emulators` entry-point group for out-of-tree emulators. An emulator refuses an engine
   version or recipe revision it was not verified against; the conformance suite

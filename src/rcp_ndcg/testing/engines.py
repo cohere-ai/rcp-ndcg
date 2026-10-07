@@ -72,11 +72,13 @@ __all__ = [
     "find_corpora",
     "find_credential_patterns",
     "load_corpus",
+    "NON_DETERMINISM_RULE",
     "measure_non_determinism",
     "normalise_body",
     "register_corpus_format",
     "register_line_migration",
     "registry",
+    "request_digest",
     "transport_for",
     "verification_record",
     "verification_records",
@@ -231,10 +233,13 @@ class Corpus:
         return str(self.manifest["recipe"]["behaviour_fingerprint"])
 
     @property
-    def tolerance(self) -> tuple[float, float]:
-        """``(abs, rel)`` the recorded non-determinism derives (OBSERVATIONS-SPEC section 2: measured,
-        never chosen by hand)."""
+    def tolerance(self) -> tuple[float, float] | None:
+        """``(abs, rel)`` the measured non-determinism derives (OBSERVATIONS-SPEC section 2: measured,
+        never chosen by hand), or ``None`` when the corpus holds no same-request repetition (unmeasured:
+        a replay is compared exactly)."""
         nondet = self.manifest["non_determinism"]
+        if nondet.get("status") != "measured":
+            return None
         return (float(nondet["tolerance_abs"]), float(nondet["tolerance_rel"]))
 
 
@@ -475,7 +480,7 @@ def compare_exchange(
     path: str,
     status: int,
     body: Any,
-    tolerance: tuple[float, float],
+    tolerance: tuple[float, float] | None,
     response_headers: Mapping[str, str] | None = None,
 ) -> list[str]:
     """The conformance check of one replayed exchange: identical status and body within the recorded
@@ -489,7 +494,8 @@ def compare_exchange(
         path: The replayed request's path.
         status: The replayed response's status.
         body: The replayed response body (as the transport reads it).
-        tolerance: ``(abs, rel)`` from the corpus's measured non-determinism (0, 0 is exact).
+        tolerance: ``(abs, rel)`` from the corpus's measured non-determinism, each bound applying
+            jointly; ``None`` (unmeasured) compares exactly.
         response_headers: The replayed response's headers (checked against the recorded ones that
             matter; ``None`` skips the header check).
 
@@ -507,7 +513,7 @@ def compare_exchange(
                 problems.append(f"header {name}: {actual!r} != recorded {expected!r}")
     expected_body = normalise_body(recorded.method, recorded.path, recorded.response_json)
     actual = normalise_body(method, path, body)
-    problems.extend(_diff_bodies(expected_body, actual, "", tolerance))
+    problems.extend(_diff_bodies(expected_body, actual, "", tolerance or (0.0, 0.0)))
     return problems
 
 
@@ -535,9 +541,12 @@ def _diff_bodies(expected: Any, actual: Any, path: str, tolerance: tuple[float, 
 
 
 def _numeric_diff(expected: float, actual: float, path: str, tolerance: tuple[float, float]) -> list[str]:
+    """One number against its record: within the measured absolute AND relative bound (jointly)."""
     absolute = abs(actual - expected)
-    allowed = tolerance[0] + abs(expected) * tolerance[1]
-    return [] if absolute <= allowed else [f"{path}: {actual!r} differs from recorded {expected!r} by {absolute:g}"]
+    relative = absolute / max(abs(expected), abs(actual), 1e-300) if absolute else 0.0
+    if absolute <= tolerance[0] and relative <= tolerance[1]:
+        return []
+    return [f"{path}: {actual!r} differs from recorded {expected!r} by {absolute:g} (relative {relative:g})"]
 
 
 # ---------------------------------------------------------------------------
@@ -1265,71 +1274,77 @@ def behaviour_diff(before: Corpus, after: Corpus) -> BehaviourDiff:
     )
 
 
-def measure_non_determinism(corpus: Corpus, strategy: PromptStrategy) -> dict[str, Any]:
-    """The measured, never assumed, non-determinism of one recipe (OBSERVATIONS-SPEC section 2).
+NON_DETERMINISM_RULE = (
+    "same-request repetitions only: exchanges whose request digest (method, path and the canonical "
+    "request body) is identical are repetitions of one question; the measured value is the largest "
+    "absolute and relative difference of any numeric leaf of their normalised response bodies between "
+    "any two of them; the verification tolerance is the measured pair itself, each bound applying "
+    "jointly; without a repetition the tolerance is unmeasured and a replay is compared exactly"
+)
+"""How :func:`measure_non_determinism` derives the verification tolerance (stored with the numbers)."""
 
-    The rule (``rule`` is stored with the numbers): for every observation key (one engine prompt plus
-    the request's behaviour-shaping knobs) observed more than once in the corpus, the largest absolute
-    and relative differences between ANY two observations of its outputs; the maxima over all keys are
-    the emulator's verification tolerance -- an envelope that changed a model-shaping field is a
-    different key and measures nothing. With one repetition per request the rule measures nothing and
-    the tolerance is zero (exact replay).
+
+def measure_non_determinism(corpus: Corpus) -> dict[str, Any]:
+    """The measured, never assumed, non-determinism of one corpus (OBSERVATIONS-SPEC section 2).
+
+    Only true repetitions count: exchanges with the same request digest (:data:`NON_DETERMINISM_RULE`).
+    Two requests that differ in any byte -- a ``use_activation``, a ``top_n``, an ignored unknown field
+    -- are different questions, so their differences measure nothing. With no repetition the block says
+    ``status: unmeasured`` and carries no tolerance (``None``): the emulator then replays the one
+    observation it has and conformance compares exactly; a number is never invented.
 
     Args:
         corpus: The raw corpus.
-        strategy: The recipe's engine-prompt derivation (repeats are found per prompt).
 
     Returns:
-        The ``non_determinism`` manifest block: the rule, the measured maxima and the tolerances they
-        derive.
+        The ``non_determinism`` manifest block: ``rule``, ``status`` (``measured``/``unmeasured``),
+        ``same_request_repetitions`` (the repeated request digests), ``measured_max_abs`` and
+        ``measured_max_rel``, and the tolerances they derive (``tolerance_abs``, ``tolerance_rel``).
     """
-    observations: dict[str, list[Any]] = {}
+    groups: dict[str, list[Exchange]] = {}
     for exchange in corpus.exchanges:
-        if exchange.status != 200 or exchange.path.endswith("/models"):
-            continue
-        set_ = strategy.prompts(exchange.request_body or {})
-        for key, observation in _outputs_from_response(set_, exchange):
-            observations.setdefault(key, []).append(observation)
+        if exchange.status == 200 and exchange.response_json is not None:
+            groups.setdefault(request_digest(exchange), []).append(exchange)
+    repeated = [group for group in groups.values() if len(group) > 1]
     max_abs, max_rel = 0.0, 0.0
-    repeats = 0
-    for values in observations.values():
-        if len(values) < 2:
-            continue
-        repeats += 1
-        leaves = [_float_leaves(_observation_payload(value)) for value in values]
+    for group in repeated:
+        leaves = [_float_leaves(normalise_body(item.method, item.path, item.response_json)) for item in group]
         for index, first in enumerate(leaves):
             for second in leaves[index + 1 :]:
-                for name, a in first.items():
-                    b = second.get(name)
-                    if b is None:
+                for name in set(first) | set(second):
+                    a, b = first.get(name), second.get(name)
+                    if a is None or b is None:
                         continue
                     difference = abs(a - b)
                     max_abs = max(max_abs, difference)
-                    max_rel = max(max_rel, difference / max(abs(a), abs(b), 1e-12))
+                    max_rel = max(max_rel, difference / max(abs(a), abs(b), 1e-300))
+    measured = bool(repeated)
     return {
-        "rule": "max-pairwise-difference-across-repeated-observations-of-one-key",
-        "repetitions": ["same_process"],
-        "repeated_prompts": repeats,
-        "measured_max_abs": max_abs,
-        "measured_max_rel": max_rel,
-        "tolerance_abs": max_abs,
-        "tolerance_rel": max_rel,
+        "rule": NON_DETERMINISM_RULE,
+        "status": "measured" if measured else "unmeasured",
+        "same_request_repetitions": len(repeated),
+        "measured_max_abs": max_abs if measured else None,
+        "measured_max_rel": max_rel if measured else None,
+        "tolerance_abs": max_abs if measured else None,
+        "tolerance_rel": max_rel if measured else None,
     }
 
 
-def _observation_payload(observation: ModelObservation) -> Any:
-    return {
-        "vector": list(observation.vector or ()),
-        "matrix": [list(row) for row in observation.matrix or ()],
-        "score": observation.score,
-        "scores": list(observation.scores or ()),
-    }
+def request_digest(exchange: Exchange) -> str:
+    """The content address of one request: SHA-256 of its method, path and canonical body. Two
+    exchanges with one digest asked the same question (a repetition)."""
+    canonical = json.dumps(
+        [exchange.method.upper(), exchange.path, exchange.request_body],
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        default=str,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _key(exchange: Exchange) -> str:
-    canonical = json.dumps(exchange.request_body, sort_keys=True, separators=(",", ":"), default=str)
-    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
-    return f"{exchange.method} {exchange.path} {digest}"
+    return f"{exchange.method} {exchange.path} {request_digest(exchange)[:16]}"
 
 
 # ---------------------------------------------------------------------------
@@ -1494,7 +1509,7 @@ def verification_record(corpus: Corpus, problems: Sequence[str], *, verified_at:
             "behaviour_fingerprint": recipe["behaviour_fingerprint"],
         },
         "normalisation_version": NORMALISATION_VERSION,
-        "tolerances": {"abs": tolerance[0], "rel": tolerance[1]},
+        "tolerances": None if tolerance is None else {"abs": tolerance[0], "rel": tolerance[1]},
         "exchanges": len(corpus.exchanges),
         "problems": list(problems),
         "result": "pass" if not problems else "fail",

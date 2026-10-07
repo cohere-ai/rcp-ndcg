@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from rcp_ndcg.testing.engines import (
     compare_exchange,
     credential_findings,
@@ -288,3 +290,61 @@ def test_the_corpus_schema_migrations_never_invalidate_an_old_corpus(tmp_path: P
     migrated = load_corpus(tmp_path)
     assert migrated.exchanges[0].sequence == line["sequence"]
     assert migrated.exchanges[0].path == line["path"]
+
+
+# -- M1: measured, never assumed, non-determinism ------------------------------------------------------
+
+
+def _rerank_exchange(sequence: int, body: dict, score: float):
+    from rcp_ndcg.testing.engines import Exchange
+
+    reply = {"id": f"score-{sequence}", "model": "m", "results": [{"index": 0, "relevance_score": score}]}
+    return Exchange(sequence, "POST", "/rerank", body, 200, {"content-type": "application/json"}, reply)
+
+
+def test_non_determinism_is_measured_only_across_same_request_repetitions(tmp_path: Path) -> None:
+    """Two requests that differ in any byte (here ``use_activation``) are different questions, never a
+    repetition: with no true repetition the tolerance is declared unmeasured, not invented. A true
+    repetition (an identical request digest) is measured."""
+    from rcp_ndcg.testing.engines import Corpus, measure_non_determinism
+
+    body = {"model": "m", "query": "q", "documents": ["d"], "use_activation": True}
+    other = {key: value for key, value in body.items() if key != "use_activation"}
+    different = Corpus(tmp_path, {}, (_rerank_exchange(0, body, 0.9246), _rerank_exchange(1, other, 0.9238)))
+    block = measure_non_determinism(different)
+    assert block["status"] == "unmeasured" and block["same_request_repetitions"] == 0, block
+    assert block["tolerance_abs"] is None and block["tolerance_rel"] is None
+
+    repeated = Corpus(tmp_path, {}, (_rerank_exchange(0, body, 0.9246), _rerank_exchange(1, dict(body), 0.9244)))
+    block = measure_non_determinism(repeated)
+    assert block["status"] == "measured" and block["same_request_repetitions"] == 1, block
+    assert block["measured_max_abs"] == pytest.approx(0.0002)
+    assert block["tolerance_abs"] == block["measured_max_abs"]
+    assert block["tolerance_rel"] == block["measured_max_rel"]
+
+
+def test_every_value_is_bounded_by_the_joint_condition() -> None:
+    """A replayed number passes only within BOTH measured bounds (absolute and relative): never the
+    looser of the two, never their sum."""
+    from rcp_ndcg.testing.engines import compare_exchange
+
+    body = {"model": "m", "query": "q", "documents": ["d"]}
+    recorded = _rerank_exchange(0, body, 1.0)
+    replay = _rerank_exchange(1, body, 1.0005).response
+    assert compare_exchange(recorded, "POST", "/rerank", 200, replay, (1e-3, 1e-6)), "inside abs, outside rel"
+    assert compare_exchange(recorded, "POST", "/rerank", 200, replay, (1e-6, 1e-3)), "inside rel, outside abs"
+    assert compare_exchange(recorded, "POST", "/rerank", 200, replay, (1e-3, 1e-3)) == []
+    assert compare_exchange(recorded, "POST", "/rerank", 200, replay, None), "unmeasured is exact"
+    assert compare_exchange(recorded, "POST", "/rerank", 200, recorded.response, None) == []
+
+
+def test_every_manifest_states_the_non_determinism_its_raw_records_measure() -> None:
+    """The stored block is exactly what the versioned code recomputes from the raw records; the
+    shakedown sent every request once, so its tolerance is declared unmeasured."""
+    from rcp_ndcg.testing.engines import measure_non_determinism
+
+    for directory in corpus_dirs():
+        corpus = load_corpus(directory)
+        assert corpus.manifest["non_determinism"] == measure_non_determinism(corpus), directory
+        assert corpus.manifest["non_determinism"]["status"] == "unmeasured", directory
+        assert corpus.tolerance is None

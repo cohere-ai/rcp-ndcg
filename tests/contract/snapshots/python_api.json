@@ -19261,6 +19261,11 @@
         "type": "str",
         "value": "rcp-ndcg.observation/1"
       },
+      "NON_DETERMINISM_RULE": {
+        "kind": "constant",
+        "type": "str",
+        "value": "same-request repetitions only: exchanges whose request digest (method, path and the canonical request body) is identical are repetitions of one question; the measured value is the largest absolute and relative difference of any numeric leaf of their normalised response bodies between any two of them; the verification tolerance is the measured pair itself, each bound applying jointly; without a repetition the tolerance is unmeasured and a replay is compared exactly"
+      },
       "NORMALISATION_VERSION": {
         "kind": "constant",
         "type": "int",
@@ -19843,7 +19848,7 @@
             "name": "body"
           },
           {
-            "annotation": "tuple[float, float]",
+            "annotation": "tuple[float, float] | None",
             "default": "<required>",
             "kind": "positional_or_keyword",
             "name": "tolerance"
@@ -19948,12 +19953,6 @@
             "name": "corpus"
           },
           {
-            "annotation": "PromptStrategy",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "strategy"
-          },
-          {
             "returns": "dict[str, Any]"
           }
         ]
@@ -20030,6 +20029,21 @@
       "registry": {
         "kind": "constant",
         "type": "rcp_ndcg.testing.engines.EmulatorRegistry"
+      },
+      "request_digest": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Exchange",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "exchange"
+          },
+          {
+            "returns": "str"
+          }
+        ]
       },
       "transport_for": {
         "defined_in": "rcp_ndcg.testing.engines",
