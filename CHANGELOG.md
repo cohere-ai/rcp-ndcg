@@ -29,7 +29,9 @@ released together.
   `anchor_drop_over_cap`: a reference that keeps the anchors but cuts over-cap content its own way (a joint
   `longest_first` truncation where the client settles the query at its share) declares it, and the harness
   reports those inputs outside the gates. A reference stays the paper's or the model card's; it never
-  copies the client's cut to make an over-cap row pass. `schema/recipe.schema.json` carries the new value.
+  copies the client's cut to make an over-cap row pass. `schema/recipe.schema.json` carries the new value,
+  and the new read-only property `ReferenceSpec.over_cap_deviation` names the declared over-cap deviation
+  (or `None`), which the harness's stages read.
 - **The role clients expose their text budget**: `EmbeddingClient`, `PoolingClient` and `RerankClient` gain the
   read-only `text_budget` (the `TextBudget` the client fits every request to, as built from its config; `None`
   without `max_tokens`), so harnesses and case loaders read the client's budget instead of rebuilding it.
