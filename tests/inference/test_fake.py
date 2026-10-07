@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import json
 import math
+import time
 
 import httpx
 import numpy as np
@@ -19,6 +20,9 @@ import rcp_ndcg.inference.fake as fake_module
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference import Call, Endpoint, Transport, register_fake_route
 from rcp_ndcg.inference.fake import FakeEndpoint, _fake_endpoint, fake_uniform, hidden_ability
+
+PINNED_UNIT_VECTOR = (-0.41370025636660385, -0.5207374821709475, -0.5862891756258611, -0.4625468355619963)
+"""The fake's unit vector for (seed 0, "embedding", "hello") at 4 dimensions."""
 
 CHAT = ("POST", "/custom/route")
 """A third-party route for the registry tests; `/chat/completions` is the judge's shipped fake."""
@@ -162,6 +166,30 @@ class TestPooling:
         raw = base64.b64decode(b64_replies[0].body["data"][0]["data"])
         matrix = np.frombuffer(raw, dtype=np.float32).reshape(2, 4)
         assert np.allclose(np.asarray(float_replies[0].body["data"][0]["data"]), matrix)
+
+    def test_a_long_wide_text_answers_in_seconds(self) -> None:
+        """One seeded draw per vector, never one hash per scalar: a 16k-token text at 2048 dimensions (a
+        late-interaction recipe's long document) answers in seconds -- the per-scalar hashing took minutes."""
+        count, dim = 16_384, 2048
+        transport = fake_module.fake_transport(f"fake://seed/1?dim={dim}", model="mv")
+        text = " ".join(f"w{index}" for index in range(count))
+        body = {"input": [text], "task": "token_embed", "encoding_format": "base64", "embed_dtype": "float16"}
+        start = time.perf_counter()
+        response = transport.handle_request(httpx.Request("POST", "fake://seed/1/pooling", json=body))
+        elapsed = time.perf_counter() - start
+        frame = base64.b64decode(response.json()["data"][0]["data"])
+        matrix = np.frombuffer(frame, dtype=np.float16).reshape(count, dim).astype(np.float32)
+        assert elapsed < 30.0, f"{elapsed:.1f} s for {count} x {dim}"
+        assert np.allclose(np.linalg.norm(matrix[[0, count // 2, -1]], axis=1), 1.0, atol=0.01)
+        assert not np.array_equal(matrix[0], matrix[1])  # every token its own draw
+
+    def test_a_vector_is_one_pinned_draw(self) -> None:
+        """The vectors are the same on every machine: one SHAKE-256 stream per vector, pinned here (a change of
+        the draw moves these values, deliberately and with a CHANGELOG entry)."""
+        vector = fake_module._unit_vector(0, "embedding", "hello", dim=4)
+        assert np.allclose(vector, PINNED_UNIT_VECTOR, rtol=0.0, atol=1e-12), vector.tolist()
+        wider = fake_module._unit_vector(0, "embedding", "hello", dim=8)
+        assert np.allclose(wider[:4] / np.linalg.norm(wider[:4]), vector)  # a wider draw extends the stream
 
 
 class TestRerank:
