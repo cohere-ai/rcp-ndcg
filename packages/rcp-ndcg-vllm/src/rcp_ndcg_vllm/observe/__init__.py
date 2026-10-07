@@ -23,9 +23,22 @@ Public surface:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .adversarial import CONTENT_KINDS, SYNTHETIC_TEXTS, special_token_spellings, synthetic_text
+
+if TYPE_CHECKING:  # the type checker sees the lazy re-exports; runtime resolves them in __getattr__
+    from .requests import (
+        GENERATOR_VERSION,
+        PINNED_DATASET_COMMITS,
+        SEED,
+        PlannedRow,
+        RecipePlan,
+        pairs_jsonl,
+        plan_recipe,
+        write_manifest,
+        write_pairs_file,
+    )
 
 _REQUESTS_EXPORTS = frozenset(
     {

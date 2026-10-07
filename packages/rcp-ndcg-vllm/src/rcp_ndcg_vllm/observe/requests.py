@@ -939,7 +939,7 @@ def write_manifest(
 
 
 _PROBE_DIM = 8
-"""The vector width of the offline fake's ``/pooling`` replies during stage-1 validation (see :func:`_offline_probe`)."""
+"""The vector width of the offline fake's ``/pooling`` replies in stage-1 validation (:func:`_offline_probe`)."""
 
 
 def _offline_probe(recipe: Any) -> Any:

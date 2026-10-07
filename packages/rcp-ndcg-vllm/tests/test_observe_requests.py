@@ -11,7 +11,6 @@ import re
 from pathlib import Path
 
 import pytest
-
 from rcp_ndcg_vllm.equivalence.fitting import load_pairs, tokenizer_of
 from rcp_ndcg_vllm.observe.adversarial import CONTENT_KINDS
 from rcp_ndcg_vllm.observe.requests import (
