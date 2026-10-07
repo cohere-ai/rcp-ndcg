@@ -13,23 +13,27 @@ padding, the last non-pad position).
 
 Two harness modes (see ``rcp_ndcg_vllm.equivalence.reference`` for the contract):
 
-- ``--mode render``: the anchor-preserving render, per row. For a pair whose paper prompt fits
-  ``client.max_tokens`` this is the paper's own construction (the fidelity stage 1 asserts: the
-  declared shape in the recipe must reproduce the checkpoint's chat template byte for byte). For an
-  over-cap pair the paper's right cut would drop the trailing assistant header - the last-token
-  anchor - so the render is the anchor-preserving one instead: the product's ``fit`` (the same
-  mechanism the served client runs) reserves the fixed frame, cuts the content spans and re-attaches
-  the template. The anchor drop is never copied into the served path; the recipe declares it as
-  ``reference.known_deviations: [anchor_drop_over_cap]`` and stage 2 gates under-cap pairs only.
-- ``--mode score``: the paper's ``predict`` per row, on the recipe's ``reference.score_scale``
-  (probability). The recipe takes no instruction (``instruction: none``): a row's ``instruction``
-  field is ignored, exactly as the paper's path ignored it.
+- ``--mode render`` (stage 1; tokenizer only, no torch): ``{"rows": [{"index", "shape": "pair",
+  "query": str, "documents": [str, ...]}]}`` -- the content spans in the harness's rerank format,
+  under the PAPER's cut: the stripped query and document as the paper's prompt carries them,
+  right-cut with the whole rendered prompt at 8192 tokens (raw character offsets, never a
+  ``decode(encode())`` round trip). Under the cap the spans equal the client's byte for byte
+  (stage 1 gates them exactly); over it the paper's cut drops the anchor, the recipe's declared
+  ``anchor_drop_over_cap``, and the harness reports those rows non-gating. The reference never
+  ports the client's cut (its query share, its settle rule, its anchor reservation).
+- ``--mode score`` (stage 2): the paper's ``predict`` per row, on the recipe's
+  ``reference.score_scale`` (probability). The recipe takes no instruction (``instruction: none``): a
+  row's ``instruction`` field is ignored, exactly as the paper's path ignored it.
+
+The anchor drop is never copied anywhere: the paper's whole-prompt right cut at 8192 tokens drops
+the trailing assistant header (the last-token anchor) on over-cap pairs; the recipe declares that as
+``reference.known_deviations: [anchor_drop_over_cap]`` and stage 2 gates under-cap pairs only.
 
 Runs in its OWN python (``--reference-python``), never inside the harness: its environment is pinned
-by ``requirements-reference.txt`` beside this file (torch, transformers, scipy for the paper's code,
-plus the ``rcp-ndcg`` release whose ``fit`` renders the anchor-preserving shape). The model is loaded
-from the recipe's ``model`` at the recipe's ``revision`` (read from the ``recipe.yaml`` beside this
-file), bfloat16, on ``--device``.
+by ``requirements-reference.txt`` beside this file (render mode needs only ``tokenizers`` and
+``huggingface_hub``; score mode adds torch and transformers for the paper's code). The model is
+loaded from the recipe's ``model`` at the recipe's ``revision`` (read from the ``recipe.yaml`` beside
+this file), bfloat16, on ``--device``.
 """
 
 from __future__ import annotations
@@ -38,10 +42,18 @@ import argparse
 import json
 from pathlib import Path
 
+REPO = "zeroentropy/zerank-1-reranker"
+REVISION = "d03c467e29e29c0a16a130a86ce3b62d30116a2c"
 MAX_SEQ_LENGTH = 8192
-"""The paper's whole-prompt token cap (``MAX_SEQ_LENGTH`` of the old served client)."""
+"""The paper's whole-prompt token cap and the recipe's ``client.max_tokens`` pair budget."""
 BATCH_SIZE_TOKENS = 15_000
 """The paper's character budget per forward batch (throughput only; scores are per pair)."""
+YES_TOKEN_ID = 9454
+"""The "Yes" logit the score head reads: a single token of the pinned tokenizer (measured)."""
+ADD_SPECIAL_TOKENS = True
+"""The scoring route tokenizes with the post-processor's tokens (measured a no-op for this
+tokenizer, so the frame is the whole fixed cost either way). Declared, not assumed."""
+TOKENIZER_FILE = "tokenizer.json"
 
 
 def _recipe_dir() -> Path:
@@ -81,29 +93,19 @@ def load(tokenizer_spec: str, device: str):
     model = AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.bfloat16, revision=model_revision)
     model.eval()
     yes_token_id = tokenizer.encode("Yes", add_special_tokens=False)[0]
+    assert yes_token_id == YES_TOKEN_ID, yes_token_id
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     return tokenizer, model, yes_token_id, device
 
 
-def paper_prompt(tokenizer, query: str, document: str) -> str:
-    """The paper's prompt for one pair: ``ZerankRerank._format_inputs``, unchanged.
-
-    The query and document are stripped, the checkpoint's own chat template renders them as the
-    system and user turns, and the generation prompt (the assistant header) is appended.
-    """
-    messages = [
-        {"role": "system", "content": query.strip()},
-        {"role": "user", "content": document.strip()},
-    ]
-    text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    if not isinstance(text, str):
-        raise TypeError("apply_chat_template(tokenize=False) returned a non-string")
-    return text
-
-
 def score_pair(model, tokenizer, yes_token_id: int, device: str, query: str, documents: list[str]) -> list[float]:
-    """The paper's ``predict`` for one query and its documents (probabilities, aligned with ``docs``)."""
+    """The paper's ``predict`` for one query and its documents (probabilities, aligned with ``docs``).
+
+    The prompt per pair is the paper's ``ZerankRerank._format_inputs``, unchanged: the query and the
+    document are stripped (the declared normalisation), the checkpoint's own chat template renders
+    them as the system and user turns, and the generation prompt (the assistant header) is appended.
+    """
     from scipy.special import expit
 
     texts: list[str] = []
@@ -166,43 +168,140 @@ def _batch_logits(model, tokenizer, yes_token_id: int, device: str, batch: list[
         )
 
 
-def _anchor_preserving_render(tokenizer_spec: str, query: str, document: str, instruction: str | None) -> str:
-    """The anchor-preserving render of one pair, by the product's own budget mechanism.
+# -------------------------------------------------------------------------------------------
+# The tokenizer and the frame for render mode: the `tokenizers` library over the recipe's
+# tokenizer.json (the same file the harness and the engine read); specials resolved by name.
+# -------------------------------------------------------------------------------------------
 
-    The served client runs ``rcp_ndcg.data.preprocess.fit`` with the recipe's declared template and
-    budget; this is the same call, so the reference's render is the render the engine will read: the
-    fixed frame reserved, the content spans cut at token boundaries, the assistant header (the
-    last-token anchor) always re-attached. The instruction rides beside the fit (the recipe declares
-    ``instruction: none``, so the query is the bare query either way).
+
+def _split_spec(spec: str) -> tuple[str, str | None]:
+    """``org/model@<revision>`` -> (repo, revision); a local path passes through with no revision.
+
+    The same resolution rule as the product's ``rcp_ndcg.data.tokenizer`` path handling: a path is
+    anything that exists, is absolute or relative, or ends in ``.json``.
     """
-    import yaml
+    if spec.startswith(("/", "./", "../", "~")) or spec.endswith(".json") or Path(spec).exists():
+        return spec, None
+    repo, _, revision = spec.partition("@")
+    return repo, revision or None
 
-    from rcp_ndcg.data.preprocess import TextBudget, fit
-    from rcp_ndcg.data.tokenizer import load_tokenizer
 
-    recipe = yaml.safe_load((_recipe_dir() / "recipe.yaml").read_text(encoding="utf-8"))
-    client = recipe["client"]
-    tokenizer = load_tokenizer(tokenizer_spec)
-    budget = TextBudget(
-        tokenizer=tokenizer_spec,
-        max_tokens=client["max_tokens"],
-        query_max_tokens=client.get("query_max_tokens"),
-        template=client.get("template"),
-        on_overflow=client.get("on_overflow", "cut"),
-    )
-    result = fit([(query, document)], "pair", budget, tokenizer, ids=["0"], instruction=instruction)
-    return result.texts[0]
+def _tokenizer_file(spec: str) -> Path:
+    """The tokenizer.json file ``spec`` names: a local path as given, else downloaded from the Hub."""
+    path, revision = _split_spec(spec)
+    candidate = Path(path).expanduser()
+    file = candidate / TOKENIZER_FILE if candidate.is_dir() else candidate
+    if file.is_file():
+        return file
+    from huggingface_hub import hf_hub_download
+
+    return Path(hf_hub_download(path, TOKENIZER_FILE, revision=revision))
+
+
+def _load_backend_tokenizer(spec: str):
+    """The reference's counting tokenizer: the `tokenizers` library over the recipe's tokenizer.json."""
+    from tokenizers import Tokenizer
+
+    return Tokenizer.from_file(str(_tokenizer_file(spec)))
+
+
+def _added_tokens(tokenizer) -> dict[str, str]:
+    """The added vocabulary: the special's bare name (and its literal form) to its literal text."""
+    tokens: dict[str, str] = {}
+    for token in tokenizer.get_added_tokens_decoder().values():
+        content = token.content
+        name = content[2:-2] if content.startswith("<|") and content.endswith("|>") else content
+        tokens.setdefault(name, content)
+        tokens.setdefault(content, content)
+    return tokens
+
+
+def _special_text(tokenizer, name: str) -> str:
+    """The literal text of the added token named ``name`` (as the recipe's ``{special:<name>}`` resolves)."""
+    tokens = _added_tokens(tokenizer)
+    try:
+        return tokens[name]
+    except KeyError:
+        known = sorted({key for key in tokens if not key.startswith("<|")})
+        raise SystemExit(f"the tokenizer has no added token named {name!r}; its added tokens are {known}") from None
+
+
+def _frame(tokenizer) -> tuple[str, str, str]:
+    """The pair frame: (head, middle, tail) around the query and document spans -- the paper's prompt
+    (the checkpoint's chat template with the generation prompt, measured equal), the recipe's
+    declared pair shape and the template file's frame. Specials resolved from the tokenizer."""
+    im_start = _special_text(tokenizer, "im_start")
+    im_end = _special_text(tokenizer, "im_end")
+    head = f"{im_start}system\n"
+    mid = f"{im_end}\n{im_start}user\n"
+    tail = f"{im_end}\n{im_start}assistant\n"
+    return head, mid, tail
+
+
+# -------------------------------------------------------------------------------------------
+# render mode (stage 1): the paper's own cut, written as the content spans the harness compares.
+# The format is the harness's rerank render contract; the cut is the paper's ZerankRerank, never
+# the client's (no query share, no settle rule, no anchor reservation).
+# -------------------------------------------------------------------------------------------
+
+
+def paper_spans(tokenizer, query: str, document: str) -> tuple[str, str]:
+    """The paper's kept ``(query, document)`` content spans for one pair.
+
+    The paper's ``ZerankRerank._format_inputs`` renders ``[{system: query.strip()}, {user:
+    doc.strip()}]`` through the checkpoint's chat template with the generation prompt (that render
+    is exactly this recipe's frame, ``head + query + mid + document + tail``: measured on the
+    pinned checkpoint's own template), and ``_batch_logits`` tokenizes the WHOLE prompt with
+    ``truncation=True, max_length=MAX_SEQ_LENGTH`` -- a right cut.  The kept text is located at the raw
+    character offset of the last kept token (never a ``decode(encode())`` round trip); the spans
+    are the kept parts of the stripped query and document.  Under the cap they are the stripped
+    texts, byte for byte; over it the cut drops the tail first -- the assistant header, the anchor
+    the score is read from -- then the document's end (and, for a query that fills the cap alone,
+    the query's): the recipe's declared ``anchor_drop_over_cap``.
+    """
+    head, mid, tail = _frame(tokenizer)
+    query, document = query.strip(), document.strip()
+    prompt = head + query + mid + document + tail
+    encoded = tokenizer.encode(prompt, add_special_tokens=ADD_SPECIAL_TOKENS)
+    if len(encoded.ids) <= MAX_SEQ_LENGTH:
+        return query, document
+    kept = prompt[: encoded.offsets[MAX_SEQ_LENGTH - 1][1]]
+    query_start = len(head)
+    document_start = query_start + len(query) + len(mid)
+    return kept[query_start : query_start + len(query)], kept[document_start : document_start + len(document)]
+
+
+def render_rows(tokenizer, pairs: list[dict]) -> list[dict]:
+    """``--mode render``: per pairs row, ``{"index", "shape": "pair", "query", "documents"}`` under
+    the paper's cut (:func:`paper_spans`).  The recipe declares ``instruction: none``: a row's
+    instruction is not part of this model's input.  The paper's right cut lands at one token
+    frontier of the shared query, so the kept query span is the same for every document of a row;
+    a disagreement is refused rather than papered over."""
+    rows = []
+    for index, row in enumerate(pairs):
+        shape = str(row.get("shape") or "pair")
+        if shape != "pair":
+            raise SystemExit(f"row {index}: shape {shape!r} is not declared; this recipe declares the pair shape")
+        query = str(row["query"])
+        spans = [paper_spans(tokenizer, query, str(document)) for document in row["documents"]]
+        query_span = spans[0][0] if spans else paper_spans(tokenizer, query, "")[0]
+        if any(span != query_span for span, _ in spans):
+            raise SystemExit(f"row {index}: the paper's cut kept different query spans for one shared query")
+        rows.append({"index": index, "shape": shape, "query": query_span, "documents": [d for _, d in spans]})
+    return rows
 
 
 def main() -> int:
     """The reference CLI: ``--mode render|score``, a pairs file in, the mode's JSON out."""
     parser = argparse.ArgumentParser(description="the zerank-1-reranker reference (the paper's implementation)")
-    parser.add_argument("--mode", required=True, choices=["render", "score"])
+    parser.add_argument("--mode", required=True, choices=["render", "score", "embed"])
     parser.add_argument("--pairs", required=True)
     parser.add_argument("--out", required=True)
-    parser.add_argument("--tokenizer", required=True)
+    parser.add_argument("--tokenizer", required=True, help="the recipe's tokenizer spec (repo@revision or a path)")
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
+    if args.mode == "embed":
+        raise SystemExit("zerank-1-reranker is a reranker: the reference speaks render and score, not embed")
 
     pairs = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
 
@@ -215,34 +314,12 @@ def main() -> int:
         del model  # release the weights while the engine on the slot keeps serving
         output = {"rows": rows}
     else:
-        from rcp_ndcg.data.tokenizer import load_tokenizer
-
-        tokenizer = load_tokenizer(args.tokenizer)
-        from transformers import AutoTokenizer
-
-        source, revision = _tokenizer_source(args.tokenizer)
-        hf_tokenizer = AutoTokenizer.from_pretrained(source, padding_side="right", revision=revision)
-        rows = []
-        for index, row in enumerate(pairs):
-            query, document = str(row["query"]), str(row["documents"][0])
-            prompt = paper_prompt(hf_tokenizer, query, document)
-            if tokenizer.count(prompt, add_special_tokens=True) <= _max_tokens():
-                text = prompt
-            else:
-                text = _anchor_preserving_render(args.tokenizer, query, document, row.get("instruction"))
-            rows.append({"index": index, "shape": "pair", "text": text})
+        tokenizer = _load_backend_tokenizer(args.tokenizer)
+        rows = render_rows(tokenizer, pairs)
         output = {"rows": rows}
 
     Path(args.out).write_text(json.dumps(output, indent=1) + "\n", encoding="utf-8")
     return 0
-
-
-def _max_tokens() -> int:
-    """The recipe's declared pair budget (``client.max_tokens``)."""
-    import yaml
-
-    recipe = yaml.safe_load((_recipe_dir() / "recipe.yaml").read_text(encoding="utf-8"))
-    return int(recipe["client"]["max_tokens"])
 
 
 if __name__ == "__main__":

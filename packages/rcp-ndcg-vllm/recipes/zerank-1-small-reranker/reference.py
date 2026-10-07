@@ -28,23 +28,20 @@ Qwen3-1.7B causal LM (hidden 2048, 28 layers, tie_word_embeddings=true, bf16; th
 This file runs as a SUBPROCESS in the reference environment -- never inside the harness, which
 imports no torch and no transformers. The reference environment is pinned in
 ``requirements-reference.txt`` beside this file (torch, transformers, scipy; tokenizers and
-huggingface_hub come with transformers and are all stage 1 needs). Because that environment has
-no rcp-ndcg, the recipe's anchor-preserving render (the harness's stage-1 ``--mode render``
-contract: fixed segments reserved, content cut, template re-attached) is implemented here
-directly, as a faithful port of ``rcp_ndcg.data.preprocess`` (``token_prefix`` and ``fit``'s pair
-path) for this recipe's frame alone; the recipe tests pin it byte-identical to the product's own
-``fit`` on sampled pairs, including over-budget ones. The served frame itself is built from the
+huggingface_hub come with transformers and are all stage 1 needs). The paper's frame is built from the
 tokenizer's added tokens by name (``im_start``, ``im_end``), never typed literally.
 
 Subprocess contract (the harness invokes: ``<python> reference.py --mode <mode> --pairs <file>
 --out <file> --tokenizer <spec> [--device <d>]``):
 
-- ``--mode render``  -> ``{"rows": [{"index", "shape": "pair", "query": str,
-  "documents": [str, ...]}]}``: the cut content spans the served wire carries per pairs row (the
-  query settled once per row, the document spans cut to what remains -- the anchor-preserving
-  cut, as a faithful port of ``rcp_ndcg.data.preprocess`` (``token_prefix`` and ``fit``'s pair
-  path) for this recipe's frame alone; the recipe tests pin it byte-identical to the product's
-  own spans on sampled pairs, including over-budget ones).  Stage 1; tokenizer only, no torch.
+- ``--mode render`` (stage 1; tokenizer only, no torch): ``{"rows": [{"index", "shape": "pair",
+  "query": str, "documents": [str, ...]}]}`` -- the content spans in the harness's rerank format,
+  under the PAPER's cut: the stripped query and document as the paper's prompt carries them,
+  right-cut with the whole rendered prompt at 8192 tokens (raw character offsets, never a
+  ``decode(encode())`` round trip). Under the cap the spans equal the client's byte for byte
+  (stage 1 gates them exactly); over it the paper's cut drops the anchor, the recipe's declared
+  ``anchor_drop_over_cap``, and the harness reports those rows non-gating. The reference never
+  ports the client's cut (its query share, its settle rule, its anchor reservation).
 - ``--mode score``   -> ``{"rows": [{"index", "scores": [float, ...]}]}`` on the probability
   scale (stage 2; needs torch and the ~3.4 GB weights).
 - ``--mode embed``   -> refused: a reranker has no embed mode.
@@ -59,7 +56,6 @@ from pathlib import Path
 REPO = "zeroentropy/zerank-1-small-reranker"
 REVISION = "a65fd51c450e9b47fdddab98e31166ecad21af8d"
 MAX_SEQ_LEN = 8192  # the paper's MAX_SEQ_LENGTH: the whole-pair budget, the recipe's client.max_tokens
-QUERY_MAX_TOKENS = 4096  # the served path's query share, the recipe's client.query_max_tokens
 BATCH_SIZE_TOKENS = 15_000  # the paper's char-length batching budget (class default)
 DTYPE = "bfloat16"  # the paper's dtype; the checkpoint config agrees
 YES_TOKEN = "Yes"
@@ -111,17 +107,6 @@ def _load_backend_tokenizer(spec: str):
     return Tokenizer.from_file(str(_tokenizer_file(spec)))
 
 
-def _count(text: str, tokenizer, *, add_special_tokens: bool = False) -> int:
-    """The number of tokens of ``text`` as the engine counts it (the post-processor included when
-    ``add_special_tokens``)."""
-    return len(tokenizer.encode(text, add_special_tokens=add_special_tokens).ids)
-
-
-def _offsets(text: str, tokenizer) -> list[tuple[int, int]]:
-    """``(start, end)`` character offsets of each token of ``text``, in order."""
-    return [(offset[0], offset[1]) for offset in tokenizer.encode(text, add_special_tokens=False).offsets]
-
-
 def _added_tokens(tokenizer) -> dict[str, str]:
     """The added vocabulary: the special's bare name (and its literal form) to its literal text."""
     tokens: dict[str, str] = {}
@@ -144,8 +129,9 @@ def _special_text(tokenizer, name: str) -> str:
 
 
 def _frame(tokenizer) -> tuple[str, str, str]:
-    """The served pair frame: (head, middle, tail) around the query and document spans, the recipe's
-    declared pair shape -- the template file's zerank branch. Specials resolved from the tokenizer."""
+    """The pair frame: (head, middle, tail) around the query and document spans -- the paper's prompt
+    (the checkpoint's chat template with the generation prompt, measured equal), the recipe's
+    declared pair shape and the template file's zerank branch. Specials resolved from the tokenizer."""
     im_start = _special_text(tokenizer, "im_start")
     im_end = _special_text(tokenizer, "im_end")
     head = f"{im_start}system\n"
@@ -155,110 +141,56 @@ def _frame(tokenizer) -> tuple[str, str, str]:
 
 
 # -------------------------------------------------------------------------------------------
-# The anchor-preserving render: a faithful port of the product's mechanism for this recipe's
-# frame (rcp_ndcg.data.preprocess.token_prefix and fit's pair path). The reference environment
-# has no rcp-ndcg, so the port lives here; the recipe tests pin it byte-identical to the
-# product's fit on sampled pairs. The anchor (the trailing assistant header) is reserved: only
-# the content spans are cut, and the frame is re-attached after the cut.
+# render mode (stage 1): the paper's own cut, written as the content spans the harness compares.
+# The format is the harness's rerank render contract; the cut is the paper's ZerankRerank, never
+# the client's (no query share, no settle rule, no anchor reservation).
 # -------------------------------------------------------------------------------------------
 
 
-def _token_prefix(
-    text: str,
-    max_tokens: int,
-    tokenizer,
-    *,
-    rendered=None,
-    add_special_tokens: bool = False,
-) -> str:
-    """The longest prefix of ``text`` that ends at one of its first ``max_tokens`` token boundaries
-    and counts at most ``max_tokens`` as the engine reads it (``rendered(piece)`` when given).
+def paper_spans(tokenizer, query: str, document: str) -> tuple[str, str]:
+    """The paper's kept ``(query, document)`` content spans for one pair.
 
-    The cut is located with the tokenizer's offset mapping on the original text, so the result is a
-    verbatim prefix of ``text``; a candidate is counted as the engine reads it (the assembled
-    render), because a cut word can re-tokenize longer. Port of
-    ``rcp_ndcg.data.preprocess.token_prefix``: the same galloping-then-binary search over token
-    boundaries, the same counting.
-    """
-
-    def count(piece: str) -> int:
-        shown = rendered(piece) if rendered is not None else piece
-        return _count(shown, tokenizer, add_special_tokens=add_special_tokens)
-
-    if count(text) <= max_tokens:
-        return text
-    offsets = _offsets(text, tokenizer)
-
-    def prefix(tokens: int) -> str:
-        return text[: offsets[tokens - 1][1]] if tokens > 0 else ""
-
-    def fits(tokens: int) -> bool:
-        return count(prefix(tokens)) <= max_tokens
-
-    over = min(max_tokens, len(offsets))
-    if fits(over):
-        return prefix(over)
-    fitting, step = over - 1, 1
-    while fitting > 0 and not fits(fitting):
-        over, fitting, step = fitting, max(fitting - step, 0), step * 2
-    while over - fitting > 1:
-        middle = (over + fitting) // 2
-        fitting, over = (middle, over) if fits(middle) else (fitting, middle)
-    return prefix(fitting)
-
-
-def served_spans(tokenizer, query: str, document: str) -> tuple[str, str]:
-    """The cut content spans (query, document) the served wire carries for one pair.
-
-    Port of the product's role client for this recipe's declaration: the query's span settles once
-    per request -- to its declared share (``QUERY_MAX_TOKENS``) whenever it exceeds it (the settle
-    rule the wire carries; a bare pair fit would bind the share on overflow only), then through the
-    pair fit's probe pair (the query with an empty document) that guarantees the frame and the
-    anchor fit even alone -- and each document gets what remains. Every cut is a verbatim prefix at
-    a token boundary of the content, the frame and its trailing anchor always re-attached by the
-    engine around these spans. A query that fills the budget and leaves the document nothing is
-    refused, never cut undeclared.
+    The paper's ``ZerankRerank._format_inputs`` renders ``[{system: query.strip()}, {user:
+    doc.strip()}]`` through the checkpoint's chat template with the generation prompt (that render
+    is exactly this recipe's frame, ``head + query + mid + document + tail``: measured on the
+    pinned checkpoint's own template), and ``_batch_logits`` tokenizes the WHOLE prompt with
+    ``truncation=True, max_length=MAX_SEQ_LEN`` -- a right cut.  The kept text is located at the raw
+    character offset of the last kept token (never a ``decode(encode())`` round trip); the spans
+    are the kept parts of the stripped query and document.  Under the cap they are the stripped
+    texts, byte for byte; over it the cut drops the tail first -- the assistant header, the anchor
+    the score is read from -- then the document's end (and, for a query that fills the cap alone,
+    the query's): the recipe's declared ``anchor_drop_over_cap``.
     """
     head, mid, tail = _frame(tokenizer)
-
-    def assemble(q: str, d: str) -> str:
-        return head + q + mid + d + tail
-
-    cap = MAX_SEQ_LEN
-    overhead = _count(assemble("", ""), tokenizer, add_special_tokens=ADD_SPECIAL_TOKENS)
-    if overhead > cap:
-        raise SystemExit(f"the frame's fixed overhead alone is {overhead} tokens, over the budget of {cap}")
-    # 1. settle at the declared share whenever the query exceeds it:
-    if _count(query, tokenizer) > QUERY_MAX_TOKENS:
-        q_final = _token_prefix(query, QUERY_MAX_TOKENS, tokenizer)
-    else:
-        q_final = query
-    # 2. fit's probe pair (the query with an empty document): the query keeps the frame room.
-    q_final = _token_prefix(
-        q_final, cap, tokenizer, rendered=lambda piece: assemble(piece, ""), add_special_tokens=ADD_SPECIAL_TOKENS
-    )
-    q_min = _count(assemble(q_final, ""), tokenizer, add_special_tokens=ADD_SPECIAL_TOKENS)
-    if q_min >= cap and _count(document, tokenizer) > 0:
-        raise SystemExit(
-            f"the query fills the pair budget of {cap} tokens and leaves the document nothing; "
-            "lower QUERY_MAX_TOKENS (or raise MAX_SEQ_LEN), so the document keeps a share"
-        )
-    # 3. the document gets what remains after the settled query and the frame:
-    d_final = _token_prefix(
-        document, cap, tokenizer, rendered=lambda piece: assemble(q_final, piece), add_special_tokens=ADD_SPECIAL_TOKENS
-    )
-    return q_final, d_final
+    query, document = query.strip(), document.strip()
+    prompt = head + query + mid + document + tail
+    encoded = tokenizer.encode(prompt, add_special_tokens=ADD_SPECIAL_TOKENS)
+    if len(encoded.ids) <= MAX_SEQ_LEN:
+        return query, document
+    kept = prompt[: encoded.offsets[MAX_SEQ_LEN - 1][1]]
+    query_start = len(head)
+    document_start = query_start + len(query) + len(mid)
+    return kept[query_start : query_start + len(query)], kept[document_start : document_start + len(document)]
 
 
-def served_render(tokenizer, query: str, document: str) -> str:
-    """The served pair render for one (query, document): the frame with the content spans fitted.
-
-    The frame-assembled view of :func:`served_spans` (the engine assembles the template around the
-    wire's cut spans; the anchor -- the trailing assistant header -- is always re-attached).
-    """
-    head, mid, tail = _frame(tokenizer)
-    q_final, d_final = served_spans(tokenizer, query, document)
-    return head + q_final + mid + d_final + tail
+def render_rows(tokenizer, pairs: list[dict]) -> list[dict]:
+    """``--mode render``: per pairs row, ``{"index", "shape": "pair", "query", "documents"}`` under
+    the paper's cut (:func:`paper_spans`).  The recipe declares ``instruction: none``: a row's
+    instruction is not part of this model's input.  The paper's right cut lands at one token
+    frontier of the shared query, so the kept query span is the same for every document of a row;
+    a disagreement is refused rather than papered over."""
+    rows = []
+    for index, row in enumerate(pairs):
+        shape = str(row.get("shape") or "pair")
+        if shape != "pair":
+            raise SystemExit(f"row {index}: shape {shape!r} is not declared; this recipe declares the pair shape")
+        query = str(row["query"])
+        spans = [paper_spans(tokenizer, query, str(document)) for document in row["documents"]]
+        query_span = spans[0][0] if spans else paper_spans(tokenizer, query, "")[0]
+        if any(span != query_span for span, _ in spans):
+            raise SystemExit(f"row {index}: the paper's cut kept different query spans for one shared query")
+        rows.append({"index": index, "shape": shape, "query": query_span, "documents": [d for _, d in spans]})
+    return rows
 
 
 # -------------------------------------------------------------------------------------------
@@ -433,20 +365,7 @@ def main() -> int:
     pairs = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
     if args.mode == "render":
         tokenizer = _load_backend_tokenizer(args.tokenizer)
-        rows = []
-        for index, row in enumerate(pairs):
-            shape = str(row.get("shape") or "pair")
-            if shape != "pair":
-                raise SystemExit(f"row {index}: shape {shape!r} is not declared; this recipe declares the pair shape")
-            # The recipe declares instruction: none: the instruction (if a row carries one) is not
-            # part of this model's input, on the served path or here. The settled query spans one
-            # row's requests; each document span is cut to what remains after it.
-            query_span, _ = served_spans(tokenizer, row["query"], str(row["documents"][0]))
-            document_spans = []
-            for document in row["documents"]:
-                _, document_span = served_spans(tokenizer, row["query"], str(document))
-                document_spans.append(document_span)
-            rows.append({"index": index, "shape": shape, "query": query_span, "documents": document_spans})
+        rows = render_rows(tokenizer, pairs)
         output = {"rows": rows}
     else:
         model = ZerankReference().load(args.device, tokenizer_spec=args.tokenizer)

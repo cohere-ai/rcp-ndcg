@@ -25,12 +25,9 @@
    unconditional form is also the checkpoint's own declared processing
    (sentence-transformers processing_kwargs add_generation_prompt).
 
- The content spans carry NO trim filter: the served path renders the client's text as sent,
- exactly what the recipe's declared pair shape (the product's TemplateSpec) and the reference's
- anchor-preserving render produce. The paper's in-process code strips query and document before
- rendering; on whitespace-edged inputs the served prompt keeps that whitespace (a declared
- served-vs-reference difference, recorded in the recipe notes; on clean inputs - every sampled
- row - the renders are byte-identical).
+ The content spans carry NO trim filter: the paper's query.strip()/doc.strip() is the recipe's
+ declared normalisation (client.template normalize: [strip]); the client strips the spans before it
+ measures them and ships them stripped, so the engine renders the paper's prompt as sent.
 
  The fallback branch (plain system/user/assistant roles, tools handling) never executes on the
  score route; it keeps this file a drop-in for the checkpoint's template outside rcp-ndcg.

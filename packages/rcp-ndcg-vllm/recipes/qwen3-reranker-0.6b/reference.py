@@ -2,11 +2,13 @@
 
 Derived with unchanged behaviour from the paper's exact in-process implementation,
 ``experiments/paper/rerankers/reference/qwen3.py`` (``QwenOGRerank``, itself moved unchanged from
-the former ``src/rcp_ndcg/retrieval/external_rerankers.py`` when the package stopped carrying
-in-process models; the paper's numbers rest on it; the file lives on branch ``lane/l5-packaging``
-at this tree's HEAD and lands with the unified-inference merge). The paper pipeline loaded it with
-``max_seq_len=8192`` (``MAX_SEQ_LENGTH``, ``rcp_ndcg.retrieval.cross_encoder``), the config's
-``batch_size`` (16 for this model, ``experiments/paper/rerankers/qwen3_reranker_0_6b.yaml``),
+the former ``src/rcp_ndcg/retrieval/external_rerankers.py`` of the PRE-UNIFIED-INFERENCE tree
+(the in-package copy it was extracted from; both moved unchanged when the package stopped carrying
+in-process models and the unified-inference merge deleted the old retrieval tree; the paper's
+numbers rest on the file at HEAD). The paper pipeline loaded it with
+``max_seq_len=8192`` (``MAX_SEQ_LENGTH``, the pre-unified-inference ``retrieval/cross_encoder.py``
+constant), the config's
+``batch_size`` (16 for this model, the pre-unified-inference ``experiments/paper/rerankers/qwen3_reranker_0_6b.yaml``),
 bfloat16 (the pipeline's ``DTYPE``; the class default would be float16) and the config's revision
 (pinned here to the recipe's commit, so a moved default checkpoint cannot silently break
 equivalence).
@@ -23,22 +25,25 @@ The instruction is the class's fixed default (the model card's
 ``config_sentence_transformers.json`` prompt; the paper path never passed a per-row instruction),
 and the pair string alone is truncated (``longest_first``) to
 ``max_length - len(prefix) - len(suffix)`` = 8144 tokens; the prefix and suffix are always
-re-attached, so the anchor the model scores at is never dropped (``reference.known_deviations`` is
-empty). The score is ``softmax([no_logit, yes_logit])[yes]`` at the last position
+re-attached, so the anchor the model scores at is never dropped. This is the paper's own cut,
+NEVER the client's (the rerank client settles an over-share query at its share where the paper
+keeps it whole inside the pair cut), so ``reference.known_deviations`` declares only
+``over_cap_cut_differs``: the harness reports over-cap pairs non-gating and gates under-cap rows
+exactly. The score is ``softmax([no_logit, yes_logit])[yes]`` at the last position
 (``true_token_id`` 9693, ``false_token_id`` 2152), a probability in [0, 1].
 
 Run as the harness's reference subprocess (never imported by the harness, which holds no torch)::
 
     reference.py --mode <render|score> --pairs <file> --out <file> --tokenizer <spec> [--device <d>]
 
-``render`` writes ``{"rows": [{"index", "shape", "text"}]}`` (the paper render: fixed frame
-reserved, the pair cut, the suffix re-attached); ``score`` writes
-``{"rows": [{"index", "scores": [...]}]}`` on the recipe's ``score_scale: probability``.
+``render`` writes ``{"rows": [{"index", "shape": "pair", "query": str, "documents": [str, ...]}]}``
+(the wire's cut content spans under the paper's own cut: the pair truncated at its token budget at
+raw character offsets, both anchors reserved so the frame re-assembles unchanged); ``score``
+writes ``{"rows": [{"index", "scores": [...]}]}`` on the recipe's ``score_scale: probability``.
 
 Reference environment (``requirements-reference.txt`` beside this file, documented not installed):
 torch 2.9.1, transformers 4.57.6, accelerate, flash-attn 2.8.3 (the paper's former ``[local]``
-extra pins, from ``experiments/paper/rerankers/reference/requirements.txt`` on branch
-``lane/l5-packaging``). ``render`` needs the
+extra pins, from ``experiments/paper/rerankers/reference/requirements.txt`` at HEAD). ``render`` needs the
 tokenizer only (transformers, or the ``tokenizers`` library over the same ``tokenizer.json`` when
 transformers is absent — stage 1 on CPU); ``score`` needs the weights, the transformers pin and the
 device the harness passes.
@@ -76,10 +81,10 @@ DEFAULT_INSTRUCTION = "Given a web search query, retrieve relevant passages that
 DEFAULT_MODEL = "Qwen/Qwen3-Reranker-0.6B"
 DEFAULT_REVISION = "e61197ed45024b0ed8a2d74b80b4d909f1255473"
 
-#: The paper budget: ``MAX_SEQ_LENGTH`` (``rcp_ndcg.retrieval/cross_encoder.py``), the whole prompt.
+#: The paper budget: ``MAX_SEQ_LENGTH`` (the pre-unified-inference ``retrieval/cross_encoder.py``), the whole prompt.
 MAX_SEQ_LENGTH = 8192
 
-#: The paper's per-model batch size (``experiments/paper/rerankers/qwen3_reranker_0_6b.yaml``).
+#: The paper's per-model batch size (the pre-unified-inference ``qwen3_reranker_0_6b.yaml``).
 BATCH_SIZE = 16
 
 
@@ -245,6 +250,50 @@ class Qwen3RerankerReference:
         self.device = device
         return self
 
+    def kept_pair_spans(self, query: str, doc: str, instruction: str | None = None) -> tuple[str, str]:
+        """The paper's kept ``(query, document)`` content spans for one pair.
+
+        The pair string is truncated ``longest_first`` at ``max_length - len(prefix) -
+        len(suffix)`` tokens (the paper's ``_process_inputs``) at the RAW character offsets of the
+        kept tokens — never a ``decode(encode())`` round trip: this checkpoint's normalizer maps
+        non-NFC text to NFC, keeping the token ids equal but not the characters. The prefix and
+        suffix are never cut (the caller renders them around the spans); the kept spans are the
+        verbatim prefixes of the query and document pieces of the kept pair text — the instruction
+        and the label text live in the served template's fixed frame and are not part of the spans.
+        """
+        if instruction is None:
+            instruction = self.instruction
+        header = f"<Instruct>: {instruction}\n<Query>: "
+        mid = "\n<Document>: "
+        pair = header + query + mid + doc
+        budget = self.max_length - len(self.prefix_tokens) - len(self.suffix_tokens)
+        ids, offsets = self.tokenizer.encode_with_offsets(pair)
+        kept = pair if len(ids) <= budget else pair[: offsets[budget - 1][1]]
+        query_start, query_end = len(header), len(header) + len(query)
+        document_start = query_end + len(mid)
+        query_span = kept[query_start : min(query_end, len(kept))] if len(kept) > query_start else ""
+        document_span = kept[document_start:] if len(kept) > document_start else ""
+        return query_span, document_span
+
+    def render_spans(self, query: str, docs: list[str], instruction: str | None = None) -> tuple[str, list[str]]:
+        """The wire's cut content spans for one pairs row: the query span and one span per document.
+
+        The cut is :meth:`kept_pair_spans` per pair; the kept query span is the same for every
+        document of the row (the paper's right cut lands at a fixed pair-token frontier), and a
+        disagreement raises rather than papering over it — stage 1 renders one query span per row.
+        """
+        if not docs:
+            query_span, _ = self.kept_pair_spans(query, "", instruction)
+            return query_span, []
+        pairs = [self.kept_pair_spans(query, document, instruction) for document in docs]
+        query_span = pairs[0][0]
+        if any(span != query_span for span, _ in pairs):
+            raise RuntimeError(
+                "the paper's pair cut kept different query spans for one shared query; "
+                "stage 1 renders one query span per row"
+            )
+        return query_span, [document for _, document in pairs]
+
     def render(self, query: str, doc: str, instruction: str | None = None) -> str:
         """The exact prompt text for one pair, with the paper truncation applied.
 
@@ -340,14 +389,19 @@ def main() -> int:
     rows_in = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
     if args.mode == "render":
         reference = Qwen3RerankerReference(tokenizer_spec=args.tokenizer)
-        rows = [
-            {
-                "index": index,
-                "shape": str(row.get("shape") or "pair"),
-                "text": reference.render(row["query"], row["documents"][0] if row["documents"] else ""),
-            }
-            for index, row in enumerate(rows_in)
-        ]
+        rows: list[dict[str, Any]] = []
+        for index, row in enumerate(rows_in):
+            query_span, document_spans = reference.render_spans(
+                str(row.get("query", "")), [str(document) for document in row.get("documents", [])]
+            )
+            rows.append(
+                {
+                    "index": index,
+                    "shape": str(row.get("shape") or "pair"),
+                    "query": query_span,
+                    "documents": document_spans,
+                }
+            )
     else:
         reference = Qwen3RerankerReference(tokenizer_spec=args.tokenizer).load(args.device)
         rows = [

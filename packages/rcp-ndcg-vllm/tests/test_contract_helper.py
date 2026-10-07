@@ -34,7 +34,7 @@ EXPECTED_SERVE = {
     "max_model_len": 10000,
     "mm_processor_kwargs": {},
     "plugin": None,
-    "pooler_config": {},
+    "pooler_config": {"use_activation": True},
     "runner": "pooling",
     "trust_remote_code": False,
 }
@@ -49,7 +49,7 @@ EXPECTED_CLIENT = {
     "connect_timeout_s": 5.0,
     "empty_doc": "send",
     "empty_doc_text": None,
-    "empty_query": "refuse",
+    "empty_query": "send",
     "headers_env": {},
     "image_policy": None,
     "image_processor": None,
@@ -107,7 +107,7 @@ EXPECTED_CLIENT = {
 EXPECTED_REFERENCE = {
     "entry": "reference.py",
     "kind": "transformers",
-    "known_deviations": [],
+    "known_deviations": ["over_cap_cut_differs"],
     "score_scale": "probability",
 }
 
