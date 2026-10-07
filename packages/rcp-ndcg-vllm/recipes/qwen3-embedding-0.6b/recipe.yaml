@@ -60,11 +60,10 @@ client:
       # (the card's own TEI curl example carries a space -- a measured id drift at index 19).
       - {fixed: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"}
       - {content: query}
-      # The anchor position: the frame ends here and the tokenizer's post-processor appends the
-      # endoftext anchor after it (add_special_tokens: true below). The segment renders empty -- it
-      # declares where the anchor sits, and stage 1's anchor audit reads the post-processor tail
-      # after it. Dropping it makes the audit's edge fall back to the frame ids and go red.
-      - {fixed: ""}
+      # The anchor position: the frame ends in its content span and the tokenizer's post-processor appends
+      # the endoftext anchor after it (add_special_tokens: true below). The product refuses an empty trailing
+      # marker and audits the post-processor's tail at the content-span end (rcp_ndcg.data.templates, the
+      # shape whose anchor is the tokenizer's end token), so the rendered ids are unchanged without one.
     document:
       # Documents are embedded bare ("No need to add instruction for retrieval documents", card);
       # config_sentence_transformers.json prompts.document is "".

@@ -25,6 +25,8 @@ serve:
   extra_args: []
 client:
   api: openai_embeddings
+  max_images: 1         # declared policy, mirroring serve.limit_mm_per_prompt (runtime caps, no identity):
+  max_videos: 1         # one media item per request; the client refuses more before the engine sees them
   request_shape: text           # the client sends fit's rendered frame as the completion-style input; the chat-messages shape is the equivalent alternative the research validated (identical ids), for when the product's client grows it
   tokenizer: "Qwen/Qwen3-VL-Embedding-2B@9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"
   max_tokens: 8192              # the declared budget: the frame's fixed tokens (including the instruction and the post-processor anchor) are reserved, only the content span is cut (on_overflow: cut)
