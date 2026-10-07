@@ -98,6 +98,30 @@ def parent(uri: str | Path) -> str:
     return f"{protocol}://{rest.rpartition('/')[0]}"
 
 
+def safe_url(url: str) -> str:
+    """The form of *url* that may reach a log, an error or a record: userinfo, query and fragment stripped.
+
+    A user may embed credentials in a URL (a documented httpx idiom, ``http://user:key@host``), and a query
+    string or a fragment can carry a key too; none of them reaches a log line, an exception message or a run
+    manifest (the request itself still uses the full URL). The authority and the path stay as written -- a
+    bucket name is case-sensitive and an IPv6 host keeps its brackets. The one redactor: the storage cache's
+    messages and the inference layer's logs, errors and engine records all call it.
+
+    Args:
+        url: A URL or storage URI; a string without ``://`` (a local path) is returned unchanged.
+
+    Returns:
+        ``<scheme>://<host[:port]>[/<path>]``.
+    """
+    scheme, separator, rest = url.partition("://")
+    if not separator:
+        return url  # not an authority-bearing URL: nothing to strip
+    rest = rest.partition("#")[0].partition("?")[0]
+    authority, _, path = rest.partition("/")
+    authority = authority[authority.rfind("@") + 1 :]
+    return f"{scheme}://{authority}/{path}" if path else f"{scheme}://{authority}"
+
+
 __all__ = [
     "is_remote",
     "join",
@@ -105,5 +129,6 @@ __all__ = [
     "local_path",
     "parent",
     "protocol_of",
+    "safe_url",
     "split_protocol",
 ]

@@ -39,9 +39,11 @@ released together.
   a request to any other `base_url` (a self-hosted engine, a third party, a gateway) carries a key only
   through an explicit `api_key_env`. A variable set for one vendor must never authenticate a request
   somewhere else.
-- `rcp_ndcg.inference.types.safe_url` (public): the form of a URL that may reach a log, an error or a record
-  -- userinfo and query stripped. `EngineInfo.url` validates itself through it, so a run manifest never
-  persists credentials embedded in a URL.
+- `rcp_ndcg.storage.uri.safe_url` (public): the form of a URL that may reach a log, an error or a record
+  -- userinfo, query and fragment stripped, the host and path as written. The one redactor: the inference
+  layer's logs, errors and engine records and the storage cache's messages (which lower-cased the bucket
+  name and broke an IPv6 host) all call it. `EngineInfo.url` validates itself through it, so a run manifest
+  never persists credentials embedded in a URL.
 - `rcp_ndcg.data.preprocess`: `fixed_overhead` (the one home of a request frame's fixed token cost, shared by
   `fit` and the role clients' media allowances), `rendered_request` and `rendered_pair_tokens` (the one home
   of the assembled render, so a client's budget check measures what `fit` verified), and

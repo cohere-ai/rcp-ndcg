@@ -12,7 +12,8 @@ from collections.abc import Mapping
 
 import httpx
 
-from rcp_ndcg.inference.types import EngineInfo, safe_url
+from rcp_ndcg.inference.types import EngineInfo
+from rcp_ndcg.storage.uri import safe_url
 from rcp_ndcg.support.logging import get_logger
 
 logger = get_logger(__name__)

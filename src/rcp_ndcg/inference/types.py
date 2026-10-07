@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.errors import DataError
+from rcp_ndcg.storage.uri import safe_url
 
 _EMPTY_HEADERS: Mapping[str, str] = MappingProxyType({})
 
@@ -117,24 +118,6 @@ class Usage(BaseModel):
             output_tokens=self.output_tokens + other.output_tokens,
             cached_input_tokens=self.cached_input_tokens + other.cached_input_tokens,
         )
-
-
-def safe_url(url: str) -> str:
-    """The form of *url* that may reach a log, an error or a record: userinfo and query stripped.
-
-    A user may embed credentials in a URL (a documented httpx idiom, ``http://user:key@host``) -- and a
-    query string can carry a key too. Those two never reach a log line, an exception message or a run
-    manifest, beside the code's "keys are never logged" claim; the request itself still uses the full URL.
-    """
-    scheme, separator, rest = url.partition("://")
-    if not separator:
-        return url  # not an authority-bearing URL: nothing to strip
-    authority, _, path_and_query = rest.partition("/")
-    at = authority.rfind("@")
-    if at >= 0:
-        authority = authority[at + 1 :]
-    path, _, _query = path_and_query.partition("?")
-    return f"{scheme}://{authority}/{path}" if path else f"{scheme}://{authority}"
 
 
 class EngineInfo(BaseModel):
@@ -505,5 +488,4 @@ __all__ = [
     "TokenCount",
     "Usage",
     "l2_normalize",
-    "safe_url",
 ]

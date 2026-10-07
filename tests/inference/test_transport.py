@@ -770,14 +770,9 @@ class TestUserInfoNeverLeaks:
         assert all("sekrit-value" not in record.getMessage() for record in caplog.records)
 
     def test_the_engine_record_strips_userinfo_and_query(self, tokenizer_json: str) -> None:
-        from rcp_ndcg.inference.types import EngineInfo, safe_url
+        from rcp_ndcg.inference.types import EngineInfo
 
-        assert safe_url("http://user:sekrit-value@judge.test/v1") == "http://judge.test/v1"
-        assert (
-            safe_url("http://user:sekrit-value@judge.test/v1/models?api-key=sekrit-value")
-            == "http://judge.test/v1/models"
-        )
-        assert safe_url("fake://seed/1") == "fake://seed/1"
+        # The redactor itself is pinned beside its home (tests/storage, safe_url); the record calls it.
         record = EngineInfo(url="http://user:sekrit-value@judge.test/v1")
         assert record.url == "http://judge.test/v1", "the run manifest never carries userinfo"
 
