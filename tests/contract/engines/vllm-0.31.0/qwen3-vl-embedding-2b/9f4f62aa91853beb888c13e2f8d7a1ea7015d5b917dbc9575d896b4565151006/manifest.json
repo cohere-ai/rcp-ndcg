@@ -3,7 +3,7 @@
     "documents_format": "recorder-record/1",
     "generator_version": null,
     "hostname": "hashed-unavailable",
-    "note": "shakedown corpus (provisional): one repetition per request, no /tokenize ground truth, request bodies as the recorder serialised them (parsed JSON, not raw bytes), no engine image digest. recipe_file_sha256 is the file's hash at corpus compaction: the recorded run predates the four recipe fixes of 2026-10-07, whose renders are byte-identical (verified against the recorded prompts). The release corpus is re-recorded at RC0 with rcp_ndcg_vllm.observe and keyed by fingerprint.",
+    "note": "shakedown corpus: one repetition per request, no /tokenize ground truth, request and response bodies as the recorder serialised them (parsed JSON, not raw bytes), no engine image digest. recipe_file_sha256 is the recipe file's hash when the corpus was compacted, not at recording: the recorded run predates the recipe fixes of 2026-10-07; the recorded prompts still render from the current recipes, which tests/conformance/test_recipe_sources.py checks for the embedding requests and every conformance replay checks for the rerank pair prompts. The release corpus is re-recorded at RC0 with rcp_ndcg_vllm.observe and keyed by fingerprint.",
     "recorded_at": "2026-10-06",
     "recorder": "rcp_ndcg_vllm.record (the recorder's fixed exchange set)",
     "waves": [
@@ -34,6 +34,13 @@
     "status": "unmeasured",
     "tolerance_abs": null,
     "tolerance_rel": null
+  },
+  "provisional": {
+    "not_valid_for": "release evidence: no recipe is verified, no GPU-run number is reproduced from this corpus",
+    "replaced_by": "the RC0 recording wave (rcp_ndcg_vllm.observe), keyed by behaviour fingerprint",
+    "status": "provisional",
+    "valid_for": "building and testing the verified fake engines (the emulators and their conformance suite)",
+    "why": "recorded by the GPU shakedown (waves shake-a1/shake-a2 of 2026-10-06) with the recorder's fixed exchange set: one repetition per request, request and response bodies kept as parsed JSON (not raw bytes), no engine image digest, no /tokenize ground truth, no /pooling recording; some recipes of that shakedown were served with temporary shakedown-only patches"
   },
   "recipe": {
     "behaviour_fingerprint": "9f4f62aa91853beb888c13e2f8d7a1ea7015d5b917dbc9575d896b4565151006",

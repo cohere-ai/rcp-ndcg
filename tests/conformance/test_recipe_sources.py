@@ -52,3 +52,46 @@ def test_every_corpus_manifest_names_a_loaded_recipe() -> None:
         data = json.loads(manifest.read_text(encoding="utf-8"))
         recipe_id = data["recipe"]["id"]
         assert (RECIPES / recipe_id / "recipe.yaml").is_file(), f"{manifest} names unknown recipe {recipe_id!r}"
+
+
+def test_every_recorded_embedding_request_renders_from_the_current_recipe() -> None:
+    """The provenance the manifests state: the recorded role request (the recorder's snippet through the
+    product's role client) is byte-identical to what the current recipe renders for that snippet, so a
+    recipe edit since the shakedown changed no recorded prompt. (Rerank pair prompts are rendered by
+    the emulator itself and checked by every conformance replay.)"""
+    from rcp_ndcg_vllm.fingerprint import load_recipe_tokenizer
+
+    from rcp_ndcg.testing.engines import find_corpora, load_corpus
+    from tests._engines import load_recipe
+
+    checked = 0
+    for directory in find_corpora(ENGINES):
+        corpus = load_corpus(directory)
+        recipe = load_recipe(corpus.manifest["recipe"]["id"])
+        if recipe.role != "embed":
+            continue
+        role_request = next(
+            exchange.request_body
+            for exchange in corpus.exchanges
+            if exchange.path.endswith("/embeddings")
+            and exchange.status == 200
+            and "unknown_field" not in exchange.request_body
+        )
+        template = recipe.client.template
+        shape = "query" if "query" in template.shapes() else "document"
+        text = "What is the capital of France?" if shape == "query" else "Paris is the capital of France."
+        rendered = template.render(shape, load_recipe_tokenizer(recipe), query=text, document=text)
+        assert role_request["input"] == [rendered], f"{recipe.id}: the recorded prompt no longer renders"
+        checked += 1
+    assert checked == 5
+
+
+def test_every_corpus_manifest_states_it_is_provisional() -> None:
+    """The shakedown corpus is valid to build and test the emulators, never release evidence: every
+    manifest says so, and why."""
+    for manifest in sorted(ENGINES.glob("*/*/*/manifest.json")):
+        statement = json.loads(manifest.read_text(encoding="utf-8")).get("provisional") or {}
+        assert statement.get("status") == "provisional", manifest
+        assert "building and testing" in statement.get("valid_for", ""), manifest
+        assert statement.get("not_valid_for", "").startswith("release evidence"), manifest
+        assert "shakedown-only patches" in statement.get("why", ""), manifest
