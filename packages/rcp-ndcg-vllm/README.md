@@ -28,13 +28,14 @@ vLLM and torch.
   `<out>/<engine>-<version>/<recipe-id>/`, the fixtures the engine adapters' contract tests replay.
 - `src/rcp_ndcg_vllm/jobs/` — `run_wave.py` (packs recipes onto one node's GPUs, with per-slot isolation and
   the free-disk check and eviction), `wave0_probe.py` and `wave0_report.py` (wave 0's probes and the report
-  schema), and `plugins.py` (the plugin wheels a wave's recipes install into the engine environment).
+  schema), `wavelist.py` (the wave list's parse and its tolerant per-recipe load), and `plugins.py` (the
+  plugin wheels a wave's recipes install into the engine environment).
 - `jobs/` — the node and operator scripts: `rc_build.sh` (build a release candidate exactly as `release.yml`
   does, stage it with the wheelhouse and a hash manifest), `bootstrap.sh` (the node's three environments),
   `submit.sh` (one job per wave, priority class, shared memory, the token as a secret), `gcs.sh` and
   `gcs.py` (the gs:// transfer: the CLIs when the image has one, else gcsfs into a tools directory
-  outside the engine environment), and `wave0_host.py` and `report.py` (wave 0's stdlib helpers,
-  mounted onto the node).
+  outside the engine environment), and `wave0_host.py`, `report.py` and `reference_deps.py` (wave 0's
+  stdlib helpers and the reference venv's dependency completion, mounted onto the node).
 - `schema/recipe.schema.json` and `schema/wave0-report.schema.json` — the exported JSON Schemas of `Recipe`
   and of the wave-0 report.
 
