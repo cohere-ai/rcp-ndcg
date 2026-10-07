@@ -41,7 +41,8 @@ released together.
   derives the verification tolerance from them under `NON_DETERMINISM_RULE` -- each measured bound
   applies jointly, and without a repetition the tolerance is declared unmeasured (`None`: a replay is
   compared exactly) instead of being invented -- and
-  the registry (`registry`, `transport_for`) resolves by (engine, version, fingerprint) with the
+  the registry (`registry`, `transport_for`, `split_engine_host` -- the one engine-host pattern
+  `rcp_ndcg.inference.fake.RE_ENGINE_URL` routes) resolves by (engine, version, fingerprint) with the
   `rcp_ndcg.emulators` entry-point group for out-of-tree emulators. An emulator refuses an engine
   version or recipe revision it was not verified against; the conformance suite
   (`tests/conformance/`) replays every recorded exchange and the staleness check names the changed

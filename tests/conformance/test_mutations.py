@@ -92,7 +92,6 @@ def test_the_result_ordering_making_conformance_red() -> None:
 
     emulator, tokenizer = _tiny(cap=128)
     emulator.strategy = EnginePrompts(builder=lambda query, documents: f"{query}|{'|'.join(documents)}")
-    emulator.slot = "score_list"
     body = {"model": "tiny", "query": "query", "documents": ["page", "answer"]}
     original = emulator.answer("/rerank", "POST", body)
     scores = [entry["relevance_score"] for entry in original.json()["results"]]

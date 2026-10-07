@@ -19035,6 +19035,38 @@
               }
             ]
           },
+          "fingerprints": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "engine_name"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "engine_version"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "recipe_id"
+              },
+              {
+                "returns": "list[str]"
+              }
+            ]
+          },
           "load_entry_points": {
             "kind": "method",
             "signature": [
@@ -19674,12 +19706,6 @@
             "name": "verified"
           },
           {
-            "annotation": "str",
-            "default": "vector",
-            "kind": "positional_or_keyword",
-            "name": "slot"
-          },
-          {
             "annotation": "int",
             "default": 64,
             "kind": "positional_or_keyword",
@@ -19753,20 +19779,6 @@
               }
             ]
           },
-          "clear_answer_log": {
-            "kind": "method",
-            "signature": [
-              {
-                "annotation": null,
-                "default": "<required>",
-                "kind": "positional_or_keyword",
-                "name": "self"
-              },
-              {
-                "returns": "None"
-              }
-            ]
-          },
           "from_corpus": {
             "kind": "classmethod",
             "signature": [
@@ -19801,8 +19813,8 @@
                 "name": "facts"
               },
               {
-                "annotation": "int",
-                "default": 64,
+                "annotation": "int | None",
+                "default": null,
                 "kind": "keyword_only",
                 "name": "dim"
               },
@@ -20211,6 +20223,21 @@
           },
           {
             "returns": "str | None"
+          }
+        ]
+      },
+      "split_engine_host": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "host"
+          },
+          {
+            "returns": "tuple[str, str]"
           }
         ]
       },

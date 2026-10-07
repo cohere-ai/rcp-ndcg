@@ -85,6 +85,18 @@ def test_usage_counts_use_the_recipes_real_tokenizer() -> None:
             assert answered["usage"]["prompt_tokens"] == recorded, f"{directory.name} #{exchange.sequence}"
 
 
+def test_a_tampered_corpus_fails_the_hash_check(tmp_path: Path) -> None:
+    import shutil
+
+    copy = tmp_path / "corpus"
+    shutil.copytree(corpus_dirs()[0], copy)
+    assert verify_corpus_hashes(load_corpus(copy)) == []
+    documents = copy / load_corpus(copy).manifest["documents"]
+    documents.write_bytes(documents.read_bytes() + b"\0")
+    (problem,) = verify_corpus_hashes(load_corpus(copy))
+    assert problem.startswith(documents.name), problem
+
+
 def test_manifest_and_index_hashes_hold() -> None:
     """Integrity (OBSERVATIONS-SPEC section 4): every corpus file hashes to its manifest and every
     manifest hashes to the repository's corpus index. A tampered corpus fails here."""
@@ -102,13 +114,22 @@ def test_manifest_and_index_hashes_hold() -> None:
         assert corpora[key]["behaviour_fingerprint"] == corpus.behaviour_fingerprint, key
 
 
-def test_no_credential_shaped_string_is_in_any_corpus() -> None:
-    """Acceptance (OBSERVATIONS-SPEC section 6): no credential-shaped string anywhere."""
+def test_no_credential_shaped_string_is_in_any_corpus(tmp_path: Path) -> None:
+    """Acceptance (OBSERVATIONS-SPEC section 6): no credential-shaped string anywhere -- and the scan
+    finds one when it is there (in a compressed file too)."""
+    import gzip
+
+    scanned = 0
     for path in sorted(ENGINES_ROOT.rglob("*")):
         if path.is_file() and path.suffix in (".json", ".gz", ".jsonl"):
             findings = find_credential_patterns(path)
             assert findings == [], f"{path}: {findings}"
-    assert credential_findings("") == []
+            scanned += 1
+    assert scanned >= 3 * len(corpus_dirs())
+    planted = tmp_path / "exchanges.jsonl.gz"
+    planted.write_bytes(gzip.compress(b'{"headers": {"Authorization": "Bearer abcdefghijklmnopqrstuvwx"}}'))
+    assert find_credential_patterns(planted) == ["authorization header", "bearer token"]
+    assert credential_findings('{"api_key": "0123456789abcdef"}') == ["secret field"]
 
 
 def test_staleness_passes_for_the_unmoved_recipes() -> None:
@@ -247,7 +268,7 @@ def test_an_emulator_refuses_another_engine_version_or_recipe_revision() -> None
     assert "engine_version" in str(error.value)
 
 
-def test_out_of_tree_emulators_register_through_the_entry_point_group() -> None:
+def test_out_of_tree_emulators_register_through_the_entry_point_group(monkeypatch: pytest.MonkeyPatch) -> None:
     """The extensibility seam (GPU-VALIDATION.md item 8): a private repository's emulator registers
     through the ``rcp_ndcg.emulators`` entry-point group."""
     import importlib.metadata as metadata
@@ -264,23 +285,25 @@ def test_out_of_tree_emulators_register_through_the_entry_point_group() -> None:
 
             return provide
 
-    registry.clear()
-    registry._entry_points_loaded = False
     original = metadata.entry_points
 
     def fake_entry_points(**kwargs):
         return [_Entry()] if kwargs.get("group") == "rcp_ndcg.emulators" else original(**kwargs)
 
-    metadata.entry_points = fake_entry_points  # type: ignore[assignment]
+    registry.clear()
+    monkeypatch.setattr(metadata, "entry_points", fake_entry_points)
     try:
-        loaded = registry.load_entry_points()
+        assert registry.load_entry_points() == ["example-out-of-tree"]
+        verified = emulator_for("zerank-2-reranker").verified
+        assert verified is not None
+        assert registry.fingerprints("vllm", "0.31.0", "zerank-2-reranker") == [verified.behaviour_fingerprint]
     finally:
-        metadata.entry_points = original  # type: ignore[assignment]
-    assert loaded == ["example-out-of-tree"]
-    assert emulator_for("zerank-2-reranker").verified is not None
+        registry.clear()
 
 
-def test_the_corpus_schema_migrations_never_invalidate_an_old_corpus(tmp_path: Path) -> None:
+def test_the_corpus_schema_migrations_never_invalidate_an_old_corpus(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Schema evolution (OBSERVATIONS-SPEC section 7): readers support every document schema ever
     written; a frozen sample of each old schema is migrated at load."""
     from rcp_ndcg.testing.engines import load_corpus, register_line_migration
@@ -292,6 +315,9 @@ def test_the_corpus_schema_migrations_never_invalidate_an_old_corpus(tmp_path: P
     def from_zero(doc: dict) -> dict:
         return {"line_schema": 1, "sequence": doc["seq"], **{k: v for k, v in doc.items() if k != "seq"}}
 
+    from rcp_ndcg.testing import engines
+
+    monkeypatch.setattr(engines, "_LINE_MIGRATIONS", {})  # the test's migration never outlives it
     register_line_migration(0, from_zero)
     old = {
         "line_schema": 0,
@@ -363,3 +389,21 @@ def test_every_manifest_states_the_non_determinism_its_raw_records_measure() -> 
         assert corpus.manifest["non_determinism"] == measure_non_determinism(corpus), directory
         assert corpus.manifest["non_determinism"]["status"] == "unmeasured", directory
         assert corpus.tolerance is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"Authorization": "Bearer abcdefgh12345678"}',
+        "authorization: Basic QWxhZGRpbjpvcGVu",
+        "{'X-Api-Key': 'abcdefgh12345678'}",
+        '"x-api-key":"abcdefgh12345678"',
+    ],
+)
+def test_the_scanner_finds_credential_headers_in_every_serialisation(text: str) -> None:
+    assert credential_findings(text), text
+
+
+def test_the_scanner_ignores_a_vocabulary_entry() -> None:
+    """A vendored tokenizer's vocabulary maps the word to a token id: no credential."""
+    assert credential_findings('{"authorization":12345,"Authorization":23456}') == []

@@ -93,6 +93,7 @@ __all__ = [
     "registry",
     "request_context",
     "request_digest",
+    "split_engine_host",
     "surrogate_matrix",
     "surrogate_scores",
     "surrogate_vector",
@@ -143,10 +144,15 @@ _VOLATILE_RAW = (
 # ---------------------------------------------------------------------------
 
 _CREDENTIALS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("authorization header", re.compile(r"(?i)\bauthorization\b\s*[:=]")),
+    # a header in any serialisation (``Authorization: ...``, a JSON key) with a credential-shaped value --
+    # never a tokenizer vocabulary's ``"authorization": <token id>``
+    (
+        "authorization header",
+        re.compile(r"(?i)\bauthorization\b[\"']?\s*[:=]\s*[\"']?(?:bearer|basic|token)?\s*[A-Za-z0-9._~+/=-]{8,}"),
+    ),
     ("bearer token", re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{16,}")),
     ("basic auth", re.compile(r"(?i)\bbasic\s+[A-Za-z0-9+/=]{16,}")),
-    ("api key header", re.compile(r"(?i)\bx-api-key\s*[:=]")),
+    ("api key header", re.compile(r"(?i)\bx-api-key\b[\"']?\s*[:=]\s*[\"']?[A-Za-z0-9._~+/=-]{8,}")),
     ("hugging face token", re.compile(r"\bhf_[A-Za-z0-9]{20,}")),
     ("google api key", re.compile(r"\bAIza[A-Za-z0-9_\-]{20,}")),
     ("private key block", re.compile(r"BEGIN [A-Z ]*PRIVATE KEY")),
@@ -1009,7 +1015,6 @@ class VllmEmulator:
         observations: Per prompt key, the replayed outputs (first observation = the replay).
         verified: What it was verified against; a different engine version or recipe revision is
             refused.
-        slot: What one prompt outputs (from the strategy).
     """
 
     facts: EngineFacts
@@ -1017,7 +1022,6 @@ class VllmEmulator:
     tokenizer: Any
     observations: dict[str, tuple[ModelObservation, ...]] = field(default_factory=dict)
     verified: Verified | None = None
-    slot: str = "vector"
     dim: int = 64
     unverified_rules: tuple[str, ...] = (
         "malformed JSON -> 400",
@@ -1046,7 +1050,7 @@ class VllmEmulator:
         tokenizer: Any,
         facts: EngineFacts,
         *,
-        dim: int = 64,
+        dim: int | None = None,
     ) -> VllmEmulator:
         """Build the emulator of ``corpus``: replay table from the recorded 2xx bodies, facts given.
 
@@ -1055,7 +1059,8 @@ class VllmEmulator:
             strategy: The prompts derivation matching the recipe's role and scoring.
             tokenizer: The recipe's real :class:`~rcp_ndcg.data.tokenizer.TextTokenizer`.
             facts: The engine facts (served name, cap).
-            dim: The surrogate's vector width (the replayed width comes from the corpus).
+            dim: The surrogate's vector width; ``None`` takes the width the corpus observed (64 when it
+                observed no vector), so a batch mixing replayed and surrogate vectors is never ragged.
 
         Returns:
             The emulator, keyed to the corpus's behaviour fingerprint (model layer) and the engine
@@ -1088,6 +1093,9 @@ class VllmEmulator:
                     )
         merged = {key: tuple(observation for _, observation in history) for key, history in observed.items()}
         routes = {route_name(exchange.method, exchange.path) for exchange in corpus.exchanges}
+        widths = {_width(observation) for history in merged.values() for observation in history} - {None}
+        if dim is None:
+            dim = int(widths.pop() or 64) if len(widths) == 1 else 64
         manifest_recipe = corpus.manifest["recipe"]
         return cls(
             facts=facts,
@@ -1095,7 +1103,6 @@ class VllmEmulator:
             tokenizer=tokenizer,
             observations=merged,
             observed_routes=frozenset(route for route in routes if route is not None),
-            slot=_slot_of(strategy),
             dim=dim,
             verified=Verified(
                 engine_name=str(corpus.engine["name"]),
@@ -1450,7 +1457,7 @@ class VllmEmulator:
                 )
         scored.sort(key=lambda entry: -float(entry["relevance_score"]))
         top_n = body.get("top_n")
-        if isinstance(top_n, int) and 0 <= top_n < len(scored):
+        if isinstance(top_n, int) and 0 < top_n < len(scored):  # vLLM: 0 (its default) means every document
             scored = scored[:top_n]
         results = [
             {
@@ -1498,16 +1505,12 @@ class VllmEmulator:
     def _volatile_time(self) -> int:
         return 1_700_000_000 + self._counter[0]
 
-    # -- behaviour diff ---------------------------------------------------------
+    # -- the replay table -------------------------------------------------------
 
     def replays(self, key: str) -> bool:
         """Whether the observation ``key`` (a :meth:`PromptSet.item_key`) was recorded -- its outputs
         replay -- or unseen (surrogate)."""
         return key in self.observations
-
-    def clear_answer_log(self) -> None:
-        """Forget the recorded reply provenance (golden runs assert over the run's own replies)."""
-        self.answer_log.clear()
 
 
 class BehaviourDiff(dict):
@@ -1539,24 +1542,26 @@ def behaviour_diff(before: Corpus, after: Corpus) -> BehaviourDiff:
             row["changed"] = True
         else:
             row["status"] = {"before": left.status, "after": right.status}
-            leaves_a = _float_leaves(left.response_json)
-            leaves_b = _float_leaves(right.response_json)
+            before_body = normalise_body(left.method, left.path, left.response_json)
+            after_body = normalise_body(right.method, right.path, right.response_json)
+            leaves_a, leaves_b = _float_leaves(before_body), _float_leaves(after_body)
             deltas = {
                 path: round(leaves_b[path] - leaves_a[path], 12)
                 for path in sorted(set(leaves_a) & set(leaves_b))
                 if abs(leaves_a[path] - leaves_b[path]) > 0
             }
             row["numeric_deltas"] = deltas
-            row["protocol_changed"] = [
-                problem
-                for problem in _diff_bodies(
-                    {k: v for k, v in (left.response_json or {}).items() if k not in ("results", "data", "usage")},
-                    {k: v for k, v in (right.response_json or {}).items() if k not in ("results", "data", "usage")},
-                    "",
-                    (0.0, 0.0),
-                )
+            protocol = _diff_bodies(_frame_of(before_body), _frame_of(after_body), "", (0.0, 0.0))
+            protocol += [
+                f"header {name}: {left.response_headers.get(name)!r} -> {right.response_headers.get(name)!r}"
+                for name in sorted(set(left.response_headers) | set(right.response_headers))
+                if name.lower() != "metadata" and left.response_headers.get(name) != right.response_headers.get(name)
             ]
-            row["changed"] = bool(deltas or row["protocol_changed"] or left.status != right.status)
+            if left.response_json is None or right.response_json is None:
+                if left.raw_body != right.raw_body:
+                    protocol.append("binary body bytes changed")
+            row["protocol_changed"] = protocol
+            row["changed"] = bool(deltas or protocol or left.status != right.status)
         inputs.append(row)
         route = key.split(" ", 1)[0]
         summary = by_route.setdefault(route, {"inputs": 0, "changed": 0})
@@ -1649,6 +1654,13 @@ def request_digest(exchange: Exchange) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _frame_of(body: Any) -> Any:
+    """A normalised body without its model outputs (``results``, ``data``) and counts: the protocol part."""
+    if not isinstance(body, dict):
+        return body
+    return {key: value for key, value in body.items() if key not in ("results", "data", "usage")}
+
+
 def _key(exchange: Exchange) -> str:
     return f"{exchange.method} {exchange.path} {request_digest(exchange)[:16]}"
 
@@ -1710,11 +1722,15 @@ class EmulatorRegistry:
         emulator = self._by_key.get(key)
         if emulator is not None:
             return emulator
-        neighbours = [k for k in self._by_key if k[:1] == (engine_name,) and k[2] == recipe_id]
+        registered = self.fingerprints(engine_name, engine_version, recipe_id)
         raise ConfigError(
             f"no emulator registered for ({engine_name}, {engine_version}, {recipe_id}, {fingerprint[:12]}...)"
-            + (f"; registered for the recipe: {sorted(k[3] for k in neighbours)}" if neighbours else "")
+            + (f"; registered fingerprints for that engine version and recipe: {registered}" if registered else "")
         )
+
+    def fingerprints(self, engine_name: str, engine_version: str, recipe_id: str) -> list[str]:
+        """The behaviour fingerprints registered for one recipe on one engine version, sorted."""
+        return sorted(key[3] for key in self._by_key if key[:3] == (engine_name, engine_version, recipe_id))
 
     def clear(self) -> None:
         """Forget every registration (tests start from empty)."""
@@ -1741,26 +1757,32 @@ def transport_for(url: str) -> httpx.MockTransport:
         ConfigError: the URL names no registered emulator (the message names the lookup).
     """
     parts = urlsplit(url)
-    engine, version = _split_engine_host(parts.hostname or parts.netloc)
+    engine, version = split_engine_host(parts.hostname or parts.netloc)
     recipe_id = parts.path.strip("/")
     query = dict(parse_qsl(parts.query))
     fingerprint = query.get("fingerprint", "")
     if not fingerprint:
-        candidates = [key for key in registry._by_key if key[:2] == (engine, version) and key[2] == recipe_id]
-        if len(candidates) == 1:
-            fingerprint = candidates[0][3]
-    emulator = registry.resolve(engine, version, fingerprint, recipe_id) if fingerprint else None
-    if emulator is None:  # pragma: no cover - resolve raises first
-        raise ConfigError(f"no emulator for {url}")
-    return httpx.MockTransport(emulator.handle)
+        registry.load_entry_points()
+        candidates = registry.fingerprints(engine, version, recipe_id)
+        if len(candidates) > 1:
+            raise ConfigError(f"{url}: several fingerprints are registered ({candidates}); add ?fingerprint=<sha>")
+        fingerprint = candidates[0] if candidates else ""
+    return httpx.MockTransport(registry.resolve(engine, version, fingerprint, recipe_id).handle)
 
 
-def _split_engine_host(host: str) -> tuple[str, str]:
-    """``vllm-0.31.0`` -> ``("vllm", "0.31.0")`` (the engine name before the version)."""
-    match = re.fullmatch(r"([a-z]+)-(\d+(?:\.\d+)*(?:rc\d+)?)", host)
-    if not match:
+def split_engine_host(host: str) -> tuple[str, str]:
+    """``vllm-0.31.0`` -> ``("vllm", "0.31.0")``: the engine name before its version, by the one
+    pattern :data:`rcp_ndcg.inference.fake.RE_ENGINE_URL` routes to the emulators.
+
+    Raises:
+        ConfigError: the host is not an engine-version host.
+    """
+    from rcp_ndcg.inference.fake import RE_ENGINE_URL
+
+    if not RE_ENGINE_URL.match(f"fake://{host}/"):
         raise ConfigError(f"{host!r} is not an engine-version host (e.g. 'vllm-0.31.0')")
-    return match.group(1), match.group(2)
+    engine, version = host.split("-", 1)
+    return engine, version
 
 
 # ---------------------------------------------------------------------------
@@ -1833,12 +1855,13 @@ def verification_record(
 # ---------------------------------------------------------------------------
 
 
-def _slot_of(strategy: PromptStrategy) -> str:
-    if isinstance(strategy, EnginePrompts):
-        return "score_list"
-    if isinstance(strategy, PairPrompts):
-        return "score"
-    return getattr(strategy, "slot", "vector")
+def _width(observation: ModelObservation) -> int | None:
+    """The vector width one observation shows (``None`` for a score)."""
+    if observation.vector is not None:
+        return len(observation.vector)
+    if observation.matrix:
+        return len(observation.matrix[0])
+    return None
 
 
 def _canonical_context(context: Mapping[str, Any]) -> str:
