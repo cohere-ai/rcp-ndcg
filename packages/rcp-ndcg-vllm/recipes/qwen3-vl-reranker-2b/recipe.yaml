@@ -38,6 +38,8 @@ serve:
 client:
   api: rerank
   request_shape: text
+  max_images: 1        # the client's media policy: one image per scoring request (the run the
+                       # shakedown waves served; declaring a richer policy is its own change)
   recipe: "vllm v0.31.0 pooling/classify: Qwen3VLForSequenceClassification via as_seq_cls_model;
     hf_overrides {architectures, classifier_from_token [no, yes], is_original_qwen3_reranker};
     served chat template template.jinja; pooler defaults (LAST, sigmoid, fp32 head), no
