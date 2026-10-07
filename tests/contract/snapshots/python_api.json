@@ -5722,6 +5722,18 @@
         "type": "str",
         "value": "<budget>"
       },
+      "CHANGE_MECHANISMS": {
+        "kind": "constant",
+        "type": "tuple",
+        "value": [
+          "empty_doc",
+          "media_resize",
+          "media_drop",
+          "document_share",
+          "query_share",
+          "budget_cut"
+        ]
+      },
       "CHUNK_ID_SEPARATOR": {
         "kind": "constant",
         "type": "str",
@@ -5731,9 +5743,20 @@
         "kind": "constant",
         "type": "tuple",
         "value": [
-          "budget",
+          "budget_cut",
           "query_share",
           "document_share"
+        ]
+      },
+      "ChangeMechanism": {
+        "kind": "literal_alias",
+        "values": [
+          "budget_cut",
+          "query_share",
+          "document_share",
+          "empty_doc",
+          "media_resize",
+          "media_drop"
         ]
       },
       "ChunkPolicy": {
@@ -5778,7 +5801,7 @@
       "CutCause": {
         "kind": "literal_alias",
         "values": [
-          "budget",
+          "budget_cut",
           "query_share",
           "document_share"
         ]
@@ -5947,6 +5970,75 @@
         "kind": "pydantic_model",
         "members": {
           "key": "property"
+        }
+      },
+      "ProcessingRecord": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "init": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "corpus"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "input_id"
+          },
+          {
+            "annotation": "RequestShape",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "shape"
+          },
+          {
+            "annotation": "tuple[ChangeMechanism, ...]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "mechanisms"
+          },
+          {
+            "annotation": "int | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "original_request_tokens"
+          },
+          {
+            "annotation": "int | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "kept_request_tokens"
+          },
+          {
+            "annotation": "int | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "budget_tokens"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "as_row": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "dict[str, Any]"
+              }
+            ]
+          },
+          "changed": "property"
         }
       },
       "TextBudget": {
@@ -6189,6 +6281,12 @@
             "name": "original_request_tokens"
           },
           {
+            "annotation": "int | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "kept_request_tokens"
+          },
+          {
             "returns": "None"
           }
         ],
@@ -6370,6 +6468,12 @@
                 "default": null,
                 "kind": "keyword_only",
                 "name": "original_request_tokens"
+              },
+              {
+                "annotation": "int | None",
+                "default": null,
+                "kind": "keyword_only",
+                "name": "kept_request_tokens"
               },
               {
                 "returns": "TextCutRecord"
@@ -6663,6 +6767,39 @@
           },
           {
             "returns": "dict[str, float]"
+          }
+        ]
+      },
+      "processing_records": {
+        "defined_in": "rcp_ndcg.data.preprocess",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "corpus"
+          },
+          {
+            "annotation": "RequestShape",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "shape"
+          },
+          {
+            "annotation": "Sequence[TextCutRecord]",
+            "default": [],
+            "kind": "keyword_only",
+            "name": "cuts"
+          },
+          {
+            "annotation": "Mapping[str, Sequence[ChangeMechanism]] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "changes"
+          },
+          {
+            "returns": "list[ProcessingRecord]"
           }
         ]
       },

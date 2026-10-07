@@ -489,7 +489,7 @@ class TestDocumentCap:
         )
         assert len(engine_ids(result.texts[0], pair_template(), "pair")) <= 64
         assert FRAMED.count(result.contents[0][1]) <= 8
-        assert [cut.cause for cut in census.cuts()] == ["budget"]
+        assert [cut.cause for cut in census.cuts()] == ["budget_cut"]
 
     def test_the_cap_is_validated_and_enters_the_identity(self) -> None:
         with pytest.raises(ValueError, match="document_max_tokens"):
@@ -650,10 +650,10 @@ class TestFailAndCut:
             )
             (cut,) = census.cuts()
             assert cut.original_tokens <= 24
-            assert cut.cause == "budget"
+            assert cut.cause == "budget_cut"
             assert cut.original_request_tokens == uncut + media
             row = cut.as_row()
-            assert (row["cause"], row["original_request_tokens"]) == ("budget", uncut + media)
+            assert (row["cause"], row["original_request_tokens"]) == ("budget_cut", uncut + media)
 
     def test_a_vendor_budget_row_and_a_judge_row_carry_no_cause(self) -> None:
         """Only a change to what a role client sends names a cause: the vendor's limit row records a budget,

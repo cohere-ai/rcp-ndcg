@@ -39,19 +39,27 @@ released together.
   reads 2048 document tokens beside its 512-token query share) declares it, mirroring `query_max_tokens`.
   `fit` cuts every pair's document over it to it on the content span only -- also in a pair the budget would
   take whole -- re-attaches the frame (the anchors survive) and records the cut under the document's position
-  with `cause: document_share` (`budget` when the pair still overflowed and the budget cut it further). The
+  with `cause: document_share` (`budget_cut` when the pair still overflowed and the budget cut it further). The
   cap is content (it enters the config's and the budget's identity; unset, both are unchanged), must be below
   `max_tokens` on the rerank config (at or over it the pair budget always binds first), and is refused
   beside `on_overflow: chunk` and on a hosted profile without a tokenizer (inert). The equivalence harness's
   rerank audit holds every captured document span to it, as it holds the query span to its share.
-- **A role client's cut says why, and how large the uncut request was** (`rcp_ndcg.data.preprocess`):
-  `TextCutRecord.cause` (`budget`, `query_share` or `document_share`, the new `CutCause` / `CUT_CAUSES`) and
-  `TextCutRecord.original_request_tokens` (the uncut request's whole size as the engine would read it: the
-  frame, its specials, the content and the reserved media), recorded by `fit` and by the rerank client's
-  shared-query settlement, also on the census sink's rows; `TextTruncationCensus.record` takes both. Both
-  are `None` (and absent from `as_row()`) on the judge's rows and on a vendor's budget row, so those rows are
+- **A role client records, per input row, what it changed** (`rcp_ndcg.data.preprocess.ProcessingRecord`,
+  `RoleClient.processing`): every role client's preparation emits one record for each input row it changed
+  before sending it -- none for a row sent as given -- naming each change by its mechanism
+  (`CHANGE_MECHANISMS`: `empty_doc`, `media_resize`, `media_drop`, `document_share`, `query_share`,
+  `budget_cut`) with the uncut and the kept request totals (frame, specials, content and media) and the
+  shape's budget; `processing_records` builds them from the census rows the cut wrote and the media fit's
+  and the empty-document policy's decisions, so nothing is measured twice. The policy's own image resize is
+  the declared instrument (R20), not a change. The text census rows name the same facts:
+  `TextCutRecord.cause` (`budget_cut`, `query_share` or `document_share`; `CutCause` / `CUT_CAUSES`),
+  `original_request_tokens` and `kept_request_tokens`, recorded by `fit` and by the rerank client's
+  shared-query settlement, also on the census sink's rows (`TextTruncationCensus.record` takes them). They are
+  `None` (and absent from `as_row()`) on the judge's rows and on a vendor's budget row, so those rows are
   unchanged. `original_tokens` counts the content alone: a request whose frame pushed it over the budget has
-  a content count under it, so whether a role client changed an input is read from `cause`.
+  a content count under it, so whether a role client changed an input is read from the record. The pooling
+  client's census rows now name each input's original position (an omitted empty document no longer shifts
+  a later one's id), as the rerank client's do.
 - **The adapter seam's contract is declared and checked** (`rcp_ndcg.inference.adapters.base`): `AdapterBase`
   carries the credential and capability ClassVars (`HOSTED`, `API_KEY_ENV`, `KEY_REQUIRED`, `AUTH_HEADER`,
   `DEFAULT_BASE_URL`, `MAX_BATCH`, `SUPPORTS_DIMENSIONS`, `ENCODING_FORMAT`, `REQUEST_SHAPES`) with declared
@@ -172,10 +180,11 @@ released together.
   and the census counts content only -- so a row whose framed request was over the budget while its content
   was under it, and a reranker's query settled at its share inside a pair the budget takes whole, were gated
   although the client had cut them (stage 2 skipped the shared query's settlement row altogether). Stage 1
-  and stage 2 now read the client's own census rows: a row is reported, under the declared over-cap
-  deviation, exactly when the client recorded a cut with a `cause` for it (the query settlement changes every
-  pair of its call), and the report names each cut's cause, content and uncut request sizes and the budget.
-  A row the client sent uncut gates exactly.
+  and stage 2 now read the client's own processing records (`RoleClient.processing`): a row is reported,
+  under the declared over-cap deviation, exactly when the client changed it -- any mechanism: a budget cut
+  counted with the frame, the query share (which changes every pair of its call), a per-document cap, an
+  empty-document substitution, a media resize or drop -- and the report names each change's mechanisms, the
+  uncut and kept request totals and the budget. A row the client sent uncut gates exactly.
 - **The offline fake draws one seeded stream per vector**: `rcp_ndcg.inference.fake`'s `/embeddings` and
   `/pooling` vectors are one SHAKE-256 stream of the same parts each (read as `dim` uniforms), no longer one
   SHA-256 per component, so a 16k-token text at 2048 dimensions answers in seconds instead of minutes. The

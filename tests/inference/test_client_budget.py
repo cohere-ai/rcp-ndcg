@@ -2022,3 +2022,83 @@ class TestLongQueryDoesNotDropFittingMedia:
         body = sender.bodies[0]["documents"][0]
         assert "image_url" in __import__("json").dumps(body), "the document's image rides the wire"
         assert max(sender.prompt_tokens) <= 1000, "within the budget"
+
+
+class TestProcessingRecords:
+    """H2 (decision 9): every role client's preparation emits, per input row it changed, one
+    :class:`~rcp_ndcg.data.preprocess.ProcessingRecord` naming each change's mechanism -- a text cut to the
+    budget (with the uncut and kept request totals, frame and media included), a query-share settlement, a
+    per-document cap, an empty-document substitution, a media resize or drop. A row without a record was sent as
+    given: a consumer (the equivalence harness) decides gating from the record alone."""
+
+    @staticmethod
+    def _framed() -> TemplateSpec:
+        return TemplateSpec(
+            document=(Segment(fixed="the document reads "), Segment(content="document"), Segment(fixed=" end")),
+            query=(Segment(fixed="the query reads "), Segment(content="query"), Segment(fixed=" end")),
+        )
+
+    def test_a_frame_only_overflow_is_a_budget_cut_with_its_request_totals(self, tokenizer_json: str) -> None:
+        """The content fits ``max_tokens`` (12), the framed request (frame 4 + content 10) does not: one record,
+        ``budget_cut``, uncut total over the budget and kept total within it; the under-budget row has no
+        record."""
+        client = EmbeddingClient(
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=12,
+                template=self._framed(),
+            ),
+            sender=RecordingSender(),
+        )
+        client.encode(texts(" ".join(["evidence"] * 10), "a b"), EncodeRole.DOCUMENT)
+        (record,) = client.processing
+        assert (record.input_id, record.shape, record.mechanisms) == ("0", "document", ("budget_cut",))
+        assert record.changed
+        assert record.original_request_tokens is not None and record.kept_request_tokens is not None
+        assert record.original_request_tokens > 12 >= record.kept_request_tokens
+        assert record.budget_tokens == 12
+
+    def test_the_rerank_settlement_cap_and_substitution_are_named(self, tokenizer_json: str) -> None:
+        """A query over its share in pairs the budget takes whole (``query_share`` under the shared-query id),
+        a document over its declared cap (``document_share``), an empty document substituted (``empty_doc``)
+        -- and the untouched document has no record."""
+        client = RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=64,
+                query_max_tokens=4,
+                document_max_tokens=5,
+                empty_doc="send_text",
+                empty_doc_text="NULL",
+                use_activation=False,
+            ),
+            sender=RecordingSender(),
+        )
+        client.rerank(" ".join(["evidence"] * 6), ["a b c", " ".join(["evidence"] * 12), ""])
+        records = {record.input_id: record.mechanisms for record in client.processing}
+        assert records == {QUERY_DOC_ID: ("query_share",), "1": ("document_share",), "2": ("empty_doc",)}
+
+    def test_a_media_change_is_named(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """A budget too small for a document's image as prepared: the media fit shrinks it (``media_resize``) or
+        drops it (``media_drop``) -- named on the document's row; the text cut beside it too."""
+        client = PoolingClient(
+            PoolingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=6,
+                dim=2,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                image_processor="qwen2_vl",
+                max_images=1,
+            ),
+            sender=RecordingSender(),
+        )
+        page = _image_content(tmp_path, 0, 448)
+        client.encode([Content.from_parts([TextPart(text="a caption"), *page.parts])], EncodeRole.DOCUMENT)
+        (record,) = client.processing
+        assert record.input_id == "0" and {"media_resize", "media_drop"} & set(record.mechanisms)

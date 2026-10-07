@@ -35,7 +35,7 @@ import numpy as np
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.data.prepare import MediaCensus
-from rcp_ndcg.data.preprocess import TextTruncationCensus
+from rcp_ndcg.data.preprocess import ChangeMechanism, TextTruncationCensus
 from rcp_ndcg.data.templates import RequestShape
 from rcp_ndcg.errors import ConfigError, RequestRejectedError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
@@ -217,18 +217,21 @@ class EmbeddingClient(RoleClient):
         shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
         prepared = tuple(content.with_text_prefix(prompt) for content in contents)
         self._refuse_media_off_its_side(role.value, prepared)
+        changes: dict[str, list[ChangeMechanism]] = {}  # per position, for the rows' processing records
         if self._media_is_on_wire():
             # Media on the messages wire (2e): one preparation path, each item's media sized exactly as the
             # judge's, its tokens reserved whole beside the item's text (the embeddings budget is per item:
             # each input must fit the served context, the batch is how fast).
             position_ids = [str(index) for index in range(len(prepared))]
             request = self._prepare_request(list(prepared), doc_ids=position_ids)
-            fitted, media_tokens = self._fit_media_per_item(request, shape=shape, doc_ids=position_ids)
+            fitted, media_tokens = self._fit_media_per_item(request, shape=shape, doc_ids=position_ids, changes=changes)
             prepared = tuple(fitted)
         else:
             media_tokens = [0] * len(prepared)
+        cuts: tuple[Any, ...] = ()
         if self._budget is None:
             kept, omitted = list(prepared), []
+            self._record_processing(shape, changes=changes)
             return PreparedItems(
                 items=tuple(kept),
                 positions=tuple(range(len(contents))),
@@ -242,7 +245,9 @@ class EmbeddingClient(RoleClient):
             # render, and the fit measured it.
             sent = result.contents if self.config.request_shape == "messages" else result.texts
             prepared = tuple(self._with_text(content, str(text)) for content, text in zip(prepared, sent, strict=True))
-        kept, omitted = self._apply_empty_documents(prepared)
+            cuts = result.cuts
+        kept, omitted = self._apply_empty_documents(prepared, changes=changes)
+        self._record_processing(shape, cuts=cuts, changes=changes)
         positions = [index for index in range(len(prepared)) if index not in set(omitted)]
         return PreparedItems(
             items=tuple(kept),

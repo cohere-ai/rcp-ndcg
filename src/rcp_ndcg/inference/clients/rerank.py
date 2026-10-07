@@ -40,10 +40,12 @@ from rcp_ndcg_core.content import Content
 from rcp_ndcg.data.prepare import MediaCensus
 from rcp_ndcg.data.preprocess import (
     CHUNK_ID_SEPARATOR,
+    ChangeMechanism,
     ContentParts,
     CutCause,
     DataError,
     FitResult,
+    TextCutRecord,
     TextTruncationCensus,
     max_pool_scores_by_document,
     rendered_pair_tokens,
@@ -344,6 +346,10 @@ class RerankClient(RoleClient):
         )
         prepared_query = request_prepared.contents[0]
         prepared_documents = list(request_prepared.contents[1:])
+        # Per input id (a document's position, the shared query's QUERY_DOC_ID), the changes made before the
+        # text fit -- media resized or dropped, empty documents substituted -- for the rows' processing records.
+        changes: dict[str, list[ChangeMechanism]] = {}
+        cuts: list[TextCutRecord] = []
         pair_media = [0] * len(prepared_documents)
         query_media = 0
         # The span that will ship: the settled query is share-capped first, so the media allowances reserve
@@ -382,6 +388,7 @@ class RerankClient(RoleClient):
                     allowance=max(
                         self._budget.max_tokens - query_media_raw - query_render - (1 if content.text else 0), 0
                     ),
+                    changes=changes,
                 )
                 for index, content in enumerate(prepared_documents)
             ]
@@ -396,13 +403,16 @@ class RerankClient(RoleClient):
                 doc_ids=[QUERY_DOC_ID],
                 prepared=slices[0],
                 allowance=max(self._budget.max_tokens - max(pair_media, default=0) - query_render - text_floor, 0),
+                changes=changes,
             )
             prepared_query = query_fit[0][0]
             query_media = query_fit[1]
         query = prepared_query
         documents = prepared_documents
-        kept_documents, omitted = self._apply_empty_documents(documents)
+        kept_documents, omitted = self._apply_empty_documents(documents, changes=changes)
         kept_positions = [index for index in range(len(documents)) if index not in set(omitted)]
+        if self._budget is None or not kept_documents:
+            self._record_processing("pair", changes=changes)
         if self._budget is None:
             return (
                 query,
@@ -448,12 +458,14 @@ class RerankClient(RoleClient):
                 # recorded even when every pair would fit whole.
                 share = self._budget.query_max_tokens
                 cause: CutCause = (
-                    "query_share" if share is not None and self._tokenizer.count(original_query) > share else "budget"
+                    "query_share"
+                    if share is not None and self._tokenizer.count(original_query) > share
+                    else "budget_cut"
                 )
                 uncut_probe = rendered_pair_tokens(
                     self._budget, self._tokenizer, query=original_query, document="", instruction=instruction or ""
                 )
-                self.census.record(
+                settle_cut = self.census.record(
                     corpus=self.ROLE,
                     doc_id=QUERY_DOC_ID,
                     original_chars=len(original_query),
@@ -468,7 +480,13 @@ class RerankClient(RoleClient):
                     budget_tokens=self._budget.max_tokens,
                     cause=cause,
                     original_request_tokens=uncut_probe + query_media + max(pair_media, default=0),
+                    kept_request_tokens=rendered_pair_tokens(
+                        self._budget, self._tokenizer, query=settled, document="", instruction=instruction or ""
+                    )
+                    + query_media
+                    + max(pair_media, default=0),
                 )
+                cuts.append(settle_cut)
             pairs = [(settled, document.text) for document in kept_documents]
             result = self._fit(
                 pairs,
@@ -507,6 +525,9 @@ class RerankClient(RoleClient):
                     "one query rides per request, so the spans must agree",
                     hint="this is a bug in the rerank pair fit: report it with the inputs",
                 )
+        # The rows' processing records: the settlement's and the pair fit's census rows (the last fit's, when
+        # a residual divergence re-fitted), and the media and empty-document changes noted above.
+        self._record_processing("pair", cuts=[*cuts, *result.cuts], changes=changes)
         # A chunked document is one wire document per chunk, each carrying its input's media parts beside
         # the piece (the media tokens are reserved per chunk: fit's cap subtracts the pair's media, and
         # every chunk's text is verified against it).  The fit ids are the documents' ORIGINAL positions

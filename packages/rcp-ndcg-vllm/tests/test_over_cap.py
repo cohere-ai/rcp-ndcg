@@ -4,8 +4,8 @@ A row is reported non-gating, under the recipe's declared over-cap deviation, ex
 what it sends relative to the uncut input -- whatever made it: the budget counted with the frame (a content under
 ``max_tokens`` whose framed request is over it), a query settled at its share inside a pair the budget would take
 whole, or a declared per-shape cap.  A row the client sent uncut gates exactly.  The harness reads that from the
-client's own census rows (their ``cause``), never by recomputing the client's cut or by comparing the content
-count with the budget.
+client's own processing records (one per changed row, each change named by its mechanism), never by recomputing
+the client's cut or by comparing the content count with the budget.
 """
 
 from __future__ import annotations
@@ -119,6 +119,15 @@ def _case(name: str, tmp_path: Path) -> tuple[Any, dict[str, Any]]:
     return _embed_with_a_query_shape(tmp_path), {"query": _text_with_content_tokens(20, 30), "documents": ["x"]}
 
 
+EXPECTED = {
+    "rerank-frame-only": "budget_cut",
+    "rerank-query-share": "query_share",
+    "rerank-document-share": "document_share",
+    "embed-frame-only": "budget_cut",
+    "embed-query-share": "budget_cut",  # the embed query shape's whole budget is its query_max_tokens
+}
+"""The mechanism the client's processing record names for each case's changed row."""
+
 CASES = ["rerank-frame-only", "rerank-query-share", "rerank-document-share", "embed-frame-only", "embed-query-share"]
 
 
@@ -133,8 +142,10 @@ def test_stage1_reports_every_row_the_client_changed_and_gates_the_rest(tmp_path
     assert render["passed"] is True, render["failures"][:1]
     assert {row["index"] for row in render["over_cap"]["rows"]} == {0}, "only the changed row is reported"
     assert render["over_cap"]["gating"] is False
-    causes = {cut["cause"] for row in render["over_cap"]["rows"] for cut in row["cuts"]}
-    assert causes <= {"budget", "query_share", "document_share"} and causes
+    mechanisms = {
+        name for row in render["over_cap"]["rows"] for change in row["changes"] for name in change["mechanisms"]
+    }
+    assert mechanisms == {EXPECTED[case]}, "the report names the client's own mechanism"
     assert render["rows"] >= 2, "the uncut row was rendered and compared"
 
     gated = stage1_prompts(_deviating(recipe, None), pairs, REFERENCE_PYTHON, over_length_per_shape=1)
