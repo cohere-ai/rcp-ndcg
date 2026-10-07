@@ -25,6 +25,15 @@ released together.
 
 ### Public surface
 
+- **`rcp_ndcg.testing.corpus`: the observation-corpus format and its one reader** (new module; `rcp_ndcg.testing`
+  is now a package, its names unchanged). `load_corpus` reads a GPU wave's corpus directory -- the full corpus's
+  `records.jsonl` or a repository subset's `records.jsonl.gz` with its `index.json` -- and migrates records of an
+  older `RECORD_SCHEMA` through `register_record_migration` (a record from a newer collector, or one without a
+  migration path, is a `DataError`); `integrity_mismatches` checks every hashed file and the manifest's own digest
+  (`manifest_digest`), `write_subset_index` writes a subset's index, `normalise_body` strips the volatile reply
+  fields (`NORMALISATION_VERSION` 1: request ids and `created` timestamps) and `credential_findings` names the
+  credential shapes a text carries. The collector in `rcp-ndcg-vllm` writes this format; the verified fake
+  engines read it here. A frozen schema-1 sample (`tests/observation_corpus_v1/`) pins that it stays readable.
 - **The observation corpus and the T3 quality stage (`rcp-ndcg-vllm`)**: `rcp_ndcg_vllm.record.record_corpus`
   records the raw-first `RECORD_SCHEMA` corpus (the request plan's rows twice in one engine process and once
   after an engine restart, batches 1/2/8/32, the reverse-order rerank variant, the protocol probes and
