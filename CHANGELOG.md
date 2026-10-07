@@ -87,6 +87,36 @@ released together.
   rendered script (harness tests), the four-phase supervision re-run with the fake engines as its
   engines (`tests/runners/test_supervision_replay.py`) and the observed outage behaviour as a transport
   test (`tests/inference/test_outage_observed.py`).
+- **`rcp_ndcg.testing.corpus`: the observation-corpus format and its one reader** (new module; `rcp_ndcg.testing`
+  is now a package, its names unchanged). `load_corpus` reads a GPU wave's corpus directory -- the full corpus's
+  `records.jsonl` or a repository subset's `records.jsonl.gz` with its `index.json` -- and migrates records of an
+  older `RECORD_SCHEMA` through `register_record_migration` (a record from a newer collector, or one without a
+  migration path, is a `DataError`); `integrity_mismatches` checks every hashed file and the manifest's own digest
+  (`manifest_digest`), `write_subset_index` writes a subset's index, `normalise_body` strips the volatile reply
+  fields (`NORMALISATION_VERSION` 1: request ids and `created` timestamps) and `credential_findings` names the
+  credential shapes a text carries. The collector in `rcp-ndcg-vllm` writes this format; the verified fake
+  engines read it here. A frozen schema-1 sample (`tests/observation_corpus_v1/`) pins that it stays readable.
+- **The observation corpus, the T3 quality stage and the negative controls (`rcp-ndcg-vllm`)**:
+  `rcp_ndcg_vllm.record.record_corpus` records a corpus in the product's format (`rcp_ndcg.testing.corpus`):
+  the request plan (`observe.requests.corpus_plan`: the pairs rows, the over-length ladder and the long content
+  kinds through the client and uncut, the wire variants, the protocol edges) twice in one engine process and
+  once after a restart, `/tokenize` of the exact prompts, and the section-4 provenance (`observe.provenance`);
+  `observe.corpus` keys it by engine version and `rcp_ndcg_vllm.fingerprint.behaviour_fingerprint`, measures the
+  non-determinism over true repetitions, runs the acceptance checks and cuts the repository subset
+  (`python -m rcp_ndcg_vllm.observe.corpus verify|subset`).  `quality.py` is the T3 stage: the served path
+  through the product's CLI, the `mteb` reference, RCP-nDCG@10 and qrel-nDCG@10 gated vs the reference and the
+  paper's numbers, `QUALITY.md`, and a recording proxy for the golden-replay corpus.  `observe.controls` derives
+  the negative controls (a)-(f) as real vLLM breakages (recipe variants, or request-body patches through
+  `equivalence.wire.patched_wire`).  `run_wave` gains `--record-corpus`, `--changed-since`, `--quality`
+  (`--paper-numbers`) and `--controls`; a passing control fails the recipe.  The format is documented in
+  `packages/rcp-ndcg-vllm/schema/observation-corpus.md`.
+- **`rcp_ndcg_vllm.observe` (the `rcp-ndcg-vllm` distribution)**: the deterministic observation request
+  generator -- `GENERATOR_VERSION`, `SEED`, `PINNED_DATASET_COMMITS`, the synthetic adversarial set stored as
+  text -- writing one stage-2 pairs file per recipe in the harness's pairs format plus `pairs/manifest.json`
+  (per-row provenance, stratum presence records, file hashes, excluded source ids, the recipes that could not
+  load with their error, and what stage-1 validation ran). `python -m rcp_ndcg_vllm.observe.requests` generates
+  it under a stall watchdog (`faulthandler` to stderr every 60 s); runs merge into the manifest, so one bounded
+  invocation per recipe composes.
 - **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
   are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric
   placements whose document has no Bradley-Terry theta, and the queries absent from `bt_scores`, instead of
@@ -1570,6 +1600,9 @@ released together.
   `zerank2_score_template.jinja` are renamed). Each recipe's contract test pins every resolved
   `serve`/`client`/`reference` field through `tests/recipes/_contract.assert_recipe_contract` (two mutants
   per recipe red). The served prompts are unchanged on whitespace-clean inputs.
+- **`packages/rcp-ndcg-vllm/jobs/rc_build.sh` stages the pairs files from `packages/rcp-ndcg-vllm/pairs/`**
+  (their one home, where the request generator writes them): a stray `<checkout-root>/pairs/` is refused with
+  the home named instead of being silently staged, and a checkout without pairs stages none.
 - **The BM25 index is persisted in bm25s' own format, never a pickle** (`rcp_ndcg.retrieval.sparse`): the
   index directory's model is stored with `BM25.save(..., allow_pickle=False)` (npz arrays + JSON parameters)
   and loaded with `allow_pickle=False` -- the index directory comes from ordinary user paths (`retrieval index

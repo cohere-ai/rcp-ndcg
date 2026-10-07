@@ -84,6 +84,11 @@ def run_wave(
     out_dir: str | Path,
     upload: str | None = None,
     record: bool = False,
+    record_corpus: bool = False,
+    quality: bool = False,
+    paper_numbers: str | Path | None = None,
+    controls: bool = False,
+    changed_since_index: str | Path | None = None,
     pairs_dir: str | Path | None = None,
     reference_python: str | None = None,
     vllm_cmd: str | None = None,
@@ -98,6 +103,12 @@ def run_wave(
     a recipe's own failure — including a recipe that fails validation at load — is recorded in its status and
     never raises.  Raises :class:`HarnessError` only for a bad wave request: a missing recipe root, or a wave
     list with no recipes at all (an unknown or invalid id is a failed row, not a wave abort).
+
+    ``record_corpus`` writes one observation corpus per recipe under ``<out>/<id>/corpus/`` (the request
+    plan's rows twice in one process and once after an engine restart -- the runner stops and restarts
+    the engine between the passes).  ``--changed-since <index>`` re-records only the recipes whose
+    behaviour fingerprint differs from the index (a previous ``wave.json`` or corpus index), listing
+    the rest as ``skipped_unchanged`` (OBSERVATIONS-SPEC section 7).
     """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -105,6 +116,10 @@ def run_wave(
     root = Path(recipes_root) if recipes_root is not None else default_recipes_root()
     recipes, load_failures = _resolve_recipes(recipe_ids, root)
     not_installed = frozenset(failed_plugins)
+    skipped_unchanged: list[str] = []
+    change_verdict: dict[str, Any] | None = None
+    if changed_since_index is not None:
+        recipes, skipped_unchanged, change_verdict = _filter_changed(recipes, Path(changed_since_index), vllm_cmd)
     results: dict[str, dict[str, Any]] = {}
     # The two early-failure classes that know no engine: a recipe that fails validation, and a recipe
     # whose plugin the bootstrap could not install.  Both are failed rows; the wave runs the rest.
@@ -180,6 +195,8 @@ def run_wave(
                 _finalise(
                     run, results, out, pairs_dir=pairs_dir, record=record, error=error,
                     reference_python=reference_python, reuse=reuse,
+                    record_corpus=record_corpus, vllm_cmd=vllm_cmd, port_base=port_base,
+                    quality=quality, paper_numbers=paper_numbers, controls=controls,
                 )  # fmt: skip
                 running.remove(run)
                 used_gpus.difference_update(run.gpus)
@@ -191,7 +208,7 @@ def run_wave(
             _upload(out, upload)
     if upload is not None:
         _upload(out, upload)
-    document = _wave_document(gpus, results)
+    document = _wave_document(gpus, results, skipped_unchanged=skipped_unchanged, change_verdict=change_verdict)
     (out / "wave.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     (out / "WAVE.md").write_text(_wave_markdown(document), encoding="utf-8")
     return document
@@ -219,6 +236,7 @@ class _EngineRun:
         self.out_dir = out_dir
         self.tmpdir = Path(tmpdir) if tmpdir is not None else log_path.parent / "tmp"
         self.disk: dict[str, Any] = disk or {}
+        self.env: dict[str, str] = {}
         self.started = time.monotonic()
         self.timeout_s = float(recipe.engine.startup_timeout_s)
         self.status: dict[str, Any] = _status(recipe, "running", port=port, gpus=gpus, steps={})
@@ -385,6 +403,7 @@ def _start(
         tmpdir=tmpdir,
     )
     run.status["serve_argv"] = argv
+    run.env = env
     run.status["steps"]["serve"] = {"state": "running", "port": port, "gpus": gpus, "tmpdir": str(tmpdir)}
     return run
 
@@ -463,16 +482,26 @@ def _finalise(
     *,
     pairs_dir: str | Path | None = None,
     record: bool = False,
+    record_corpus: bool = False,
+    quality: bool = False,
+    paper_numbers: str | Path | None = None,
+    controls: bool = False,
+    vllm_cmd: str | None = None,
+    port_base: int = 8100,
     error: str | None = None,
     reference_python: str | None = None,
     reuse: bool = False,
 ) -> None:
     """Take one engine to its end state: run the steps, or record the failure, then stop it.
 
-    Unless ``reuse`` (a later recipe in the wave serves the same model), the model's weights are evicted
+    Unless ``reuse`` (a later recipe in this wave serves the same model), the model's weights are evicted
     from the HF cache when the engine has stopped (node-runtime item 8: the pod has no persistent
-    volume), and the disk before/after is recorded with the recipe's status.
+    volume), and the disk before/after is recorded with the recipe's status.  The observation-corpus
+    step restarts the engine between the in-process passes and the after-restart pass (its own
+    ``server_run_id`` per engine run).
     """
+    restarted: list[_EngineRun] = []
+    run.status["ready_wait_s"] = round(time.monotonic() - run.started, 3)
     try:
         if error is None and run.port == 0:
             announced = run.announced_port(_ANNOUNCE_TIMEOUT_S)
@@ -486,14 +515,46 @@ def _finalise(
         if error is None:
             base_url = f"http://127.0.0.1:{run.port}"
             run.status["steps"]["smoke"] = _smoke(run.recipe, base_url)
-            run.status["steps"]["equivalence"] = _equivalence(run.recipe, base_url, out, pairs_dir, reference_python)
+            served: list[dict[str, Any]] = []
+            run.status["steps"]["equivalence"] = _equivalence(
+                run.recipe, base_url, out, pairs_dir, reference_python, recorder=served if record_corpus else None
+            )
             if record:
                 run.status["steps"]["record"] = _record(run.recipe, base_url, out)
+            if quality:
+                # Before the corpus step: that one restarts the engine for its after-restart pass.
+                run.status["steps"]["quality"] = _quality(run, base_url, out, reference_python, paper_numbers, vllm_cmd)
+            if record_corpus:
+                step, fingerprint = _observe_corpus(
+                    run,
+                    out,
+                    pairs_dir,
+                    vllm_cmd=vllm_cmd,
+                    port_base=port_base,
+                    restarted=restarted,
+                    equivalence_exchanges=served if run.status["steps"]["equivalence"].get("stages") else None,
+                )
+                run.status["steps"]["observation_corpus"] = step
+                run.status["behaviour_fingerprint"] = fingerprint
+                run.status["engine_version"] = _engine_version(run.recipe, vllm_cmd)
+            if controls:
+                # Last: the recipe-variant controls take the slot's GPUs one engine at a time (one owner).
+                run.status["steps"]["controls"] = _controls(
+                    run, out, pairs_dir, reference_python, vllm_cmd=vllm_cmd, port_base=port_base, restarted=restarted
+                )
             steps = run.status["steps"]
             record_ok = not record or steps["record"].get("state") == "passed"
+            controls_ok = not controls or steps["controls"].get("state") == "passed"
+            corpus_ok = not record_corpus or steps["observation_corpus"].get("state") != "failed"
+            quality_ok = not quality or steps["quality"].get("state") == "passed"
             run.status["state"] = (
                 "verified"
-                if steps["smoke"].get("state") == "passed" and steps["equivalence"].get("passed") and record_ok
+                if steps["smoke"].get("state") == "passed"
+                and steps["equivalence"].get("passed")
+                and record_ok
+                and corpus_ok
+                and quality_ok
+                and controls_ok
                 else "failed"
             )
         else:
@@ -525,6 +586,8 @@ def _finalise(
             elif skipped:
                 run.status["error"] = f"verification incomplete: {', '.join(skipped)}"
         run.stop()
+        for extra in restarted:
+            extra.stop()
         shutil.rmtree(run.tmpdir, ignore_errors=True)  # the slot's scratch TMPDIR leaves with its engine
         run.status["disk"] = {**run.disk, **_evict(run.recipe, reuse=reuse)}
         run.status["finished"] = _now()
@@ -566,8 +629,11 @@ def _equivalence(
     out: Path,
     pairs_dir: str | Path | None,
     reference_python: str | None,
+    *,
+    recorder: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Stages 1 and 2 for one recipe, written to ``<out>/<id>/equivalence.json``."""
+    """Stages 1 and 2 for one recipe, written to ``<out>/<id>/equivalence.json``; ``recorder`` collects stage 2's
+    captured exchanges (the corpus step checks its replies against them)."""
     pairs_path = _pairs_path(recipe, pairs_dir)
     if pairs_path is None:
         return {"state": "skipped", "reason": "no pairs file; give --pairs-dir"}
@@ -580,6 +646,7 @@ def _equivalence(
             stages=[1, 2],
             reference_python=reference_python,
             served_model_name=recipe.id,
+            recorder=recorder,
         )
         return {"state": "passed" if document["passed"] else "failed", "passed": document["passed"], "stages": [1, 2]}
     except HarnessError as error:
@@ -604,6 +671,293 @@ def _record(recipe: Recipe, base_url: str, out: Path) -> dict[str, Any]:
     except HarnessError as error:
         return {"state": "failed", "error": str(error)}
     return {"state": "passed", "files": [str(path) for path in written]}
+
+
+def _engine_version(recipe: Recipe, vllm_cmd: str | None) -> str:
+    """The engine version a recording is keyed by: the image's tag, or ``test-stub`` when a stub serves."""
+    return "test-stub" if vllm_cmd else recipe.engine.image.rpartition(":")[2].removeprefix("v")
+
+
+def _observe_corpus(
+    run: _EngineRun,
+    out: Path,
+    pairs_dir: str | Path | None,
+    *,
+    vllm_cmd: str | None,
+    port_base: int,
+    restarted: list[_EngineRun],
+    equivalence_exchanges: list[dict[str, Any]] | None = None,
+) -> tuple[dict[str, Any], str | None]:
+    """One observation corpus for the recipe over the request plan's rows (OBSERVATIONS-SPEC 1-6).
+
+    The corpus lands at its keyed, immutable path (:func:`~rcp_ndcg_vllm.observe.corpus.corpus_path`:
+    ``<out>/observations/vllm-<version>/<recipe>/<fingerprint>/<recorded-at>/``), keyed by the one behaviour
+    fingerprint (:func:`rcp_ndcg_vllm.fingerprint.behaviour_fingerprint`).  The ``restart`` closure stops the
+    engine and starts it again on the same slot, so the ``after_restart`` pass runs against a new engine
+    process with its own run id.  The engine block is probed (``nvidia-smi``, the engine environment's Python
+    named by ``RCP_ENGINE_PYTHON``); in test mode a stub serves and no vLLM fact is claimed.  Returns the step
+    document and the fingerprint.
+    """
+    from ..equivalence.fitting import load_pairs
+    from ..fingerprint import behaviour_fingerprint
+    from ..observe.corpus import corpus_path
+    from ..observe.provenance import collector_facts, engine_facts
+    from ..record import record_corpus
+
+    recipe = run.recipe
+    try:
+        fingerprint = behaviour_fingerprint(recipe)
+    except HarnessError as error:
+        return {"state": "failed", "error": f"the behaviour fingerprint cannot be computed: {error}"}, None
+    pairs_path = _pairs_path(recipe, pairs_dir)
+    if pairs_path is None:
+        return {"state": "skipped", "reason": "no pairs file; give --pairs-dir"}, fingerprint
+    rows: list[dict[str, Any]] = []
+    for index, row in enumerate(load_pairs(pairs_path)):
+        strata = row.get("_strata") or []
+        rows.append(
+            {
+                **row,
+                "request_id": str(row.get("request_id", f"pairs:{index}")),
+                "stratum": str(strata[0]) if strata else "",
+            }
+        )
+    slot = max(run.port - port_base, 0) if port_base else 0
+    base_url = f"http://127.0.0.1:{run.port}"
+    started = _now()
+    version = _engine_version(recipe, vllm_cmd)
+    directory = corpus_path(out, version, recipe.id, fingerprint, started)
+
+    loading: list[dict[str, Any]] = []
+
+    def restart() -> tuple[str, str] | None:
+        run.stop()
+        fresh = _start(recipe, run.gpus, slot, out, vllm_cmd, port_base, disk=run.disk)
+        restarted.append(fresh)
+        # OBSERVATIONS-SPEC section 1's readiness edge: one request while the engine is still loading (a stub
+        # in test mode announces its port first; a refused connection is recorded as such).
+        port = fresh.announced_port(30.0) if fresh.port == 0 else fresh.port
+        if port:
+            import httpx
+
+            from ..record import _bare_exchange
+
+            with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=10.0) as http:
+                loading.append(_bare_exchange(http, "GET", "/v1/models", None))
+        deadline = time.monotonic() + run.timeout_s
+        while time.monotonic() < deadline:
+            if fresh.exited():
+                return None
+            if fresh.ready():
+                return f"http://127.0.0.1:{fresh.port}", f"{recipe.id}@{_now()}"
+            time.sleep(_POLL_S)
+        return None
+
+    engine = engine_facts(
+        image="test-stub (no vLLM behaviour is claimed)" if vllm_cmd else recipe.engine.image,
+        serve_argv=list(run.status.get("serve_argv") or []),
+        engine_python=None if vllm_cmd else os.environ.get("RCP_ENGINE_PYTHON"),
+        environ=run.env,
+        started=run.status.get("started"),
+        ready_wait_s=run.status.get("ready_wait_s"),
+    )
+    engine["version"] = version
+    collector = collector_facts(
+        wave_id=os.environ.get("RCP_WAVE_ID") or out.name,
+        job_id=os.environ.get("RCP_JOB_ID"),
+        started=started,
+        finished=None,
+    )
+    try:
+        report = record_corpus(
+            recipe,
+            base_url,
+            rows,
+            directory,
+            server_run_id=f"{recipe.id}@{run.status.get('started', started)}",
+            engine_facts=engine,
+            collector=collector,
+            restart=restart,
+            equivalence_exchanges=equivalence_exchanges,
+            while_loading=loading,
+        )
+    except Exception as error:  # noqa: BLE001 - the corpus step fails this recipe, never the wave
+        return {"state": "failed", "error": f"{type(error).__name__}: {error}"}, fingerprint
+    return {"state": "passed" if report["passed"] else "failed", **report}, fingerprint
+
+
+def _quality(
+    run: _EngineRun,
+    base_url: str,
+    out: Path,
+    reference_python: str | None,
+    paper_numbers: str | Path | None,
+    vllm_cmd: str | None,
+) -> dict[str, Any]:
+    """The T3 quality stage for one recipe (:func:`rcp_ndcg_vllm.quality.run_quality`) on its task-matrix tasks,
+    written under ``<out>/<id>/quality/``.  The paper's stored per-subset numbers come from ``--paper-numbers``
+    (``{recipe: {metric: {subset: value}}}``); the golden-replay corpus carries the wave's engine and collector
+    blocks.  A recipe outside the task matrix, or any failing task, fails the step."""
+    from .. import quality as t3
+    from ..observe.provenance import collector_facts, engine_facts
+
+    recipe = run.recipe
+    if reference_python is None:
+        return {"state": "failed", "error": "the quality stage needs --reference-python (the mteb reference)"}
+    try:
+        tasks = t3.tasks_for(recipe.id)
+        paper = None
+        if paper_numbers is not None:
+            paper = json.loads(Path(paper_numbers).read_text(encoding="utf-8")).get(recipe.id)
+        manifest = {
+            "engine": engine_facts(
+                image=recipe.engine.image,
+                serve_argv=list(run.status.get("serve_argv") or []),
+                engine_python=None if vllm_cmd else os.environ.get("RCP_ENGINE_PYTHON"),
+                environ=run.env,
+                started=run.status.get("started"),
+                ready_wait_s=run.status.get("ready_wait_s"),
+            ),
+            "collector": collector_facts(
+                wave_id=os.environ.get("RCP_WAVE_ID") or out.name,
+                job_id=os.environ.get("RCP_JOB_ID"),
+                started=_now(),
+                finished=None,
+            ),
+        }
+        document = t3.run_quality(
+            recipe,
+            engine_url=base_url,
+            tasks=tasks,
+            work_dir=out / recipe.id / "quality",
+            reference_python=reference_python,
+            paper=paper,
+            golden_manifest=manifest,
+        )
+    except (HarnessError, OSError, ValueError) as error:
+        return {"state": "failed", "error": str(error)}
+    return {
+        "state": "passed" if document["passed"] else "failed",
+        "errors": document["errors"],
+        "report": "quality.json",
+    }
+
+
+def _control_gates(
+    recipe: Recipe, base_url: str, out_dir: Path, pairs_path: Path, reference_python: str
+) -> dict[str, Any]:
+    """Stages 1 and 2 for one control: the ordinary gates, which must fail it.  An error the served side raises
+    (a garbled frame the client cannot decode) is the stage failing on that request, recorded with its text."""
+    from rcp_ndcg.errors import RcpNdcgError
+
+    try:
+        document = run_equivalence(
+            recipe,
+            base_url=base_url,
+            pairs_path=str(pairs_path),
+            out_dir=str(out_dir),
+            stages=[1, 2],
+            reference_python=reference_python,
+            served_model_name=recipe.id,
+        )
+    except (HarnessError, RcpNdcgError) as error:
+        return {"passed": False, "error": f"{type(error).__name__}: {error}"}
+    return {
+        "passed": bool(document["passed"]),
+        "stage1": document.get("stage1", {}).get("passed"),
+        "stage2": document.get("stage2", {}).get("passed"),
+    }
+
+
+def _controls(
+    run: _EngineRun,
+    out: Path,
+    pairs_dir: str | Path | None,
+    reference_python: str | None,
+    *,
+    vllm_cmd: str | None,
+    port_base: int,
+    restarted: list[_EngineRun],
+) -> dict[str, Any]:
+    """The negative controls (a)-(f) of one recipe (GPU-VALIDATION.md item 5), through the ordinary gates.
+
+    Only after the recipe's own gates passed (a control "caught" by a gate that fails everything proves nothing).
+    Wire controls run against the recipe's live engine with the request bodies patched; then the recipe's
+    engines stop and each recipe variant is served on the slot in turn (one GPU owner at a time), its client and
+    engine agreeing on the variant's id.  A variant whose engine does not come up is NOT counted as caught (an
+    engine refusing its argv fails every gate and proves nothing): its row says so and the summary flags it.
+    Returns the step: :func:`~rcp_ndcg_vllm.observe.controls.controls_summary`'s report and its state.
+    """
+    from ..equivalence.wire import patched_wire
+    from ..observe.controls import control_variants, controls_summary
+
+    recipe = run.recipe
+    equivalence = run.status["steps"].get("equivalence") or {}
+    if not equivalence.get("passed"):
+        return {"state": "skipped", "reason": "the recipe's own gates did not pass: a control would prove nothing"}
+    pairs_path = _pairs_path(recipe, pairs_dir)
+    if pairs_path is None or reference_python is None:
+        return {"state": "failed", "error": "the controls need the pairs file and --reference-python"}
+    live = next((engine for engine in reversed(restarted) if not engine.exited()), run)
+    live_url = f"http://127.0.0.1:{live.port}"
+    work = out / recipe.id / "controls"
+    rows: list[dict[str, Any]] = []
+    variants = control_variants(recipe)
+    for variant in variants:
+        if variant["kind"] is None:
+            rows.append({"control": variant["control"], "name": variant["name"], "reason": variant["reason"]})
+        elif variant["kind"] == "wire":
+            with patched_wire(variant["wire_patch"]):
+                gates = _control_gates(recipe, live_url, work / variant["name"], pairs_path, reference_python)
+            rows.append({"control": variant["control"], "name": variant["name"], "equivalence": gates})
+    run.stop()
+    for engine in restarted:
+        engine.stop()
+    slot = max(run.port - port_base, 0) if port_base else 0
+    for variant in variants:
+        if variant["kind"] != "recipe":
+            continue
+        engine = _start(variant["recipe"], run.gpus, slot, out, vllm_cmd, port_base, disk=run.disk)
+        try:
+            deadline = time.monotonic() + run.timeout_s
+            while not engine.ready() and not engine.exited() and time.monotonic() < deadline:
+                time.sleep(_POLL_S)
+            if engine.ready():
+                gates = _control_gates(
+                    variant["recipe"], f"http://127.0.0.1:{engine.port}", work / variant["name"], pairs_path,
+                    reference_python,
+                )  # fmt: skip
+            else:
+                gates = {
+                    "passed": None,
+                    "error": "the variant's engine did not become ready: the control was not served",
+                }
+        finally:
+            engine.stop()
+        rows.append({"control": variant["control"], "name": variant["name"], "equivalence": gates})
+    rows.sort(key=lambda row: str(row["control"]))
+    summary = controls_summary(rows)
+    return {"state": "passed" if summary["passed"] else "failed", **summary}
+
+
+def _filter_changed(
+    recipes: list[Recipe], index_path: Path, vllm_cmd: str | None
+) -> tuple[list[Recipe], list[str], dict[str, Any]]:
+    """OBSERVATIONS-SPEC section 7's re-record-changed-only: keep the recipes whose corpus key -- behaviour
+    fingerprint and engine version -- differs from the previous ``wave.json``'s, and return the untouched ones'
+    ids and the verdict (why each changed, which engine versions are new) for the wave document."""
+    from ..observe.corpus import changed_since
+
+    try:
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise HarnessError(f"--changed-since {index_path} is unreadable: {error}") from error
+    try:
+        verdict = changed_since(recipes, index, engine_version_of=lambda recipe: _engine_version(recipe, vllm_cmd))
+    except HarnessError as error:
+        raise HarnessError(f"--changed-since cannot fingerprint the wave's recipes: {error}") from error
+    changed = set(verdict["changed"])
+    return [recipe for recipe in recipes if recipe.id in changed], verdict["unchanged"], verdict
 
 
 def _resolve_recipes(recipe_ids: list[str], recipes_root: str | Path | None) -> tuple[list[Recipe], dict[str, str]]:
@@ -666,13 +1020,31 @@ def _status(recipe: Recipe, state: str, **fields: Any) -> dict[str, Any]:
     return {"recipe": recipe.id, "state": state, "gpus": recipe.resources.gpus, "started": _now(), **fields}
 
 
-def _wave_document(gpus: int, results: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    """The wave summary: one row per recipe, the wave's verdict last."""
+def _wave_document(
+    gpus: int,
+    results: dict[str, dict[str, Any]],
+    *,
+    skipped_unchanged: tuple[str, ...] | list[str] = (),
+    change_verdict: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The wave summary: one row per recipe, the corpus keys (fingerprints and engine versions), the verdict."""
     rows = [results[recipe_id] for recipe_id in sorted(results)]
+    fingerprints = {row["recipe"]: row["behaviour_fingerprint"] for row in rows if row.get("behaviour_fingerprint")}
+    engine_versions = {row["recipe"]: row["engine_version"] for row in rows if row.get("behaviour_fingerprint")}
     return {
         "gpus": gpus,
         "recipes": rows,
-        "passed": bool(rows) and all(row["state"] == "verified" for row in rows),
+        "skipped_unchanged": list(skipped_unchanged),
+        "changes": (change_verdict or {}).get("changes", {}),
+        "protocol_due": (change_verdict or {}).get("protocol_due", []),
+        "fingerprints": fingerprints,
+        "engine_versions": engine_versions,
+        "control_blockers": {
+            row["recipe"]: row["steps"]["controls"]["blockers"]
+            for row in rows
+            if (row.get("steps") or {}).get("controls", {}).get("blockers")
+        },
+        "passed": (bool(rows) or bool(skipped_unchanged)) and all(row["state"] == "verified" for row in rows),
         "finished": _now(),
     }
 
@@ -693,6 +1065,9 @@ def _wave_markdown(document: dict[str, Any]) -> str:
         error = " ".join((row.get("error") or "").split()).replace("|", "\\|")
         gpus = row.get("gpus")
         lines.append(f"| {row['recipe']} | {gpus if gpus is not None else '-'} | {row['state']} | {error} |")
+    for recipe_id, blockers in sorted((document.get("control_blockers") or {}).items()):
+        for blocker in blockers:
+            lines.append(f"\n- BLOCKER {recipe_id} control {blocker['control']} {blocker['name']}: {blocker['reason']}")
     lines += ["", f"Verdict: **{'PASS' if document['passed'] else 'FAIL'}**"]
     return "\n".join(lines) + "\n"
 
@@ -709,6 +1084,34 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", required=True, help="output directory")
     parser.add_argument("--upload", default=None, help="URI to copy <out> to after each recipe")
     parser.add_argument("--record", action="store_true", help="record the engine request/response set per recipe")
+    parser.add_argument(
+        "--record-corpus",
+        action="store_true",
+        help="write one observation corpus per recipe (the request plan's rows twice in one process and "
+        "once after an engine restart, plus the protocol probes and /tokenize)",
+    )
+    parser.add_argument(
+        "--controls",
+        action="store_true",
+        help="serve the negative controls (a)-(f) per recipe through the ordinary gates; a control that passes "
+        "fails the recipe (GPU-VALIDATION.md item 5)",
+    )
+    parser.add_argument(
+        "--quality",
+        action="store_true",
+        help="run the T3 quality stage per recipe (served path vs the mteb reference on its task-matrix tasks)",
+    )
+    parser.add_argument(
+        "--paper-numbers",
+        default=None,
+        help="JSON {recipe: {metric: {subset: value}}}: the paper's stored per-subset numbers the T3 stage gates",
+    )
+    parser.add_argument(
+        "--changed-since",
+        default=None,
+        help="a previous wave.json or corpus index: re-record only the recipes whose behaviour "
+        "fingerprint changed (OBSERVATIONS-SPEC section 7)",
+    )
     parser.add_argument("--pairs-dir", default=None, help="directory with <id>.jsonl (or default.jsonl) pairs files")
     parser.add_argument(
         "--reference-python",
@@ -735,6 +1138,11 @@ def main(argv: list[str] | None = None) -> int:
             out_dir=args.out,
             upload=args.upload,
             record=args.record,
+            record_corpus=args.record_corpus,
+            quality=args.quality,
+            controls=args.controls,
+            paper_numbers=args.paper_numbers,
+            changed_since_index=args.changed_since,
             pairs_dir=args.pairs_dir,
             reference_python=args.reference_python,
             vllm_cmd=args.vllm_cmd,

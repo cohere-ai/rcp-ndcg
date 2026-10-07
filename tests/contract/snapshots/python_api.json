@@ -19306,6 +19306,218 @@
       }
     }
   },
+  "rcp_ndcg.testing.corpus": {
+    "all": {
+      "CORPUS_SCHEMA": {
+        "kind": "constant",
+        "type": "str",
+        "value": "rcp-ndcg.observation-corpus/1"
+      },
+      "INDEX_FILE": {
+        "kind": "constant",
+        "type": "str",
+        "value": "index.json"
+      },
+      "MANIFEST_FILE": {
+        "kind": "constant",
+        "type": "str",
+        "value": "manifest.json"
+      },
+      "NONDETERMINISM_FILE": {
+        "kind": "constant",
+        "type": "str",
+        "value": "nondeterminism.json"
+      },
+      "NORMALISATION_VERSION": {
+        "kind": "constant",
+        "type": "int",
+        "value": 1
+      },
+      "ObservationCorpus": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.testing.corpus",
+        "init": [
+          {
+            "annotation": "Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "directory"
+          },
+          {
+            "annotation": "dict[str, Any]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "manifest"
+          },
+          {
+            "annotation": "list[dict[str, Any]]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "records"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "records_file"
+          },
+          {
+            "annotation": "dict[str, Any] | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "subset_index"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
+      "RECORDS_FILE": {
+        "kind": "constant",
+        "type": "str",
+        "value": "records.jsonl"
+      },
+      "RECORDS_FILE_GZ": {
+        "kind": "constant",
+        "type": "str",
+        "value": "records.jsonl.gz"
+      },
+      "RECORD_SCHEMA": {
+        "kind": "constant",
+        "type": "int",
+        "value": 1
+      },
+      "SUBSET_INDEX_SCHEMA": {
+        "kind": "constant",
+        "type": "str",
+        "value": "rcp-ndcg.observation-subset/1"
+      },
+      "credential_findings": {
+        "defined_in": "rcp_ndcg.testing.corpus",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "text"
+          },
+          {
+            "returns": "list[str]"
+          }
+        ]
+      },
+      "integrity_mismatches": {
+        "defined_in": "rcp_ndcg.testing.corpus",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "ObservationCorpus",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "corpus"
+          },
+          {
+            "returns": "list[str]"
+          }
+        ]
+      },
+      "load_corpus": {
+        "defined_in": "rcp_ndcg.testing.corpus",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "directory"
+          },
+          {
+            "returns": "ObservationCorpus"
+          }
+        ]
+      },
+      "manifest_digest": {
+        "defined_in": "rcp_ndcg.testing.corpus",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "dict[str, Any]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "manifest"
+          },
+          {
+            "returns": "str"
+          }
+        ]
+      },
+      "normalise_body": {
+        "defined_in": "rcp_ndcg.testing.corpus",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "body"
+          },
+          {
+            "returns": "Any"
+          }
+        ]
+      },
+      "register_record_migration": {
+        "defined_in": "rcp_ndcg.testing.corpus",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "schema"
+          },
+          {
+            "annotation": "Callable[[dict[str, Any]], dict[str, Any]]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "migrate"
+          },
+          {
+            "returns": "None"
+          }
+        ]
+      },
+      "write_subset_index": {
+        "defined_in": "rcp_ndcg.testing.corpus",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "directory"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "full_corpus_path"
+          },
+          {
+            "annotation": "dict[str, Any]",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "sampling"
+          },
+          {
+            "returns": "Path"
+          }
+        ]
+      }
+    }
+  },
   "rcp_ndcg_core": {
     "all": {
       "Content": {

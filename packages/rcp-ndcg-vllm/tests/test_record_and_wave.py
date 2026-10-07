@@ -23,13 +23,6 @@ VLLM_CMD = f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py
 REFERENCE_PY = sys.executable
 
 
-@pytest.fixture(autouse=True)
-def _hub_is_offline(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No network in tests: every wave's Hub question (the model's bytes) answers "unknown" here;
-    the tests that need a size monkeypatch their own value on top of this."""
-    monkeypatch.setattr(weights, "model_disk_bytes", lambda model, revision=None: None)
-
-
 def test_record_writes_exchanges_per_route(tmp_path: Path) -> None:
     """The recorded set: models, the role route, /score, the over-length 400 and the unknown-field 400."""
 

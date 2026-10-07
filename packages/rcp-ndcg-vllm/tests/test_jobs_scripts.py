@@ -761,3 +761,54 @@ def test_the_e2e_script_needs_a_wave_name() -> None:
     )
     assert completed.returncode == 2
     assert "--wave" in completed.stderr
+
+
+# --- rc_build.sh: the pairs staging (one home: packages/rcp-ndcg-vllm/pairs/) -------------------------
+
+
+def _stage_pairs(tmp_path: Path, checkout: Path) -> subprocess.CompletedProcess[str]:
+    """Source rc_build.sh and run its ``stage_pairs`` over a scratch checkout and stage."""
+    stage = tmp_path / "stage"
+    stage.mkdir(exist_ok=True)
+    return subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source "{RC_BUILD}" && stage_pairs "{checkout}" "{stage}"',
+            "bash",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_rc_build_stages_pairs_from_the_packages_home(tmp_path: Path) -> None:
+    """The pairs files live at packages/rcp-ndcg-vllm/pairs/: rc_build.sh stages exactly that directory."""
+    checkout = tmp_path / "checkout"
+    pairs = checkout / "packages" / "rcp-ndcg-vllm" / "pairs"
+    pairs.mkdir(parents=True)
+    (pairs / "fixture-embed.jsonl").write_text('{"query": "q", "documents": ["d"]}\n', encoding="utf-8")
+    completed = _stage_pairs(tmp_path, checkout)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    staged = tmp_path / "stage" / "pairs" / "fixture-embed.jsonl"
+    assert staged.is_file(), f"the pairs file was not staged: {sorted((tmp_path / 'stage').rglob('*'))}"
+
+
+def test_rc_build_never_stages_a_root_pairs_directory(tmp_path: Path) -> None:
+    """One home: a stray <checkout-root>/pairs/ is refused (never silently staged), said on stderr."""
+    checkout = tmp_path / "checkout"
+    (checkout / "pairs").mkdir(parents=True)
+    (checkout / "pairs" / "stray.jsonl").write_text('{"query": "q", "documents": ["d"]}\n', encoding="utf-8")
+    completed = _stage_pairs(tmp_path, checkout)
+    assert completed.returncode != 0
+    assert "packages/rcp-ndcg-vllm/pairs" in completed.stderr
+    assert not (tmp_path / "stage" / "pairs").exists()
+
+
+def test_rc_build_without_any_pairs_stages_nothing(tmp_path: Path) -> None:
+    """A checkout without pairs stages no pairs dir (the wave runner then reports its missing pairs)."""
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    completed = _stage_pairs(tmp_path, checkout)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert not (tmp_path / "stage" / "pairs").exists()

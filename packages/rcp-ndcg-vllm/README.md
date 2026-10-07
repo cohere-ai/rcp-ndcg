@@ -98,6 +98,11 @@ The T4 end-to-end run scenarios (`scenarios/<id>.yaml`, schema `schema/scenario.
 driver (`python -m rcp_ndcg_vllm.e2e`) are described in [release candidates and the GPU
 waves](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/release-candidates.md).
 
+The stage-2 pairs files (`pairs/<id>.jsonl` and their `manifest.json`) come from the deterministic request
+generator `python -m rcp_ndcg_vllm.observe.requests`; the wave's observation-corpus step, the T3 quality stage
+and the negative controls are `run_wave.py`'s `--record-corpus`, `--quality` and `--controls`. The corpus
+format is documented in `schema/observation-corpus.md`; its one reader is `rcp_ndcg.testing.corpus`.
+
 ## License
 
 Apache-2.0: `LICENSE` and `NOTICE` ship in every wheel and sdist.
