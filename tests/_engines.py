@@ -209,4 +209,10 @@ def observation_corpus(
         "model": {"id": "fixtures/Tiny", "revision": "f" * 40},
         "recipe": {"id": recipe_id, "behaviour_fingerprint": fingerprint},
     }
-    return ObservationCorpus(directory=directory, manifest=manifest, records=records, records_file="records.jsonl")
+    return ObservationCorpus(
+        directory=directory,
+        manifest=manifest,
+        records=records,
+        records_file="records.jsonl",
+        nondeterminism={"derived": derived},
+    )

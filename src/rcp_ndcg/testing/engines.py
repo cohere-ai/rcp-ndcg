@@ -26,15 +26,16 @@ numbers only within the engine's numeric noise, which the batching strata of a r
 (OBSERVATIONS-SPEC section 1) are recorded to measure; a corpus without them declares it unmeasured.
 
 The corpora are read through the format's one reader, :mod:`rcp_ndcg.testing.corpus` (``load_corpus``,
-``integrity_mismatches``, ``normalise_body``, ``credential_findings``): this module consumes its records
-(:func:`exchanges_of`) and the measured non-determinism the corpus stores (:func:`corpus_tolerance`), and
-adds what only the emulators need -- the byte-level form of the normalisation (:func:`normalise_raw`),
-the manifest scan (:func:`find_corpora`) and the append-only verification record.
+``integrity_mismatches``, ``normalise_body`` and ``normalise_raw``, ``credential_findings``, the append-only
+verification record): this module consumes its records (:func:`exchanges_of`) and the measured
+non-determinism the corpus stores (:func:`corpus_tolerance`), and adds what only the emulators need -- the
+manifest scan (:func:`find_corpora`) and the verification record's content (:func:`verification_record`).
 
 The registry resolves by (engine, version, fingerprint) and loads out-of-tree emulators through the
 ``rcp_ndcg.emulators`` entry-point group (entry points value: a callable returning
 :class:`Emulator <VllmEmulator>` instances). Verification is recorded append-only beside the corpus
-(``verification.jsonl``, not part of the recorded corpus, so its index does not hash it) and an emulator
+(``verification.jsonl``, :func:`rcp_ndcg.testing.corpus.append_verification`; not part of the recorded
+corpus, so no integrity hash covers it) and an emulator
 refuses an engine version or recipe revision it was not verified against.
 """
 
@@ -43,7 +44,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import re
 import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
@@ -54,14 +54,19 @@ from urllib.parse import parse_qsl, urlsplit
 import httpx
 
 from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.testing.corpus import NONDETERMINISM_FILE, NORMALISATION_VERSION, ObservationCorpus, normalise_body
+from rcp_ndcg.testing.corpus import (
+    NORMALISATION_VERSION,
+    VERIFICATION_SCHEMA,
+    ObservationCorpus,
+    normalise_body,
+    normalise_raw,
+)
 
 __all__ = [
     "CORPUS_INDEX_SCHEMA",
     "EMULATED_ROUTES",
     "FIELD_CLASSES",
     "ROUTE_FIELDS",
-    "VERIFICATION_SCHEMA",
     "BehaviourDiff",
     "EmulatorRegistry",
     "EngineFacts",
@@ -73,13 +78,11 @@ __all__ = [
     "StringsPrompts",
     "Verified",
     "VllmEmulator",
-    "append_verification",
     "behaviour_diff",
     "compare_exchange",
     "corpus_tolerance",
     "exchanges_of",
     "find_corpora",
-    "normalise_raw",
     "registry",
     "request_context",
     "route_name",
@@ -90,20 +93,10 @@ __all__ = [
     "surrogate_vector",
     "transport_for",
     "verification_record",
-    "verification_records",
 ]
 
 CORPUS_INDEX_SCHEMA = "rcp-ndcg.corpus-index/1"
 """The repository corpus index's schema: the manifest hash of every committed corpus."""
-
-VERIFICATION_SCHEMA = "rcp-ndcg.verification/1"
-"""The append-only verification record's schema (written by the conformance verifier)."""
-
-_VOLATILE_RAW = (
-    (re.compile(rb'"id":\s*"(?:embd|score|pool|modelperm|rerank|cmpl)-[0-9A-Za-z-]+"'), b'"id":"<volatile>"'),
-    (re.compile(rb'"created":\s*[0-9]+'), b'"created":0'),
-)
-""":func:`rcp_ndcg.testing.corpus.normalise_body`'s volatile leaves, masked in raw bytes."""
 
 
 # ---------------------------------------------------------------------------
@@ -204,11 +197,9 @@ def corpus_tolerance(corpus: ObservationCorpus) -> tuple[float, float] | None:
     Raises:
         DataError: the corpus carries no non-determinism report.
     """
-    path = corpus.directory / NONDETERMINISM_FILE
-    try:
-        derived = json.loads(path.read_text(encoding="utf-8")).get("derived") or {}
-    except (OSError, ValueError) as error:
-        raise DataError(f"{path}: the corpus's non-determinism report is unreadable: {error}") from error
+    if corpus.nondeterminism is None:
+        raise DataError(f"{corpus.directory}: the corpus carries no non-determinism report (nondeterminism.json)")
+    derived = corpus.nondeterminism.get("derived") or {}
     if not derived.get("measured"):
         return None
     return (float(derived["abs_tolerance"]), float(derived["rel_tolerance"]))
@@ -252,14 +243,6 @@ def find_corpora(
 # ---------------------------------------------------------------------------
 # derived views: the volatile fields a comparison strips (rcp_ndcg.testing.corpus.NORMALISATION_VERSION)
 # ---------------------------------------------------------------------------
-
-
-def normalise_raw(raw: bytes) -> bytes:
-    """Raw reply bytes with :func:`rcp_ndcg.testing.corpus.normalise_body`'s volatile values (request ids,
-    ``created`` stamps) masked in place, so the bytes compare exactly otherwise."""
-    for pattern, mask in _VOLATILE_RAW:
-        raw = pattern.sub(mask, raw)
-    return raw
 
 
 def _float_leaves(value: Any, prefix: str = "") -> dict[str, float]:
@@ -1473,26 +1456,6 @@ def split_engine_host(host: str) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def append_verification(corpus_dir: str | Path, record: Mapping[str, Any]) -> None:
-    """Append one verification record (``verification.jsonl`` beside the manifest), never rewriting.
-
-    Args:
-        corpus_dir: The corpus directory (write there; tests use ``tmp_path`` copies).
-        record: The record; :data:`VERIFICATION_SCHEMA` and the verification facts are required.
-    """
-    path = Path(corpus_dir) / "verification.jsonl"
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(dict(record), sort_keys=True) + "\n")
-
-
-def verification_records(corpus_dir: str | Path) -> list[dict[str, Any]]:
-    """Every appended verification record (the concatenation is the emulator's verification history)."""
-    path = Path(corpus_dir) / "verification.jsonl"
-    if not path.is_file():
-        return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-
-
 def verification_record(
     corpus: ObservationCorpus, problems: Sequence[str], *, verified_at: str, emulator: VllmEmulator | None = None
 ) -> dict[str, Any]:
@@ -1507,7 +1470,7 @@ def verification_record(
         emulator: The verified emulator (its unobserved routes and unverified rules are recorded).
 
     Returns:
-        The record, ready for :func:`append_verification`.
+        The record, ready for :func:`rcp_ndcg.testing.corpus.append_verification`.
     """
     from importlib.metadata import version
 

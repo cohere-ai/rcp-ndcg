@@ -19368,10 +19368,26 @@
             "name": "subset_index"
           },
           {
+            "annotation": "dict[str, Any] | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "nondeterminism"
+          },
+          {
             "returns": "None"
           }
         ],
         "kind": "class"
+      },
+      "PROVENANCE_KEYS": {
+        "keys": [
+          "collector",
+          "engine",
+          "model",
+          "recipe"
+        ],
+        "kind": "constant",
+        "type": "dict"
       },
       "RECORDS_FILE": {
         "kind": "constant",
@@ -19392,6 +19408,37 @@
         "kind": "constant",
         "type": "str",
         "value": "rcp-ndcg.observation-subset/1"
+      },
+      "VERIFICATION_FILE": {
+        "kind": "constant",
+        "type": "str",
+        "value": "verification.jsonl"
+      },
+      "VERIFICATION_SCHEMA": {
+        "kind": "constant",
+        "type": "str",
+        "value": "rcp-ndcg.verification/1"
+      },
+      "append_verification": {
+        "defined_in": "rcp_ndcg.testing.corpus",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "corpus_dir"
+          },
+          {
+            "annotation": "dict[str, Any]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "record"
+          },
+          {
+            "returns": "None"
+          }
+        ]
       },
       "credential_findings": {
         "defined_in": "rcp_ndcg.testing.corpus",
@@ -19453,6 +19500,21 @@
           }
         ]
       },
+      "missing_provenance": {
+        "defined_in": "rcp_ndcg.testing.corpus",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "dict[str, Any]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "manifest"
+          },
+          {
+            "returns": "list[str]"
+          }
+        ]
+      },
       "normalise_body": {
         "defined_in": "rcp_ndcg.testing.corpus",
         "kind": "function",
@@ -19465,6 +19527,21 @@
           },
           {
             "returns": "Any"
+          }
+        ]
+      },
+      "normalise_raw": {
+        "defined_in": "rcp_ndcg.testing.corpus",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "bytes",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "raw"
+          },
+          {
+            "returns": "bytes"
           }
         ]
       },
@@ -19486,6 +19563,21 @@
           },
           {
             "returns": "None"
+          }
+        ]
+      },
+      "verification_records": {
+        "defined_in": "rcp_ndcg.testing.corpus",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "corpus_dir"
+          },
+          {
+            "returns": "list[dict[str, Any]]"
           }
         ]
       },
@@ -20166,11 +20258,6 @@
           }
         }
       },
-      "VERIFICATION_SCHEMA": {
-        "kind": "constant",
-        "type": "str",
-        "value": "rcp-ndcg.verification/1"
-      },
       "Verified": {
         "bases": [],
         "defined_in": "rcp_ndcg.testing.engines",
@@ -20444,27 +20531,6 @@
           "unobserved_routes": "property"
         }
       },
-      "append_verification": {
-        "defined_in": "rcp_ndcg.testing.engines",
-        "kind": "function",
-        "signature": [
-          {
-            "annotation": "str | Path",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "corpus_dir"
-          },
-          {
-            "annotation": "Mapping[str, Any]",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "record"
-          },
-          {
-            "returns": "None"
-          }
-        ]
-      },
       "behaviour_diff": {
         "defined_in": "rcp_ndcg.testing.engines",
         "kind": "function",
@@ -20573,21 +20639,6 @@
           },
           {
             "returns": "list[Path]"
-          }
-        ]
-      },
-      "normalise_raw": {
-        "defined_in": "rcp_ndcg.testing.engines",
-        "kind": "function",
-        "signature": [
-          {
-            "annotation": "bytes",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "raw"
-          },
-          {
-            "returns": "bytes"
           }
         ]
       },
@@ -20799,21 +20850,6 @@
           },
           {
             "returns": "dict[str, Any]"
-          }
-        ]
-      },
-      "verification_records": {
-        "defined_in": "rcp_ndcg.testing.engines",
-        "kind": "function",
-        "signature": [
-          {
-            "annotation": "str | Path",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "corpus_dir"
-          },
-          {
-            "returns": "list[dict[str, Any]]"
           }
         ]
       }

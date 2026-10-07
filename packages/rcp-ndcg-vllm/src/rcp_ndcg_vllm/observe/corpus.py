@@ -45,11 +45,13 @@ from rcp_ndcg.testing.corpus import (
     RECORD_SCHEMA,
     RECORDS_FILE,
     RECORDS_FILE_GZ,
+    VERIFICATION_FILE,
     ObservationCorpus,
     credential_findings,
     integrity_mismatches,
     load_corpus,
     manifest_digest,
+    missing_provenance,
     normalise_body,
     write_subset_index,
 )
@@ -95,53 +97,6 @@ _EXPECTED_STATUS_VLLM_0_31_0: dict[str, dict[str, int]] = {
 IGNORED with 200 on the role routes, an over-length prompt is refused with 400 and the OpenAI-style
 ``{"error": ...}`` body, malformed JSON is a 400.  Probes without a measured row (``wrong_model``,
 ``empty_input``, the wire variants, ...) are recorded with no expectation."""
-
-PROVENANCE_KEYS: dict[str, tuple[str, ...]] = {
-    "engine": (
-        "image",
-        "image_digest",
-        "vllm_version",
-        "vllm_commit",
-        "torch",
-        "cuda",
-        "driver",
-        "gpus",
-        "serve_argv",
-        "env",
-        "started",
-        "ready_wait_s",
-    ),
-    "model": (
-        "id",
-        "revision",
-        "weights",
-        "tokenizer_sha256",
-        "template_sha256",
-        "plugin",
-        "hf_overrides",
-        "pooler_config",
-        "mm_processor_kwargs",
-        "dtype",
-    ),
-    "recipe": ("id", "file_sha256", "behaviour_fingerprint", "fingerprint_inputs", "status"),
-    "collector": (
-        "package",
-        "version",
-        "commit",
-        "generator_version",
-        "corpus_plan_version",
-        "record_schema",
-        "seed",
-        "dataset_commits",
-        "wave_id",
-        "job_id",
-        "started",
-        "finished",
-        "host_sha256",
-    ),
-}
-"""OBSERVATIONS-SPEC section 4's provenance, block by block: every key carries its value or an explicit
-``{"unavailable": "<reason>"}`` (:func:`rcp_ndcg_vllm.observe.provenance.unavailable`), never nothing."""
 
 
 def corpus_key(engine_version: str, recipe_id: str, fingerprint: str) -> str:
@@ -223,7 +178,7 @@ def write_corpus(out_dir: str | Path, manifest: dict[str, Any], records: list[di
     files = {
         path.name: {"sha256": _sha256(path), "bytes": path.stat().st_size}
         for path in sorted(out.iterdir())
-        if path.is_file() and path.name != MANIFEST_FILE
+        if path.is_file() and path.name not in (MANIFEST_FILE, VERIFICATION_FILE)
     }
     document: dict[str, Any] = {
         "schema": CORPUS_SCHEMA,
@@ -448,21 +403,6 @@ def _cosines(group: list[dict[str, Any]], dim: int | None) -> list[float]:
 # ---------------------------------------------------------------------------
 
 
-def _missing_provenance(manifest: dict[str, Any]) -> list[str]:
-    """Every provenance key of :data:`PROVENANCE_KEYS` with neither a value nor an ``unavailable`` reason."""
-    missing: list[str] = []
-    for block, keys in PROVENANCE_KEYS.items():
-        section = manifest.get(block)
-        if not isinstance(section, dict):
-            missing.append(block)
-            continue
-        for key in keys:
-            value = section.get(key)
-            if value is None or (isinstance(value, dict) and "unavailable" in value and not value["unavailable"]):
-                missing.append(f"{block}.{key}")
-    return missing
-
-
 def verify_corpus(
     corpus_dir: str | Path,
     *,
@@ -517,7 +457,7 @@ def verify_corpus(
         isinstance(nondeterminism, dict) and isinstance(nondeterminism.get("derived"), dict),
         "nondeterminism.json with the measured deltas and the derived tolerances (OBSERVATIONS-SPEC section 2)",
     )
-    missing = _missing_provenance(corpus.manifest)
+    missing = missing_provenance(corpus.manifest)
     record_check(
         "provenance_complete",
         not missing,

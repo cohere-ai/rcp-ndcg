@@ -16,14 +16,8 @@ from pathlib import Path
 import httpx
 import pytest
 
-from rcp_ndcg.testing.corpus import credential_findings, integrity_mismatches, load_corpus
-from rcp_ndcg.testing.engines import (
-    compare_exchange,
-    corpus_tolerance,
-    exchanges_of,
-    find_corpora,
-    verification_records,
-)
+from rcp_ndcg.testing.corpus import credential_findings, integrity_mismatches, load_corpus, verification_records
+from rcp_ndcg.testing.engines import compare_exchange, corpus_tolerance, exchanges_of, find_corpora
 from tests._engines import ROOT, corpus_of, current_corpora, emulator_for, load_recipe, stale_corpora
 
 ENGINES_ROOT = ROOT / "tests" / "contract" / "engines"
@@ -245,7 +239,8 @@ def test_every_corpus_carries_an_append_only_verification_record() -> None:
     import datetime
     import os
 
-    from rcp_ndcg.testing.engines import append_verification, verification_record
+    from rcp_ndcg.testing.corpus import append_verification
+    from rcp_ndcg.testing.engines import verification_record
 
     appending = bool(os.environ.get("RCP_APPEND_VERIFICATION"))
     today = datetime.date.today().isoformat()
@@ -361,9 +356,10 @@ def test_the_tolerance_is_the_corpus_measured_one_and_never_invented(tmp_path: P
     assert corpus_tolerance(unmeasured) is None
     measured = observation_corpus(tmp_path / "measured", [exchange], tolerance=(3e-7, 1e-6))
     assert corpus_tolerance(measured) == (3e-7, 1e-6)
-    (tmp_path / "none" / "nondeterminism.json").unlink()
-    with pytest.raises(DataError):
-        corpus_tolerance(unmeasured)
+    from dataclasses import replace
+
+    with pytest.raises(DataError, match="non-determinism report"):
+        corpus_tolerance(replace(unmeasured, nondeterminism=None))  # the reader found no nondeterminism.json
 
 
 def test_every_value_is_bounded_by_the_joint_condition() -> None:

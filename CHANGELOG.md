@@ -87,6 +87,17 @@ released together.
   rendered script (harness tests), the four-phase supervision re-run with the fake engines as its
   engines (`tests/runners/test_supervision_replay.py`) and the observed outage behaviour as a transport
   test (`tests/inference/test_outage_observed.py`).
+- **`rcp_ndcg.testing.corpus` is the whole format seam**: `ObservationCorpus.nondeterminism` exposes the
+  corpus's `nondeterminism.json` (parsed; `None` when absent; an unreadable one is a `DataError`), and
+  `rcp_ndcg.testing.engines.corpus_tolerance` reads it there; the append-only `verification.jsonl` lives
+  here (`VERIFICATION_FILE`, `VERIFICATION_SCHEMA`, `append_verification` -- which refuses a record of
+  another schema -- and `verification_records`; moved from `rcp_ndcg.testing.engines`) and no integrity
+  hash covers it (`write_subset_index` and the collector's `write_corpus` leave it out); the one raw-body
+  normaliser `normalise_raw` sits beside `normalise_body` (moved from `rcp_ndcg.testing.engines`); the
+  section-4 provenance check is public (`PROVENANCE_KEYS`, `missing_provenance`; moved from
+  `rcp_ndcg_vllm.observe.corpus`, where it was private); and `credential_findings` also names an
+  `X-Api-Key` header, a cookie and a secret-valued field (`api_key`, `client_secret`, `password`,
+  `access_token`, ... with a string value), never a tokenizer vocabulary's integer ids.
 - **`rcp_ndcg.testing.engines`: the verified fake engines** (GPU-VALIDATION items 2-4, 7 and 8). One
   emulator per (engine, version, recipe, behaviour fingerprint), selected as
   `fake://vllm-0.31.0/<recipe>` (`rcp_ndcg.inference.fake` routes engine-version hosts there); the
@@ -100,8 +111,8 @@ released together.
   (`exchanges_of` views its records, `corpus_tolerance` takes the tolerance the corpus's
   `nondeterminism.json` derived from same-request repetitions -- `None` when none was measured, so a
   replay is compared exactly, never with an invented tolerance -- and each bound applies jointly);
-  `find_corpora` resolves corpora by scanning manifests, `normalise_raw` is the byte-level form of the
-  format's normalisation, `behaviour_diff` writes the per-input delta report, and
+  `find_corpora` resolves corpora by scanning manifests, `behaviour_diff` writes the per-input delta
+  report, and
   the registry (`registry`, `transport_for`, `split_engine_host` -- the one engine-host pattern
   `rcp_ndcg.inference.fake.RE_ENGINE_URL` routes) resolves by (engine, version, fingerprint) with the
   `rcp_ndcg.emulators` entry-point group for out-of-tree emulators. An emulator refuses an engine

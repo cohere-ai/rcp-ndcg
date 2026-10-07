@@ -1,6 +1,6 @@
 """The corpus manifest's provenance (OBSERVATIONS-SPEC section 4): engine, model, recipe and collector facts.
 
-Every key :data:`rcp_ndcg_vllm.observe.corpus.PROVENANCE_KEYS` names is filled with its value or with an explicit
+Every key :data:`rcp_ndcg.testing.corpus.PROVENANCE_KEYS` names is filled with its value or with an explicit
 :func:`unavailable` reason (``{"unavailable": "..."}``) -- never left out -- so a later difference between two
 corpora can be explained and a missing fact is visible, not silent.  The engine facts are probed on the node
 (``nvidia-smi`` and the engine environment's own Python, each under a timeout); the model and recipe facts come

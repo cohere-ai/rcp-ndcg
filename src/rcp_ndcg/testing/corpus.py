@@ -15,8 +15,12 @@ A corpus is one directory:
   ``batch_context``, ``server_run_id`` and ``inputs`` (what the request set meant by it);
 - ``nondeterminism.json`` -- the measured differences between repeated sendings and the tolerances derived
   from them;
-- ``manifest.json`` -- the provenance and ``integrity``: the SHA-256 and size of every other file, the record
-  count, and the manifest's own digest (:func:`manifest_digest`).
+- ``manifest.json`` -- the provenance (:data:`PROVENANCE_KEYS`, checked by :func:`missing_provenance`) and
+  ``integrity``: the SHA-256 and size of every other recorded file, the record count, and the manifest's own
+  digest (:func:`manifest_digest`);
+- ``verification.jsonl`` -- the append-only verification record (:func:`append_verification`,
+  :func:`verification_records`): which verifier checked the corpus, when, with which tolerances, and the
+  result. It is not part of the recording, so no integrity hash covers it.
 
 A **repository subset** (``tests/contract/engines/<engine>-<version>/<recipe>/<fingerprint>/``) carries
 ``records.jsonl.gz`` (a stratified sample), the full corpus's ``manifest.json`` byte for byte, its
@@ -24,7 +28,8 @@ A **repository subset** (``tests/contract/engines/<engine>-<version>/<recipe>/<f
 and hashing the subset's files; its integrity is the index's.
 
 Nothing derived is stored: normalised bodies, decoded vectors and tolerances are recomputed by versioned code
-(:data:`NORMALISATION_VERSION` names what :func:`normalise_body` strips).
+(:data:`NORMALISATION_VERSION` names what :func:`normalise_body` strips from a parsed body and
+:func:`normalise_raw` masks in raw bytes).
 """
 
 from __future__ import annotations
@@ -51,14 +56,21 @@ __all__ = [
     "RECORDS_FILE",
     "RECORDS_FILE_GZ",
     "RECORD_SCHEMA",
+    "PROVENANCE_KEYS",
     "SUBSET_INDEX_SCHEMA",
+    "VERIFICATION_FILE",
+    "VERIFICATION_SCHEMA",
     "ObservationCorpus",
+    "append_verification",
     "credential_findings",
     "integrity_mismatches",
     "load_corpus",
     "manifest_digest",
+    "missing_provenance",
     "normalise_body",
+    "normalise_raw",
     "register_record_migration",
+    "verification_records",
     "write_subset_index",
 ]
 
@@ -82,6 +94,83 @@ RECORDS_FILE_GZ = "records.jsonl.gz"
 MANIFEST_FILE = "manifest.json"
 NONDETERMINISM_FILE = "nondeterminism.json"
 INDEX_FILE = "index.json"
+VERIFICATION_FILE = "verification.jsonl"
+"""The append-only verification record beside a corpus; never hashed by the manifest or the subset index."""
+
+VERIFICATION_SCHEMA = "rcp-ndcg.verification/1"
+"""The schema every verification record names (written by the conformance verifier)."""
+
+PROVENANCE_KEYS: dict[str, tuple[str, ...]] = {
+    "engine": (
+        "image",
+        "image_digest",
+        "vllm_version",
+        "vllm_commit",
+        "torch",
+        "cuda",
+        "driver",
+        "gpus",
+        "serve_argv",
+        "env",
+        "started",
+        "ready_wait_s",
+    ),
+    "model": (
+        "id",
+        "revision",
+        "weights",
+        "tokenizer_sha256",
+        "template_sha256",
+        "plugin",
+        "hf_overrides",
+        "pooler_config",
+        "mm_processor_kwargs",
+        "dtype",
+    ),
+    "recipe": ("id", "file_sha256", "behaviour_fingerprint", "fingerprint_inputs", "status"),
+    "collector": (
+        "package",
+        "version",
+        "commit",
+        "generator_version",
+        "corpus_plan_version",
+        "record_schema",
+        "seed",
+        "dataset_commits",
+        "wave_id",
+        "job_id",
+        "started",
+        "finished",
+        "host_sha256",
+    ),
+}
+"""OBSERVATIONS-SPEC section 4's provenance, block by block: every key carries its value or an explicit
+``{"unavailable": "<reason>"}`` (:func:`rcp_ndcg_vllm.observe.provenance.unavailable`), never nothing."""
+
+
+def missing_provenance(manifest: dict[str, Any]) -> list[str]:
+    """Every :data:`PROVENANCE_KEYS` entry the manifest leaves without a value or an ``unavailable`` reason.
+
+    Args:
+        manifest: A parsed corpus manifest.
+
+    Returns:
+        ``block.key`` per missing key, or ``block`` for a whole missing block, in :data:`PROVENANCE_KEYS` order;
+        ``[]`` when the provenance is complete. A key whose value is ``{"unavailable": <reason>}`` with an empty
+        reason counts as missing.
+    """
+    missing: list[str] = []
+    for block, keys in PROVENANCE_KEYS.items():
+        section = manifest.get(block)
+        if not isinstance(section, dict):
+            missing.append(block)
+            continue
+        for key in keys:
+            value = section.get(key)
+            if value is None or (isinstance(value, dict) and "unavailable" in value and not value["unavailable"]):
+                missing.append(f"{block}.{key}")
+    return missing
+
 
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {}
 """``{schema: migrate}``: each migration takes one record of ``schema`` to ``schema + 1``."""
@@ -96,6 +185,15 @@ _CREDENTIALS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("google oauth token", re.compile(r"\bya29\.[0-9A-Za-z_-]{10,}")),
     ("secret key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}")),
     ("private key block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
+    ("api key header", re.compile(r"(?i)x-api-key[\"']?\s*[:=]\s*[\"']?[A-Za-z0-9._~+/=-]{16,}")),
+    ("cookie", re.compile(r"(?i)(?:set-)?cookie[\"']?\s*[:=]\s*[\"']?[^\s\"';=]+=[^\s\"';]{8,}")),
+    (
+        "secret field",
+        re.compile(
+            r"(?i)[\"']?\b(?:api[_-]?key|client[_-]?secret|secret[_-]?key|password|passwd|access[_-]?token|"
+            r"refresh[_-]?token|auth[_-]?token)[\"']?\s*[:=]\s*[\"'][^\"'\s]{8,}[\"']"
+        ),
+    ),
 )
 """The credential shapes no corpus byte may carry (OBSERVATIONS-SPEC section 6), by name."""
 
@@ -110,6 +208,8 @@ class ObservationCorpus:
         records: The exchange records, migrated to :data:`RECORD_SCHEMA`, in file order.
         records_file: The file the records came from (``records.jsonl`` or ``records.jsonl.gz``).
         subset_index: The subset's ``index.json`` when this is a repository subset, else ``None``.
+        nondeterminism: ``nondeterminism.json`` as parsed (the measured differences between repeated sendings
+            and the tolerance derived from them), ``None`` when the corpus carries none.
     """
 
     directory: Path
@@ -117,6 +217,7 @@ class ObservationCorpus:
     records: list[dict[str, Any]]
     records_file: str
     subset_index: dict[str, Any] | None = None
+    nondeterminism: dict[str, Any] | None = None
 
 
 def register_record_migration(schema: int, migrate: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
@@ -194,8 +295,21 @@ def load_corpus(directory: str | Path) -> ObservationCorpus:
             subset_index = json.loads((root / INDEX_FILE).read_text(encoding="utf-8"))
         except (OSError, ValueError) as error:
             raise DataError(f"{root / INDEX_FILE}: unreadable: {error}") from error
+    nondeterminism = None
+    if (root / NONDETERMINISM_FILE).is_file():
+        try:
+            nondeterminism = json.loads((root / NONDETERMINISM_FILE).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            raise DataError(f"{root / NONDETERMINISM_FILE}: unreadable: {error}") from error
+        if not isinstance(nondeterminism, dict):
+            raise DataError(f"{root / NONDETERMINISM_FILE}: the non-determinism report is a JSON object")
     return ObservationCorpus(
-        directory=root, manifest=manifest, records=records, records_file=name, subset_index=subset_index
+        directory=root,
+        manifest=manifest,
+        records=records,
+        records_file=name,
+        subset_index=subset_index,
+        nondeterminism=nondeterminism,
     )
 
 
@@ -276,7 +390,7 @@ def write_subset_index(directory: str | Path, *, full_corpus_path: str, sampling
     files = {
         path.name: {"sha256": _sha256(path), "bytes": path.stat().st_size}
         for path in sorted(root.iterdir())
-        if path.is_file() and path.name not in (INDEX_FILE, MANIFEST_FILE)
+        if path.is_file() and path.name not in (INDEX_FILE, MANIFEST_FILE, VERIFICATION_FILE)
     }
     manifest_bytes = (root / MANIFEST_FILE).read_bytes()
     manifest = json.loads(manifest_bytes)
@@ -320,6 +434,60 @@ def normalise_body(body: Any) -> Any:
                             permission.pop("id", None)
                             permission.pop("created", None)
     return out
+
+
+_VOLATILE_RAW: tuple[tuple[re.Pattern[bytes], bytes], ...] = (
+    (re.compile(rb'"id":\s*"(?:embd|score|pool|modelperm|rerank|cmpl)-[0-9A-Za-z-]+"'), b'"id":"<volatile>"'),
+    (re.compile(rb'"created":\s*[0-9]+'), b'"created":0'),
+)
+""":func:`normalise_body`'s volatile leaves as :func:`normalise_raw` masks them in raw bytes."""
+
+
+def normalise_raw(raw: bytes) -> bytes:
+    """Raw reply bytes with :func:`normalise_body`'s volatile values masked in place (:data:`NORMALISATION_VERSION`).
+
+    Args:
+        raw: A reply body as received.
+
+    Returns:
+        The bytes with every request id (``"id": "embd-..."`` and the other vLLM prefixes) and every ``created``
+        stamp replaced by a fixed mask, so two replies compare byte for byte otherwise.
+    """
+    for pattern, mask in _VOLATILE_RAW:
+        raw = pattern.sub(mask, raw)
+    return raw
+
+
+def append_verification(corpus_dir: str | Path, record: dict[str, Any]) -> None:
+    """Append one verification record to ``verification.jsonl`` beside the corpus, never rewriting a line.
+
+    Args:
+        corpus_dir: The corpus directory.
+        record: The record; it must name :data:`VERIFICATION_SCHEMA` as its ``schema``.
+
+    Raises:
+        DataError: the record names another schema (or none).
+    """
+    if record.get("schema") != VERIFICATION_SCHEMA:
+        raise DataError(f"a verification record names schema {VERIFICATION_SCHEMA!r}, got {record.get('schema')!r}")
+    path = Path(corpus_dir) / VERIFICATION_FILE
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(dict(record), sort_keys=True) + "\n")
+
+
+def verification_records(corpus_dir: str | Path) -> list[dict[str, Any]]:
+    """Every appended verification record of the corpus, oldest first (``[]`` when none was written).
+
+    Args:
+        corpus_dir: The corpus directory.
+
+    Returns:
+        The records in append order.
+    """
+    path = Path(corpus_dir) / VERIFICATION_FILE
+    if not path.is_file():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def credential_findings(text: str) -> list[str]:
