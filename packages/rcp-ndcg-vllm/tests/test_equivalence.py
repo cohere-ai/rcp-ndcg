@@ -683,3 +683,33 @@ def test_stage1_token_ids_head_edge_is_common_to_every_join_probe(
     assert stages_module._stable_head_tokens(tokenizer, "doc: ") == tokenizer.ids("doc: ")  # "." keeps the space
     monkeypatch.setattr(stages_module, "_JOIN_PROBES", (".", "a"))
     assert stages_module._stable_head_tokens(tokenizer, "doc: ") == tokenizer.ids("doc:")  # "a" takes it
+
+
+def test_stage1_marker_audit_is_not_masked_by_the_post_processor() -> None:
+    """A marker the client dropped is missing even when the shape's post-processor appends the same special
+    (``add_special_tokens: true``): the audit counts markers in the sent content, without the post-processor's
+    tokens -- a text body tokenized without them, a token_ids body with them stripped from its edges."""
+    from rcp_ndcg_vllm.equivalence import stages as stages_module
+
+    from rcp_ndcg.data.tokenizer import load_tokenizer
+
+    tokenizer = load_tokenizer(str(TOKENIZER))
+    base = load("fixture-embed-marker")
+    spec = base.client.template.model_dump()
+    spec["document"] = [{"fixed": "doc: "}, {"content": "document"}, {"fixed": "{special:end}"}]
+    spec["anchor_markers"] = ["end"]
+    spec["add_special_tokens"] = True
+    recipe = _with_client(base, template=type(base.client.template)(**spec))
+    end = tokenizer.special_id("end")
+    assert tokenizer.ids("doc: x", add_special_tokens=True)[-1] == end  # the post-processor appends it too
+
+    def audit(body: str | list[int]) -> bool:
+        probe = {"rows": [{"shapes": {"document": {"texts": [body]}}, "cuts": 0, "over_cap": False}]}
+        return stages_module._anchor_check(recipe, probe, tokenizer)["passed"]
+
+    whole = "doc: Paris is the capital." + tokenizer.special_text("end")
+    cut = "doc: Paris is the"  # the client dropped the marker
+    assert audit(whole) is True
+    assert audit(tokenizer.ids(whole, add_special_tokens=True)) is True
+    assert audit(cut) is False
+    assert audit(tokenizer.ids(cut, add_special_tokens=True)) is False

@@ -238,6 +238,23 @@ def _probe_vectors(
             entry["shapes"]["document"] = {"texts": texts}
 
 
+def _content_ids(tokenizer: Any, body: str | list[int], flag: bool) -> list[int]:
+    """A captured body's ids without the post-processor's tokens: a text body tokenized without them, a
+    ``token_ids`` body (sent with the shape's ``flag``) with the post-processor's prefix and tail stripped
+    from its edges (measured on a sentinel, as :func:`_post_processor_prefix` measures them)."""
+    if isinstance(body, str):
+        return list(tokenizer.ids(body, add_special_tokens=False))
+    ids = list(body)
+    if flag:
+        prefix = _post_processor_prefix(tokenizer, "x")
+        tail = _post_processor_tail(tokenizer, "x")
+        if prefix and ids[: len(prefix)] == prefix:
+            ids = ids[len(prefix) :]
+        if tail and ids[len(ids) - len(tail) :] == tail:
+            ids = ids[: len(ids) - len(tail)]
+    return ids
+
+
 def _head_of(body: str | list[int]) -> str | list[int]:
     """A sent body's head for a report: the text's first characters, or a ``token_ids`` body's first ids."""
     return body[:_SNIPPET] if isinstance(body, str) else list(body[:24])
@@ -319,7 +336,12 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
                 if template is None or template.anchor == "mean":
                     continue
                 if template.anchor == "marker":
-                    missing = sorted(name for name in template.anchor_markers if tokenizer.special_id(name) not in ids)
+                    # Counted in the sent content only: a post-processor that adds the same special (an
+                    # appended end token) must not stand in for a marker the client dropped.
+                    content_ids = _content_ids(tokenizer, text, flag)
+                    missing = sorted(
+                        name for name in template.anchor_markers if tokenizer.special_id(name) not in content_ids
+                    )
                     if missing:
                         failures.append({"shape": shape, "check": "markers", "missing_names": missing, "row": index})
                     continue

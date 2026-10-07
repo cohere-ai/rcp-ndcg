@@ -108,6 +108,9 @@ released together.
   Qwen-style `:` into `:Paris` -- which failed every request): a text body must start with the head's
   characters and open with its tokens lying wholly inside them; a `token_ids` body must open with the head
   tokens no content can merge away (measured on the head joined to a fixed set of probe continuations).
+  An `anchor: marker` audit counts the markers in the sent content without the post-processor's tokens, so a
+  post-processor that appends the same special (`add_special_tokens: true`) no longer stands in for a marker
+  the client dropped.
 - **The node scripts' Cloud SDK search is declared**: `wave0.sh` and `bootstrap.sh` put an SDK the auth script
   installed on `PATH` through one function (`gcs_sdk_on_path` in `jobs/gcs.sh`, where each kept its own copy of
   the loop) that searches `RCP_GCLOUD_SDK_DIRS` (colon-separated; unset, the same five install locations as
