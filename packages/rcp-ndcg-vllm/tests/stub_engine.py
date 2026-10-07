@@ -22,7 +22,11 @@ checkpoint's own (``--model-chat-template``), else the text parts joined -- unde
 sides) are decoded and resized as the engine's processor resizes them: ``smart_resize`` with the emulated
 checkpoint's patch factor (``--model-image-factor``) under ``--mm-processor-kwargs``'s pixel pin (nested
 ``images_kwargs`` or flat), else the checkpoint's own default budget (``--model-image-pixels MIN,MAX``) -- so
-an unpinned engine re-resizes an image whose prepared size lies outside that default.  Every chat-shaped
+an unpinned engine re-resizes an image whose prepared size lies outside that default.  The stub resizes with
+the PRODUCT's own ``smart_resize`` (``rcp_ndcg.data.resolution``), the function the client prepares images with:
+against this stub the media stage's engine count catches a missing or different pixel pin, never a bug in the
+product's resize itself -- on CPU only the comparison with the reference's card resize can catch that, and the
+engine count is an independent check only against a real engine.  Every chat-shaped
 reply carries ``usage.prompt_tokens``: the rendered text's tokens plus each image's merged patch tokens and
 its two vision markers; more images than ``--limit-mm-per-prompt`` allows, a video container (the stub
 decodes none) or an undecodable image are a 400, as the engine refuses them.

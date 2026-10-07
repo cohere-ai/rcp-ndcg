@@ -266,7 +266,10 @@ the role client and reads what crossed the wire — the parts in order, each ima
 from the sent bytes, the tokens the client counted — against the reference's `--mode media`; with an engine,
 it sends each media request again without its media parts, and the difference of the two
 `usage.prompt_tokens` is the engine's own media count, which must equal the client's (an engine whose pixel
-pin is missing re-resizes a prepared image and fails it). Every image gates exactly; a media recipe whose
+pin is missing re-resizes a prepared image and fails it). On CPU the test stub engine resizes with the
+product's own `smart_resize`, so there the engine count catches a pin that is missing or different, never a
+bug in the product's resize itself: on CPU only the comparison with the reference's card resize can catch
+that, and the engine count is an independent check only against a real engine. Every image gates exactly; a media recipe whose
 pairs carry no media row fails. The pairs generator plans the media rows (one image per size bucket and a
 captioned page, `rcp_ndcg_vllm.observe.media_set`).
 
