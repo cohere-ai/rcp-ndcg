@@ -153,8 +153,9 @@ class Capture:
         ``TEXT_JOIN`` (``"\n"``, as the engine joins them): the content the client sent, which the engine's
         chat template frames -- ``conversations``, the conversations as sent (the served template renders
         them), ``add_generation_prompt``, the flag the engine renders them with (false when the body sends
-        none, the chat routes' default), and ``media``: per conversation, the placeholders of its media parts in order (their part
-        ``type``, e.g. ``image_url``), which ride beside the text and are never part of it.  A ``token_ids``
+        none, the chat routes' default), and ``media``: per conversation, the placeholders of its media
+        parts in order (their part ``type``, e.g. ``image_url``), which ride beside the text and are never
+        part of it.  A ``token_ids``
         body yields its id lists as sent.
         """
         body = exchange.get("request_body") or {}

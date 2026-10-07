@@ -163,6 +163,7 @@ def _image(url: str) -> tuple[int, str]:
     import io
 
     from PIL import Image
+
     from rcp_ndcg.data.resolution import smart_resize
 
     if not url.startswith("data:") or "," not in url:
@@ -435,8 +436,7 @@ class _Handler(BaseHTTPRequestHandler):
         scores = [self._pair_score(query_key, key, body) for _, _, key in sides]
         order = sorted(range(len(documents)), key=lambda index: scores[index], reverse=True)
         results = [
-            {"index": index, "document": {"text": sides[index][0]}, "relevance_score": scores[index]}
-            for index in order
+            {"index": index, "document": {"text": sides[index][0]}, "relevance_score": scores[index]} for index in order
         ]
         prompt_tokens = sum(
             _count(query_text) + query_tokens + _count(text) + media_tokens for text, media_tokens, _ in sides

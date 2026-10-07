@@ -7,11 +7,11 @@ import json
 from pathlib import Path
 
 import pytest
-from rcp_ndcg.testing.corpus import manifest_digest
-
 from rcp_ndcg_vllm.changes import behaviour_report, changed_recipes, main
 from rcp_ndcg_vllm.fingerprint import behaviour_fingerprint, fingerprint_inputs
 from rcp_ndcg_vllm.recipe import load_recipe
+
+from rcp_ndcg.testing.corpus import manifest_digest
 
 RECIPES = Path(__file__).resolve().parent / "fixtures" / "recipes"
 
