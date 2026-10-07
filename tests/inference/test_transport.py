@@ -877,22 +877,60 @@ class TestConcurrentSyncBridges:
         assert len(results) == 24 and all(reply.status == 200 for reply in results)
 
     def test_close_from_another_thread_while_run_is_mid_flight_waits_then_closes(self) -> None:
-        import threading
+        _close_waits_for_an_in_flight_run(notebook=False)
 
-        script = ReplicaScript(200)
-        transport = _transport(script)
-        done = threading.Event()
 
-        def work() -> None:
-            transport.run(transport.send([Call("POST", "/a", {})]))
-            done.set()
+def _close_waits_for_an_in_flight_run(*, notebook: bool) -> None:
+    """A run() is held mid-request (its replica blocks on an event) when close() starts on another thread:
+    close() must wait for it -- it is still waiting when the request is released -- then close, and the
+    in-flight call completes. ``notebook``: the run() is made from inside a running loop (the background
+    thread's path); else the plain sync bridge."""
+    import threading
 
-        thread = threading.Thread(target=work)
-        thread.start()
-        transport.close()  # waits for the in-flight run (the bridge lock), then closes; never raises
-        thread.join(30)
-        assert done.is_set(), "the in-flight call completed"
-        assert transport._pool is None
+    entered, release = threading.Event(), threading.Event()
+
+    async def held(request: httpx.Request) -> httpx.Response:
+        entered.set()
+        await asyncio.to_thread(release.wait, 10)
+        return httpx.Response(200, json=_BODY)
+
+    transport = Transport(
+        Endpoint(base_url="http://judge.test/v1", model="m", max_retries=0), httpx_transport=httpx.MockTransport(held)
+    )
+    outcome: dict[str, Any] = {}
+
+    def work() -> None:
+        def call() -> Any:
+            return transport.run(transport.send([Call("POST", "/a", {})]))
+
+        async def inside_a_loop() -> Any:
+            return call()
+
+        try:
+            outcome["replies"] = asyncio.run(inside_a_loop()) if notebook else call()
+        except Exception as exc:  # noqa: BLE001 - the test's result
+            outcome["error"] = repr(exc)
+
+    worker = threading.Thread(target=work)
+    worker.start()
+    assert entered.wait(10), "the request never reached the replica"
+    closer = threading.Thread(target=transport.close)
+    closer.start()
+    closer.join(0.2)
+    waited = closer.is_alive()
+    release.set()
+    worker.join(10)
+    closer.join(10)
+    assert waited, "close() returned while a run() was mid-request"
+    assert "error" not in outcome and outcome["replies"][0].status == 200
+    assert transport._pool is None
+
+
+class TestCloseWaitsForBackgroundRuns:
+    def test_close_from_another_thread_waits_for_a_notebook_run(self) -> None:
+        """The notebook path (run() inside a running loop goes to the background thread) is waited for like
+        the sync bridge: close() never closes the pool under an in-flight background call."""
+        _close_waits_for_an_in_flight_run(notebook=True)
 
 
 class TestLoopRebinding:

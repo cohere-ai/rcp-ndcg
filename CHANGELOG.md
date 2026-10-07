@@ -884,8 +884,9 @@ released together.
   embed/pool/rerank run records the tokens its replies reported, never zeros.
 - **`Transport.run()` is thread-safe**: concurrent sync callers queue on a bridge lock instead of racing two
   `run_until_complete` passes on the shared loop (the second died with `This event loop is already running`
-  and its batch aborted); a `close()` from another thread waits for the in-flight call instead of raising
-  `CancelledError` into it, and a rebinding concurrency gate closes the previous loop's pool best-effort.
+  and its batch aborted); a `close()` from another thread waits for the in-flight call -- on the sync bridge
+  and on the background thread a `run()` inside a running loop uses -- instead of raising `CancelledError`
+  into it or closing the pool under it, and a rebinding concurrency gate closes the previous loop's pool best-effort.
 - A server `Retry-After` of `nan` (sleeping forever, wedging the request inside the retry loop), a negative
   value (hammering the rate limiter) or any other garbage falls back to the doubling backoff; a usable value
   is clamped to the retry cap.

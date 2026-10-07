@@ -307,6 +307,10 @@ class Transport:
         self._background_lock = threading.Lock()
         """Guards the background loop's lazy start: two threads inside their own running loops (notebooks)
         must share one private thread, not start one each."""
+        self._background_calls = 0
+        """The run() calls in flight on the background loop (the notebook path); close() waits for them."""
+        self._background_idle = threading.Condition()
+        """Guards :attr:`_background_calls`; notified when one finishes."""
         self._background_loop: asyncio.AbstractEventLoop | None = None
         self._background_thread: threading.Thread | None = None
         self._last_error: BaseException | None = None
@@ -680,7 +684,14 @@ class Transport:
         else:
             # A loop is already running in this thread (a notebook): run on the transport's own background
             # thread instead of failing, as run_until_complete here would.
-            return asyncio.run_coroutine_threadsafe(coroutine, self._background()).result()
+            with self._background_idle:
+                self._background_calls += 1
+            try:
+                return asyncio.run_coroutine_threadsafe(coroutine, self._background()).result()
+            finally:
+                with self._background_idle:
+                    self._background_calls -= 1
+                    self._background_idle.notify_all()
         # One bridge loop, one caller at a time: concurrent synchronous callers queue on the lock instead of
         # racing two run_until_complete passes on the shared loop (the second dies with "This event loop is
         # already running" and its batch aborts).
@@ -740,13 +751,21 @@ class Transport:
 
         Called from the loop the pool serves (an async caller closing without an ``await``), the close is
         scheduled instead of blocking that loop on itself. Called from another thread while a ``run()`` is
-        mid-flight, it waits for that call to finish -- the bridge lock is held across the call and across
-        these closes, so the loop is never closed while it runs -- then closes both, never raising into the
-        caller and never pulling the in-flight call's feet out from under it.
+        mid-flight -- on the sync bridge, or on the background thread (the notebook path) -- it waits for that
+        call to finish (the bridge lock is held across the call and across these closes; background calls
+        are counted), then closes both, never raising into the caller and never pulling the in-flight call's
+        feet out from under it. A close made from inside a background call does not wait for itself.
         """
         try:
-            asyncio.get_running_loop()
+            running: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
         except RuntimeError:
+            running = None
+        if running is None or running is not self._background_loop:
+            # Wait out the background loop's in-flight calls (the notebook path) -- unless this close runs ON
+            # that loop, inside one of those calls, which would wait for itself.
+            with self._background_idle:
+                self._background_idle.wait_for(lambda: self._background_calls == 0)
+        if running is None:
             with self._bridge_lock:  # a foreign thread: wait out the bridge's in-flight call, then close
                 self._close_pool()
                 self._close_own_loop()
