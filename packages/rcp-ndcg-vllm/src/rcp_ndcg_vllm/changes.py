@@ -71,7 +71,8 @@ def changed_recipes(recipes_root: str | Path, corpora_root: str | Path) -> dict[
             states[recipe_id] = {
                 "state": "unloadable",
                 "error": str(error).splitlines()[0],
-                "changed_inputs": sorted({name for previous in known.values() for name in previous}),
+                "changed_inputs": [],  # nothing is known to have changed: the recipe does not load
+                "recorded_inputs": sorted({name for previous in known.values() for name in previous}),
                 "recorded_fingerprints": sorted(known),
             }
             continue

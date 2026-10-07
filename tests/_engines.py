@@ -1,7 +1,7 @@
 """The verified fake engines' test wiring: one recipe id -> its registered emulator.
 
 The emulators (``rcp_ndcg.testing.engines``) are product code and know nothing of the harness; the
-recipes (``rcp_ndcv-vllm``) name the tokenizer, the template and the listwise prompt builder. This is
+recipes (``rcp-ndcg-vllm``) name the tokenizer, the template and the listwise prompt builder. This is
 the one adapter between them (test-side): it loads the recipe through the harness package, resolves the
 recipe's real tokenizer from the corpora's vendored store, picks the prompt derivation the role and
 scoring name, builds the emulator over the recipe's corpus and registers it for
@@ -42,15 +42,16 @@ def load_recipe(recipe_id: str) -> Any:
 
 
 def corpus_of(recipe: Any) -> Any:
-    """The committed corpus of the recipe's behaviour fingerprint."""
+    """The newest committed corpus of a recipe (versions coexist under their fingerprints during a
+    migration; this resolves a corpus for ANY recipe state -- including an edited one, so the
+    staleness check names what moved instead of failing to find a directory)."""
     from rcp_ndcg.testing.engines import load_corpus
 
-    module = harness()
-    from rcp_ndcg_vllm.fingerprint import behaviour_fingerprint
-
-    _ = module
-    fingerprint = behaviour_fingerprint(recipe)
-    return load_corpus(ENGINES_ROOT / "vllm-0.31.0" / recipe.id / fingerprint)
+    harness()
+    manifests = sorted((ENGINES_ROOT / "vllm-0.31.0" / recipe.id).glob("*/manifest.json"))
+    if not manifests:
+        raise AssertionError(f"{recipe.id}: no committed corpus under {ENGINES_ROOT / 'vllm-0.31.0'}")
+    return load_corpus(manifests[-1].parent)
 
 
 def prompt_strategy(recipe: Any, tokenizer: Any) -> Any:

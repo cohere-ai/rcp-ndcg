@@ -31,9 +31,9 @@ SHAKE1C = (
 
 
 def test_every_corpus_recipe_loads() -> None:
-    import sys
+    from tests._engines import harness
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "packages" / "rcp-ndcg-vllm" / "src"))
+    harness()
     from rcp_ndcg_vllm.recipe import load_recipe
 
     directories = {path.name: path for path in RECIPES.iterdir() if (path / "recipe.yaml").is_file()}

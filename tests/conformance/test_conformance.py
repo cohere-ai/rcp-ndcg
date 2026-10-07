@@ -106,10 +106,19 @@ def test_no_credential_shaped_string_is_in_any_corpus() -> None:
 
 
 def test_staleness_passes_for_the_unmoved_recipes() -> None:
-    """Every committed corpus is keyed by a fingerprint the repository reproduces exactly."""
+    """Every committed corpus is keyed by a fingerprint the repository reproduces exactly -- or a dated
+    entry in the waiver file covers exactly what moved (the mechanism the docs promise; the release
+    checklist requires the file empty at release)."""
+    waivers = json.loads(WAIVERS.read_text(encoding="utf-8"))
     for directory in corpus_dirs():
         recipe_id = load_corpus(directory).manifest["recipe"]["id"]
-        assert staleness(recipe_id) == [], f"{recipe_id} drifted since recording"
+        changed = staleness(recipe_id)
+        if changed and any(waiver_covers(waiver, recipe_id, changed) for waiver in waivers):
+            continue  # a dated, recipe-specific waiver is the only way past staleness
+        assert changed == [], (
+            f"{recipe_id}: staleness names the changed inputs {changed} -- re-record the corpus "
+            "(python -m rcp_ndcg_vllm.changes changed) or add a dated entry to tests/conformance/waivers.json"
+        )
 
 
 def test_staleness_names_the_changed_inputs_and_the_waiver_file_must_be_empty_at_release() -> None:
