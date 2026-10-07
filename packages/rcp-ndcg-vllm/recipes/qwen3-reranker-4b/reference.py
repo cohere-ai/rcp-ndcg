@@ -24,11 +24,12 @@ position, a probability in [0, 1]. The pair (query and document together) is tru
 ``longest_first`` to ``8192 - len(prefix_tokens) - len(suffix_tokens)`` tokens — the pair
 only: the instruction and the assistant suffix always survive, and the suffix (the
 ``im_end``/assistant/think frame the served template re-attaches) is the anchor this
-model reads its score from. Over the cap the paper's whole-pair right cut keeps different
-content tokens than the served path's query-first client cut; the recipe declares this as
-``reference.known_deviations: [anchor_drop_over_cap]`` so stage 2 gates under-cap pairs
-only. Per-row instructions in the pairs file are ignored: the paper code scores with its
-one fixed default instruction, and the recipe declares ``instruction: none``.
+model reads its score from. This is the paper's own cut, NEVER the client's (the rerank
+client settles an over-share query at its share where the paper keeps it whole inside the
+pair cut), so ``reference.known_deviations`` declares only ``over_cap_cut_differs``: the
+harness reports over-cap pairs non-gating and gates under-cap rows exactly. Per-row
+instructions in the pairs file are ignored: the paper code scores with its one fixed
+default instruction, and the recipe declares ``instruction: none``.
 
 The chat-template markers are composed with ``chr()`` and resolved from the tokenizer's
 added tokens where possible, so this file quotes no chat-template special token literally.
@@ -121,34 +122,62 @@ _FAST_TOKENIZER = None
 """The render-mode tokenizer, loaded once per process."""
 
 
-def render_texts(rows: list[dict], tokenizer_spec: str) -> list[str]:
-    """The reference prompt text per row (``--mode render``): the anchor-preserving render.
+def kept_pair_spans(tok, query: str, doc: str, budget: int) -> tuple[str, str]:
+    """The paper's kept ``(query, document)`` content spans for one pair.
 
-    For each row the pair of ``query`` with its first document is built, truncated
-    ``longest_first`` to ``8192 - len(prefix) - len(suffix)`` tokens (the paper's
-    ``_process_inputs``), and the fixed prefix and suffix are re-attached around it. Under
-    budget the render is byte-identical to the uncut prompt, which is what stage 1
-    compares; over the cap the kept text is the paper's own whole-pair right cut.
+    The pair string is truncated ``longest_first`` at ``budget`` tokens (the paper's
+    ``_process_inputs`` on a single sequence right-cuts it) at the RAW character offsets of
+    the last kept token — never a ``decode(encode())`` round trip: this checkpoint's
+    normalizer maps non-NFC text to NFC, keeping the token ids equal but not the characters.
+    The kept spans are the verbatim prefixes of the query and document pieces of the kept
+    pair text — the instruction and the label text live in the served template's fixed frame
+    and are not part of the spans.
+    """
+    header = f"<Instruct>: {DEFAULT_INSTRUCTION}\n<Query>: "
+    mid = "\n<Document>: "
+    pair = header + query + mid + doc
+    encoded = tok.encode(pair, add_special_tokens=True)
+    kept = pair if len(encoded.ids) <= budget else pair[: encoded.offsets[budget - 1][1]]
+    query_start, query_end = len(header), len(header) + len(query)
+    document_start = query_end + len(mid)
+    query_span = kept[query_start : min(query_end, len(kept))] if len(kept) > query_start else ""
+    document_span = kept[document_start:] if len(kept) > document_start else ""
+    return query_span, document_span
+
+
+def render_rows(rows: list[dict], tokenizer_spec: str) -> list[dict]:
+    """The wire's cut content spans per pairs row (``--mode render``): the paper's own cut.
+
+    For every row: one query span (identical for the row's pairs — the paper's right cut
+    keeps the same query prefix for each of them) and one document span per document, through
+    :func:`kept_pair_spans` under the pair budget ``8192 - len(prefix) - len(suffix)``. The
+    spans are raw character prefixes, so a non-NFC input compares byte-identical to the
+    client's shipped spans (which are cut the same verbatim way).
     """
     tok = _fast_from_spec(tokenizer_spec)
-    prefix, suffix = _prefix(), _suffix()
-    prefix_ids = tok.encode(prefix, add_special_tokens=False).ids
-    suffix_ids = tok.encode(suffix, add_special_tokens=False).ids
+    prefix_ids = tok.encode(_prefix(), add_special_tokens=False).ids
+    suffix_ids = tok.encode(_suffix(), add_special_tokens=False).ids
     budget = MAX_SEQ_LENGTH - len(prefix_ids) - len(suffix_ids)
-    # The paper truncates with the tokenizer's own strategy (transformers' "longest_first"
-    # on a single sequence right-cuts it); the backend's LongestFirst is that same engine.
-    tok.no_padding()
-    tok.no_truncation()
-    tok.enable_truncation(max_length=budget, strategy="longest_first")
-    texts: list[str] = []
-    for row in rows:
-        # The instruction is deliberately not read from the row: the paper code scores with
-        # its one fixed default instruction (see the module docstring).
-        pair = format_instruction(None, str(row["query"]), str(row["documents"][0]))
-        pair_ids = tok.encode(pair, add_special_tokens=True).ids
-        texts.append(prefix + tok.decode(pair_ids, skip_special_tokens=False) + suffix)
-    tok.no_truncation()
-    return texts
+    out: list[dict] = []
+    for index, row in enumerate(rows):
+        query = str(row.get("query", ""))
+        documents = [str(document) for document in row.get("documents", [])]
+        pairs = [kept_pair_spans(tok, query, document, budget) for document in documents]
+        query_span = pairs[0][0] if pairs else kept_pair_spans(tok, query, "", budget)[0]
+        if any(span != query_span for span, _ in pairs):
+            raise RuntimeError(
+                "the paper's pair cut kept different query spans for one shared query; "
+                "stage 1 renders one query span per row"
+            )
+        out.append(
+            {
+                "index": index,
+                "shape": str(row.get("shape") or "pair"),
+                "query": query_span,
+                "documents": [document for _, document in pairs],
+            }
+        )
+    return out
 
 
 def score_rows(rows: list[dict], tokenizer_spec: str, device: str) -> list[list[float]]:
@@ -246,12 +275,7 @@ def main() -> int:
 
     rows = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
     if args.mode == "render":
-        output = {
-            "rows": [
-                {"index": index, "shape": "pair", "text": text}
-                for index, text in enumerate(render_texts(rows, args.tokenizer))
-            ]
-        }
+        output = {"rows": render_rows(rows, args.tokenizer)}
     else:
         scores = score_rows(rows, args.tokenizer, args.device)
         rows_out = [{"index": index, "scores": scores} for index, scores in enumerate(scores)]

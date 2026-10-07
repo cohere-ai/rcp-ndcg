@@ -18,7 +18,6 @@ import sys
 from pathlib import Path
 
 import pytest
-import yaml
 from rcp_ndcg_vllm import load_recipe
 
 RECIPES = Path(__file__).resolve().parents[2] / "recipes"
@@ -86,7 +85,11 @@ def test_recipe_validates_against_the_product_schema(recipe) -> None:
     assert recipe.client.instruction == "none"
     assert recipe.client.use_activation is True  # probability-scale head
     assert recipe.client.template is not None and recipe.client.template.anchor == "last"
-    assert recipe.reference.known_deviations == ["anchor_drop_over_cap"]
+    # One over-cap policy family-wide (the operator's 09:2x decision): the reference keeps every
+    # anchor and cuts over-cap content the paper's way (the joint longest_first pair cut), never
+    # copying the client's cut -- so over-cap rows are reported, not gated. The old
+    # anchor_drop_over_cap label was wrong: this reference never drops an anchor.
+    assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
     assert recipe.serve.chat_template == "template.jinja"
     assert recipe.serve.hf_overrides["architectures"] == ["Qwen3ForSequenceClassification"]
     assert recipe.serve.hf_overrides["classifier_from_token"] == ["no", "yes"]
@@ -112,9 +115,12 @@ def test_stage1_on_cpu_with_the_real_tokenizer(tmp_path: Path, recipe, qwen_toke
     """Stage 1 on CPU: 20 sampled pairs, 5 of them over-length, all green.
 
     The product's fit renders every sampled prompt; the anchor audit asserts the 9-token
-    assistant suffix (the model's anchor) survives every cut; the reference subprocess's
-    render is byte-identical on the in-budget rows; the served template file renders to the
-    declared shape's text. Without an engine, the /tokenize check is reported not_run.
+    assistant suffix (the model's anchor) survives every cut; the reference subprocess's span
+    render (the paper's anchor-preserving joint pair cut at raw character offsets, never the
+    client's cut) equals the client's shipped spans byte for byte on every under-cap row; the 5
+    over-length pairs are reported non-gating under the over_cap_cut_differs declaration. The
+    served template file renders to the declared shape's text. Without an engine, the /tokenize
+    check is reported not_run.
     """
     from rcp_ndcg_vllm.equivalence import stage1_prompts
 
@@ -224,32 +230,111 @@ def test_score_mode_setup_parses_and_reaches_the_model_load(recipe) -> None:
         monkey.undo()
 
 
-def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_red(
+def test_mutation_dropping_the_trailing_anchor_segment_reddens_the_template_check(
     tmp_path: Path, recipe, qwen_tokenizer
 ) -> None:
-    """The mutation the brief asks for: the declared template loses its trailing anchor segment
-    (the assistant suffix fixed segment). The recipe still loads (the post-processor is declared
-    as the anchor instead) and stage 1's anchor check goes red: the rendered ids no longer end
-    with the declared edge ids."""
-    mutated_dir = tmp_path / "qwen3-reranker-4b"
-    mutated_dir.mkdir()
-    for name in ("recipe.yaml", "reference.py", "template.jinja"):
-        (mutated_dir / name).write_bytes((RECIPE_DIR / name).read_bytes())
-    data = yaml.safe_load((mutated_dir / "recipe.yaml").read_text(encoding="utf-8"))
-    segments = data["client"]["template"]["pair"]
-    assert len(segments) == 5 and "fixed" in segments[-1]
-    del segments[-1]  # the trailing anchor segment: the assistant suffix the score is read from
-    data["client"]["template"]["add_special_tokens"] = {"pair": True}
-    (mutated_dir / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    """Mutation, on the wire's own contract: the declared template loses its trailing anchor
+    segment (the assistant suffix) and the file-vs-declaration check must go red.
+
+    The rerank wire carries the cut content spans (the frame is the engine's own template), so
+    stage 1's anchor audit audits the settled query and the document spans and does not move on a
+    frame change; the frame contract is pinned by ``template_render_check``, which this mutation
+    turns red (the ids no longer end with the declared anchor), and the schema itself refuses the
+    un-pinned shape.
+    """
+    from rcp_ndcg.data.templates import TemplateSpec
+
+    template = recipe.client.template
+    assert template is not None
+    assert len(template.pair) == 5 and "fixed" in template.pair[-1]
+
+    # the real frame ends with the 9-token assistant suffix (the scored anchor), via the product's
+    # render
+    golden = template.render(
+        "pair", qwen_tokenizer, query="capital of france", document="paris is the capital of France."
+    )
+    suffix_ids = qwen_tokenizer.ids(golden, add_special_tokens=True)[-len(SUFFIX_TOKENS) :]
+    assert suffix_ids == SUFFIX_TOKENS
+
+    # the mutation: drop the trailing anchor segment, keep the shape loadable by declaring the
+    # tokenizer's post-processor as the anchor (which adds nothing for Qwen: the anchor is gone)
+    anchorless = TemplateSpec(
+        pair=tuple(segment for segment in template.pair[:-1]), anchor="last", add_special_tokens={"pair": True}
+    )
+    mutated = recipe.model_copy(update={"client": recipe.client.model_copy(update={"template": anchorless})})
+    assert mutated.client.template is not None
+    rendered = mutated.client.template.render(
+        "pair", qwen_tokenizer, query="capital of france", document="paris is the capital of France."
+    )
+    no_tail_ids = qwen_tokenizer.ids(rendered, add_special_tokens=True)
+    assert no_tail_ids[-len(SUFFIX_TOKENS) :] != SUFFIX_TOKENS, "the mutation must really lose the anchor"
 
     from rcp_ndcg_vllm.equivalence import stage1_prompts
 
-    mutated = load_recipe(mutated_dir)
     pairs = tmp_path / "pairs.jsonl"
     pairs.write_text("".join(json.dumps(row) + "\n" for row in _pairs(3)), encoding="utf-8")
     document = stage1_prompts(mutated, pairs, sys.executable, over_length_per_shape=2)
-    assert document["anchor_check"]["passed"] is False
-    assert document["anchor_check"]["failures"], "the anchor audit must name the failures"
+    assert document["template_render_check"]["passed"] is False  # the file still emits the dropped suffix
+    assert document["anchor_check"]["passed"] is True  # the wire's spans are unchanged by the frame drop
+
+    # and the schema itself refuses an 'anchor: last' shape with neither a fixed tail nor the
+    # post-processor declaration
+    with pytest.raises(ValueError, match="anchor: last"):
+        TemplateSpec(pair=tuple(segment for segment in template.pair[:-1]), anchor="last", add_special_tokens=False)
+
+
+def test_non_nfc_rows_compare_byte_identical_spans(tmp_path: Path, recipe, qwen_tokenizer) -> None:
+    """NFD (non-NFC) input: the render comparison byte-equals the RAW characters.
+
+    ``tok.decode(tok.encode(x))`` is not the identity for this checkpoint (its normalizer maps
+    non-NFC text to NFC, keeping the ids equal but not the characters): the reference must cut at
+    raw character offsets (verbatim prefixes), never decode the kept ids back. On decomposed-accent
+    rows the shipped spans and the reference's must match byte for byte — this goes red the moment
+    either side decodes instead of cutting (finding 4: ``bytes_equal=False, ids_equal=True``).
+    """
+    decomposed = "cafe" + chr(101) + chr(769)  # e + combining acute: NFD, never NFC
+    rows = [
+        {"query": f"what about {decomposed}?", "documents": [f"The {decomposed} is served over the river."]},
+        {
+            "query": f"menu of the {decomposed} {decomposed} house",
+            "documents": [f"{decomposed} soup and {decomposed} pie, with notes on the {decomposed} " * 12],
+        },
+    ]
+    from rcp_ndcg_vllm.equivalence import stage1_prompts
+
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    document = stage1_prompts(recipe, pairs, sys.executable, over_length_per_shape=1)
+    assert document["render_check"]["status"] == "run" and document["render_check"]["rows"] == 2
+    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
+
+
+def test_the_client_settles_an_over_share_query_once_at_its_share(recipe, qwen_tokenizer) -> None:
+    """The settle rule, pinned on the wire: an over-share query is NOT sent whole.
+
+    The rerank client settles the shared query once per call and ships it at its declared
+    ``query_max_tokens`` (4096) whenever the query exceeds it — the shipped span is a verbatim
+    prefix of the raw query (a raw character cut, never a decode round trip), identical for every
+    document of the request.
+    """
+    from ._served import served_pair
+
+    long_query = "over share query filler token " * 1400
+    assert qwen_tokenizer.count(long_query) > 4096
+    spans = served_pair(recipe, long_query, ["a short document.", "another short document."])
+    settled = spans["query"]
+    assert settled != long_query, "an over-share query must be cut at its share, never sent whole"
+    assert long_query.startswith(settled), "the settled span must be a verbatim prefix of the raw query"
+    assert 4080 <= qwen_tokenizer.count(settled) <= 4096
+
+
+def test_the_short_query_ships_whole(recipe) -> None:
+    """The other half of the settle rule: an under-share query is sent uncut (nothing settles it)."""
+    from ._served import served_pair
+
+    query = "capital of france"
+    spans = served_pair(recipe, query, ["paris is the capital of france."])
+    assert spans["query"] == query
 
 
 def test_mutation_template_file_without_its_trailing_newline_turns_the_template_check_red(
