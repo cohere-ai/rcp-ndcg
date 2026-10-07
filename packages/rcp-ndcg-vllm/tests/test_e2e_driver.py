@@ -300,6 +300,41 @@ def test_a_managed_engine_never_sees_the_probe_on_pythonpath(tmp_path: Path, mon
     assert state.read_text(encoding="utf-8") == "PYTHONPATH=[]\n"
 
 
+def test_the_resume_keeps_the_drivers_pythonpath_out_and_rides_the_probe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The driven resume gets the same hygiene as every other driven job: the driver's ``PYTHONPATH``
+    out (a checkout's sources must not shadow the staged wheels) and the probe in (the resumed
+    coordinator records like the script's ones)."""
+    monkeypatch.setenv("PYTHONPATH", "/leak/from/driver-env")
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    uvx = bin_dir / "uvx"
+    uvx.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "UVX-PYTHONPATH=[${PYTHONPATH:-}]\nUVX-PROBE=[${RCP_E2E_PROBE_JSONL:-}]" "$@" > "$RESUME_STATE"\n',
+        encoding="utf-8",
+    )
+    uvx.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
+    monkeypatch.setenv("RESUME_STATE", str(tmp_path / "resume.state"))
+
+    from rcp_ndcg_vllm.e2e import resume_run
+
+    resume_run(
+        Path("/e2e/runs/the-run"),
+        wheelhouse="/stage/wheelhouse",
+        constraints=None,
+        version="0.0.1",
+        out=tmp_path / "out",
+    )
+    state = (tmp_path / "resume.state").read_text(encoding="utf-8")
+    assert "/leak/from/driver-env" not in state
+    assert "UVX-PYTHONPATH=[" in state  # the probe site replace the driver's entry
+    assert "UVX-PROBE=[" in state and "client-probe.jsonl" in state
+
+
 def test_the_outage_launcher_puts_the_srun_shim_on_the_path(stubs: Path, tmp_path: Path) -> None:
     """The outage sub-runs launch the scripted job the way the driver runs it: with the ``srun`` shim on
     the path and the probe kept out.  The stubs' ``bin`` carries no ``srun`` (a pod ships no SLURM

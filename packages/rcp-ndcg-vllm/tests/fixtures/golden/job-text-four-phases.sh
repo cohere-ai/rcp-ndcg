@@ -8,6 +8,11 @@
 #SBATCH --mem=0
 #SBATCH --time=0-08:00:00
 set -euo pipefail
+if ! command -v uvx >/dev/null; then
+  python3 -m pip install --quiet --target "${TMPDIR:-/tmp}/rcp-ndcg-uv" uv
+  export PATH="${TMPDIR:-/tmp}/rcp-ndcg-uv/bin:$PATH"
+fi
+mkdir -p /tmp/rcp-e2e-text-four-phases/tmp-8100 /tmp/rcp-e2e-text-four-phases/tmp-8110 /tmp/rcp-e2e-text-four-phases/tmp-8120
 read -r -d '' WORKER_1 <<'RCP_NDCG_WORKER_1' || true
 #!/usr/bin/env bash
 set -euo pipefail
