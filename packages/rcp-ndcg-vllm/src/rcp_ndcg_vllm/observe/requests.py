@@ -29,6 +29,9 @@ Public surface:
 - :func:`plan_recipe` — one recipe's deterministic request plan.
 - :func:`pairs_jsonl`, :func:`write_pairs_file` — the harness pairs format.
 - :func:`write_manifest` — ``pairs/manifest.json`` with provenance and hashes.
+- :data:`CORPUS_PLAN_VERSION`, :class:`CorpusPlan`, :func:`corpus_plan` — what a recording sends beyond the
+  pairs rows: the over-length ladder and the long content kinds through the client and uncut, the wire
+  variants and the protocol edges.
 """
 
 from __future__ import annotations
@@ -53,8 +56,10 @@ __all__ = [
     "GENERATOR_VERSION",
     "PINNED_DATASET_COMMITS",
     "SEED",
+    "CorpusPlan",
     "PlannedRow",
     "RecipePlan",
+    "corpus_plan",
     "pairs_jsonl",
     "plan_recipe",
     "write_manifest",
@@ -606,6 +611,205 @@ def plan_recipe(recipe: Any, tokenizer: Any, corpora: dict[str, list[SourceCorpu
         }
     plan.strata.update(length_strata)
     return plan
+
+
+_LADDER_OVER: tuple[tuple[str, int, int], ...] = (("over_by_1", 1, 1), ("over_2x", 2, 0), ("over_10x", 10, 0))
+"""The over-length rungs of OBSERVATIONS-SPEC section 1, as ``(name, factor, plus)``: the content span grows to
+``factor * usable + plus`` of the recipe's own tokens, where ``usable`` is the budget left once the template's
+fixed overhead and the guard are reserved -- one token over, twice and ten times the budget."""
+
+_ROLE_ROUTES = {"embed": "/v1/embeddings", "multi_vector": "/pooling", "rerank": "/rerank"}
+
+
+@dataclass(frozen=True)
+class CorpusPlan:
+    """The request set one recording sends (OBSERVATIONS-SPEC section 1), beyond and including the pairs rows.
+
+    Attributes:
+        rows: The model-layer rows the product's role client sends (it fits and, over the budget, cuts them):
+            the pairs rows (``pairs:<n>``), the over-length ladder (``ladder:<rung>``) and the content kinds too
+            long for a pairs row (``content:<kind>``).
+        bare: The requests sent as they are, never through the client: the ladder and the long content kinds
+            UNCUT (the engine's own refusal), the wire variants and the protocol edges.  Each is
+            ``{"request_id", "stratum", "probe", "layer", "method", "path", "body"}`` (or ``"raw"`` bytes).
+        strata: Every section-1 stratum of the corpus plan, present or absent with the reason.
+    """
+
+    rows: list[dict[str, Any]] = field(default_factory=list)
+    bare: list[dict[str, Any]] = field(default_factory=list)
+    strata: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def request_ids(self) -> list[str]:
+        """Every planned request id (the completeness check's list)."""
+        return [str(row["request_id"]) for row in self.rows] + [str(row["request_id"]) for row in self.bare]
+
+
+def _bare_body(recipe: Any, query: str, documents: list[str], **fields: Any) -> dict[str, Any]:
+    """One request body on the recipe's role route, as the engine reads it uncut (no client render)."""
+    if recipe.role == "rerank":
+        return {"model": recipe.id, "query": query, "documents": documents, **fields}
+    body: dict[str, Any] = {"model": recipe.id, "input": documents or [query], "encoding_format": "float"}
+    if recipe.role == "multi_vector":
+        body["task"] = "token_embed"
+    return {**body, **fields}
+
+
+def corpus_plan(recipe: Any, tokenizer: Any, pairs_rows: list[dict[str, Any]]) -> CorpusPlan:
+    """The corpus request plan of one recipe (OBSERVATIONS-SPEC section 1, :data:`CORPUS_PLAN_VERSION`).
+
+    Inputs: the loaded recipe, its tokenizer and the recipe's pairs rows (the generator's own plan, as the
+    pairs file carries it).  Output: the :class:`CorpusPlan`.  Beyond the pairs rows it plans, deterministically:
+
+    - the **length ladder** past the budget (one token over, 2x and 10x, in the recipe's own tokens), sent
+      through the client (its cut) and bare (uncut, so the engine's own refusal is observed);
+    - every **content kind** too long for a pairs row, the same two ways;
+    - the **wire variants** of the role's route: ``encoding_format`` (``float``/``base64`` for
+      ``/v1/embeddings``; ``float``/``base64``/``bytes`` x ``embed_dtype`` ``float16``/``float32`` for
+      ``/pooling``), ``dimensions`` on, and ``top_n``, ``use_activation`` and ``instruction`` on and off for
+      ``/rerank``;
+    - the **protocol edges** the request set can send alone: an invalid ``embed_dtype``, ``top_n`` larger
+      than the documents (the unknown field, malformed JSON, wrong model, empty input, over-length,
+      ``/v1/models`` and health probes are the collector's standing set; a request while the engine loads is
+      recorded by the wave's restart).
+    """
+    rows = [{**row, "request_id": str(row.get("request_id", f"pairs:{index}"))} for index, row in enumerate(pairs_rows)]
+    plan = CorpusPlan(rows=rows)
+    rerank = recipe.role == "rerank"
+    budget = recipe.client.max_tokens or 0
+    overhead = _overhead(recipe, tokenizer, "pair" if rerank else "document")
+    query_tokens = 64 if rerank else 32
+    query = _pad_to_tokens(tokenizer, "ladder query", query_tokens)
+    usable = max(8, budget - overhead - (query_tokens if rerank else 0) - _GUARD_TOKENS)
+    for name, factor, plus in _LADDER_OVER:
+        text = _pad_to_tokens(tokenizer, f"{name} document", factor * usable + plus)
+        stratum = f"length:{name}"
+        plan.rows.append(
+            {
+                "request_id": f"ladder:{name}",
+                "stratum": stratum,
+                "query": query,
+                "documents": [text],
+                "_strata": [stratum],
+            }
+        )
+        plan.bare.append(
+            {
+                "request_id": f"ladder:{name}:uncut",
+                "stratum": stratum,
+                "probe": f"uncut:{name}",
+                "layer": "model",
+                "method": "POST",
+                "path": _ROLE_ROUTES[recipe.role],
+                "body": _bare_body(recipe, query, [text]),
+            }
+        )
+        plan.strata[stratum] = {"present": True, "content_tokens": factor * usable + plus}
+    # A kind is carried by the pairs file only when one of its rows put the kind's text on a side (its strata
+    # say ``content:<kind>@query`` or ``@document``); a kind too long for either side rode as an anchor only.
+    pairs_kinds = {
+        label.split(":", 1)[1].split("@", 1)[0]
+        for row in rows
+        for label in row.get("_strata") or []
+        if label.startswith("content:") and "@" in label
+    }
+    for kind in CONTENT_KINDS:
+        text = synthetic_text(kind, tokenizer)
+        stratum = f"content:{kind}"
+        if kind in pairs_kinds:
+            plan.strata[f"{stratum}:uncut"] = {
+                "present": False,
+                "reason": "the kind fits the budget: its pairs row carries it",
+            }
+            continue
+        if not text:
+            plan.strata[f"{stratum}:uncut"] = {
+                "present": False,
+                "reason": "the empty string under a refusing empty policy: the empty_input probe sends it bare",
+            }
+            continue
+        plan.rows.append(
+            {
+                "request_id": f"content:{kind}",
+                "stratum": stratum,
+                "query": query,
+                "documents": [text],
+                "_strata": [stratum],
+            }
+        )
+        plan.bare.append(
+            {
+                "request_id": f"content:{kind}:uncut",
+                "stratum": stratum,
+                "probe": f"uncut:{kind}",
+                "layer": "model",
+                "method": "POST",
+                "path": _ROLE_ROUTES[recipe.role],
+                "body": _bare_body(recipe, query, [text]),
+            }
+        )
+        plan.strata[f"{stratum}:uncut"] = {"present": True}
+    first = rows[0] if rows else {"query": query, "documents": ["a document"]}
+    _wire_variants(recipe, plan, str(first["query"]), [str(document) for document in first["documents"]])
+    return plan
+
+
+def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[str]) -> None:
+    """The role route's wire variants and the protocol edges the request set sends bare."""
+    route = _ROLE_ROUTES[recipe.role]
+
+    def add(name: str, body: dict[str, Any], *, edge: bool = False) -> None:
+        stratum = f"{'edge' if edge else 'wire'}:{name}"
+        plan.bare.append(
+            {
+                "request_id": stratum,
+                "stratum": stratum,
+                "probe": stratum,
+                "layer": "protocol",
+                "method": "POST",
+                "path": route,
+                "body": body,
+            }
+        )
+        plan.strata[stratum] = {"present": True}
+
+    if recipe.role == "rerank":
+        add("top_n=1", _bare_body(recipe, query, documents, top_n=1))
+        add("top_n=all", _bare_body(recipe, query, documents, top_n=len(documents)))
+        add("use_activation=true", _bare_body(recipe, query, documents, use_activation=True))
+        add("use_activation=false", _bare_body(recipe, query, documents, use_activation=False))
+        add("instruction=on", _bare_body(recipe, query, documents, instruction="Judge whether the document answers."))
+        add("top_n_over_documents", _bare_body(recipe, query, documents, top_n=len(documents) + 5), edge=True)
+        plan.strata["wire:encoding_format"] = {"present": False, "reason": "the /rerank route has no encodings"}
+    elif recipe.role == "embed":
+        add("encoding_format=base64", _bare_body(recipe, query, documents[:1], encoding_format="base64"))
+        dim = getattr(recipe.client, "dimensions", None) or 32
+        add(f"dimensions={dim}", _bare_body(recipe, query, documents[:1], dimensions=dim))
+        plan.strata["edge:invalid_embed_dtype"] = {
+            "present": False,
+            "reason": "/v1/embeddings takes no embed_dtype (the /pooling route's field)",
+        }
+    else:
+        for encoding in ("float", "base64", "bytes"):
+            for dtype in ("float16", "float32"):
+                add(
+                    f"encoding_format={encoding},embed_dtype={dtype}",
+                    _bare_body(recipe, query, documents[:1], encoding_format=encoding, embed_dtype=dtype),
+                )
+        add("invalid_embed_dtype", _bare_body(recipe, query, documents[:1], embed_dtype="float64x"), edge=True)
+    if "image" in recipe.input:
+        plan.strata["media:request_set"] = {
+            "present": False,
+            "reason": "BLOCKED: the media request set (image buckets, over max_images, video, a corrupt image) is "
+            "not implemented by the collector yet; no media recipe loads on this base",
+        }
+        plan.strata["edge:too_many_images"] = {
+            "present": False,
+            "reason": "BLOCKED: the media request set (image buckets, over max_images, video, a corrupt image) is "
+            "not implemented by the collector yet; no media recipe loads on this base",
+        }
+    else:
+        plan.strata["media:request_set"] = {"present": False, "reason": "the recipe is text-only"}
+        plan.strata["edge:too_many_images"] = {"present": False, "reason": "the recipe is text-only"}
 
 
 def _kind_absent_reason(kind: str, recipe: Any) -> str:

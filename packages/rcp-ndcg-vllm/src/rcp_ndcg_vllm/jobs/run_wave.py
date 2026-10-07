@@ -627,10 +627,22 @@ def _observe_corpus(
     version = _engine_version(recipe, vllm_cmd)
     directory = corpus_path(out, version, recipe.id, fingerprint, started)
 
+    loading: list[dict[str, Any]] = []
+
     def restart() -> tuple[str, str] | None:
         run.stop()
         fresh = _start(recipe, run.gpus, slot, out, vllm_cmd, port_base, disk=run.disk)
         restarted.append(fresh)
+        # OBSERVATIONS-SPEC section 1's readiness edge: one request while the engine is still loading (a stub
+        # in test mode announces its port first; a refused connection is recorded as such).
+        port = fresh.announced_port(30.0) if fresh.port == 0 else fresh.port
+        if port:
+            import httpx
+
+            from ..record import _bare_exchange
+
+            with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=10.0) as http:
+                loading.append(_bare_exchange(http, "GET", "/v1/models", None))
         deadline = time.monotonic() + run.timeout_s
         while time.monotonic() < deadline:
             if fresh.exited():
@@ -666,6 +678,7 @@ def _observe_corpus(
             collector=collector,
             restart=restart,
             equivalence_exchanges=equivalence_exchanges,
+            while_loading=loading,
         )
     except Exception as error:  # noqa: BLE001 - the corpus step fails this recipe, never the wave
         return {"state": "failed", "error": f"{type(error).__name__}: {error}"}, fingerprint

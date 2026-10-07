@@ -53,7 +53,8 @@ def run(
     the stage numbers to run (1 and 2 by default; 3 needs ``rankings_dir``), the reference interpreter
     (``--reference-python``; required for stage 2, and used by stage 1's render comparison when given) and the
     rankings directory for stage 3; ``recorder`` collects stage 2's captured exchanges.  Output: the report
-    document; ``passed`` is true only when every requested stage passed.  Also writes ``equivalence.json`` and ``EQUIVALENCE.md`` under ``out_dir``.
+    document; ``passed`` is true only when every requested stage passed.  Also writes ``equivalence.json``
+    and ``EQUIVALENCE.md`` under ``out_dir``.
     """
     from .report import write_report
 

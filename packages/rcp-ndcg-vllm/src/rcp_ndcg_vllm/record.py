@@ -366,6 +366,7 @@ def record_corpus(
     batch_sizes: tuple[int, ...] = (1, 2, 8, 32),
     plan_ids: list[str] | None = None,
     equivalence_exchanges: list[dict[str, Any]] | None = None,
+    while_loading: list[dict[str, Any]] | None = None,
     hub_cache: str | Path | None = None,
     plugin_wheel: str | Path | None = None,
     timeout_s: float = _TIMEOUT_S,
@@ -393,23 +394,43 @@ def record_corpus(
     from .equivalence.fitting import tokenizer_of
     from .observe.corpus import summarise_nondeterminism, verify_corpus, write_corpus
     from .observe.provenance import collector_facts, model_facts, recipe_facts, unavailable
+    from .observe.requests import CORPUS_PLAN_VERSION, corpus_plan
 
     started = _now()
-    rows = [{**row, "request_id": str(row.get("request_id", f"pairs:{index}"))} for index, row in enumerate(rows)]
     if not rows:
         raise HarnessError("record_corpus needs at least one request row")
-    collected = _Collector(recipe, tokenizer_of(recipe))
+    tokenizer = tokenizer_of(recipe)
+    plan = corpus_plan(recipe, tokenizer, rows)
+    collected = _Collector(recipe, tokenizer)
     passes: list[dict[str, Any]] = []
 
     def one_pass(repetition: str, url: str, run_id: str) -> None:
         collected.repetition, collected.server_run_id = repetition, run_id
-        _model_layer(recipe, url, rows, collected, batch_sizes)
-        _bare_probes(recipe, url, rows, collected, timeout_s=timeout_s)
+        sent = _model_layer(recipe, url, plan.rows, collected, batch_sizes)
+        _bare_probes(recipe, url, plan.rows, plan.bare, collected, timeout_s=timeout_s)
+        _tokenize_probes(recipe, url, sent, collected, timeout_s=timeout_s)
         passes.append({"repetition": repetition, "server_run_id": run_id})
 
     one_pass("same_process_1", base_url, server_run_id)
     one_pass("same_process_2", base_url, server_run_id)
     restarted = after_restart if after_restart is not None else (restart() if restart is not None else None)
+    strata = dict(plan.strata)
+    if while_loading:
+        collected.repetition = "after_restart"
+        collected.server_run_id = restarted[1] if restarted else "loading"
+        for exchange in while_loading:
+            request_id = "edge:while_loading"
+            collected.add(
+                exchange,
+                batch_context={"size": 1, "request_ids": [request_id], "positions": [0]},
+                inputs={"request_id": request_id, "stratum": request_id, "probe": request_id, "layer": "protocol"},
+            )
+        strata["edge:while_loading"] = {"present": True}
+    else:
+        strata["edge:while_loading"] = {
+            "present": False,
+            "reason": "no request was sent while the engine loaded (the wave's restart sends it)",
+        }
     if restarted:
         one_pass("after_restart", restarted[0], restarted[1])
     else:
@@ -430,7 +451,11 @@ def record_corpus(
         "model": model_facts(recipe, hub_cache=hub_cache, plugin_wheel=plugin_wheel),
         "recipe": recipe_facts(recipe),
         "collector": {**collector_block, "batch_sizes": list(batch_sizes), "passes": passes},
-        "plan": {"request_ids": list(plan_ids) if plan_ids is not None else [row["request_id"] for row in rows]},
+        "plan": {
+            "corpus_plan_version": CORPUS_PLAN_VERSION,
+            "request_ids": list(plan_ids) if plan_ids is not None else plan.request_ids(),
+            "strata": strata,
+        },
     }
     if not restarted:
         manifest["collector"]["after_restart"] = unavailable("the engine did not restart; the pass is absent")
@@ -452,8 +477,13 @@ def _now() -> str:
 
 def _model_layer(
     recipe: Recipe, url: str, rows: list[dict[str, Any]], collected: _Collector, batch_sizes: tuple[int, ...]
-) -> None:
-    """The model layer of one pass: the product's role client on every row, as the served path sends it."""
+) -> list[tuple[dict[str, Any], str, str, str]]:
+    """The model layer of one pass: the product's role client on every row, as the served path sends it.
+
+    Returns the texts the client actually put on the wire for each input sent alone, as ``(row, item, shape,
+    text)`` -- the rendered prompt for an embedder, the settled query span and the document spans for a
+    reranker -- for the engine's ``/tokenize`` of exactly what the client sends.
+    """
     from rcp_ndcg_core.content import Content
 
     from rcp_ndcg.inference.types import EncodeRole
@@ -461,6 +491,8 @@ def _model_layer(
     from .equivalence.fitting import declared_shapes
 
     client, capture = role_client(recipe, url)
+
+    sent: list[tuple[dict[str, Any], str, str, str]] = []
 
     def captured_since(start: int, batch_context: dict[str, Any], inputs: dict[str, Any]) -> None:
         for exchange in capture.exchanges[start:]:
@@ -475,7 +507,13 @@ def _model_layer(
                 client.rerank(row["query"], documents, instruction=row.get("instruction"))
                 context = {"size": 1, "request_ids": [row["request_id"]], "positions": [0], "order": order}
                 captured_since(start, context, collected.inputs(row, order=order))
-        return
+                if order == "given":
+                    for exchange in capture.exchanges[start:]:
+                        texts = capture.texts(exchange)
+                        if texts.get("query"):
+                            sent.append((row, "query", "pair", str(texts["query"])))
+                        sent.extend((row, f"document:{k}", "pair", str(d)) for k, d in enumerate(texts["documents"]))
+        return sent
     declared = set(declared_shapes(recipe))
     sides = [("query", EncodeRole.QUERY)] if "query" in declared else []
     if declared & {"document", "pair"} or not sides:
@@ -501,16 +539,27 @@ def _model_layer(
                 start = len(capture.exchanges)
                 client.encode([Content.from_text(text) for _, _, text in group], role)
                 captured_since(start, context, inputs)
+                if size == batch_sizes[0] and len(group) == 1:
+                    for exchange in capture.exchanges[start:]:
+                        sent.extend((row, item, side, str(text)) for text in capture.texts(exchange)["input"])
+    return sent
 
 
 def _bare_probes(
-    recipe: Recipe, base_url: str, rows: list[dict[str, Any]], collected: _Collector, *, timeout_s: float
+    recipe: Recipe,
+    base_url: str,
+    rows: list[dict[str, Any]],
+    planned: list[dict[str, Any]],
+    collected: _Collector,
+    *,
+    timeout_s: float,
 ) -> None:
-    """The protocol probes of one pass (routes and error bodies), sent bare: the refusals the adapters map.
+    """The bare requests of one pass: the collector's standing protocol probes (routes and error bodies) and
+    the plan's bare rows (the uncut ladder and content kinds, the wire variants, the protocol edges).
 
     An unknown request field is answered 200 by vLLM v0.31.0 on every role route (measured in the shakedown);
     the corpus records what the engine answered and the acceptance check's status table expects the
-    measurement.  ``wrong_model`` and ``empty_input`` carry no measured expectation.
+    measurement.  ``wrong_model``, ``empty_input`` and the plan's rows carry no measured expectation.
     """
     route = _ROLE_ROUTES[recipe.role]
     over_length = "a " * (recipe.serve.max_model_len * 2)
@@ -532,31 +581,55 @@ def _bare_probes(
     ]
     with httpx.Client(base_url=_engine_root(base_url), timeout=timeout_s) as http:
         for probe, method, path, body, raw in probes:
-            inputs = collected.inputs(
-                first, probe=probe, request_id=f"probe:{probe}", stratum="protocol", layer="protocol"
-            )
+            request_id = f"probe:{probe}" if path == route or probe != "ok" else f"probe:{path}"
+            inputs = collected.inputs(first, probe=probe, request_id=request_id, stratum="protocol", layer="protocol")
             collected.add(
                 _bare_exchange(http, method, path, body, raw=raw),
-                batch_context={"size": 1, "request_ids": [f"probe:{probe}"], "positions": [0]},
+                batch_context={"size": 1, "request_ids": [request_id], "positions": [0]},
                 inputs=inputs,
             )
-        from .equivalence.stages import tokenize_url
+        for row in planned:
+            inputs = {
+                "request_id": row["request_id"],
+                "stratum": row["stratum"],
+                "probe": row["probe"],
+                "layer": row["layer"],
+            }
+            collected.add(
+                _bare_exchange(http, row["method"], row["path"], row.get("body"), raw=row.get("raw")),
+                batch_context={"size": 1, "request_ids": [row["request_id"]], "positions": [0]},
+                inputs=inputs,
+            )
 
-        tokenize_route = tokenize_url(base_url).removeprefix(_engine_root(base_url))
-        for index, row in enumerate(rows):
-            for side, text in (
-                ("query", row["query"]),
-                *((f"document:{k}", d) for k, d in enumerate(row["documents"])),
-            ):
-                body = {"model": recipe.id, "prompt": text, "add_special_tokens": True}
-                inputs = collected.inputs(
-                    row, probe="tokenize", request_id=f"tokenize:{index}:{side}", stratum="tokenize", side=side
-                )
-                collected.add(
-                    _bare_exchange(http, "POST", tokenize_route, body),
-                    batch_context={"size": 1, "request_ids": [inputs["request_id"]], "positions": [0]},
-                    inputs=inputs,
-                )
+
+def _tokenize_probes(
+    recipe: Recipe,
+    base_url: str,
+    sent: list[tuple[dict[str, Any], str, str, str]],
+    collected: _Collector,
+    *,
+    timeout_s: float,
+) -> None:
+    """The engine's ``/tokenize`` of every text the client put on the wire (OBSERVATIONS-SPEC section 1): the
+    exact prompt each input was sent as, with the special-tokens flag the shape is sent with, recorded as the
+    ground truth for the client's ``fit`` and the fake engines' token counting."""
+    from .equivalence.stages import _add_specials_flag, tokenize_url
+
+    route = tokenize_url(base_url).removeprefix(_engine_root(base_url))
+    seen: set[tuple[str, bool]] = set()
+    with httpx.Client(base_url=_engine_root(base_url), timeout=timeout_s) as http:
+        for row, item, shape, text in sent:
+            flag = _add_specials_flag(recipe, shape) if recipe.role != "rerank" else False
+            if (text, flag) in seen:
+                continue
+            seen.add((text, flag))
+            request_id = f"tokenize:{row['request_id']}/{item}"
+            inputs = collected.inputs(row, probe="tokenize", request_id=request_id, stratum="tokenize", item=item)
+            collected.add(
+                _bare_exchange(http, "POST", route, {"model": recipe.id, "prompt": text, "add_special_tokens": flag}),
+                batch_context={"size": 1, "request_ids": [request_id], "positions": [0]},
+                inputs=inputs,
+            )
 
 
 def _role_body(

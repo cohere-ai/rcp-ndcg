@@ -213,3 +213,63 @@ def test_rows_carry_only_documented_keys() -> None:
 def test_planned_row_without_media_omits_the_key() -> None:
     row = PlannedRow(query="q", documents=("d",), strata=("length:tiny",), source={"suite": "synthetic"})
     assert "media" not in row.to_pairs_row()
+
+
+# --- the corpus plan: what a recording sends beyond the pairs rows (OBSERVATIONS-SPEC section 1) ----------------
+
+
+def _corpus_plan(recipe_id: str):
+    from rcp_ndcg_vllm.observe.requests import corpus_plan
+
+    recipe = load_recipe(RECIPES / recipe_id)
+    tokenizer = tokenizer_of(recipe)
+    _, plan = _plan()
+    rows = [row.to_pairs_row() for row in plan.rows]
+    return recipe, tokenizer, corpus_plan(recipe, tokenizer, rows)
+
+
+def test_the_corpus_plan_sends_the_over_length_ladder_through_the_client_and_uncut() -> None:
+    """One token over, 2x and 10x the budget in the recipe's own tokens -- each through the client (its cut)
+    and bare (uncut: the engine's own refusal)."""
+    _, tokenizer, plan = _corpus_plan("fixture-embed")
+    rows = {row["request_id"]: row for row in plan.rows}
+    bare = {row["request_id"]: row for row in plan.bare}
+    targets = {name: plan.strata[f"length:{name}"]["content_tokens"] for name in ("over_by_1", "over_2x", "over_10x")}
+    assert targets["over_2x"] == 2 * (targets["over_by_1"] - 1) and targets["over_10x"] == 10 * (
+        targets["over_by_1"] - 1
+    )
+    for name, target in targets.items():
+        text = rows[f"ladder:{name}"]["documents"][0]
+        assert abs(tokenizer.count(text) - target) <= 2, name
+        assert bare[f"ladder:{name}:uncut"]["body"]["input"] == [text], "the uncut request carries the full text"
+    # The rung one token over the budget is over the client's budget once the template's frame is added.
+    assert targets["over_by_1"] > 0
+
+
+def test_the_content_kinds_too_long_for_a_pairs_row_are_sent_both_ways() -> None:
+    """A kind the pairs file had to leave out (it exceeds the budget) is not lost: the corpus sends it."""
+    _, _, plan = _corpus_plan("fixture-embed")
+    ids = set(plan.request_ids())
+    assert "content:long_token_base64" in ids and "content:long_token_base64:uncut" in ids
+    assert plan.strata["content:long_token_base64:uncut"]["present"] is True
+    assert plan.strata["content:code:uncut"]["present"] is False  # its pairs row carries it
+
+
+def test_the_wire_variants_and_the_protocol_edges_cover_each_route() -> None:
+    """Every encoding of the route and each adapter-sendable field on and off; the edges the set can send."""
+    _, _, embed = _corpus_plan("fixture-embed")
+    assert {"wire:encoding_format=base64", "wire:dimensions=32"} <= set(embed.strata)
+    _, _, pooling = _corpus_plan("fixture-multi-vector")
+    variants = {row["request_id"] for row in pooling.bare if row["layer"] == "protocol"}
+    for encoding in ("float", "base64", "bytes"):
+        for dtype in ("float16", "float32"):
+            assert f"wire:encoding_format={encoding},embed_dtype={dtype}" in variants
+    assert "edge:invalid_embed_dtype" in variants
+    _, _, rerank = _corpus_plan("fixture-rerank-pointwise")
+    bodies = {row["request_id"]: row["body"] for row in rerank.bare}
+    assert bodies["edge:top_n_over_documents"]["top_n"] > len(bodies["edge:top_n_over_documents"]["documents"])
+    assert bodies["wire:use_activation=false"]["use_activation"] is False
+    assert "instruction" in bodies["wire:instruction=on"]
+    for plan in (embed, pooling, rerank):
+        for name, record in plan.strata.items():
+            assert record["present"] or record.get("reason"), name

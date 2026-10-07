@@ -381,3 +381,35 @@ def test_changed_since_keys_on_the_fingerprint_and_the_engine_version() -> None:
     index["fingerprints"][recipe.id] = "0" * 64
     moved = changed_since([recipe], index, engine_version_of=lambda _: "0.31.0")
     assert moved["changes"] == {recipe.id: ["behaviour_fingerprint"]}
+
+
+# --- section 1: the request set the collector sends -----------------------------------------------------------
+
+
+def test_the_engine_tokenizes_exactly_the_prompt_the_client_sent(tmp_path: Path) -> None:
+    """``/tokenize`` gets the rendered prompt the client put on the wire (fixture-embed's ``doc: ... [END]``
+    frame), never the raw row text."""
+    directory, report = _record(tmp_path)
+    assert report["passed"], [check for check in report["checks"] if not check["passed"]]
+    prompts = [
+        record["request"]["body_parsed"]["prompt"]
+        for record in _records(directory)
+        if record["inputs"].get("probe") == "tokenize"
+    ]
+    assert prompts and all(prompt.startswith("doc: ") and prompt.endswith(" [END]") for prompt in prompts), prompts[:3]
+
+
+def test_every_planned_request_is_recorded_the_ladder_uncut_too(tmp_path: Path) -> None:
+    """The plan's ladder, long content kinds, wire variants and edges are all in the corpus (completeness), the
+    uncut ladder exactly as planned."""
+    from rcp_ndcg.testing.corpus import load_corpus
+
+    directory, report = _record(tmp_path)
+    assert _checks(report)["completeness"]["passed"] is True
+    corpus = load_corpus(directory)
+    planned = set(corpus.manifest["plan"]["request_ids"])
+    assert {"ladder:over_10x", "ladder:over_10x:uncut", "wire:encoding_format=base64"} <= planned
+    uncut = [r for r in corpus.records if r["inputs"]["request_id"] == "ladder:over_10x:uncut"]
+    assert len(uncut) == 3, "sent once per pass"
+    strata = corpus.manifest["plan"]["strata"]
+    assert strata["edge:while_loading"]["present"] is False and strata["edge:while_loading"]["reason"]

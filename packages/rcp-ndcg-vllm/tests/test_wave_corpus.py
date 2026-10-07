@@ -55,6 +55,7 @@ def test_the_wave_records_an_observation_corpus_at_its_keyed_path(tmp_path: Path
     passes = manifest["collector"]["passes"]
     assert [entry["repetition"] for entry in passes] == ["same_process_1", "same_process_2", "after_restart"]
     assert passes[2]["server_run_id"] != passes[0]["server_run_id"]
+    assert manifest["plan"]["strata"]["edge:while_loading"] == {"present": True}
     consistency = _checks(step)["equivalence_consistent"]
     assert consistency["passed"] is True and consistency["compared"] > 0, consistency
 
