@@ -73,8 +73,11 @@ jobs:
                   raise SystemExit(f"{path} is not in this tree: the release builds it, so it must pin {name}=={version}")
               project = tomllib.loads(manifest.read_text(encoding="utf-8"))["project"]
               requirements = list(project.get("dependencies", []))
-              for extra in project.get("optional-dependencies", {}).values():
-                  requirements += extra
+              if not required:
+                  # "when it declares" also counts a declaration in an extra; a REQUIRED pin must sit in the
+                  # runtime dependencies (a pin demoted to an extra leaves `pip install` unconstrained otherwise).
+                  for extra in project.get("optional-dependencies", {}).values():
+                      requirements += extra
               pins = [
                   re.sub(r"[\s()]", "", m.group(2))  # "( == 0.0.1 )" and "== 0.0.1" are the exact pin "==0.0.1"
                   for requirement in requirements

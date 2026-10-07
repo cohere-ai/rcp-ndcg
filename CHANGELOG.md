@@ -95,7 +95,7 @@ released together.
   truthful regeneration command.
 - **CI opens every dependency gate in `tests/`**: the new `gated` job installs `[data]`, `[mteb]` and the MCP SDK
   (`mcp`, which no extra names) and runs the whole suite, so the pdf and datasets readers, the image-policy
-  transformers parity check and the MCP SDK round trip (45 tests) run on every pull request; a cataloguing test
+  transformers parity check and the MCP SDK round trip (48 tests) run on every pull request; a cataloguing test
   fails any new `pytest.importorskip` whose gate no CI job opens. The new `vllm-plugins` job runs the model
   plugins' test suites (`packages/rcp-ndcg-vllm/plugins/*/tests`) with `--no-deps` installs beside CPU torch and
   transformers.
@@ -104,7 +104,8 @@ released together.
   Theorems cells within 2.6 and 12 of the 14 qrel means within 0.25 -- 35 rows), and `experiments/checks.py`
   fails a run whose counts differ in either direction, replacing a wildcard entry that let any NanoBEIR cell
   drift within 0.08. `experiments/leaderboards.py::check_trecdl` refuses a ragged (query, reranker) matrix,
-  naming the missing pairs, instead of letting NaN feed the t-test and the means.
+  naming the missing pairs (and a duplicated row, naming the pair), instead of letting NaN feed the t-test and
+  the means.
 - **One definition of `BRIGHT_WITH_EXCLUSIONS`** (in `experiments/fetch_data.py`); `experiments/external_judges.py`
   holds the display labels as `BRIGHT_EXCLUSION_LABELS`, with the ids/labels correspondence pinned by a test.
   The second judge's engine script (`experiments/paper/serve/gpt_oss_120b.sglang.sh`) pins `--revision` like the

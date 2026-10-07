@@ -14,6 +14,47 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
+_TRECDL_PAPER = {
+    year: {
+        "queries": 3,
+        "pairs": 1,
+        "separated_qrel_linear": 0,
+        "separated_rcp": 0,
+        "agree_with_nist": "0/0",
+        "kendall_rcp_vs_nist_14": 0.0,
+    }
+    for year in ("dl19", "dl20")
+}
+
+
+def _trecdl_rows(drop=(), double=()):
+    """A complete 2-dataset x 3-query x 2-reranker score panel, with rows dropped for the ragged holes and
+    rows duplicated for the doubled pairs."""
+    rows = []
+    for dataset in ("trec_dl_2019", "trec_dl_2020"):
+        for query in ("q1", "q2", "q3"):
+            for model in ("a", "b"):
+                key = (dataset, query, model)
+                if key in drop:
+                    continue
+                row = {
+                    "suite": "trecdl",
+                    "dataset": dataset,
+                    "reranker": model,
+                    "query_id": query,
+                    "qrel_ndcg10": 0.5,
+                    "rcp_ndcg10": 0.4,
+                }
+                rows.append(row)
+                if key in double:
+                    rows.append(dict(row))
+    return pd.DataFrame(rows)
+
+
+def _checker(experiment):
+    return experiment("checks").Checker("t")
+
+
 # ---------------------------------------------------------------- human study
 
 
@@ -112,40 +153,48 @@ def test_the_known_deviation_populations_are_the_documented_ones(experiment):
     }
 
 
+def test_the_real_known_table_accepts_exactly_the_documented_rows(experiment):
+    """The table's own populations run through ``finish()``: 35 rows exactly as documented, and one extra
+    row -- a 36th, or one outside every entry -- fails (equal-valued declarations stay separate populations)."""
+    lb = experiment("leaderboards")
+    chk = experiment("checks").Checker("t", tuple(lb.KNOWN.values()))
+    row = 0
+    for (suite, metric, col), dev in lb.KNOWN.items():
+        for i in range(dev.cells):
+            assert chk.compare(f"{suite} {metric} r{i} {col}", 50.0, 50.0 + dev.bound / 2, 0.001, known=dev)
+            row += 1
+    assert row == 35
+    assert chk.finish() == 0
+    overflowing = experiment("checks").Checker("t", tuple(lb.KNOWN.values()))
+    for (suite, metric, col), dev in lb.KNOWN.items():
+        for i in range(dev.cells + 1):
+            overflowing.compare(f"{suite} {metric} r{i} {col}", 50.0, 50.0 + dev.bound / 2, 0.001, known=dev)
+    assert overflowing.finish() == 1
+
+
 def test_check_trecdl_refuses_a_ragged_reranker_matrix(experiment):
     """A (query, reranker) score missing from the pool panel is an error naming the suite, not a NaN that
     "not separated" and "disagrees" swallow before a later count drifts (the sweep's reproduction, case 2)."""
     lb = experiment("leaderboards")
-    rows = []
-    for dataset in ("trec_dl_2019", "trec_dl_2020"):
-        for query in ("q1", "q2", "q3"):
-            for model in ("a", "b"):
-                if (dataset, query, model) == ("trec_dl_2019", "q3", "b"):
-                    continue  # the ragged hole
-                rows.append(
-                    {
-                        "suite": "trecdl",
-                        "dataset": dataset,
-                        "reranker": model,
-                        "query_id": query,
-                        "qrel_ndcg10": 0.5,
-                        "rcp_ndcg10": 0.4,
-                    }
-                )
-    paper = {
-        year: {
-            "queries": 3,
-            "pairs": 1,
-            "separated_qrel_linear": 0,
-            "separated_rcp": 0,
-            "agree_with_nist": "0/0",
-            "kendall_rcp_vs_nist_14": 0.0,
-        }
-        for year in ("dl19", "dl20")
-    }
-    checks = experiment("checks")
     with pytest.raises(ValueError, match="trec_dl_2019"):
-        lb.check_trecdl(pd.DataFrame(rows), paper, checks.Checker("t"))
+        lb.check_trecdl(_trecdl_rows(drop={("trec_dl_2019", "q3", "b")}), _TRECDL_PAPER, _checker(experiment))
+
+
+def test_check_trecdl_refuses_a_duplicated_pair(experiment):
+    """A doubled (query, reranker) row is refused naming the pair -- pandas' own pivot error names no pair."""
+    lb = experiment("leaderboards")
+    with pytest.raises(ValueError, match="must be unique.*q3"):
+        lb.check_trecdl(_trecdl_rows(double={("trec_dl_2019", "q3", "b")}), _TRECDL_PAPER, _checker(experiment))
+
+
+def test_a_documented_deviation_is_matched_by_value(experiment):
+    """A ``KnownDeviation`` with the same fields describes the same population: the accounting matches
+    declarations by value, so a re-created instance does not double-fail ("nothing took it" and "stray")."""
+    checks = experiment("checks")
+    documented = checks.KnownDeviation(0.05, "documented", cells=1)
+    chk = checks.Checker("t", (documented,))
+    assert chk.compare("c0", 10.0, 10.04, 0.001, known=checks.KnownDeviation(0.05, "documented", cells=1))
+    assert chk.finish() == 0
 
 
 def test_the_bright_exclusion_tasks_are_one_concept_with_one_definition(experiment):
@@ -169,10 +218,10 @@ def test_the_two_setup_snippets_give_the_same_install_commands():
 
     def install_commands(text: str) -> list[str]:
         return [
-            line.split("#", 1)[0].strip()
+            match.group().strip()
             for block in re.findall(r"```bash\n(.*?)```", text, re.S)
             for line in block.splitlines()
-            if line.strip().startswith("pip install")
+            if (match := re.match(r"(?:python3? -m |uv )?pip install\b.*", line.split("#", 1)[0]))
         ]
 
     readme = install_commands((ROOT / "experiments" / "README.md").read_text(encoding="utf-8"))

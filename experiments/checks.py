@@ -26,11 +26,17 @@ class KnownDeviation:
         reason: Why the reproduction differs; printed with every row that takes the deviation.
         cells: Exactly how many compared values may take this deviation -- the documented population, not a cap;
             a different count (either way) means the documentation or the data moved, and both are failures.
+        label: Where the population lives (e.g. the table position), for the failure messages.
+
+    Declarations are matched by value: a ``KnownDeviation`` with the same fields is the same documented
+    population, whoever constructed the instance. Two populations at different positions carry different
+    labels, so they never merge.
     """
 
     bound: float
     reason: str
     cells: int
+    label: str = ""
 
 
 @dataclass
@@ -100,16 +106,20 @@ class Checker:
         Also fails when the known deviations did not materialise exactly as documented: every declared
         deviation must be taken by exactly its ``cells`` rows (a row takes it when it prints ``known``), and no
         row may deviate outside every declaration -- the documented populations, not just the per-cell bounds.
+        Declarations are matched by value, so a re-created instance with the same fields is no "stray".
         """
         n = len(self.rows)
         by = {s: sum(r.status == s for r in self.rows) for s in ("ok", "known", "FAIL")}
         population_failures = []
         for dev in self.deviations:
-            taken = sum(r.status == "known" and r.dev is dev for r in self.rows)
+            taken = sum(r.status == "known" and r.dev == dev for r in self.rows)
             if taken != dev.cells:
-                population_failures.append(f"{taken} row(s) took the documented deviation [{dev.reason}]: {dev.cells}")
-        declared = {id(dev) for dev in self.deviations}
-        strays = sum(r.status == "known" and id(r.dev) not in declared for r in self.rows)
+                population_failures.append(
+                    f"{taken} row(s) took the documented deviation [{dev.label or dev.reason}]: {dev.cells}"
+                )
+        strays = sum(
+            r.status == "known" and (r.dev is None or all(r.dev != d for d in self.deviations)) for r in self.rows
+        )
         if strays:
             population_failures.append(f"{strays} row(s) deviated outside every documented population")
         for failure in population_failures:

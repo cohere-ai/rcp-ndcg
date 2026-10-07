@@ -269,15 +269,19 @@ def test_the_release_workflow_pins_each_sibling_at_the_tags_version(tmp_path) ->
     body = str(step["run"]).split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
 
     def check(
-        manifest: str | None, core: str = '"rcp-ndcg-core==0.0.1"', version: str = "0.0.1"
+        manifest: str | None,
+        core: str = '"rcp-ndcg-core==0.0.1"',
+        version: str = "0.0.1",
+        core_in_extras: bool = False,
     ) -> subprocess.CompletedProcess[str]:
         tree = tmp_path / f"check-{check.calls:03d}-{version}"
         check.calls += 1
         package = tree / "packages" / "rcp-ndcg-vllm"
         package.mkdir(parents=True)
-        (tree / "pyproject.toml").write_text(
-            f'[project]\nname = "rcp-ndcg"\ndependencies = [{core}]\n', encoding="utf-8"
+        declaration = (
+            f"[project.optional-dependencies]\ndev = [{core}]" if core_in_extras else f"dependencies = [{core}]"
         )
+        (tree / "pyproject.toml").write_text(f'[project]\nname = "rcp-ndcg"\n{declaration}\n', encoding="utf-8")
         if manifest is not None:
             (package / "pyproject.toml").write_text(manifest, encoding="utf-8")
         return subprocess.run([sys.executable, "-", version], input=body, capture_output=True, text=True, cwd=tree)
@@ -306,6 +310,10 @@ def test_the_release_workflow_pins_each_sibling_at_the_tags_version(tmp_path) ->
     ), "only the dependencies list is read"
     unpinned = check(exact, core='"numpy"')
     assert unpinned.returncode == 1 and "rcp-ndcg-core" in unpinned.stderr, "a root manifest must pin the core"
+    extras_only = check(exact, core='"rcp-ndcg-core==0.0.1"', core_in_extras=True)
+    assert extras_only.returncode == 1 and "rcp-ndcg-core" in extras_only.stderr, (
+        "the required pin must be a runtime dependency: `pip install rcp-ndcg` resolves the core unpinned otherwise"
+    )
     stale = check(exact, core='"rcp-ndcg-core==0.0.2"')
     assert stale.returncode == 1 and "==0.0.1" in stale.stderr, "a wrong core pin must be refused"
     for wrong in ("rcp-ndcg>=0.0.1", "rcp-ndcg", "rcp-ndcg[calibrate]", "rcp-ndcg==0.0.2"):
@@ -402,6 +410,13 @@ def test_every_dependency_gate_in_tests_opens_in_ci() -> None:
     )
     assert re.search(r"pip install[^\n]*\bmcp\b", ci), "a job must install the MCP SDK (no extra names it)"
     assert "pytest tests/" in ci, "the gated job runs the whole tests/ tree, every gate in it open"
+    # Every provider extra the table names is opened by some CI job's environment: named on a cpu-env.sh line
+    # (which takes the repo's extras), or pulled in by a named extra (dev's `[calibrate,hf]` reference).
+    installed = {token for line in re.findall(r"cpu-env\.sh([^\n]*)", ci) for token in line.split() if token != "dev"}
+    for spec in EXTRAS.get("dev", []):
+        installed |= set(Requirement(spec).extras or ())
+    for provider in {p for p in DEPENDENCY_GATES.values() if p not in ("always",) and not p.startswith("direct:")}:
+        assert provider in installed, f"no CI job installs [{provider}]"
 
 
 def test_the_plugin_test_suites_run_in_ci() -> None:

@@ -62,12 +62,22 @@ _MEAN_CARRIES = "carries the ThQA-T qrel difference into the mean"
 # means -- 35 rows in total (`run_all.py`). No other cell may deviate at all, and every count here is exact:
 # ``Checker.finish`` fails the run when the populations do not materialise as documented.
 KNOWN = {
-    ("nanobeir", "rcp_ndcg10", "NanoFEVERRetrieval"): KnownDeviation(0.08, _NANOBEIR_GAINS, 5),
-    ("nanobeir", "rcp_ndcg10", "NanoQuoraRetrieval"): KnownDeviation(0.08, _NANOBEIR_GAINS, 2),
-    ("nanobeir", "rcp_ndcg10", "NanoNFCorpusRetrieval"): KnownDeviation(0.08, _NANOBEIR_GAINS, 2),
-    ("nanobeir", "rcp_ndcg10", "NanoHotpotQARetrieval"): KnownDeviation(0.08, _NANOBEIR_GAINS, 1),
-    ("bright", "qrel_ndcg10", "theoremqa_theorems"): KnownDeviation(2.6, _THQA_GOLD_IDS, 13),
-    ("bright", "qrel_ndcg10", "mean"): KnownDeviation(0.25, _MEAN_CARRIES, 12),
+    ("nanobeir", "rcp_ndcg10", "NanoFEVERRetrieval"): KnownDeviation(
+        0.08, _NANOBEIR_GAINS, 5, "nanobeir rcp_ndcg10 NanoFEVERRetrieval"
+    ),
+    ("nanobeir", "rcp_ndcg10", "NanoQuoraRetrieval"): KnownDeviation(
+        0.08, _NANOBEIR_GAINS, 2, "nanobeir rcp_ndcg10 NanoQuoraRetrieval"
+    ),
+    ("nanobeir", "rcp_ndcg10", "NanoNFCorpusRetrieval"): KnownDeviation(
+        0.08, _NANOBEIR_GAINS, 2, "nanobeir rcp_ndcg10 NanoNFCorpusRetrieval"
+    ),
+    ("nanobeir", "rcp_ndcg10", "NanoHotpotQARetrieval"): KnownDeviation(
+        0.08, _NANOBEIR_GAINS, 1, "nanobeir rcp_ndcg10 NanoHotpotQARetrieval"
+    ),
+    ("bright", "qrel_ndcg10", "theoremqa_theorems"): KnownDeviation(
+        2.6, _THQA_GOLD_IDS, 13, "bright qrel_ndcg10 theoremqa_theorems"
+    ),
+    ("bright", "qrel_ndcg10", "mean"): KnownDeviation(0.25, _MEAN_CARRIES, 12, "bright qrel_ndcg10 mean"),
 }
 
 
@@ -175,11 +185,18 @@ def check_trecdl(pq: pd.DataFrame, paper: dict, chk: Checker) -> None:
     print("\n== trecdl (pool panel, 14 rerankers)")
     for year, ds in (("dl19", "trec_dl_2019"), ("dl20", "trec_dl_2020")):
         sub = pq[pq.dataset == ds]
+        duplicated = sub[sub.duplicated(["query_id", "reranker"], keep=False)]
+        if not duplicated.empty:
+            pairs = sorted(
+                {(str(q), str(r)) for q, r in zip(duplicated["query_id"], duplicated["reranker"], strict=True)}
+            )
+            raise ValueError(f"{ds}: (query, reranker) score rows must be unique; duplicated: {pairs}")
         mats = {m: sub.pivot(index="query_id", columns="reranker", values=m) for m in ("qrel_ndcg10", "rcp_ndcg10")}
         for metric, mat in mats.items():
             if not mat.notna().all().all():
-                # A doubled (query, reranker) run or a dropped score leaves NaN, which the t-test counts as "not
-                # separated", sign(NaN) == NaN counts as disagreement, and DataFrame.mean() skips silently.
+                # A dropped score leaves a NaN hole, which the t-test counts as "not separated", sign(NaN) == NaN
+                # counts as disagreement, and DataFrame.mean() skips silently. A doubled row is refused above; a
+                # query or reranker absent from the panel entirely is caught by the exact-count compares below.
                 holes = sorted(
                     (str(mat.index[i]), str(mat.columns[j]))
                     for i, j in zip(*np.where(mat.isna().to_numpy()), strict=True)
