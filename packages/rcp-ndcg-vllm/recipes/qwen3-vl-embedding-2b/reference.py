@@ -20,9 +20,14 @@ Runs in its own reference environment, never inside the harness process:
   https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/blob/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/scripts/qwen3_vl_embedding.py,
   sha256 8ffa74a1a6bb759610c57865ea416fd4daf9936cb787520e1112a3e1d547f36a (pinned here and by the
   recipe's test). The checkpoint is resolved with ``huggingface_hub.snapshot_download`` at the recipe's
-  revision, so model and processor load the same pinned snapshot. Media equivalence is not exercised
-  here: the pairs file carries text (the media checks are the research's token-level checks and the GPU
-  wave's probe-image check). The vector path's stage 2 implements no over-cap exclusion (the deviation
+  revision, so model and processor load the same pinned snapshot. Media is not exercised here (the
+  media checks are the research's token-level checks and the GPU wave's probe-image check): a pairs
+  row carrying media columns is refused loudly (see :func:`_refuse_media_rows`) -- the recipe's ONE
+  video policy (64 uniformly spaced frames per clip, the container sent as ``video_url`` under an
+  engine pinned to the same 64 frames) governs any future media wave, and the card script's own
+  container sampler (fps 1, max_frames 64) is superseded by it: a video row would arrive as its 64
+  pre-sampled frames and pass through the card's list route at ``num_segments`` 64 unchanged.
+  The vector path's stage 2 implements no over-cap exclusion (the deviation
   table is wired for the rerank path only): an over-cap stage-2 pair fails the cosine gate loudly, so
   the stage-2 pairs must sit under the recipe's budget.
 
@@ -50,6 +55,39 @@ CARD_SCRIPT_SHA256 = "8ffa74a1a6bb759610c57865ea416fd4daf9936cb787520e1112a3e1d5
 DEFAULT_INSTRUCTION = "Represent the user's input."
 
 _SHAPES = ("query", "document", "pair")
+
+#: The pairs-file media columns the harness knows; a row carrying one is refused (see below).
+_MEDIA_COLUMNS = (
+    "image",
+    "images",
+    "video",
+    "videos",
+    "query_image",
+    "query_video",
+    "documents_images",
+    "documents_videos",
+)
+
+
+def _refuse_media_rows(pairs: list[dict[str, Any]]) -> None:
+    """This reference's pairs contract is text, and a media-bearing row is refused, never silently dropped.
+
+    The builders below take the row's text fields only, so ``{"text": ...}`` would swallow an image or
+    video column and stage 2 would compare the wrong content. The recipe's ONE declared video policy
+    (client.video_policy: 64 uniformly spaced frames per clip, the container as ``video_url`` under an
+    engine the recipe pins to the same 64 with ``--media-io-kwargs``) governs a future media wave: a
+    container sampled at any other rule (the card's fps 1 / max 64 default among them) is a different
+    instrument and quietly missed here otherwise. Loud refusal, as for instruction rows.
+    """
+    for index, row in enumerate(pairs):
+        carried = sorted(set(row) & set(_MEDIA_COLUMNS))
+        if carried:
+            raise SystemExit(
+                f"pairs row {index} carries media columns {carried}, and this reference's pairs "
+                "contract is text (the recipe's stages compare text): drop the media, or hold the "
+                "row for the media wave under the recipe's declared video policy (64 uniformly "
+                "spaced frames per clip, pre-extracted at ingest)"
+            )
 
 
 def _refuse_instruction_rows(pairs: list[dict[str, Any]]) -> None:
@@ -213,6 +251,7 @@ def mode_render(recipe: dict[str, Any], pairs: list[dict[str, Any]], tokenizer: 
     client = recipe.get("client") or {}
     template = client.get("template") or {}
     max_tokens = int(client["max_tokens"])
+    _refuse_media_rows(pairs)
     rows: list[dict[str, Any]] = []
     for index, row in enumerate(pairs):
         for shape in _declared_shapes(recipe):
@@ -236,6 +275,7 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
         model.model = model.model.to(device)
 
     _refuse_instruction_rows(pairs)  # the card then applies its own default: the pinned frame text
+    _refuse_media_rows(pairs)
     query_inputs = [{"text": str(row["query"])} for row in pairs]
     document_inputs = [{"text": str(document)} for row in pairs for document in row["documents"]]
     import numpy as np
