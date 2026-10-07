@@ -426,3 +426,21 @@ def test_the_operator_commands_verify_and_subset_a_corpus(tmp_path: Path, capsys
     (directory / "records.jsonl").write_text("", encoding="utf-8")
     assert main(["verify", str(directory)]) == 1
     assert '"passed": false' in capsys.readouterr().out
+
+
+def test_the_written_manifest_never_hashes_the_verification_record(tmp_path: Path) -> None:
+    """``verification.jsonl`` is appended after the recording: a corpus (re)written beside one leaves it out of
+    the manifest's hashes, so a later append never breaks the integrity check."""
+    from rcp_ndcg.testing.corpus import VERIFICATION_FILE, integrity_mismatches, load_corpus
+
+    directory = tmp_path / "corpus"
+    directory.mkdir()
+    (directory / VERIFICATION_FILE).write_text('{"schema": "rcp-ndcg.verification/1"}\n', encoding="utf-8")
+    (directory / "nondeterminism.json").write_text('{"derived": {"measured": false}}', encoding="utf-8")
+    record = {"record_schema": 1, "exchange_id": "0" * 64, "sequence": 0, "request": {}, "response": {}}
+    manifest = json.loads(write_corpus(directory, {"recipe": {"id": "fixture-embed"}}, [record]).read_text())
+    assert VERIFICATION_FILE not in manifest["integrity"]["files"]
+    assert "nondeterminism.json" in manifest["integrity"]["files"]
+    with (directory / VERIFICATION_FILE).open("a", encoding="utf-8") as handle:
+        handle.write('{"schema": "rcp-ndcg.verification/1"}\n')
+    assert integrity_mismatches(load_corpus(directory)) == []
