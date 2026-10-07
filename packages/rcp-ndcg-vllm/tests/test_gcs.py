@@ -15,11 +15,17 @@ from typing import Any
 
 import pytest
 
+from tests.conftest import sandbox_path
+
 JOBS = Path(__file__).resolve().parents[1] / "jobs"
 GCS_PY = JOBS / "gcs.py"
 GCS_SH = JOBS / "gcs.sh"
 
 PY = sys.executable
+
+_SHELL_TOOLS = ("bash", "mkdir")
+"""The system tools gcs.sh's dispatch runs (bash for the fakes' ``env bash`` shebangs, mkdir for the tools
+directory); nothing else of the machine is on the tests' PATH."""
 
 
 def _gcs_module() -> ModuleType:
@@ -179,7 +185,7 @@ def test_gcs_cp_remote_directory_download_through_the_real_dispatch(tmp_path: Pa
         ],
         capture_output=True,
         text=True,
-        env={"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path)},
+        env={"PATH": sandbox_path(bin_dir, *_SHELL_TOOLS), "HOME": str(tmp_path)},
     )
     assert completed.returncode == 0, completed.stderr
     calls = log.read_text(encoding="utf-8")
@@ -213,7 +219,7 @@ def test_gcs_cp_remote_single_object_takes_the_file_branch(tmp_path: Path) -> No
         ],
         capture_output=True,
         text=True,
-        env={"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path)},
+        env={"PATH": sandbox_path(bin_dir, *_SHELL_TOOLS), "HOME": str(tmp_path)},
     )
     assert completed.returncode == 0, completed.stderr
     calls = log.read_text(encoding="utf-8")
@@ -250,7 +256,7 @@ def test_gcs_transfer_detect_prefers_gcloud_then_gsutil_then_python(tmp_path: Pa
             ["bash", "-c", f'source "{GCS_SH}" && gcs_transfer_detect'],
             capture_output=True,
             text=True,
-            env={"PATH": f"{tools['bin']}:/usr/bin:/bin", "HOME": str(tmp_path)},
+            env={"PATH": sandbox_path(tools["bin"], *_SHELL_TOOLS), "HOME": str(tmp_path)},
         )
         assert completed.stdout.strip() == expected
         (tools["bin"] / on_path).unlink()
@@ -258,7 +264,7 @@ def test_gcs_transfer_detect_prefers_gcloud_then_gsutil_then_python(tmp_path: Pa
         ["bash", "-c", 'source "$1" && gcs_transfer_detect', "bash", str(GCS_SH)],
         capture_output=True,
         text=True,
-        env={"PATH": f"{tools['bin']}:/usr/bin:/bin", "HOME": str(tmp_path)},
+        env={"PATH": sandbox_path(tools["bin"], *_SHELL_TOOLS), "HOME": str(tmp_path)},
     )
     assert completed.stdout.strip() == "python"
 
@@ -283,7 +289,7 @@ def test_gcs_cp_without_the_clis_runs_the_python_helper(tmp_path: Path) -> None:
         ],
         capture_output=True,
         text=True,
-        env={"PATH": f"{tools['bin']}:/usr/bin:/bin", "HOME": str(tmp_path)},
+        env={"PATH": sandbox_path(tools["bin"], *_SHELL_TOOLS), "HOME": str(tmp_path)},
     )
     assert completed.returncode == 0, completed.stderr
     calls = tools["log"].read_text(encoding="utf-8")

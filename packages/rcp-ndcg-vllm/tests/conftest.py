@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -86,6 +87,25 @@ def stub() -> Iterator[StubEngine]:
         yield engine
     finally:
         engine.stop()
+
+
+def sandbox_path(fakes: Path, *tools: str) -> str:
+    """A hermetic ``PATH`` for a node-script test: the test's fakes, then a sandbox of the named system tools.
+
+    No system bin directory is on it, so a tool the machine happens to have (a real ``gcloud`` in
+    ``/usr/bin``, as on GitHub's runner images) can never stand in for one the test means to be absent. Each
+    named tool is symlinked from the caller's ``PATH`` into ``<fakes>/../sandbox-bin``; a tool the machine
+    lacks fails the test here, by name.
+    """
+    sandbox = fakes.parent / "sandbox-bin"
+    sandbox.mkdir(exist_ok=True)
+    for tool in tools:
+        target = shutil.which(tool)
+        assert target is not None, f"the sandbox needs {tool!r}, and this machine has none on PATH"
+        link = sandbox / tool
+        if not link.is_symlink():
+            link.symlink_to(target)
+    return f"{fakes}:{sandbox}"
 
 
 def write_pairs(path: Path, pairs: list[dict]) -> Path:

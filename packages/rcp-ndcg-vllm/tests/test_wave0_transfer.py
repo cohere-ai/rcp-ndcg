@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from tests.conftest import sandbox_path
+
 WAVE0_SH = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_vllm" / "jobs" / "wave0.sh"
 JOBS = Path(__file__).resolve().parents[1] / "jobs"
 REPORT_PY = JOBS / "report.py"
@@ -15,9 +17,14 @@ BOOTSTRAP_SH = JOBS / "bootstrap.sh"
 
 PINNED_REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
 
+_SHELL_TOOLS = ("bash", "mkdir", "mktemp", "rm", "date", "wc", "tail")
+"""The system tools wave0.sh and the scripts it calls run up to the bootstrap's expected failure; nothing else
+of the machine is on the test's PATH (a real gcloud there would stand in for the absent one)."""
+
 
 def _fake_tools(tmp_path: Path) -> dict[str, Path]:
-    """A bin dir whose python3 logs its argv and passes everything else through to the real one."""
+    """A bin dir whose python3 logs its argv, simulates the tools install and the gcs.py transfer (no test
+    reaches a bucket), and passes everything else through to the real one."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     log = tmp_path / "calls.log"
@@ -27,6 +34,7 @@ def _fake_tools(tmp_path: Path) -> dict[str, Path]:
         "#!/usr/bin/env bash\n"
         f'printf "%s\\n" "$*" >>"{log}"\n'
         'if [[ "$1" == "-m" && "$2" == "pip" ]]; then exit 0; fi\n'  # the tools install is simulated
+        'if [[ "$1" == */gcs.py ]]; then exit 0; fi\n'  # and so is the transfer: no test reaches a bucket
         f'exec "{real}" "$@"\n',
         encoding="utf-8",
     )
@@ -85,8 +93,9 @@ def test_wave0_without_the_clis_takes_the_python_transfer_path(tmp_path: Path) -
         capture_output=True,
         text=True,
         env={
-            "PATH": f"{tools['bin']}:/usr/bin:/bin",
+            "PATH": sandbox_path(tools["bin"], *_SHELL_TOOLS),
             "HOME": str(tmp_path),
+            "TMPDIR": str(tmp_path),  # the run's work directories land under tmp_path, never /tmp
             "HF_TOKEN": "hf_fake_0123456789abcdef",
             "WAVE0_MIN_SHM_GIB": "0",
             "WAVE0_MIN_FREE_GIB": "0",
