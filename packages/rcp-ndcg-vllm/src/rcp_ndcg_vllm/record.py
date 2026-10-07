@@ -305,16 +305,19 @@ def record_corpus(
     server_run_id: str,
     engine_facts: dict[str, Any] | None = None,
     after_restart_base_url: str | None = None,
+    restart: Any | None = None,
     batch_sizes: tuple[int, ...] = (1, 2, 8, 32),
     timeout_s: float = _TIMEOUT_S,
 ) -> dict[str, Any]:
     """Record one observation corpus for ``recipe`` over the plan's rows (OBSERVATIONS-SPEC 1-3, 5-6).
 
-    Every request is sent **twice in the same server process** and, when ``after_restart_base_url``
-    names the restarted engine, the whole set once more **after the engine restart**; each sampled
-    input travels alone and inside batches of the declared sizes (bf16 kernels can change numbers with
-    batch composition), the rerank candidate set also in reverse order, and every sampled input's
-    ``/tokenize`` reply (ids and count) is recorded as ground truth.  The request/response record is
+    Every request is sent **twice in the same server process** and the whole set once more **after the
+    engine restart** -- ``after_restart_base_url`` names the restarted engine, or ``restart()`` stops
+    and restarts it and returns the URL (the wave's closure; ``None`` records the pass's absence
+    with a note); each sampled input travels alone and inside batches of the declared sizes (bf16
+    kernels can change numbers with batch composition), the rerank candidate set also in reverse
+    order, and every sampled input's ``/tokenize`` reply (ids and count) is recorded as ground truth.
+    The request/response record is
     raw-first (:data:`~rcp_ndcg_vllm.observe.corpus.RECORD_SCHEMA`; the role requests are the product
     role clients', captured at the product's transport seam); the bare probes cover the routes and the
     error bodies (over-length, unknown field, malformed JSON, wrong model name, empty input) with the
@@ -332,12 +335,13 @@ def record_corpus(
         raise HarnessError("record_corpus needs at least one request row")
     tokenizer = tokenizer_of(recipe)
     collected: list[dict[str, Any]] = []
-    passes: list[tuple[str, str]] = [("same_process", base_url), ("same_process", base_url)]
-    if after_restart_base_url:
-        passes.append(("after_restart", after_restart_base_url))
-
+    pass_names: list[str] = []
+    restarted_note = None
     sequence = 0
-    for repetition, url in passes:
+
+    def one_pass(repetition: str, url: str) -> None:
+        """Send the whole set once against ``url`` (rows alone and batched, probes, /tokenize)."""
+        nonlocal sequence
         client, capture = role_client(recipe, url)
         for size in batch_sizes:
             for group_start in range(0, len(rows), size):
@@ -386,6 +390,19 @@ def record_corpus(
                 timeout_s=timeout_s,
             )
         )
+        pass_names.append(repetition)
+
+    # Twice in the same server process, THEN (and only then) the restart and the after-restart pass.
+    one_pass("same_process", base_url)
+    one_pass("same_process", base_url)
+    if after_restart_base_url:
+        one_pass("after_restart", after_restart_base_url)
+    elif restart is not None:
+        restarted_url = restart()
+        if restarted_url:
+            one_pass("after_restart", restarted_url)
+        else:
+            restarted_note = "the engine did not restart in time; the after_restart pass is absent"
 
     nondeterminism = summarise_nondeterminism(collected)
     directory = Path(out_dir)
@@ -400,7 +417,8 @@ def record_corpus(
             "module": "rcp_ndcg_vllm.record.record_corpus",
             "server_run_id": server_run_id,
             "batch_sizes": list(batch_sizes),
-            "repetitions": [rep for rep, _ in passes],
+            "repetitions": pass_names,
+            **({"note": restarted_note} if restarted_note else {}),
         },
     }
     write_corpus(directory, manifest, collected)

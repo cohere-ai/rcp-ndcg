@@ -57,6 +57,8 @@ def run_wave(
     out_dir: str | Path,
     upload: str | None = None,
     record: bool = False,
+    record_corpus: bool = False,
+    changed_since_index: str | Path | None = None,
     pairs_dir: str | Path | None = None,
     reference_python: str | None = None,
     vllm_cmd: str | None = None,
@@ -68,11 +70,20 @@ def run_wave(
     the output directory.  Output: the wave document (also ``wave.json`` and ``WAVE.md`` under ``out_dir``); a
     recipe's own failure is recorded in its status and never raises.  Raises :class:`HarnessError` only for a bad
     wave request: an unknown recipe id or a missing recipe root.
+
+    ``record_corpus`` writes one observation corpus per recipe under ``<out>/<id>/corpus/`` (the request
+    plan's rows twice in one process and once after an engine restart -- the runner stops and restarts
+    the engine between the passes).  ``--changed-since <index>`` re-records only the recipes whose
+    behaviour fingerprint differs from the index (a previous ``wave.json`` or corpus index), listing
+    the rest as ``skipped_unchanged`` (OBSERVATIONS-SPEC section 7).
     """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     _MODEL_SIZES.clear()  # each wave asks the Hub for its models' sizes once
     recipes = _resolve_recipes(recipe_ids, recipes_root)
+    skipped_unchanged: list[str] = []
+    if changed_since_index is not None:
+        recipes, skipped_unchanged = _filter_changed(recipes, Path(changed_since_index))
     results: dict[str, dict[str, Any]] = {}
     used_gpus: set[int] = set()
     pending = list(recipes)
@@ -150,6 +161,7 @@ def run_wave(
                 _finalise(
                     run, results, out, pairs_dir=pairs_dir, record=record, error=error,
                     reference_python=reference_python, reuse=reuse,
+                    record_corpus=record_corpus, vllm_cmd=vllm_cmd, port_base=port_base,
                 )  # fmt: skip
                 running.remove(run)
                 used_gpus.difference_update(run.gpus)
@@ -161,7 +173,7 @@ def run_wave(
             _upload(out, upload)
     if upload is not None:
         _upload(out, upload)
-    document = _wave_document(gpus, results)
+    document = _wave_document(gpus, results, skipped_unchanged=skipped_unchanged)
     (out / "wave.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     (out / "WAVE.md").write_text(_wave_markdown(document), encoding="utf-8")
     return document
@@ -400,16 +412,22 @@ def _finalise(
     *,
     pairs_dir: str | Path | None = None,
     record: bool = False,
+    record_corpus: bool = False,
+    vllm_cmd: str | None = None,
+    port_base: int = 8100,
     error: str | None = None,
     reference_python: str | None = None,
     reuse: bool = False,
 ) -> None:
     """Take one engine to its end state: run the steps, or record the failure, then stop it.
 
-    Unless ``reuse`` (a later recipe in the wave serves the same model), the model's weights are evicted
+    Unless ``reuse`` (a later recipe in this wave serves the same model), the model's weights are evicted
     from the HF cache when the engine has stopped (node-runtime item 8: the pod has no persistent
-    volume), and the disk before/after is recorded with the recipe's status.
+    volume), and the disk before/after is recorded with the recipe's status.  The observation-corpus
+    step restarts the engine between the in-process passes and the after-restart pass (its own
+    ``server_run_id`` per engine run).
     """
+    restarted: list[_EngineRun] = []
     try:
         if error is None and run.port == 0:
             announced = run.announced_port(_ANNOUNCE_TIMEOUT_S)
@@ -426,11 +444,26 @@ def _finalise(
             run.status["steps"]["equivalence"] = _equivalence(run.recipe, base_url, out, pairs_dir, reference_python)
             if record:
                 run.status["steps"]["record"] = _record(run.recipe, base_url, out)
+            if record_corpus:
+                step, fingerprint = _observe_corpus(
+                    run,
+                    out,
+                    pairs_dir,
+                    vllm_cmd=vllm_cmd,
+                    port_base=port_base,
+                    restarted=restarted,
+                )
+                run.status["steps"]["observation_corpus"] = step
+                run.status["behaviour_fingerprint"] = fingerprint
             steps = run.status["steps"]
             record_ok = not record or steps["record"].get("state") == "passed"
+            corpus_ok = not record_corpus or steps["observation_corpus"].get("state") != "failed"
             run.status["state"] = (
                 "verified"
-                if steps["smoke"].get("state") == "passed" and steps["equivalence"].get("passed") and record_ok
+                if steps["smoke"].get("state") == "passed"
+                and steps["equivalence"].get("passed")
+                and record_ok
+                and corpus_ok
                 else "failed"
             )
         else:
@@ -444,6 +477,8 @@ def _finalise(
         serve_state = "failed" if (error is not None or run.status["state"] == "failed") else "passed"
         _mark_serve_step(run, serve_state)
         run.stop()
+        for extra in restarted:
+            extra.stop()
         run.status["disk"] = {**run.disk, **_evict(run.recipe, reuse=reuse)}
         run.status["finished"] = _now()
         _write_status(run)
@@ -524,6 +559,100 @@ def _record(recipe: Recipe, base_url: str, out: Path) -> dict[str, Any]:
     return {"state": "passed", "files": [str(path) for path in written]}
 
 
+def _observe_corpus(
+    run: _EngineRun,
+    out: Path,
+    pairs_dir: str | Path | None,
+    *,
+    vllm_cmd: str | None,
+    port_base: int,
+    restarted: list[_EngineRun],
+) -> tuple[dict[str, Any], str | None]:
+    """One observation corpus for the recipe over the request plan's rows (OBSERVATIONS-SPEC 1-6).
+
+    Returns the step document and the recipe's behaviour fingerprint.  The ``restart`` closure stops
+    the engine and starts it again on the same slot (its port re-resolved in test mode), so the
+    collector sends its ``after_restart`` pass against the restarted server.
+    """
+    from ..equivalence.fitting import load_pairs, tokenizer_of
+    from ..observe.corpus import fingerprint_of
+    from ..record import record_corpus
+
+    recipe = run.recipe
+    fingerprint = fingerprint_of(recipe, tokenizer_sha256=tokenizer_of(recipe).sha256)["fingerprint"]
+    pairs_path = _pairs_path(recipe, pairs_dir)
+    if pairs_path is None:
+        return {"state": "skipped", "reason": "no pairs file; give --pairs-dir"}, fingerprint
+    rows: list[dict[str, Any]] = []
+    for index, row in enumerate(load_pairs(pairs_path)):
+        strata = row.get("_strata") or []
+        rows.append(
+            {
+                **row,
+                "request_id": str(row.get("request_id", index)),
+                "stratum": str(strata[0]) if strata else "",
+            }
+        )
+    slot = max(run.port - port_base, 0) if port_base else 0
+    base_url = f"http://127.0.0.1:{run.port}"
+
+    def restart() -> str | None:
+        run.stop()
+        fresh = _start(recipe, run.gpus, slot, out, vllm_cmd, port_base, disk=run.disk)
+        restarted.append(fresh)
+        deadline = time.monotonic() + run.timeout_s
+        while time.monotonic() < deadline:
+            if fresh.exited():
+                return None
+            if fresh.ready():
+                return f"http://127.0.0.1:{fresh.port}"
+            time.sleep(_POLL_S)
+        return None
+
+    if vllm_cmd:
+        # A stub engine in test mode replaces ``vllm serve``: the corpus names what actually served
+        # (the measured vLLM status table keys on the real engine's version and skivers).
+        engine_facts = {
+            "version": "test-stub",
+            "image": "stub",
+            "note": "a stub engine replaces vllm serve in test mode; no vLLM behaviour is claimed",
+        }
+    else:
+        engine_facts = {
+            "version": recipe.engine.image.rpartition(":")[2].removeprefix("v"),
+            "image": recipe.engine.image,
+        }
+    try:
+        report = record_corpus(
+            recipe,
+            base_url,
+            rows,
+            out / recipe.id / "corpus",
+            server_run_id=f"{recipe.id}@{run.status.get('started', _now())}",
+            engine_facts=engine_facts,
+            restart=restart,
+        )
+    except Exception as error:  # noqa: BLE001 - the corpus step fails this recipe, never the wave
+        return {"state": "failed", "error": f"{type(error).__name__}: {error}"}, fingerprint
+    return {"state": "passed" if report["passed"] else "failed", **report}, fingerprint
+
+
+def _filter_changed(recipes: list[Recipe], index_path: Path) -> tuple[list[Recipe], list[str]]:
+    """OBSERVATIONS-SPEC section 7's re-record-changed-only: keep the recipes whose behaviour
+    fingerprint differs from the previous index's (a ``wave.json`` or a corpus index), and return the
+    untouched ones' ids for the summary."""
+    from ..equivalence.fitting import tokenizer_of
+    from ..observe.corpus import changed_since
+
+    try:
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise HarnessError(f"--changed-since {index_path} is unreadable: {error}") from error
+    verdict = changed_since(recipes, index, tokenizer_sha256_of=lambda recipe: tokenizer_of(recipe).sha256)
+    changed = set(verdict["changed"])
+    return [recipe for recipe in recipes if recipe.id in changed], verdict["unchanged"]
+
+
 def _resolve_recipes(recipe_ids: list[str], recipes_root: str | Path | None) -> list[Recipe]:
     """The wave's recipes: the named ids under the root (every recipe there when the list is empty)."""
     root = Path(recipes_root) if recipes_root is not None else default_recipes_root()
@@ -593,13 +722,18 @@ def _status(recipe: Recipe, state: str, **fields: Any) -> dict[str, Any]:
     return {"recipe": recipe.id, "state": state, "gpus": recipe.resources.gpus, "started": _now(), **fields}
 
 
-def _wave_document(gpus: int, results: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    """The wave summary: one row per recipe, the wave's verdict last."""
+def _wave_document(
+    gpus: int, results: dict[str, dict[str, Any]], *, skipped_unchanged: tuple[str, ...] | list[str] = ()
+) -> dict[str, Any]:
+    """The wave summary: one row per recipe, the behaviour fingerprints, the wave's verdict last."""
     rows = [results[recipe_id] for recipe_id in sorted(results)]
+    fingerprints = {row["recipe"]: row["behaviour_fingerprint"] for row in rows if row.get("behaviour_fingerprint")}
     return {
         "gpus": gpus,
         "recipes": rows,
-        "passed": bool(rows) and all(row["state"] == "verified" for row in rows),
+        "skipped_unchanged": list(skipped_unchanged),
+        "fingerprints": fingerprints,
+        "passed": (bool(rows) or bool(skipped_unchanged)) and all(row["state"] == "verified" for row in rows),
         "finished": _now(),
     }
 
@@ -634,6 +768,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", required=True, help="output directory")
     parser.add_argument("--upload", default=None, help="URI to copy <out> to after each recipe")
     parser.add_argument("--record", action="store_true", help="record the engine request/response set per recipe")
+    parser.add_argument(
+        "--record-corpus",
+        action="store_true",
+        help="write one observation corpus per recipe (the request plan's rows twice in one process and "
+        "once after an engine restart, plus the protocol probes and /tokenize)",
+    )
+    parser.add_argument(
+        "--changed-since",
+        default=None,
+        help="a previous wave.json or corpus index: re-record only the recipes whose behaviour "
+        "fingerprint changed (OBSERVATIONS-SPEC section 7)",
+    )
     parser.add_argument("--pairs-dir", default=None, help="directory with <id>.jsonl (or default.jsonl) pairs files")
     parser.add_argument(
         "--reference-python",
@@ -653,6 +799,8 @@ def main(argv: list[str] | None = None) -> int:
             out_dir=args.out,
             upload=args.upload,
             record=args.record,
+            record_corpus=args.record_corpus,
+            changed_since_index=args.changed_since,
             pairs_dir=args.pairs_dir,
             reference_python=args.reference_python,
             vllm_cmd=args.vllm_cmd,

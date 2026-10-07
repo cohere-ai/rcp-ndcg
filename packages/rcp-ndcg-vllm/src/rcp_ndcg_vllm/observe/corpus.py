@@ -51,6 +51,8 @@ __all__ = [
     "changed_since",
     "corpus_key",
     "expected_status",
+    "fingerprint_of",
+    "fingerprint_changes",
     "load_corpus",
     "subset_for_repository",
     "summarise_nondeterminism",
@@ -140,6 +142,20 @@ def behaviour_fingerprint(
         "client": client,
     }
     return {"fingerprint": hash_payload(inputs), "inputs": inputs}
+
+
+def fingerprint_of(recipe: Recipe, *, tokenizer_sha256: str | None) -> dict[str, Any]:
+    """The recipe's behaviour fingerprint inputs and hash, with its template file's bytes hashed.
+
+    Inputs: the loaded recipe and its tokenizer.json's SHA-256.  Output: the
+    :func:`behaviour_fingerprint` result with ``template_sha256`` resolved from the recipe directory
+    (``serve.chat_template``, ``None`` without one) -- so a changed template file is a changed
+    fingerprint without the caller re-deriving it.
+    """
+    template_sha256 = None
+    if recipe.serve.chat_template is not None and recipe._dir is not None:
+        template_sha256 = hashlib.sha256((Path(recipe._dir) / recipe.serve.chat_template).read_bytes()).hexdigest()
+    return behaviour_fingerprint(recipe, tokenizer_sha256=tokenizer_sha256, template_sha256=template_sha256)
 
 
 def fingerprint_changes(recorded: dict[str, Any], current: dict[str, Any]) -> list[str]:
@@ -575,7 +591,7 @@ def changed_since(
     changed: list[str] = []
     unchanged: list[str] = []
     for recipe in recipes:
-        current = behaviour_fingerprint(recipe, tokenizer_sha256=tokenizer_sha256_of(recipe), template_sha256=None)
+        current = fingerprint_of(recipe, tokenizer_sha256=tokenizer_sha256_of(recipe))
         if recorded.get(recipe.id) == current["fingerprint"]:
             unchanged.append(recipe.id)
         else:
