@@ -1,0 +1,12 @@
+# The reference environment for THIS recipe's reference.py, in ITS OWN python
+# (never the harness's process, never the engine image). Install with the reference
+# python: pip install -r requirements-reference.txt. The wave runner takes it via
+# --reference-python; the reference subprocess runs while the engine on that slot
+# is up and releases its memory when it exits.
+#
+# --mode embed: the model card's Transformers Usage path (transformers AutoModel/AutoTokenizer
+#   for the Qwen3 architecture -- the card's floor is transformers>=4.51 -- plus torch).
+# --mode render: needs only tokenizers + huggingface_hub (the pinned tokenizer file), so stage 1
+#   can run in a slim environment without torch.
+torch>=2.0
+transformers>=4.51

@@ -1,0 +1,99 @@
+"""The vLLM version guard.
+
+The plugin is developed and tested against one vLLM line (``>=0.31,<0.32``,
+the ``vllm/vllm-openai:v0.31.0`` image).  It refuses to register on any other
+version with a message that names the tested range: subclassing
+``ColQwen3_5Model`` and the pooler wiring below are vLLM-internals contracts
+that other releases may break silently, which would corrupt scores rather
+than fail loudly.  The guard runs
+
+- when the entry-point callable executes (engine startup), and
+- when vLLM lazily imports the model module (``rcp_ndcg_vllm_topk.model``),
+
+both without importing vLLM (``importlib.metadata`` reads the installed
+distribution's version).
+
+The stock loader swallows entry-point exceptions with a logged traceback
+(``load_plugins_by_group`` in vllm/plugins/__init__.py) and a lazy model
+import failure becomes a "not supported" error, so the guard's message is
+designed to be readable in both paths' logs.
+"""
+
+from __future__ import annotations
+
+import importlib.metadata
+import re
+
+__all__ = [
+    "TESTED_VLLM_MAX",
+    "TESTED_VLLM_MIN",
+    "ensure_vllm_version",
+    "installed_vllm_version",
+    "parse_vllm_minor_version",
+]
+
+# The tested range, as (major, minor) bounds: [0.31, 0.32).
+TESTED_VLLM_MIN = (0, 31)
+TESTED_VLLM_MAX = (0, 32)
+
+_LEADING_NUMBERS = re.compile(r"\d+")
+
+
+def parse_vllm_minor_version(version: str) -> tuple[int, int] | None:
+    """Return the ``(major, minor)`` prefix of a PEP 440 version string.
+
+    >>> parse_vllm_minor_version("0.31.0")
+    (0, 31)
+    >>> parse_vllm_minor_version("0.31.1rc2")
+    (0, 31)
+    >>> parse_vllm_minor_version("garbage") is None
+    True
+
+    Any pre-release/post/dev suffix after the second number is ignored, so a
+    hypothetical ``0.32.0.dev0`` still counts as 0.32 and is refused.
+    """
+    numbers = _LEADING_NUMBERS.findall(version)
+    if len(numbers) < 2:
+        return None
+    return (int(numbers[0]), int(numbers[1]))
+
+
+def installed_vllm_version() -> str:
+    """Return the installed vLLM distribution's version string.
+
+    Reads importlib.metadata, so this never imports vLLM itself.  Raises
+    ``RuntimeError`` naming the distribution when vLLM is absent.
+    """
+    try:
+        return importlib.metadata.version("vllm")
+    except importlib.metadata.PackageNotFoundError as error:
+        raise RuntimeError(
+            "rcp-ndcg-vllm-topk: no installed vLLM distribution found; the "
+            "plugin registers a model class for the vLLM engine and has "
+            "nothing to register into."
+        ) from error
+
+
+def ensure_vllm_version() -> tuple[int, int]:
+    """Refuse any vLLM outside the tested range ``[0.31, 0.32)``.
+
+    Returns the parsed ``(major, minor)`` of the installed vLLM.  Raises
+    ``RuntimeError`` with the tested range when the version is outside it (or
+    unreadable), because the plugin's internals contracts (registry, model
+    class hierarchy, pooler) are only verified for that line.
+    """
+    version = installed_vllm_version()
+    parsed = parse_vllm_minor_version(version)
+    lo, hi = TESTED_VLLM_MIN, TESTED_VLLM_MAX
+    if parsed is None or not (lo <= parsed < hi):
+        raise RuntimeError(
+            f"rcp-ndcg-vllm-topk: refusing to register TopkEmbedModel on "
+            f"vLLM {version!r}. The plugin is written against "
+            f">={lo[0]}.{lo[1]},<{hi[0]}.{hi[1]} (the vllm/vllm-openai:v0.31.0 "
+            "image) and its vLLM-internals contracts "
+            "(ColQwen3_5Model, pooler_for_token_embed, the is_causal config "
+            "hook) are untested on any other version. Pin the image's vLLM "
+            "to the tested line, or review the plugin against the new "
+            "version and widen the range deliberately."
+        )
+    return parsed

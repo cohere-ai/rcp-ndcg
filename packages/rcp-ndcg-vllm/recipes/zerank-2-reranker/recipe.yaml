@@ -1,0 +1,148 @@
+# Serving recipe: zeroentropy/zerank-2-reranker on stock vLLM v0.31.0, for rcp-ndcg.
+#
+# zeroentropy/zerank-2 and zeroentropy/zerank-2-reranker are ONE repository (the former 307-redirects
+# to the latter; identical file lists, sha 5eae30d5ee3c6b2df2ef6d723bde45172d761c4c). The served score
+# is sigmoid(l_Yes / 5) at the last token, the paper reference ZerankRerank
+# (experiments/paper/rerankers/reference/zerank.py): the "Yes" row of the LM head (tied to embed_tokens,
+# id 9454 = 1_LogitScore/config.json true_token_id) becomes a 1-label score head online (vLLM sets
+# num_labels = len(classifier_from_token) = 1 for method no_post_processing at v0.31.0
+# vllm/config/vllm.py:2802-2804 + models/adapters.py:415-441), one label makes the pooler apply sigmoid
+# (layers/pooler/activations.py:133-140), and logit_sigma=5 divides the logit before it
+# (config/pooler.py, layers/pooler/seqwise/heads.py). The paper's numbers rest on the in-process
+# reference; this recipe serves the same checkpoint so stage 2 can prove them equal.
+#
+# Serve:
+#   vllm serve zeroentropy/zerank-2-reranker --revision 5eae30d5... \
+#     --runner pooling \
+#     --hf-overrides '{"architectures": ["Qwen3ForSequenceClassification"], "classifier_from_token":
+#                      ["Yes"], "method": "no_post_processing"}' \
+#     --pooler-config '{"logit_sigma": 5, "use_activation": true}' \
+#     --chat-template template.jinja \
+#     --max-model-len 8192
+# --chat-template is LOAD-BEARING: without it the score path falls back to raw query+document
+# concatenation and this model gets no warning (R10; only architectures matching the Qwen3-Reranker
+# marker warn). Stage 1 proves the declared pair shape renders byte-identically to this file.
+
+id: zerank-2-reranker
+model: zeroentropy/zerank-2-reranker
+revision: "5eae30d5ee3c6b2df2ef6d723bde45172d761c4c"   # live HF API check 2026-10-06: unchanged
+role: rerank
+input: [text]
+scoring: pointwise
+licence: apache-2.0
+engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0"}
+resources: {gpus: 1}
+serve:
+  runner: pooling
+  convert: null            # auto resolves to `classify` from the ForSequenceClassification suffix;
+                           # passing --convert classify is equivalent
+  hf_overrides:
+    architectures: ["Qwen3ForSequenceClassification"]
+    classifier_from_token: ["Yes"]
+    method: no_post_processing   # score head := the "Yes" LM-head row (id 9454); num_labels:=1 is automatic
+  chat_template: template.jinja
+  pooler_config:
+    logit_sigma: 5         # sigmoid(l_Yes / 5); logit_mean stays None
+    use_activation: true   # pinned SERVER-side as well as on the wire (client.use_activation): the
+                           # engine's activation must run for every caller of the engine
+  trust_remote_code: false
+  max_model_len: 8192      # the paper's truncation budget
+  dtype: bfloat16          # the checkpoint config's dtype
+  plugin: null
+  extra_args: []
+client:
+  api: rerank
+  recipe: "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + classifier_from_token [Yes] + method no_post_processing, --chat-template template.jinja, pooler logit_sigma 5 + use_activation true (sigmoid(l_Yes/5) at the last token, 1-label head)"
+  tokenizer: "zeroentropy/zerank-2-reranker@5eae30d5ee3c6b2df2ef6d723bde45172d761c4c"
+  max_tokens: 8192         # the paper's whole-pair budget (external_rerankers MAX_SEQ_LENGTH)
+  query_max_tokens: 4096   # the query's share of the pair budget (the paper's query cap; the pair
+                           # cap is its MAX_SEQ_LENGTH 8192, both as the paper config declares them,
+                           # experiments/paper/rerankers/zerank_2.yaml). The settle rule, read from the
+                           # merged rerank client (one rule for the family): the pair fit binds on
+                           # overflow; the client settles the shared query ONCE per request, at this
+                           # share whenever the query exceeds it, then each (query, document) pair is
+                           # fitted under the budget. An over-share query ships cut at the share while
+                           # the in-process reference keeps it whole: a declared divergence row (notes)
+  template:
+    pair:
+      - {fixed: "{special:im_start}system\n"}
+      - {content: query}
+      - {fixed: "{special:im_end}\n{special:im_start}user\n"}
+      - {content: document}
+      - {fixed: "{special:im_end}\n{special:im_start}assistant\n"}
+    anchor: last           # the assistant generation prompt: the position the score head reads
+    add_special_tokens: true   # the scoring route adds the post-processor's tokens (a no-op for
+                           # this tokenizer - measured equal, so the overhead is the frame alone)
+    normalize: [strip]     # one rule for the family: the paper's query.strip()/doc.strip() is the
+                           # DECLARED content normalisation (TemplateSpec.normalize), applied by fit
+                           # before measuring and shipped on the wire -- never a jinja trim filter in
+                           # the template file
+  instruction: none        # the family takes no instruction parameter; a dataset "Task:" text, when
+                           # present, is part of the query string
+  on_overflow: cut
+  empty_doc: send
+  empty_query: send        # one rule for the family: the paper's path scores an empty query against
+                           # every candidate as given (the product's post-refusal default is `refuse`)
+  request_shape: text
+  use_activation: true     # the served score is the probability sigmoid(l_Yes / 5); the engine applies
+                           # its activation for the 1-label head, the reference's scale
+reference:
+  kind: transformers
+  score_scale: probability   # sigmoid(l_Yes / 5) in [0, 1]; the model card's raw-logit default differs
+                             # only by the (undone) sigmoid and the same /5
+  entry: reference.py
+  known_deviations: [anchor_drop_over_cap]   # the paper's code truncates the WHOLE rendered prompt from
+                                             # the right at 8192 (at forward time), which drops the
+                                             # assistant header - the anchor - on over-cap pairs; the
+                                             # served path reserves it and cuts the content instead
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources:
+  - "https://huggingface.co/zeroentropy/zerank-2-reranker @ 5eae30d5ee3c6b2df2ef6d723bde45172d761c4c
+    (card, config.json, chat_template.jinja, sentence_bert_config.json, 1_LogitScore/config.json)"
+  - "https://github.com/vllm-project/vllm/tree/v0.31.0 (config/model.py suffix table and head dtype;
+    models/adapters.py as_seq_cls_model/_resolve_num_labels/load_weights_no_post_processing;
+    config/pooler.py logit_mean/logit_sigma; layers/pooler/activations.py, seqwise/heads.py;
+    entrypoints/pooling/scoring/{protocol,io_processor,serving,api_router}.py;
+    renderers/params.py get_encode_kwargs: add_special_tokens=True; registry.py:1286-1312
+    architecture normalization; the score path's five v0.31.0-relevant files are byte-identical to
+    the d0d6e5f ref checkout, four differ by unrelated additions - research report r-zerank2
+    section 1 as corrected by audit-synth's corrections.md r-zerank2 row, which supersedes the
+    report's own section-1 wording for this count)"
+  - "rcp-ndcg: experiments/paper/rerankers/reference/zerank.py (the paper-exact reference: strip + chat
+    template :78-87, the whole-prompt 8192 cap :47, yes-logit/5 :103, expit :132-134);
+    experiments/paper/rerankers/zerank_2.yaml (the served-path config: budgets and instruction: none);
+    research /root/repos/rcp-ndcg-lanes/research/r-zerank2/out/ (report, digest,
+    cpu_check 10 PASS, mutation-tested template)"
+notes: >
+  CPU evidence (research lane r-zerank2): the derived template renders byte-identically through
+  transformers' own apply_chat_template and a hand-rolled environment, token ids match the paper's
+  render with add_special_tokens True==False, truncation at 8192 is identical, the prompt ends with
+  the assistant header, and the paper's strip is the family's declared normalisation (below) (10 PASS,
+  0 failures; the mutation re-gating the generation prompt fails). This recipe declares that template and adds the
+  `messages is defined` guard so the harness's stage-1 template check (which renders the file from
+  the plain request texts) and the engine's score route (which renders it over query/document
+  messages) execute different branches that produce the same prompt: stage 1 asserts the
+  plain-text branch against the declared shape (template_render_check, zero tolerance), the
+  recipe's tests additionally render the engine's messages context with the serving
+  environment's jinja settings and assert byte-identity with it and with the declared shape's
+  render for every sampled row, and stage 2 on the GPU wave exercises the engine branch end to
+  end. The paper's query.strip()/doc.strip() is the declared content normalisation (client.template
+  normalize: [strip]): fit strips the spans before measuring, the wire ships the stripped spans and
+  the reference's spans agree byte for byte on every under-cap row (the r-zerank2 "strip asymmetry" closes as declared
+  policy, one rule for the family). Known served-vs-reference differences, all inherited from the
+  paper's served path and recorded in the research report section 6: (1) the reference truncates
+  only the whole rendered prompt at 8192 (declared known_deviations: anchor_drop_over_cap), the
+  served path cuts the content spans and keeps the anchor; (2) the settle rule (above) settles a
+  query over its 4096-token share served-side while the in-process reference keeps it whole
+  (experiments/paper/rerankers/zerank_2.yaml); over-share queries are declared divergence rows - an
+  over-share query in an UNDER-budget pair is an under-cap row and gates red by design (the
+  reference never ports the client's settle rule), so the wave's pairs files keep queries well
+  within the share and drop any row stage 1 goes red on; (3) the score-head matmul runs in fp32 on
+  the engine (head_dtype default for pooling) and bf16 in the reference - expected well inside the
+  probability gates; (4) reference.py's --mode render writes the paper's own cut as the content
+  spans (the whole-prompt right cut at raw character offsets; under the cap the stripped texts),
+  never the client's cut. template.jinja is the family's file name (formerly
+  zerank2_score_template.jinja). GPU wave must also: run the negative control (serve without --chat-template
+  falls back to raw concatenation with no warning on this model), and check /tokenize agreement
+  (stage 1 does with an engine URL).

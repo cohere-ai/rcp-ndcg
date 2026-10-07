@@ -1,0 +1,10 @@
+{%- if query is defined and document is defined -%}
+{%- set query_text = query -%}
+{%- set document_text = document -%}
+{%- else -%}
+{%- set query_text = messages | selectattr("role", "eq", "query") | map(attribute="content") | first -%}
+{%- set document_text = messages | selectattr("role", "eq", "document") | map(attribute="content") | first -%}
+{%- endif -%}
+Check whether a given document contains information helpful to answer the query.
+<Document> {{ document_text }}
+<Query> {{ query_text }} ??

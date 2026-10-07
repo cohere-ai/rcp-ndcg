@@ -1,0 +1,15 @@
+# The Octen/Octen-Embedding-8B reference environment: what this directory's reference.py needs,
+# in ITS OWN python (never the harness's process, never the engine image). Install with the
+# reference python: pip install -r requirements-reference.txt. The wave runner takes it via
+# --reference-python; the reference subprocess runs while the engine on that slot is up and
+# releases its memory when it exits.
+#
+# torch and transformers: the paper's in-process path (hf_dense.py) loads AutoModel in bfloat16
+# and AutoTokenizer with left padding. transformers>=4.51 is the first line with Qwen3 (the
+# checkpoint is a bare Qwen3Model); the tokenizer-level behaviour was verified on 5.17.0.
+# The reference's render mode needs neither (it builds prompt strings only; its only third-party
+# imports are numpy, lazily in the embed/score paths, and PyYAML, to read the recipe's declared
+# shapes -- both arrive with the torch/transformers install above), so stage 1 on CPU runs with
+# the harness's own python.
+torch>=2.0
+transformers>=4.51

@@ -1,0 +1,22 @@
+# The reference environment for recipes/zerank-1-reranker/reference.py, in ITS OWN python
+# (never the harness's process, never the engine image). Install with the reference python:
+#
+#     python -m venv .venv-ref && .venv-ref/bin/pip install -r requirements-reference.txt
+#
+# The wave runner takes it via --reference-python; the reference subprocess runs while the engine on
+# that slot is up and releases its memory when it exits. It is documented, not installed, by the
+# harness.
+#
+# Stage 1 (--mode render) needs only tokenizers + huggingface_hub (both below; both are
+# transformers' own dependencies -- one convention for the whole zerank family). Stage 2
+# (--mode score) needs torch and the ~8 GB zeroentropy/zerank-1-reranker weights. torch,
+# transformers and scipy are the paper's own versions (the paper-exact reference ran with the
+# package's former [local] extra): torch 2.9.1, transformers 4.57.6. scipy is the paper's expit
+# (sigmoid via math.exp would overflow on very negative logits). The paper file's flash-attn and
+# accelerate pins are deliberately not carried: this reference passes neither attn_implementation
+# nor device_map.
+torch==2.9.1
+transformers==4.57.6
+scipy>=1.11
+tokenizers>=0.21
+huggingface_hub>=0.30

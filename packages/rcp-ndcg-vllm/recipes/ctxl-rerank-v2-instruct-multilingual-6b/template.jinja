@@ -1,0 +1,25 @@
+{#- The score template vLLM serves for ctxl-rerank-v2-instruct-multilingual-6b (recipe.yaml).
+
+    Two render contexts, one output byte string:
+    - the engine (vLLM's /rerank): the template receives `messages` -- exactly two messages,
+      roles "query" and "document";
+    - the CPU equivalence harness: it renders this file with flat `query` / `document` kwargs, so
+      the flat branch mirrors the engine's render for the same texts.
+
+    No BOS line: this checkpoint's tokenizer post-processor already prepends <s> (id 1) to the
+    rendered prompt under vLLM's fixed add_special_tokens=True; the vendor template's bos_token
+    line would emit it twice (measured ids [1, 1, ...] vs the reference's [1, ...]).
+
+    No instruction: the family declares instruction: none (the paper's mode). The vendor template's
+    inline " {instruction}" slot is dropped, as in the 1b and 2b templates -- an instruction kwarg
+    or a system message never reaches the prompt. -#}
+{%- if query is defined and document is defined -%}
+{%- set query_text = query -%}
+{%- set document_text = document -%}
+{%- else -%}
+{%- set query_text = messages | selectattr("role", "eq", "query") | map(attribute="content") | first -%}
+{%- set document_text = messages | selectattr("role", "eq", "document") | map(attribute="content") | first -%}
+{%- endif -%}
+Check whether a given document contains information helpful to answer the query.
+<Document> {{ document_text }}
+<Query> {{ query_text }} ??

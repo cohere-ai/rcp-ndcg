@@ -947,7 +947,7 @@
     },
     "ReferenceSpec": {
       "additionalProperties": false,
-      "description": "The reference implementation the equivalence harness runs as a subprocess.\n\nAttributes:\n    kind: Where the reference comes from: ``transformers`` (an HF checkpoint run in the reference\n        environment), ``sentence_transformers`` (a sentence-transformers checkpoint), ``remote_code`` (the\n        checkpoint's trusted code) or ``stored_scores`` (scores stored with the paper's runs).\n    score_scale: The scale the reference's scores come back on, which selects the stage-2 gates:\n        ``probability``, ``logit`` or ``cosine``.  Embedding recipes always compare vectors (cosine per\n        vector or per token).\n    entry: The reference module file in the recipe directory; the harness runs it as\n        ``<reference-python> <recipe-dir>/<entry> --mode <mode> --pairs <file> --out <file>`` (see\n        :mod:`rcp_ndcg_vllm.equivalence.reference` for the modes).  Not needed for ``stored_scores``.\n    known_deviations: Deliberate reference deviations the paper code carries (e.g. a whole-prompt right\n        cut that drops tail anchors on over-cap pairs); stage 2 gates only pairs under the cap and reports\n        the rest in a separate, non-gating table.",
+      "description": "The reference implementation the equivalence harness runs as a subprocess.\n\nAttributes:\n    kind: Where the reference comes from: ``transformers`` (an HF checkpoint run in the reference\n        environment), ``sentence_transformers`` (a sentence-transformers checkpoint), ``remote_code`` (the\n        checkpoint's trusted code) or ``stored_scores`` (scores stored with the paper's runs).\n    score_scale: The scale the reference's scores come back on, which selects the stage-2 gates:\n        ``probability``, ``logit`` or ``cosine``.  Embedding recipes always compare vectors (cosine per\n        vector or per token).\n    entry: The reference module file in the recipe directory; the harness runs it as\n        ``<reference-python> <recipe-dir>/<entry> --mode <mode> --pairs <file> --out <file>`` (see\n        :mod:`rcp_ndcg_vllm.equivalence.reference` for the modes).  Not needed for ``stored_scores``.\n    known_deviations: Deliberate reference deviations on over-cap inputs: ``anchor_drop_over_cap`` (the\n        reference's whole-prompt right cut drops tail anchors) or ``over_cap_cut_differs`` (the reference keeps\n        the anchors but cuts the content its own way, e.g. a joint ``longest_first`` truncation where the\n        client settles the query at its share). Either way the harness gates only the inputs under the cap\n        and reports the client's over-cap cuts in a separate, non-gating table; the reference stays the\n        paper's or the model card's -- it never copies the client's cut to make an over-cap row pass.",
       "properties": {
         "kind": {
           "enum": [
@@ -976,7 +976,10 @@
         },
         "known_deviations": {
           "items": {
-            "const": "anchor_drop_over_cap",
+            "enum": [
+              "anchor_drop_over_cap",
+              "over_cap_cut_differs"
+            ],
             "type": "string"
           },
           "title": "Known Deviations",

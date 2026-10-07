@@ -1,0 +1,12 @@
+# The reference environment for recipes/qwen3-vl-embedding-2b/reference.py, in ITS OWN python
+# (--reference-python; never the harness's process, never the engine image's). Install with:
+#   pip install -r recipes/qwen3-vl-embedding-2b/requirements-reference.txt
+# The embed mode runs the model card's scripts/qwen3_vl_embedding.py (vendored beside reference.py as
+# qwen3_vl_embedding.py, hash-pinned): its own import list is the floor here.
+torch>=2.8              # the card pins torch==2.8.0
+transformers>=4.57      # the card imports transformers.models.qwen3_vl (Qwen3VL)
+qwen-vl-utils>=0.0.14   # the card's vision preprocessing (process_vision_info, smart_resize bounds)
+huggingface_hub         # snapshot_download pins the checkpoint at the recipe's revision
+pyyaml                  # reference.py reads this recipe's client block
+tokenizers              # the render mode's tokenizer (also a transformers dependency)
+numpy

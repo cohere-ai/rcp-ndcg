@@ -1,0 +1,244 @@
+id: qwen3-vl-reranker-2b
+model: Qwen/Qwen3-VL-Reranker-2B
+revision: "4bd860ac4f15ad1897a214615cccc700f8f71818"
+role: rerank
+input: [text, image]
+scoring: pointwise
+licence: apache-2.0
+engine:
+  name: vllm
+  image: "vllm/vllm-openai:v0.31.0"
+  min_version: "0.31.0"        # the image actually verified (the family convention)
+resources: {gpus: 1}
+serve:
+  runner: pooling
+  convert: null            # not needed: the ForSequenceClassification suffix resolves to
+                           # native Qwen3VLForConditionalGeneration wrapped by as_seq_cls_model
+                           # (pooling/classify); config/model.py:2279 at the v0.31.0 tag
+  hf_overrides:
+    architectures: ["Qwen3VLForSequenceClassification"]
+    classifier_from_token: ["no", "yes"]   # quoted: YAML reads a bare no as false. Order is
+                                           # load-bearing: tokens[0]=no(false), tokens[1]=yes(true)
+                                           # -> score head W[yes]-W[no] (adapters.py:566-571)
+    is_original_qwen3_reranker: true       # sets method from_2_way_softmax, num_labels=1
+                                           # (model_executor/models/config.py:793-816, :1058;
+                                           # adapters.py:436-437)
+  chat_template: template.jinja
+  pooler_config: {use_activation: true}    # the sigmoid default pinned as CONTENT on the server too
+                                           # (v0.31.0 config/pooler.py:60; the engine falls back to the
+                                           # pooler default, pooling_params.py:111-125): client.use_activation: true
+                                           # is the wire field, this covers any caller that does not
+                                           # send it. No other pooler field: the
+                                           # defaults are LAST pooling + the sigmoid, pinned above
+  trust_remote_code: false # no auto_map, no model .py in the repo; the card sets it defensively
+  max_model_len: 32768     # model card context length; config.json allows 262144
+  dtype: bfloat16          # config.json dtype
+  plugin: null             # native vLLM class + the conversion covers scoring; no plugin
+  mm_processor_kwargs: {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1310720}}   # the reference's numbers (the pixel pin); 1280 tokens/image at max_pixels. ONE shape across the media recipes -- nested images_kwargs, decided from the v0.31.0 tag source: the nested dict reaches the HF processor's images_kwargs and the vLLM-side image token budget (context.py:44-84, :293-331; qwen3_vl.py:939-985), while flat keys also re-size every video clip (qwen3_vl.py:1371-1382)
+  limit_mm_per_prompt: {"image": 1}        # one media item per request (client.max_images carries the
+                                           # same number): never the engine's multi-item hoist
+  extra_args: []           # the wave runner passes --served-model-name <recipe id>; the client's
+                           # model field is the same id, so name validation passes
+client:
+  api: rerank
+  request_shape: text
+  recipe: "vllm v0.31.0 pooling/classify: Qwen3VLForSequenceClassification via as_seq_cls_model;
+    hf_overrides {architectures, classifier_from_token [no, yes], is_original_qwen3_reranker};
+    served chat template template.jinja; LAST pooling with use_activation true pinned server-side
+    and sent on the wire; mm_processor_kwargs nested images_kwargs min_pixels 4096 / max_pixels
+    1310720 (the one pixel-pin shape); one media item per request (limit_mm_per_prompt image=1 =
+    max_images 1)"
+  tokenizer: "Qwen/Qwen3-VL-Reranker-2B@4bd860ac4f15ad1897a214615cccc700f8f71818"
+  max_tokens: 8192         # the model's whole input as the engine sees it (rendered template,
+                           # instruction, query and document together), cut client-side BEFORE
+                           # sending: the engine's truncate_prompt_tokens right-cuts the composed
+                           # prompt and loses the assistant tail (measured on CPU)
+  query_max_tokens: 4096   # the query's share of the pair budget, settled by the rerank client:
+                           # the pair fit binds on overflow, and the client settles the query at
+                           # its share whenever it exceeds it (it then ships at 4096 even when
+                           # the pair fits), where the card keeps the query whole: the cuts
+                           # differ. The harness gates such a row today (notes, "Budgets"), so
+                           # the pairs files keep queries within the share. The 4096 is the served
+                           # reranker's query cap (MAX_QUERY_LENGTH at the pre-unification
+                           # retrieval tree); the reference caps the whole pair, not the query
+                           # alone, but a declared share stops an over-long query from eating the
+                           # document's budget
+  max_images: 1            # the same number as serve.limit_mm_per_prompt: one media item per
+                           # request (an image on the query side or on one document side, never
+                           # two -- the engine's multi-item guard is never crossed). Image
+                           # queries and image documents cannot combine in one request; the
+                           # notes' data discipline matches
+  image_policy: {min_px: 4096, max_px: 1310720}   # the pixel pin's client half: the same numbers as
+                           # serve.mm_processor_kwargs. No image_processor: the product's qwen3_vl
+                           # geometry refuses a budget below its stock floor (65536 px), so the
+                           # client cannot count an image under this budget -- an image-bearing
+                           # request is refused loudly (a typed ConfigError) until the product
+                           # accepts a pinned budget (notes, "Media policy")
+  template:
+    pair:
+      - {fixed: "{special:im_start}system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \"yes\" or \"no\".{special:im_end}\n{special:im_start}user\n<Instruct>: Given a search query, retrieve relevant candidates that answer the query.<Query>:"}
+      - {content: query}
+      - {fixed: "\n<Document>:"}
+      - {content: document}
+      - {fixed: "{special:im_end}\n{special:im_start}assistant\n"}
+    anchor: last            # the model scores at the last position: the assistant tail is the
+                            # anchor every cut must keep (the card's script re-appends the last
+                            # 5 ids for exactly this reason)
+    add_special_tokens: true  # the scoring route tokenizes the rendered prompt with
+                              # add_special_tokens=true (protocol build_tok_params); the Qwen
+                              # post-processor appends nothing (measured), so ids are unchanged
+  instruction: none        # the endpoint never sends an instruction field: the engine's template
+                           # falls back to the card's default instruction, which is pinned as the
+                           # fixed frame text above, so the declared render matches the engine for
+                           # every request the client sends. A run-level instruction is dropped by
+                           # declared policy; a different instruction means a new template file
+                           # and a new recipe. instruction: field would leave the declared render
+                           # with an empty span where the engine substitutes the default, and
+                           # instruction: fold renders Task:/Query: inside <Query>: -- a
+                           # structurally wrong prompt for this model (measured: field vs fold).
+  use_activation: true     # sigmoid probability, matching reference.score_scale: probability
+                           # (PoolerClassify num_labels<2 -> F.sigmoid,
+                           # activations.py:118-141; per-request use_activation=false would ask
+                           # for the raw (W_yes-W_no).h_last logit instead)
+  on_overflow: cut
+  empty_doc: send_text     # the card's script sends the literal text "NULL" for an empty side
+  empty_doc_text: "NULL"   # (format_mm_instruction); the rerank client applies the policy before
+                           # shipping (the wired empty_doc consumer), so the served render of an
+                           # empty side is the card's "NULL", never a bare '<Document>:'
+reference:
+  kind: transformers       # the card's scripts/qwen3_vl_reranker.py is the serving referent;
+                           # NOT the sentence-transformers referent (1_*/ modules.json declares
+                           # Identity activation = raw logits and a different default prompt)
+  score_scale: probability # sigmoid(W_yes - W_no . h_last), fp32 head
+  entry: reference.py
+  known_deviations: [over_cap_cut_differs]  # the card's script truncates over-cap pairs itself
+                                            # (keep every special token and the first
+                                            # (8192 - specials) non-special tokens of all but the
+                                            # last 5 ids, re-append those 5): the assistant tail
+                                            # (the anchor) and every special token survive, the
+                                            # kept content differs from the client's settle-once
+                                            # cut. One exception, in the notes ("Budgets"): a cut
+                                            # inside the query also drops the fixed
+                                            # "\n<Document>:" text. reference.py renders the
+                                            # card's cut
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources:
+  - "https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B @ 4bd860ac4f15ad1897a214615cccc700f8f71818
+     (README.md, config.json, preprocessor_config.json, chat_template.jinja,
+     additional_chat_templates/reranker.jinja, scripts/qwen3_vl_reranker.py,
+     1_LogitScore/config.json)"
+  - "https://huggingface.co/api/models/Qwen/Qwen3-VL-Reranker-2B (sha re-checked at recipe time:
+     4bd860ac4f15ad1897a214615cccc700f8f71818)"
+  - "https://github.com/vllm-project/vllm/blob/v0.31.0/examples/pooling/score/template/qwen3_vl_reranker.jinja
+     (the served template; this recipe's copy rewrites the two expression blocks to the
+     query/document variable convention with a messages fallback, byte-equal under the engine's
+     render)"
+  - "vllm v0.31.0 vllm/renderers/hf.py:778 safe_apply_chat_template (its ChatTemplateResolutionError raise at :795); vllm/entrypoints/pooling/
+     scoring/protocol.py:38-66 (the /rerank instruction field merged into chat_template_kwargs);
+     scoring/io_processor.py:605 get_score_prompt, :690-707 the chat-template render with
+     messages [{role: query}, {role: document}] (the template's messages fallback) and the
+     ChatTemplateResolutionError fallback to the un-templated pair encode"
+  - "vllm v0.31.0 model_executor/models/config.py:793-816 and :1058 (is_original_qwen3_reranker -> method
+     from_2_way_softmax + classifier_from_token); model_executor/models/adapters.py:436-437
+     (num_labels=1) and :516-571 load_weights_using_from_2_way_softmax with the fp32 head
+     W[true] - W[false] at :566-571; vllm/config/model.py:2279 (the ForSequenceClassification
+     suffix -> pooling/classify); model_executor/layers/pooler/activations.py:118-141
+     (PoolerClassify, num_labels<2 -> sigmoid); model_executor/models/interfaces_base.py:160
+     (default LAST pooling); vllm/config/pooler.py:60 (use_activation) and
+     pooling_params.py:111-125 (_merge_default_parameters: a request that sends none takes the pooler config's)"
+  - "the pixel-pin shape (the full chain is cited once, in qwen3-vl-embedding-2b's sources): vllm v0.31.0
+     vllm/multimodal/processing/context.py:44-84 (the image-only overlay of a nested images_kwargs
+     dict), :293-331 (no overlay at processor construction and HF __call__: the nested dict reaches
+     the HF processor); vllm/model_executor/models/qwen3_vl.py:939-985 (the vLLM-side image token
+     budget reads through the overlay) and :1371-1382 (flat min_pixels/max_pixels re-size every
+     video clip); transformers 5.17.0 processing_utils.py:1513-1630 (_merge_kwargs routes the
+     nested dict to images_kwargs only) and models/qwen2_vl/image_processing_qwen2_vl.py:120-129
+     (min_pixels + max_pixels become the resize size)"
+  - "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed
+     tokens a model reads its output from)"
+notes: |
+  Pointwise cross-encoder scored at the last position: served score = sigmoid((W_yes - W_no)
+  . h_last) with an fp32 head; yes=9693, no=2152 (the snapshot vocab, equal to the repo's
+  1_LogitScore/config.json; matches classifier_from_token ["no", "yes"] order). The recipe
+  targets the card's transformers-script referent (sigmoid, default instruction "Given a search
+  query, retrieve relevant candidates that answer the query."), not the sentence-transformers
+  referent (config_sentence_transformers.json declares Identity activation = raw logits and a
+  different default prompt).
+
+  Instruction policy (declared): the client never sends the /rerank instruction field
+  (instruction: none) and the engine's template default -- the card's default instruction --
+  is pinned as fixed frame text in the template. The declared render therefore matches the
+  engine for every request the client sends. A run that needs a different instruction must ship
+  a new template file and a new recipe (a changed frame is a new judgement family and never
+  pools with this one).
+
+  Served template (template.jinja): vLLM v0.31.0's qwen3_vl_reranker.jinja with its two
+  expression blocks rewritten to the recipe variable convention (query, document, instruction)
+  and a messages fallback, so the file renders byte-identically both the way the harness's
+  stage-1 template check calls it and the way the engine calls it (messages + the instruction
+  chat-template kwarg; verified equal against the untouched upstream file). The file must
+  ship with the recipe -- without --chat-template the engine logs a startup warning
+  (is_original_qwen3_reranker is set) and falls back to un-templated pair encoding; the
+  per-request ChatTemplateResolutionError path degrades scores silently.
+
+  Media policy (the pixel pin, both halves). Serve: serve.mm_processor_kwargs pins min_pixels 4096 /
+  max_pixels 1310720 under the nested images_kwargs scope -- ONE shape across the media
+  recipes, decided from the v0.31.0 tag source (the nested dict reaches the HF processor's
+  images_kwargs and the vLLM-side image token budget; the flat form also re-sizes every video
+  clip): the reference script's own numbers, so the engine and the reference resize identically
+  by construction (the repo's preprocessor default min_pixels 4095 can tip one image token for
+  thin strips). Image-token budget: 1280 tokens/image at max_pixels (px/1024 after the 2x2
+  merge). Capacity: one media item per request (serve.limit_mm_per_prompt image=1;
+  client.max_images 1 carries the same number) -- an image on the query side or on one
+  document side, never two in one request, so the engine's multi-item guard is never crossed
+  (a side carrying text plus >= 2 images bypasses it: the engine hoists placeholders to the
+  front of the side and joins the texts with a newline, which the reference cannot express;
+  declared, unmeasured). Client half: client.image_policy declares the same pixel
+  numbers, but the product cannot apply them yet -- its qwen3_vl geometry refuses any budget
+  below the stock floor (65536 px) even when serve pins the engine to the very same budget
+  (rcp_ndcg.data.resolution _budget_problem), so no image_processor is declared and the client
+  cannot count an image here: the rerank wire refuses an image-bearing request with a typed
+  ConfigError before sending, never a silent default (a product change, requested). Image
+  grid expansion counts need the GPU wave's engine /tokenize probe (the probe-image check).
+
+  Video: out of scope (input: [text, image]). A sibling recipe declaring video follows the one
+  video-policy decision (qwen3-vl-embedding-2b: 64 uniformly spaced frames per clip, the
+  container sent as video_url with the engine pinned via --media-io-kwargs); this reference
+  refuses video-bearing rows loudly rather than sampling them at any default.
+
+  Empty sides: the recipe pins empty_doc send_text with the card's own "NULL" placeholder
+  (empty_doc_text "NULL") as the declared policy; the wired rerank client applies
+  empty_doc/empty_doc_text before shipping, so the served render of an empty side is the card's
+  "NULL" like the reference's (a bare '<Document>:' side was measured to diverge).
+  An empty QUERY is refused by the product's empty_query: refuse default (the typed DataError
+  names the query id); this recipe keeps that default -- an empty query is a data error
+  upstream, never a silent default.
+
+  Budgets: the pair fit binds on overflow and the rerank client settles the query at
+  query_max_tokens (4096) whenever the query exceeds its share, even when the pair fits. The
+  card cuts its own way: it keeps every special token and the first 8192 - specials non-special
+  tokens of all but the last 5 ids, then re-appends those 5 (the assistant tail) -- so it keeps
+  the anchor, keeps an over-share query whole, and admits up to 8197 tokens; reference.py
+  renders that cut and never the client's. Hence over_cap_cut_differs: the anchor kept, the
+  content cut differently. The exception, precisely: when the query alone fills the card's body
+  (about 8100 query tokens or more), the card's cut lands inside the query, and the non-special
+  fixed text after it -- "\n<Document>:" -- is dropped together with the whole document, while
+  every special token and the assistant tail stay. No anchor is lost (the frame text is not the
+  model's read-out position), so the label stays, with this exception declared here; the client
+  never ships such a pair (its query settles at 4096).
+
+  What the harness does today: it treats a pair as over cap only when a cut's own content
+  tokens (query plus document text, no frame) exceed client.max_tokens (8192). Such pairs are
+  reported in the non-gating table under the declared deviation. Every other cut pair is gated:
+  an over-share query (over 4096 tokens) in a pair whose content is under 8192, and a pair that
+  overflows only with the 66-token frame (content between 8127 and 8192 tokens) -- the card's cut
+  differs there, so those rows fail. The wave's pairs files must keep queries within the
+  4096-token share and pairs within 8126 content tokens.
+
+  Stage 1 on CPU proves: the declared pair shape renders byte-identically to the served
+  template file (and hence to the card's reference prompt), the anchors survive every
+  over-length cut, and on the pairs rows the client's spans equal the card's (the reference
+  subprocess's render, the card's own cut). The GPU wave
+  (stages 2-3) must still check: score-level equivalence against the ~4.0 GB weights, the
+  engine's /tokenize agreement, the template mount (T0), and image-expansion token counts.
