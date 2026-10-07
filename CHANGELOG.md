@@ -25,6 +25,16 @@ released together.
 
 ### Public surface
 
+- **The media gate's fix round**: the recorder records a media side the role client refuses as a
+  `client_refusal` record (`rcp_ndcg_vllm.record.refusal_exchange`; no status, nothing sent), so a refusal never
+  ends a corpus step and loses its text rows (topk-embed-v1-small's image documents); the checkpoint's own files
+  come through one reader (`rcp_ndcg_vllm.equivalence.checkpoint.checkpoint_file`, `checkpoint_pixel_budget`),
+  where only an absent file falls through to the next source and any other read failure is unresolved; the
+  media stage names a side the reference refuses (`reference_refused`, which the generator prunes) before a side
+  the client did not send, and an image whose tokens either side left uncounted fails; the generator's media rows
+  are `observe.media_set.planned_media_rows` (renamed from `media_rows`, which stays the pairs-file reader in
+  `equivalence.media`). The test stub resizes with the product's own `smart_resize`, so on CPU only the
+  reference comparison can catch a product resize bug.
 - **Recipe follow-ups**: `qwen3-vl-embedding-2b` moves to the `messages` route with `add_generation_prompt: true`
   and the pinned `qwen3_vl` image policy (images and video now travel; its notes say so); `qwen3-vl-reranker-2b`
   declares the same pinned `qwen3_vl` image policy (its images were refused) and its reference reads a
