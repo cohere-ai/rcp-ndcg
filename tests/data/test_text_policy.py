@@ -43,6 +43,12 @@ class TestPolicyVocabulary:
         assert TextPolicy(on_overflow="fail").max_tokens == DEFAULT_MAX_TOKENS
         assert TextPolicy(on_overflow="truncate", max_tokens=1234).max_tokens == 1234
 
+    def test_the_default_cap_is_pinned(self) -> None:
+        """The cap is identity-bearing (it enters the preprocessing digest), so its default is pinned as a
+        literal: 2**15 tokens, the 0.0.1 default for a policy that does not declare one."""
+        assert DEFAULT_MAX_TOKENS == 32768
+        assert TextPolicy(on_overflow="truncate").max_tokens == 32768
+
     def test_unknown_mode_is_refused(self) -> None:
         with pytest.raises(ValidationError, match="chunky"):
             TextPolicy(on_overflow="chunky")  # type: ignore[arg-type]

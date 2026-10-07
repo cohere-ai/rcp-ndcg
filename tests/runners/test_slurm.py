@@ -142,6 +142,22 @@ def test_status_maps_scheduler_states(monkeypatch, squeue: str, sacct: str, expe
     assert SlurmRunner().status("101") is expected
 
 
+def test_a_failing_squeue_falls_through_to_sacct(monkeypatch) -> None:
+    """Standard Slurm answers a finished job's ``squeue`` with exit 1 ("Invalid job id specified"); the sacct
+    fallback exists for exactly that, so a non-zero squeue is 'not in queue', not an error."""
+    calls: list[list[str]] = []
+
+    def fake(argv, input_text=None):
+        calls.append(list(argv))
+        if argv[0] == "squeue":
+            raise RunnerError("`squeue -h -o %i %T -j 101` exited 1: slurm_load_jobs error: Invalid job id specified")
+        return "101|COMPLETED\n"
+
+    monkeypatch.setattr("rcp_ndcg.runners.slurm.run_cli", fake)
+    assert SlurmRunner().status("101") is JobStatus.COMPLETED
+    assert [argv[0] for argv in calls] == ["squeue", "sacct"]
+
+
 def test_logs_and_cancel(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / "exp-judge-101.out").write_text("zero\none\n")
     runner = SlurmRunner(log_dir=str(tmp_path))

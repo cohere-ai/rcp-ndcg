@@ -17,8 +17,17 @@ import pytest
 from tests.docs._markdown import ROOT
 
 EXAMPLES = sorted((ROOT / "examples").glob("[0-9][0-9]_*.py"))
-NETWORK = {"01_score_released_suite.py", "07_mteb.py"}
-PUBLIC = {"rcp_ndcg", "rcp_ndcg.examples", "rcp_ndcg.testing", "rcp_ndcg.eval.mteb", "mteb"}
+NETWORK = {"01_score_released_suite.py", "07_mteb.py", "09_serve_recipe_score.py"}
+PUBLIC = {
+    "mteb",
+    "rcp_ndcg",
+    "rcp_ndcg.examples",
+    "rcp_ndcg.eval.mteb",
+    "rcp_ndcg.retrieval",
+    "rcp_ndcg.testing",
+    "rcp_ndcg_vllm",
+    "rcp_ndcg_vllm.recipe",
+}
 
 
 def _run(example: Path, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -28,7 +37,7 @@ def _run(example: Path, cwd: Path) -> subprocess.CompletedProcess[str]:
 
 
 def test_the_example_set_is_complete() -> None:
-    assert [p.name[:2] for p in EXAMPLES] == ["01", "02", "03", "04", "05", "06", "07"]
+    assert [p.name[:2] for p in EXAMPLES] == ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
     from rcp_ndcg.examples import run_config_names, tiny
 
     assert run_config_names() == ["nano_nfcorpus_gpt5", "rejudge_nfcorpus", "tiny"]
@@ -45,7 +54,8 @@ def test_examples_are_short_and_use_only_the_public_surface(example: Path) -> No
             imported |= {alias.name for alias in node.names}
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module)
-    ours = {name for name in imported if name.split(".")[0] in {"rcp_ndcg", "rcp_ndcg_core", "mteb"}}
+    prefixes = {"rcp_ndcg", "rcp_ndcg_core", "rcp_ndcg_vllm", "mteb"}
+    ours = {name for name in imported if name.split(".")[0] in prefixes}
     assert ours <= PUBLIC
     assert all(name.split(".")[0] in sys.stdlib_module_names for name in imported - ours)
 
@@ -64,6 +74,8 @@ def test_network_examples_run(example: Path, tmp_path: Path, monkeypatch: pytest
     pytest.importorskip("huggingface_hub")
     if example.name == "07_mteb.py":
         pytest.importorskip("mteb")
+    if example.name == "09_serve_recipe_score.py":
+        pytest.importorskip("rcp_ndcg_vllm")
     monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
     monkeypatch.delenv("HF_HUB_CACHE", raising=False)
     result = _run(example, tmp_path)

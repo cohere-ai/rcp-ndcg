@@ -13,7 +13,7 @@ outside its stated tolerance.
 From the repository root:
 
 ```bash
-pip install -e .                                  # or: uv sync
+pip install ./packages/rcp-ndcg-core .           # or: uv sync
 pip install -r experiments/requirements.txt      # huggingface-hub, pyarrow
 python experiments/fetch_data.py                 # about 150 MB into experiments/data/
 python experiments/run_all.py                    # all checks, about one minute on a laptop
@@ -39,7 +39,7 @@ come from the library: `rcp_ndcg_core.protocol` and `rcp_ndcg_core.metric`.
 
 ### Known deviations
 
-The scripts accept two documented differences, each with its own bound:
+The scripts accept two documented differences, each with its own bound and its exact population of cells:
 
 - **NanoBEIR, RCP-nDCG@10: 10 of the 182 dataset cells.** The hub's NanoBEIR gains come from a calibration fit that differs
   slightly from the one behind the paper's table (gains differ by at most 0.0065). Ten cells (FEVER 5, Quora 2,
@@ -50,6 +50,9 @@ The scripts accept two documented differences, each with its own bound:
   differ on 27 of 58 queries. The hub keeps the `xlangai/BRIGHT@a75a0eb4` qrels that mteb's `BrightRetrieval`
   uses. Of the 14 cells, 13 differ by up to 2.5 points, and 12 of the 14 qrel means by up to 0.21 points. RCP-nDCG
   is unaffected: all its BRIGHT cells, TheoremQA included, reproduce per query.
+
+Both populations are enforced, not just described: the checks fail a run in which more cells deviate than
+documented -- or fewer, which would mean this page is stale. No other cell of any table may deviate at all.
 
 ## What is not reproduced here
 

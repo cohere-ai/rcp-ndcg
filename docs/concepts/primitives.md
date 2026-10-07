@@ -38,7 +38,7 @@ rcp-ndcg calibration insert --calibration <calibration> --judgements <store> --o
 rcp-ndcg calibration fit --judgements <store> --judgements <second-store> --judges pooled --out <calibration>
 ```
 
-In the second recipe, `calibration insert --dry-run` picks `--n` opponents across the query's ability range and
+In the second procedure, `calibration insert --dry-run` picks `--n` opponents across the query's ability range and
 splits them into windows of the store's `schedule.window` (read from its `identity.json`), each holding the new
 document; `--out` writes the plan, and `data.plan.calls` says how many judge calls it takes (each window twice
 when the schedule mirrors). `judge tournament --plan` asks exactly those windows, with the store's schedule and
@@ -169,7 +169,8 @@ is a new, complete calibration that `save` writes like any other
 | `coverage.json`, `diagnostics.json`, `identity.json` | as the calibration's |
 
 Scoring recomputes no row of the calibration, so nothing already in it can move. An
-insertion carries an **anchor report**: the calibration's own tournament windows are
+insertion carries an **anchor report** -- the *insertion anchor report*, distinct from the template anchors of the
+[text budgets](text-budgets.md): the calibration's own tournament windows are
 refitted, and every document of the calibration is compared with its published ability,
 in theta and in gain. The call fails if any gain moved more than `max_gain_shift` (0.01
 by default), because then the windows passed are not the ones the calibration was

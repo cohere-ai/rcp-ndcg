@@ -16,7 +16,12 @@ uv run pytest tests/docs                         # Markdown links, navigation, a
 
 On Linux the lock resolves torch with its CUDA wheels. CI, like a CPU-only machine, skips them and installs the CPU
 build instead, then runs every command with `uv run --no-sync` (see `.github/workflows/ci.yml`). CI needs no
-secrets. Run the narrowest test first, then the whole suite before you finish.
+secrets. Run the narrowest test first, then the whole suite before you finish. The tests that gate on `[data]`,
+`[mteb]` or the `mcp` SDK (the pdf and hf readers, the transformers parity check, the MCP SDK round trip) skip in a
+bare `dev` environment; CI's `gated` job installs their extras and runs the whole tree with every gate open.
+
+`uv run pytest tests/conformance` is not a root command: the conformance suite lives in `rcp-ndcg-test` and
+runs per that package's README.
 
 ## Layout and layering
 
@@ -42,7 +47,11 @@ Before adding a helper, `git grep` for an existing one. A second implementation 
 | Calibration (with or without the tournament, pooled judges), scoring and insertion of documents | `rcp_ndcg.calibration` over `rcp_ndcg_core.irt` |
 | Judging: the client, the schedules, the judgement store, cost estimates | `rcp_ndcg.llm` |
 | Prompts (tournament, rubric, vision and video variants) | `src/rcp_ndcg/llm/prompts/`, loaded by name |
-| Text, image and video preprocessing, caps and chunking | `rcp_ndcg.data.preprocess` (text), `rcp_ndcg.data.resolution` (image and video policies), `rcp_ndcg.data.prepare` (media sent to a judge) |
+| Text, image and video preprocessing, caps and chunking | `rcp_ndcg.data.preprocess` (text), `rcp_ndcg.data.resolution` (image and video policies), `rcp_ndcg.data.prepare` (media sent to a judge), `rcp_ndcg.data.templates` |
+| Judge/role text budgets, templates and their cut policy | `rcp_ndcg.data.preprocess`, `rcp_ndcg.data.templates` |
+| Serving recipes, the recipe schema, `serve` | `rcp_ndcg_vllm` |
+| Model plugins for served checkpoints | `rcp_ndcg_vllm.models/` |
+| Reference cases, conformance, model-level fakes, equivalence/recording/GPU job tooling | `rcp_ndcg_test` |
 | Wire adapters, the transport, replicas, parking, provenance probe | `rcp_ndcg.inference` |
 | Evaluation: scoring rankings, comparisons, explanations, MTEB tasks | `rcp_ndcg.eval` |
 | Job execution (local, SLURM, Kubernetes, plugins) | `rcp_ndcg.runners` |
@@ -77,18 +86,36 @@ returns typed results and raises typed errors from `rcp_ndcg.errors`.
   keep every snippet runnable: `tests/docs` runs them. No numbers without a reproducible source.
 - **Public names only.** No private infrastructure, hosts, buckets, people or unreleased models in code, configs,
   docs, tests or commit messages. Use placeholders such as `gs://YOUR-BUCKET/...` and `registry.example.com`.
+- **Explicit budgets.** A self-hosted role config declares `tokenizer` + `max_tokens`; a hosted vendor profile
+  without a tokenizer declares `budget_source: vendor` and sends content uncut. Over budget, the default is
+  `cut`, recorded in the census; chunk aggregation is `max`; media are counted in tokens, never money.
+- **Anchors are reserved, never engine-side cut.** Client-side cuts are anchor-preserving; the paper code's
+  anchor drops are declared `known_deviations` in a recipe and compared under the cap only.
+- **Recipe ids are the lowercased canonical Hub repo name** (never a redirecting short name), pinned by a test;
+  a recipe's CHANGELOG bullets fold into the one release entry.
+- **Every recipe ships validated.** A recipe merges only with its GPU waves green (one 0.0.1 with everything);
+  `status: unverified` does not ship in a tag.
+- **No GPU pytests.** GPU work produces observation corpora per `OBSERVATIONS-SPEC`; verified fake engines on
+  CPU with conformance + golden replays stand in for tests. Model-level fakes live in `rcp-ndcg-test`; the
+  generic `fake://` stays in the product.
+- **Versions move together.** All distributions carry the tag version; `rcp-ndcg` pins
+  `rcp-ndcg-core==<version>`; `rcp-ndcg-test` is never published.
 
 ## Releasing
 
 Push a tag `v<version>` whose version is that of all three `pyproject.toml` files (the root one,
 `packages/rcp-ndcg-core` and `packages/rcp-ndcg-vllm`). `.github/workflows/release.yml` builds the three distributions
 (`rcp-ndcg-vllm` from its own directory: it is deliberately outside the uv workspace), checks each version against the
-tag, that `rcp-ndcg` pins `rcp-ndcg-core==<version>`, and `requirements-constraints.txt` against the lock, and runs
+tag, that `rcp-ndcg` pins `rcp-ndcg-core==<version>`, and `requirements-constraints.txt` against the lock (the
+pins, semantically -- `.github/scripts/check_constraints.py`), and runs
 `twine check` on every file. Each package publishes to PyPI with trusted publishing through its own GitHub environment
 (one publish job per package, below), because PyPI identifies a pending trusted publisher by owner, repository,
 workflow file and environment only, not the project name; `publish-rcp-ndcg` waits for `publish-core`, which it pins
-exactly. The GitHub release attaches the constraints file. When `uv.lock` changes, regenerate the constraints file
-with the command in its header. One-time setup (done): on pypi.org, add a trusted publisher to each project (a
+exactly, and `publish-vllm` waits for both (it pins `rcp-ndcg` exactly): the publish order is `core` -> `rcp-ndcg` ->
+`vllm`. The GitHub release attaches the constraints
+file. When `uv.lock` changes, regenerate the constraints file with `python .github/scripts/check_constraints.py
+--write` (the export command is in its header). One-time setup (done): on pypi.org, add a trusted publisher to each
+project (a
 pending one before the first upload) with owner `cohere-ai`, repository `rcp-ndcg`, workflow `release.yml` and the
 environment from the table, and create each environment in the repository's settings. No secret is needed.
 
@@ -101,5 +128,7 @@ environment from the table, and create each environment in the repository's sett
 ## Where to look
 
 - The concepts and their formulas: `docs/concepts/`. The paper: https://arxiv.org/abs/2609.35739.
+- The shipped serving recipes and their catalog: the `rcp_ndcg_vllm` package's recipe data, described in
+  [recipes and serving models](docs/reference/recipes.md).
 - The command line: `rcp-ndcg --help`, `rcp-ndcg schema show commands`, `docs/reference/cli.md`.
 - The public surface as data: `tests/contract/snapshots/` and `schemas/`.

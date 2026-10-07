@@ -239,6 +239,32 @@
       "additionalProperties": false,
       "description": "The poolability token of a set of judgements.\n\nTwo judgements measure the same thing -- and may enter one fit -- only when\nevery field matches: the stage, the judge (model, checkpoint and tokenizer), the prompt,\nthe criteria, the parser, the decoding and the preprocessing that shaped\nwhat the judge saw. key digests them; rubric_key leaves out the judge, which\nis the precondition for pooling several judges with a severity term.",
       "properties": {
+        "api": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge's wire adapter name, when the pass was given one other than its default wire (the judging pass normalizes the default wire's own name away, so families judged on the default keep their key whatever its spelling).",
+          "title": "Api"
+        },
+        "context_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge's prompt-plus-completion budget (the window text budget's basis), when declared.",
+          "title": "Context Tokens"
+        },
         "criteria": {
           "default": [],
           "description": "The rubric's criterion labels (``C1..C5``); empty for the tournament.",
@@ -258,6 +284,20 @@
           "title": "Decoding",
           "type": "string"
         },
+        "extra_body": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge's extra request fields, when any are declared.",
+          "title": "Extra Body"
+        },
         "judge_model": {
           "description": "The served model name (``\"fake\"`` for the offline fake judge).",
           "title": "Judge Model",
@@ -275,6 +315,19 @@
           "default": null,
           "description": "The judge config's ``revision`` as configured (not resolved against the Hub), or ``None``.",
           "title": "Judge Revision"
+        },
+        "max_output_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge's completion-token cap per request, when declared.",
+          "title": "Max Output Tokens"
         },
         "parse_version": {
           "description": "Version of the parser that reads the answers.",
@@ -307,6 +360,19 @@
           ],
           "title": "Stage",
           "type": "string"
+        },
+        "temperature": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge's sampling temperature, when it declared one (``None``: the server's default applies, and the field stays out of the digest).",
+          "title": "Temperature"
         },
         "tokenizer": {
           "anyOf": [

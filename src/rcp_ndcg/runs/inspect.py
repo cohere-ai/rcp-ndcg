@@ -84,13 +84,11 @@ def _judge_progress(layout: RunLayout, manifest: RunManifest, stage: str) -> Ste
     (``candidates.parquet``): the schedule's calls per query summed over the judged queries (the first ``limit``,
     each cut to ``depth``), without chunking, where a query shows more units than documents.
     """
+    from rcp_ndcg.llm.store import records_stored
     from rcp_ndcg.runs.run import StepProgress
 
     store = Path(layout.judgements) / f"{stage}.jsonl"
-    done = 0
-    if store.exists():
-        with store.open(encoding="utf-8") as handle:
-            done = sum(1 for line in handle if line.strip())
+    done = records_stored(store)
     return StepProgress(done=done, planned=_planned_windows(layout, manifest, stage))
 
 

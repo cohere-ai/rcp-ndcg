@@ -100,4 +100,4 @@ equivalent is `rcp-ndcg eval score --suite nanobeir --protocol <name>`.
 The proposed MTEB integration (embeddings-benchmark/mteb#5516) reports `ndcg_float_at_k` with group-mean ties on
 every suite. On untied scores it agrees with the paper's rules. With tied scores, the NanoBEIR, BRIGHT and TREC-DL
 numbers can differ from the paper's tables, which use `doc_id_desc` and `input_order` there. See
-[the MTEB tutorial](../tutorials/mteb-integration.md).
+[the MTEB tutorial](../how-to/mteb-integration.md).

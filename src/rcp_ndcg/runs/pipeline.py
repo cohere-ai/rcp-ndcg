@@ -25,11 +25,12 @@ import os
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from rcp_ndcg.data import Dataset, Rankings
 from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError
 from rcp_ndcg.llm.client import Usage
+from rcp_ndcg.llm.prompts import load_prompt, shipped_prompts_digest
 from rcp_ndcg.runs.config import JUDGE_STEPS, RunConfig
 from rcp_ndcg.runs.layout import RunLayout, new_run_id
 from rcp_ndcg.runs.manifest import DatasetRef, RunManifest, RunStatus, StepStatus
@@ -76,6 +77,10 @@ class Pipeline:
         engines: Mapping[EngineRole, EngineURLs] | None = None,
     ):
         self.config = config
+        # Set here, not only in _run_step: a resume whose identity check raises before the step starts (a
+        # judge config file gone) reaches the failure handler, which records a judging step's usage -- without
+        # this, the handler itself crashes with an AttributeError that masks the typed error.
+        self._judge_usage: Usage | None = None
         self._engines = dict(engines) if engines is not None else _engines_overlay()
         if self._engines:
             _check_engines(config, self._engines)
@@ -362,6 +367,8 @@ class Pipeline:
             return False
         logger.info("[run] %s: starting", step)
         self._judge_usage = None  # a judging step sets it, also when it fails
+        if step == "evaluate":
+            self.manifest.metrics = {}  # a failed re-run keeps no metrics of the attempt it did not finish
         self.manifest.start_step(step, identity=self._identity(step))
         self.manifest.save(self.layout)
         inputs = self._inputs(step)
@@ -419,11 +426,24 @@ class Pipeline:
             return {**common, "rerank": rerank, "depth": config.candidates.depth}
         if step in JUDGE_STEPS:
             schedule = self.schedule(step)
+            judge = config.judge_config()
+            # The prompt the step resolves to, by its content (the family's prompt_hash): its name or path is
+            # runtime -- the same text under another name is the same instrument, edited text is not. A schedule
+            # that leaves the prompt unset resolves the shipped one from the corpus's modality at judging time,
+            # so the step pins the stage's whole shipped set by content instead (and reads no corpus here: a
+            # resume check never downloads or loads one).
+            if schedule is not None and schedule.prompt:
+                prompt_sha256: str = load_prompt(schedule.prompt).sha256
+            else:
+                # step is one of JUDGE_STEPS here ('tournament' or 'rubric'); the set is typed str.
+                stage = cast(Literal["tournament", "rubric"], step)
+                prompt_sha256 = shipped_prompts_digest(stage)
             return {
                 **common,
                 "depth": config.candidates.depth,
-                "judge": config.judge_config().identity(),
-                "schedule": schedule.model_dump(mode="json") if schedule is not None else None,
+                "judge": {**judge.identity(), **judge.identity_extra()},
+                "schedule": schedule.model_dump(mode="json", exclude={"prompt"}) if schedule is not None else None,
+                "prompt_sha256": prompt_sha256,
                 "preprocessing": config.preprocessing.model_dump(mode="json") if config.preprocessing else None,
             }
         if step == "calibrate":
@@ -439,14 +459,18 @@ class Pipeline:
         if step == "retrieve" and self.config.candidates.source == "rankings":
             paths = [str(self.config.candidates.rankings)]
         elif step == "rerank":
-            paths = [self._first_stage]
+            if self.config.candidates.source == "rankings" and "retrieve" not in self.config.steps:
+                # The rerank step reads the rankings file itself on this shape (see _step_rerank).
+                paths = [str(self.config.candidates.rankings)]
+            else:
+                paths = [self._first_stage]
         elif step in ("tournament", "rubric"):
-            paths = [layout.candidates]
+            paths = [self._pools_source()]
         elif step == "calibrate":
             paths = [layout.path("judgements", f"{stage}.jsonl") for stage in ("tournament", "rubric")]
         elif step == "evaluate":
             paths = [
-                layout.candidates,
+                self._pools_source(),
                 layout.path("calibration", "items.json"),
                 layout.path("calibration", "thetas.parquet"),
                 *(location.partition("#")[0] for location in self.config.evaluation.systems.values()),
@@ -492,7 +516,12 @@ class Pipeline:
 
         reranker = self.config.candidates.rerank
         assert reranker is not None
-        first = _read_rankings(self._first_stage)
+        if self.config.candidates.source == "rankings" and "retrieve" not in self.config.steps:
+            # A `from: rankings` run without a retrieve step: the rankings file IS the first stage -- always
+            # read from it, never from a work/first_stage.parquet an earlier config in this run dir left.
+            first = Rankings.from_orders(self._supplied_pools(), system=CANDIDATES)
+        else:
+            first = _read_rankings(self._first_stage)
         pools = self._limited(first.queries())
         depth = max((len(pool) for pool in pools.values()), default=1)
         rescored = rerank(
@@ -684,19 +713,35 @@ class Pipeline:
             return pools
         return dict(list(pools.items())[: self.config.limit])
 
+    def _pools_source(self) -> str:
+        """The file the steps that read the first-stage pools consume: the candidates file a rerank (or
+        retrieve) step writes -- or, when no configured step writes one, a `from: rankings` run's rankings
+        file itself (the dataset source's preamble writes the first stage)."""
+        if (
+            self.config.candidates.source == "rankings"
+            and "retrieve" not in self.config.steps
+            and "rerank" not in self.config.steps
+        ):
+            return str(self.config.candidates.rankings)
+        return self.layout.candidates
+
     def _judging_input(self) -> dict[str, list[str]]:
         """Each query's pool, best first, at the configured depth: what the judging steps judge.
 
         Raises:
-            MissingInputError: the candidates come from retrieval or rankings and the retrieve step has not
-                written them.
+            MissingInputError: the candidates come from retrieval or rankings and the step that writes them
+                (the retrieve step, or the rerank step when one is configured) has not run.
         """
-        path = self.layout.candidates
-        if not Path(path).exists():
+        path = self._pools_source()
+        if self.config.candidates.source == "rankings" and path != self.layout.candidates:
+            # The rankings file IS the first stage here: read straight from it, never a leftover file's.
+            pools = self._supplied_pools()
+        elif not Path(path).exists():
             if self.config.candidates.source != "dataset":
+                writer = "rerank" if "rerank" in self.config.steps else "retrieve"
                 raise MissingInputError(
                     f"{path} does not exist yet: the candidates come from {self.config.candidates.source}",
-                    hint="run the retrieve step first",
+                    hint=f"run the {writer} step first",
                 )
             pools = self._dataset_pools()
         else:
@@ -827,10 +872,9 @@ def _run_identity_hint(layout: RunLayout, step: str) -> Iterator[None]:
 
 def _windows_stored(store: Path) -> int:
     """The judged windows a judgement store file holds (its non-empty lines)."""
-    if not store.is_file():
-        return 0
-    with store.open(encoding="utf-8") as handle:
-        return sum(1 for line in handle if line.strip())
+    from rcp_ndcg.llm.store import records_stored
+
+    return records_stored(store)
 
 
 #: The system name of a run's candidate pools in its rankings files.

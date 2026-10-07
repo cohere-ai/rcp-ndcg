@@ -145,3 +145,14 @@ def test_the_estimate_of_a_subset_counts_the_calls_the_pass_makes(stage: str, tm
 
 def test_the_character_approximation_is_labelled_a_heuristic_not_a_bound() -> None:
     assert "heuristic" in APPROXIMATION_NOTE and "bound" not in APPROXIMATION_NOTE
+
+
+def test_the_output_cap_holds_at_max_output_tokens() -> None:
+    """The estimate's per-call output is at most ``max_output_tokens`` when the window's per-document share
+    would exceed it (the cap is not a floor): the estimate must not drift under a small declared budget."""
+    rows, _ = tiny_rows()
+    judge_cfg = JudgeConfig(base_url="http://h/v1", model="m")
+    whole = estimate(rows, None, judge_cfg, stages=["rubric"])
+    capped = estimate(rows, None, judge_cfg.model_copy(update={"max_output_tokens": 8}), stages=["rubric"])
+    assert capped.output_tokens == capped.calls * 8, "every call is capped at the declared budget"
+    assert whole.output_tokens > capped.output_tokens

@@ -6,7 +6,7 @@ re-judges a subset. ``--estimate`` counts the pass's calls and tokens (of ``--do
 calling the judge.
 ``judge reparse`` reads a store's stored answers again with the current parser into a new store
 (:func:`rcp_ndcg.llm.reparse`), without calling the judge. Serving the model is the user's: any
-OpenAI-compatible URL judges (see ``docs/concepts/serving.md``).
+OpenAI-compatible URL judges (see ``docs/concepts/judges.md``).
 
 The judge is ``--judge fake`` (the offline judge), ``--judge <config.yaml>``, ``--judge <name>`` (a shipped
 config, :mod:`rcp_ndcg.llm.judges`), or an ad-hoc endpoint ``--judge-url URL --judge-model ID``. ``--set``

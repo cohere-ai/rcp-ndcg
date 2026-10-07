@@ -16,6 +16,8 @@ from tests.docs._markdown import ROOT
 
 
 def _exit_table(text: str) -> list[str]:
+    if "## Exit codes" not in text:
+        return []  # the table has one home now (the reference); the skill links it
     section = text[text.index("## Exit codes") :]
     return [line for line in section.splitlines() if re.match(r"\| \d+ \|", line)]
 
@@ -29,10 +31,11 @@ def test_the_skill_has_front_matter_and_fits_the_budget() -> None:
 
 
 def test_the_exit_code_table_is_the_documented_one_and_covers_every_code() -> None:
-    skill = _exit_table(SKILL.read_text(encoding="utf-8"))
     reference = _exit_table((ROOT / "docs" / "reference" / "cli.md").read_text(encoding="utf-8"))
-    assert skill == reference
-    rows = [(int(cells[0].strip("| ")), cells[1].strip("`")) for cells in (line.split(" | ") for line in skill)]
+    skill = SKILL.read_text(encoding="utf-8")
+    assert _exit_table(skill) == [], "the skill links the table; it does not carry a second copy"
+    assert "(../../docs/reference/cli.md#exit-codes)" in skill
+    rows = [(int(cells[0].strip("| ")), cells[1].strip("`")) for cells in (line.split(" | ") for line in reference)]
     assert rows == [(code.value, code.name) for code in ExitCode]
 
 

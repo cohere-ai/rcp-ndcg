@@ -60,10 +60,11 @@ lifecycle: `close()` synchronous, `await aclose()` asynchronous, both context ma
 - `close()` / `await aclose()` -- closes the sender, when it closes (the client's own transport, or an
   injected one that defines `close`); safe to call twice.
 
-The query text follows one rule for every path, decided by the config's `instruction` mode (`fold` by
-default): `fold` sends `Task: <instruction>\nQuery: <text>` (the served path's render, byte for byte),
-`field` sends the bare query plus the engine's `instruction` request field (served vLLM only -- a hosted
-profile has no such field and refuses the mode), `none` sends the bare query. A served config (`api:
+The query text is decided by the config's `instruction` mode (`fold` by default): `fold` sends
+`Task: <instruction>\nQuery: <text>` (the served path's render, byte for byte), `field` sends the bare query plus
+the engine's `instruction` request field (served vLLM only -- a hosted profile has no such field and refuses the
+mode), `system` sends the instruction as a system message (the shape some chat-tuned rerankers read), and `none`
+sends the bare query. A served config (`api:
 rerank`) sets `use_activation` explicitly (`true`: the score is a probability; `false`: the raw logit is
 stored) -- `None` would send nothing and let the engine's default apply, and two engines with different
 defaults would then share an identity; a hosted profile keeps it unset (its scale is fixed).
@@ -76,18 +77,15 @@ re-attached so the anchors survive, every cut recorded in the census, and a chun
 candidate-set row per chunk, scored in the query's request(s), with the chunks' scores pooled back by
 `max`. The wire carries the cut spans (the engine
 renders the template itself), and no `truncate_prompt_tokens` or `max_tokens_per_doc` is ever sent: the client
-cut already, so there is nothing left for the engine to truncate. A config without `max_tokens` sends every
-pair whole.
+cut already, so there is nothing left for the engine to truncate. A hosted profile that declares no limit sends
+every pair whole; a self-hosted config must declare its budget (`tokenizer` + `max_tokens`).
 
 ## Identity
 
 A rerank endpoint keys on its `api`, `model` and `revision` (content); where and how fast it is asked
-(`base_url`, `concurrency`, timeouts, `batch_size`) never enters an identity. `max_tokens` is content, and
-with it the tokenizer's SHA-256: `identity_extra()` (inherited from `Endpoint`) returns `{"tokenizer_sha256": ...}` of the
-named `tokenizer.json` (the name itself stays runtime), so two passes whose tokenizers differ never pool.
-Every role config with a `tokenizer` -- the judge's, the embedding, pooling and rerank configs -- carries the
-digest under this one key (`Endpoint.identity_extra()`), computed by the one helper in
-`rcp_ndcg.data.tokenizer`; the judge's own identity payload keeps its existing keys and is unchanged.
+(`base_url`, `concurrency`, timeouts, `batch_size`) never enters an identity. `max_tokens` is content, and with
+it the tokenizer's digest ([the tokenizer's digest](../concepts/text-budgets.md#the-tokenizers-digest)); the
+judge's own identity payload keeps its existing keys and is unchanged.
 
 ```python
 from pathlib import Path
@@ -143,3 +141,8 @@ result = client.rerank("what does rcp-ndcg measure", ["a metric", "a fruit"], in
 print(result.scores)  # aligned to the input documents, whatever order the server answered in
 client.close()
 ```
+
+
+A served endpoint's config must declare its text budget (`tokenizer` and `max_tokens`: the package cuts
+itself, never the engine) -- the client fits every request through `rcp_ndcg.data.preprocess.fit` and
+records the cuts in the census; the engine never truncates.

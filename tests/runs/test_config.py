@@ -76,6 +76,24 @@ class TestValidation:
         with pytest.raises(ValueError, match=message):
             RunConfig.model_validate({"dataset": DATASET, **fields})
 
+    def test_a_retrieval_sourced_rerank_step_without_a_retrieve_step_is_refused_at_config_time(self) -> None:
+        """`from: retrieval` has no first stage until the retrieve step runs it: the combination is refused in
+        the config. (`from: rankings` runs fine without one -- its rankings file IS the first stage; a dataset
+        run's preamble writes its own pools.)"""
+        with pytest.raises(ValueError, match="rerank"):
+            RunConfig.model_validate(
+                {
+                    "dataset": DATASET,
+                    "judge": "fake",
+                    "candidates": {
+                        "from": "retrieval",
+                        "retrieval": {"kind": "bm25"},
+                        "rerank": {"api": "cohere", "model": "rerank-v4.0"},
+                    },
+                    "steps": ["rerank", "calibrate", "evaluate"],
+                }
+            )
+
     def test_schedules_default_to_none_and_validate_when_given(self) -> None:
         from rcp_ndcg.llm import RubricSchedule
 
