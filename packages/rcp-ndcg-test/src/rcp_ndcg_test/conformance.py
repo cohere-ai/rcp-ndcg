@@ -417,26 +417,49 @@ def _document_contents(case: Case) -> list[Any]:
 
 
 def _media_ref(case: Case, relative: str) -> Any:
-    """The media reference of one case asset, resolved against the recipe's case directory, with the
-    image's pixel dimensions read from the file (the token-resolution policies need the real size when
-    the recipe declares no processor geometry)."""
-    import struct
+    """The media reference of one case asset, resolved against the recipe's case directory.
+
+    Type and dimensions come from the product's one home (``rcp_ndcg.data.media``: its suffix->MIME
+    table and probe; a clip's header through ``probe_video_header``). A file whose type or
+    dimensions the product cannot read is refused at this seam: a bare ``MediaRef`` (no mime, no
+    dims) would silently inflate the media token count at the policy's pixel ceiling -- a silent
+    default this package forbids.
+    """
     from pathlib import Path
 
     from rcp_ndcg_core.content import MediaRef
+
+    from rcp_ndcg.data.media import IMAGE_MIME_BY_SUFFIX, _probe_dimensions, probe_video_header
 
     directory = getattr(case, "_dir", None)
     if directory is None:  # pragma: no cover - load_case always pins it
         raise ConformanceError(f"case {case.id}: no recipe directory pinned; the media {relative!r} cannot resolve")
     path = Path(directory) / relative
-    ref_kwargs: dict[str, Any] = {"uri": str(path)}
-    if path.suffix.lower() == ".png" and path.is_file():
-        data = path.read_bytes()
-        if data[:8] == b"\x89PNG\r\n\x1a\n" and data[12:16] == b"IHDR":
-            width, height = struct.unpack(">II", data[16:24])
-            ref_kwargs.update({"width": width, "height": height, "mime": "image/png", "num_bytes": len(data)})
-    elif path.suffix.lower() in (".jpg", ".jpeg") and path.is_file():
-        ref_kwargs.update({"mime": "image/jpeg", "num_bytes": path.stat().st_size})
+    payload = path.read_bytes()
+    suffix = path.suffix.lower()
+    ref_kwargs: dict[str, Any] = {"uri": str(path), "num_bytes": len(payload)}
+    if suffix == ".mp4" or suffix == ".mov":
+        header = probe_video_header(payload)
+        if header is None:
+            raise ConformanceError(
+                f"case {case.id}: the media {relative!r} is not a readable video container "
+                "(the product's probe_video_header knows none of its header)"
+            )
+        ref_kwargs.update({"width": header.width, "height": header.height, "num_frames": header.num_frames})
+        return MediaRef(**ref_kwargs)
+    mime = IMAGE_MIME_BY_SUFFIX.get(suffix)
+    if mime is None:
+        raise ConformanceError(
+            f"case {case.id}: unknown image type {suffix!r} for {relative!r}; "
+            f"the product's media table knows {sorted(IMAGE_MIME_BY_SUFFIX)}"
+        )
+    width, height = _probe_dimensions(payload)
+    if width is None or height is None:
+        raise ConformanceError(
+            f"case {case.id}: the image {relative!r} has no readable dimensions; the product's probe "
+            "cannot size it (its media token count would silently land at the policy's pixel ceiling)"
+        )
+    ref_kwargs.update({"width": width, "height": height, "mime": mime})
     return MediaRef(**ref_kwargs)
 
 
@@ -602,11 +625,33 @@ def _compare_ranking(case: Case, matrix: Any, tolerance: Any) -> CaseResult:
     for index, (row, expected_row) in enumerate(zip(matrix, case.expected.values, strict=True)):
         derived = _ranking_of(row, doc_ids)
         position = {doc_id: rank for rank, doc_id in enumerate(derived)}
-        if len(expected_row) < 2:
-            rho = 1.0
-        else:
-            got = [float(position[doc_id]) for doc_id in expected_row]
-            rho = spearman(got, list(range(len(expected_row))))
+        k = len(expected_row)
+        if k < 2:
+            return CaseResult(
+                case_id=case.id,
+                compared=True,
+                passed=False,
+                skipped=None,
+                detail=(
+                    f"the expected ranking row {expected_row} of query {case.inputs.queries[index].id} "
+                    "holds fewer than two documents; a one-document expectation compares rank_exact, "
+                    "not spearman_min (it would pass free)"
+                ),
+            )
+        if set(expected_row) != set(derived[:k]):
+            return CaseResult(
+                case_id=case.id,
+                compared=True,
+                passed=False,
+                skipped=None,
+                detail=(
+                    f"the expected top-{k} prefix {expected_row} is not the derived top-{k} "
+                    f"{derived[:k]} on the ranking of query {case.inputs.queries[index].id} "
+                    "(a ranking row names the derived top-k: its documents hold the top-k positions)"
+                ),
+            )
+        got = [float(position[doc_id]) for doc_id in expected_row]
+        rho = spearman(got, list(range(k)))
         if worst is None or rho < worst[0]:
             worst = (rho, index)
     if worst is None:  # pragma: no cover - the load requires at least one query

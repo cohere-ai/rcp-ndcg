@@ -112,6 +112,74 @@ def test_a_spearman_tolerance_passes_the_order_and_fails_the_reversal() -> None:
     assert failing.failed and "spearman" in (failing.detail or "")
 
 
+def test_a_spearman_prefix_expectation_is_not_a_free_pass_when_displaced() -> None:
+    """(v1-F5) A ``kind: ranking`` row under ``spearman_min`` names the derived **top-k prefix** (its
+    documents must hold the top-k positions exactly); correlating absolute ranks is shift-invariant
+    and would pass a displaced expectation free -- the case format promises a prefix, never a
+    placement-free shuffle. A one-document row must never pass free either.
+
+    The comparator (``_compare_ranking``) is the unit here: the matrix is crafted so the derived
+    ranking is [d3, d2, d1] while the case expects the top-2 prefix [d1, d2] -- d1/d2 sit at the
+    bottom two, so the expectation must FAIL.
+    """
+    from rcp_ndcg_test.cases import CaseExpected, CaseTolerance
+    from rcp_ndcg_test.conformance import _compare_ranking
+
+    case = load_case(CASES / "fake-rerank" / "short-ranking.yaml")
+    ids = [document.id for document in case.inputs.documents]
+    assert len(ids) == 3, ids  # three documents: the expected top-2 can be displaced below a third
+    displaced = case.model_copy(
+        update={
+            "expected": CaseExpected(
+                kind="ranking",
+                values=[[ids[0], ids[1]]],  # claims d1 d2 are the derived top-2; the matrix below disagrees
+                tolerance=CaseTolerance(spearman_min=0.5),
+                origin="engine",
+                status="reproduced",
+            )
+        }
+    )
+    matrix = [[0.5, 0.1, 1.0]]  # derived: [d3, d1, d2] -- the expected top-2 shifted one slot down
+    result = _compare_ranking(displaced, matrix, displaced.expected.tolerance)
+    assert result.passed is False, result.detail
+    assert "prefix" in (result.detail or ""), result.detail
+
+    # a one-document expectation is refused (the load forbids it; an unvalidated case must not pass free)
+    one_row = case.model_copy(
+        update={
+            "expected": CaseExpected(
+                kind="ranking",
+                values=[["d1"]],
+                tolerance=CaseTolerance(spearman_min=0.5),
+                origin="engine",
+                status="reproduced",
+            )
+        }
+    )
+    one = _compare_ranking(one_row, matrix, one_row.expected.tolerance)
+    assert one.passed is False, one.detail
+
+
+def test_an_image_type_outside_the_products_mime_table_is_refused_not_silently_defaulted(
+    tmp_path: Path,
+) -> None:
+    """(v2-F3) A media file whose type the product's media table does not know is refused at the
+    send-preparation: a bare MediaRef (no mime, no dimensions) would silently inflate the media token
+    count at the policy's pixel ceiling -- a silent default this package forbids. The tests write to
+    ``tmp_path`` only, so the case tree is copied there with the odd-named file beside its media."""
+    import shutil
+
+    shutil.copytree(CASES, tmp_path / "cases")
+    media = tmp_path / "cases" / "fake-pool" / "media"
+    (media / "pixel.xyz").write_bytes(_tiny_png())  # bytes are never parsed blindly (checks the type gate)
+    case = load_case(tmp_path / "cases" / "fake-pool" / "image-pixel.yaml")
+    document = case.inputs.documents[0].model_copy(update={"image": "media/pixel.xyz"})
+    mutated = case.model_copy(update={"inputs": case.inputs.model_copy(update={"documents": [document]})})
+    recipe = load_recipe(RECIPES / "fake-pool")
+    result = run_case(recipe, mutated, target="fake", fake_engine=FakePoolEngine())
+    assert result.failed and "unknown image type" in (result.detail or ""), (result.skipped, result.detail)
+
+
 def test_the_rerank_fixture_runs_end_to_end() -> None:
     recipe = load_recipe(RECIPES / "fake-rerank")
     bundle = load_cases(CASES, recipe, recipes_root=RECIPES)
@@ -402,7 +470,8 @@ def test_a_malformed_case_fails_the_plugins_collection(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Media: a case with media is a declared skip on every role, never a silent empty-text send
+# Media: an image case runs the pool and rerank routes (content parts on the wire); video media
+# cases and the embed route are declared skips (checked before every send), never a silent empty send
 # ---------------------------------------------------------------------------
 
 
