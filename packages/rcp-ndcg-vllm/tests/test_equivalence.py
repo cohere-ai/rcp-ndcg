@@ -452,3 +452,30 @@ def test_over_length_padding_is_bounded_and_over_budget() -> None:
         assert all(word == "pad2" for word in text.split()[len(seed.split()) :])  # whole words of the marker
         assert tokenizer.calls <= 12, (budget, tokenizer.calls)  # bounded pass count, not a re-tokenizing loop
         assert tokenizer.char_work <= 24 * len(text), (budget, tokenizer.char_work, len(text))
+
+
+class CeilingWords(CountingWords):
+    """A whitespace-word tokenizer whose count saturates at a ceiling (an embedded truncation, recipe G5)."""
+
+    def __init__(self, ceiling: int) -> None:
+        super().__init__()
+        self.ceiling = ceiling
+
+    def count(self, text: str) -> int:
+        """Tokens of ``text``, never more than the ceiling."""
+        return min(super().count(text), self.ceiling)
+
+
+def test_over_length_padding_refuses_a_counter_that_never_reaches_the_target() -> None:
+    """A tokenizer whose count stops at a ceiling below twice the budget cannot yield an over-length sample.
+
+    The bounded sampler must say so instead of returning a text it never measured over the target: such a
+    sample would audit an uncut input as if it were over the cap (nothing passes silently).
+    """
+    from rcp_ndcg_vllm.equivalence.stages import _over_length
+    from rcp_ndcg_vllm.errors import HarnessError
+
+    tokenizer = CeilingWords(ceiling=1024)
+    with pytest.raises(HarnessError, match=r"2048 tokens.*1024"):
+        _over_length("How fast does light travel in a vacuum?", 1024, tokenizer, 0)
+    assert tokenizer.calls <= 12  # the refusal comes after the bounded passes, not after a hang

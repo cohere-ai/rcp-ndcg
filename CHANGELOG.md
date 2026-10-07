@@ -86,6 +86,11 @@ released together.
 
 ### Fixed
 
+- **The equivalence harness's stage-1 over-length sampler is bounded** (`rcp-ndcg-vllm`): it measures the
+  padding's token rate once and sizes each append from the measured deficit (at most 8 passes), instead of
+  re-tokenizing the growing text at every step -- quadratic at 32768-token budgets, the network recipe tests'
+  hang. A recipe tokenizer whose count never reaches twice the budget (a truncation ceiling in the file) is
+  refused with a `HarnessError` instead of yielding a sample that was never over the cap.
 - **A tokenizer file's embedded truncation and padding no longer cap the counts** (G5): a `tokenizer.json`
   can ship `truncation: {max_length: 1024}` (topk-embed-v1-small does) or fixed-length padding, and an
   un-reset backend silently topped every count and id list at those lengths, so no budget above them could
