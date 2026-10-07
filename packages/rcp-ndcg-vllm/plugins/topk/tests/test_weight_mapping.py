@@ -112,8 +112,9 @@ def test_the_zero_projection_bias_is_marked_initialized() -> None:
     """The checkpoint is bias-less; the loaded set must claim the constructor's zeros.
 
     vLLM v0.31.0's load tracker (``model_loader/default_loader.py:track_weights_loading``,
-    shake1c: ``ValueError: Following weights were not initialized from checkpoint:
-    {'custom_text_proj.bias'}``) refuses a model parameter the checkpoint never supplied.
+    observed serving this checkpoint on the stock v0.31.0 image: ``ValueError: Following weights
+    were not initialized from checkpoint: {'custom_text_proj.bias'}``) refuses a model parameter the
+    checkpoint never supplied.
     ``ColQwen3_5Model`` builds ``custom_text_proj`` with a zero-initialised bias (score-
     equivalent to this checkpoint's bias-less ``head``), so the plugin marks it initialized
     under both qualnames, exactly as the in-tree projection loader marks a shipped one

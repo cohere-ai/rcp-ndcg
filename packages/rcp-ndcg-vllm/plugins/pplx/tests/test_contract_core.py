@@ -332,9 +332,10 @@ def test_distribution_declares_the_general_plugins_entry_point() -> None:
 def test_register_registers_model_and_config_handler(monkeypatch: pytest.MonkeyPatch) -> None:
     """``register()`` against stub registries: the lazy model path, the vLLM config
     handler, and the transformers ``AutoConfig`` registration (so ``vllm serve`` needs
-    no ``--trust-remote-code``: the config parses locally, the checkpoint's remote
-    config module -- whose code imports ``flash-linear-attention``, absent from the
-    engine image -- never executes)."""
+    no ``--trust-remote-code``: the config parses locally and the checkpoint's remote
+    config module is never fetched or executed -- that module itself imports only
+    ``typing`` and transformers' ``Qwen3_5Config``; the point is that no remote code
+    runs on the engine)."""
     monkeypatch.setattr(
         importlib.metadata,
         "version",
@@ -431,6 +432,19 @@ def test_hf_config_restates_the_remote_config_class() -> None:
     assert config.query_prefix == "[Q] "
     assert config.document_prefix == "[D] "
     assert config.boundary_marker == chr(60) + "|chunk_sep" + chr(124) + ">"
+    # The checkpoint's config.json value, as the pplx recipe's reference pins it (the file at the
+    # pinned revision is not available offline; the reference constant carries its value).
+    import ast
+
+    recipe_reference = (
+        Path(__file__).resolve().parents[3] / "recipes" / "pplx-embed-v2-context-9b-preview" / "reference.py"
+    )
+    pinned = next(
+        ast.literal_eval(node.value)
+        for node in ast.parse(recipe_reference.read_text(encoding="utf-8")).body
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "BOUNDARY_MARKER" for t in node.targets)
+    )
+    assert config.boundary_marker == pinned
     assert config.query_length == 32768
     assert config.document_length == 32768
     assert config.max_position_embeddings == 32768

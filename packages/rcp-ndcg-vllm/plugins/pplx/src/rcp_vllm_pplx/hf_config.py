@@ -18,7 +18,10 @@ b667039ee8b438a6350fbc91bbcecd86f9d363ba (lines 6-27) line for line; every field
 default is the remote code's.  The boundary marker's default literal is an angle-bracket
 token and is therefore *built here from characters*, never typed
 (``chr(60) + "..." + chr(124) + ">"``) -- the value equals the checkpoint's
-``config.json`` ``boundary_marker`` byte for byte (pinned by the plugin's contract test).
+``config.json`` ``boundary_marker`` at the pinned revision byte for byte (read from that file on
+2026-10-07; the file itself is not available offline). The contract test pins the built string
+against the pplx recipe's reference constant ``BOUNDARY_MARKER``, which carries the same
+config.json value.
 
 vLLM consumes ``text_config``/``vision_config`` (through transformers' own Qwen3.5
 machinery, as the class subclasses ``Qwen3_5Config`` exactly like the remote one) and

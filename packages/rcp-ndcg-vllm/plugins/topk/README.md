@@ -74,9 +74,13 @@ Two registrations, one model class:
   Qwen3.5 machinery builds the sub-configs in both cases.
 - **The model class.** `rcp_ndcg_vllm_topk.model.TopkEmbedModel` subclasses
   vLLM's native `ColQwen3_5Model` (the stock late-interaction model on the
-  same Qwen3.5 backbone) and overrides exactly one class attribute, the
-  checkpoint-name mapping (`head.` → `custom_text_proj.`). Every
-  forward-affecting behaviour is inherited:
+  same Qwen3.5 backbone) and overrides two things: the checkpoint-name
+  mapping (the Qwen3-VL convention plus `head.` → `custom_text_proj.`,
+  replacing the stock ColPali-convention mapper) and `load_weights`, which
+  marks the projection's zero bias as loaded after the stock loader (the
+  checkpoint's head is bias-less, and vLLM v0.31.0's load tracker refuses a
+  parameter the checkpoint never supplied). Every forward-affecting behaviour
+  is inherited:
 
 - **Non-causal full attention.** The checkpoint's `text_config` carries
   `is_causal: false`, which the stock `Qwen3NextAttention` constructor reads

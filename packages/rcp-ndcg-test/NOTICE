@@ -38,8 +38,8 @@ vLLM
     lines 214-238, at commit 3627a6a), as a test oracle.
   - packages/rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/model.py:
     `TopkEmbedModel` subclasses `vllm.model_executor.models.colqwen3_5.ColQwen3_5Model`
-    (vLLM v0.31.0) and reuses its weight mapping, pooling wiring and forward
-    pass unmodified.
+    (vLLM v0.31.0) and reuses its pooling wiring and forward pass unmodified;
+    it replaces the weight-name mapper and extends `load_weights`.
   - packages/rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/weights.py: the
     checkpoint-name mapping table restates the prefix mappings of
     `vllm/model_executor/models/qwen3_vl.py` (`hf_to_vllm_mapper`) so the tests

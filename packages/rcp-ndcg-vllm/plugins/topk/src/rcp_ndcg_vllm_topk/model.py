@@ -1,10 +1,13 @@
 """The vLLM model class for ``topk-io/topk-embed-v1-small``.
 
 ``TopkEmbedModel`` subclasses the native ``ColQwen3_5Model`` (the stock
-late-interaction model on the same Qwen3.5 backbone) and overrides exactly one
-class attribute, the checkpoint-name mapping.  Everything else — the forward
-pass, the multimodal processor registration, the token-embed pooler wiring
-(projection -> MRL slice -> L2 normalise), the bias handling — is inherited
+late-interaction model on the same Qwen3.5 backbone) and overrides two things:
+the checkpoint-name mapping (class attribute ``hf_to_vllm_mapper``, replacing
+the stock ColPali-convention mapper) and ``load_weights``, which calls the
+stock loader and then marks the projection's zero bias as loaded (the
+checkpoint ships none).  Everything forward-affecting — the forward pass, the
+multimodal processor registration, the token-embed pooler wiring (projection
+-> MRL slice -> L2 normalise), the zero-bias construction — is inherited
 unchanged, which is what keeps the served numbers faithful.
 
 Serving contract (why each inherited piece is the right one):
@@ -23,7 +26,8 @@ Serving contract (why each inherited piece is the right one):
   config handler (``MODELS_CONFIG_MAP`` is keyed by in-tree architecture
   name), so no attention swap is needed or performed.  The linear-attention
   (GatedDeltaNet) layers are recurrent and causal in both implementations.
-- Projection: inherited construction.  ``ColQwen3_5Model.__init__`` builds
+- Projection: inherited construction (the load-tracker marking is the
+  plugin's ``load_weights``, below).  ``ColQwen3_5Model.__init__`` builds
   ``custom_text_proj = nn.Linear(hidden_size, embed_dim, bias=True,
   dtype=head_dtype)`` with a zero-initialised bias (colqwen3_5.py:177-183).
   This checkpoint's ``head`` has no bias tensor; a zero bias adds nothing to
@@ -82,9 +86,10 @@ class TopkEmbedModel(ColQwen3_5Model):
     Served through ``/pooling`` with ``task: token_embed``: one
     L2-normalised 2048-dim vector per prompt token, float32 head arithmetic
     (``head_dtype`` defaults to float32 for pooling runners), scored
-    client-side by fp32 MaxSim.  The only difference from ``ColQwen3_5Model``
-    is the checkpoint-name mapping below; every forward-affecting behaviour is
-    inherited (module docstring).
+    client-side by fp32 MaxSim.  The differences from ``ColQwen3_5Model`` are
+    the checkpoint-name mapping below and the zero-bias marking in
+    ``load_weights``; every forward-affecting behaviour is inherited (module
+    docstring).
     """
 
     # This checkpoint follows the Qwen3-VL naming convention
@@ -110,8 +115,8 @@ class TopkEmbedModel(ColQwen3_5Model):
         ``custom_text_proj`` with a zero-initialised bias (score-equivalent to
         ``bias=False``).  vLLM v0.31.0's load tracker refuses a parameter the
         checkpoint never supplied (``model_loader/default_loader.py:
-        track_weights_loading``; shake1c: engine load died on
-        ``{'custom_text_proj.bias'}``), so the returned set is annotated under
+        track_weights_loading``: serving this checkpoint on the stock v0.31.0
+        image died on ``{'custom_text_proj.bias'}``), so the returned set is annotated under
         both qualnames exactly as the in-tree projection loader marks a shipped
         one (``colqwen3_5.py:load_weights``).  A checkpoint revision that ships
         ``head.bias`` is loaded over the zeros first and needs no annotation.
