@@ -1,10 +1,10 @@
 """The ``qwen3-embedding-0.6b`` recipe: the schema validates, and stage 1 passes on CPU.
 
 Stage 1 runs the harness's own ``stage1_prompts`` with the recipe directory's ``reference.py`` as the
-subprocess (its render mode needs only ``tokenizers`` + ``huggingface_hub`` -- no torch, no weights).
-The pinned tokenizer files are downloaded into a scratch cache (``RCP_QWEN3_EMBED_HF_CACHE`` when
-set, so a lane's scratch dir can hold them; ``tmp_path`` otherwise) and the tests skip with a clear
-reason when the Hub is unreachable or ``huggingface_hub`` is absent (CI's slim venv).
+subprocess (its render mode needs only ``huggingface_hub`` -- no torch, no weights). The pinned
+tokenizer files are downloaded into the shared tokenizer cache (``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when
+set, ``tmp_path`` otherwise; ``_served.tokenizer_cache``) and the tests skip with a clear reason
+when the Hub is unreachable or ``huggingface_hub`` is absent (CI's slim venv).
 
 The measured invariants (research lane r-qwen3-emb, final instrument run 14/14): the card's example
 query renders to 27 token ids and the example document to 8, each ending on the post-processor's
@@ -31,7 +31,7 @@ from rcp_ndcg.data.templates import Segment
 from rcp_ndcg.inference.config import EmbeddingEndpoint
 
 from ._contract import assert_recipe_contract
-from ._served import served_texts, stage1_facts
+from ._served import served_texts, stage1_facts, tokenizer_cache
 
 REPO = "Qwen/Qwen3-Embedding-0.6B"
 REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"  # re-checked against the Hub API; not gated
@@ -72,9 +72,8 @@ def _skip_unless_hub_reachable() -> None:
 
 @pytest.fixture
 def hub_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """The Hub cache for the tokenizer downloads: the lane's scratch dir when it names one."""
-    cache = Path(os.environ.get("RCP_QWEN3_EMBED_HF_CACHE") or tmp_path / "hf-cache")
-    cache.mkdir(parents=True, exist_ok=True)
+    """The Hub cache for the tokenizer downloads: the shared tokenizer cache (one home)."""
+    cache = tokenizer_cache(tmp_path / "hf-cache")
     monkeypatch.setenv("HF_HOME", str(cache))
     monkeypatch.setenv("HF_HUB_CACHE", str(cache))
     return cache
@@ -148,7 +147,7 @@ def test_the_recipe_loads_and_declares_the_served_path() -> None:
     assert recipe.serve.chat_template is None and recipe.serve.trust_remote_code is False
     assert recipe.serve.pooler_config == {} and recipe.serve.plugin is None
     assert recipe.reference.kind == "transformers" and recipe.reference.score_scale == "cosine"
-    assert recipe.reference.known_deviations == [] and recipe.status.state == "unverified"
+    assert recipe.reference.known_deviations == ["over_cap_cut_differs"] and recipe.status.state == "unverified"
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
     assert argv[:3] == ["vllm", "serve", REPO]
     assert argv[argv.index("--revision") + 1] == REVISION
@@ -267,21 +266,35 @@ def test_dropping_the_trailing_anchor_position_declaration_turns_the_anchor_chec
     assert "document" in {failure["shape"] for failure in document["anchor_check"]["failures"]}
 
 
-def test_stage1_survives_over_cap_pairs_rows(tmp_path: Path, hub_cache: Path) -> None:
-    """A pairs row over the budget is compared too: the reference renders the card's truncated prompt.
-
-    The harness compares every pairs row's render (only the derived over-length samples carry their
-    own shape and skip the comparison), so the reference's render mode must implement the same
-    anchor-preserving cut the served fit makes: 8191 content+frame ids, then the post-processor's
-    anchor at 8192 -- measured byte-identical to fit at the cap.
-    """
+def test_an_over_cap_pairs_row_rides_the_declared_table_with_the_cards_uncut_prompt(
+    tmp_path: Path, hub_cache: Path
+) -> None:
+    """Decision 9: the reference renders the card's prompt uncut (the card truncates ids at encode)
+    and never ports the client's cut.  An over-budget pairs row therefore differs from the client's
+    content-only cut by declaration (``over_cap_cut_differs``): stage 1 reports it in the non-gating
+    table and still passes on every under-cap row."""
     _skip_unless_hub_reachable()
     recipe = load_recipe(RECIPE_DIR)
     rows = pairs_rows()
-    rows.append({"query": CARD_QUERY, "documents": ["long document about retrieval " * 9000]})
+    long_document = "long document about retrieval " * 9000
+    rows.append({"query": CARD_QUERY, "documents": [long_document]})
     pairs = write_pairs(tmp_path / "pairs.jsonl", rows)
     document = stage1_prompts(recipe, str(pairs), sys.executable, over_length_per_shape=OVER_LENGTH_PER_SHAPE)
-    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
+    render = document["render_check"]
+    assert render["passed"] is True, render["failures"][:1]
+    over_cap = render["over_cap"]
+    assert over_cap["known_deviation"] is True and over_cap["gating"] is False
+    assert [(entry["index"], entry["shape"]) for entry in over_cap["rows"]] == [(len(rows) - 1, "document")]
+    reference = run_reference(
+        sys.executable,
+        str(RECIPE_DIR / recipe.reference.entry),
+        mode="render",
+        pairs_path=str(pairs),
+        out_path=tmp_path / "reference.json",
+        tokenizer_spec=f"{REPO}@{REVISION}",
+    )
+    texts = {(row["index"], row["shape"]): row["text"] for row in reference["rows"]}
+    assert texts[(len(rows) - 1, "document")] == long_document  # the card's uncut prompt
     assert document["passed"] is True
 
 
@@ -362,7 +375,12 @@ EXPECTED_CLIENT = {
     "video_policy": None,
     "wait_on_outage_s": None,
 }
-EXPECTED_REFERENCE = {"entry": "reference.py", "kind": "transformers", "known_deviations": [], "score_scale": "cosine"}
+EXPECTED_REFERENCE = {
+    "entry": "reference.py",
+    "kind": "transformers",
+    "known_deviations": ["over_cap_cut_differs"],
+    "score_scale": "cosine",
+}
 
 # Two mutants per recipe against the contract pin above (the sweep's weak-contract
 # finding #9): each drift must fail, naming the field.

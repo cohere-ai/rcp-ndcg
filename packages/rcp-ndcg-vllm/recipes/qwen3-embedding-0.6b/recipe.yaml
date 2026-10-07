@@ -79,7 +79,11 @@ reference:
   kind: transformers
   score_scale: cosine
   entry: reference.py
-  known_deviations: []
+  # The card truncates the ids (HF truncation=True, max_length=8192: 8191 content+frame ids, then the
+  # appended anchor), the client cuts verbatim text and re-tokenizes: both keep every anchor, the
+  # content boundary can differ over the cap. The reference renders the card's uncut prompt and never
+  # ports the client's cut, so over-cap rows ride the non-gating table; under-cap rows gate exactly.
+  known_deviations: [over_cap_cut_differs]
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
@@ -118,8 +122,10 @@ notes: >
   re-attaching the frame, so the anchor always survives -- the card's own HF truncation keeps the
   same invariant (8191 content+frame ids + the anchor at 8192, measured at 9008 tokens), while a
   naive first-8192-token cut of the rendered ids drops it and diverges at exactly the pooled token
-  (measured); the reference's render mode implements the same truncation as a text cut, so stage 1
-  compares byte-exactly on over-cap pairs rows too. Wiring (post-merge): every request is fitted to
+  (measured). The card cuts ids while the client cuts verbatim text, so over the cap the content
+  boundary can differ while both keep the anchor: the recipe declares over_cap_cut_differs, the
+  reference's render is the card's uncut prompt (it never ports the client's cut), over-cap rows
+  ride the harness's non-gating table and under-cap rows gate byte-exactly. Wiring (post-merge): every request is fitted to
   the declared budget on the wire by the merged product's embedding client
   (rcp_ndcg.data.preprocess.fit), audited in stage 1 against the captured wire. Per-shape query
   caps (checked for the sweep's query_max_tokens item): no separate query cap exists in the
