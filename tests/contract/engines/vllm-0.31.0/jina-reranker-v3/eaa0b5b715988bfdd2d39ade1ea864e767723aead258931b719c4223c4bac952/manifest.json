@@ -1,0 +1,101 @@
+{
+  "collector": {
+    "documents_format": "recorder-record/1",
+    "generator_version": null,
+    "hostname": "hashed-unavailable",
+    "note": "shakedown corpus (provisional): one repetition per request, no /tokenize ground truth, request bodies as the recorder serialised them (parsed JSON, not raw bytes), no engine image digest. The release corpus is re-recorded at RC0 with rcp_ndcg_vllm.observe and keyed by fingerprint.",
+    "recorded_at": "2026-10-06",
+    "recorder": "rcp_ndcg_vllm.record (the recorder's fixed exchange set)",
+    "waves": [
+      "shake-a1"
+    ]
+  },
+  "documents": "exchanges.jsonl.gz",
+  "engine": {
+    "image": "vllm/vllm-openai:v0.31.0",
+    "image_digest": null,
+    "name": "vllm",
+    "version": "0.31.0"
+  },
+  "files": {
+    "exchanges.jsonl.gz": "d203211934083bbf78da4fb22d3821481ef05f2a67a4847d13e2fdb00cc9c8d2"
+  },
+  "model": {
+    "id": "jinaai/jina-reranker-v3",
+    "revision": "d7d7e73b6ea138ced340b83865931b5dfb6c97aa"
+  },
+  "non_determinism": {
+    "measured_max_abs": 0.0,
+    "measured_max_rel": 0.0,
+    "note": "measured across the corpus's repeated observations of one engine prompt (the recorder's two same-process requests share the pair prompts); one repetition per request, so a second repetition and an after-restart repeat remain for the RC0 corpus to measure",
+    "repeated_prompts": 1,
+    "repetitions": [
+      "same_process"
+    ],
+    "rule": "max-absolute-and-relative-difference-across-repeated-observations-of-one-engine-prompt",
+    "tolerance_abs": 0.0,
+    "tolerance_rel": 0.0
+  },
+  "recipe": {
+    "behaviour_fingerprint": "eaa0b5b715988bfdd2d39ade1ea864e767723aead258931b719c4223c4bac952",
+    "fingerprint_inputs": {
+      "client.aggregation": "max",
+      "client.api": "rerank",
+      "client.empty_doc": "omit_zero",
+      "client.empty_query": "refuse",
+      "client.instruction": "none",
+      "client.listwise": "true",
+      "client.max_images": "0",
+      "client.max_tokens": "3219",
+      "client.max_videos": "0",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_max_tokens": "512",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"marker\",\"anchor_markers\":[\"embed_token\",\"rerank_token\"],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\nYou are a search relevance expert who can determine a ranking of the passages based on how relevant they are to the query. If the query is a question, how relevant a passage is depends on how well it answers the question. If not, try to analyze the intent of the query and assess how well each passage satisfies the intent. If an instruction is provided, you should follow the instruction when determining the ranking.{special:im_end}\\n{special:im_start}user\\nI will provide you with 1 passages, each indicated by a numerical identifier. Rank the passages based on their relevance to query: \"},{\"content\":\"query\"},{\"fixed\":\"\\n<passage id=\\\"0\\\">\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:embed_token}\\n</passage>\\n<query>\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:rerank_token}\\n</query>{special:im_end}\\n{special:im_start}assistant\\n{special:<think>}\\n\\n{special:</think>}\\n\\n\"}]}",
+      "client.use_activation": "false",
+      "fingerprint_schema": "rcp-fp/1",
+      "model": "jinaai/jina-reranker-v3",
+      "revision": "d7d7e73b6ea138ced340b83865931b5dfb6c97aa",
+      "serve.chat_template": "null",
+      "serve.convert": "null",
+      "serve.dtype": "bfloat16",
+      "serve.extra_args": "[]",
+      "serve.hf_overrides": "{}",
+      "serve.io_processor_plugin": "null",
+      "serve.limit_mm_per_prompt": "null",
+      "serve.max_model_len": "131072",
+      "serve.mm_processor_kwargs": "{}",
+      "serve.plugin": "null",
+      "serve.pooler_config": "{}",
+      "serve.runner": "pooling",
+      "serve.trust_remote_code": "false",
+      "template_file": "absent",
+      "tokenizer_sha256": "4e95945ab0cef486709f760b81efcc7a6e75747f9165d13ead29159737455803"
+    },
+    "id": "jina-reranker-v3",
+    "recipe_file": "recipe.yaml",
+    "recipe_file_sha256": "c795f2b81f28cf91ccedd73205c815827f79c37e1665ab4f1af879590b964ea2",
+    "revision": "d7d7e73b6ea138ced340b83865931b5dfb6c97aa",
+    "role": "rerank",
+    "scoring": "listwise",
+    "status": {
+      "date": null,
+      "image": null,
+      "report": null,
+      "state": "unverified"
+    }
+  },
+  "schema": "rcp-ndcg.observation/1",
+  "source": {
+    "full_corpus": {
+      "gcs_path": null,
+      "note": "the shakedown recorder's node-local output (12 recipes, files hashed together)",
+      "sha256": "300aca73ae7e79146234828327426f09bf4012cf6bde3b116c2e488a642d6f24"
+    },
+    "sampling": {
+      "rule": "all exchanges of the recorder's fixed set (the whole shakedown corpus)",
+      "seed": null
+    }
+  }
+}
