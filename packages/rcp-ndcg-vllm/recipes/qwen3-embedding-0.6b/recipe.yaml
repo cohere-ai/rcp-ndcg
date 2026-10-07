@@ -41,17 +41,17 @@ serve:
   extra_args: []
 client:
   api: openai_embeddings
-  # The frame is the template below; the client prepends nothing (a non-empty query_prompt would
-  # double the prefix in the wired client, which prepends it before the fit renders the template).
-  query_prompt: ""
-  doc_prompt: ""
+  # The frame is the template below: the client prepends nothing (the product refuses
+  # query_prompt/doc_prompt beside a template -- one home for a prompt prefix), so the two fields
+  # stay undeclared and resolve empty.
+  recipe: "vllm v0.31.0: --runner pooling (convert auto -> embed); the pooler resolves from the checkpoint's sentence-transformers metadata (last-token + L2 normalize); bare strings on /v1/embeddings with the post-processor anchor appended"
   request_shape: text # rendered strings to /v1/embeddings, never `messages` (the chat-embed drift)
   tokenizer: "Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
   # The card's transformers example cuts at 8192 tokens (the architecture allows 32768). The cut is
   # content-spans-only with every fixed token and the post-processor's anchor reserved and
-  # re-attached (the product's fit) -- the anchor always survives. Declared gap: rcp-ndcg's served
-  # encoder payload is {model, input} only today (retrieval/api_dense.py:137) and no client-side cut
-  # is wired yet; the harness pre-fits, and the GPU wave's /tokenize and vector gates catch drift.
+  # re-attached (the product's fit) -- the anchor always survives. The merged product's embedding
+  # client fits every request to this budget on the wire (rcp_ndcg.data.preprocess.fit), audited in
+  # stage 1 against the captured wire; the GPU wave's /tokenize and vector gates catch drift.
   max_tokens: 8192
   template:
     query:
@@ -95,7 +95,6 @@ sources:
   - "vllm tag v0.31.0 vllm/entrypoints/pooling/embed/protocol.py:39-41 and vllm/model_executor/layers/pooler/seqwise/heads.py:85-105 (dimensions: MRL cut before L2)"
   - "vllm tag v0.31.0 vllm/entrypoints/pooling/base/protocol.py:325-340 (embed_dtype affects base64/bytes only; encoding_format float is float32)"
   - "vllm tag v0.31.0 docs/models/pooling_models/embed.md:53,99 (Qwen3ForCausalLM converted embed; the 0.6B example)"
-  - "src/rcp_ndcg/retrieval/api_dense.py:137 (the served encoder payload is {model, input} -- no client-side cut or dimensions consumer on this path today)"
   - "src/rcp_ndcg/inference/clients/embed.py (the wired client prepends query_prompt/doc_prompt, then the budget renders the template -- hence empty prompts here and the frame as fixed segments)"
   - "sglang docs/docs/supported-models/embedding_models.mdx:91-97 and python/sglang/srt/models/qwen3_embedding.py:41-43 (the SGLang alternative: --is-embedding, native LAST + normalize -- a different engine, never mixed into this vLLM recipe)"
   - "packages/rcp-ndcg-vllm/recipes/qwen3-embedding-0.6b/requirements-reference.txt (the reference environment: torch, transformers>=4.51 for embed mode; render mode needs only tokenizers + huggingface_hub)"
@@ -120,10 +119,12 @@ notes: >
   same invariant (8191 content+frame ids + the anchor at 8192, measured at 9008 tokens), while a
   naive first-8192-token cut of the rendered ids drops it and diverges at exactly the pooled token
   (measured); the reference's render mode implements the same truncation as a text cut, so stage 1
-  compares byte-exactly on over-cap pairs rows too. Gap, declared: rcp-ndcg's served encoder path
-  sends {model, input} only
-  (api_dense.py:137), so the client-side cut is not wired yet; until it is, the budget is the
-  harness's stage-1 fit and the GPU wave's /tokenize + vector gates. The engine image's transformers
+  compares byte-exactly on over-cap pairs rows too. Wiring (post-merge): every request is fitted to
+  the declared budget on the wire by the merged product's embedding client
+  (rcp_ndcg.data.preprocess.fit), audited in stage 1 against the captured wire. Per-shape query
+  caps (checked for the sweep's query_max_tokens item): no separate query cap exists in the
+  referent -- the card's transformers path truncates queries and documents alike at 8192 -- so
+  query_max_tokens is not declared and both shapes draw on max_tokens. The engine image's transformers
   pin at the tag is >=5.10.4, <5.18.0 (requirements/common.txt); the tokenizer files are pinned by
   revision and the stage-1 zero-tolerance token-id check on the GPU host is the designed catch for
   library drift. R20 (mm_processor_kwargs) does not apply: the model is text-only (input: [text], no
