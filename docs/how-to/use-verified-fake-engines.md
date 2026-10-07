@@ -78,10 +78,26 @@ is a dated, reasoned, unexpired entry in `tests/conformance/waivers.json`, which
 requires to be empty. A corpus left stale by a recipe change and awaiting its re-recording is declared in
 `tests/conformance/stale.json` (the recipe, the recorded fingerprint, the inputs that moved, why and when):
 the replays skip it, and the suite checks that it fails the staleness gate naming exactly those inputs;
-the release checklist requires that list empty too. A corpus whose moved inputs shape none of its recorded
-exchanges (metadata only, such as a pooler setting restating the engine's default) is re-keyed instead:
-its manifest carries the current fingerprint and a `rekeyed` entry naming what moved and why. `RCP_APPEND_VERIFICATION=1` appends the suite's result to every corpus's
-verification record.
+the release checklist requires that list empty too, and `RCP_NDCG_RELEASE=1` makes the suite enforce it.
+The way to empty it is a new recording (the wave runner's `--changed-since`), never an edit. A corpus whose
+moved inputs shape none of its recorded exchanges (metadata only, such as a pooler setting restating the
+engine's default) is re-keyed instead: its manifest carries the current fingerprint and a `rekeyed` entry
+naming what moved and why. A re-key touches no record, by this procedure:
+
+1. Recompute the recipe's inputs with `rcp_ndcg_vllm.fingerprint.fingerprint_inputs` and compare them with
+   the manifest's `recipe.fingerprint_inputs` (`fingerprint_changes`); go on only when the changed names
+   are exactly the ones you declare metadata-only.
+2. In `manifest.json`, set `recipe.behaviour_fingerprint` and `recipe.fingerprint_inputs` to the current
+   values and append to `recipe.rekeyed` an entry with `from_behaviour_fingerprint`, `changed_inputs`
+   (each name with its old and new value), `reason` and `date`.
+3. Recompute `integrity.manifest_sha256` with `rcp_ndcg.testing.corpus.manifest_digest`, then the
+   corpus's `index.json` (`full_corpus.manifest_sha256` and `manifest_file_sha256`, the file's SHA-256).
+4. `git mv` the directory to the new fingerprint and move its entry in the engine's `index.json`
+   (`<recipe>/<fingerprint>`, with the new `behaviour_fingerprint` and `manifest_sha256`).
+
+The conformance suite then replays the corpus under its new key; a re-key whose changed inputs did shape
+a recorded exchange fails that replay. `RCP_APPEND_VERIFICATION=1` appends the suite's result to every
+corpus's verification record.
 
 The golden replays (`tests/e2e/test_golden_replay.py`) run a NanoBEIR-shaped and a ViDoRe-shaped mini
 through rcp-ndcg's retrieval and rerank path against the emulators and pin nDCG@10 and RCP-nDCG@10 to

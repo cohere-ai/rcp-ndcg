@@ -253,3 +253,23 @@ def test_an_unclassified_client_field_is_refused(monkeypatch: pytest.MonkeyPatch
     with pytest.raises(HarnessError) as error:
         fingerprint_inputs(_load())
     assert "max_tokens" in str(error.value)
+
+
+def test_the_tokenizer_store_lookup_is_public(tmp_path: Path) -> None:
+    """The vendored tokenizer bytes are read through a public accessor (the golden replay materialises the
+    recipe's tokenizer from the corpora's store with it; no caller reaches into a private helper)."""
+    from rcp_ndcg_vllm import fingerprint
+
+    assert "stored_tokenizer" in fingerprint.__all__
+    data = TOKENIZER.read_bytes()
+    store = tmp_path / "store"
+    store.mkdir()
+    (store / "tok.json").write_bytes(data)
+    digest = hashlib.sha256(data).hexdigest()
+    (store / "index.json").write_text(json.dumps({"org/tok@abc": {"file": "tok.json", "sha256": digest}}))
+    fingerprint.use_tokenizer_store(store)
+    assert fingerprint.stored_tokenizer("org/tok@abc") == (data, digest)
+    assert fingerprint.stored_tokenizer("org/other@abc") is None
+    root = Path(__file__).resolve().parents[3]
+    for path in (root / "tests" / "e2e" / "test_golden_replay.py",):
+        assert "_store_lookup" not in path.read_text(encoding="utf-8"), path

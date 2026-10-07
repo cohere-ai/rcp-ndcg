@@ -25,6 +25,14 @@ released together.
 
 ### Public surface
 
+- **Two public accessors of `rcp-ndcg-vllm`, and the release rule for stale corpora**:
+  `rcp_ndcg_vllm.fingerprint.stored_tokenizer(spec)` returns a registered tokenizer store's verified
+  `tokenizer.json` bytes and SHA-256 (the golden replay materialises the recipe's tokenizer with it), and
+  `rcp_ndcg_vllm.record.bare_exchange` records one bare probe as a captured exchange (the wave runner's
+  readiness edge uses it); no caller imports a private helper for either. With `RCP_NDCG_RELEASE=1` the
+  conformance suite requires `tests/conformance/stale.json` empty, as it requires the waiver file empty; the
+  re-key of a corpus whose fingerprint moved by metadata only is a documented procedure
+  (`docs/how-to/use-verified-fake-engines.md`), never the way to empty the stale list.
 - **An image pixel budget the engine is pinned to** (`ImagePolicy.engine_pixel_pinning`): a budget outside the
   processor family's stock range was refused even when the engine was pinned to it (Qwen3-VL-Embedding's card
   budget, 4096..1843200 px, below `qwen3_vl`'s stock 65536 px floor), so such a client could neither resize nor

@@ -384,3 +384,16 @@ def test_every_committed_corpus_declares_its_tolerance_unmeasured() -> None:
         report = json.loads((directory / "nondeterminism.json").read_text(encoding="utf-8"))
         assert report["derived"]["measured"] is False and report["derived"]["repeated_requests"] == 0, directory
         assert corpus_tolerance(load_corpus(directory)) is None
+
+
+@pytest.mark.skipif(
+    __import__("os").environ.get("RCP_NDCG_RELEASE") != "1",
+    reason="the release rule: set RCP_NDCG_RELEASE=1 (the release checklist runs the suite with it)",
+)
+def test_the_stale_declarations_are_empty_at_release() -> None:
+    """The release rule for re-recording (mirrors the waiver file's): every corpus declared stale has been
+    re-recorded before the tag, so ``tests/conformance/stale.json`` ships empty."""
+    stale = json.loads((Path(__file__).resolve().parent / "stale.json").read_text(encoding="utf-8"))
+    assert stale == [], "stale corpora must be re-recorded before release: " + ", ".join(
+        str(entry.get("recipe_id")) for entry in stale
+    )

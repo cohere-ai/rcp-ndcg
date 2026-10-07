@@ -470,3 +470,16 @@ def test_wave_recipe_cannot_start_fails_only_itself(tmp_path: Path) -> None:
     row = document["recipes"][0]
     assert row["state"] == "failed"
     assert "cannot start the engine" in (row.get("error") or "")
+
+
+def test_the_bare_exchange_is_public_and_the_wave_uses_it(tmp_path: Path) -> None:
+    """One bare probe as a captured exchange is a public accessor of the recorder: the wave runner's readiness
+    edge records through it, never through a private helper; a refused connection is recorded, not raised."""
+    import httpx
+    from rcp_ndcg_vllm import record as record_module
+
+    assert "bare_exchange" in record_module.__all__
+    with httpx.Client(base_url="http://127.0.0.1:9", timeout=0.5) as http:
+        exchange = record_module.bare_exchange(http, "GET", "/v1/models", None)
+    assert exchange["status"] is None and exchange["url"].endswith("/v1/models")
+    assert "_bare_exchange" not in Path(run_wave_module.__file__).read_text(encoding="utf-8")

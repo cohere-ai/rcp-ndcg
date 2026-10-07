@@ -90,9 +90,9 @@ def _tokenizer_file(recipe_id: str, tmp_path: Path) -> Path:
     recipe = load_recipe(recipe_id)
     spec = recipe.client.tokenizer
     harness()
-    from rcp_ndcg_vllm.fingerprint import _store_lookup
+    from rcp_ndcg_vllm.fingerprint import stored_tokenizer
 
-    data, _ = _store_lookup(str(spec))
+    data, _ = stored_tokenizer(str(spec))
     assert data is not None, spec
     path = tmp_path / f"{recipe_id}-tokenizer.json"
     path.parent.mkdir(parents=True, exist_ok=True)

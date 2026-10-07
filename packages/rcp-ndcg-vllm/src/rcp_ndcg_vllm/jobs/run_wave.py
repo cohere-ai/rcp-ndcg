@@ -740,10 +740,10 @@ def _observe_corpus(
         if port:
             import httpx
 
-            from ..record import _bare_exchange
+            from ..record import bare_exchange
 
             with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=10.0) as http:
-                loading.append(_bare_exchange(http, "GET", "/v1/models", None))
+                loading.append(bare_exchange(http, "GET", "/v1/models", None))
         deadline = time.monotonic() + run.timeout_s
         while time.monotonic() < deadline:
             if fresh.exited():
