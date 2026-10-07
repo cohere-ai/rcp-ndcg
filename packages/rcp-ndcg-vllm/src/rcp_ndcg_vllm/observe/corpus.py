@@ -775,3 +775,31 @@ def changed_since(recipes: list[Recipe], corpus_index: dict[str, Any], *, engine
     known = {str(version) for version in versions.values()}
     due = sorted({str(engine_version_of(recipe)) for recipe in recipes} - known)
     return {"changed": changed, "unchanged": unchanged, "changes": changes, "protocol_due": due}
+
+
+def main(argv: list[str] | None = None) -> int:
+    """``python -m rcp_ndcg_vllm.observe.corpus verify DIR`` (the acceptance checks, exit 1 on a refusal) and
+    ``... subset DIR OUT --gcs-path URI`` (the repository subset of a full corpus, checked before it is kept)."""
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="python -m rcp_ndcg_vllm.observe.corpus")
+    commands = parser.add_subparsers(dest="command", required=True)
+    verify = commands.add_parser("verify", help="run the acceptance checks on one corpus directory")
+    verify.add_argument("corpus")
+    subset = commands.add_parser("subset", help="write the repository subset of a full corpus")
+    subset.add_argument("corpus")
+    subset.add_argument("out")
+    subset.add_argument("--gcs-path", required=True, help="the full corpus's immutable storage path")
+    subset.add_argument("--max-bytes", type=int, default=2 * 1024 * 1024)
+    args = parser.parse_args(argv)
+    if args.command == "subset":
+        out = subset_for_repository(args.corpus, args.out, gcs_path=args.gcs_path, per_recipe_bytes=args.max_bytes)
+        report = verify_corpus(out)
+    else:
+        report = verify_corpus(args.corpus)
+    print(json.dumps(report, indent=2))
+    return 0 if report["passed"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

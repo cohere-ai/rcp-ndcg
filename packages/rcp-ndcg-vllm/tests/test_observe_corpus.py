@@ -413,3 +413,16 @@ def test_every_planned_request_is_recorded_the_ladder_uncut_too(tmp_path: Path) 
     assert len(uncut) == 3, "sent once per pass"
     strata = corpus.manifest["plan"]["strata"]
     assert strata["edge:while_loading"]["present"] is False and strata["edge:while_loading"]["reason"]
+
+
+def test_the_operator_commands_verify_and_subset_a_corpus(tmp_path: Path, capsys: Any) -> None:
+    """``python -m rcp_ndcg_vllm.observe.corpus verify|subset``: exit 0 on an accepted corpus, 1 on a refused one."""
+    from rcp_ndcg_vllm.observe.corpus import main
+
+    directory, _ = _record(tmp_path)
+    assert main(["verify", str(directory)]) == 0
+    assert main(["subset", str(directory), str(tmp_path / "subset"), "--gcs-path", "gs://YOUR-BUCKET/o/x"]) == 0
+    assert (tmp_path / "subset" / "index.json").is_file()
+    (directory / "records.jsonl").write_text("", encoding="utf-8")
+    assert main(["verify", str(directory)]) == 1
+    assert '"passed": false' in capsys.readouterr().out
