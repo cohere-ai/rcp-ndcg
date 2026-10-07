@@ -90,8 +90,10 @@ released together.
   stays deterministic on every machine, but every fake vector's VALUES move (deliberately; their shape, unit
   norm and per-text determinism do not); no shipped test or case pinned the old values, and a test now pins the
   new draw. `fake_uniform` (the judge's, the reranker's and the token-id draws) is unchanged. The recipe tests'
-  8-wide probe copy of a 2048-wide multi-vector recipe stays: its assertions are width-independent, and the
-  shipped width still costs seconds per probed text where the probe costs milliseconds.
+  8-wide probe copy of a 2048-wide multi-vector recipe is no longer what keeps them from hanging (the shipped
+  width now costs about twice the probe's time per text, not minutes) and stays: its assertions are
+  width-independent, and it keeps each probed answer small (an 8192-token text at 2048 dimensions is a
+  64 MiB float32 matrix on each side of the wire).
 - **A named recipe plugin is found in every staged wheelhouse**: `bootstrap.sh` installs a plugin named by a
   recipe (not staged as a file) with one `--find-links` per existing `<stage>/extra/<name>/wheelhouse` beside
   `<stage>/wheelhouse`, still `--no-index`: a plugin wheel staged through `rc_build.sh`'s `EXTRA_DIRS` lands
