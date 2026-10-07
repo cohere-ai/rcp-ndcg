@@ -9,15 +9,14 @@ marker plus a newline; the token whose hidden state the last-token pooler reads)
 the whole prompt at ``max_seq_length`` (``sentence_bert_config.json``: 32768), ``Pooling`` pools the
 last token, ``Normalize`` L2-normalizes.
 
-The reference is the model's published path verbatim and never ports the client's cut (the
-operator's 09x rule): it encodes the raw texts and lets the remote tokenize's whole-prompt right cut
-do its own work at ``max_seq_length``.  That cut drops the pooled suffix token on over-cap inputs --
-the exact anchor defect research/ANCHOR-FINDING.md bans (the mmmv commit 302b1c9d class) -- while the
-SERVED side keeps the anchor by the recipe's declared client cut (``on_overflow: cut``, content only,
-frame re-attached).  The reference's over-cap cut therefore differs from the client's AND drops the
-anchor, so the recipe declares ``reference.known_deviations: [anchor_drop_over_cap]``: over-cap rows
-ride the non-gating table and only under-cap rows gate.  (The lane's first version ported the
-client's cut to force byte-equality at every length; the operator's 09x decision forbids that.)
+The reference is the model's published path verbatim and never ports the client's cut: it encodes
+the raw texts and lets the remote tokenize's whole-prompt right cut do its own work at
+``max_seq_length``.  That cut drops the pooled suffix token on over-cap inputs (the anchor defect the
+served path must never have), while the SERVED side keeps the anchor by the recipe's declared client
+cut (``on_overflow: cut``, content only, frame re-attached).  The reference's over-cap cut therefore
+differs from the client's AND drops the anchor, so the recipe declares
+``reference.known_deviations: [anchor_drop_over_cap]``: over-cap rows ride the non-gating table and
+only under-cap rows gate.
 
 Every constant here is read from the checkpoint's own files at run time (bound at
 startup, never transcribed), and the suffix is checked against the literal the remote module
@@ -193,53 +192,6 @@ def _tokenizer(spec: str):
     return tokenizer
 
 
-def _count(tokenizer: object, text: str, *, add_special_tokens: bool) -> int:
-    """The token count of ``text`` as the engine reads it (the post-processor's tokens included when
-    ``add_special_tokens``)."""
-    encoded = tokenizer(text, add_special_tokens=add_special_tokens)  # type: ignore[attr-defined]
-    return len(encoded["input_ids"])
-
-
-def token_prefix(
-    text: str,
-    max_tokens: int,
-    tokenizer: object,
-    *,
-    rendered,  # noqa: ANN001 - a (str -> str) frame closure; typed loosely on purpose
-    add_special_tokens: bool,
-) -> str:
-    """A prefix of ``text`` that ends at one of its first ``max_tokens`` token boundaries and whose
-    assembled render counts at most ``max_tokens``: the longest such prefix the search finds.
-
-    The reference's independent implementation of the recipe's declared cut (the product implements
-    the same search in ``rcp_ndcg.data.preprocess.token_prefix``; stage 1 proves the two agree byte
-    for byte). The cut is located with the tokenizer's offset mapping on the original text, so the
-    result is a verbatim prefix; a candidate is counted as the engine reads it -- ``rendered(prefix)``,
-    the full frame around the piece -- because a cut word can re-tokenize differently in place.
-    """
-    offsets = tokenizer(text, add_special_tokens=False, return_offsets_mapping=True)["offset_mapping"]  # type: ignore[attr-defined]
-
-    def count(piece: str) -> int:
-        return _count(tokenizer, rendered(piece), add_special_tokens=add_special_tokens)
-
-    def prefix(tokens: int) -> str:
-        return text[: offsets[tokens - 1][1]] if tokens > 0 else ""
-
-    def fits(tokens: int) -> bool:
-        return count(prefix(tokens)) <= max_tokens
-
-    over = min(max_tokens, len(offsets))
-    if fits(over):
-        return prefix(over)
-    fitting, step = over - 1, 1
-    while fitting > 0 and not fits(fitting):
-        over, fitting, step = fitting, max(fitting - step, 0), step * 2
-    while over - fitting > 1:
-        middle = (over + fitting) // 2
-        fitting, over = (middle, over) if fits(middle) else (fitting, middle)
-    return prefix(fitting)
-
-
 class Renderer:
     """The reference's render of one text: the model's frame around the content, uncut.
 
@@ -297,7 +249,7 @@ def embed_rows(pairs_path: str, tokenizer_spec: str, device: str) -> dict[str, o
     suffix and right-truncates the whole prompt at ``max_seq_length`` (its own rule -- over-cap
     drops the pooled suffix, the declared ``anchor_drop_over_cap`` behaviour), Pooling reads the
     last token, Normalize L2-normalizes. Vectors come back float32, one per query and one per
-    document, 2560 dims.  Never a port of the client's cut (the operator's 09x rule).
+    document, 2560 dims.  Never a port of the client's cut.
     """
     import numpy as np
 

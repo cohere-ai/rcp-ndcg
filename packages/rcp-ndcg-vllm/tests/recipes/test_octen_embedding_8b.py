@@ -1,8 +1,9 @@
 """The ``octen-embedding-8b`` recipe: it validates, and stage 1 passes on CPU.
 
 Stage 1 needs only the checkpoint's tokenizer files (no weights, no GPU): they are downloaded into
-the test's ``tmp_path`` -- or taken from ``$RCP_NDCG_OCTEN_TOKENIZER_DIR`` when pre-seeded -- and the
-tests skip with a clear reason when offline and nothing is cached. The recipe's own
+the shared tokenizer cache (``_served.tokenizer_cache``: ``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when set,
+else the test's ``tmp_path``), and the tests skip with a clear reason when offline and nothing is
+cached. The recipe's own
 ``client.tokenizer`` stays the pinned Hub spec; the stage-1 runs point a copy of the recipe at the
 local tokenizer directory.
 
@@ -28,7 +29,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -44,7 +44,7 @@ from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 from rcp_ndcg.inference.config import EmbeddingEndpoint
 
 from ._contract import assert_recipe_contract
-from ._served import served_texts, stage1_facts
+from ._served import served_texts, stage1_facts, tokenizer_cache
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "octen-embedding-8b"
 REVISION = "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
@@ -129,15 +129,14 @@ def _recipe() -> Any:
 
 
 def _tokenizer_dir(tmp_path: Path) -> Path:
-    """The checkpoint's tokenizer files, locally: the env override, else a download into ``tmp_path``.
+    """The checkpoint's tokenizer files at the pinned revision, in the shared tokenizer cache.
 
-    Only tokenizer files (about 16 MB), never weights. Skips with a clear reason when offline and
-    no pre-seeded copy is available (``$RCP_NDCG_OCTEN_TOKENIZER_DIR`` names one).
+    Only tokenizer files (about 16 MB), never weights; a cached copy is reused offline. Skips with a
+    clear reason when offline and nothing is cached.
     """
-    seeded = os.environ.get("RCP_NDCG_OCTEN_TOKENIZER_DIR")
-    if seeded and (Path(seeded) / "tokenizer.json").is_file():
-        return Path(seeded)
-    target = tmp_path / "octen-tokenizer"
+    target = tokenizer_cache(tmp_path / "tokenizer-cache") / f"octen-embedding-8b@{REVISION}"
+    if (target / "tokenizer.json").is_file():
+        return target
     try:
         from huggingface_hub import snapshot_download
 
@@ -156,7 +155,7 @@ def _tokenizer_dir(tmp_path: Path) -> Path:
         )
     except Exception as error:  # noqa: BLE001 -- any fetch failure means offline: skip, never fail
         pytest.skip(
-            "offline and no pre-seeded tokenizer: the Octen tokenizer files are unavailable "
+            "offline and nothing cached: the Octen tokenizer files are unavailable "
             f"({type(error).__name__}: {str(error)[:200]}); stage 1 needs the recipe's own "
             "tokenizer files only, never the weights"
         )

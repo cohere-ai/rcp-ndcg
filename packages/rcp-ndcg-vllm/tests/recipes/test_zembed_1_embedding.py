@@ -5,8 +5,8 @@ What is checked, per the recipe lane's done-when:
 - the recipe loads against the product's endpoint config (offline; no tokenizer needed);
 - stage 1 on CPU -- the product's ``fit`` renders, the anchor audit, and the reference subprocess's
   render -- passes token-id equality and the anchor check on a pairs file of at least 20 pairs
-  including at least 5 over-cap ones. The tokenizer files are downloaded once into the scratch dir
-  (``RCP_ZEMBED_1_EMBEDDING_SCRATCH``, a temp dir otherwise); the tests skip with a clear reason
+  including at least 5 over-cap ones. The tokenizer files are downloaded once into the shared tokenizer
+  cache (``RCP_NDCG_VLLM_TOKENIZER_CACHE``, a temp dir otherwise); the tests skip with a clear reason
   when the download cannot run (offline in CI);
 - the reference's render ids equal the ids the checkpoint's own remote code produces
   (``modeling_zembed.ZembedTransformer.tokenize``, run in the reference environment via
@@ -36,7 +36,7 @@ from rcp_ndcg.data.templates import TemplateSpec
 from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
 
 from ._contract import assert_recipe_contract
-from ._served import stage1_facts
+from ._served import stage1_facts, tokenizer_cache
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "zembed-1-embedding"
 REPO = "zeroentropy/zembed-1-embedding"
@@ -57,27 +57,24 @@ MIN_PAIRS = 20
 MIN_OVER_LENGTH = 5
 MAX_TOKENS = 32768
 
-_SCRATCH_ENV = "RCP_ZEMBED_1_EMBEDDING_SCRATCH"
 _REFERENCE_PYTHON_ENV = "RCP_ZEMBED_1_EMBEDDING_REFERENCE_PYTHON"
 
 
 @pytest.fixture(scope="session")
 def scratch(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The lane's scratch dir when named (so re-runs reuse the download), else a session temp dir."""
-    env = os.environ.get(_SCRATCH_ENV)
-    base = Path(env) if env else tmp_path_factory.mktemp("zembed-1-embedding")
-    base.mkdir(parents=True, exist_ok=True)
-    return base
+    """The shared tokenizer cache (``_served.tokenizer_cache``: re-runs reuse the download), else a
+    session temp dir."""
+    return tokenizer_cache(tmp_path_factory.mktemp("zembed-1-embedding"))
 
 
 @pytest.fixture(scope="session")
 def tokenizer_dir(scratch: Path) -> Iterator[Path]:
-    """The checkpoint's tokenizer and config files, downloaded once into the scratch dir.
+    """The checkpoint's tokenizer and config files, downloaded once into the tokenizer cache.
 
     Skips with a clear reason when the files are absent and cannot be fetched (offline in CI);
     nothing is written into the checkout.
     """
-    target = scratch / "checkpoint" / REVISION
+    target = scratch / f"zembed-1-embedding@{REVISION}"
     if not (target / "tokenizer.json").is_file():
         try:
             from huggingface_hub import hf_hub_download
@@ -94,7 +91,7 @@ def tokenizer_dir(scratch: Path) -> Iterator[Path]:
 
 @pytest.fixture(scope="session")
 def recipe(tokenizer_dir: Path) -> Recipe:
-    """The loaded recipe, with client.tokenizer pointed at the scratch download (the shipped recipe
+    """The loaded recipe, with client.tokenizer pointed at the cached download (the shipped recipe
     keeps the Hub spec ``<repo>@<revision>``; the local copy only fixes where the files come from)."""
     loaded = load_recipe(RECIPE_DIR)
     client = loaded.client.model_copy(update={"tokenizer": str(tokenizer_dir)})
@@ -215,9 +212,9 @@ def _pair_rows(tokenizer: TextTokenizer) -> list[dict[str, object]]:
 
 
 @pytest.fixture(scope="session")
-def pairs_path(scratch: Path, tokenizer: TextTokenizer) -> Path:
-    """The pairs file, written into the scratch dir once per session."""
-    path = scratch / "zembed-1-embedding-pairs.jsonl"
+def pairs_path(tmp_path_factory: pytest.TempPathFactory, tokenizer: TextTokenizer) -> Path:
+    """The pairs file, written into a session temp dir once per session."""
+    path = tmp_path_factory.mktemp("zembed-1-embedding-pairs") / "pairs.jsonl"
     path.write_text("".join(json.dumps(row) + "\n" for row in _pair_rows(tokenizer)), encoding="utf-8")
     return path
 

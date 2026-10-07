@@ -24,7 +24,8 @@ stage 1 runs on CPU without them.
 Paths of truth (read at revision ``dd76d535f5447ca3897a9c893fb1e612ead98192``):
 ``config_sentence_transformers.json:7-9`` (prompts ``"Query: "`` / ``"Document: "``),
 ``config.json:19`` (``max_position_embeddings`` 32768 — ``encode`` truncates the assembled prompt
-right at it, ``modeling:85-91``, which is exactly the client's cut policy at the same budget),
+right at it, ``modeling:85-91``: the same budget as the client's, cut on ids instead of on verbatim
+content, so over the cap the boundary can differ -- the declared ``over_cap_cut_differs``),
 ``modeling_jina_embeddings_v5.py:79-80`` (prefixes), ``:100-108`` (mask-based last-real-token
 pooling), ``:110-112`` (slice, then L2).
 
@@ -33,11 +34,11 @@ The harness's contract (``rcp_ndcg_vllm.equivalence.reference``):
     reference.py --mode <render|embed|score> --pairs <file> --out <file> \\
                  --tokenizer <repo@rev|path> --device <cpu|cuda:N> [--model-path <dir>]
 
-- ``render`` — per pairs row, one row per declared shape: the exact prompt text the engine should
-  see (``{"rows": [{"index", "shape", "text"}]}``). Stage 1 compares every pairs-file row
-  byte-identically against the product fit's render, so the pairs file for stage 1 must be inside
-  the budget: an over-cap row fails stage 1's render comparison by design (over-cap behaviour is
-  the GPU wave's stage-2 business, where the card's own truncation below applies).
+- ``render`` — per pairs row, one row per declared shape: the prompt text the card's code builds
+  (``{"rows": [{"index", "shape", "text"}]}``), uncut -- the card truncates ids inside ``encode``,
+  and the reference never ports the client's cut. Stage 1 compares every under-cap pairs row
+  byte-identically against the client's render; an over-cap row differs by declaration
+  (``over_cap_cut_differs``) and rides the harness's non-gating table.
 - ``embed`` — ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[...]]}]}``,
   one L2-normalised float32 vector per side (the model is dense, 1024 dims).
 - ``score`` — cosine of the embedded query against each document (embed role; kept for

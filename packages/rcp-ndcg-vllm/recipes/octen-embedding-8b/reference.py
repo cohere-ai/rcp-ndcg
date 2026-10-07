@@ -32,8 +32,8 @@ right cut at 8192 keeps the ``"- "`` prefix at the head and the appended anchor 
 recipe therefore declares ``over_cap_cut_differs``: the render carries the full text over-cap (the
 truncation happens at encode time in the paper path), and the paper's cut boundary can differ by a
 token from the client's content-boundary cut -- over-cap pairs ride the non-gating table, and the
-reference is the paper's path verbatim, never a port of the client's cut (the operator's 09x
-rule).
+reference is the paper's path verbatim, never a port of the client's cut
+(``docs/how-to/add-a-model.md``).
 
 Runs as a subprocess in its own environment (torch + transformers; see this directory's
 ``requirements-reference.txt``), never inside the harness:

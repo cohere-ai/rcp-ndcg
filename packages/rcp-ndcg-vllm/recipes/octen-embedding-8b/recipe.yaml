@@ -44,8 +44,8 @@ reference:
   kind: transformers
   score_scale: cosine
   entry: reference.py
-  # The reference is the paper's in-process path verbatim (the operator's 09x rule: no client-cut
-  # port); its render carries the full text (the paper truncates at encode time: HF's right cut,
+  # The reference is the paper's in-process path verbatim (docs/how-to/add-a-model.md: no
+  # client-cut port); its render carries the full text (the paper truncates at encode time: HF's right cut,
   # the appended anchor kept) and its over-cap boundary can differ by a token from the client's
   # content-boundary cut -- over-cap pairs ride the non-gating table.
   known_deviations: ["over_cap_cut_differs"]
@@ -62,7 +62,7 @@ sources:
   - "experiments/paper/rerankers/reference/octen.py:112,122-126,151-152 (the document prefix '- ' is prepended to documents only; queries unchanged)"
   - "experiments/paper/retrieval/octen.yaml:9-11 (pooling: last, doc_prompt: '- ', batch_size: 32)"
   - "vLLM at d0d6e5f3a26f484786e7f20490152e911fd4e220 (the research's pinned ref; the mechanisms re-verified at the shipped v0.31.0 tag by the research's reviewer): vllm/config/model.py:2327 (the ('Model', ('pooling', 'embed')) suffix rule; :2288 at the tag), vllm/model_executor/models/adapters.py:250-255 (as_embedding_model: last token, normalised), vllm/transformers_utils/config.py:1023-1055 (ST modules.json -> LAST + use_activation), vllm/renderers/params.py:183 (add_special_tokens defaults true), :485-510 (over-length input is HTTP 400, never a silent cut), vllm/entrypoints/pooling/embed/io_processor.py:77-82,84-100,373-392 (only Cohere/chat requests get the ST prompts; /v1/embeddings renders the string as-is)"
-  - "research record: research/r-octen/out/report.md and the r-octen table of research/audit-synth/out/corrections.md (applied: no client-side truncation exists on the dense embeddings path today; pad is the endoftext token 151643, eos is the chat end-of-turn marker 151645; suffix-rule line :2327 not :2332; the card's 40,960 claim is README.md:99)"
+  - "research record r-octen (report; not shipped) with its review corrections table (applied: no client-side truncation exists on the dense embeddings path today; pad is the endoftext token 151643, eos is the chat end-of-turn marker 151645; suffix-rule line :2327 not :2332; the card's 40,960 claim is README.md:99)"
 notes: >-
   Last-token-pooling embedder (the paper's first-stage retriever) on the stock pooling runner: the
   bare Qwen3Model architecture hits the ("Model", ("pooling", "embed")) suffix rule
@@ -108,8 +108,8 @@ notes: >-
   anchor). The cut BOUNDARY on an over-length input can differ
   by a token between the two paths (fit cuts at content-token boundaries of the original text and re-renders,
   the paper cuts the assembled ids), and the render carries the full text over-cap (the truncation
-  happens at encode time in the paper path): the reference never ports the client's cut (the
-  operator's 09x rule), so the recipe declares reference.known_deviations: over_cap_cut_differs --
+  happens at encode time in the paper path): the reference never ports the client's cut
+  (docs/how-to/add-a-model.md), so the recipe declares reference.known_deviations: over_cap_cut_differs --
   over-cap pairs are reported in the non-gating table and only under-cap pairs gate. Wiring status (post-merge): every request is fitted to the declared
   budget on the wire by the merged product's embedding client (rcp_ndcg.data.preprocess.fit:
   content spans cut, frame re-attached), audited in stage 1 against the captured wire; the

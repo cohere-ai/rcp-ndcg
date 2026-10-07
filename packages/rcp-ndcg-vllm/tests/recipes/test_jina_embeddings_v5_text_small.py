@@ -2,21 +2,20 @@
 
 The recipe validates offline (the client block constructs the product's
 :class:`~rcp_ndcg.inference.config.EmbeddingEndpoint`). Stage 1 needs only the tokenizer file,
-downloaded once into the lane's scratch directory (or ``tmp_path``) and verified against its
-pinned sha256 — the model weights are never needed on CPU; the reference's ``render`` mode is
-pure string work. When offline, the stage-1 tests skip with a clear reason; a cached copy with
-the pinned hash keeps them runnable offline after the one download.
+downloaded once through the shared ``_served.fetch_tokenizer`` (into
+``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when set, else ``tmp_path``) and verified against its pinned
+sha256 — the model weights are never needed on CPU; the reference's ``render`` mode is pure string
+work. When offline, the stage-1 tests skip with a clear reason; a cached copy with the pinned hash
+keeps them runnable offline after the one download.
 """
 
 from __future__ import annotations
 
-import hashlib
 import importlib.util
 import json
 import shutil
 import sys
 import types
-import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -30,14 +29,14 @@ from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.inference.config import EmbeddingEndpoint
 
 from ._contract import assert_recipe_contract
-from ._served import served_texts, stage1_facts
+from ._served import fetch_tokenizer, served_texts, stage1_facts
 
 RECIPE_ID = "jina-embeddings-v5-text-small"
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / RECIPE_ID
 MODEL = "jinaai/jina-embeddings-v5-text-small"
 REVISION = "dd76d535f5447ca3897a9c893fb1e612ead98192"
 TOKENIZER_URL = f"https://huggingface.co/{MODEL}/resolve/{REVISION}/tokenizer.json"
-TOKENIZER_SHA256 = "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"  # r-jina5's pin
+TOKENIZER_SHA256 = "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"  # Hub LFS oid at REVISION
 
 # The rendered prompts of the seed row, tokenized with the recipe's tokenizer at the pinned
 # revision (ids measured 2026-10-05 from the tokenizer.json above). Pinned so a template or
@@ -143,51 +142,19 @@ def load() -> Recipe:
     return load_recipe(recipe_dir())
 
 
-def _lane_scratch() -> Path | None:
-    """The lane's scratch directory when this runs inside the lane's worktree (wt-<tag> naming)."""
-    worktree = Path(__file__).resolve().parents[4]
-    if worktree.name.startswith("wt-"):
-        scratch = worktree.parent / worktree.name[3:] / "scratch"
-        if scratch.is_dir():
-            return scratch
-    return None
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def tokenizer_file(tmp_path: Path) -> Path:
-    """tokenizer.json at the pinned revision, downloaded once and verified against its pinned sha256.
-
-    The file lands in the lane's scratch directory when this runs in the lane worktree (shared by
-    reruns and verifiers, never into the checkout), else in ``tmp_path``. Skips with a clear reason
-    when offline; a cached copy with the pinned hash is reused offline.
-    """
-    scratch = _lane_scratch()
-    target = (scratch / "tokenizer-cache" / "tokenizer.json") if scratch else (tmp_path / "tokenizer.json")
-    if target.is_file() and _sha256(target) == TOKENIZER_SHA256:
-        return target
-    target.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with urllib.request.urlopen(TOKENIZER_URL, timeout=120) as response:
-            target.write_bytes(response.read())
-    except OSError as error:
-        pytest.skip(f"offline: cannot fetch {MODEL}@{REVISION} tokenizer.json ({error}); stage 1 on CPU needs it")
-    assert _sha256(target) == TOKENIZER_SHA256, "the downloaded tokenizer.json does not match the pinned sha256"
-    return target
+    """tokenizer.json at the pinned revision, through the shared tokenizer cache and verified against
+    its pinned sha256 (``_served.fetch_tokenizer``: one home for the download, the cache variable and
+    the offline skip)."""
+    return fetch_tokenizer(TOKENIZER_URL, f"{RECIPE_ID}@{REVISION}/tokenizer.json", tmp_path, sha256=TOKENIZER_SHA256)
 
 
 def stage1_recipe(path: Path) -> Recipe:
     """The committed recipe reading its tokenizer from the downloaded file.
 
     The committed recipe names the Hub spec (what production resolves); the stage-1 checks run on
-    the same tokenizer.json, downloaded into the scratch and verified against the pinned sha256,
-    so they stay offline-capable after the one download.
+    the same tokenizer.json, downloaded into the tokenizer cache and verified against the pinned
+    sha256, so they stay offline-capable after the one download.
     """
     recipe = load()
     client = recipe.client.model_copy(update={"tokenizer": str(path)})

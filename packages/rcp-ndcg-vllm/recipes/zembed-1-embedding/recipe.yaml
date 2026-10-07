@@ -1,7 +1,7 @@
 # Serving recipe: zeroentropy/zembed-1-embedding, a Qwen3-4B decoder fine-tuned as a dense
 # last-token embedder with a sentence-transformers wrapper, served on stock vLLM.
-# Research: r-zembed1 (report, digest, reference draft), corrected by the audit-synth
-# r-zembed1 rows; the anchor policy follows research/ANCHOR-FINDING.md and REVIEW-LOG R10/R20.
+# Research: r-zembed1 (report, digest, reference draft; not shipped) with its review corrections
+# applied; the anchor policy is the recipe rule of docs/how-to/add-a-model.md ("Anchors").
 id: zembed-1-embedding
 model: zeroentropy/zembed-1-embedding
 revision: "cf13c81f3274394053d166740294f7eea4586f7a"
@@ -52,9 +52,9 @@ reference:
   score_scale: cosine
   entry: reference.py
   # The model's own over-cap cut is the remote tokenize's whole-prompt right cut, which drops the
-  # pooled suffix token (the ANCHOR-FINDING's mmmv defect class); the served side keeps the anchor
-  # by the declared client cut. The reference stays faithful -- no client-cut port (the 09x rule)
-  # -- so its over-cap behaviour drops the anchor: declared, and over-cap pairs are non-gating.
+  # pooled suffix token; the served side keeps the anchor by the declared client cut. The reference
+  # stays faithful -- it never ports the client's cut (docs/how-to/add-a-model.md) -- so its
+  # over-cap behaviour drops the anchor: declared, and over-cap pairs are non-gating.
   known_deviations: ["anchor_drop_over_cap"]
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
@@ -97,21 +97,19 @@ notes: |
   4. Budget: the whole rendered prompt is capped at 32768 tokens (sentence_bert_config.json
      max_seq_length, the same number as serve.max_model_len). on_overflow: cut trims the content
      spans only, after reserving every fixed template token, and re-attaches the frame, so the
-     anchor survives every cut (research/ANCHOR-FINDING.md). The engine never truncates: vLLM
+     anchor survives every cut (docs/how-to/add-a-model.md, "Anchors"). The engine never truncates: vLLM
      defaults to no truncation and 400s over-length inputs, so the client-side cut (the merged
      product's embedding client fitting every request to the declared budget,
      rcp_ndcg.data.preprocess.fit) is the only one. Per-shape query caps (checked for the sweep's
      query_max_tokens item): no separate query cap exists in the referent - the reference cuts
      queries and documents alike at 32768 tokens - so query_max_tokens is not declared and both
      shapes draw on max_tokens.
-  5. The reference is the model's published path verbatim and never ports the client's cut (the
-     operator's 09x rule): over-cap, the remote tokenize's whole-prompt right cut drops the pooled
-     suffix token (the mmmv commit 302b1c9d defect class), while the served side keeps the anchor
+  5. The reference is the model's published path verbatim and never ports the client's cut
+     (docs/how-to/add-a-model.md): over-cap, the remote tokenize's whole-prompt right cut drops the
+     pooled suffix token, while the served side keeps the anchor
      by the declared client cut. The reference's over-cap cut therefore differs from the client's
      AND drops the anchor, so the recipe declares reference.known_deviations: [anchor_drop_over_cap]:
-     over-cap pairs ride the non-gating table and stage 2 gates only the under-cap rows. (The
-     lane's first version ported the client's cut to force byte-equality at every length; the
-     09x decision forbids that.)
+     over-cap pairs ride the non-gating table and stage 2 gates only the under-cap rows.
   6. Dimensions: 2560 only. The card's smaller sizes (1280..40) come from projections.safetensors
      - six chained learned F32 matrices (4,368,000 params; params x 4 B + 456 B header =
      17,472,456 B exactly) - not Matryoshka slices, and no public code loads them. The checkpoint
