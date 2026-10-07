@@ -94,6 +94,13 @@ released together.
   width now costs about twice the probe's time per text, not minutes) and stays: its assertions are
   width-independent, and it keeps each probed answer small (an 8192-token text at 2048 dimensions is a
   64 MiB float32 matrix on each side of the wire).
+- **The equivalence harness's anchor audit reads every wire shape** (`rcp_ndcg_vllm.equivalence`): a
+  `request_shape: token_ids` body is audited on the ids it sends (it crashed the audit with a `TypeError`),
+  and the engine `/tokenize` check reports `not_run` for it (the engine tokenizes nothing); a `messages`
+  body is audited on its messages' text parts, with its media parts listed as placeholders beside them (it
+  extracted as no input, and the audit passed having checked nothing); an audit that read no input now
+  fails. An `anchor: first` head is asserted up to its join to the content: on a byte-level BPE the head's
+  trailing whitespace tokens re-tokenize with the first content token, which failed every request.
 - **A named recipe plugin is found in every staged wheelhouse**: `bootstrap.sh` installs a plugin named by a
   recipe (not staged as a file) with one `--find-links` per existing `<stage>/extra/<name>/wheelhouse` beside
   `<stage>/wheelhouse`, still `--no-index`: a plugin wheel staged through `rc_build.sh`'s `EXTRA_DIRS` lands
