@@ -24,12 +24,13 @@ import pytest
 import yaml
 from rcp_ndcg_vllm import default_recipes_root, load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
-from rcp_ndcg_vllm.equivalence.fitting import budget_of, tokenizer_of
+from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 from rcp_ndcg_vllm.equivalence.reference import run_reference
 
-from rcp_ndcg.data.preprocess import fit
 from rcp_ndcg.data.templates import Segment
 from rcp_ndcg.inference.config import EmbeddingEndpoint
+
+from ._served import served_texts, stage1_facts
 
 REPO = "Qwen/Qwen3-Embedding-0.6B"
 REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"  # re-checked against the Hub API; not gated
@@ -170,7 +171,7 @@ def test_the_query_frame_is_the_checkpoint_sentence_transformers_prompt(hub_cach
     assert all(isinstance(segment, Segment) for segment in query_segments)
     assert query_segments[0].fixed == prompts["query"]
     assert [segment.content for segment in query_segments if segment.content is not None] == ["query"]
-    assert query_segments[-1].fixed == ""  # the trailing anchor-position segment
+    assert query_segments[-1].content == "query"  # the shape ends on its content (the anchor is the appended token)
     document_segments = template.segments("document")
     assert [segment.content for segment in document_segments if segment.content is not None] == ["document"]
     assert all(segment.fixed is None for segment in document_segments)  # bare documents
@@ -187,9 +188,11 @@ def test_stage1_token_ids_and_anchors_pass_on_cpu(tmp_path: Path, hub_cache: Pat
     assert document["passed"] is True, (document["anchor_check"], document["render_check"])
     assert document["sampled"] >= N_PAIRS
     # Both declared shapes were sampled on purpose with over-length inputs, and every one overflowed
-    # (so the anchor audit really audited cut renders, not only whole ones).
-    assert document["fit"]["query"]["cuts"] == OVER_LENGTH_PER_SHAPE
-    assert document["fit"]["document"]["cuts"] == OVER_LENGTH_PER_SHAPE
+    # (so the anchor audit really audited cut renders, not only whole ones). The cut counts are the
+    # role client's own census, read through its capture.
+    facts = stage1_facts(recipe, pairs_rows(), tokenizer_of(recipe), OVER_LENGTH_PER_SHAPE)
+    assert facts["per_shape"]["query"]["cuts"] == OVER_LENGTH_PER_SHAPE
+    assert facts["per_shape"]["document"]["cuts"] == OVER_LENGTH_PER_SHAPE
     assert document["anchor_check"]["passed"] is True
     assert document["anchor_check"]["checked"] >= N_PAIRS + 2 * OVER_LENGTH_PER_SHAPE
     assert document["render_check"]["status"] == "run"
@@ -205,7 +208,6 @@ def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, hub_cache:
 
     recipe = load_recipe(RECIPE_DIR)
     tokenizer = tokenizer_of(recipe)
-    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
     pairs = write_pairs(tmp_path / "pairs.jsonl", pairs_rows()[:1])
     out = tmp_path / "reference.json"
     reference = run_reference(
@@ -225,8 +227,8 @@ def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, hub_cache:
     assert document_row["text"] == CARD_DOCUMENT
     # The served fit renders the same strings (what the engine receives), and the ids carry the
     # research's measured invariants: 27 and 8 tokens, each ending on the endoftext anchor.
-    served_query = fit([CARD_QUERY], "query", budget, tokenizer, ids=["0"]).texts[0]
-    served_document = fit([CARD_DOCUMENT], "document", budget, tokenizer, ids=["0"]).texts[0]
+    served_query = served_texts(recipe, [CARD_QUERY], "query")[0]
+    served_document = served_texts(recipe, [CARD_DOCUMENT], "document")[0]
     assert served_query == query_row["text"]
     assert served_document == document_row["text"]
     query_ids = tokenizer.ids(served_query, add_special_tokens=True)
@@ -238,23 +240,29 @@ def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, hub_cache:
     assert isinstance(pinned.sha256, str) and len(pinned.sha256) == 64
 
 
-def test_dropping_the_trailing_anchor_segment_turns_the_anchor_check_red(tmp_path: Path, hub_cache: Path) -> None:
-    """The mutation: without the trailing anchor-position segment the anchor audit goes red."""
+def test_dropping_the_trailing_anchor_position_declaration_turns_the_anchor_check_red(
+    tmp_path: Path, hub_cache: Path
+) -> None:
+    """The mutation: a wrong anchor declaration reds the audit on the shape it misdescribes.
+
+    The query shape ends on its content span and declares the appended endoftext anchor with
+    add_special_tokens: true. Declaring ``anchor: first`` instead tells the audit the anchor is a
+    head fixed segment -- the document shape has none, so its declared edge cannot hold and every
+    document render reds.
+    """
     _skip_unless_hub_reachable()
     copied = tmp_path / "qwen3-embedding-0.6b"
     copied.mkdir()
     for name in ("recipe.yaml", "reference.py"):
         (copied / name).write_bytes((RECIPE_DIR / name).read_bytes())
     data = yaml.safe_load((copied / "recipe.yaml").read_text(encoding="utf-8"))
-    segments = data["client"]["template"]["query"]
-    data["client"]["template"]["query"] = [segment for segment in segments if segment.get("fixed") != ""]
-    assert len(data["client"]["template"]["query"]) == len(segments) - 1  # exactly the anchor segment gone
+    data["client"]["template"]["anchor"] = "first"
     (copied / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     mutated = load_recipe(copied)
     pairs = write_pairs(tmp_path / "pairs.jsonl", pairs_rows())
     document = stage1_prompts(mutated, str(pairs), None, over_length_per_shape=OVER_LENGTH_PER_SHAPE)
     assert document["anchor_check"]["passed"] is False
-    assert {failure["shape"] for failure in document["anchor_check"]["failures"]} == {"query"}
+    assert "document" in {failure["shape"] for failure in document["anchor_check"]["failures"]}
 
 
 def test_stage1_survives_over_cap_pairs_rows(tmp_path: Path, hub_cache: Path) -> None:

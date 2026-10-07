@@ -39,9 +39,11 @@ import pytest
 import yaml
 from rcp_ndcg_vllm import client_config, load_recipe
 from rcp_ndcg_vllm.equivalence import stage1_prompts
-from rcp_ndcg_vllm.equivalence.fitting import budget_of, tokenizer_of
+from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 
 from rcp_ndcg.inference.config import EmbeddingEndpoint
+
+from ._served import served_texts, stage1_facts
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "octen-embedding-8b"
 REVISION = "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
@@ -199,7 +201,7 @@ def test_recipe_validates_against_the_product_endpoints() -> None:
     assert template.anchor == "last"
     assert template.adds_special_tokens("query") and template.adds_special_tokens("document")
     assert [segment.content for segment in template.query] == ["query"]
-    assert [segment.fixed for segment in template.document] == [DOCUMENT_PREFIX, None, ""]
+    assert [segment.fixed for segment in template.document] == [DOCUMENT_PREFIX, None]
     assert recipe.reference.known_deviations == []  # the paper's cut keeps the appended anchor
     assert recipe.status.state == "unverified"
     config = client_config(recipe, base_url="http://127.0.0.1:8100/v1")
@@ -231,9 +233,10 @@ def test_stage1_on_cpu_passes_token_equality_and_the_anchor_check(tmp_path: Path
     assert document["engine_tokenize_check"]["status"] == "not_run"
     assert document["passed"] is True
     # The budget reserves the fixed frame per shape: ids("- ") = 2 tokens + the appended anchor for
-    # documents; the appended anchor alone for queries.
-    assert document["fit"]["document"]["overhead"] == 3
-    assert document["fit"]["query"]["overhead"] == 1
+    # documents; the appended anchor alone for queries (the product's own measurement).
+    facts = stage1_facts(recipe, PAIRS, tokenizer_of(recipe), 5)
+    assert facts["per_shape"]["document"]["overhead"] == 3
+    assert facts["per_shape"]["query"]["overhead"] == 1
 
 
 def test_fitted_render_token_ids_match_the_paper_string(tmp_path: Path) -> None:
@@ -244,23 +247,20 @@ def test_fitted_render_token_ids_match_the_paper_string(tmp_path: Path) -> None:
     ids, read as the engine reads them, must equal the ids of that string and end with the appended
     anchor.
     """
-    from rcp_ndcg.data.preprocess import fit
-
     recipe = _local_recipe(_recipe(), _tokenizer_dir(tmp_path))
     tokenizer = tokenizer_of(recipe)
-    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
     for row in PAIRS[:4]:
-        query_result = fit([row["query"]], "query", budget, tokenizer, ids=["0"])
-        assert query_result.texts[0] == row["query"]
-        assert tokenizer.ids(query_result.texts[0], add_special_tokens=True) == tokenizer.ids(
+        query_text = served_texts(recipe, [row["query"]], "query")[0]
+        assert query_text == row["query"]
+        assert tokenizer.ids(query_text, add_special_tokens=True) == tokenizer.ids(
             row["query"], add_special_tokens=True
         )
-        assert tokenizer.ids(query_result.texts[0], add_special_tokens=True)[-1] == APPENDED_ANCHOR_ID
+        assert tokenizer.ids(query_text, add_special_tokens=True)[-1] == APPENDED_ANCHOR_ID
 
         document = row["documents"][0]
-        doc_result = fit([document], "document", budget, tokenizer, ids=["0"])
-        assert doc_result.texts[0] == DOCUMENT_PREFIX + document  # the paper string, byte-identical
-        ids = tokenizer.ids(doc_result.texts[0], add_special_tokens=True)
+        doc_text = served_texts(recipe, [document], "document")[0]
+        assert doc_text == DOCUMENT_PREFIX + document  # the paper string, byte-identical
+        ids = tokenizer.ids(doc_text, add_special_tokens=True)
         assert ids == tokenizer.ids(DOCUMENT_PREFIX + document, add_special_tokens=True)
         assert ids[-1] == APPENDED_ANCHOR_ID
 
@@ -272,11 +272,8 @@ def test_over_length_inputs_keep_every_anchor(tmp_path: Path) -> None:
     cannot express for a head-prefix template: the head prefix is present (the audit's anchor edge
     is the tail) and the whole input stays within the budget the anchors reserved.
     """
-    from rcp_ndcg.data.preprocess import fit
-
     recipe = _local_recipe(_recipe(), _tokenizer_dir(tmp_path))
     tokenizer = tokenizer_of(recipe)
-    budget = budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name})
     unit = "the diesel locomotive hauled freight through the alpine tunnel and arrived late in the evening "
     long_document = unit * 500  # 500 repetitions tokenise well over the 8192-token budget
     long_query = unit * 500
@@ -287,15 +284,15 @@ def test_over_length_inputs_keep_every_anchor(tmp_path: Path) -> None:
     assert len(raw_document_ids) > MAX_TOKENS, f"the sample document is under the budget ({len(raw_document_ids)})"
     assert len(raw_query_ids) > MAX_TOKENS, f"the sample never exceeds the budget ({len(raw_query_ids)})"
 
-    doc_result = fit([long_document], "document", budget, tokenizer, ids=["0"])
-    doc_ids = tokenizer.ids(doc_result.texts[0], add_special_tokens=True)
-    assert doc_result.texts[0].startswith(DOCUMENT_PREFIX)  # the head prefix survived the cut
+    doc_text = served_texts(recipe, [long_document], "document")[0]
+    doc_ids = tokenizer.ids(doc_text, add_special_tokens=True)
+    assert doc_text.startswith(DOCUMENT_PREFIX)  # the head prefix survived the cut
     assert doc_ids[-1] == APPENDED_ANCHOR_ID  # the pooled anchor survived the cut
     assert len(doc_ids) <= MAX_TOKENS < len(raw_document_ids)  # the render actually shrank to fit
 
-    query_result = fit([long_query], "query", budget, tokenizer, ids=["0"])
-    query_ids = tokenizer.ids(query_result.texts[0], add_special_tokens=True)
-    assert not query_result.texts[0].startswith(DOCUMENT_PREFIX)  # queries carry no prefix
+    query_text = served_texts(recipe, [long_query], "query")[0]
+    query_ids = tokenizer.ids(query_text, add_special_tokens=True)
+    assert not query_text.startswith(DOCUMENT_PREFIX)  # queries carry no prefix
     assert query_ids[-1] == APPENDED_ANCHOR_ID
     assert len(query_ids) <= MAX_TOKENS < len(raw_query_ids)
 
@@ -303,18 +300,17 @@ def test_over_length_inputs_keep_every_anchor(tmp_path: Path) -> None:
 # -- mutations: the anchor declaration is load-bearing ------------------------------------------
 
 
-def test_mutation_drop_the_trailing_anchor_segment_reddens_the_anchor_check(tmp_path: Path) -> None:
-    """Dropping the template's trailing anchor segment turns the anchor check red.
+def test_mutation_declaring_the_wrong_anchor_position_reddens_the_anchor_check(tmp_path: Path) -> None:
+    """A wrong anchor declaration turns the anchor check red.
 
-    The trailing empty fixed segment is what the audit reads as the tail anchor carrier (the edge
-    is the last fixed segment's ids plus the post-processor block). Without it the audit derives
-    the edge from the head prefix instead, which BPE merging makes unsatisfiable for every real
-    render -- so every document render fails the audit.
+    The appended end-of-text token is the anchor (declared by add_special_tokens: true on the
+    content-final shapes). Declaring the head instead makes the query shape's declared edge
+    unsatisfiable (it has no fixed head segment at all), so the audit reds on every render of it.
     """
     recipe = _local_recipe(_recipe(), _tokenizer_dir(tmp_path))
     template = recipe.client.template
     assert template is not None
-    mutated_template = template.model_copy(update={"document": tuple(template.document)[:-1]})
+    mutated_template = template.model_copy(update={"anchor": "first"})
     client = recipe.client.model_copy(update={"template": mutated_template})
     mutated = recipe.model_copy(update={"client": client})
 
@@ -324,9 +320,17 @@ def test_mutation_drop_the_trailing_anchor_segment_reddens_the_anchor_check(tmp_
 
     mutated_document = stage1_prompts(mutated, pairs, sys.executable, over_length_per_shape=2)
     assert mutated_document["anchor_check"]["passed"] is False
-    assert mutated_document["fit"]["document"]["texts_head"] == healthy["fit"]["document"]["texts_head"]
+    # The renders themselves are unchanged (the client ships the same texts): only the declared
+    # anchor position is wrong.
+    healthy_facts = stage1_facts(recipe, PAIRS, tokenizer_of(recipe), 2)
+    mutated_facts = stage1_facts(mutated, PAIRS, tokenizer_of(mutated), 2)
+    assert (
+        mutated_facts["per_shape"]["document"]["texts"] == healthy_facts["per_shape"]["document"]["texts"]
+    )
+    assert mutated_facts["per_shape"]["query"]["texts"] == healthy_facts["per_shape"]["query"]["texts"]
+    # The query shape has no fixed head segment: its declared edge cannot hold.
     shapes = {failure["shape"] for failure in mutated_document["anchor_check"]["failures"]}
-    assert shapes == {"document"}  # the query shape's declared anchor is unaffected
+    assert "query" in shapes
 
 
 def test_mutation_without_the_appended_anchor_declaration_is_refused() -> None:
@@ -362,6 +366,16 @@ def _reference_module() -> Any:
     return module
 
 
+def _paper_module() -> Any:
+    """The paper path's own octen encoder (experiments/paper/rerankers/reference/octen.py)."""
+    paper_path = Path(__file__).resolve().parents[4] / "experiments" / "paper" / "rerankers" / "reference" / "octen.py"
+    spec = importlib.util.spec_from_file_location("octen_paper_reference", paper_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_reference_imports_no_torch_transformers_or_numpy_at_module_level() -> None:
     """Importing the reference module pulls in none of the heavy stacks (checked in a fresh python).
 
@@ -386,19 +400,23 @@ def test_reference_imports_no_torch_transformers_or_numpy_at_module_level() -> N
 
 
 def test_reference_constants_equal_the_paper_code() -> None:
-    """The reference's constants are the paper path's, not the model card's."""
-    from rcp_ndcg.retrieval.encoder import l2_normalize
-    from rcp_ndcg.retrieval.encoders.torch_dense import TorchDenseEncoder
-    from rcp_ndcg.retrieval.hf_dense import MAX_LENGTH as paper_max_length
+    """The reference's constants are the paper path's (experiments/paper/rerankers/reference/octen.py),
+    not the model card's."""
+    from rcp_ndcg.retrieval import l2_normalize
 
     reference = _reference_module()
     paper = yaml.safe_load(
         (Path(__file__).resolve().parents[4] / "experiments/paper/retrieval/octen.yaml").read_text(encoding="utf-8")
     )["encoder"]
-    assert reference.MAX_LENGTH == paper_max_length == MAX_TOKENS
+    paper_module = _paper_module()
+    assert reference.MAX_LENGTH == paper_module.MAX_LENGTH == MAX_TOKENS
     assert reference.DOCUMENT_PREFIX == paper["doc_prompt"] == DOCUMENT_PREFIX
     assert reference.PAD_SIDE == "left" and reference.DTYPE == "bfloat16"
-    assert reference.BATCH_SIZE == paper["batch_size"] == TorchDenseEncoder.__init__.__kwdefaults__["batch_size"]
+    assert (
+        reference.BATCH_SIZE
+        == paper["batch_size"]
+        == paper_module.TorchDenseEncoder.__init__.__kwdefaults__["batch_size"]
+    )
     assert reference.REVISION == REVISION and reference.MODEL == MODEL
     probe = np.array([[3.0, 4.0], [0.0, 0.0]])
     assert reference._l2_normalize(probe).tolist() == l2_normalize(probe).tolist()  # noqa: SLF001
