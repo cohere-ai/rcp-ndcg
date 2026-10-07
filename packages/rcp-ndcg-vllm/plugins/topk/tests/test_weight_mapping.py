@@ -11,7 +11,7 @@ here instead of silently corrupting weight loading.
 from __future__ import annotations
 
 import pytest
-from conftest import CENSUS_PREFIX_COUNTS  # noqa: I001 - conftest prepends src/
+from conftest import CENSUS_PREFIX_COUNTS, PLUGIN_ROOT  # noqa: I001 - conftest prepends src/
 from rcp_ndcg_vllm_topk import weights
 
 VLLM_MISSING_REASON = (
@@ -93,6 +93,55 @@ def test_ignored_prefix_is_dropped() -> None:
     matching the upstream mapper's ``None`` entries."""
     assert weights.map_checkpoint_name("mtp.layers.0.fc.weight") is None
     assert "mtp." in weights.IGNORED_CHECKPOINT_PREFIXES
+
+
+def test_the_zero_projection_bias_is_marked_initialized() -> None:
+    """The checkpoint is bias-less; the loaded set must claim the constructor's zeros.
+
+    vLLM v0.31.0's load tracker (``model_loader/default_loader.py:track_weights_loading``,
+    shake1c: ``ValueError: Following weights were not initialized from checkpoint:
+    {'custom_text_proj.bias'}``) refuses a model parameter the checkpoint never supplied.
+    ``ColQwen3_5Model`` builds ``custom_text_proj`` with a zero-initialised bias (score-
+    equivalent to this checkpoint's bias-less ``head``), so the plugin marks it initialized
+    under both qualnames, exactly as the in-tree projection loader marks a shipped one
+    (``colqwen3_5.py:load_weights``)."""
+    loaded = {"custom_text_proj.weight"}
+    marked = weights.mark_zero_initialised(loaded)
+    assert marked is loaded
+    assert "custom_text_proj.bias" in marked
+    assert "pooler.head.projector.bias" in marked
+    # A shipped head.bias is loaded and marked by the in-tree path; marking is idempotent.
+    both = weights.mark_zero_initialised({"custom_text_proj.weight", "custom_text_proj.bias"})
+    assert both == {"custom_text_proj.weight", "custom_text_proj.bias", "pooler.head.projector.bias"}
+
+
+def test_the_model_marks_the_zero_bias_after_super() -> None:
+    """``TopkEmbedModel.load_weights`` routes its returned set through the marking.
+
+    Construction-free (the class cannot build without a vLLM engine config): the checked
+    fact is that the served class's ``load_weights`` delegates the super's returned set to
+    ``weights.mark_zero_initialised`` (the engine's tracker reads exactly that return)."""
+    import ast
+
+    source = (PLUGIN_ROOT / "src" / "rcp_ndcg_vllm_topk" / "model.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    load_weights = next(
+        node
+        for item in tree.body
+        if isinstance(item, ast.ClassDef) and item.name == "TopkEmbedModel"
+        for node in item.body
+        if isinstance(node, ast.FunctionDef) and node.name == "load_weights"
+    )
+    called = {
+        node.func.attr
+        for node in ast.walk(load_weights)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    } | {
+        node.func.id
+        for node in ast.walk(load_weights)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "mark_zero_initialised" in called, "the served class must mark the zero bias as initialized"
 
 
 def test_unmapped_names_pass_through() -> None:
