@@ -1449,9 +1449,9 @@ class TestVideoContainerFit:
     not apply to a container), and ``apply_media_fit`` consumes its decision -- a drop removes the part,
     a keep rides as prepared.
 
-    The fit machinery is policy-independent, so these tests build the policies directly: the retrieval
-    role configs refuse ``wire: video_url`` (only a chat judge inlines a container), and the judge's
-    ``preprocessing.video`` is what still carries it."""
+    The fit machinery is policy-independent, so these tests build the policies directly (a judge's
+    ``preprocessing.video`` or a retrieval role's ``video_policy`` declares the same policy; the messages
+    lowering sends the container as a ``video_url`` part)."""
 
     @staticmethod
     def _policies() -> tuple[ImagePolicy, Any]:
