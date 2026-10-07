@@ -52,3 +52,19 @@ pyproject.toml   the uv workspace only; docs/, experiments/, examples/, skills/,
    lists the recipes from the installed wheel; NOTICE byte-identical in all four distributions; `run_all` unchanged;
    `release.yml`'s build/check steps pass locally (`uv build --package ...`, versions, pins, constraints, `twine check`).
 5. Merge into `rfc-0001`, quality bar, push, CI. Report in `handover/reports/05-layout.md`.
+
+## Amendments after M3 (binding)
+- **Base**: start from the M3 tip of `rfc-0001` (everything integrated). `wip/layout-script` was cut from an older base:
+  take `tools/layout_move.py` from it, extend its tables until `--check` passes, and re-apply its hand-edit stack.
+  The plugins fold must carry the families' plugin fixes (the topk `load_weights` override and its mapper; the pplx
+  plugin-registered config class `hf_config.py`).
+- **Owner decisions 18-22 land in this workstream**:
+  - 18: `schema_version` on every recipe; the exported recipe JSON Schema; rcp-ndcg's compatibility check on
+    `recipe:<id>`; no lockstep pin between rcp-ndcg and rcp-ndcg-vllm (core and rcp-ndcg keep theirs).
+  - 19: the recipe schema keeps the engine-neutral `client` block strictly apart from `serve`/`engine`.
+  - 20: the verified emulators and the observation corpora move into `rcp-ndcg-test` (today `rcp_ndcg.testing.engines`,
+    `rcp_ndcg.testing.corpus`, `tests/contract/engines/`, `tests/conformance/`), named "emulators" to distinguish them
+    from the product's `rcp_ndcg.inference.fake`. The product keeps only what users need offline.
+  - 21: rename `rcp_ndcg.llm` to `rcp_ndcg.judging` (snapshots, docs, CHANGELOG).
+  - 22: `rcp-ndcg-test` is installed from a git subdirectory; say so in its README and the docs.
+- `packages/rcp-ndcg-vllm/README.md` already describes the post-move state; reconcile it with the code after the move.
