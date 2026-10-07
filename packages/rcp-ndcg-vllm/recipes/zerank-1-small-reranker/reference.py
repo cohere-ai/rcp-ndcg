@@ -250,6 +250,15 @@ def served_spans(tokenizer, query: str, document: str) -> tuple[str, str]:
     return q_final, d_final
 
 
+def served_render(tokenizer, query: str, document: str) -> str:
+    """The served pair render for one (query, document): the frame with the content spans fitted.
+
+    The frame-assembled view of :func:`served_spans` (the engine assembles the template around the
+    wire's cut spans; the anchor -- the trailing assistant header -- is always re-attached).
+    """
+    head, mid, tail = _frame(tokenizer)
+    q_final, d_final = served_spans(tokenizer, query, document)
+    return head + q_final + mid + d_final + tail
 
 
 # -------------------------------------------------------------------------------------------
