@@ -1,6 +1,6 @@
 """Stage 1 on CPU for the zembed-1-embedding recipe (``recipes/zembed-1-embedding``).
 
-What is checked, per the recipe lane's done-when:
+What is checked:
 
 - the recipe loads against the product's endpoint config (offline; no tokenizer needed);
 - stage 1 on CPU -- the product's ``fit`` renders, the anchor audit, and the reference subprocess's
@@ -108,7 +108,7 @@ def tokenizer(tokenizer_dir: Path) -> TextTokenizer:
 def _pair_rows(tokenizer: TextTokenizer) -> list[dict[str, object]]:
     """The pairs file's rows: 15 in-budget pairs (varied lengths, one empty document, two with several
     documents) plus 6 over-cap ones (5 long documents, 1 long query and document) -- at least 20 pairs
-    including at least 5 over-length, per the lane's done-when."""
+    including at least 5 over-length."""
     unit = "Retrieval models map a query and its documents into one shared vector space. "
     long_text = unit * 64
     while tokenizer.count(long_text) < 33100:  # over the 32768-token whole-prompt cap
@@ -415,7 +415,7 @@ def test_reference_render_ids_match_the_model_own_remote_code(
         on_overflow=recipe.client.on_overflow,
     )
     suffix_ids = tokenizer.ids(tokenizer.special_text("im_end") + "\n", add_special_tokens=False)
-    # the research's pinned constants, re-read from the downloaded checkpoint file
+    # the pinned constants, re-read from the downloaded checkpoint file
     added = json.loads((tokenizer_dir / "added_tokens.json").read_text(encoding="utf-8"))
     assert int(added[tokenizer.special_text("im_start")]) == 151644
     assert int(added[tokenizer.special_text("im_end")]) == 151645
@@ -561,8 +561,7 @@ EXPECTED_REFERENCE = {
     "score_scale": "cosine",
 }
 
-# Two mutants per recipe against the contract pin above (the sweep's weak-contract
-# finding #9): each drift must fail, naming the field.
+# Two mutants per recipe against the contract pin above: each drift must fail, naming the field.
 MUTANTS: list[tuple[str, tuple[str, ...], object, str]] = [
     ("serve.max_model_len drifts to 40960", ("serve", "max_model_len"), 40960, "max_model_len"),
     ("reference.kind drifts to transformers", ("reference", "kind"), "transformers", "reference.kind"),
@@ -614,7 +613,7 @@ def test_requirements_reference_ships_the_documented_environment() -> None:
     path = RECIPE_DIR / "requirements-reference.txt"
     assert path.is_file(), "every recipe of this family ships its reference environment"
     text = path.read_text(encoding="utf-8")
-    for pin in ("torch>=2.0", "transformers>=4.40", "sentence-transformers>=5.1,<5.2"):
+    for pin in ("torch>=2.0", "transformers>=4.51", "sentence-transformers>=5.3,<5.4"):
         assert pin in text
     assert "startup_timeout_s" not in (RECIPE_DIR / "recipe.yaml").read_text(encoding="utf-8")
     notes = load_recipe(RECIPE_DIR).notes

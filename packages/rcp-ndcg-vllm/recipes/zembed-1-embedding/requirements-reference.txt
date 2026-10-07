@@ -9,15 +9,24 @@
 #   everything below.
 # numpy serves the reference's own L2 normalisation.
 #
-# sentence-transformers is pinned to the measured 5.1 line: 6.x's preprocess-first pipeline bypasses
-# tokenize-only remote modules and silently drops the trailing marker the template's suffix declares
-# (the model's remote tokenize appends it), and 5.7 already changed the Transformer module's
-# tokenizer into a read-only property (the recipe test's remote-tokenize instrument fails there,
-# passes on 5.1.2) -- a later line is unmeasured against this remote module.  The reference loads the
-# checkpoint with trust_remote_code=True (the model card's usage); the served engine never imports
-# that code.
+# sentence-transformers is pinned to the 5.3 line, the last one whose encode calls the first
+# module's tokenize (5.3.0 SentenceTransformer.py:1080 self.tokenize -> the remote
+# ZembedTransformer.tokenize, which appends the suffix the pooler reads). 5.4.0 switches encode to
+# the preprocess-first pipeline (sentence_transformer/model.py:644 self.preprocess -> base/model.py:538
+# self[0].preprocess), which bypasses a tokenize-only remote module and silently drops that suffix.
+# The 5.1 line would also work, but 5.1.x requires transformers<5 and so could not reuse the engine
+# image's transformers (vLLM v0.31.0 requirements/common.txt: >=5.10.4,<5.18.0); 5.3.x accepts
+# transformers>=4.41,<6. Measured: the recipe test's remote-tokenize instrument passes on 5.3.0 with
+# transformers 5.17.0 and on 5.1.2 with transformers 4.57.6.
+#
+# How the reference installs (one 0.0.1 decision: a reference venv with --system-site-packages over
+# the image's CUDA torch, installing only what is missing): torch and transformers come from the
+# image (transformers>=4.51 is Qwen3's floor, which the image satisfies), so only
+# sentence-transformers 5.3.x (and numpy if absent) is installed into the reference venv.
+# The reference loads the checkpoint with trust_remote_code=True (the model card's usage); the served
+# engine never imports that code.
 
 torch>=2.0
-transformers>=4.40
+transformers>=4.51
 numpy>=1.26
-sentence-transformers>=5.1,<5.2
+sentence-transformers>=5.3,<5.4
