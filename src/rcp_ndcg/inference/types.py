@@ -380,6 +380,11 @@ class EmbedRequest:
             input (content parts, image and video parts included), ``"token_ids"`` the pre-tokenised ids.
         token_ids: For ``request_shape: token_ids``, each item's token ids as the client fitted it -- the
             payload the adapter sends. Empty otherwise.
+        add_special_tokens: For ``request_shape: messages``, the declared template's ``add_special_tokens``
+            flag of the batch's shape, sent with the request so the engine adds exactly the declared
+            post-processor tokens to its chat-template render (the chat route's own default is ``false``).
+            ``None`` sends nothing (the engine's default applies): every other route, and a config without
+            a template.
     """
 
     contents: tuple[Content, ...]
@@ -387,6 +392,7 @@ class EmbedRequest:
     dimensions: int | None = None
     request_shape: Literal["text", "messages", "token_ids"] = "text"
     token_ids: tuple[tuple[int, ...], ...] = ()
+    add_special_tokens: bool | None = None
 
 
 @dataclass(frozen=True)

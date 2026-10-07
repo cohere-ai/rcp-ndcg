@@ -393,7 +393,75 @@ class Recipe(BaseModel):
                 "recipe.input declares video but the client config carries max_videos: 0; declare max_videos "
                 "(or drop the modality)"
             )
+        _pixel_budgets_agree(self)
         return self
+
+
+_PIXEL_KEYS = {"min_pixels": "min_px", "max_pixels": "max_px"}
+"""The engine's pixel-budget keys and the client image policy's fields they mirror."""
+
+_SIZE_KEYS = {"shortest_edge": "min_px", "longest_edge": "max_px"}
+"""The HF Qwen-VL image processor's ``size`` keys (pixel counts despite their names) and the fields they mirror."""
+
+
+def _pixel_pins(kwargs: dict[str, Any], prefix: str) -> list[tuple[str, str, Any]]:
+    """Every pixel number one ``mm_processor_kwargs`` scope pins: ``(where, client field, value)``."""
+    pins = [(f"{prefix}.{key}", field, kwargs[key]) for key, field in _PIXEL_KEYS.items() if key in kwargs]
+    size = kwargs.get("size")
+    if isinstance(size, dict):
+        pins += [(f"{prefix}.size.{key}", field, size[key]) for key, field in _SIZE_KEYS.items() if key in size]
+    return pins
+
+
+def _pixel_budgets_agree(recipe: Recipe) -> None:
+    """The client's image pixel budget and the engine's pinned one are the same numbers (R20, H4).
+
+    The client resizes and counts every image under ``client.image_policy``; the engine resizes it again under
+    its own budget -- the processor family's stock range, or what ``serve.mm_processor_kwargs`` pins: the
+    nested ``images_kwargs`` (the one pixel-pin shape, read from the vLLM v0.31.0 source; it reaches the HF
+    image processor and the vLLM-side image token budget) or the flat keys (which also reach every image),
+    each as ``min_pixels``/``max_pixels`` or the HF processor's ``size: {shortest_edge, longest_edge}``.  A
+    client policy that declares ``engine_pixel_pinning`` -- the only way to declare a budget outside the
+    stock range -- needs the nested pin on serve; every pixel number serve pins must equal the client's
+    declared budget, and a serve pin needs a client budget to agree with, or the counted tokens describe a
+    size the engine never keeps.
+
+    Raises:
+        ValueError: a pinned client policy without the nested serve pin, a serve pin beside a client that
+            declares no pixel budget, or a serve pin that differs from the client's declared budget.
+    """
+    policy = getattr(recipe.client, "image_policy", None)
+    kwargs = recipe.serve.mm_processor_kwargs
+    nested = kwargs.get("images_kwargs")
+    nested = nested if isinstance(nested, dict) else {}
+    if policy is not None and policy.pinned:
+        missing = [key for key in _PIXEL_KEYS if key not in nested]
+        if missing:
+            raise ValueError(
+                "client.image_policy declares engine_pixel_pinning, but serve.mm_processor_kwargs pins no "
+                f"images_kwargs {' and '.join(missing)}: a stock engine would resize the prepared image again "
+                f"(declare serve.mm_processor_kwargs: {{images_kwargs: {{min_pixels: {policy.min_px}, max_pixels: "
+                f"{policy.max_px}}}}})"
+            )
+    pins = _pixel_pins(nested, "serve.mm_processor_kwargs.images_kwargs") + _pixel_pins(
+        kwargs, "serve.mm_processor_kwargs"
+    )
+    if not pins:
+        return
+    if policy is None or policy.is_native:
+        raise ValueError(
+            f"{pins[0][0]} pins the engine's image pixel budget, but client.image_policy declares none: the client "
+            "would send images it cannot count under the budget the engine resizes them to (declare "
+            "client.image_policy with the same numbers)"
+        )
+    for where, field, value in pins:
+        declared = getattr(policy, field)
+        if value != declared:
+            raise ValueError(
+                f"{where} ({value}) differs from client.image_policy's {field} ({declared}): the client counts "
+                "every image under its declared budget and the engine resizes it under the pinned one, so both "
+                "sides carry the same numbers"
+            )
 
 
 def default_recipes_root() -> Path:

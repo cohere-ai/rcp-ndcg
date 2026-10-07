@@ -650,6 +650,20 @@
           "title": "Connect Timeout S",
           "type": "number"
         },
+        "document_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The document's own cap, in the declared tokenizer's content tokens, beside the pair budget -- for a checkpoint that cuts each document itself (jina-reranker-v3 reads 2048 document tokens and 512 query tokens: ``document_max_tokens: 2048`` beside ``query_max_tokens: 512``). The client cuts every document over it to it, also in a pair the budget would take whole, on the content span only (the template re-attached, the anchors kept), records the cut under the document's position (``cause: document_share``) and then fits the pair to max_tokens. ``None`` (the default) declares no cap. It must be below max_tokens (at or over it the pair budget always binds first) and is refused beside ``on_overflow: chunk``. Content.",
+          "title": "Document Max Tokens"
+        },
         "empty_doc": {
           "default": "send",
           "description": "What an empty document becomes: ``send`` (the default: the empty string goes out), ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder, empty_doc_text). Content.",
@@ -1405,8 +1419,22 @@
     },
     "ImagePolicy": {
       "additionalProperties": false,
-      "description": "The pixel budget every page image and video frame is resized to, and the processor whose resize is used.\n\nBudget both or neither: without one, images go at their stored size and the engine's processor decides\n(native), so their token cost cannot be counted. With a known processor the budget must lie within\nthe engines' default budget for it (PROCESSORS), so the engine keeps the prepared size.",
+      "description": "The pixel budget every page image and video frame is resized to, and the processor whose resize is used.\n\nBudget both or neither: without one, images go at their stored size and the engine's processor decides\n(native), so their token cost cannot be counted. With a known processor the budget must lie within\nthe engines' default budget for it (PROCESSORS), so the engine keeps the prepared size -- unless the\nengine is pinned to the budget itself (engine_pixel_pinning).",
       "properties": {
+        "engine_pixel_pinning": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the engine serving this policy is pinned to exactly this pixel budget (vLLM ``--mm-processor-kwargs '{\"images_kwargs\": {\"min_pixels\": <min_px>, \"max_pixels\": <max_px>}}'``; a serving recipe checks that both sides carry the same numbers). Then the budget is the engine's own and may lie outside the family's stock range -- the Qwen3-VL-Embedding card's 4096 px floor under qwen3_vl's stock 65536 -- and the engine keeps the prepared size. ``False`` is the absence of the declaration (stored as ``None``, so a policy that never names it keeps its identity).",
+          "title": "Engine Pixel Pinning"
+        },
         "max_px": {
           "anyOf": [
             {
@@ -2870,6 +2898,20 @@
           "exclusiveMinimum": 0,
           "title": "Connect Timeout S",
           "type": "number"
+        },
+        "document_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The document's own cap, in the declared tokenizer's content tokens, beside the pair budget -- for a checkpoint that cuts each document itself (jina-reranker-v3 reads 2048 document tokens and 512 query tokens: ``document_max_tokens: 2048`` beside ``query_max_tokens: 512``). The client cuts every document over it to it, also in a pair the budget would take whole, on the content span only (the template re-attached, the anchors kept), records the cut under the document's position (``cause: document_share``) and then fits the pair to max_tokens. ``None`` (the default) declares no cap. It must be below max_tokens (at or over it the pair budget always binds first) and is refused beside ``on_overflow: chunk``. Content.",
+          "title": "Document Max Tokens"
         },
         "empty_doc": {
           "default": "send",
@@ -4428,6 +4470,20 @@
           "title": "Connect Timeout S",
           "type": "number"
         },
+        "document_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The document's own cap, in the declared tokenizer's content tokens, beside the pair budget -- for a checkpoint that cuts each document itself (jina-reranker-v3 reads 2048 document tokens and 512 query tokens: ``document_max_tokens: 2048`` beside ``query_max_tokens: 512``). The client cuts every document over it to it, also in a pair the budget would take whole, on the content span only (the template re-attached, the anchors kept), records the cut under the document's position (``cause: document_share``) and then fits the pair to max_tokens. ``None`` (the default) declares no cap. It must be below max_tokens (at or over it the pair budget always binds first) and is refused beside ``on_overflow: chunk``. Content.",
+          "title": "Document Max Tokens"
+        },
         "empty_doc": {
           "default": "send",
           "description": "What an empty document becomes: ``send`` (the default: the empty string goes out), ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder, empty_doc_text). Content.",
@@ -5658,6 +5714,20 @@
           "exclusiveMinimum": 0,
           "title": "Connect Timeout S",
           "type": "number"
+        },
+        "document_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The document's own cap, in the declared tokenizer's content tokens, beside the pair budget -- for a checkpoint that cuts each document itself (jina-reranker-v3 reads 2048 document tokens and 512 query tokens: ``document_max_tokens: 2048`` beside ``query_max_tokens: 512``). The client cuts every document over it to it, also in a pair the budget would take whole, on the content span only (the template re-attached, the anchors kept), records the cut under the document's position (``cause: document_share``) and then fits the pair to max_tokens. ``None`` (the default) declares no cap. It must be below max_tokens (at or over it the pair budget always binds first) and is refused beside ``on_overflow: chunk``. Content.",
+          "title": "Document Max Tokens"
         },
         "empty_doc": {
           "default": "send",

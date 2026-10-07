@@ -70,7 +70,11 @@ goes out unchanged, so within `fit` the share binds on overflow); on an embedder
 `query` shape it is that shape's WHOLE budget -- per-shape budgets, for the asymmetric and late-interaction
 embedders that cap queries and documents differently (topk-embed-v1-small reads 1024 tokens of query, 8192 of
 document) -- while `max_tokens` keeps capping the `document` shape. A query budget above `max_tokens` is refused
-(on a reranker, one at or over it is refused: the document would keep nothing). `fit` then, per input:
+(on a reranker, one at or over it is refused: the document would keep nothing). A reranker whose checkpoint cuts
+each document itself declares `document_max_tokens` beside the pair budget (jina-reranker-v3 reads 2048
+document tokens and 512 query tokens): every document over it is cut to it, also in a pair the budget would take
+whole, the frame re-attached and the cut recorded (`cause: document_share`), before the pair is fitted; it must
+be below `max_tokens` and is refused beside `on_overflow: chunk`. `fit` then, per input:
 
 1. measures the fixed overhead once per (template, shape): the template rendered with every content span empty,
    counted as the engine reads it (the shape's `add_special_tokens` flag included);
@@ -80,12 +84,23 @@ document) -- while `max_tokens` keeps capping the `document` shape. A query budg
    engine-side chunking of a framed render keeps the frame only on the first and last chunk, so chunking is
    always client-side here;
 4. records every cut in the census under the `text_budget` mechanism, each row naming the shape's own budget
-   (`budget_tokens`: the query rows a declared `query_max_tokens`, the document rows `max_tokens`).
+   (`budget_tokens`: the query rows a declared `query_max_tokens`, the document rows `max_tokens`), why the
+   input changed (`cause`: `budget_cut`, `query_share` or `document_share`) and the uncut request's whole size as
+   the engine would read it (`original_request_tokens`: the frame, its specials, the content and the reserved
+   media). `original_tokens` counts the content alone, so a request the frame pushed over the budget has a
+   content count under it: whether an input was changed is read from the row, never from that count.
+
+Every role client also keeps, per input row it changed, one `ProcessingRecord` (`client.processing`), read from
+those census rows and from the media fit's and the empty-document policy's decisions: the row's id in its call
+(its position, or `<query>` for a reranker's shared query), each change by its mechanism (`empty_doc`,
+`media_resize`, `media_drop`, `document_share`, `query_share`, `budget_cut`), and the uncut and kept request
+totals. A row without a record was sent as given -- the equivalence harness gates exactly those.
 
 An input under budget comes back byte-identical to the uncut render -- within `fit`, which settles a pair's
 query span per pair. The rerank wire carries one query per request, so the rerank client settles the shared
 query span once per call (`fit`'s own rules, on a probe pair): whenever the query exceeds its declared share it
-ships at it, recorded once in the census under the doc id `<query>`, and every document span is verified
+ships at it, recorded once in the census under the doc id `<query>` (`cause: query_share`, also when every pair
+would fit whole), and every document span is verified
 against the span that ships. The function returns the rendered strings
 (the wire routes take text; tokenising once here to measure and cut is the same work either way), the cut content
 per span (for routes the engine renders the template on), the output ids, and the chunk mapping.
@@ -139,7 +154,9 @@ tokenizer, a vendor profile follows the same rule as self-hosted.
 
 The role configs also declare `template` (the `TemplateSpec` above), `empty_doc` (`send`, `omit_zero` --
 never sent and scored `0.0` -- or `send_text` with its `empty_doc_text` placeholder; every role client
-consumes it, for an empty text document and for one whose every media item the budget dropped),
+consumes it, for an empty text document and for one whose every media item the budget dropped, deciding on
+the content before the side's prompt and the template frame it -- the placeholder is then prompted and framed
+like any content),
 `request_shape` (`text`, `messages` or `token_ids`; the served embedding and pooling wires -- the
 `openai_embeddings` and `vllm_pooling` adapters -- implement all three, the messages route being the
 chat-style embeddings input and `token_ids` the ids the fit tokenised, while the hosted embed profiles speak

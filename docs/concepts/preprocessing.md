@@ -224,6 +224,12 @@ The judging pass checks the pixel budget against the budget a stock engine keeps
 the client sent, and no `--mm-processor-kwargs`, `SGLANG_IMAGE_MAX_PIXELS` or other media flag is needed. The one
 engine setting a multimodal judge still needs is the per-request media count (`max_images`, `max_videos`).
 
+A model whose own budget lies outside the stock range (the Qwen3-VL-Embedding card resizes to 4,096..1,843,200 px,
+below `qwen3_vl`'s stock floor) is served with the engine pinned to that budget instead, and the policy declares
+it: `engine_pixel_pinning: true` admits the budget and makes it the one the engine keeps, so a prepared image is a
+fixed point of the pinned resize. A serving recipe pins vLLM with `serve.mm_processor_kwargs: {images_kwargs:
+{min_pixels: ..., max_pixels: ...}}` and refuses to load unless both sides carry the same numbers.
+
 The test suite checks this over a grid of image sizes and budgets for every family, against copies of the
 transformers and SGLang resize functions under each engine's default settings. An image whose prepared size a stock
 engine would still change or refuse is refused by name (`DataError`) rather than sent. This happens only to an

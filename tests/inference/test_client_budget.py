@@ -417,6 +417,33 @@ class TestRerankBudget:
             self._config(tokenizer=tokenizer_json, request_shape="messages")
         assert "drop request_shape" in (caught.value.hint or ""), "the refusal names the field to change"
 
+    def test_a_declared_document_cap_cuts_every_document_over_it(self, tokenizer_json: str) -> None:
+        """H3: ``document_max_tokens`` beside the pair budget (jina-reranker-v3 cuts each document at 2048
+        tokens itself): the client ships every document over it at the cap -- in a pair the budget takes
+        whole too -- records the cut under the document's position (``cause: document_share``), and the cap
+        enters the config's identity."""
+        sender = RecordingSender()
+        client = RerankClient(
+            self._config(tokenizer=tokenizer_json, max_tokens=64, document_max_tokens=5), sender=sender
+        )
+        client.rerank("the query", ["a b c", " ".join(["evidence"] * 12)])
+
+        assert sender.bodies[-1]["documents"] == ["a b c", " ".join(["evidence"] * 5)]
+        (cut,) = client.census.cuts()
+        assert (cut.doc_id, cut.cause) == ("1", "document_share")
+        plain = self._config(tokenizer=tokenizer_json, max_tokens=64)
+        capped = self._config(tokenizer=tokenizer_json, max_tokens=64, document_max_tokens=5)
+        from rcp_ndcg.support.identity import identity_payload
+
+        assert identity_payload(capped)["document_max_tokens"] == 5
+        assert "document_max_tokens" not in identity_payload(plain)
+
+    def test_a_document_cap_that_never_binds_or_cannot_be_measured_is_refused(self, tokenizer_json: str) -> None:
+        with pytest.raises(ConfigError, match="document_max_tokens"):
+            self._config(tokenizer=tokenizer_json, max_tokens=64, document_max_tokens=64)
+        with pytest.raises(ConfigError, match="document_max_tokens"):
+            RerankEndpoint(api="cohere", model="rerank-v3.5", max_tokens=4096, document_max_tokens=512)
+
     def test_the_census_names_the_documents_original_positions(self, tokenizer_json: str) -> None:
         """With ``empty_doc: omit_zero``, a later document's census cut names ITS position -- never the kept
         position an earlier omission displaced."""
@@ -558,6 +585,32 @@ class TestQueryShareSettled:
             cut for cut in client.census.cuts(mechanism=TextTruncationCensus.TEXT_BUDGET) if cut.doc_id == "<query>"
         ]
         assert len(settlement) == 1 and settlement[0].kept_tokens == 4
+
+    def test_a_share_settlement_in_an_under_budget_pair_names_its_cause(self, tokenizer_json: str) -> None:
+        """The shared query settles at its share although every pair fits the budget whole: the client
+        changed what it sends, and the settlement row says so -- ``cause: query_share`` and the uncut probe
+        request's size (the frame with the uncut query, an empty document), which is under the budget. No
+        pair row is recorded: the documents ship whole."""
+        from rcp_ndcg.data.preprocess import rendered_pair_tokens
+
+        config = RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=40,
+            query_max_tokens=4,
+            use_activation=False,
+        )
+        client = RerankClient(config, sender=RecordingSender())
+        query = " ".join(["evidence"] * 6)
+        client.rerank(query, ["a b c"])
+
+        (settlement,) = client.census.cuts()
+        assert settlement.doc_id == QUERY_DOC_ID
+        assert settlement.cause == "query_share"
+        assert client.text_budget is not None
+        uncut = rendered_pair_tokens(client.text_budget, word_tokenizer(), query=query, document="")
+        assert settlement.original_request_tokens == uncut < 40
 
     def test_without_a_share_the_query_ships_whole(self, tokenizer_json: str) -> None:
         """No split declared: an under-budget pair rides byte-identical (fit's own guarantee)."""
@@ -1969,3 +2022,244 @@ class TestLongQueryDoesNotDropFittingMedia:
         body = sender.bodies[0]["documents"][0]
         assert "image_url" in __import__("json").dumps(body), "the document's image rides the wire"
         assert max(sender.prompt_tokens) <= 1000, "within the budget"
+
+
+class TestProcessingRecords:
+    """H2 (decision 9): every role client's preparation emits, per input row it changed, one
+    :class:`~rcp_ndcg.data.preprocess.ProcessingRecord` naming each change's mechanism -- a text cut to the
+    budget (with the uncut and kept request totals, frame and media included), a query-share settlement, a
+    per-document cap, an empty-document substitution, a media resize or drop. A row without a record was sent as
+    given: a consumer (the equivalence harness) decides gating from the record alone."""
+
+    @staticmethod
+    def _framed() -> TemplateSpec:
+        return TemplateSpec(
+            document=(Segment(fixed="the document reads "), Segment(content="document"), Segment(fixed=" end")),
+            query=(Segment(fixed="the query reads "), Segment(content="query"), Segment(fixed=" end")),
+        )
+
+    def test_a_frame_only_overflow_is_a_budget_cut_with_its_request_totals(self, tokenizer_json: str) -> None:
+        """The content fits ``max_tokens`` (12), the framed request (frame 4 + content 10) does not: one record,
+        ``budget_cut``, uncut total over the budget and kept total within it; the under-budget row has no
+        record."""
+        client = EmbeddingClient(
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=12,
+                template=self._framed(),
+            ),
+            sender=RecordingSender(),
+        )
+        client.encode(texts(" ".join(["evidence"] * 10), "a b"), EncodeRole.DOCUMENT)
+        (record,) = client.processing
+        assert (record.input_id, record.shape, record.mechanisms) == ("0", "document", ("budget_cut",))
+        assert record.changed
+        assert record.original_request_tokens is not None and record.kept_request_tokens is not None
+        assert record.original_request_tokens > 12 >= record.kept_request_tokens
+        assert record.budget_tokens == 12
+
+    def test_the_rerank_settlement_cap_and_substitution_are_named(self, tokenizer_json: str) -> None:
+        """A query over its share in pairs the budget takes whole (``query_share`` under the shared-query id),
+        a document over its declared cap (``document_share``), an empty document substituted (``empty_doc``)
+        -- and the untouched document has no record."""
+        client = RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=64,
+                query_max_tokens=4,
+                document_max_tokens=5,
+                empty_doc="send_text",
+                empty_doc_text="NULL",
+                use_activation=False,
+            ),
+            sender=RecordingSender(),
+        )
+        client.rerank(" ".join(["evidence"] * 6), ["a b c", " ".join(["evidence"] * 12), ""])
+        records = {record.input_id: record.mechanisms for record in client.processing}
+        assert records == {QUERY_DOC_ID: ("query_share",), "1": ("document_share",), "2": ("empty_doc",)}
+
+    @staticmethod
+    def _media_client(tokenizer_json: str, max_tokens: int) -> PoolingClient:
+        return PoolingClient(
+            PoolingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=max_tokens,
+                dim=2,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                image_processor="qwen2_vl",
+                max_images=1,
+            ),
+            sender=RecordingSender(),
+        )
+
+    def test_a_media_drop_is_named_apart_from_a_resize(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """A budget too small even for the image's minimum (6 tokens at 56x56 px, wrapper included): the media
+        fit drops it -- ``media_drop``, never ``media_resize``."""
+        client = self._media_client(tokenizer_json, max_tokens=4)
+        client.encode([_image_content(tmp_path, 1, 448)], EncodeRole.DOCUMENT)
+        (record,) = client.processing
+        assert (record.input_id, record.mechanisms) == ("0", ("media_drop",))
+
+    def test_a_media_change_is_named(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """A budget too small for a document's image as prepared but not for its minimum: the media fit shrinks
+        it (``media_resize``, never ``media_drop``) -- named on the document's row; the text cut beside it."""
+        client = PoolingClient(
+            PoolingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=6,
+                dim=2,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                image_processor="qwen2_vl",
+                max_images=1,
+            ),
+            sender=RecordingSender(),
+        )
+        page = _image_content(tmp_path, 0, 448)
+        client.encode([Content.from_parts([TextPart(text="a caption"), *page.parts])], EncodeRole.DOCUMENT)
+        (record,) = client.processing
+        assert (record.input_id, record.mechanisms) == ("0", ("media_resize", "budget_cut"))
+
+
+class TestEmptyDocumentsBeforeTheFrame:
+    """H6: ``empty_doc`` decides on the document as given -- before the side's prompt and the template frame it
+    (applied after the render, an empty document was a non-empty framed turn, so ``send_text`` never fired and
+    ``omit_zero`` never omitted). The placeholder is then prompted and framed like any content."""
+
+    @staticmethod
+    def _template() -> TemplateSpec:
+        return TemplateSpec(
+            document=(Segment(fixed="the document reads "), Segment(content="document"), Segment(fixed=" end")),
+        )
+
+    def test_send_text_fires_on_a_templated_embed_role(self, tokenizer_json: str) -> None:
+        sender = RecordingSender()
+        client = EmbeddingClient(
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=64,
+                template=self._template(),
+                empty_doc="send_text",
+                empty_doc_text="NULL",
+            ),
+            sender=sender,
+        )
+        client.encode(texts("", "a b"), EncodeRole.DOCUMENT)
+        assert sender.bodies[-1]["input"] == ["the document reads NULL end", "the document reads a b end"]
+        assert [(record.input_id, record.mechanisms) for record in client.processing] == [("0", ("empty_doc",))]
+
+    def test_omit_zero_omits_on_a_templated_embed_role(self, tokenizer_json: str) -> None:
+        sender = RecordingSender()
+        client = EmbeddingClient(
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=64,
+                template=self._template(),
+                empty_doc="omit_zero",
+            ),
+            sender=sender,
+        )
+        vectors = client.encode(texts("", "a b"), EncodeRole.DOCUMENT)
+        assert sender.bodies[-1]["input"] == ["the document reads a b end"]
+        assert not np.asarray(vectors.vectors[0]).any(), "the omitted document's vector is zero"
+
+    @pytest.mark.parametrize("role_client", ["embed", "pool"])
+    def test_send_text_fires_under_a_side_prompt(self, tokenizer_json: str, role_client: str) -> None:
+        """The prompt is prepended to the placeholder, as to any content: an empty document under a
+        ``doc_prompt`` is still empty."""
+        sender = RecordingSender()
+        settings: dict[str, Any] = {
+            "base_url": "http://127.0.0.1:9000/v1",
+            "model": "m",
+            "tokenizer": tokenizer_json,
+            "max_tokens": 64,
+            "doc_prompt": "passage: ",
+            "empty_doc": "send_text",
+            "empty_doc_text": "NULL",
+        }
+        if role_client == "embed":
+            EmbeddingClient(EmbeddingEndpoint(**settings), sender=sender).encode(texts(""), EncodeRole.DOCUMENT)
+        else:
+            PoolingClient(PoolingEndpoint(**settings, dim=2), sender=sender).encode(texts(""), EncodeRole.DOCUMENT)
+        assert sender.bodies[-1]["input"] == ["passage: NULL"]
+
+
+class TestDeclaredNormalisationIsNoChange:
+    """Declared normalisation (``strip``, ``lowercase``) is policy both sides apply, never a change: the rerank
+    settlement compares the normalised query with the normalised settled span, and records a cut only when
+    content was actually removed."""
+
+    @staticmethod
+    def _client(tokenizer_json: str, **fields: Any) -> RerankClient:
+        template = TemplateSpec(
+            pair=(Segment(content="query"), Segment(fixed=" | "), Segment(content="document")),
+            normalize=("strip", "lowercase"),
+        )
+        return RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                use_activation=False,
+                template=template,
+                **{"max_tokens": 64, **fields},
+            ),
+            sender=RecordingSender(),
+        )
+
+    def test_a_normalised_query_under_its_share_is_no_change(self, tokenizer_json: str) -> None:
+        client = self._client(tokenizer_json)
+        client.rerank("  The Query  ", ["a b c", "the document"])
+        assert client.processing == [] and len(client.census) == 0
+
+    def test_a_normalised_query_over_its_share_is_a_query_share_cut(self, tokenizer_json: str) -> None:
+        client = self._client(tokenizer_json, query_max_tokens=3)
+        client.rerank(" The Query Of The Evidence ", ["a b c"])
+        (record,) = client.processing
+        assert (record.input_id, record.mechanisms) == (QUERY_DOC_ID, ("query_share",))
+
+
+class TestResidualQueryRefit:
+    """The pair fit's residual-divergence re-fit ships every pair at the shortest verified query span: when that
+    shortens the shared query, the change is recorded under ``<query>`` like any settlement."""
+
+    def test_a_refit_that_shortens_the_query_is_recorded(self, tokenizer_json: str, monkeypatch: Any) -> None:
+        import dataclasses
+
+        client = RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=64,
+                use_activation=False,
+            ),
+            sender=RecordingSender(),
+        )
+        real_fit = client._fit
+        diverged: list[bool] = []
+
+        def diverging_fit(inputs: Any, shape: Any, **kwargs: Any) -> Any:
+            result = real_fit(inputs, shape, **kwargs)
+            if len(inputs) > 1 and not diverged:  # the first pair fit: one pair's query span re-tokenizes shorter
+                diverged.append(True)
+                (query, document), *rest = result.contents
+                result = dataclasses.replace(result, contents=((query.rsplit(" ", 1)[0], document), *rest))
+            return result
+
+        monkeypatch.setattr(client, "_fit", diverging_fit)
+        client.rerank("the query evidence", ["a b c", "the document"])
+        assert diverged
+        records = {record.input_id: record.mechanisms for record in client.processing}
+        assert records == {QUERY_DOC_ID: ("budget_cut",)}

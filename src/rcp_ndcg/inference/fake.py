@@ -15,6 +15,7 @@ the chat completions of a later role's fake, and any third-party route, register
 from __future__ import annotations
 
 import base64
+import functools
 import hashlib
 import json
 import math
@@ -22,6 +23,7 @@ import re
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 import numpy as np
@@ -78,12 +80,16 @@ class FakeEndpoint:
         model: The endpoint's served model name (the fake reports it on ``GET /models``).
         dim: The dimension of the fake vectors, from the URL's ``dim`` query (default
             :data:`DEFAULT_DIM`).
+        tokenizer: The tokenizer the endpoint's config declares (a Hub id or a ``tokenizer.json`` path), when
+            it declares one: the fake then counts a text's tokens in it, as the served engine would (see
+            :func:`fake_transport`). ``None``: the documented fallback, whitespace words.
     """
 
     url: str
     seed: int
     model: str
     dim: int
+    tokenizer: str | None = None
 
 
 #: What answers one fake route: the request (the handler decodes its JSON body) and the endpoint.
@@ -120,7 +126,7 @@ def register_fake_route(method: str, path: str, handler: FakeRouteHandler) -> No
             raise ConfigError(f"a fake route for {method} {path} is already registered")
 
 
-def fake_transport(url: str, *, model: str) -> httpx.MockTransport:
+def fake_transport(url: str, *, model: str, tokenizer: str | None = None) -> httpx.MockTransport:
     """The in-process transport of a ``fake://`` endpoint: one handler speaking each role's wire.
 
     The routes (each reads the endpoint's seed from the URL, and its vector dimension from the ``dim`` query,
@@ -131,9 +137,18 @@ def fake_transport(url: str, *, model: str) -> httpx.MockTransport:
     with its hidden ability. A route registered with :func:`register_fake_route` answers first; anything else
     is a 404 naming the route.
 
+    The token count of an item -- ``/pooling``'s vectors per item and its ``prompt_token_ids``, both routes'
+    ``usage`` -- follows the request's tokenization as the engine's would: a token-ids input is its ids; a
+    text is the ``tokenizer``'s ids under the request's ``add_special_tokens`` (default true, as on vLLM's
+    completion-style routes), when the endpoint's config declares one. The fallback, without a tokenizer or
+    for a chat conversation (whose template the fake does not render), counts whitespace words (at least one)
+    and draws the ids from the seed.
+
     Args:
         url: The endpoint's ``fake://`` URL.
         model: The endpoint's served model name.
+        tokenizer: The tokenizer the endpoint's config declares (a Hub id or a ``tokenizer.json`` path), loaded
+            on the first text that needs it; ``None`` for the fallback count.
 
     Returns:
         The mock transport a :class:`~rcp_ndcg.inference.transport.Transport` sends through.
@@ -142,11 +157,11 @@ def fake_transport(url: str, *, model: str) -> httpx.MockTransport:
         from rcp_ndcg.testing.engines import transport_for
 
         return transport_for(url)
-    endpoint = _fake_endpoint(url, model=model)
+    endpoint = _fake_endpoint(url, model=model, tokenizer=tokenizer)
     return httpx.MockTransport(lambda request: _handle(request, endpoint))
 
 
-def _fake_endpoint(url: str, *, model: str) -> FakeEndpoint:
+def _fake_endpoint(url: str, *, model: str, tokenizer: str | None = None) -> FakeEndpoint:
     """The :class:`FakeEndpoint` of a ``fake://`` URL: the seed is its numeric path tail, ``dim`` its query."""
     base, _, query = url.partition("?")
     tail = base.removeprefix(FAKE_SCHEME).rstrip("/").rsplit("/", 1)[-1]
@@ -159,7 +174,7 @@ def _fake_endpoint(url: str, *, model: str) -> FakeEndpoint:
         name, _, value = pair.partition("=")
         if name == "dim" and value.isdigit():
             dim = int(value)
-    return FakeEndpoint(url=url, seed=seed, model=model, dim=dim)
+    return FakeEndpoint(url=url, seed=seed, model=model, dim=dim, tokenizer=tokenizer)
 
 
 def _handle(request: httpx.Request, endpoint: FakeEndpoint) -> httpx.Response:
@@ -200,12 +215,58 @@ def _models(endpoint: FakeEndpoint) -> httpx.Response:
     )
 
 
-def _items(body: dict) -> list[str]:
-    """The items of a request: its ``input`` (text, token ids or part lists), else the ``messages``
-    contents (the chat-style embeddings input, 2e; an image part keys by its rendered form)."""
+def _raw_items(body: dict) -> list[object]:
+    """The items of a request as sent: its ``input`` entries (a text, a token-id list, a part list), else its
+    ``messages`` conversations (:func:`_items` reads them as vLLM v0.31.0 does)."""
     items = body.get("input")
-    if items is None and isinstance(body.get("messages"), list):
-        items = [message.get("content") for message in body["messages"]]
+    messages = body.get("messages")
+    if items is None and isinstance(messages, list) and messages:
+        conversations = messages if all(isinstance(entry, list) for entry in messages) else [messages]
+        return [
+            [message.get("content") for message in conversation if isinstance(message, dict)]
+            for conversation in conversations
+        ]
+    if isinstance(items, str):
+        return [items]
+    return list(items) if isinstance(items, list) else []
+
+
+def _token_ids(item: object, endpoint: FakeEndpoint, *, add_special_tokens: bool) -> list[int] | None:
+    """The ids an engine would read for one item: a token-ids input as sent; a text in the endpoint's declared
+    tokenizer, under the request's ``add_special_tokens``; ``None`` for the fallback (no tokenizer, or a part
+    list or conversation, whose rendering is the engine's chat template)."""
+    if (
+        isinstance(item, list)
+        and item
+        and all(isinstance(value, int) and not isinstance(value, bool) for value in item)
+    ):
+        return [int(value) for value in item]
+    if isinstance(item, str) and endpoint.tokenizer is not None:
+        return list(_tokenizer(endpoint.tokenizer).ids(item, add_special_tokens=add_special_tokens))
+    return None
+
+
+@functools.lru_cache(maxsize=8)
+def _tokenizer(spec: str) -> Any:
+    """The declared tokenizer, loaded once per spec (the product's loader)."""
+    from rcp_ndcg.data.tokenizer import load_tokenizer
+
+    return load_tokenizer(spec)
+
+
+def _items(body: dict) -> list[str]:
+    """The items of a request: its ``input`` (text, token ids or part lists), else its ``messages`` read as
+    vLLM v0.31.0 reads them (the chat-style embeddings input, 2e): a list of messages is ONE conversation, one
+    item, and a list of conversations is a batch, one item each (an item keys by its messages' contents; an
+    image part by its rendered form)."""
+    items = body.get("input")
+    messages = body.get("messages")
+    if items is None and isinstance(messages, list) and messages:
+        conversations = messages if all(isinstance(entry, list) for entry in messages) else [messages]
+        items = [
+            [message.get("content") for message in conversation if isinstance(message, dict)]
+            for conversation in conversations
+        ]
     if isinstance(items, str):
         return [items]
     return [_text(item) for item in items] if isinstance(items, list) else []
@@ -243,6 +304,9 @@ def _embeddings(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
     (never more components than the URL's dimension provides; the cut vector is normalised again).
     """
     texts = _items(body)
+    raw = _raw_items(body)
+    flag = body.get("add_special_tokens", True) is not False
+    counts = [_count(item, text, endpoint, add_special_tokens=flag) for item, text in zip(raw, texts, strict=True)]
     dimensions = body.get("dimensions")
     dim = min(int(dimensions), endpoint.dim) if isinstance(dimensions, int) and dimensions else endpoint.dim
     return httpx.Response(
@@ -258,17 +322,20 @@ def _embeddings(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
                 }
                 for index, text in enumerate(texts)
             ],
-            "usage": {
-                "prompt_tokens": sum(_tokens(text) for text in texts),
-                "total_tokens": sum(_tokens(text) for text in texts),
-            },
+            "usage": {"prompt_tokens": sum(counts), "total_tokens": sum(counts)},
         },
     )
 
 
 def _tokens(text: str) -> int:
-    """The fake's token count of a text (its whitespace words, at least one)."""
+    """The fallback token count of a text (its whitespace words, at least one)."""
     return max(1, len(text.split()))
+
+
+def _count(item: object, text: str, endpoint: FakeEndpoint, *, add_special_tokens: bool) -> int:
+    """One item's token count: its ids' (:func:`_token_ids`) when known, else the fallback (:func:`_tokens`)."""
+    ids = _token_ids(item, endpoint, add_special_tokens=add_special_tokens)
+    return len(ids) if ids is not None else _tokens(text)
 
 
 def _pooling(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
@@ -279,6 +346,8 @@ def _pooling(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
     adapter reshapes by the item's ``prompt_token_ids`` count.
     """
     texts = _items(body)
+    raw = _raw_items(body)
+    flag = body.get("add_special_tokens", True) is not False
     encoding = body.get("encoding_format", "float")
     dtype = np.dtype(body.get("embed_dtype") or "float16")
     # The request's declared ``endianness`` is honoured: the adapter sends "little" explicitly, and a frame
@@ -287,8 +356,11 @@ def _pooling(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
     if endianness == "big":
         dtype = dtype.newbyteorder()
     data = []
-    for index, text in enumerate(texts):
-        count = _tokens(text)
+    counts: list[int] = []
+    for index, (item, text) in enumerate(zip(raw, texts, strict=True)):
+        ids = _token_ids(item, endpoint, add_special_tokens=flag)
+        count = len(ids) if ids is not None else _tokens(text)
+        counts.append(count)
         matrix = np.asarray(
             [_unit_vector(endpoint.seed, "token", text, token, dim=endpoint.dim) for token in range(count)],
             dtype=np.float32,
@@ -302,9 +374,9 @@ def _pooling(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
             {
                 "index": index,
                 "data": embedding,
-                "prompt_token_ids": [
-                    int(fake_uniform(endpoint.seed, "token_id", text, token) * 100_000) for token in range(count)
-                ],
+                "prompt_token_ids": ids
+                if ids is not None
+                else [int(fake_uniform(endpoint.seed, "token_id", text, token) * 100_000) for token in range(count)],
             }
         )
     return httpx.Response(
@@ -313,10 +385,7 @@ def _pooling(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
             "object": "list",
             "model": endpoint.model,
             "data": data,
-            "usage": {
-                "prompt_tokens": sum(_tokens(text) for text in texts),
-                "total_tokens": sum(_tokens(text) for text in texts),
-            },
+            "usage": {"prompt_tokens": sum(counts), "total_tokens": sum(counts)},
         },
     )
 

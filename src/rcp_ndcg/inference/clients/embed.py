@@ -35,7 +35,7 @@ import numpy as np
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.data.prepare import MediaCensus
-from rcp_ndcg.data.preprocess import TextTruncationCensus
+from rcp_ndcg.data.preprocess import ChangeMechanism, TextTruncationCensus
 from rcp_ndcg.data.templates import RequestShape
 from rcp_ndcg.errors import ConfigError, RequestRejectedError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
@@ -155,6 +155,7 @@ class EmbeddingClient(RoleClient):
             return Embeddings.single(np.zeros((len(contents), 0), dtype=np.float32))
 
         token_ids = self._token_ids_of(prepared.items, role)
+        add_special_tokens = self._messages_special_tokens(role)
         requests = [
             EmbedRequest(
                 contents=tuple(prepared.items[offset : offset + size]),
@@ -162,6 +163,7 @@ class EmbeddingClient(RoleClient):
                 dimensions=self.config.dimensions,
                 request_shape=self.config.request_shape,
                 token_ids=token_ids[offset : offset + size],
+                add_special_tokens=add_special_tokens,
             )
             for offset in range(0, len(prepared.items), size)
         ]
@@ -215,35 +217,51 @@ class EmbeddingClient(RoleClient):
         shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
         prepared = tuple(content.with_text_prefix(prompt) for content in contents)
         self._refuse_media_off_its_side(role.value, prepared)
+        changes: dict[str, list[ChangeMechanism]] = {}  # per position, for the rows' processing records
         if self._media_is_on_wire():
             # Media on the messages wire (2e): one preparation path, each item's media sized exactly as the
             # judge's, its tokens reserved whole beside the item's text (the embeddings budget is per item:
             # each input must fit the served context, the batch is how fast).
             position_ids = [str(index) for index in range(len(prepared))]
             request = self._prepare_request(list(prepared), doc_ids=position_ids)
-            fitted, media_tokens = self._fit_media_per_item(request, shape=shape, doc_ids=position_ids)
+            fitted, media_tokens = self._fit_media_per_item(request, shape=shape, doc_ids=position_ids, changes=changes)
             prepared = tuple(fitted)
         else:
             media_tokens = [0] * len(prepared)
-        if self._budget is None:
-            kept, omitted = list(prepared), []
-            return PreparedItems(
-                items=tuple(kept),
-                positions=tuple(range(len(contents))),
-                omitted=tuple(omitted),
-            )
-        if self._budget is not None:
-            result = self._fit([content.text for content in prepared], shape, media_tokens=media_tokens)
-            prepared = tuple(
-                self._with_text(content, text) for content, text in zip(prepared, result.texts, strict=True)
-            )
-        kept, omitted = self._apply_empty_documents(prepared)
+        # Empty documents are decided on the content as given (under the side's prompt), before the template
+        # frames it: framed, an empty document is a non-empty turn and the policy would never fire.
+        kept, omitted = self._apply_empty_documents(prepared, changes=changes, prefix=prompt)
         positions = [index for index in range(len(prepared)) if index not in set(omitted)]
+        cuts: tuple[Any, ...] = ()
+        if self._budget is not None and kept:
+            result = self._fit(
+                [content.text for content in kept],
+                shape,
+                media_tokens=[media_tokens[position] for position in positions],
+                ids=[str(position) for position in positions],
+            )
+            # The text and token-ids routes send the framed render; the messages route sends the cut content
+            # and leaves the frame to the engine's chat template, which renders every chat-shaped request
+            # (framed here, it would be framed twice): the declared template is what that chat template must
+            # render, and the fit measured it.
+            sent = result.contents if self.config.request_shape == "messages" else result.texts
+            kept = [self._with_text(content, str(text)) for content, text in zip(kept, sent, strict=True)]
+            cuts = result.cuts
+        self._record_processing(shape, cuts=cuts, changes=changes)
         return PreparedItems(
             items=tuple(kept),
             positions=tuple(positions),
             omitted=tuple(omitted),
         )
+
+    def _messages_special_tokens(self, role: EncodeRole) -> bool | None:
+        """The ``add_special_tokens`` flag a ``messages`` request carries: the declared template's flag for the
+        side's shape, so the engine adds exactly the declared post-processor tokens to its chat-template render
+        (the chat route's own default is ``false``, vllm/entrypoints/pooling/base/protocol.py:248-257).
+        ``None`` (nothing sent) on the other routes and without a template."""
+        if self.config.request_shape != "messages" or self.config.template is None:
+            return None
+        return self.config.template.adds_special_tokens("query" if role is EncodeRole.QUERY else "document")
 
     def _token_ids_of(self, items: Sequence[Content], role: EncodeRole) -> tuple[tuple[int, ...], ...]:
         """The token ids of each sent text, as the engine reads it, for ``request_shape: token_ids`` (3):

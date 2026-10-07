@@ -224,8 +224,13 @@ role's wire, deterministically (every draw is a hash of the endpoint's seed and 
 | `POST /rerank` | Cohere shape; each document scored by the same hidden ability the fake judge reads, so a tiny run's rerank and judge agree |
 
 The fakes sit *below* the transport, so routing, retries, parking and usage run in every offline test. A seed
-comes from the URL's numeric path tail (`fake://seed/3`); the vector dimension from its `?dim=` query. Extra
-routes (a third party's, or another role's) register with `register_fake_route(method, path, handler)`.
+comes from the URL's numeric path tail (`fake://seed/3`); the vector dimension from its `?dim=` query. An item's
+token count -- `/pooling`'s vectors per item and its `prompt_token_ids`, and both routes' `usage` -- follows the
+request's tokenization as an engine's would: a token-ids input is its ids, and a text is counted in the
+tokenizer the endpoint's config declares (`tokenizer`), under the request's `add_special_tokens` (default true).
+Without a declared tokenizer, or for a chat conversation (whose template the fake does not render), the fallback
+counts whitespace words. Extra routes (a third party's, or another role's) register with
+`register_fake_route(method, path, handler)`.
 
 A URL whose host names an engine and its version (`fake://vllm-0.31.0/<recipe>`) selects a **verified
 fake engine** instead of these hash-seeded fakes: an emulator of a recorded observation corpus

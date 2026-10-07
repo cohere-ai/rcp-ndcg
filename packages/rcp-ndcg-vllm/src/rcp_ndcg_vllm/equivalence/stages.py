@@ -3,11 +3,14 @@
 Stage 1 samples the pairs file, probes the recipe's role client for every sampled input through the product's
 injection point (a capturing ``httpx`` transport), and audits what the client actually sends: the anchor audit
 and the engine's ``/tokenize`` read the captured request bodies, the reference subprocess's ``render`` is
-compared against them, and the served template file is rendered against them.  Over-cap inputs the client had
-to cut are decided on the client's own census and -- under a declared over-cap deviation --
-reported in a separate non-gating table.  Stage 2 sends the reference's pairs through the same clients and
-gates the answers against the reference subprocess's outputs.  Stage 3 scores rankings with ``rcp-ndcg eval
-score``.  The harness never re-derives a render, a cut or a settlement.
+compared against them, and the served template file is rendered against them.  The inputs the client changed
+(a cut of any cause: the budget counted with the frame, the reranker's query share, a declared per-shape cap)
+are read from the client's own processing records (:attr:`RoleClient.processing`, one per changed row, each
+change named by its mechanism) and, under a declared over-cap deviation,
+reported in a separate non-gating table; an input the client sent uncut gates exactly.  Stage 2 sends the
+reference's pairs through the same clients and gates the answers against the reference subprocess's outputs.
+Stage 3 scores rankings with ``rcp-ndcg eval score``.  The harness never re-derives a render, a cut or a
+settlement.
 """
 
 from __future__ import annotations
@@ -18,8 +21,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-
-from rcp_ndcg.data.preprocess import TextTruncationCensus
 
 from ..errors import HarnessError
 from ..recipe import Recipe
@@ -54,8 +55,9 @@ def stage1_prompts(
     - ``client`` — the captured request texts per shape (heads and counts), the product's wire;
     - ``anchor_check`` — every declared shape sampled on purpose with over-length inputs (at least
       ``over_length_per_shape`` per shape, padded in that shape's own span): every anchor must survive the
-      client's cut, asserted on the captured requests and the client's census; for a reranker this is the
-      settle-once query (one settled span per row, within its declared share, no cut on an in-budget pair);
+      client's cut, asserted on the captured requests and the client's processing records; for a reranker this
+      is the settle-once query (one settled span per row, within its declared share, every document span within its
+      declared ``document_max_tokens``, no cut on an in-budget pair);
     - ``render_check`` — the reference subprocess's ``render`` output against the captured texts, zero
       tolerance (needs ``--reference-python``; reported ``not_run`` without one).  Under a declared
       over-cap deviation, over-cap rows are reported separately and do not gate;
@@ -180,26 +182,30 @@ def _probe(recipe: Recipe, sampled: list[dict[str, Any]], base_url: str | None, 
     """The client's own requests for the sampled inputs, captured through the product's injection point.
 
     Outputs: per row, the request texts the client produced (per declared shape: the rendered prompt for the
-    embed roles; the settled query span and the document spans for the rerank wire), the client's census rows
-    attributed per row (a cut the client recorded is an input it had to shorten), and the max-seq facts.  The
-    probe talks to the engine when ``base_url`` is given, to the product's offline fake otherwise.
+    embed roles; the settled query span and the document spans for the rerank wire) and the client's
+    processing records of the row (:attr:`~rcp_ndcg.inference.clients._base.RoleClient.processing`, one per
+    input the client changed): ``changes`` those records (each change's mechanism, the uncut and kept request
+    totals, the budget), ``over_cap`` whether the row holds any.  Gating is per TEXT, never per row: each shape
+    body carries which of its texts the client changed -- ``changed`` per text for the embed roles;
+    ``query_changed`` and ``documents_changed`` for a reranker, whose shared-query settlement changes the
+    query span of every pair of its row and whose document records change only their document.  The probe
+    talks to the engine when ``base_url`` is given, to the product's offline fake otherwise.
     """
-    census = TextTruncationCensus()
-    client, capture = role_client(recipe, base_url, census=census)
+    client, capture = role_client(recipe, base_url)
     per_row: list[dict[str, Any]] = []
-    max_tokens = recipe.client.max_tokens or 0
 
     for row in sampled:
-        start = len(census.cuts())
+        start = len(client.processing)
         shapes = [str(row["shape"])] if "shape" in row else fitting.declared_shapes(recipe)
         entry: dict[str, Any] = {"shapes": {}}
         if recipe.role == "rerank":
             _probe_rerank(client, capture, row, entry)
         else:
-            _probe_vectors(client, capture, row, shapes, entry)
-        cuts = census.cuts()[start:]
-        entry["over_cap"] = any(cut.original_tokens > max_tokens for cut in cuts)
-        entry["cuts"] = len(cuts)
+            _probe_vectors(client, capture, row, shapes, entry, tokenizer)
+        records = [record for record in client.processing[start:] if record.changed]
+        entry["over_cap"] = bool(records)
+        entry["cuts"] = len(records)
+        entry["changes"] = [record.as_row() for record in records]
         per_row.append(entry)
     heads = _captured_heads(capture, sampled)
     return {
@@ -213,9 +219,15 @@ def _probe(recipe: Recipe, sampled: list[dict[str, Any]], base_url: str | None, 
 
 def _probe_rerank(client: Any, capture: Capture, row: dict[str, Any], entry: dict[str, Any]) -> None:
     """One rerank call per row: the client settles the query once and fits every pair; the captured bodies
-    carry the settled query span and the document spans it ships."""
+    carry the settled query span and the document spans it ships, and the call's processing records say
+    which of them the client changed (the settlement: the query span; a document's record: that document)."""
+    from rcp_ndcg.inference.clients.rerank import QUERY_DOC_ID
+
     start = len(capture.exchanges)
+    records_start = len(client.processing)
     client.rerank(row["query"], row["documents"], instruction=row.get("instruction"))
+    changed_ids = {record.input_id for record in client.processing[records_start:] if record.changed}
+    unattributed = any(not (input_id.isdigit() or input_id == QUERY_DOC_ID) for input_id in changed_ids)
     queries: list[str] = []
     documents: list[str] = []
     for exchange in capture.exchanges[start:]:
@@ -224,36 +236,72 @@ def _probe_rerank(client: Any, capture: Capture, row: dict[str, Any], entry: dic
             queries.append(texts["query"])
         documents.extend(texts.get("documents", []))
     settled = queries[0] if queries else ""
-    entry["shapes"]["pair"] = {"query": settled, "queries": queries, "documents": documents}
+    entry["shapes"]["pair"] = {
+        "query": settled,
+        "queries": queries,
+        "documents": documents,
+        "query_changed": QUERY_DOC_ID in changed_ids or unattributed,
+        "documents_changed": [
+            unattributed or str(position) in changed_ids for position in range(len(row["documents"]))
+        ],
+    }
 
 
 def _probe_vectors(
-    client: Any, capture: Capture, row: dict[str, Any], shapes: list[str], entry: dict[str, Any]
+    client: Any, capture: Capture, row: dict[str, Any], shapes: list[str], entry: dict[str, Any], tokenizer: Any
 ) -> None:
-    """One encode call per declared side: the captured ``input`` texts are the client's rendered prompts."""
+    """One encode call per declared side: the captured ``input`` texts are the client's rendered prompts.
+
+    On the ``messages`` route the client sends the content and the engine's chat template frames it, so the
+    rendered prompt is the declared frame around the captured content -- the product's one render
+    (:func:`rcp_ndcg.data.preprocess.rendered_request`, under the client's own budget), which the template
+    check holds the served chat template to -- and the captured conversations are kept for that check.
+    """
     from rcp_ndcg_core.content import Content
 
+    from rcp_ndcg.data.preprocess import rendered_request
     from rcp_ndcg.inference.types import EncodeRole
 
-    def _captured(start: int) -> list[str]:
-        return [text for exchange in capture.exchanges[start:] for text in capture.texts(exchange)["input"]]
+    budget = getattr(client, "text_budget", None)
+
+    def _captured(start: int, shape: str, conversations: list[Any]) -> list[Any]:
+        texts: list[Any] = []
+        for exchange in capture.exchanges[start:]:
+            captured = capture.texts(exchange)
+            if "conversations" not in captured:
+                texts.extend(captured["input"])
+                continue
+            conversations.extend(captured["conversations"])
+            for content in captured["input"]:
+                texts.append(
+                    rendered_request(budget, tokenizer, fitting.cast_shape(shape), query=content, document=content)
+                    if budget is not None
+                    else content
+                )
+        return texts
 
     for shape in shapes:
         if shape == "pair":
             continue  # the embed roles have no pair wire; a rerank recipe owns that shape
-        if shape == "query":
-            start = len(capture.exchanges)
-            client.encode([Content.from_text(row["query"])], EncodeRole.QUERY)
-            entry["shapes"]["query"] = {"texts": _captured(start)}
-        elif shape == "document":
-            # One call per text: the client's fan-out runs concurrently, so the captured exchange order is a
-            # completion order, not an input order -- per-call captures keep the position attribution exact.
-            texts: list[str] = []
-            for document in row["documents"]:
-                start = len(capture.exchanges)
-                client.encode([Content.from_text(document)], EncodeRole.DOCUMENT)
-                texts.extend(_captured(start))
-            entry["shapes"]["document"] = {"texts": texts}
+        conversations: list[Any] = []
+        inputs = [row["query"]] if shape == "query" else list(row["documents"])
+        role = EncodeRole.QUERY if shape == "query" else EncodeRole.DOCUMENT
+        texts: list[Any] = []
+        changed: list[bool] = []
+        # One call per text: the client's fan-out runs concurrently, so the captured exchange order is a
+        # completion order, not an input order -- per-call captures keep the position attribution exact, and
+        # the call's processing records say whether the client changed that one text.
+        for text in inputs:
+            start, records_start = len(capture.exchanges), len(client.processing)
+            client.encode([Content.from_text(text)], role)
+            sent = _captured(start, shape, conversations)
+            texts.extend(sent)
+            changed.extend([any(record.changed for record in client.processing[records_start:])] * len(sent))
+        entry["shapes"][shape] = {
+            "texts": texts,
+            "changed": changed,
+            **({"conversations": conversations} if conversations else {}),
+        }
 
 
 def _content_ids(tokenizer: Any, body: str | list[int], flag: bool) -> list[int]:
@@ -327,23 +375,31 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
     segment at the anchor side, plus the post-processor tokens ``add_special_tokens`` puts there) sits at its
     declared position of every captured body's ids -- an ``anchor: first`` head as the engine reads it in the
     assembled render (:func:`_head_edge_ids`), an ``anchor: marker`` shape's markers in the sent content
-    without the post-processor's tokens (:func:`_content_ids`).  The rerank wire ships spans -- the engine assembles the
-    frame -- so its audit asserts the client's settle-once: one query span per row, identical across the row's
-    pointwise requests, within its declared ``query_max_tokens``, and no cut on an in-budget pair (a cut
-    recorded in the client's census for a pair under budget would mean the client shortened something the
-    budget allowed whole).
+    without the post-processor's tokens (:func:`_content_ids`), an ``anchor: last_content`` shape's head
+    marker and its last content token (:func:`_audit_last_content`).  The rerank wire ships spans -- the
+    engine assembles the frame -- so its audit asserts the client's settle-once: one query span per row,
+    identical across the row's pointwise requests, within its declared ``query_max_tokens``, every document
+    span within its declared ``document_max_tokens``, and no cut on an
+    in-budget pair (a change the client recorded for a pair under budget would mean the client
+    shortened something the budget allowed whole).
     """
     template = recipe.client.template
     failures: list[dict[str, Any]] = []
     checked = 0
     max_tokens = recipe.client.max_tokens or 0
     share = getattr(recipe.client, "query_max_tokens", None)
+    document_cap = getattr(recipe.client, "document_max_tokens", None)
     for index, entry in enumerate(probe["rows"]):
         for shape, shape_body in entry["shapes"].items():
             if recipe.role == "rerank":
-                checked += _audit_rerank_span(index, shape, shape_body, share, max_tokens, entry, failures, tokenizer)
+                checked += _audit_rerank_span(
+                    index, shape, shape_body, (share, document_cap), max_tokens, entry, failures, tokenizer
+                )
                 continue
             flag = _add_specials_flag(recipe, shape)
+            if template is not None and template.anchor == "last_content":
+                checked += _audit_last_content(recipe, tokenizer, shape, shape_body["texts"], index, failures)
+                continue
             at_start = template is not None and template.anchor == "first"
             edge = [] if at_start else _anchor_edge_ids(recipe, tokenizer, shape)
             head, prefix = _head_parts(recipe, tokenizer, shape) if at_start else ("", [])
@@ -414,21 +470,90 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
         "failures": failures,
         "referent": "the anchor ids (the declared edge plus the post-processor's tokens on that side) must sit "
         "at their declared positions in the client's rendered request; a reranker's settled query must be one "
-        "span per row, within its declared share, and no in-budget pair may be cut",
+        "span per row, within its declared share, every document span within its declared cap, and no in-budget "
+        "pair may be cut",
     }
+
+
+def _audit_last_content(
+    recipe: Recipe,
+    tokenizer: Any,
+    shape: str,
+    bodies: list[Any],
+    row_index: int,
+    failures: list[dict[str, Any]],
+) -> int:
+    """The ``anchor: last_content`` audit of one shape's captured bodies, per the product's definition
+    (:data:`rcp_ndcg.data.templates.AnchorKind`): the model reads the last kept *content* token, and the fixed
+    segments (a head marker) are still reserved and audited.
+
+    Per body: the shape must end on its content span (a fixed tail would be the last token, not content); the
+    head -- the fixed segments before the content, as the engine reads them in the assembled render, after the
+    post-processor's prefix (:func:`_head_edge_ids`) -- must open the ids; the post-processor's tail (when the
+    shape declares ``add_special_tokens``) must close them; and at least one token must sit between the two,
+    which on a content-final shape is the last kept content token (the token a head marker merges into across
+    the join counts as content: it carries the content's first characters).  Returns the bodies checked.
+    """
+    template = recipe.client.template
+    assert template is not None  # the caller branches on the template's anchor
+    segments = template.segments(fitting.cast_shape(shape))
+    flag = _add_specials_flag(recipe, shape)
+    if segments[-1].content is None:
+        failures.append(
+            {
+                "shape": shape,
+                "check": "content_final",
+                "row": row_index,
+                "note": "anchor: last_content reads the last kept content token, but the declared shape ends "
+                "with a fixed segment: its last token is the frame's",
+            }
+        )
+        return len(bodies)
+    leading = segments[: next(position for position, segment in enumerate(segments) if segment.content is not None)]
+    head = "".join(segment.render(tokenizer) for segment in leading)
+    prefix = _post_processor_prefix(tokenizer, "x") if flag else []
+    tail = _post_processor_tail(tokenizer, "x") if flag else []
+    stable = _stable_head_tokens(tokenizer, head)
+    for body in bodies:
+        ids = list(body) if isinstance(body, list) else list(tokenizer.ids(body, add_special_tokens=flag))
+        head_edge = _head_edge_ids(tokenizer, head, list(prefix), stable, body)
+        problem = None
+        if head_edge is None or ids[: len(head_edge)] != head_edge:
+            problem = "head"
+        elif tail and ids[len(ids) - len(tail) :] != tail:
+            problem = "tail"
+        elif len(ids) - len(tail) <= len(head_edge):
+            problem = "no_content_token"
+        if problem is not None:
+            failures.append(
+                {
+                    "shape": shape,
+                    "check": problem,
+                    "row": row_index,
+                    "expected_head_text": head[:_SNIPPET],
+                    "expected_head_ids": head_edge,
+                    "expected_tail_ids": list(tail),
+                    "actual_ids_head": ids[:24],
+                    "actual_ids_tail": ids[-8:],
+                    "text": _head_of(body),
+                }
+            )
+    return len(bodies)
 
 
 def _audit_rerank_span(
     row_index: int,
     shape: str,
     shape_body: dict[str, Any],
-    share: int | None,
+    caps: tuple[int | None, int | None],
     max_tokens: int,
     entry: dict[str, Any],
     failures: list[dict[str, Any]],
     tokenizer: Any,
 ) -> int:
-    """The rerank side of the anchor audit, on the captured spans: the settle-once query and the budget."""
+    """The rerank side of the anchor audit, on the captured spans: the settle-once query, the declared caps
+    (``caps``: the query's share and the per-document cap) and the budget."""
+    share, document_cap = caps
     checked = 0
     queries = shape_body.get("queries") or ([shape_body["query"]] if shape_body.get("query") else [])
     if len(set(queries)) > 1:
@@ -457,6 +582,17 @@ def _audit_rerank_span(
             )
     for document in shape_body.get("documents", []):
         checked += 1
+        if document_cap is not None and tokenizer.count(document) > document_cap:
+            failures.append(
+                {
+                    "shape": shape,
+                    "check": "document_share",
+                    "row": row_index,
+                    "document_tokens": tokenizer.count(document),
+                    "bound": document_cap,
+                    "text": document[:_SNIPPET],
+                }
+            )
         if not entry.get("over_length") and entry.get("cuts", 0) == 0 and tokenizer.count(document) > max_tokens:
             failures.append(
                 {
@@ -519,8 +655,7 @@ def _render_check(
         if served is None:
             failures.append({"row": row, "note": "the reference rendered a row the harness did not sample"})
             continue
-        # Over-cap rows the client had to cut (its census says so) compare differently by declaration.
-        over = bool(probe["rows"][key[0]]["over_cap"])
+        entry = probe["rows"][key[0]]
         if recipe.role == "rerank":
             mismatches = _span_mismatches(row, served)
         elif isinstance(served, list):
@@ -550,10 +685,14 @@ def _render_check(
                         "text": str(row.get("query", ""))[:_SNIPPET],
                     }
                 )
-        if mismatches and over and deviation:
-            over_cap.append({"index": key[0], "shape": key[1], "mismatches": mismatches})
-        else:
-            failures.extend(mismatches)
+        # Per text, never per row: only a text the client changed (its processing records say so) compares
+        # differently by declaration; every other text of the row gates exactly.
+        reported = [mismatch for mismatch in mismatches if deviation and _text_changed(entry, key[1], mismatch)]
+        failures.extend(mismatch for mismatch in mismatches if mismatch not in reported)
+        if reported:
+            over_cap.append(
+                {"index": key[0], "shape": key[1], "mismatches": reported, "changes": entry.get("changes", [])}
+            )
     for key in sorted(set(served_by_key) - seen):
         failures.append({"index": key[0], "shape": key[1], "note": "the reference did not render this declared shape"})
     summary: dict[str, Any] = {
@@ -569,11 +708,38 @@ def _render_check(
             "gating": False,
             "rows": over_cap,
             "passed": True,
-            "referent": "pairs-file rows whose uncut prompt exceeds client.max_tokens (what the client sent was "
-            "shortened); under the declared over-cap deviation the reference cuts them its own way, "
-            "so they are reported here instead of gated",
+            "referent": "pairs-file rows the client changed relative to the uncut input (its processing records "
+            "name each change: a budget cut counted with the frame, the query share, a declared per-document cap, "
+            "an empty-document substitution, a media resize or drop); under the "
+            "declared over-cap deviation the reference cuts them its own way, so they are reported here instead "
+            "of gated",
         }
     return summary
+
+
+def _text_changed(entry: dict[str, Any], shape: str, mismatch: dict[str, Any]) -> bool:
+    """Whether the client changed the one text a render mismatch is about (the probe's per-text flags).
+
+    A rerank mismatch names its span, and the unit the client changes is the pair: the row's shared-query
+    settlement changes every pair of the row -- its query span and, with it, each pair the reference renders
+    its own way by declaration (a whole-prompt right cut that drops the document of an over-cap query, say),
+    exactly as stage 2 counts every pair of a settled row changed -- while a document's own record changes only
+    its pair (``document <i>``); a document-count mismatch (a chunked or omitted document) counts when any
+    document or the query changed.  An embed mismatch is about the shape's first input (the one the reference
+    contract renders)."""
+    body = entry["shapes"].get(shape, {})
+    span = str(mismatch.get("span", ""))
+    if "query_changed" in body:
+        settled = bool(body["query_changed"])
+        documents = list(body.get("documents_changed", []))
+        if span == "query":
+            return settled
+        if span.startswith("document "):
+            position = int(span.removeprefix("document "))
+            return settled or (bool(documents[position]) if position < len(documents) else any(documents))
+        return settled or any(documents)
+    changed = list(body.get("changed", []))
+    return bool(changed[0]) if changed else False
 
 
 def _span_mismatches(row: dict[str, Any], served: dict[str, Any]) -> list[dict[str, Any]]:
@@ -654,7 +820,10 @@ def _template_check(
     Every declared shape is checked (the engine renders each of them): the file is rendered with the engine's
     own jinja2 settings over the first pairs row's inputs, and the declared template's render
     (:meth:`~rcp_ndcg.data.templates.TemplateSpec.render`, the string the client sends) must be byte-identical.
+    A ``messages`` recipe is checked on its captured conversations instead (:func:`_messages_template_check`).
     """
+    if getattr(recipe.client, "request_shape", "text") == "messages" and recipe.client.template is not None:
+        return _messages_template_check(recipe, probe)
     if recipe.serve.chat_template is None or recipe.client.template is None or not rows:
         return None
     directory = recipe._dir
@@ -698,8 +867,66 @@ def _template_check(
     }
 
 
-def _jinja_environment() -> Any:
-    """The jinja2 environment the engine renders chat templates with (transformers' compile settings)."""
+def _messages_template_check(recipe: Recipe, probe: dict[str, Any]) -> dict[str, Any]:
+    """The ``messages`` route's frame check: the engine frames each sent conversation exactly once.
+
+    vLLM v0.31.0 renders every chat-shaped ``/embeddings`` request through the served chat template
+    (vllm/entrypoints/pooling/embed/io_processor.py:302-355, with ``add_generation_prompt`` false by default,
+    vllm/entrypoints/pooling/base/protocol.py:230-237), and the client sends the content only.  So the served
+    template file, rendered with transformers' jinja2 settings over every captured conversation (its content
+    parts as sent), must equal the declared template's render of the same content -- the frame the client's
+    budget reserved, once.  Without ``serve.chat_template`` the engine renders the checkpoint's own template,
+    which the harness does not read: ``not_run``, never passed (the recipe's own test pins that file).
+    """
+    if recipe.serve.chat_template is None:
+        return {
+            "status": "not_run",
+            "passed": None,
+            "reason": "request_shape messages without serve.chat_template: the engine frames the content with the "
+            "checkpoint's own chat template, which the harness does not read (the recipe's test must pin it)",
+        }
+    directory = recipe._dir
+    if directory is None:  # pragma: no cover - load_recipe sets it
+        raise HarnessError(f"recipe {recipe.id} was not loaded from a directory")
+    template = _jinja_environment(strict=False).from_string(
+        (directory / recipe.serve.chat_template).read_text(encoding="utf-8")
+    )
+    failures: list[dict[str, Any]] = []
+    checked = 0
+    for index, entry in enumerate(probe["rows"]):
+        for shape, shape_body in entry["shapes"].items():
+            for conversation, declared in zip(
+                shape_body.get("conversations", []), shape_body.get("texts", []), strict=False
+            ):
+                checked += 1
+                engine = template.render(messages=conversation, add_generation_prompt=False, tools=None)
+                if engine != declared:
+                    failures.append(
+                        {
+                            "shape": shape,
+                            "row": index,
+                            "engine_head": engine[:_SNIPPET],
+                            "declared_head": str(declared)[:_SNIPPET],
+                        }
+                    )
+    if not checked:
+        failures.append({"check": "nothing_checked", "note": "no captured conversation to render"})
+    return {
+        "template": recipe.serve.chat_template,
+        "status": "run",
+        "checked": checked,
+        "passed": not failures,
+        "failures": failures,
+        "referent": "the served chat template, rendered over every conversation the client sent (its content), "
+        "must render exactly the declared template's frame around it -- framed once",
+    }
+
+
+def _jinja_environment(*, strict: bool = True) -> Any:
+    """The jinja2 environment the engine renders chat templates with (transformers' compile settings).
+
+    ``strict`` makes an undefined variable an error (the query/document score templates); a chat template is
+    rendered as transformers renders it, where an unset variable (``tools``, ``add_vision_id``) is undefined."""
     try:
         from jinja2 import StrictUndefined
         from jinja2.sandbox import ImmutableSandboxedEnvironment
@@ -707,6 +934,8 @@ def _jinja_environment() -> Any:
         raise HarnessError(
             "the template-render check renders the served chat template with jinja2: install rcp-ndcg-vllm[test]"
         ) from error
+    if not strict:
+        return ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True)
     return ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True, undefined=StrictUndefined)
 
 
@@ -1039,14 +1268,13 @@ def _rerank_stage2(
 
     One client call per row: the client folds the query per the config's instruction mode, settles the shared
     query span once, and fits every pair into the declared budget -- the wire carries exactly what the served
-    path ships.  Over-cap pairs (the client recorded a cut in its census: the uncut prompt exceeds
-    ``client.max_tokens``) are excluded from the gates and reported separately under a declared over-cap
-    deviation; the Kendall tau covers the under-cap subset of every gated query.
+    path ships.  The pairs the client changed (a processing record: a change to the document's row, or the
+    shared query's settlement, which changes every pair of its call) are excluded from the gates and reported
+    separately under a declared over-cap deviation; the Kendall tau covers the uncut subset of every gated
+    query.
     """
     deviation = recipe.reference.over_cap_deviation is not None
-    census = TextTruncationCensus()
-    client, capture = role_client(recipe, base_url, census=census)
-    max_tokens = recipe.client.max_tokens or 0
+    client, capture = role_client(recipe, base_url)
     if len(rows) > len(reference.get("rows", [])):
         raise HarnessError(
             f"the reference emitted {len(reference.get('rows', []))} score row(s) for {len(rows)} pairs "
@@ -1063,9 +1291,9 @@ def _rerank_stage2(
                 f"the reference emitted {len(reference_scores)} score(s) for pairs row {row_index} with "
                 f"{len(row['documents'])} document(s): scores align to the documents as given"
             )
-        start = len(census.cuts())
+        start = len(client.processing)
         result = client.rerank(row["query"], row["documents"], instruction=row.get("instruction"))
-        flags = _census_over_cap(census, start, max_tokens, len(row["documents"]))
+        flags = _changed_rows(client, start, len(row["documents"]))
         if len(result.scores) != len(reference_scores):
             raise HarnessError(
                 f"the engine scored {len(result.scores)} document(s) for pairs row {row_index} whose "
@@ -1118,9 +1346,9 @@ def _rerank_stage2(
         "gating": False,
         "pairs": over_cap,
         "passed": True,
-        "referent": "pairs whose uncut prompt exceeds client.max_tokens, decided on the client's own census; "
-        "served and reference may differ by design when reference.known_deviations declares an over-cap "
-        "deviation (anchor_drop_over_cap or over_cap_cut_differs)",
+        "referent": "pairs the client changed relative to the uncut input, decided on the client's own "
+        "processing records; served and reference may differ by design when reference.known_deviations "
+        "declares an over-cap deviation (anchor_drop_over_cap or over_cap_cut_differs)",
     }
     return summary
 
@@ -1134,17 +1362,23 @@ def _reference_row(reference: dict[str, Any], row_index: int) -> dict[str, Any]:
     return rows[row_index] if row_index < len(rows) else {}
 
 
-def _census_over_cap(census: Any, start: int, max_tokens: int, n_documents: int) -> list[bool]:
-    """Per document of one client call, whether the client recorded a cut over the budget (the client's own
-    accounting: a ``text_budget`` cut whose whole input exceeds ``max_tokens`` means the pair was over cap)."""
+def _changed_rows(client: Any, start: int, n_documents: int) -> list[bool]:
+    """Per input of one client call, whether the client changed what it sends for it -- read from its own
+    processing records since ``start`` (:attr:`~rcp_ndcg.inference.clients._base.RoleClient.processing`): a
+    record of the input's position, or of the reranker's shared query
+    (:data:`~rcp_ndcg.inference.clients.rerank.QUERY_DOC_ID`), which changes every pair of the call."""
+    from rcp_ndcg.inference.clients.rerank import QUERY_DOC_ID
+
     flags = [False] * n_documents
-    for cut in census.cuts()[start:]:
-        origin = cut.doc_id.split("#", 1)[0]  # a chunked document's rows carry <position>#<chunk>
-        try:
-            position = int(origin)
-        except ValueError:
-            continue  # the reranker's settled-query row (its own doc id), not a document's
-        if 0 <= position < n_documents and cut.original_tokens > max_tokens:
+    for record in client.processing[start:]:
+        if not record.changed:
+            continue  # pragma: no cover - a client emits records for changed rows only
+        if record.input_id == QUERY_DOC_ID or not record.input_id.isdigit():
+            # The shared query's settlement changes every pair; a record under no position (the media fit's
+            # owner fallback) cannot be attributed to one input, so every input of the call counts as changed.
+            return [True] * n_documents
+        position = int(record.input_id)
+        if 0 <= position < n_documents:
             flags[position] = True
     return flags
 
@@ -1245,15 +1479,14 @@ def _vector_stage2(
     A dense embedder's vectors compare with a cosine floor per vector; a late-interaction model's ragged
     token vectors compare per token (in the transfer precision the product's client applied on the wire).
     The client prompts and fits every text exactly as the served path does -- the harness pre-fits nothing.
-    Under a declared over-cap deviation, the texts the client had to cut (a census cut over
-    ``client.max_tokens``) are reported separately and do not gate: the reference renders them its own way by
-    declaration.
+    Under a declared over-cap deviation, the texts the client changed (a processing record: a budget cut
+    counted with the frame, a shape's own cap, an empty substitution, a media change) are reported separately
+    and do not gate: the reference renders them its own way by declaration.
     """
     deviation = recipe.reference.over_cap_deviation is not None
     per_vector: list[dict[str, Any]] = []
     over_cap: list[dict[str, Any]] = []
-    census = TextTruncationCensus()
-    client, capture = role_client(recipe, base_url, census=census)
+    client, capture = role_client(recipe, base_url)
     from rcp_ndcg.inference.types import EncodeRole
 
     for row_index, row in enumerate(rows):
@@ -1271,12 +1504,12 @@ def _vector_stage2(
             served_matrices: list[list[list[float]]] = []
             cut_flags: list[bool] = []
             for text in texts:
-                # One call per text: the client's fan-out runs concurrently, so per-call census windows keep
+                # One call per text: the client's fan-out runs concurrently, so per-call record windows keep
                 # the position attribution exact.
-                start = len(census.cuts())
+                start = len(client.processing)
                 embeddings = client.encode([Content.from_text(text)], encode_role)
                 served_matrices.extend(_embeddings_to_matrices(recipe, embeddings, 1))
-                cut_flags.extend(_census_over_cap(census, start, recipe.client.max_tokens or 0, 1))
+                cut_flags.extend(_changed_rows(client, start, 1))
             expected = reference_row.get(served_key) or []
             _compare_shape(
                 recipe,
@@ -1300,9 +1533,9 @@ def _vector_stage2(
         "gating": False,
         "pairs": over_cap,
         "passed": True,
-        "referent": "inputs whose uncut prompt exceeds client.max_tokens (the client shortened them, recorded "
-        "in its census); under the declared over-cap deviation the reference renders them its own "
-        "way, so they are reported here instead of gated",
+        "referent": "inputs the client changed relative to the uncut input (its processing records); under "
+        "the declared over-cap deviation the reference renders them its own way, so they are reported here "
+        "instead of gated",
     }
     return summary
 

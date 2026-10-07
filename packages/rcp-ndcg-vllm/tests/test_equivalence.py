@@ -585,18 +585,21 @@ def test_stage1_audits_messages_bodies_and_fails_an_audit_that_checked_nothing(t
     audit = document["anchor_check"]
     assert audit["checked"] == len(sample_pairs()[0]["documents"]) + 2, audit
     assert audit["passed"] is True, audit["failures"][:1]
+    # A batch: one conversation per item (a list of messages alone is ONE conversation, one embedding).
     body = {
         "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "doc: a caption"},
-                    {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
-                    {"type": "text", "text": " [END]"},
-                ],
-            },
-            {"role": "user", "content": "doc: plain [END]"},
-            {"role": "user", "content": ["doc: bare", " [END]"]},  # bare strings: text parts, as vLLM reads them
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "doc: a caption"},
+                        {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+                        {"type": "text", "text": " [END]"},
+                    ],
+                }
+            ],
+            [{"role": "user", "content": "doc: plain [END]"}],
+            [{"role": "user", "content": ["doc: bare", " [END]"]}],  # bare strings: text parts, as vLLM reads them
         ]
     }
     capture = Capture(recipe)
@@ -606,6 +609,8 @@ def test_stage1_audits_messages_bodies_and_fails_an_audit_that_checked_nothing(t
     assert TEXT_JOIN == "\n"
     assert texts["input"] == ["doc: a caption\n [END]", "doc: plain [END]", "doc: bare\n [END]"]
     assert texts["media"] == [["image_url"], [], []]
+    one = capture.texts({"request_body": {"messages": body["messages"][1] + body["messages"][2]}})
+    assert one["input"] == ["doc: plain [END]\ndoc: bare\n [END]"], "one conversation is one input"
     assert stages_module._captured_heads(capture, [])["first"][0]["media"] == [["image_url"], [], []]  # reported
     empty = {"rows": [{"shapes": {"document": {"texts": []}}, "cuts": 0, "over_cap": False}]}
     nothing = stages_module._anchor_check(recipe, empty, load_tokenizer(str(TOKENIZER)))
@@ -789,3 +794,45 @@ def test_stage1_marker_audit_is_not_masked_by_the_post_processor() -> None:
     assert audit(tokenizer.ids(whole, add_special_tokens=True)) is True
     assert audit(cut) is False
     assert audit(tokenizer.ids(cut, add_special_tokens=True)) is False
+
+
+_CHAT_TEMPLATE = (
+    "{%- for message in messages -%}doc: {% for part in message.content -%}"
+    "{%- if part.type == 'text' %}{{ part.text }}{% endif -%}{%- endfor %} [END]{%- endfor -%}"
+)
+"""A served chat template that frames one user turn exactly as ``fixture-embed`` declares it (``doc: ... [END]``)."""
+
+
+def _messages_recipe(tmp_path: Path, chat_template: str) -> Any:
+    """``fixture-embed`` on the ``messages`` route, served with ``chat_template`` (the engine's frame)."""
+    directory = tmp_path / "scratch" / "recipes" / "embed-messages"
+    directory.mkdir(parents=True)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "scratch" / "deterministic.py")
+    shutil.copy(RECIPES / "fixture-embed" / "reference.py", directory / "reference.py")
+    (directory / "chat.jinja").write_text(chat_template, encoding="utf-8")
+    manifest = _rebased((RECIPES / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8"), "embed-messages")
+    manifest = manifest.replace("  chat_template: null", "  chat_template: chat.jinja").replace(
+        "  api: openai_embeddings", "  api: openai_embeddings\n  request_shape: messages"
+    )
+    (directory / "recipe.yaml").write_text(manifest, encoding="utf-8")
+    return load_recipe(directory)
+
+
+def test_stage1_messages_route_is_framed_once_by_the_served_chat_template(tmp_path: Path) -> None:
+    """H5: the messages route sends the content; the served chat template, rendered over the captured
+    conversations as the engine renders them, must equal the declared template's render exactly -- one frame.
+    A template that frames the turn twice fails the check (as the client's old framed messages did)."""
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    recipe = _messages_recipe(tmp_path, _CHAT_TEMPLATE)
+    document = stage1_prompts(recipe, pairs, REFERENCE_PYTHON, over_length_per_shape=2)
+    check = document["template_render_check"]
+    assert check["passed"] is True and check["checked"] > 0, check["failures"][:1]
+    assert document["anchor_check"]["passed"] is True, document["anchor_check"]["failures"][:1]
+    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
+    assert document["passed"] is True
+
+    twice = _messages_recipe(tmp_path / "twice", _CHAT_TEMPLATE.replace("doc: ", "doc: doc: "))
+    check = stage1_prompts(twice, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["passed"] is False
+    failure = check["failures"][0]
+    assert failure["engine_head"].startswith("doc: doc: ") and failure["declared_head"].count("doc: ") == 1

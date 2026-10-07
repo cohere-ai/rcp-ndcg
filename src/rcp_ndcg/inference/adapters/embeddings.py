@@ -318,14 +318,18 @@ class OpenAIEmbeddings(_EmbedAdapter):
         if request.request_shape == "messages":
             from rcp_ndcg.data.media import content_parts_payload
 
-            # The chat-style embeddings input (2e): vLLM's chat-shaped ``/embeddings`` applies the model's
-            # chat template to the placeholders, so a vision-language embedder reads image and video parts.
-            body = {
-                "model": model,
-                "messages": [
-                    {"role": "user", "content": content_parts_payload(content)} for content in request.contents
-                ],
-            }
+            # The chat-style embeddings input (2e): vLLM v0.31.0 renders every chat-shaped ``/embeddings``
+            # request through the served chat template (vllm/entrypoints/pooling/embed/io_processor.py:302-355),
+            # placing each media part's placeholder where it sits in the user turn -- so the items carry their
+            # content (the client sends no frame of its own) and the template frames them exactly once.
+            # ``messages`` is ONE conversation (one embedding) and a list of conversations a batch
+            # (embed/protocol.py:69-102): one user message per item, its own conversation.
+            conversations = [
+                [{"role": "user", "content": content_parts_payload(content)}] for content in request.contents
+            ]
+            body = {"model": model, "messages": conversations[0] if len(conversations) == 1 else conversations}
+            if request.add_special_tokens is not None:
+                body["add_special_tokens"] = request.add_special_tokens
         elif request.request_shape == "token_ids":
             _refuse_media(request.contents, adapter=self.name)
             body = {"model": model, "input": [list(ids) for ids in request.token_ids]}

@@ -40,9 +40,12 @@ from rcp_ndcg_core.content import Content
 from rcp_ndcg.data.prepare import MediaCensus
 from rcp_ndcg.data.preprocess import (
     CHUNK_ID_SEPARATOR,
+    ChangeMechanism,
     ContentParts,
+    CutCause,
     DataError,
     FitResult,
+    TextCutRecord,
     TextTruncationCensus,
     max_pool_scores_by_document,
     rendered_pair_tokens,
@@ -343,6 +346,10 @@ class RerankClient(RoleClient):
         )
         prepared_query = request_prepared.contents[0]
         prepared_documents = list(request_prepared.contents[1:])
+        # Per input id (a document's position, the shared query's QUERY_DOC_ID), the changes made before the
+        # text fit -- media resized or dropped, empty documents substituted -- for the rows' processing records.
+        changes: dict[str, list[ChangeMechanism]] = {}
+        cuts: list[TextCutRecord] = []
         pair_media = [0] * len(prepared_documents)
         query_media = 0
         # The span that will ship: the settled query is share-capped first, so the media allowances reserve
@@ -381,6 +388,7 @@ class RerankClient(RoleClient):
                     allowance=max(
                         self._budget.max_tokens - query_media_raw - query_render - (1 if content.text else 0), 0
                     ),
+                    changes=changes,
                 )
                 for index, content in enumerate(prepared_documents)
             ]
@@ -395,13 +403,16 @@ class RerankClient(RoleClient):
                 doc_ids=[QUERY_DOC_ID],
                 prepared=slices[0],
                 allowance=max(self._budget.max_tokens - max(pair_media, default=0) - query_render - text_floor, 0),
+                changes=changes,
             )
             prepared_query = query_fit[0][0]
             query_media = query_fit[1]
         query = prepared_query
         documents = prepared_documents
-        kept_documents, omitted = self._apply_empty_documents(documents)
+        kept_documents, omitted = self._apply_empty_documents(documents, changes=changes)
         kept_positions = [index for index in range(len(documents)) if index not in set(omitted)]
+        if self._budget is None or not kept_documents:
+            self._record_processing("pair", changes=changes)
         if self._budget is None:
             return (
                 query,
@@ -440,21 +451,14 @@ class RerankClient(RoleClient):
                 media_tokens=[query_media + max(pair_media, default=0)],
                 record=False,
             ).contents[0][0]
-            if settled != original_query:
-                self.census.record(
-                    corpus=self.ROLE,
-                    doc_id=QUERY_DOC_ID,
-                    original_chars=len(original_query),
-                    kept_chars=len(settled),
-                    original_tokens=self._tokenizer.count(original_query),
-                    kept_tokens=self._tokenizer.count(settled),
-                    mechanism=TextTruncationCensus.TEXT_BUDGET,
-                    budget_source="tokenizer",
-                    shape="pair",
-                    # The row names the budget that bounded the settlement, exactly as fit's pair rows do:
-                    # the pair budget (the settled share applies inside it).
-                    budget_tokens=self._budget.max_tokens,
-                )
+            settle_cut = self._record_settlement(
+                original_query,
+                settled,
+                instruction=instruction,
+                reserved_media=query_media + max(pair_media, default=0),
+            )
+            if settle_cut is not None:
+                cuts.append(settle_cut)
             pairs = [(settled, document.text) for document in kept_documents]
             result = self._fit(
                 pairs,
@@ -487,12 +491,25 @@ class RerankClient(RoleClient):
                 ids=[str(position) for position in kept_positions],
             )
             contents = [pair if isinstance(pair, tuple) else (pair, "") for pair in result.contents]
+            if self._tokenizer is not None and not any(cut.doc_id == QUERY_DOC_ID for cut in cuts):
+                # The re-fit shortened the shared query below the settled span: a settlement like any other.
+                settle_cut = self._record_settlement(
+                    original_query,
+                    shortest,
+                    instruction=instruction,
+                    reserved_media=query_media + max(pair_media, default=0),
+                )
+                if settle_cut is not None:
+                    cuts.append(settle_cut)
             if len({left for left, _ in contents}) != 1:
                 raise DataError(
                     f"the pair fit settled the shared query differently across {len(contents)} document(s); "
                     "one query rides per request, so the spans must agree",
                     hint="this is a bug in the rerank pair fit: report it with the inputs",
                 )
+        # The rows' processing records: the settlement's and the pair fit's census rows (the last fit's, when
+        # a residual divergence re-fitted), and the media and empty-document changes noted above.
+        self._record_processing("pair", cuts=[*cuts, *result.cuts], changes=changes)
         # A chunked document is one wire document per chunk, each carrying its input's media parts beside
         # the piece (the media tokens are reserved per chunk: fit's cap subtracts the pair's media, and
         # every chunk's text is verified against it).  The fit ids are the documents' ORIGINAL positions
@@ -512,6 +529,60 @@ class RerankClient(RoleClient):
             for source, (_, document_text) in zip(chunk_origin, contents, strict=True)
         ]
         return wire_query, wire_documents, result, tuple(omitted), kept_positions
+
+    def _record_settlement(
+        self, original_query: str, span: str, *, instruction: str | None, reserved_media: int
+    ) -> TextCutRecord | None:
+        """Record the shared query's settlement under :data:`QUERY_DOC_ID` when the span that ships removed
+        content from the query, and return the census row (``None``: nothing was removed).
+
+        Like with like: fit returns the span under the template's declared normalisation (strip, lowercase),
+        which both sides apply and which is never a change -- the span is compared with the normalised query,
+        and only content actually removed (characters or tokens) is a cut. The row names why the query changed
+        (its declared share, else the budget the probe pair bounds it by) and the uncut and the kept probe
+        request's whole size: the frame with the query and an empty document, plus the media the probe reserved
+        -- the settlement rides every pair, so it is recorded even when every pair would fit whole.
+        """
+        budget, tokenizer = self._budget, self._tokenizer
+        assert budget is not None and tokenizer is not None  # the settlement is measured
+        template = budget.template
+        normalised = (
+            template.normalize_text("pair", original_query)
+            if template is not None and template.normalisers("pair")
+            else original_query
+        )
+        if span == normalised or (
+            len(span) >= len(normalised) and tokenizer.count(span) >= tokenizer.count(normalised)
+        ):
+            return None
+        share = budget.query_max_tokens
+        cause: CutCause = (
+            "query_share" if share is not None and tokenizer.count(original_query) > share else "budget_cut"
+        )
+
+        def probe_tokens(query: str) -> int:
+            return (
+                rendered_pair_tokens(budget, tokenizer, query=query, document="", instruction=instruction or "")
+                + reserved_media
+            )
+
+        return self.census.record(
+            corpus=self.ROLE,
+            doc_id=QUERY_DOC_ID,
+            original_chars=len(original_query),
+            kept_chars=len(span),
+            original_tokens=tokenizer.count(original_query),
+            kept_tokens=tokenizer.count(span),
+            mechanism=TextTruncationCensus.TEXT_BUDGET,
+            budget_source="tokenizer",
+            shape="pair",
+            # The row names the budget that bounded the settlement, exactly as fit's pair rows do: the pair budget
+            # (the settled share applies inside it).
+            budget_tokens=budget.max_tokens,
+            cause=cause,
+            original_request_tokens=probe_tokens(normalised),
+            kept_request_tokens=probe_tokens(span),
+        )
 
     def _assert_pairs_within_budget(
         self,

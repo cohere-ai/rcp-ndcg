@@ -37,7 +37,7 @@ import numpy as np
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.data.prepare import MediaCensus
-from rcp_ndcg.data.preprocess import TextTruncationCensus
+from rcp_ndcg.data.preprocess import ChangeMechanism, TextTruncationCensus
 from rcp_ndcg.data.templates import RequestShape
 from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError
 from rcp_ndcg.inference.adapters.base import Adapter, get_adapter
@@ -229,9 +229,12 @@ class PoolingClient(RoleClient):
         shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
         # The media fit runs per wire request: the pooling wire sends one media item per call, so one
         # item's fit bounds that item's media, against this batch shape's own budget and frame.
-        fitted, media_tokens = self._fit_media_per_item(request, shape=shape, doc_ids=position_ids)
-        kept, omitted = self._apply_empty_documents(fitted)
+        changes: dict[str, list[ChangeMechanism]] = {}  # per position, for the rows' processing records
+        fitted, media_tokens = self._fit_media_per_item(request, shape=shape, doc_ids=position_ids, changes=changes)
+        # Empty documents are decided on the content as given (under the side's prompt), before the fit frames it.
+        kept, omitted = self._apply_empty_documents(fitted, changes=changes, prefix=prefix)
         positions = [index for index in range(len(fitted)) if index not in set(omitted)]
+        cuts: tuple[Any, ...] = ()
         if self._budget is None or not kept:
             texts = [content.text for content in kept]
         else:
@@ -239,8 +242,13 @@ class PoolingClient(RoleClient):
                 [content.text for content in kept],
                 shape,
                 media_tokens=[media_tokens[position] for position in positions],
+                # The census rows and the processing records name each input's ORIGINAL position (an omitted
+                # empty document never shifts a later one's).
+                ids=[str(position) for position in positions],
             )
             texts = result.texts
+            cuts = result.cuts
+        self._record_processing(shape, cuts=cuts, changes=changes)
         return PreparedItems(
             items=tuple(self._with_text(content, text) for content, text in zip(kept, texts, strict=True)),
             positions=tuple(positions),

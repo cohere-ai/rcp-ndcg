@@ -28,7 +28,7 @@ import math
 from typing import TYPE_CHECKING, ClassVar, Literal, NamedTuple, Self
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 
 from rcp_ndcg.errors import ConfigError, DataError
@@ -302,14 +302,20 @@ def smart_resize(
     return h_bar, w_bar
 
 
-def _budget_problem(min_px: int, max_px: int, processor: str) -> str | None:
-    """Why a stock engine serving ``processor`` would resize the budget ``[min_px, max_px]`` again, if it would."""
+def _budget_problem(min_px: int, max_px: int, processor: str, *, pinned: bool = False) -> str | None:
+    """Why a stock engine serving ``processor`` would resize the budget ``[min_px, max_px]`` again, if it would.
+
+    ``pinned``: the engine is pinned to exactly this budget (:attr:`ImagePolicy.engine_pixel_pinning`), so it
+    keeps the prepared size whatever the family's stock range is -- no problem then."""
+    if pinned:
+        return None
     geometry = PROCESSORS[processor]
     if min_px < geometry.min_pixels or max_px > geometry.max_pixels:
         return (
             f"the pixel budget {min_px}-{max_px}px lies outside what a stock engine serving the {processor} "
             f"processor keeps ({geometry.min_pixels}-{geometry.max_pixels}px), so the engine would resize the "
-            f"prepared image again. Declare a budget inside that range."
+            f"prepared image again. Declare a budget inside that range, or serve the engine pinned to this "
+            f"budget and declare engine_pixel_pinning: true."
         )
     return None
 
@@ -325,9 +331,17 @@ class ImagePolicy(BaseModel):
             recorded policy names it. ``None`` in an effective policy means the family is unknown, and images are
             sent unchanged.
 
+        engine_pixel_pinning: Whether the engine serving this policy is pinned to exactly this pixel budget
+            (vLLM ``--mm-processor-kwargs '{"images_kwargs": {"min_pixels": <min_px>, "max_pixels": <max_px>}}'``;
+            a serving recipe checks that both sides carry the same numbers). Then the budget is the engine's
+            own and may lie outside the family's stock range -- the Qwen3-VL-Embedding card's 4096 px floor
+            under qwen3_vl's stock 65536 -- and the engine keeps the prepared size. ``False`` is the absence of
+            the declaration (stored as ``None``, so a policy that never names it keeps its identity).
+
     Budget both or neither: without one, images go at their stored size and the engine's processor decides
     (:meth:`native`), so their token cost cannot be counted. With a known processor the budget must lie within
-    the engines' default budget for it (:data:`PROCESSORS`), so the engine keeps the prepared size.
+    the engines' default budget for it (:data:`PROCESSORS`), so the engine keeps the prepared size -- unless the
+    engine is pinned to the budget itself (:attr:`engine_pixel_pinning`).
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -335,6 +349,13 @@ class ImagePolicy(BaseModel):
     min_px: int | None = Field(default=None, gt=0)
     max_px: int | None = Field(default=None, gt=0)
     processor: ImageProcessor | None = None
+    engine_pixel_pinning: Literal[True] | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    @field_validator("engine_pixel_pinning", mode="before")
+    @classmethod
+    def _false_is_no_declaration(cls, value: object) -> object:
+        """``false`` declares nothing: stored as ``None``, so it never re-keys a policy that omits it."""
+        return None if value is False else value
 
     if TYPE_CHECKING:
         # Frozen, so pydantic installs a field-value hash at class creation; declared here for type checkers.
@@ -347,9 +368,21 @@ class ImagePolicy(BaseModel):
         if self.min_px is not None and self.max_px is not None:
             if self.min_px > self.max_px:
                 raise ValueError(f"min_px ({self.min_px}) exceeds max_px ({self.max_px})")
-            if self.processor is not None and (problem := _budget_problem(self.min_px, self.max_px, self.processor)):
+            if self.processor is not None and (
+                problem := _budget_problem(self.min_px, self.max_px, self.processor, pinned=self.pinned)
+            ):
                 raise ValueError(problem)
+        elif self.engine_pixel_pinning:
+            raise ValueError(
+                "engine_pixel_pinning declares the engine pinned to this policy's pixel budget, and the policy "
+                "declares none: declare min_px and max_px (the numbers the engine is pinned to)"
+            )
         return self
+
+    @property
+    def pinned(self) -> bool:
+        """Whether the engine is declared pinned to this policy's pixel budget (:attr:`engine_pixel_pinning`)."""
+        return bool(self.engine_pixel_pinning)
 
     @property
     def is_native(self) -> bool:
@@ -363,10 +396,12 @@ class ImagePolicy(BaseModel):
 
     @property
     def descriptor(self) -> str:
-        """Human-readable one-liner, e.g. ``65536-1003520px qwen3_vl``, ``3136-1003520px`` or ``native``."""
+        """Human-readable one-liner, e.g. ``65536-1003520px qwen3_vl``, ``3136-1003520px``, ``native``, or
+        ``4096-1843200px qwen3_vl pinned`` for a budget the engine is pinned to."""
         if self.is_native:
             return "native"
-        return f"{self.min_px}-{self.max_px}px" + (f" {self.processor}" if self.processor else "")
+        processor = f" {self.processor}" if self.processor else ""
+        return f"{self.min_px}-{self.max_px}px{processor}" + (" pinned" if self.pinned else "")
 
     def for_processor(self, processor: ImageProcessor | None) -> ImagePolicy:
         """This policy under the judge's processor family: the effective policy a judging pass records.
@@ -387,7 +422,7 @@ class ImagePolicy(BaseModel):
             )
         chosen = self.processor or processor
         if chosen is not None and self.min_px is not None and self.max_px is not None:
-            problem = _budget_problem(self.min_px, self.max_px, chosen)
+            problem = _budget_problem(self.min_px, self.max_px, chosen, pinned=self.pinned)
             if problem is not None:
                 geometry = PROCESSORS[chosen]
                 raise ConfigError(
@@ -420,10 +455,13 @@ class ImagePolicy(BaseModel):
                 f"{self.processor} processor refuses ({exc}); the image must be cropped or split at ingest",
                 hint="crop or split the image at ingest so its aspect ratio is below 200",
             ) from exc
+        # The budget the serving engine applies to the prepared image: its pinned one (this policy's), else the
+        # family's stock range.
+        engine_min, engine_max = (
+            (self.min_px, self.max_px) if self.pinned else (geometry.min_pixels, geometry.max_pixels)
+        )
         try:
-            kept = smart_resize(
-                *target, factor=geometry.factor, min_pixels=geometry.min_pixels, max_pixels=geometry.max_pixels
-            )
+            kept = smart_resize(*target, factor=geometry.factor, min_pixels=engine_min, max_pixels=engine_max)
         except (ValueError, DataError) as exc:  # the resized image's aspect ratio is one the processor refuses
             raise DataError(
                 f"a {height}x{width} image resizes to {target[0]}x{target[1]} under the budget {self.descriptor}, "
@@ -490,6 +528,7 @@ class ImagePolicy(BaseModel):
         "min_px": FieldRole.CONTENT,
         "max_px": FieldRole.CONTENT,
         "processor": FieldRole.CONTENT,
+        "engine_pixel_pinning": FieldRole.CONTENT,
     }
 
 

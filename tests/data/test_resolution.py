@@ -496,6 +496,45 @@ class TestEnginePinning:
         assert pinned.key != Preprocessing(video=_video(8)).key
 
 
+class TestEnginePixelPinning:
+    """H4: a pixel budget outside the processor family's stock range is the engine's own when the engine is
+    pinned to exactly that budget (vLLM ``--mm-processor-kwargs '{"images_kwargs": {"min_pixels": ...,
+    "max_pixels": ...}}'``): the policy declares it with ``engine_pixel_pinning``, and the engine then keeps
+    the prepared size instead of resizing it again to its stock floor."""
+
+    #: The Qwen3-VL-Embedding card's budget: 4*32^2 .. 1800*32^2, below qwen3_vl's stock floor of 65536 px.
+    CARD = {"min_px": 4096, "max_px": 1843200}
+
+    def test_a_budget_below_the_stock_floor_is_refused_unpinned(self):
+        with pytest.raises(ValueError, match="outside what a stock engine"):
+            ImagePolicy(**self.CARD, processor="qwen3_vl")
+        with pytest.raises(ConfigError, match="outside what a stock engine"):
+            ImagePolicy(**self.CARD).for_processor("qwen3_vl")
+
+    def test_a_pinned_budget_below_the_stock_floor_is_admitted_and_counted(self):
+        policy = ImagePolicy(**self.CARD, processor="qwen3_vl", engine_pixel_pinning=True)
+        assert ImagePolicy(**self.CARD, engine_pixel_pinning=True).for_processor("qwen3_vl") == policy
+        # 100x100 resizes to 96x96 under the pinned budget (9216 px: under the stock floor, so a stock engine
+        # would have scaled it up again) -- 3x3 tokens of 32 px.
+        assert policy.target_size(100, 100) == (96, 96)
+        assert policy.image_tokens(100, 100) == 9
+        assert policy.descriptor == "4096-1843200px qwen3_vl pinned"
+
+    def test_pinning_needs_a_budget_to_pin(self):
+        with pytest.raises(ValueError, match="engine_pixel_pinning"):
+            ImagePolicy(engine_pixel_pinning=True)
+
+    def test_an_undeclared_pinning_never_re_keys_a_policy(self):
+        """``false`` is the absence of the declaration: the stored value and the family key are those of a
+        policy that never named it; a declared pinning is a different instrument."""
+        plain = ImagePolicy(min_px=65536, max_px=1003520, processor="qwen3_vl")
+        unpinned = ImagePolicy(min_px=65536, max_px=1003520, processor="qwen3_vl", engine_pixel_pinning=False)
+        pinned = ImagePolicy(min_px=65536, max_px=1003520, processor="qwen3_vl", engine_pixel_pinning=True)
+        assert unpinned.engine_pixel_pinning is None
+        assert Preprocessing(image=unpinned).key == Preprocessing(image=plain).key
+        assert Preprocessing(image=pinned).key != Preprocessing(image=plain).key
+
+
 class TestTargetSizeErrors:
     """A refusal of an image the engines cannot keep is a DataError with a hint, not a bare ValueError."""
 

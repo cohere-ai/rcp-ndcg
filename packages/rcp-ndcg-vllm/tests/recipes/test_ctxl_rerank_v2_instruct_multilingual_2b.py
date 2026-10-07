@@ -90,6 +90,7 @@ EXPECTED_CLIENT = {
     "model": RECIPE_ID,
     "on_overflow": "cut",
     "query_max_tokens": 4096,
+    "document_max_tokens": None,
     # Unset in the recipe (the family convention of these three): `client_config` records the
     # recipe id; the serve block and `sources` keep the server-side settings.
     "recipe": None,
