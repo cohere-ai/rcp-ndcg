@@ -5903,9 +5903,9 @@
     {
       "recipe": "topk-embed-v1-small",
       "path": "topk-embed-v1-small.jsonl",
-      "sha256": "ac35ecf6fc4eaad913c13bc79a918a29066d279bdb325657d2d80af47479013b",
-      "bytes": 171269,
-      "rows": 30,
+      "sha256": "7046a8dd9e13f2533f61574dd0b1ca215320a370231e2585dd39f7a33c5fa1b4",
+      "bytes": 166398,
+      "rows": 29,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -6414,17 +6414,6 @@
             "media:image",
             "media:image:extreme_aspect"
           ]
-        },
-        {
-          "source": {
-            "suite": "synthetic",
-            "media_set": 1,
-            "bucket": "a4_72dpi+caption"
-          },
-          "strata": [
-            "media:image",
-            "media:image+text"
-          ]
         }
       ],
       "skipped_sources": [],
@@ -6542,7 +6531,7 @@
           ],
           "reason": null
         },
-        "pruned_rows": 2,
+        "pruned_rows": 3,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
       }
@@ -8342,6 +8331,19 @@
         "shapes:document+query"
       ],
       "reason": "{\"index\": 14, \"reference_text_head\": \"Document:\", \"served_text_head\": \"Document: \", \"shape\": \"document\"}"
+    },
+    {
+      "recipe": "topk-embed-v1-small",
+      "source": {
+        "suite": "synthetic",
+        "media_set": 1,
+        "bucket": "a4_72dpi+caption"
+      },
+      "strata": [
+        "media:image",
+        "media:image+text"
+      ],
+      "reason": "media_check: the reference refuses the document 0: Encode text or images in separate batches."
     }
   ]
 }
