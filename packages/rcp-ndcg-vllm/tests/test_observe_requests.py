@@ -10,6 +10,8 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 from rcp_ndcg_vllm.equivalence.fitting import load_pairs, tokenizer_of
 from rcp_ndcg_vllm.observe.adversarial import CONTENT_KINDS
 from rcp_ndcg_vllm.observe.requests import (
@@ -273,3 +275,153 @@ def test_the_wire_variants_and_the_protocol_edges_cover_each_route() -> None:
     for plan in (embed, pooling, rerank):
         for name, record in plan.strata.items():
             assert record["present"] or record.get("reason"), name
+
+
+def test_stage1_validation_runs_a_skip_list_recipe_on_the_offline_fake(tmp_path: Path) -> None:
+    """A multi-vector recipe that declares ``document_skip_token_ids`` validates on the product's offline fake.
+
+    The fake answers one vector per whitespace word, not per recipe token, and the pooling client refuses a
+    reply whose vector count is not the count of the ids it sent (the skip positions would not align). The
+    skip list acts on the reply only, so the generator's stage-1 validation probes a copy without it: the
+    requests stage 1 audits are unchanged, and the generation no longer dies on the fake's reply.
+    """
+    import shutil
+    import sys
+
+    from rcp_ndcg_vllm.observe.requests import _validate_and_prune
+
+    source = RECIPES / "fixture-multi-vector"
+    target = tmp_path / "recipes" / "fixture-multi-vector-skip"
+    shutil.copytree(source, target)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
+    manifest = (source / "recipe.yaml").read_text(encoding="utf-8")
+    manifest = (
+        manifest.replace("id: fixture-multi-vector", "id: fixture-multi-vector-skip")
+        .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
+        .replace("  dim: 8\n", "  dim: 8\n  document_skip_token_ids: [2]\n")
+    )
+    (target / "recipe.yaml").write_text(manifest, encoding="utf-8")
+    recipe = load_recipe(target)
+    assert tuple(recipe.client.document_skip_token_ids) == (2,)
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france, on the seine")},
+    )
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {"nanobeir": [corpus]})
+    validated, _ = _validate_and_prune(recipe, plan, sys.executable)
+    assert validated.rows, "validation pruned every row"
+    assert validated.validation["render_check"] == "passed", validated.validation
+
+
+def test_the_offline_probe_bounds_only_reply_side_pooling_fields() -> None:
+    """A ``/pooling`` recipe's ``dim`` sizes the reply only (the adapter decodes by it; no request carries it),
+    so stage 1's offline probe answers 8-wide vectors: the shipped width at 2 x a 262k-token budget would be a
+    multi-GiB fake reply per probed text.  Every other client field -- everything a request is built from --
+    is the recipe's own; a non-pooling recipe is probed as it ships."""
+    from rcp_ndcg_vllm.observe.requests import _offline_probe
+
+    recipe = load_recipe(RECIPES / "fixture-multi-vector")
+    wide = recipe.model_copy(
+        update={"client": recipe.client.model_copy(update={"dim": 2048, "document_skip_token_ids": (2,)})}
+    )
+    probe = _offline_probe(wide)
+    assert probe.client.dim == 8 and not probe.client.document_skip_token_ids
+    unchanged = {"dim", "document_skip_token_ids"}
+    assert probe.client.model_dump(exclude=unchanged) == wide.client.model_dump(exclude=unchanged)
+    assert probe._dir == wide._dir  # noqa: SLF001 - the reference still resolves from the recipe directory
+    embed = load_recipe(RECIPES / "fixture-embed")
+    assert _offline_probe(embed) is embed
+
+
+def test_a_per_token_probe_too_long_for_the_offline_fake_is_recorded_blocked(tmp_path: Path) -> None:
+    """The offline fake seeds each per-token vector with the item's whole body, so a ``/pooling`` probe costs
+    tokens x body bytes; stage 1's over-length samples (twice the budget) make that quadratic cost
+    infeasible on CPU for a long-context budget.  The generator records the recipe's render check as blocked
+    with the reason (the full-budget stage 1 runs against the engine on the GPU wave), never silently
+    passed, and writes the rows unpruned -- in seconds, not hours."""
+    import shutil
+    import sys
+    import time
+
+    from rcp_ndcg_vllm.observe.requests import _validate_and_prune
+
+    source = RECIPES / "fixture-multi-vector"
+    target = tmp_path / "recipes" / "fixture-multi-vector-long"
+    shutil.copytree(source, target)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
+    manifest = (
+        (source / "recipe.yaml")
+        .read_text(encoding="utf-8")
+        .replace("id: fixture-multi-vector", "id: fixture-multi-vector-long")
+        .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
+        .replace("max_model_len: 512", "max_model_len: 262144")
+        .replace("max_tokens: 64", "max_tokens: 262142")
+    )
+    (target / "recipe.yaml").write_text(manifest, encoding="utf-8")
+    recipe = load_recipe(target)
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france")},
+    )
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {"nanobeir": [corpus]})
+    started = time.monotonic()
+    validated, pruned = _validate_and_prune(recipe, plan, sys.executable)
+    assert time.monotonic() - started < 30
+    assert validated.rows == plan.rows and pruned == []
+    assert str(validated.validation["render_check"]).startswith("blocked: "), validated.validation
+    assert "GPU wave" in validated.validation["render_check"]
+
+
+def test_a_run_replaces_every_manifest_entry_of_the_recipes_it_touched(tmp_path: Path) -> None:
+    """Runs merge per recipe: a recipe this run generated leaves ``skipped_recipes`` and drops the previous
+    run's pruned rows; a recipe this run skipped leaves ``files``.  Recipes the run did not touch are kept."""
+    _, plan = _plan()
+    write_pairs_file(plan, tmp_path)
+    other = {"recipe": "other", "error": "kept"}
+    write_manifest([], tmp_path, skipped_recipes=[{"recipe": plan.recipe_id, "error": "cannot load"}, other])
+    write_manifest([plan], tmp_path, pruned=[{"recipe": plan.recipe_id, "reason": "old"}])
+    write_manifest([plan], tmp_path, pruned=[{"recipe": plan.recipe_id, "reason": "new"}])
+    document = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    assert document["skipped_recipes"] == [other]
+    assert [entry["reason"] for entry in document["pruned"]] == ["new"]
+    assert [entry["recipe"] for entry in document["files"]] == [plan.recipe_id]
+    write_manifest([], tmp_path, skipped_recipes=[{"recipe": plan.recipe_id, "error": "blocked"}])
+    document = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    assert document["files"] == []
+    assert {entry["recipe"] for entry in document["skipped_recipes"]} == {plan.recipe_id, "other"}
+    assert document["pruned"] == []
+
+
+def test_a_recipe_whose_validation_pruned_every_row_is_recorded_not_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty pairs file would let stage 2 pass on nothing: a recipe whose stage-1 validation pruned every
+    row is a skipped recipe with the first failure named, and a previous run's file for it is removed."""
+    import sys
+
+    from rcp_ndcg_vllm.observe import requests as generator
+
+    out = tmp_path / "pairs"
+    out.mkdir()
+    (out / "fixture-embed.jsonl").write_text('{"query": "stale", "documents": ["stale"]}\n', encoding="utf-8")
+    monkeypatch.setattr("rcp_ndcg_vllm.observe.sources.load_corpora", lambda *args, **kwargs: [])
+
+    def prune_all(recipe: object, plan: RecipePlan, reference_python: str) -> tuple[RecipePlan, list[dict]]:
+        pruned = [{"row": index, "reason": "tail edge"} for index, _ in enumerate(plan.rows)]
+        return RecipePlan(plan.recipe_id, [], plan.strata, plan.skipped_sources, {"render_check": "passed"}), pruned
+
+    monkeypatch.setattr(generator, "_validate_and_prune", prune_all)
+    argv = ["--recipes-root", str(RECIPES), "--recipes", "fixture-embed", "--out", str(out)]
+    assert generator.main([*argv, "--reference-python", sys.executable, "--suites", "nanobeir"]) == 1
+    assert not (out / "fixture-embed.jsonl").exists()
+    document = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    assert document["files"] == []
+    (skipped,) = document["skipped_recipes"]
+    assert skipped["recipe"] == "fixture-embed" and "pruned every row" in skipped["error"]
+    assert "tail edge" in skipped["error"]

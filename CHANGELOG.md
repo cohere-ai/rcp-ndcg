@@ -115,8 +115,15 @@ released together.
   text -- writing one stage-2 pairs file per recipe in the harness's pairs format plus `pairs/manifest.json`
   (per-row provenance, stratum presence records, file hashes, excluded source ids, the recipes that could not
   load with their error, and what stage-1 validation ran). `python -m rcp_ndcg_vllm.observe.requests` generates
-  it under a stall watchdog (`faulthandler` to stderr every 60 s); runs merge into the manifest, so one bounded
-  invocation per recipe composes.
+  it under a stall watchdog (`faulthandler` to stderr every 60 s); runs merge into the manifest per recipe (a
+  recipe a run touched replaces its file, skipped and pruned entries), so one bounded invocation per recipe
+  composes. Stage-1 validation probes the offline fake with a `/pooling` recipe's reply-side fields bounded
+  (`dim` 8 without an `mrl_dim`, `document_skip_token_ids` emptied; every request field unchanged); a
+  `/pooling` recipe whose over-length samples exceed 32768 tokens records its render check as blocked (the
+  full-budget stage 1 runs against the engine); a recipe whose validation pruned every row is a skipped
+  recipe with the first failure named, never an empty pairs file. The committed `pairs/` hold 17 of the 18
+  recipes (`jina-embeddings-v5-text-small` is skipped: the harness's anchor check does not read `anchor:
+  last_content` yet).
 - **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
   are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric
   placements whose document has no Bradley-Terry theta, and the queries absent from `bt_scores`, instead of

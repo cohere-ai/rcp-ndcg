@@ -905,11 +905,16 @@ def write_manifest(
             existing = loaded if isinstance(loaded, dict) else {}
         except json.JSONDecodeError:
             existing = {}
+    # A recipe this run touched (generated or skipped) replaces ALL its entries: its file record, its
+    # skipped record and its pruned rows; the recipes the run did not touch keep theirs.
+    touched = {entry["recipe"] for entry in entries} | {str(entry["recipe"]) for entry in skipped_recipes or []}
     files = {str(entry.get("recipe")): entry for entry in existing.get("files", [])}
+    files = {key: entry for key, entry in files.items() if key not in touched}
     files.update({entry["recipe"]: entry for entry in entries})
     skipped = {str(entry.get("recipe")): entry for entry in existing.get("skipped_recipes", [])}
+    skipped = {key: entry for key, entry in skipped.items() if key not in touched}
     skipped.update({entry["recipe"]: entry for entry in skipped_recipes or []})
-    pruned_all = list(existing.get("pruned", []))
+    pruned_all = [entry for entry in existing.get("pruned", []) if str(entry.get("recipe")) not in touched]
     seen = {json.dumps(entry, sort_keys=True, default=str) for entry in pruned_all}
     for entry in pruned or []:
         key = json.dumps(entry, sort_keys=True, default=str)
@@ -933,6 +938,63 @@ def write_manifest(
     return path
 
 
+_PROBE_DIM = 8
+"""The vector width of the offline fake's ``/pooling`` replies during stage-1 validation (see :func:`_offline_probe`)."""
+
+
+def _offline_probe(recipe: Any) -> Any:
+    """The recipe as stage 1 probes it on the product's offline fake: reply-side ``/pooling`` fields bounded.
+
+    Stage 1 audits what the role client SENDS; the fake's reply is scaffolding.  Two client fields of a
+    ``vllm_pooling`` recipe shape only the reply, and the probe copy bounds exactly those: ``dim`` (the
+    adapter decodes the reply by it; no request carries it) drops to 8 -- the fake answers one vector per
+    whitespace word, so the shipped width at twice a 262k-token budget is a multi-GiB reply per probed text
+    -- unless a Matryoshka ``mrl_dim`` is declared; and ``document_skip_token_ids`` (the client drops those
+    positions from the reply) is emptied, since the fake's word count is not the recipe tokenizer's and the
+    client refuses a reply whose vector count is not its sent ids' count.  Input: a loaded recipe.  Output:
+    the recipe itself (nothing to bound), or its copy; every field a request is built from is unchanged.
+    """
+    client = recipe.client
+    if getattr(client, "api", None) != "vllm_pooling":
+        return recipe
+    update: dict[str, Any] = {}
+    if getattr(client, "document_skip_token_ids", None):
+        update["document_skip_token_ids"] = ()
+    dim = getattr(client, "dim", None)
+    if dim is not None and dim > _PROBE_DIM and getattr(client, "mrl_dim", None) is None:
+        update["dim"] = _PROBE_DIM
+    if not update:
+        return recipe
+    return recipe.model_copy(update={"client": client.model_copy(update=update)})
+
+
+_PROBE_MAX_PER_TOKEN_SAMPLE = 32768
+"""The longest over-length sample (tokens, twice the budget) the offline fake answers per token on CPU."""
+
+
+def _probe_infeasible(recipe: Any) -> str | None:
+    """Why stage 1 cannot probe ``recipe`` on the offline fake, or ``None`` when it can.
+
+    The fake answers ``/pooling`` with one vector per token, each seeded by the item's whole body, so a probe
+    costs tokens x body bytes: stage 1's over-length samples, padded to twice the declared budget, make that
+    quadratic for a long-context budget (half a million draws over a megabyte-long body per item at 262k
+    tokens).  Such a recipe's render check is a recorded blocker, never a silent pass; the full-budget stage 1
+    runs against the engine on the GPU wave.
+    """
+    client = recipe.client
+    if getattr(client, "api", None) != "vllm_pooling":  # the fake's /pooling reply is per token, whatever outputs
+        return None
+    budget = getattr(client, "max_tokens", None) or 0
+    if 2 * budget <= _PROBE_MAX_PER_TOKEN_SAMPLE:
+        return None
+    return (
+        f"blocked: stage 1's over-length samples ({2 * budget} tokens, twice the {budget}-token budget) are "
+        "infeasible on the offline fake's per-token /pooling replies (one draw per token, seeded by the whole "
+        f"body; the CPU bound is {_PROBE_MAX_PER_TOKEN_SAMPLE} tokens); the rows are unpruned and the "
+        "full-budget stage 1 runs against the engine on the GPU wave"
+    )
+
+
 def _validate_and_prune(
     recipe: Any, plan: RecipePlan, reference_python: str
 ) -> tuple[RecipePlan, list[dict[str, Any]]]:
@@ -950,7 +1012,20 @@ def _validate_and_prune(
     from ..errors import HarnessError
     from ..recipe import load_recipe
 
-    recipe = load_recipe(recipe._dir) if recipe._dir else recipe
+    recipe = _offline_probe(load_recipe(recipe._dir) if recipe._dir else recipe)
+    infeasible = _probe_infeasible(recipe)
+    if infeasible is not None:
+        validation = {**plan.validation, "render_check": infeasible, "pruned_rows": 0}
+        return (
+            RecipePlan(
+                recipe_id=plan.recipe_id,
+                rows=plan.rows,
+                strata=plan.strata,
+                skipped_sources=plan.skipped_sources,
+                validation=validation,
+            ),
+            [],
+        )
     pruned: list[dict[str, Any]] = []
     blocked: dict[str, Any] = {}
     rounds = 0
@@ -1117,6 +1192,14 @@ def main(argv: list[str] | None = None) -> int:
             plan = plan_recipe(recipe, tokenizer_of(recipe), corpora)
             if args.reference_python:
                 plan, pruned_rows = _validate_and_prune(recipe, plan, args.reference_python)
+                if not plan.rows and pruned_rows:
+                    # An empty pairs file would let stage 2 pass on nothing: the recipe is skipped, its
+                    # previous file removed, and the first failure named.
+                    (out / f"{recipe.id}.jsonl").unlink(missing_ok=True)
+                    raise ValueError(
+                        f"stage-1 validation pruned every row ({len(pruned_rows)}); the first: "
+                        f"{pruned_rows[0].get('reason')}"
+                    )
                 pruned.extend({"recipe": recipe.id, **entry} for entry in pruned_rows)
             else:
                 plan = RecipePlan(
