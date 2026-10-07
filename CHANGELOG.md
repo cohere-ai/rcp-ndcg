@@ -1287,6 +1287,15 @@ released together.
   present four paths (score, serve and score, re-judge, reproduce), state the rankings-file column contract
   with its accepted aliases, and describe `recipe: <id>`, `rcp-ndcg-vllm serve` and the judge text policy. The
   exit-code table's one home is `docs/reference/cli.md`; the skill links it.
+- **qwen3-vl recipes (`fam-vl`)**: `qwen3-vl-embedding-2b` and `qwen3-vl-reranker-2b` now declare the R20
+  media pin in ONE `mm_processor_kwargs` shape (nested `images_kwargs`, decided from the vLLM v0.31.0 tag
+  source), one video sampling policy on every side (64 uniformly spaced frames per clip:
+  `client.video_policy` + `--media-io-kwargs` engine pinning), and the client media capacity beside
+  `serve.limit_mm_per_prompt` (`max_images`/`max_videos`); the reranker pins `pooler_config.use_activation`
+  beside `client.use_activation`, states the settled-query rule for `query_max_tokens`, and its reference
+  renders the wire's content spans (stage 1's render contract) while both references refuse media-bearing
+  pairs rows loudly. The mirror half of R20 (the client's pixel budget) is blocked on a product change:
+  `ImagePolicy` refuses a pinned budget outside the stock engine envelope.
 - **The BM25 index is persisted in bm25s' own format, never a pickle** (`rcp_ndcg.retrieval.sparse`): the
   index directory's model is stored with `BM25.save(..., allow_pickle=False)` (npz arrays + JSON parameters)
   and loaded with `allow_pickle=False` -- the index directory comes from ordinary user paths (`retrieval index

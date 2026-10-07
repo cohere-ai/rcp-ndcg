@@ -20,20 +20,24 @@ file: torch, transformers, qwen-vl-utils) -- never inside the harness process:
 
 Modes and output JSON (the harness's contract):
 
-- ``render`` -- ``{"rows": [{"index", "shape", "text"}]}``, the prompt text per pairs row (the
-  pair shape). Two paths, both declared here: the card's own path (``transformers``'
-  ``apply_chat_template`` over the repo's ``chat_template.jinja``) when transformers imports,
-  otherwise a direct construction of the same ChatML string (same message builder, the template
-  rendered by hand). The direct path exists so stage 1 runs on CPU with tokenizer files only;
-  the served-side template check proves the shipped template file renders the same string.
+- ``render`` -- ``{"rows": [{"index", "shape", "query", "documents"}]}``: the wire's
+  content CUT SPANS per pairs row (the settled query span and the document spans the client
+  ships), ported here on the pinned tokenizer (the reference environment has no rcp-ndcg):
+  every kept span is a verbatim prefix at a token boundary, the query settled at its declared
+  share (``QUERY_MAX_TOKENS``) whenever it exceeds it. The frame is the engine's chat template
+  (stage-1 ``template_render_check`` compares the file and the declared shape). Media columns are
+  refused (below).
 - ``score`` -- ``{"rows": [{"index", "scores": [...]}]}`` on the recipe's
   ``reference.score_scale`` (probability: the sigmoid above). Needs torch, transformers and the
   ~4.0 GB weights; never runs on the CPU stage (stage 2 needs a served engine anyway).
 
 Deviations from the card's script, all declared:
 
-- ``render`` uses ``AutoTokenizer.apply_chat_template``; the card calls the processor's. Both
-  resolve the same repo file ``chat_template.jinja`` (the processor delegates to its tokenizer).
+- ``render`` is not the card's prompt render: the harness's contract is the wire's content
+  spans (the frame is the engine's chat template's job), so the span cut is an independent port
+  of the product's rerank client for THIS declaration (settle-once query at
+  ``client.query_max_tokens``, then the pair fit's frame-reserving cut) and stage 1 compares it
+  byte-for-byte against the captured wire.
 - ``render`` always uses the card's default instruction and ignores the pairs row's
   ``instruction`` field: the recipe's endpoint never sends an instruction
   (``client.instruction: none``), so the engine's template default is what the model reads.
@@ -41,6 +45,13 @@ Deviations from the card's script, all declared:
   ``MAX_LENGTH - specials`` non-special tokens, re-append the last 5 ids) is kept for ``score``
   unchanged; it is the recipe's declared ``anchor_drop_over_cap`` deviation (over-cap pairs are
   reported non-gating), not something the served path copies.
+- The card's video branch (fps 1 / max_frames 64 containers, ``total_pixels`` frame arrays) is
+  refused, not mirrored: the recipe declares ``input: [text, image]``, and the family's ONE video
+  policy (64 uniformly spaced frames per clip -- ``qwen3-vl-embedding-2b``'s
+  ``client.video_policy``) supersedes the card's container sampler. A video-bearing row is a loud
+  error in every mode, never a silent sampling at either rule. Image columns ride the card's
+  per-document message builder in ``score`` only (``query_image`` / ``documents_images``);
+  ``render`` refuses them (its contract is the text spans the client ships).
 - ``tokenize`` mirrors the card's vision-wiring fallback: when ``process_vision_info`` raises
   (a media decode failure in score mode), the card re-renders the prompt as a NULL-only user
   turn; the reference copies that behavior verbatim.
@@ -57,6 +68,10 @@ from typing import Any
 
 MAX_LENGTH = 8192
 """The card's MAX_LENGTH: the reference truncates post-template to this many tokens."""
+
+QUERY_MAX_TOKENS = 4096
+"""The recipe's ``client.query_max_tokens``: the wire settles the query at this share whenever it
+exceeds it, all through the span render below."""
 
 SYSTEM_TEXT = (
     "Judge whether the Document meets the requirements based on the Query and the "
@@ -88,20 +103,24 @@ VIDEO_PLACEHOLDER = VISION_START + VIDEO_PAD + VISION_END
 
 
 def _content_parts(prefix: str, text: str, image: Any = None, video: Any = None) -> list[dict[str, Any]]:
-    """The card script's format_mm_content for one side: the prefix text, then video, image, text.
+    """The card script's format_mm_content for one side: the prefix text, then image, text.
 
     A side with no text and no media sends the literal text "NULL" -- the placeholder the recipe's
-    ``empty_doc: send_text`` policy also sends.
+    ``empty_doc: send_text`` policy also sends. One declared deviation from the card's mirror: the
+    card's video branch is refused here (see the module docstring) -- ``input: [text, image]`` and
+    the family's one video policy live elsewhere; a video-bearing side is a loud error.
     """
     content: list[dict[str, Any]] = [{"type": "text", "text": prefix}]
     if not text and not image and not video:
         content.append({"type": "text", "text": "NULL"})
         return content
     if video:
-        if isinstance(video, str):
-            content.append({"type": "video", "video": video, "fps": 1.0, "max_frames": 64})
-        else:
-            content.append({"type": "video", "video": video, "total_pixels": 4 * 2 * 1310720})
+        raise SystemExit(
+            "a side carries a video, and this recipe declares input [text, image] -- video is out "
+            "of its serving form. The family's one video policy (64 uniformly spaced frames per "
+            "clip, the container as video_url under a pinned engine) lives in the "
+            "qwen3-vl-embedding-2b recipe; drop the video or hold the row for that recipe"
+        )
     if image:
         content.append({"type": "image", "image": image, "min_pixels": 4096, "max_pixels": 1310720})
     if text:
@@ -340,21 +359,142 @@ class Qwen3VLRerankerReference:
         return scores
 
 
-def _render_messages_transformers(messages: list[dict[str, Any]], tokenizer: Any) -> str:
-    """The card's render path: the repo chat template applied by transformers (tokenize off)."""
-    return str(tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True))
+# ---------------------------------------------------------------------------
+# render mode (stage 1): the wire's content cut spans, no torch.
+# ---------------------------------------------------------------------------
 
 
-def render_pair(query: dict[str, Any], doc: dict[str, Any], instruction: str, tokenizer: Any) -> str:
-    """The reference prompt text for one pair: the card's messages through the repo chat template.
+def _raw_tokenizer(spec: str) -> Any:
+    """The render path's tokenizer: the ``tokenizers`` library over the spec's ``tokenizer.json``
+    (a local directory or file, else the Hub file at ``repo@revision``) -- the same Rust engine the
+    product counts with, torch-free."""
+    from tokenizers import Tokenizer
 
-    With a transformers tokenizer the card's own path runs; without one (the CPU stage-1
-    environment carries tokenizer files only) :func:`render_pair_direct` builds the same string.
+    path = Path(spec)
+    if path.is_dir():
+        return Tokenizer.from_file(str(path / "tokenizer.json"))
+    if path.is_file():
+        return Tokenizer.from_file(str(path))
+    from huggingface_hub import hf_hub_download
+
+    repo, _, revision = spec.partition("@")
+    file = hf_hub_download(repo, "tokenizer.json", revision=revision or None)
+    return Tokenizer.from_file(file)
+
+
+def _count(text: str, tok: Any, *, add_special_tokens: bool = False) -> int:
+    """How many tokens of ``text`` the engine counts (the post-processor's tokens included; this
+    tokenizer's processor appends nothing, measured)."""
+    return len(tok.encode(text, add_special_tokens=add_special_tokens).ids)
+
+
+def _offsets(text: str, tok: Any) -> list[tuple[int, int]]:
+    """``(start, end)`` character offsets of each token of ``text``, in order."""
+    return [(offset[0], offset[1]) for offset in tok.encode(text, add_special_tokens=False).offsets]
+
+
+def _token_prefix(text: str, max_tokens: int, tok: Any, *, rendered: Any = None) -> str:
+    """The longest prefix of ``text`` at one of its first ``max_tokens`` token boundaries that counts
+    at most ``max_tokens`` as the engine counts it (``rendered(piece)`` when given).
+
+    The cut is located on the ORIGINAL text's character offsets, so the result is a verbatim
+    prefix -- never a ``decode(encode(...))`` round trip (not the identity for a normalising
+    tokenizer; the wire carries text). Port of ``rcp_ndcg.data.preprocess.token_prefix``: the same
+    galloping-then-binary search over token boundaries, the same counting.
     """
-    messages = format_mm_instruction(query, doc, instruction)
-    if tokenizer is not None:
-        return _render_messages_transformers(messages, tokenizer)
-    return render_pair_direct(query, doc, instruction)
+
+    def count(piece: str) -> int:
+        shown = rendered(piece) if rendered is not None else piece
+        return _count(shown, tok)
+
+    if count(text) <= max_tokens:
+        return text
+    offsets = _offsets(text, tok)
+
+    def prefix(tokens: int) -> str:
+        return text[: offsets[tokens - 1][1]] if tokens > 0 else ""
+
+    def fits(tokens: int) -> bool:
+        return count(prefix(tokens)) <= max_tokens
+
+    over = min(max_tokens, len(offsets))
+    if fits(over):
+        return prefix(over)
+    fitting, step = over - 1, 1
+    while fitting > 0 and not fits(fitting):
+        over, fitting, step = fitting, max(fitting - step, 0), step * 2
+    while over - fitting > 1:
+        middle = (over + fitting) // 2
+        fitting, over = (middle, over) if fits(middle) else (fitting, middle)
+    return prefix(fitting)
+
+
+def served_spans(tok: Any, query: str, document: str) -> tuple[str, str]:
+    """The cut content spans (query, document) the wire carries for one pair.
+
+    Port of the product's rerank client for this recipe's declaration: the query span settles
+    once per request -- to its declared share (``QUERY_MAX_TOKENS``) whenever it exceeds it (the
+    settle rule the merged wire carries) -- then through fit's frame-reserving cut, and each
+    document span gets what remains after the settled query and the fixed frame. The engine's
+    chat template re-assembles the frame around these spans; the scored anchor is the assistant
+    tail's last token. The frame is measured through :func:`render_pair_direct` (the frame the
+    served template file also renders).
+    """
+
+    def assemble(q: str, d: str) -> str:
+        return render_pair_direct({"text": q}, {"text": d}, DEFAULT_INSTRUCTION)
+
+    cap = MAX_LENGTH
+    # 1. settle at the declared share whenever the query exceeds it (the wire's settle-once rule):
+    if _count(query, tok) > QUERY_MAX_TOKENS:
+        q_final = _token_prefix(query, QUERY_MAX_TOKENS, tok)
+    else:
+        q_final = query
+    # 2. fit's probe pair (the query with an empty document): the query keeps the frame room.
+    q_final = _token_prefix(q_final, cap, tok, rendered=lambda piece: assemble(piece, ""))
+    q_min = _count(assemble(q_final, ""), tok)
+    if q_min >= cap and _count(document, tok) > 0:
+        raise SystemExit(
+            f"the query fills the pair budget of {cap} tokens and leaves the document nothing; "
+            "lower the query share (or raise max_tokens), so the document keeps a share"
+        )
+    # 3. the document gets what remains after the settled query and the frame:
+    d_final = _token_prefix(document, cap, tok, rendered=lambda piece: assemble(q_final, piece))
+    return q_final, d_final
+
+
+def render_rows(pairs: list[dict[str, Any]], tokenizer_spec: str) -> list[dict[str, Any]]:
+    """The wire's cut content spans per pairs row: the settled query span, the document spans.
+
+    The empty-side policy rides with the spans (``empty_doc: send_text`` sends the card's own
+    "NULL" placeholder as the document's content); an empty QUERY is refused (the product's
+    ``empty_query: refuse`` default) and a media column is refused loudly -- the pairs contract
+    is text, images ride score mode's named columns, and video is out of this recipe's serving
+    form (see the module docstring). Nothing is silently dropped or defaulted.
+    """
+    tok = _raw_tokenizer(tokenizer_spec)
+    rows: list[dict[str, Any]] = []
+    for index, row in enumerate(pairs):
+        carried = sorted(
+            key for key in ("query_image", "query_video", "documents_images", "documents_videos") if row.get(key)
+        )
+        if carried:
+            raise SystemExit(
+                f"pairs row {index} carries media columns {carried}, and --mode render's contract "
+                "is the text spans the client ships: score mode takes query_image/documents_images, "
+                "and video is out of this recipe's serving form"
+            )
+        query = str(row["query"])
+        if not query.strip():
+            raise SystemExit(
+                f"pairs row {index} carries an empty query, and the endpoint refuses one "
+                "(empty_query: refuse, the declared policy): drop the row, nothing is defaulted"
+            )
+        documents = [str(document) if str(document).strip() else "NULL" for document in row["documents"]]
+        query_span, _ = served_spans(tok, query, documents[0])
+        document_spans = [served_spans(tok, query, document)[1] for document in documents]
+        rows.append({"index": index, "shape": "pair", "query": query_span, "documents": document_spans})
+    return rows
 
 
 def _repo_and_revision(spec: str) -> tuple[str, str | None]:
@@ -367,20 +507,6 @@ def _repo_and_revision(spec: str) -> tuple[str, str | None]:
     if Path(repo).exists():
         return repo, None
     return repo, revision or None
-
-
-def _load_tokenizer_for_render(spec: str) -> Any:
-    """The tokenizer the card's render path needs, from a snapshot dir or a repo@revision spec.
-
-    Returns ``None`` when transformers is unavailable -- the direct render path takes over, and
-    the output records which path ran.
-    """
-    try:
-        from transformers import AutoTokenizer
-    except ModuleNotFoundError:
-        return None
-    repo, revision = _repo_and_revision(spec)
-    return AutoTokenizer.from_pretrained(repo, revision=revision)
 
 
 def main() -> int:
@@ -397,24 +523,18 @@ def main() -> int:
     rows: list[dict[str, Any]] = []
     document: dict[str, Any] = {}
     if args.mode == "render":
-        tokenizer = _load_tokenizer_for_render(args.tokenizer)
-        for index, row in enumerate(rows_raw):
-            # The endpoint never sends an instruction (client.instruction: none), so the render
-            # is the card's default-instruction prompt; the row's instruction field is ignored.
-            text = render_pair(
-                {"text": str(row["query"])},
-                {"text": str(row["documents"][0])},
-                DEFAULT_INSTRUCTION,
-                tokenizer,
-            )
-            rows.append({"index": index, "shape": "pair", "text": text})
-        document = {
-            "rows": rows,
-            "render_path": "transformers-apply_chat_template" if tokenizer is not None else "direct-chatml-mirror",
-        }
+        # The contract is the wire's content spans (the settled query and the document spans the
+        # client ships); the instruction is the recipe's declared none, so no rows carry one here.
+        document = {"rows": render_rows(rows_raw, args.tokenizer), "render_path": "wire-content-spans"}
     else:
         reference = Qwen3VLRerankerReference(args.tokenizer).load(args.device)
         for index, row in enumerate(rows_raw):
+            if row.get("query_video") or row.get("documents_videos"):
+                raise SystemExit(
+                    f"pairs row {index} carries a video column, and this recipe declares input "
+                    "[text, image]: the family's one video policy lives in the "
+                    "qwen3-vl-embedding-2b recipe (64 uniformly spaced frames per clip)"
+                )
             query = {"text": str(row["query"]), "image": row.get("query_image")}
             doc_images = row.get("documents_images") or []
             documents = [
