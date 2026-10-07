@@ -511,9 +511,9 @@ class TestEndpointUrls:
     def test_a_replica_list_is_non_empty_without_duplicates_and_never_mixes_fakes(self) -> None:
         with pytest.raises(ValueError, match="non-empty"):
             Endpoint(base_url=[], model="m")
-        with pytest.raises(ValueError, match="twice"):
+        with pytest.raises(ConfigError, match="twice"):
             Endpoint(base_url=["http://a/v1", "http://a/v1/"], model="m")
-        with pytest.raises(ValueError, match="replica list"):
+        with pytest.raises(ConfigError, match="replica list"):
             Endpoint(base_url=["fake://seed/0", "http://a/v1"], model="m")
 
     def test_an_endpoint_without_a_url_sends_nowhere(self) -> None:
@@ -538,9 +538,15 @@ class TestAdapterAuth:
 
     @classmethod
     def _client(cls, api: str, tokenizer_json: str, **config: Any) -> tuple[Any, ReplicaScript]:
-        """A role client sending through a real transport over a recording mock endpoint."""
+        """A role client sending through a real transport over a recording mock endpoint.
+
+        ``base_url=None`` aims the config at the adapter profile's own default host -- where its key
+        variables resolve; any other ``base_url`` is a foreign host, which the profile's variables never
+        reach (the host rule the client applies, tested below).
+        """
         script = ReplicaScript()
         from rcp_ndcg.inference import EmbeddingClient, RerankClient
+        from rcp_ndcg.inference.adapters.base import get_adapter
         from rcp_ndcg.inference.config import EmbeddingEndpoint, RerankEndpoint
 
         def answer(request: httpx.Request) -> httpx.Response:
@@ -551,20 +557,31 @@ class TestAdapterAuth:
             endpoint: Any = RerankEndpoint(
                 api=api[: -len("_rerank")],
                 model="m",
-                base_url="http://judge.test/v1",
+                base_url=config.pop("base_url", "http://judge.test/v1"),
                 use_activation=None,
                 tokenizer=tokenizer_json,
                 max_tokens=8192,
                 **config,
             )
+            transport_url = endpoint.base_url or get_adapter(endpoint.api, role="rerank").DEFAULT_BASE_URL
+            transport_endpoint = endpoint.model_copy(update={"base_url": transport_url})
             client: Any = RerankClient(
-                endpoint, sender=Transport(endpoint, httpx_transport=httpx.MockTransport(answer))
+                endpoint, sender=Transport(transport_endpoint, httpx_transport=httpx.MockTransport(answer))
             )
         else:
             endpoint = EmbeddingEndpoint(
-                api=api, model="m", base_url="http://judge.test/v1", tokenizer=tokenizer_json, max_tokens=8192, **config
+                api=api,
+                model="m",
+                base_url=config.pop("base_url", "http://judge.test/v1"),
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                **config,
             )
-            client = EmbeddingClient(endpoint, sender=Transport(endpoint, httpx_transport=httpx.MockTransport(answer)))
+            transport_url = endpoint.base_url or get_adapter(endpoint.api, role="embed").DEFAULT_BASE_URL
+            transport_endpoint = endpoint.model_copy(update={"base_url": transport_url})
+            client = EmbeddingClient(
+                endpoint, sender=Transport(transport_endpoint, httpx_transport=httpx.MockTransport(answer))
+            )
         return client, script
 
     @staticmethod
@@ -601,7 +618,7 @@ class TestAdapterAuth:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv(variable, value.removeprefix("Bearer "))
-        client, script = self._client(api, tokenizer_json)
+        client, script = self._client(api, tokenizer_json, base_url=None)  # the profile's own host
         self._send(client)
         assert script.requests[0].headers[header] == value
 
@@ -610,7 +627,7 @@ class TestAdapterAuth:
     ) -> None:  # noqa: E501 -> None:
         monkeypatch.delenv("CO_API_KEY", raising=False)
         monkeypatch.setenv("COHERE_API_KEY", "fake-cohere-second")
-        client, script = self._client("cohere", tokenizer_json)
+        client, script = self._client("cohere", tokenizer_json, base_url=None)  # the profile's own host
         self._send(client)
         assert script.requests[0].headers["Authorization"] == "Bearer fake-cohere-second"
 
@@ -637,7 +654,7 @@ class TestAdapterAuth:
     ) -> None:
         monkeypatch.delenv("CO_API_KEY", raising=False)
         monkeypatch.delenv("COHERE_API_KEY", raising=False)
-        client, _ = self._client("cohere", tokenizer_json)
+        client, _ = self._client("cohere", tokenizer_json, base_url=None)  # the profile's own host
         with pytest.raises(CredentialsError) as caught:
             self._send(client)
         assert "CO_API_KEY" in (caught.value.hint or "")
@@ -655,7 +672,9 @@ class TestAdapterAuth:
         self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         monkeypatch.setenv("CO_API_KEY", "fake-sekrit-value")
-        client, script = self._client("cohere", tokenizer_json, wait_on_outage_s=0)  # a set-aside logs; no outage wait
+        client, script = self._client(
+            "cohere", tokenizer_json, base_url=None, wait_on_outage_s=0
+        )  # the profile's own host, where its key resolves; a set-aside logs; no outage wait
         with caplog.at_level("WARNING", logger="rcp_ndcg"):
             self._send(client)
         assert all("fake-sekrit-value" not in record.getMessage() for record in caplog.records)
@@ -706,3 +725,353 @@ class TestCloseInsideTheBridgeCall:
         own = transport._own_loop
         assert own is None or own.is_closed()
         assert transport._pool is None
+
+
+class TestRetryAfterGarbage:
+    """A server ``Retry-After`` the transport cannot honestly sleep on falls back to the doubling backoff:
+    ``nan`` would never return and wedge the request inside the retry loop, and a negative one would hammer
+    a rate-limited server with instant retries."""
+
+    @pytest.mark.parametrize("header", ["nan", "-5", "1e999", "soon", ""])
+    def test_garbage_never_becomes_a_sleep(self, monkeypatch: pytest.MonkeyPatch, header: str) -> None:
+        sleeps: list[float] = []
+
+        async def sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+
+        monkeypatch.setattr(transport_module, "_sleep", sleep)
+        script = ReplicaScript((429, {"Retry-After": header}), 200)
+        replies = _send(_transport(script, max_retries=1))
+
+        assert replies[0].status == 200
+        assert sleeps and sleeps[-1] == Transport.RETRY_BACKOFF_S, "the doubling backoff, never the garbage"
+
+    def test_a_usable_retry_after_is_still_capped(self) -> None:
+        from rcp_ndcg.inference.transport import _retry_after
+
+        assert _retry_after({"retry-after": "0.0005"}) == 0.0005  # below the cap: honoured
+        assert _retry_after({"retry-after": "120"}) == Transport.RETRY_MAX_BACKOFF_S  # capped, whatever it says
+        assert _retry_after({}) is None
+
+
+class TestUserInfoNeverLeaks:
+    """A user who embeds credentials in a URL (a documented httpx idiom) never sees them in a log line, an
+    error message or an engine record -- beside the code's keys-are-never-logged claim. The request itself
+    still uses the full URL (that is where the credentials live)."""
+
+    def test_set_aside_and_outage_never_name_the_secret(self, caplog: pytest.LogCaptureFixture) -> None:
+        script = ReplicaScript(503)
+        transport = _transport(script, base_url="http://user:sekrit-value@judge.test/v1", wait_on_outage_s=0)
+        with caplog.at_level(logging.WARNING, logger="rcp_ndcg"):
+            with pytest.raises(BackendUnavailableError) as caught:
+                asyncio.run(transport.send([Call("POST", "/a", {})]))
+
+        assert "sekrit-value" not in str(caught.value)
+        assert all("sekrit-value" not in record.getMessage() for record in caplog.records)
+
+    SECRET_URL = "https://user:fake-secret-pw@gw.example/v1?key=fake-secret-q"
+
+    @staticmethod
+    def _everything_said(exc: BaseException) -> str:
+        """The exception as a -vv traceback shows it: its message, its details and every chained cause."""
+        import traceback
+
+        return "".join(traceback.format_exception(exc)) + repr(getattr(exc, "details", None))
+
+    def test_a_probe_error_record_carries_no_secret(self) -> None:
+        """A 401 on GET /models is recorded on the engine record, which the run manifest and the judgement
+        store persist: httpx's own message names the full URL, so the record carries the status only."""
+        transport = _transport(ReplicaScript(401), base_url=self.SECRET_URL)
+        (engine,) = asyncio.run(transport.probe())
+        transport.close()
+        assert engine.error and "401" in engine.error
+        assert "fake-secret" not in engine.model_dump_json()
+
+    def test_an_outage_s_chained_cause_carries_no_secret(self) -> None:
+        """BackendUnavailableError chains the last failure: a transport error whose own text names the URL
+        must not carry it into a traceback."""
+        script = ReplicaScript(httpx.ConnectError(f"cannot reach {self.SECRET_URL}"))
+        transport = _transport(script, base_url=self.SECRET_URL, wait_on_outage_s=0)
+        with pytest.raises(BackendUnavailableError) as caught:
+            asyncio.run(transport.send([Call("POST", "/a", {})]))
+        assert "fake-secret" not in self._everything_said(caught.value)
+
+    def test_the_retry_warning_carries_no_secret(self, caplog: pytest.LogCaptureFixture) -> None:
+        script = ReplicaScript(httpx.ConnectError(f"cannot reach {self.SECRET_URL}"), 200)
+        transport = _transport(script, base_url=self.SECRET_URL, max_retries=1)
+        with caplog.at_level(logging.WARNING, logger="rcp_ndcg"):
+            asyncio.run(transport.send([Call("POST", "/a", {})]))
+        messages = [record.getMessage() for record in caplog.records]
+        assert any("retrying" in message for message in messages)
+        assert all("fake-secret" not in message for message in messages)
+
+    def test_the_probe_s_model_warning_carries_no_secret(self, caplog: pytest.LogCaptureFixture) -> None:
+        def models(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"data": [{"id": "another-model"}]})
+
+        transport = Transport(
+            Endpoint(base_url=self.SECRET_URL, model="m"), httpx_transport=httpx.MockTransport(models)
+        )
+        with caplog.at_level(logging.WARNING, logger="rcp_ndcg"):
+            asyncio.run(transport.probe())
+        transport.close()
+        messages = [record.getMessage() for record in caplog.records]
+        assert any("another-model" in message for message in messages)
+        assert all("fake-secret" not in message for message in messages)
+
+    @pytest.mark.parametrize("status", [400, 401, 404, 413, 422])
+    def test_an_error_status_s_message_carries_no_secret(self, status: int) -> None:
+        transport = _transport(ReplicaScript(status), base_url=self.SECRET_URL)
+        try:
+            replies = asyncio.run(transport.send([Call("POST", "/a", {})]))
+        except Exception as exc:  # noqa: BLE001 - the status map raises on most of these
+            assert "fake-secret" not in self._everything_said(exc)
+        else:
+            assert all("fake-secret" not in str(reply.body) for reply in replies)
+
+    def test_the_engine_record_strips_userinfo_and_query(self, tokenizer_json: str) -> None:
+        from rcp_ndcg.inference.types import EngineInfo
+
+        # The redactor itself is pinned beside its home (tests/storage: support.urls.safe_url); the record calls it.
+        record = EngineInfo(url="http://user:sekrit-value@judge.test/v1")
+        assert record.url == "http://judge.test/v1", "the run manifest never carries userinfo"
+
+    def test_the_probe_record_of_a_userinfo_replica_is_clean(self) -> None:
+        script = ReplicaScript()
+        transport = _transport(script, base_url="http://user:sekrit-value@judge.test/v1")
+        engines = asyncio.run(transport.probe())
+        transport.close()
+        assert engines and all("sekrit-value" not in (engine.url or "") for engine in engines)
+
+
+class TestConcurrentSyncBridges:
+    """The sync bridge is one loop, one caller at a time: concurrent ``run()``s from OS threads queue on the
+    bridge lock instead of racing two ``run_until_complete`` passes on the shared loop (the second used to
+    die with ``This event loop is already running`` and its batch aborted)."""
+
+    def test_run_from_many_threads_serves_every_call(self) -> None:
+        import threading
+
+        script = ReplicaScript()
+        transport = _transport(script)
+        results: list[Reply] = []
+        errors: list[BaseException] = []
+        barrier = threading.Barrier(8)
+
+        def work(index: int) -> None:
+            try:
+                barrier.wait()
+                for _ in range(3):
+                    replies = transport.run(transport.send([Call("POST", f"/{index}", {})]))
+                    results.append(replies[0])
+            except BaseException as exc:  # noqa: BLE001 - the thread's failure is the test's result
+                errors.append(exc)
+
+        threads = [threading.Thread(target=work, args=(index,)) for index in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(60)
+        assert not any(thread.is_alive() for thread in threads), "every call finished"
+        assert not errors, f"no call was lost: {errors!r}"
+        assert len(results) == 24 and all(reply.status == 200 for reply in results)
+
+    def test_close_from_another_thread_while_run_is_mid_flight_waits_then_closes(self) -> None:
+        _close_waits_for_an_in_flight_run(notebook=False)
+
+
+def _close_waits_for_an_in_flight_run(*, notebook: bool) -> None:
+    """A run() is held mid-request (its replica blocks on an event) when close() starts on another thread:
+    close() must wait for it -- it is still waiting when the request is released -- then close, and the
+    in-flight call completes. ``notebook``: the run() is made from inside a running loop (the background
+    thread's path); else the plain sync bridge."""
+    import threading
+
+    entered, release = threading.Event(), threading.Event()
+
+    async def held(request: httpx.Request) -> httpx.Response:
+        entered.set()
+        await asyncio.to_thread(release.wait, 10)
+        return httpx.Response(200, json=_BODY)
+
+    transport = Transport(
+        Endpoint(base_url="http://judge.test/v1", model="m", max_retries=0), httpx_transport=httpx.MockTransport(held)
+    )
+    outcome: dict[str, Any] = {}
+
+    def work() -> None:
+        def call() -> Any:
+            return transport.run(transport.send([Call("POST", "/a", {})]))
+
+        async def inside_a_loop() -> Any:
+            return call()
+
+        try:
+            outcome["replies"] = asyncio.run(inside_a_loop()) if notebook else call()
+        except Exception as exc:  # noqa: BLE001 - the test's result
+            outcome["error"] = repr(exc)
+
+    worker = threading.Thread(target=work)
+    worker.start()
+    assert entered.wait(10), "the request never reached the replica"
+    closer = threading.Thread(target=transport.close)
+    closer.start()
+    closer.join(0.2)
+    waited = closer.is_alive()
+    release.set()
+    worker.join(10)
+    closer.join(10)
+    if not notebook:
+        assert waited, "close() returned while a bridge run() was mid-request"
+    assert "error" not in outcome and outcome["replies"][0].status == 200, "the in-flight call completed"
+    assert transport._pool is None, "the pool is closed once the in-flight call is done"
+
+
+class TestCloseWaitsForBackgroundRuns:
+    def test_close_from_another_thread_never_closes_the_pool_under_a_notebook_run(self) -> None:
+        """The notebook path (run() inside a running loop goes to the background thread): close() never
+        closes the pool under an in-flight background call -- the close is deferred to its end."""
+        _close_waits_for_an_in_flight_run(notebook=True)
+
+    def test_a_close_handed_to_another_thread_from_inside_a_background_run_returns(self) -> None:
+        """Code inside a background run may hand close() to an executor thread and await it: that close must
+        not wait for the very run that awaits it (a deadlock) -- it returns, and the pool closes when the
+        run ends."""
+        import threading
+
+        transport = _transport(ReplicaScript())
+        outcome: dict[str, Any] = {}
+
+        async def inner() -> str:
+            await transport.send([Call("POST", "/a", {})])
+            await asyncio.get_running_loop().run_in_executor(None, transport.close)
+            return "closed"
+
+        async def notebook() -> str:
+            return transport.run(inner())
+
+        def work() -> None:
+            try:
+                outcome["result"] = asyncio.run(notebook())
+            except Exception as exc:  # noqa: BLE001 - the test's result
+                outcome["error"] = repr(exc)
+
+        worker = threading.Thread(target=work, daemon=True)
+        worker.start()
+        worker.join(10)
+        assert not worker.is_alive(), "close() handed to an executor from inside a background run hung"
+        assert outcome == {"result": "closed"}
+        assert transport._pool is None
+
+
+class TestLoopRebinding:
+    def test_a_new_loop_closes_the_previous_live_loop_s_pool(self) -> None:
+        """The pool is bound to the loop it first ran on; a send on a new loop gets a new pool, and the
+        previous one is closed on its own loop while that loop still lives -- never dropped with its
+        connections open."""
+        import threading
+
+        transport = _transport(ReplicaScript())
+        first_loop = asyncio.new_event_loop()
+        thread = threading.Thread(target=first_loop.run_forever, daemon=True)
+        thread.start()
+        try:
+            asyncio.run_coroutine_threadsafe(transport.send([Call("POST", "/a", {})]), first_loop).result(10)
+            first_pool = transport._pool
+            assert first_pool is not None and not first_pool.is_closed
+
+            _send(transport, "/b")  # a fresh loop: the gate rebinds
+
+            asyncio.run_coroutine_threadsafe(asyncio.sleep(0.01), first_loop).result(10)  # let the close run
+            assert first_pool.is_closed, "the previous loop's pool was dropped open"
+        finally:
+            first_loop.call_soon_threadsafe(first_loop.stop)
+            thread.join(10)
+            first_loop.close()
+            transport.close()
+
+
+class TestCloseWhileRunsRace:
+    """``close()`` from a foreign thread waits for the in-flight bridge call and never raises into the
+    caller (its own docstring; the verifier's R5): the old code checked ``is_running()`` and closed the
+    loop outside the bridge lock, so every close attempt racing two ``run()``s lost the TOCTOU race
+    (``RuntimeError: Cannot close a running event loop`` / a half-closed loop's teardown ``AttributeError``).
+    """
+
+    def test_close_from_a_fourth_side_never_raises_while_two_threads_run(self) -> None:
+        import threading
+
+        script = ReplicaScript(delay=0.005)
+        transport = _transport(script)
+        errors: list[str] = []
+        failures: list[str] = []
+
+        def work(tag: str) -> None:
+            try:
+                for _ in range(40):
+                    replies = transport.run(transport.send([Call("POST", f"/{tag}", {})]))
+                    if replies[0].status != 200:
+                        failures.append(f"{tag}: status {replies[0].status}")
+            except Exception as exc:  # noqa: BLE001 - both errors are the test's result
+                errors.append(f"run({tag}): {type(exc).__name__}: {exc}")
+
+        threads = [threading.Thread(target=work, args=(tag,)) for tag in ("a", "b")]
+        for thread in threads:
+            thread.start()
+        for attempt in range(40):
+            try:
+                transport.close()
+            except Exception as exc:  # noqa: BLE001 - a close that raises is the bug
+                errors.append(f"close#{attempt}: {type(exc).__name__}: {exc}")
+        for thread in threads:
+            thread.join(60)
+
+        assert not any(thread.is_alive() for thread in threads), "every run() finished"
+        assert not errors, errors[:3]
+        assert not failures, failures[:3]
+
+    def test_the_background_loop_is_started_once_under_concurrent_notebooks(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Four threads in their own running loops (notebooks) share ONE private background loop. The lazy
+        start's check-then-create window is widened (a slow loop factory), so an unguarded start creates a
+        loop (and a thread) per caller instead of one."""
+        import threading
+        import time
+
+        transport = _transport(ReplicaScript())
+        notebook_loops = [asyncio.new_event_loop() for _ in range(4)]  # created before the factory is slowed
+        created: list[Any] = []
+        real_new_event_loop = asyncio.new_event_loop
+
+        def slow_new_event_loop() -> asyncio.AbstractEventLoop:
+            time.sleep(0.2)
+            loop = real_new_event_loop()
+            created.append(loop)
+            return loop
+
+        monkeypatch.setattr(transport_module.asyncio, "new_event_loop", slow_new_event_loop)
+        errors: list[str] = []
+
+        def notebook(loop: asyncio.AbstractEventLoop) -> None:
+            async def inside() -> None:
+                # a sync call from inside a running loop: the transport bridges on its background loop
+                transport.run(transport.send([Call("POST", "/n", {})]))
+
+            try:
+                loop.run_until_complete(inside())
+            except Exception as exc:  # noqa: BLE001 - recorded, asserted below
+                errors.append(f"{type(exc).__name__}: {exc}")
+            finally:
+                loop.close()
+
+        threads = [threading.Thread(target=notebook, args=(loop,)) for loop in notebook_loops]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(30)
+        monkeypatch.undo()
+        transport.close()
+
+        assert not errors, errors
+        assert len(created) == 1, f"one background loop for all callers, not {len(created)}"

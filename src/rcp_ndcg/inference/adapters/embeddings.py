@@ -31,7 +31,7 @@ import numpy as np
 from rcp_ndcg_core.content import Content, ImagePart, VideoPart
 
 from rcp_ndcg.errors import CapabilityError, ProviderError, RequestRejectedError
-from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
+from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, _aligned_by_index, register_adapter
 from rcp_ndcg.inference.types import Call, Embeddings, EmbedRequest, Reply, TokenCount
 
 #: The substring of vLLM's (and SGLang's) over-length answer: an HTTP 400 naming the model's context window.
@@ -118,11 +118,10 @@ def _one_vector(raw: Any, *, adapter: str, where: str) -> Any:
 def _data_vectors(body: dict[str, Any], *, adapter: str) -> list[Any]:
     """The vectors of the OpenAI-shaped reply ``{'data': [{'index', 'embedding'}, ...]}``, in ``index`` order.
 
-    The endpoint may answer the entries out of order; a request's vectors must align to its items, so the
-    ``index`` field (present on every entry of the OpenAI, vLLM, SGLang and TEI replies) sorts them back. A
-    reply that names an index on only some entries, or names anything but exactly one int ``0..n-1`` per
-    entry, is refused; a reply with no index at all is read in reply order. A silent misalignment would hand
-    a request's item the wrong vector.
+    The endpoint may answer the entries out of order; the ``index`` field (present on every entry of the
+    OpenAI, vLLM, SGLang and TEI replies) realigns them under the one rule
+    (``adapters.base._aligned_by_index``): partial, duplicated or non-int indices are
+    refused, a reply with no index at all is read in reply order.
     """
     data = body.get("data")
     if not isinstance(data, list):
@@ -130,70 +129,22 @@ def _data_vectors(body: dict[str, Any], *, adapter: str) -> list[Any]:
             f"{adapter} answered without a 'data' list; the OpenAI embeddings shape is "
             "{'data': [{'index', 'embedding'}, ...]}"
         )
-    present = [isinstance(item, dict) and "index" in item for item in data]
-    if all(present):
-        values = [item["index"] for item in data]
-        whole = all(isinstance(value, int) and not isinstance(value, bool) for value in values)
-        if not whole or sorted(values) != list(range(len(data))):
-            raise RequestRejectedError(
-                f"{adapter} answered indices {[str(value) for value in values]}; exactly one int "
-                f"0..{len(data) - 1} index per entry, in any order"
-            )
-        data = sorted(data, key=lambda item: item["index"])
-    elif any(present):
-        raise RequestRejectedError(f"{adapter} answered an 'index' on only some of its 'data' entries")
+    data = _aligned_by_index(data, source=adapter, where="'data'")
     return [
         _one_vector(item.get("embedding") if isinstance(item, dict) else None, adapter=adapter, where="embedding")
         for item in data
     ]
 
 
-class _EmbedAdapter:
+class _EmbedAdapter(AdapterBase):
     """Everything the four embedding adapters share: the status map, the alignment check, the stacking.
 
-    A subclass declares its wire as class constants and two hooks: ``_body``/``_path`` for the request and
-    ``_parse`` for the reply. Instances are stateless.
+    A subclass sets ``name`` and its profile's facts (the credential and capability facts are
+    :class:`~rcp_ndcg.inference.adapters.base.AdapterBase`'s declared contract) and implements two hooks:
+    ``_body``/``_path`` for the request and ``_parse`` for the reply. Instances are stateless.
     """
 
     role: ClassVar[AdapterRole] = "embed"
-
-    #: The adapter's name, the value a config's ``api`` field holds; set per concrete class.
-    name: ClassVar[str]
-
-    #: The texts-per-request cap the hosted API publishes; ``None`` lets the server decide (its over-count and
-    #: over-length refusals are mapped to :class:`~rcp_ndcg.errors.CapabilityError`).
-    MAX_BATCH: ClassVar[int | None] = None
-
-    #: The profile's public base URL, used when the config sets no ``base_url``; ``None`` needs one.
-    DEFAULT_BASE_URL: ClassVar[str | None] = None
-
-    #: Environment variable names that may hold the API key, most preferred first; the config's
-    #: ``api_key_env`` names one instead. Empty: the endpoint takes no key.
-    API_KEY_ENV: ClassVar[tuple[str, ...]] = ()
-
-    #: Whether the API refuses to answer without a key (the hosted profiles) or takes none (a served engine).
-    KEY_REQUIRED: ClassVar[bool] = False
-
-    #: The header the key goes in; ``None`` is the OpenAI-standard ``Authorization: Bearer <key>``.
-    AUTH_HEADER: ClassVar[str | None] = None
-
-    #: The ``encoding_format`` request field; ``None`` leaves it out (the routes that have no such field).
-    ENCODING_FORMAT: ClassVar[str | None] = None
-
-    #: Whether this profile is a hosted vendor API (its public root is its default ``base_url``, its key is
-    #: required): declared (R8), never inferred from the default URL. The served engines' wire shape is not
-    #: hosted, whatever default URL it also carries for the vendor's own API.
-    HOSTED: ClassVar[bool] = False
-
-    #: Whether this route takes a ``dimensions`` parameter: the OpenAI shape does (a Matryoshka cut), the
-    #: hosted profiles fix the output dimension server-side and have no such field.
-    SUPPORTS_DIMENSIONS: ClassVar[bool] = True
-
-    #: The request shapes this wire implements (2e, 3): ``text`` (the rendered string) for every adapter;
-    #: the served OpenAI shape adds ``messages`` (the chat-style embeddings input, image and video parts
-    #: included) and ``token_ids`` (pre-tokenised ids). The client refuses a declared shape outside this
-    #: set at construction, instead of silently sending text.
-    REQUEST_SHAPES: ClassVar[frozenset[str]] = frozenset({"text"})
 
     # -- the wire -----------------------------------------------------------
     def calls(self, request: Any, *, model: str) -> list[Call]:
@@ -341,16 +292,16 @@ class OpenAIEmbeddings(_EmbedAdapter):
 
     The body is ``{"model", "input": [texts], "encoding_format": "float"}`` plus ``dimensions`` only when the
     config sets one; the reply is read from ``data[].embedding`` in ``data[].index`` order, as float lists or
-    base64 float32 strings. The 128-texts-per-request cap of the hosted OpenAI API is enforced client-side; a
-    served engine answers an over-count batch with its own refusal (TEI's HTTP 413), which maps to a
-    :class:`~rcp_ndcg.errors.CapabilityError` naming ``batch_size``.
+    base64 float32 strings. This shape declares no client-side batch cap (it serves engines as well as the
+    hosted OpenAI route): an over-count engine answers its own refusal (TEI's HTTP 413), which maps to a
+    :class:`~rcp_ndcg.errors.CapabilityError` naming ``batch_size``; the hosted OpenAI route answers an
+    over-count batch with its own HTTP 400, which surfaces as a
+    :class:`~rcp_ndcg.errors.RequestRejectedError` carrying the API's message (the historical 128 constant
+    went: its check could never apply to a served engine, and its number was stale for the hosted route).
     """
 
     name: ClassVar[str] = "openai_embeddings"
 
-    #: The hosted OpenAI API's published cap (128 texts per request); a served engine's own cap answers
-    #: HTTP 413 and is mapped like any other.
-    MAX_BATCH: ClassVar[int | None] = 128
     DEFAULT_BASE_URL: ClassVar[str | None] = "https://api.openai.com/v1"
     HOSTED: ClassVar[bool] = False  # the served engines speak this shape; the key stays optional
     API_KEY_ENV: ClassVar[tuple[str, ...]] = ("OPENAI_API_KEY",)

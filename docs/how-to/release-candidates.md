@@ -48,8 +48,10 @@ environments that are never mixed. `bootstrap.sh` builds them from a staged RC:
 
 - **engine** — the image's own Python, which runs `vllm serve`. Untouched, except recipe plugin wheels
   installed with `--no-deps`: a spec that names a staged file installs from the staged tree; a name installs
-  from the staged **wheelhouse only** (`--no-index --find-links <stage>/wheelhouse`, never an index). A plugin
-  found nowhere is recorded with its exact name (the report's engine block lists it under `plugins_failed`)
+  from the staged **wheelhouses only** (`--no-index --find-links <stage>/wheelhouse`, plus one `--find-links`
+  per existing `<stage>/extra/<name>/wheelhouse`, where a wheel staged through `EXTRA_DIRS` lands; never an
+  index). A plugin found nowhere is recorded with its exact name (the report's engine block lists it under
+  `plugins_failed`)
   and the wave marks exactly the recipes that name it failed — one failing recipe never stops the wave, end
   to end (a recipe that fails validation is likewise reported on stderr, skipped by the collect step, and
   marked failed in the wave report with the validation message). A `pip freeze` before and after must differ
@@ -128,7 +130,10 @@ RC. It fails fast with a one-line reason at the first failure and writes one JSO
    can — the Docker Hub registry for a public image, `gcloud container images describe` otherwise —
    and passes it in `env.RCP_IMAGE_DIGEST`, so the report never says null), the driver, the GPUs, free
    disk, `/dev/shm`, the python versions, and which GCS transfer path ran (`gcloud`, `gsutil`, or the
-   python `gcsfs` helper — the image ships neither CLI).
+   python `gcsfs` helper — the image ships neither CLI). A Cloud SDK the auth script installs is put
+   on `PATH` from the first directory of `RCP_GCLOUD_SDK_DIRS` that holds `gcloud` or `gsutil`
+   (colon-separated; unset, the SDK's usual locations such as `$HOME/google-cloud-sdk/bin` and
+   `/usr/lib/google-cloud-sdk/bin`; set empty, no directory is searched).
 3. **bootstrap** — the three environments, and the engine's `pip freeze` unchanged (no plugin in
    wave 0).
 4. **reach** — the Hub with the token secret (a metadata call; the reply's commit must be the pinned

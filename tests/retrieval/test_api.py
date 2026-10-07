@@ -248,7 +248,10 @@ def test_where_an_encoder_runs_is_not_part_of_what_an_index_is() -> None:
 
 
 def test_a_listwise_reranker_takes_no_batch_size_and_a_hosted_one_no_engine_fields() -> None:
-    with pytest.raises(ValidationError, match="listwise"):
+    from rcp_ndcg.errors import ConfigError
+
+    # A ConfigError with a hint escapes pydantic un-wrapped (one error shape for the config family).
+    with pytest.raises(ConfigError, match="listwise"):
         _RERANKER.validate_python(
             {
                 "api": "rerank",

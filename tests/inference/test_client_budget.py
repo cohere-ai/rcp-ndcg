@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 from PIL import Image as PILImage
 from rcp_ndcg_core._records import RankingExample
-from rcp_ndcg_core.content import Content, ImagePart
+from rcp_ndcg_core.content import Content, ImagePart, TextPart
 
 from rcp_ndcg.data.prepare import apply_media_fit
 from rcp_ndcg.data.preprocess import TextBudgetExceededError, TextTruncationCensus
@@ -223,7 +223,7 @@ class TestEmbedBudget:
     def test_query_max_tokens_above_max_tokens_is_refused(self) -> None:
         """On the embedding roles ``max_tokens`` is the document shape's budget and the model's whole input
         budget; a query budget above it cannot fit the served context."""
-        with pytest.raises(ValueError, match="whole input budget"):
+        with pytest.raises(ConfigError, match="whole input budget") as caught:
             EmbeddingEndpoint(
                 base_url="http://127.0.0.1:9000/v1",
                 model="m",
@@ -231,6 +231,7 @@ class TestEmbedBudget:
                 max_tokens=1024,
                 query_max_tokens=1025,
             )
+        assert "query_max_tokens" in (caught.value.hint or ""), "the refusal names the field to change"
 
     def test_a_prompt_prefix_beside_a_template_is_refused(self) -> None:
         """One home for a prompt prefix (rec-qwen3-embedding-0.6b): the client prepends query_prompt before
@@ -410,10 +411,11 @@ class TestRerankBudget:
         """The rerank wires implement text only; a declared messages/token_ids shape would be silently inert
         (the field is CONTENT, so two configs would hash differently and behave identically) -- refused,
         naming where the other routes do land."""
-        with pytest.raises(ValueError, match="request_shape"):
+        with pytest.raises(ConfigError, match="request_shape"):
             self._config(tokenizer=tokenizer_json, request_shape="token_ids")
-        with pytest.raises(ValueError, match="rerank wires"):
+        with pytest.raises(ConfigError, match="rerank wires") as caught:
             self._config(tokenizer=tokenizer_json, request_shape="messages")
+        assert "drop request_shape" in (caught.value.hint or ""), "the refusal names the field to change"
 
     def test_the_census_names_the_documents_original_positions(self, tokenizer_json: str) -> None:
         """With ``empty_doc: omit_zero``, a later document's census cut names ITS position -- never the kept
@@ -796,7 +798,7 @@ class TestEmbedEmptyDocuments:
         # beside it -- never an empty request, and every drop is on record.
         assert list(result.offsets) == [0, 0, 1]
         assert len(sender.bodies[-1]["input"]) == 1, "only the text item was sent"
-        assert client.media_census._seen, "the drop is recorded"
+        assert client.media_census.recorded(), "the drop is recorded"
 
 
 class TestPerSideMedia:
@@ -879,7 +881,7 @@ class TestPerSideMedia:
             client.rerank("the query", [_png_content(tmp_path, 1)])
 
     def test_declaring_media_fields_with_no_allowed_side_is_refused(self, tokenizer_json: str) -> None:
-        with pytest.raises(ValueError, match="media_sides"):
+        with pytest.raises(ConfigError, match="media_sides") as caught:
             RerankEndpoint(
                 base_url="http://127.0.0.1:9000/v1",
                 model="m",
@@ -889,6 +891,7 @@ class TestPerSideMedia:
                 image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
                 media_sides=[],
             )
+        assert "media_sides" in (caught.value.hint or ""), "the refusal names the field to change"
 
 
 class TestEmptyQuery:
@@ -994,15 +997,17 @@ class TestMediaGates:
                 ),
             ]
         )
-        with pytest.raises(CapabilityError, match="accepts 1"):
+        with pytest.raises(CapabilityError, match="accepts 1") as caught:
             asyncio.run(client.aencode([content], EncodeRole.DOCUMENT))
+        assert "max_images" in (caught.value.hint or ""), "the refusal's hint names the knob"
 
     def test_media_for_a_model_that_reads_none_is_refused(self, tokenizer_json: str, tmp_path: Any) -> None:
         from rcp_ndcg.errors import CapabilityError
 
         client = self._pool_client(tokenizer_json, max_images=0)
-        with pytest.raises(CapabilityError, match="max_images"):
+        with pytest.raises(CapabilityError, match="max_images") as caught:
             asyncio.run(client.aencode([_png_content(tmp_path, 0)], EncodeRole.DOCUMENT))
+        assert "declare max_images" in (caught.value.hint or ""), "the refusal's hint names the knob"
 
 
 def _png_content(tmp_path: Any, index: int) -> Any:
@@ -1119,8 +1124,8 @@ class TestEngineMediaCheck:
 
         client = self._client(UsagelessSender(), tokenizer_json=tokenizer_json)
         asyncio.run(client.check_engine_media())  # never silent, never a pass: the census records it
-        rows = client.media_census._seen
-        assert any(doc_id.startswith("engine_media_check:not_checked") for _, doc_id, _ in rows)
+        rows = client.media_census.recorded()
+        assert any(doc_id.startswith("engine_media_check:not_checked") for _corpus, doc_id, _uri, _dropped in rows)
 
 
 class TestRerankChunkAndOmitCompose:
@@ -1190,30 +1195,16 @@ class TestRerankChunkAndOmitCompose:
 
 
 class TestEngineMediaCheckPass:
-    """The passing path: an honest engine whose prompt-token report covers the same request the client
-    counted (media block + the probe's text tokens) passes the check."""
+    """The passing path: an honest engine whose media DELTA (its report with the image minus its report
+    without it) matches the counted media tokens. The counts are hand-verified from the request, not taken
+    from the client's own helpers: a 224x224 image under the qwen2_vl policy is 8x8 = 64 patches plus the
+    two vision wrapper markers = 66 tokens, whatever the client counts."""
 
-    def test_an_honest_engine_passes_and_leaks_no_temp_file(self, tokenizer_json: str) -> None:
+    TEMPLATE_TOKENS = 137  # a served chat template's cost, the same on both probe requests
 
-        counted_box: dict[str, int] = {}
-        client = None
-
-        class HonestSender(RecordingSender):
-            async def send(self, calls: Any) -> list[Any]:
-                from rcp_ndcg.inference.types import Reply
-
-                # An honest engine counts the same request the client counted: the probe's media block
-                # plus its text tokens, exactly as the client counted them.
-                tokens = counted_box["counted"]
-                return [
-                    Reply(
-                        200,
-                        {"data": [{"index": 0, "data": [[1.0, 1.0]]}], "usage": {"prompt_tokens": tokens}},
-                        {},
-                    )
-                ]
-
-        client = PoolingClient(
+    @staticmethod
+    def _client(sender: Any, *, tokenizer_json: str) -> PoolingClient:
+        return PoolingClient(
             PoolingEndpoint(
                 base_url="http://127.0.0.1:9000/v1",
                 model="colqwen",
@@ -1224,14 +1215,94 @@ class TestEngineMediaCheckPass:
                 image_processor="qwen2_vl",
                 max_images=4,
             ),
-            sender=_CountingSender(tokenizer_json),
+            sender=sender,
         )
+
+    @staticmethod
+    def _honest_pool_sender(media_tokens: int = 66, template_tokens: int = 137) -> Any:
+        """A served pooling engine: both probe requests ride the chat template (``template_tokens``), the
+        with-image one adds the media block (``media_tokens``) -- hand-verified, not the client's arithmetic."""
+
+        class HonestPoolingSender(RecordingSender):
+            async def send(self, calls: Any) -> list[Any]:
+                from rcp_ndcg.inference.types import Reply
+
+                replies = []
+                for call in calls:
+                    message = call.json.get("messages")
+                    carries_image = any(
+                        part.get("type") == "image_url"
+                        for item in message or []
+                        for part in item.get("content", [])
+                        if isinstance(part, dict)
+                    )
+                    tokens = (media_tokens if carries_image else 0) + template_tokens
+                    replies.append(
+                        Reply(
+                            200, {"data": [{"index": 0, "data": [[1.0, 1.0]]}], "usage": {"prompt_tokens": tokens}}, {}
+                        )
+                    )
+                return replies
+
+        return HonestPoolingSender()
+
+    def test_a_served_chat_template_does_not_fail_the_check(self, tokenizer_json: str) -> None:
+        """An engine that renders a chat template around every probe request: its two reports differ by the
+        media block alone, the template cancels in the delta, and the check passes -- a template beyond the
+        client's counting never fails a correct engine."""
+        client = self._client(self._honest_pool_sender(), tokenizer_json=tokenizer_json)
+        asyncio.run(client.check_engine_media())  # the delta (66) matches the counted media tokens
+
+    def test_an_honest_engine_passes_and_leaks_no_temp_file(self, tokenizer_json: str) -> None:
         import tempfile
 
+        client = self._client(self._honest_pool_sender(), tokenizer_json=tokenizer_json)
         before = set(tempfile.gettempdir())
         asyncio.run(client.check_engine_media())
         leaked = {name for name in set(tempfile.gettempdir()) - before if name.endswith(".png")}
         assert not leaked, "the probe file is cleaned up"
+
+    def test_the_rerank_probes_the_same_delta(self, tokenizer_json: str) -> None:
+        """The rerank wire's baseline is its own body without the media: the honest engine's delta matches
+        the counted media tokens and the check passes on a served rerank engine with a chat template."""
+
+        class HonestRerankSender(RecordingSender):
+            async def send(self, calls: Any) -> list[Any]:
+                from rcp_ndcg.inference.types import Reply
+
+                replies = []
+                for call in calls:
+                    documents = call.json["documents"]
+                    carries_image = any(isinstance(document, dict) for document in documents)
+                    tokens = (66 if carries_image else 0) + self.template
+                    replies.append(
+                        Reply(
+                            200,
+                            {"results": [{"index": 0, "relevance_score": 0.5}], "usage": {"prompt_tokens": tokens}},
+                            {},
+                        )
+                    )
+                return replies
+
+        sender = HonestRerankSender()
+        sender.template = self.TEMPLATE_TOKENS
+        from rcp_ndcg.inference import RerankClient
+        from rcp_ndcg.inference.config import RerankEndpoint
+
+        client = RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                use_activation=False,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            sender=sender,
+        )
+        asyncio.run(client.check_engine_media())
 
 
 class _CountingSender(RecordingSender):
@@ -1376,25 +1447,18 @@ class _ChunkScoreSender(RecordingSender):
 class TestVideoContainerFit:
     """A ``wire: video_url`` container is one prepared item: the media fit decides it whole (shrink does
     not apply to a container), and ``apply_media_fit`` consumes its decision -- a drop removes the part,
-    a keep rides as prepared."""
+    a keep rides as prepared.
+
+    The fit machinery is policy-independent, so these tests build the policies directly (a judge's
+    ``preprocessing.video`` or a retrieval role's ``video_policy`` declares the same policy; the messages
+    lowering sends the container as a ``video_url`` part)."""
 
     @staticmethod
-    def _rerank_client(sender: Any, *, max_tokens: int) -> RerankClient:
-        return RerankClient(
-            RerankEndpoint(
-                base_url="http://127.0.0.1:9000/v1",
-                model="m",
-                tokenizer=str(SESSION_TOKENIZER),
-                max_tokens=max_tokens,
-                on_overflow="cut",
-                use_activation=False,
-                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
-                image_processor="qwen2_vl",
-                max_images=2,
-                video_policy={"num_frames": 4, "wire": "video_url", "engine_video_pinning": True},
-                max_videos=2,
-            ),
-            sender=sender,
+    def _policies() -> tuple[ImagePolicy, Any]:
+        from rcp_ndcg.data.resolution import VideoPolicy
+
+        return ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl"), VideoPolicy(
+            num_frames=4, wire="video_url", engine_video_pinning=True
         )
 
     @staticmethod
@@ -1427,8 +1491,7 @@ class TestVideoContainerFit:
 
         from rcp_ndcg.data.prepare import fit_media_to_budget, prepare_request
 
-        client = self._rerank_client(RecordingSender(), max_tokens=60)
-        image, video = client._media_policies()
+        image, video = self._policies()
         big = tmp_path / "page.png"
         PILImage.new("RGB", (900, 900), (10, 10, 200)).save(big, format="PNG")
         request = prepare_request([self._container_content(tmp_path), Content.from_image(big.as_uri())], image, video)
@@ -1440,8 +1503,7 @@ class TestVideoContainerFit:
         """A container cannot shrink: under ``cut`` the fit drops it whole, recorded under its doc_id."""
         from rcp_ndcg.data.prepare import fit_media_to_budget, prepare_request
 
-        client = self._rerank_client(RecordingSender(), max_tokens=5)
-        image, video = client._media_policies()
+        image, video = self._policies()
         request = prepare_request([self._container_content(tmp_path)], image, video)
         fit = fit_media_to_budget(request.media, image=image, video=video, text_budget_tokens=5)
         assert fit.dropped_positions == (0,) and fit.decisions == (None,)
@@ -1473,7 +1535,7 @@ class TestDropCensusDocIds:
         query_image = _png_content(tmp_path, 10)
         document_image = _png_content(tmp_path, 20)
         client._fit_media_for_request([query_image, document_image], doc_ids=[QUERY_DOC_ID, "0"])
-        rows = {row_doc_id for _corpus, row_doc_id, _uri in census._seen}
+        rows = {doc_id for _corpus, doc_id, _uri, _dropped in census.recorded()}
         assert rows == {QUERY_DOC_ID, "0"}, "each drop under its own input's doc_id, never the role name"
 
     def test_a_document_with_two_images_both_dropped(self, tokenizer_json: str, tmp_path: Any) -> None:
@@ -1500,7 +1562,7 @@ class TestDropCensusDocIds:
 
         client._fit_media_for_request([Content.from_text("query"), document], doc_ids=[QUERY_DOC_ID, "0"])
 
-        rows = {row_doc_id for _corpus, row_doc_id, _uri in census._seen}
+        rows = {doc_id for _corpus, doc_id, _uri, _dropped in census.recorded()}
         assert rows == {"0"}, "both drops under the document's id, never the role name"
 
     def test_pool_content_with_two_images_both_dropped(self, tokenizer_json: str, tmp_path: Any) -> None:
@@ -1527,5 +1589,383 @@ class TestDropCensusDocIds:
 
         asyncio.run(client.aencode([document], EncodeRole.DOCUMENT))
 
-        rows = {row_doc_id for _corpus, row_doc_id, _uri in census._seen}
+        rows = {doc_id for _corpus, doc_id, _uri, _dropped in census.recorded()}
         assert rows == {"0"}, "both drops under the item's id, never the role name"
+
+
+def _words(count: int) -> str:
+    """A text of exactly ``count`` tokens in the word tokenizer (one token per word)."""
+    return " ".join(["alpha"] * count)
+
+
+def _image_content(tmp_path: Any, index: int, size: int) -> Any:
+    """One square PNG (``size`` a multiple of the processor's patch factor, so the token count is exact)."""
+    from rcp_ndcg_core.content import Content
+
+    page = tmp_path / f"page-{index}-{size}.png"
+    PILImage.new("RGB", (size, size), (10, 10, 200)).save(page, format="PNG")
+    return Content.from_image(page.as_uri())
+
+
+def _media_tokens_of(document: Any, policy: ImagePolicy) -> int:
+    """The vision blocks of one lowered rerank document, as an honest engine charges them."""
+    tokens = 0
+    for part in document.get("content", []) if isinstance(document, dict) else []:
+        if not isinstance(part, dict) or part.get("type") != "image_url":
+            continue
+        url = part["image_url"]["url"]
+        payload = (
+            base64.b64decode(url.partition(",")[2])
+            if url.startswith("data:")
+            else Path(url.replace("file://", "")).read_bytes()
+        )
+        image = PILImage.open(io.BytesIO(payload))
+        content = Content.from_image(url, width=image.size[0], height=image.size[1])
+        tokens += content_media_tokens(content, policy, None).tokens
+    return tokens
+
+
+class _HonestBudgetRerankServer(RecordingSender):
+    """A rerank server that charges what an honest engine charges: for a pointwise reranker every call
+    renders one prompt per (query, document) pair -- the query tokens plus that document's text and media
+    blocks -- and the recorded number per call is the DEEPEST pair (the engine's longest prompt), so a test
+    can assert no pair went out over the budget."""
+
+    def __init__(self, tokenizer: Any, policy: ImagePolicy) -> None:
+        self.tokenizer = tokenizer
+        self.policy = policy
+        self.prompt_tokens: list[int] = []
+        self.bodies: list[dict[str, Any]] = []
+
+    async def send(self, calls: Any) -> list[Any]:
+        for call in calls:
+            body = call.json
+            self.bodies.append(body)
+            query_tokens = self.tokenizer.count(body["query"])
+            deepest = 0
+            for document in body["documents"]:
+                pair = query_tokens + self.tokenizer.count(document if isinstance(document, str) else "")
+                pair += _media_tokens_of(document, self.policy)
+                deepest = max(deepest, pair)
+            self.prompt_tokens.append(deepest)
+        documents = calls[0].json["documents"]
+        rows = [{"index": i, "relevance_score": float(i)} for i in range(len(documents))]
+        return [Reply(200, {"results": rows[::-1]}, {})]
+
+
+class TestRerankPairFitWithMedia:
+    """The pair fit with media (the sweep's blocker): a candidate set with mixed media settles ONE query
+    span for the whole batch -- no crash, and no pair shipped over the budget."""
+
+    POLICY = {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"}
+
+    @staticmethod
+    def _client(tokenizer_json: str, sender: Any, *, max_tokens: int) -> RerankClient:
+        return RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=max_tokens,
+                query_max_tokens=70,
+                use_activation=False,
+                image_policy=dict(TestRerankPairFitWithMedia.POLICY),
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            sender=sender,
+        )
+
+    def test_one_plain_and_one_media_document_settle_one_query_span(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """A plain and a media document in one candidate set: the old fit re-cut the query per pair (the
+        probe reserved only the query's media) and died on its own consistency check; now one span settles
+        across the batch and the scores stay aligned to the documents."""
+        sender = _HonestBudgetRerankServer(load_tokenizer(tokenizer_json), ImagePolicy(**self.POLICY))
+        client = self._client(tokenizer_json, sender, max_tokens=200)
+        result = client.rerank(_words(40), ["some document text", _image_content(tmp_path, 1, 392)], instruction="find")
+
+        assert len(result.scores) == 2, "the scores stay aligned to the documents"
+        assert sender.prompt_tokens and max(sender.prompt_tokens) <= 200, "no pair ships over the budget"
+
+    def test_a_media_pair_is_never_shipped_over_the_budget(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """The sweep's A2 (repro_pair_budget.py): one two-image document and a long query with a generous
+        share. The old fit settled the query against a probe that reserved only the query's media and
+        shipped that span with the pair's media -- 300 query tokens + 512 media = 812 over max_tokens 700,
+        leaving the truncation to the engine. The wire now carries the span the pair fit verified."""
+        page = _image_content(tmp_path, 0, 896)  # 900x900 class: one image ~1026 tokens, two over the budget
+        document = Content.from_parts([*page.parts, *page.parts])
+        sender = _HonestBudgetRerankServer(load_tokenizer(tokenizer_json), ImagePolicy(**self.POLICY))
+        client = RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=700,
+                query_max_tokens=600,
+                use_activation=False,
+                image_policy={"min_px": 200704, "max_px": 1003520, "processor": "qwen2_vl"},
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            sender=sender,
+        )
+        result = client.rerank(_words(300), [document], instruction="find")
+
+        assert result.scores == (0.0,)
+        assert sender.prompt_tokens, "the request went out"
+        assert max(sender.prompt_tokens) <= 700, "the shipped pair is within the budget"
+
+    def test_a_heavy_media_document_does_not_blame_the_query(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """A document whose media shrink the pair's cap below the settled query: the fit attributes the
+        constraint to the media it reserved, and the request is served -- the query is never blamed for
+        media that fit."""
+        sender = _HonestBudgetRerankServer(load_tokenizer(tokenizer_json), ImagePolicy(**self.POLICY))
+        client = self._client(tokenizer_json, sender, max_tokens=200)
+        document = Content.from_parts([*_image_content(tmp_path, 2, 392).parts, TextPart(text="some text")])
+
+        result = client.rerank(_words(40), [document], instruction="find")
+
+        assert result.scores == (0.0,)
+        assert sender.prompt_tokens and max(sender.prompt_tokens) <= 200, "no pair ships over the budget"
+
+
+class TestOnePreparationScalesLinearly:
+    """A corpus encode is ONE request through the client (the retrieval API hands it the whole corpus), so
+    slicing the one preparation per item must cost each item once: a per-item slice that re-walks every
+    content made a media corpus quadratic (10k page images, ~10^8 part walks before a request went out)."""
+
+    def test_the_per_item_media_fit_walks_each_item_a_bounded_number_of_times(
+        self, tokenizer_json: str, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        count = 60
+        contents = [_image_content(tmp_path, index, 56) for index in range(count)]
+        sender = _GatedSender(
+            PoolingServer({}, default=np.ones((2, 2), dtype=np.float16), media_vector=np.ones((2, 2), dtype=np.float16))
+        )
+        client = PoolingClient(
+            PoolingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="colqwen",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            sender=sender,
+        )
+        walks = [0]
+        media_refs = ImagePart.media_refs
+
+        def counted(part: ImagePart) -> Any:
+            walks[0] += 1
+            return media_refs(part)
+
+        monkeypatch.setattr(ImagePart, "media_refs", counted)
+
+        result = asyncio.run(client.aencode(contents, EncodeRole.DOCUMENT))
+
+        assert result.num_items == count
+        assert walks[0] <= 8 * count, f"{walks[0]} part walks for {count} items: the slicing is not linear"
+
+
+class TestPoolFramePerShape:
+    """The pooling media allowance reserves the REQUEST SHAPE's frame, not the query's (the verifier's
+    R17): a document batch leaves the ``document`` frame's tokens beside the media, or the text fit refuses
+    the request blaming the media that fit."""
+
+    POLICY = {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"}
+
+    def _client(self, tokenizer_json: str, sender: Any, *, max_tokens: int, template: Any) -> PoolingClient:
+        return PoolingClient(
+            PoolingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="colqwen",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=max_tokens,
+                template=template,
+                image_policy=dict(self.POLICY),
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            sender=sender,
+        )
+
+    def test_a_document_batch_reserves_the_document_frame(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """Frame-heavy ``document`` shape (101 tokens), light ``query`` shape, max_tokens 300, one
+        258-token media item: the old allowance reserved the query's ~0-token frame and the request died
+        (``the fixed template overhead (101 tokens) plus the declared media (258) already fill the budget``);
+        the fit must shrink/drop within the room the DOCUMENT frame leaves and serve the request."""
+        template = TemplateSpec(
+            query=(Segment(content="query"),),
+            document=(Segment(fixed=" ".join(["frame"] * 101)), Segment(content="document")),
+        )
+        sender = _GatedSender(
+            PoolingServer({}, default=np.ones((2, 2), dtype=np.float16), media_vector=np.ones((2, 2), dtype=np.float16))
+        )
+        client = self._client(tokenizer_json, sender, max_tokens=300, template=template)
+
+        result = asyncio.run(client.aencode([_image_content(tmp_path, 0, 448)], EncodeRole.DOCUMENT))
+
+        assert result.num_items == 1, "the request is served (the media fit ran within the document frame)"
+
+    def test_a_document_only_template_never_reserves_a_query_frame(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """A template with no ``query`` shape must not be blamed for the client's own lookup (the old code
+        asked for the ``query`` frame on a document batch and died ``the template declares no 'query'
+        shape``)."""
+        template = TemplateSpec(document=(Segment(content="document"),))
+        sender = _GatedSender(
+            PoolingServer({}, default=np.ones((2, 2), dtype=np.float16), media_vector=np.ones((2, 2), dtype=np.float16))
+        )
+        client = self._client(tokenizer_json, sender, max_tokens=300, template=template)
+
+        result = asyncio.run(client.aencode([_image_content(tmp_path, 0, 448)], EncodeRole.DOCUMENT))
+
+        assert result.num_items == 1, "the request is served against its own shape's frame"
+
+    def test_a_query_batch_reserves_against_its_own_query_budget(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """With a per-shape ``query_max_tokens``, the query shape's budget is that share (fit measures a query
+        against it), so the media allowance must be counted from it too: a 258-token query image under a
+        200-token query budget is shrunk to fit and served -- an allowance from ``max_tokens`` keeps the
+        image whole, and the text fit then refuses the request blaming media the fit had kept."""
+        sender = _GatedSender(
+            PoolingServer({}, default=np.ones((2, 2), dtype=np.float16), media_vector=np.ones((2, 2), dtype=np.float16))
+        )
+        client = PoolingClient(
+            PoolingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="colqwen",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                query_max_tokens=200,
+                image_policy=dict(self.POLICY),
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            sender=sender,
+        )
+
+        result = asyncio.run(client.aencode([_image_content(tmp_path, 0, 448)], EncodeRole.QUERY))
+
+        assert result.num_items == 1, "the query is served within its own budget"
+
+
+class TestEmbedMessagesMediaFit:
+    """The embed role's ``messages`` route fits its media exactly as the pooling route does: one preparation
+    of the request, sliced per item (never a second preparation of already-prepared contents), against the
+    item shape's budget minus its fixed frame."""
+
+    POLICY = {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"}
+
+    def _client(self, tokenizer_json: str, *, max_tokens: int, template: Any = None, census: Any = None) -> Any:
+        from rcp_ndcg.inference import EmbeddingClient
+        from rcp_ndcg.inference.config import EmbeddingEndpoint
+
+        return EmbeddingClient(
+            EmbeddingEndpoint(
+                base_url="fake://seed/7?dim=4",
+                model="m",
+                request_shape="messages",
+                tokenizer=tokenizer_json,
+                max_tokens=max_tokens,
+                template=template,
+                image_policy=dict(self.POLICY),
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            media_census=census,
+        )
+
+    def test_a_document_reserves_the_document_frame(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """Frame-heavy ``document`` shape (101 tokens), max_tokens 300, one 258-token image: an allowance of
+        the bare max_tokens keeps the image whole and the text fit then refuses the request; the media fit
+        must shrink within the room the frame leaves and serve it."""
+        template = TemplateSpec(
+            query=(Segment(content="query"),),
+            document=(Segment(fixed=" ".join(["frame"] * 101)), Segment(content="document")),
+        )
+        client = self._client(tokenizer_json, max_tokens=300, template=template)
+
+        result = client.encode([_image_content(tmp_path, 0, 448)], EncodeRole.DOCUMENT)
+        client.close()
+
+        assert result.num_items == 1, "the request is served (the media fit ran within the document frame)"
+
+    def test_the_census_rows_name_the_source_never_a_data_uri(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """The kept and the dropped media are recorded under their SOURCE uri: a second preparation of the
+        already-prepared contents would record the inlined ``data:`` bytes instead."""
+        from rcp_ndcg.data.prepare import MediaCensus
+
+        census = MediaCensus()
+        client = self._client(tokenizer_json, max_tokens=4, census=census)
+        page = _image_content(tmp_path, 0, 448)
+
+        client.encode([Content.from_parts([*page.parts, *page.parts])], EncodeRole.DOCUMENT)
+        client.close()
+
+        rows = census.recorded()
+        assert rows and any(dropped for *_rest, dropped in rows), "the drops are recorded"
+        assert not [uri for _corpus, _doc, uri, _dropped in rows if uri.startswith("data:")], rows
+
+
+def test_the_pair_fit_invariant_message_carries_its_numbers() -> None:
+    """The bug-report DataError interpolates its numbers -- no literal braces in the message a user reports."""
+    from rcp_ndcg.errors import DataError
+
+    client = RerankClient(
+        RerankEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=str(SESSION_TOKENIZER),
+            max_tokens=12,
+            use_activation=False,
+        ),
+        sender=_HonestBudgetRerankServer(
+            load_tokenizer(str(SESSION_TOKENIZER)), ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl")
+        ),
+    )
+    from rcp_ndcg.data.preprocess import ContentParts
+
+    contents: list[ContentParts] = [("q", " ".join(["word"] * 50))]
+    with pytest.raises(DataError, match="over the budget of 12") as caught:
+        client._assert_pairs_within_budget("q", contents, [0], None)  # type: ignore[arg-type]
+    assert "{" not in str(caught.value), "the message interpolates its values"
+
+
+class TestLongQueryDoesNotDropFittingMedia:
+    """The pair media allowance reserves the SETTLED query's render, not the raw unsettled one (the
+    verifier's R2): a query over its share ships at its share, so media that fit beside the shipped pair
+    must go whole (``fit_media_to_budget`` rule 1) -- never dropped against a query length that never
+    ships."""
+
+    def test_a_shared_query_keeps_media_that_fit_the_shipped_pair(self, tokenizer_json: str, tmp_path: Any) -> None:
+        policy = ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl")
+        sender = _HonestBudgetRerankServer(load_tokenizer(tokenizer_json), policy)
+        client = RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=1000,
+                query_max_tokens=10,
+                use_activation=False,
+                image_policy=dict(TestRerankPairFitWithMedia.POLICY),
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            sender=sender,
+        )
+        document = Content.from_parts([*_image_content(tmp_path, 9, 392).parts, TextPart(text="a b c")])
+
+        result = client.rerank(_words(1000), [document], instruction=None)
+
+        assert result.scores == (0.0,)
+        assert not [1 for _c, _d, _u, dropped in client.media_census.recorded() if dropped], (
+            "no media drop: the image fits the shipped 10-token-share pair"
+        )
+        body = sender.bodies[0]["documents"][0]
+        assert "image_url" in __import__("json").dumps(body), "the document's image rides the wire"
+        assert max(sender.prompt_tokens) <= 1000, "within the budget"

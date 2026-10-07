@@ -21,6 +21,7 @@ the API's field names are known, and come back through :meth:`Transport.add_usag
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 import threading
 import time
@@ -42,9 +43,10 @@ from rcp_ndcg.errors import (
 )
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.fake import FAKE_SCHEME, fake_transport
-from rcp_ndcg.inference.probe import read_replica
+from rcp_ndcg.inference.probe import describe_failure, read_replica
 from rcp_ndcg.inference.types import Call, EngineInfo, Reply, TokenCount, Usage
 from rcp_ndcg.support.logging import get_logger
+from rcp_ndcg.support.urls import safe_url
 
 logger = get_logger(__name__)
 
@@ -66,6 +68,8 @@ class AuthProfile:
 
     A transport built without a profile (the judge's, or any sender without an adapter) resolves only the
     config's ``api_key_env``, into ``Authorization: Bearer`` -- the behaviour the judge client relies on.
+    The key-host rule lives here, per replica (:meth:`applies_to`): the variables go only to their
+    :attr:`homes`.
     """
 
     variables: tuple[str, ...] = ()
@@ -77,6 +81,19 @@ class AuthProfile:
 
     header: str | None = None
     """The header the key goes in; ``None`` is the OpenAI-standard ``Authorization: Bearer <key>``."""
+
+    homes: tuple[str, ...] = ()
+    """The URLs the :attr:`variables` belong to: a hosted profile's public API root for its default
+    variables, the naming config's own URLs (its replicas, or the profile's root when it names none) for an
+    explicitly named ``api_key_env``. The transport resolves the variables only for a replica at exactly
+    one of these URLs (a trailing slash aside -- never a prefix, a query, a fragment or userinfo on it), so
+    a key never travels to a self-hosted engine, a gateway, an injected transport's other URL or a stranger.
+    Empty: the variables go nowhere (fail closed)."""
+
+    def applies_to(self, url: str) -> bool:
+        """Whether this profile's variables may authenticate a request to the replica at ``url``: ``url`` is
+        exactly one of :attr:`homes`, a trailing slash aside."""
+        return any(url.rstrip("/") == home.rstrip("/") for home in self.homes)
 
 
 @runtime_checkable
@@ -127,6 +144,18 @@ class _Replica:
         self.engine: EngineInfo | None = None
 
 
+class _RedactedFailure(Exception):
+    """The redacted stand-in for an HTTP library exception, chained under the errors the transport raises:
+    its message is :func:`~rcp_ndcg.inference.probe.describe_failure`'s (the type and status, every URL
+    redacted). The library's own exception names the full request URL -- userinfo and query included --
+    and would carry it into every traceback."""
+
+
+def _redacted(exc: BaseException) -> _RedactedFailure:
+    """The chainable, redacted form of a library exception."""
+    return _RedactedFailure(describe_failure(exc))
+
+
 class _Unavailable(Exception):
     """One attempt failed the way the shared status map calls unavailable: a connection error, a timeout, or an
     HTTP 408, 429 or 5xx reply. Retried on the replica up to ``max_retries``, then the replica is set aside."""
@@ -147,12 +176,24 @@ async def _sleep(seconds: float) -> None:
 
 
 def _retry_after(headers: Mapping[str, str]) -> float | None:
-    """The server's ``Retry-After`` in seconds, when it gives one as a number (the retrieval clients' policy)."""
+    """The server's ``Retry-After`` in seconds, when it gives one as a usable number (the retrieval
+    clients' policy).
+
+    Only a finite, non-negative number is honoured: a garbage header (or one a proxy echoes wrongly) is
+    never a sleep -- ``nan`` would never return and wedge the request inside the retry loop beyond every
+    timeout, and a negative one would hammer a rate-limited server with instant retries. Anything else
+    falls through to the doubling backoff, and the value is clamped to the retry cap.
+    """
     raw = headers.get("retry-after")
+    if not raw:
+        return None
     try:
-        return float(raw) if raw else None
+        value = float(raw)
     except (TypeError, ValueError):
         return None
+    if not math.isfinite(value) or value < 0:
+        return None
+    return min(value, Transport.RETRY_MAX_BACKOFF_S)
 
 
 def _body_text(response: httpx.Response) -> str:
@@ -257,9 +298,24 @@ class Transport:
         self._bridge_close: Future[None] | None = None
         """A pool close scheduled on the bridge's own loop (a :meth:`close` from inside its call); drained
         by the next :meth:`close` before the loop closes."""
+        self._bridge_lock = threading.Lock()
+        """Serialises :meth:`run` (and a foreign-thread :meth:`close`) on the bridge loop: two threads'
+        ``run_until_complete`` on one loop is a ``RuntimeError`` that would abort one caller's batch."""
+        self._background_lock = threading.Lock()
+        """Guards the background loop's lazy start: two threads inside their own running loops (notebooks)
+        must share one private thread, not start one each."""
+        self._background_calls = 0
+        """The run() calls in flight on the background loop (the notebook path); close() waits for them."""
+        self._background_idle = threading.Condition()
+        """Guards :attr:`_background_calls` and :attr:`_close_pending`."""
+        self._close_pending = False
+        """A close() came while background calls were in flight: the last of them closes the pool."""
         self._background_loop: asyncio.AbstractEventLoop | None = None
         self._background_thread: threading.Thread | None = None
         self._last_error: BaseException | None = None
+        self._last_describe: str | None = None
+        """The last failure's own words (a describe, never a URL or a header value): the outage message
+        names what happened without echoing the exception -- whose text carries the request's full URL."""
 
     # ------------------------------------------------------------------
     # Sending
@@ -285,7 +341,8 @@ class Transport:
             raise ValueError("send() needs at least one call")
         calls = list(calls)
         try:
-            headers = self._base_headers()
+            # Per replica (the key-host rule is the replica URL's), all resolved before anything is queued.
+            headers = {replica.url: self._base_headers(replica.url) for replica in self._replicas}
         except CredentialsError:
             self._usage = self._usage.merged_with(  # the request failed before it was queued
                 Usage(failed_requests=len(calls))
@@ -305,7 +362,7 @@ class Transport:
                 replica.in_flight += 1
                 replica.sent += 1
                 try:
-                    replies = await self._send_on(replica, calls, headers)
+                    replies = await self._send_on(replica, calls, headers[replica.url])
                 except _Unavailable as exc:
                     index = self._replicas.index(replica)
                     if index in failed_at and replica.successes > failed_at[index]:
@@ -339,7 +396,7 @@ class Transport:
                 delay = min(self.RETRY_BACKOFF_S * 2**attempt, self.RETRY_MAX_BACKOFF_S)
                 if exc.retry_after is not None:
                     delay = min(exc.retry_after, self.RETRY_MAX_BACKOFF_S)
-                logger.warning("%s unavailable (%s); retrying in %.1fs", replica.url, exc.describe, delay)
+                logger.warning("%s unavailable (%s); retrying in %.1fs", safe_url(replica.url), exc.describe, delay)
                 await _sleep(delay)
         raise AssertionError("unreachable")
 
@@ -351,7 +408,7 @@ class Transport:
         try:
             response = await self._client().send(request)
         except httpx.TransportError as exc:
-            raise _Unavailable(f"{type(exc).__name__}: {exc}", cause=exc) from exc
+            raise _Unavailable(describe_failure(exc), cause=_redacted(exc)) from None
         status = response.status_code
         if status_is_unavailable(status):
             text = _body_text(response)
@@ -359,10 +416,12 @@ class Transport:
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:  # always: every unavailable status is an error status
                 raise _Unavailable(
-                    f"HTTP {status}: {text}", cause=exc, retry_after=_retry_after(response.headers)
-                ) from exc
+                    f"HTTP {status}: {text}", cause=_redacted(exc), retry_after=_retry_after(response.headers)
+                ) from None
             raise AssertionError(f"unreachable: HTTP {status} is an error status")
-        error = status_error(status, url=replica.url, path=path, model=self.endpoint.model, body=_body_text(response))
+        error = status_error(
+            status, url=safe_url(replica.url), path=path, model=self.endpoint.model, body=_body_text(response)
+        )
         if error is not None:
             raise error
         return _reply(response, url=replica.url)
@@ -376,7 +435,7 @@ class Transport:
         query = "&".join(part for part in (base_query, path_query) if part)
         return f"{base}{path_only}?{query}" if query else f"{base}{path_only}"
 
-    def _base_headers(self) -> dict[str, str]:
+    def _base_headers(self, url: str) -> dict[str, str]:
         """The endpoint's credentials and gateway headers of one send; every value is read from the environment
         only, at send time, and never logged.
 
@@ -393,8 +452,12 @@ class Transport:
         api_key_env = self.endpoint.api_key_env
         if api_key_env is not None:
             variables, required = (api_key_env,), True
-        else:
+        elif self._auth.applies_to(url):
             variables, required = self._auth.variables, self._auth.required
+        else:
+            # Not the profile's home: its variables never travel here (a gateway injects its own credential,
+            # or the config names one with api_key_env).
+            variables, required = (), False
         value = next((os.environ[name] for name in variables if os.environ.get(name)), None)
         if value is None and (required or api_key_env is not None):
             if api_key_env is not None:
@@ -431,12 +494,22 @@ class Transport:
 
     def _gate(self) -> asyncio.Semaphore:
         """The concurrency semaphore of the running loop; a new loop (a new pass, the sync bridge's own) gets a
-        new one and a new pool, which are bound to the loop they first ran on."""
+        new one and a new pool, which are bound to the loop they first ran on. The previous loop's pool is
+        closed best-effort on its own loop while that loop still lives -- a live loop keeps serving it until
+        then, and a dead one took its sockets with it."""
         loop = asyncio.get_running_loop()
         if self._semaphore is None or self._loop is not loop:
+            old_pool, old_loop = self._pool, self._loop
             self._semaphore = asyncio.Semaphore(self.endpoint.concurrency)
             self._loop = loop
             self._pool = None  # an HTTP client is bound to the loop it was first used on
+            if old_pool is not None and old_loop is not None and not old_loop.is_closed() and old_loop.is_running():
+                try:
+                    asyncio.run_coroutine_threadsafe(old_pool.aclose(), old_loop)
+                except RuntimeError:
+                    pass  # the old loop died in between; its sockets die with it
+                # A live but idle old loop gets its pool dropped by the next close()/aclose(); spinning it
+                # up from here would block this loop for no gain.
         return self._semaphore
 
     def _pick(self) -> _Replica | None:
@@ -448,6 +521,7 @@ class Transport:
     def _set_aside(self, replica: _Replica, exc: _Unavailable) -> None:
         """Take ``replica`` out of rotation after it failed, for a backoff that doubles while it keeps failing."""
         self._last_error = exc.cause or exc
+        self._last_describe = exc.describe
         now = time.monotonic()
         if replica.down_until > now:
             return  # already set aside, by a request sent before it went down
@@ -457,7 +531,7 @@ class Transport:
         others = sum(other.down_until <= now for other in self._replicas)
         logger.warning(
             "%s unavailable (%s); not sending to it for %.0fs%s",
-            replica.url,
+            safe_url(replica.url),
             exc.describe,
             wait,
             f", {others} other replica(s) live" if len(self._replicas) > 1 else "",
@@ -476,12 +550,14 @@ class Transport:
         now = time.monotonic()
         waited = now - outage_since
         limit = self.endpoint.wait_on_outage_s
-        where = ", ".join(replica.url for replica in self._replicas)
+        where = ", ".join(safe_url(replica.url) for replica in self._replicas)
         last = self._last_error
         if limit is not None and waited >= limit:
+            # The message carries the describe (what happened), never the exception's own text: a URL with
+            # userinfo can ride in an httpx exception's message, and keys are never logged.
+            last_text = self._last_describe or f"{type(last).__name__}: {last}" if last is not None else "unknown"
             raise BackendUnavailableError(
-                f"{where} was unavailable for {waited:.1f}s (wait_on_outage_s={limit}); "
-                f"last error: {type(last).__name__}: {last}"
+                f"{where} was unavailable for {waited:.1f}s (wait_on_outage_s={limit}); last error: {last_text}"
             ) from last
         wake = min(replica.down_until for replica in self._replicas) - now
         if limit is not None:
@@ -532,14 +608,12 @@ class Transport:
                 self._client(),
                 replica.url,
                 model=self.endpoint.model,
-                headers=self._base_headers(),
+                headers=self._base_headers(replica.url),
                 timeout=self._timeout(),
                 system_fingerprint=fingerprint,
             )
         except Exception as exc:  # best effort: what the endpoint says is recorded, never required
-            replica.engine = EngineInfo(
-                url=replica.url, system_fingerprint=fingerprint, error=f"{type(exc).__name__}: {exc}"
-            )
+            replica.engine = EngineInfo(url=replica.url, system_fingerprint=fingerprint, error=describe_failure(exc))
 
     @property
     def engines(self) -> list[EngineInfo]:
@@ -609,20 +683,39 @@ class Transport:
         else:
             # A loop is already running in this thread (a notebook): run on the transport's own background
             # thread instead of failing, as run_until_complete here would.
-            return asyncio.run_coroutine_threadsafe(coroutine, self._background()).result()
-        loop = self._own_loop
-        if loop is None:
-            loop = self._own_loop = asyncio.new_event_loop()
-        return loop.run_until_complete(coroutine)
+            with self._background_idle:
+                self._background_calls += 1
+            try:
+                return asyncio.run_coroutine_threadsafe(coroutine, self._background()).result()
+            finally:
+                with self._background_idle:
+                    self._background_calls -= 1
+                    deferred = self._close_pending and self._background_calls == 0
+                    if deferred:
+                        self._close_pending = False
+                if deferred:
+                    self._close_pool()  # the close a caller asked for while this call was in flight
+        # One bridge loop, one caller at a time: concurrent synchronous callers queue on the lock instead of
+        # racing two run_until_complete passes on the shared loop (the second dies with "This event loop is
+        # already running" and its batch aborts).
+        with self._bridge_lock:
+            loop = self._own_loop
+            if loop is None:
+                loop = self._own_loop = asyncio.new_event_loop()
+            return loop.run_until_complete(coroutine)
 
     def _background(self) -> asyncio.AbstractEventLoop:
-        """The transport's private background loop, started once, for :meth:`run` inside a running loop."""
+        """The transport's private background loop, started once, for :meth:`run` inside a running loop.
+        The lazy start is double-checked under its lock: two threads each inside their own running loop
+        share this one loop and thread rather than starting one each."""
         if self._background_loop is None:
-            self._background_loop = asyncio.new_event_loop()
-            self._background_thread = threading.Thread(
-                target=self._background_loop.run_forever, name="rcp-ndcg-transport", daemon=True
-            )
-            self._background_thread.start()
+            with self._background_lock:
+                if self._background_loop is None:
+                    self._background_loop = asyncio.new_event_loop()
+                    self._background_thread = threading.Thread(
+                        target=self._background_loop.run_forever, name="rcp-ndcg-transport", daemon=True
+                    )
+                    self._background_thread.start()
         return self._background_loop
 
     def set_auth(self, auth: AuthProfile) -> None:
@@ -653,20 +746,53 @@ class Transport:
             await pool.aclose()
         finally:
             self._bridge_close = None
-            self._close_own_loop()
+            self._close_own_loop_when_free()
 
     def close(self) -> None:
         """The synchronous twin of :meth:`aclose`: closes the pool on the loop it serves and the sync
         bridge's private loop; safe to call twice. A later :meth:`run` builds both afresh.
 
         Called from the loop the pool serves (an async caller closing without an ``await``), the close is
-        scheduled instead of blocking that loop on itself. A pool whose loop has since closed is dropped, not
-        closed: its connections died with the loop.
+        scheduled instead of blocking that loop on itself. Called from another thread while a ``run()`` is
+        mid-flight on the sync bridge, it waits for that call to finish (the bridge lock is held across the
+        call and across these closes), then closes both. While ``run()`` calls are in flight on the background
+        thread (the notebook path), the pool's close is deferred to the last of them instead of waited for --
+        a close that code inside such a call hands to another thread and awaits would otherwise wait for its
+        own caller forever. Either way the in-flight call is never pulled out from under, and nothing raises
+        into the caller.
         """
         try:
-            self._close_pool()
-        finally:
-            self._close_own_loop()
+            running: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+        if running is None:
+            with self._bridge_lock:  # a foreign thread: wait out the bridge's in-flight call, then close
+                if not self._defer_the_pool_close():
+                    self._close_pool()
+                self._close_own_loop()
+            return
+        if running is self._background_loop or not self._defer_the_pool_close():
+            self._close_pool()  # inside a running loop: the close is scheduled, not blocking
+        self._close_own_loop_when_free()
+
+    def _defer_the_pool_close(self) -> bool:
+        """Whether the pool's close is left to the in-flight background calls (the last one closes it):
+        when the pool serves the background loop and calls are in flight there."""
+        with self._background_idle:
+            if self._background_calls and self._loop is self._background_loop:
+                self._close_pending = True
+                return True
+            return False
+
+    def _close_own_loop_when_free(self) -> None:
+        """Close the bridge loop unless a bridge call holds the lock. A call's own thread cannot take the
+        lock (its ``run()`` holds it), and a foreign loop must not block itself on a competing call: both
+        leave the loop to the drain rule -- whichever caller closes next finishes it."""
+        if self._bridge_lock.acquire(blocking=False):
+            try:
+                self._close_own_loop()
+            finally:
+                self._bridge_lock.release()
 
     def _close_pool(self) -> None:
         """The pool's close, on the loop it serves (see :meth:`close`)."""

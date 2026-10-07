@@ -32,6 +32,24 @@ def _clean_memory_fs():
 
 class TestUri:
     @pytest.mark.parametrize(
+        "url, safe",
+        [
+            ("http://user:sekrit-value@judge.test/v1", "http://judge.test/v1"),
+            ("http://user:sekrit-value@judge.test/v1/models?api-key=sekrit-value", "http://judge.test/v1/models"),
+            ("https://host.test/v1#access_token=sekrit-value", "https://host.test/v1"),
+            ("http://[::1]:8000/v1?key=sekrit-value", "http://[::1]:8000/v1"),
+            ("gs://My-Bucket/Key.jsonl", "gs://My-Bucket/Key.jsonl"),
+            ("fake://seed/1", "fake://seed/1"),
+            ("/a/local/path?x", "/a/local/path?x"),
+        ],
+    )
+    def test_safe_url_strips_userinfo_query_and_fragment_only(self, url: str, safe: str) -> None:
+        """The one redactor for anything a URL leaves in a log, an error or a record."""
+        from rcp_ndcg.support.urls import safe_url
+
+        assert safe_url(url) == safe
+
+    @pytest.mark.parametrize(
         "uri, remote",
         [
             ("gs://bucket/key", True),
@@ -289,6 +307,15 @@ class TestCache:
     def test_a_missing_remote_object_is_a_missing_input(self) -> None:
         with pytest.raises(MissingInputError):
             storage.cache("memory://absent.jsonl")
+
+    def test_the_missing_message_names_the_object_as_written_without_its_secrets(self) -> None:
+        """The message is a log line: userinfo, query and fragment go (one redactor, ``support.urls.safe_url``),
+        and the object stays named as written -- a bucket is case-sensitive, so a lower-cased name points at
+        a different bucket."""
+        with pytest.raises(MissingInputError) as caught:
+            storage.cache("memory://user:sekrit-value@Absent-Bucket/Key.jsonl?token=sekrit-value#sekrit-value")
+        assert "memory://Absent-Bucket/Key.jsonl" in str(caught.value)
+        assert "sekrit-value" not in str(caught.value)
 
     def test_a_publishing_writer_locks_the_pair(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The payload and its identity sidecar are renamed under one exclusive lock, so two

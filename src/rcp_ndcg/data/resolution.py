@@ -240,7 +240,10 @@ def uniform_frame_indices(total_frames: int, num_frames: int) -> list[int]:
         Strictly increasing indices, ``min(num_frames, total_frames)`` of them.
     """
     if total_frames <= 0 or num_frames <= 0:
-        raise ValueError(f"need positive frame counts, got total={total_frames}, requested={num_frames}")
+        raise DataError(
+            f"need positive frame counts, got total={total_frames}, requested={num_frames}",
+            hint="sample at least one frame from a container that has one",
+        )
     if num_frames >= total_frames:
         return list(range(total_frames))
     return [int(index) for index in np.linspace(0, total_frames - 1, num_frames, dtype=np.int64)]
@@ -272,12 +275,19 @@ def smart_resize(
         ``(height, width)`` the processor resizes to.
 
     Raises:
-        ValueError: a non-positive edge, or an aspect ratio above 200 (the processor refuses it too).
+        DataError: a non-positive edge, or an aspect ratio above 200 (the processor refuses it too); both
+            carry a hint naming the fix.
     """
     if min(height, width) <= 0:
-        raise ValueError(f"image dimensions must be positive, got {height}x{width}")
+        raise DataError(
+            f"image dimensions must be positive, got {height}x{width}",
+            hint="a recorded size is read from the stored image; this one is corrupt",
+        )
     if max(height, width) / min(height, width) > 200:
-        raise ValueError(f"aspect ratio must be below 200, got {max(height, width) / min(height, width):.1f}")
+        raise DataError(
+            f"aspect ratio must be below 200, got {max(height, width) / min(height, width):.1f}",
+            hint="crop or split the image at ingest so its aspect ratio is below 200 (the processors refuse it)",
+        )
 
     h_bar = round(height / factor) * factor
     w_bar = round(width / factor) * factor
@@ -372,7 +382,8 @@ class ImagePolicy(BaseModel):
             raise ConfigError(
                 f"the image policy names the {self.processor} processor, but the judge's image_processor is "
                 f"{processor}",
-                hint="leave preprocessing.image.processor unset: the judge config decides it",
+                hint="leave the policy's own processor unset: the judge's image_processor (the role configs' "
+                "image_processor field) decides it",
             )
         chosen = self.processor or processor
         if chosen is not None and self.min_px is not None and self.max_px is not None:
@@ -381,8 +392,9 @@ class ImagePolicy(BaseModel):
                 geometry = PROCESSORS[chosen]
                 raise ConfigError(
                     problem,
-                    hint=f"e.g. preprocessing.image: {{min_px: {geometry.min_pixels}, max_px: "
-                    f"{min(geometry.max_pixels, 1280 * geometry.factor**2)}}}",
+                    hint=f"e.g. the image policy's pixel budget: {{min_px: {geometry.min_pixels}, max_px: "
+                    f"{min(geometry.max_pixels, 1280 * geometry.factor**2)}}} (the judge declares it under "
+                    "preprocessing.image, a role config as image_policy)",
                 )
         return self.model_copy(update={"processor": chosen})
 
@@ -402,7 +414,7 @@ class ImagePolicy(BaseModel):
         geometry = PROCESSORS[self.processor]
         try:
             target = smart_resize(height, width, factor=geometry.factor, min_pixels=self.min_px, max_pixels=self.max_px)
-        except ValueError as exc:  # the input's aspect ratio is one the processor refuses (above 200)
+        except (ValueError, DataError) as exc:  # the input's aspect ratio is one the processor refuses
             raise DataError(
                 f"a {height}x{width} image under the budget {self.descriptor} has an aspect ratio the "
                 f"{self.processor} processor refuses ({exc}); the image must be cropped or split at ingest",
@@ -412,7 +424,7 @@ class ImagePolicy(BaseModel):
             kept = smart_resize(
                 *target, factor=geometry.factor, min_pixels=geometry.min_pixels, max_pixels=geometry.max_pixels
             )
-        except ValueError as exc:  # the resized image's aspect ratio is one the processor refuses
+        except (ValueError, DataError) as exc:  # the resized image's aspect ratio is one the processor refuses
             raise DataError(
                 f"a {height}x{width} image resizes to {target[0]}x{target[1]} under the budget {self.descriptor}, "
                 f"which a stock engine serving the {self.processor} processor refuses ({exc}); crop the image at "
@@ -432,13 +444,14 @@ class ImagePolicy(BaseModel):
         if self.is_native:
             raise ConfigError(
                 f"Cannot {what} for a native-size image policy: the processor decides the geometry.",
-                hint="declare a pixel budget (preprocessing.image: {min_px, max_px}) to get an estimate",
+                hint="declare a pixel budget -- the judge's preprocessing.image or a role config's "
+                "image_policy: {min_px, max_px} -- to get an estimate",
             )
         if self.processor is None:
             raise ConfigError(
-                f"Cannot {what}: the judge declares no image_processor, so images are sent unchanged and the "
+                f"Cannot {what}: the config declares no image_processor, so images are sent unchanged and the "
                 "engine's processor decides their geometry.",
-                hint=f"set image_processor in the judge config (one of {', '.join(PROCESSORS)})",
+                hint=f"set image_processor on the config (one of {', '.join(PROCESSORS)})",
             )
         return PROCESSORS[self.processor].factor
 
@@ -499,11 +512,14 @@ VISION_WRAPPER_TOKENS = 2
 
 
 class EngineMediaMismatch(NamedTuple):
-    """An engine's prompt-token count for one prepared probe image, against the client's counted one.
+    """An engine's media DELTA for one prepared probe image, against the client's counted media tokens.
 
-    The two numbers disagree when the engine was started with a media budget nobody declared, when its
-    processor family is not the one the client reproduced, or when the served model changed under the same
-    name: any of these means the counted tokens do not describe what the engine sees.
+    The delta is the engine's ``usage.prompt_tokens`` with the probe image minus its report for the same
+    request without it -- the chat template, the special tokens and the probe's text cancel, so the delta
+    reports the media block alone. The two numbers disagree when the engine was started with a media budget
+    nobody declared, when its processor family is not the one the client reproduced, or when the served
+    model changed under the same name: any of these means the counted tokens do not describe what the
+    engine sees.
     """
 
     reported: int
@@ -518,26 +534,28 @@ class EngineMediaMismatch(NamedTuple):
     def message(self) -> str:
         """What the mismatch means, for a person or a record."""
         return (
-            f"the engine reports {self.reported:,} prompt tokens for the probe, but the client counted "
-            f"{self.counted:,} ({self.difference:+,}): the served engine's media handling is not the one the "
-            "counted tokens describe. Check that the engine runs the declared image_processor without media "
-            "flags that resize again, and that its prompt-token report covers the same request as the probe."
+            f"the engine's media block costs {self.reported:,} prompt tokens for the probe (its report with "
+            f"the image minus its report without it), but the client counted {self.counted:,} "
+            f"({self.difference:+,}): the served engine's media handling is not the one the counted tokens "
+            "describe. Check that the engine runs the declared image_processor without media flags that "
+            "resize again, and that its prompt-token report covers the probe requests."
         )
 
 
 def engine_media_check(reported: int, counted: int) -> EngineMediaMismatch | None:
-    """Compare an engine's prompt-token count for one prepared probe image with the counted one.
+    """Compare an engine's media DELTA for one prepared probe image with the counted media tokens.
 
-    The probe is one prepared image whose prompt-token count the client has counted exactly -- as
-    :func:`content_media_tokens` does -- plus whatever template tokens the probe request carries; both numbers
-    must cover the same request. ``None`` when the engine counts exactly what the client counted; the typed
-    mismatch otherwise, which the caller records or raises: a mismatch means the engine's media handling is
-    not what the declared policy and the counted tokens describe (a reconfigured engine, a mis-declared
-    processor family), so every later count is suspect.
+    The delta is the engine's ``usage.prompt_tokens`` for the probe request WITH the prepared image minus
+    its report for the same request WITHOUT the media: everything the two requests share (a server-side
+    chat template, the route's special tokens, the probe's text) cancels, so the delta reports the media
+    block alone -- the same thing :func:`content_media_tokens` counts. ``None`` when the engine counts
+    exactly what the client counted; the typed mismatch otherwise, which the caller records or raises: a
+    mismatch means the engine's media handling is not what the declared policy and the counted tokens
+    describe (a reconfigured engine, a mis-declared processor family), so every later count is suspect.
 
     Args:
-        reported: The engine's ``usage.prompt_tokens`` for the probe request.
-        counted: The client's exact count of the same probe request's prompt tokens.
+        reported: The engine's media delta (its two prompt-token reports' difference).
+        counted: The client's exact count of the prepared probe's media tokens.
 
     Returns:
         ``None`` when the two agree; the :class:`EngineMediaMismatch` when they do not.
@@ -765,7 +783,7 @@ def _video_frame_tokens(ref: MediaRef, geometry: ProcessorGeometry) -> tuple[int
                 min_pixels=geometry.video_min_pixels,
                 max_pixels=geometry.video_max_pixels,
             )
-        except ValueError as exc:  # the frame's aspect ratio is one the video processors refuse
+        except (ValueError, DataError) as exc:  # the frame's aspect ratio is one the video processors refuse
             raise DataError(
                 f"a {ref.width}x{ref.height} video frame has an aspect ratio the video processors refuse "
                 "(above 200); crop or split the clip at ingest",

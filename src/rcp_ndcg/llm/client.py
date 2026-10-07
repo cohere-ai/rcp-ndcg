@@ -277,7 +277,7 @@ class JudgeClient(RoleClient[JudgeConfig]):
         """The judge declares no ``max_tokens`` request budget (its per-window text budget is the pass's,
         counted over ``context_tokens`` in :mod:`rcp_ndcg.llm.judging`), and nothing loads here: the judge
         keeps the other roles' fail-at-construction contract for its wire fields, while its tokenizer is
-        judged at the pass (and loaded for the media check at probe time, see :meth:`probe`)."""
+        judged at the pass (the engine media check counts no text: it takes the engine's media delta)."""
         return None, None
 
     def _media_policies(self) -> tuple[ImagePolicy | None, VideoPolicy | None]:
@@ -373,29 +373,16 @@ class JudgeClient(RoleClient[JudgeConfig]):
 
         Never raises for an endpoint that cannot be read: it is recorded with its ``error``, and judging goes
         on (the requests themselves park while it is down). When the pass's effective preprocessing declares an
-        image policy, the engine media check runs after the probe (one prepared probe image; the engine's own
-        prompt-token count compared with the counted one, as every served role's probe does) -- a mismatch is
-        the typed :class:`~rcp_ndcg.errors.ProviderError`, never a silent budget on the wrong footing.
+        image policy, the engine media check runs after the probe (one prepared probe image beside its no-media
+        baseline; the engine's media delta compared with the counted media tokens, as every served role's
+        probe does) -- a mismatch is the typed :class:`~rcp_ndcg.errors.ProviderError`, never a silent budget
+        on the wrong footing.
         """
         if self._config.is_fake:
             return []
         infos = await self._sender.probe()
         if getattr(self, "image_policy", None) is not None and self._config.image_processor is not None:
-            from rcp_ndcg.data.tokenizer import load_tokenizer
-
-            # The media check counts the probe's text in the declared tokenizer's tokens (the shared client
-            # base's contract); the judge loads it here, not at construction, so a client without a pass (and
-            # the offline fakes' tests' placeholder paths) never touches the tokenizer.
-            self._tokenizer = load_tokenizer(self._config.tokenizer) if self._config.tokenizer is not None else None
-            if self._tokenizer is None:
-                get_logger(__name__).warning(
-                    "the judge %s declares an image policy but no tokenizer: the engine media check cannot "
-                    "count the probe's prompt tokens, so it is not run; declare judge.tokenizer to check the "
-                    "engine's vision pipeline",
-                    self._config.model,
-                )
-            else:
-                await self.check_engine_media()
+            await self.check_engine_media()
         return infos
 
     # ------------------------------------------------------------------
@@ -406,6 +393,12 @@ class JudgeClient(RoleClient[JudgeConfig]):
         """The wire calls one prepared probe item is sent as: one chat completion carrying the image."""
         adapter, _ = self._wire()
         return adapter.calls(CompletionInput(user_prompt="probe", user_content=content), model=self.model)
+
+    def _probe_baseline_calls(self, content: Any) -> Sequence[Call] | None:
+        """The probe request without its media: the same chat completion with the probe content's text as
+        its plain prompt (the engine's two prompt-token reports differ by the media block alone)."""
+        adapter, _ = self._wire()
+        return adapter.calls(CompletionInput(user_prompt=content.text), model=self.model)
 
     def _probe_usage(self, reply: Any) -> TokenCount | None:
         """The probe reply's prompt-token report (the judge adapter's, ``None`` when it reported none)."""
@@ -436,8 +429,7 @@ class JudgeClient(RoleClient[JudgeConfig]):
         except Exception:
             self._refused += 1
             raise
-        for reply in replies:
-            transport.add_usage(adapter.usage(reply))
+        self._record_usage(replies)  # the role clients' one rule: each reply's tokens, through the adapter
         fingerprint = getattr(adapter, "fingerprint", None)
         if fingerprint is not None and replies[0].url is not None:
             reported = fingerprint(replies[0])

@@ -426,3 +426,28 @@ def test_an_empty_candidate_set_makes_no_call() -> None:
 
     assert adapter.calls(_request(), model="m") == []
     assert adapter.interpret(_request(), []) == RerankResult(scores=())
+
+
+class TestTheServerIsNamedWithoutItsSecrets:
+    """Every rerank error names the server by its URL: as :func:`~rcp_ndcg.support.urls.safe_url` writes it,
+    in the message and in the details -- credentials embedded in the URL never ride along."""
+
+    SECRET_URL = "https://user:fake-secret-pw@gw.example/v1?key=fake-secret-q"
+
+    def test_a_missing_score_names_the_server_safely(self) -> None:
+        adapter = RerankAdapter(_config(base_url=self.SECRET_URL))
+        request = _request("d0", "d1")
+        with pytest.raises(ProviderError) as caught:
+            adapter.interpret(request, [_reply(200, {"results": _scored_rows(1)})])
+        said = f"{caught.value} {caught.value.details} {caught.value.hint}"
+        assert "gw.example" in said
+        assert "fake-secret" not in said
+
+    def test_a_duplicated_index_names_the_server_safely(self) -> None:
+        adapter = RerankAdapter(_config(base_url=self.SECRET_URL))
+        request = _request("d0", "d1")
+        rows = [{"index": 0, "relevance_score": 0.1}, {"index": 0, "relevance_score": 0.2}]
+        with pytest.raises(ProviderError) as caught:
+            adapter.interpret(request, [_reply(200, {"results": rows})])
+        said = f"{caught.value} {caught.value.details} {caught.value.hint}"
+        assert "fake-secret" not in said

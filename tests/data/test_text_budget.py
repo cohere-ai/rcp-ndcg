@@ -562,8 +562,10 @@ class TestVendorBudget:
     def test_content_goes_uncut_and_the_budget_is_recorded_as_vendor(self, caplog: pytest.LogCaptureFixture) -> None:
         vendor = TextBudget(tokenizer=None, max_tokens=4096)
         census = TextTruncationCensus()
+        # Its own corpus key: the once-per-(corpus, process) warning is keyed on the corpus, so two tests
+        # sharing one would couple the run order (the shuffled suite pass caught exactly that).
         with caplog.at_level(logging.WARNING, logger="rcp_ndcg.data.preprocess"):
-            result = fit([LONG], shape="document", budget=vendor, ids=["d0"], corpus="c", census=census)
+            result = fit([LONG], shape="document", budget=vendor, ids=["d0"], corpus="vendor-uncut", census=census)
         assert result.texts == (LONG,)
         assert result.contents == (LONG,)
         assert result.budget_source == "vendor"
@@ -574,7 +576,7 @@ class TestVendorBudget:
         assert row["doc_id"] == "<budget>"
         warnings = [record for record in caplog.records if "vendor" in record.message.lower()]
         assert len(warnings) == 1
-        fit([LONG], shape="document", budget=vendor, ids=["d0"], corpus="c")  # the second call warns no more
+        fit([LONG], shape="document", budget=vendor, ids=["d0"], corpus="vendor-uncut")  # the second call warns no more
         assert len([record for record in caplog.records if "vendor" in record.message.lower()]) == 1
 
     def test_a_vendor_pair_returns_parts_not_rendered_text(self) -> None:
@@ -587,12 +589,12 @@ class TestVendorBudget:
         """The budget row is a fact of the run, not of the first batch: a census attached after an earlier
         call still gets its row (the warning stays once per corpus, the record per census)."""
         vendor = TextBudget(tokenizer=None, max_tokens=4096)
-        fit([LONG], shape="document", budget=vendor, corpus="c")  # no census here
+        fit([LONG], shape="document", budget=vendor, corpus="vendor-late")  # no census here (its own key)
         census = TextTruncationCensus()
-        fit([LONG], shape="document", budget=vendor, corpus="c", census=census)
+        fit([LONG], shape="document", budget=vendor, corpus="vendor-late", census=census)
         rows = census.cuts()
         assert len(rows) == 1 and rows[0].as_row()["budget_source"] == "vendor"
-        fit([LONG], shape="document", budget=vendor, corpus="c", census=census)  # batching: still one row
+        fit([LONG], shape="document", budget=vendor, corpus="vendor-late", census=census)  # batching: still one row
         assert len(census.cuts()) == 1
 
     def test_a_budget_without_a_tokenizer_refuses_inert_policies(self) -> None:
@@ -750,6 +752,28 @@ class TestMediaHook:
             fit([LONG], shape="document", budget=budget(document_template()), tokenizer=FRAMED, media_tokens=[24])
 
 
+class TestFitArguments:
+    """fit's argument checks are typed refusals with hints (the client's preparation hands it these; a bare
+    ValueError was the one error family outside rcp_ndcg.errors)."""
+
+    @pytest.mark.parametrize(
+        ("inputs", "shape", "extra", "said"),
+        [
+            (["a lone string"], "pair", {}, "pair of strings"),
+            ([("q", "d")], "document", {}, "must be a string"),
+            (["a", "b"], "document", {"ids": ["only-one"]}, "must name every input"),
+            (["a", "b"], "document", {"media_tokens": [0]}, "every input"),
+            (["a"], "document", {"media_tokens": [-1]}, "non-negative"),
+        ],
+    )
+    def test_a_malformed_call_is_a_data_error_with_a_hint(
+        self, inputs: list[object], shape: str, extra: dict[str, object], said: str
+    ) -> None:
+        with pytest.raises(DataError, match=said) as caught:
+            fit(inputs, shape=shape, budget=budget(document_template()), tokenizer=FRAMED, **extra)  # type: ignore[arg-type]
+        assert caught.value.hint
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # Identity and the word-level family
 # ---------------------------------------------------------------------------------------------------------------
@@ -757,13 +781,20 @@ class TestMediaHook:
 
 class TestIdentityAndFamilies:
     def test_the_tokenizer_sha256_is_content_and_its_name_runtime(self) -> None:
+        from rcp_ndcg.errors import ConfigError
+
         check_declarations(TextBudget)
         check_declarations(ChunkPolicy)
         plain = TextBudget(tokenizer="test/framed-bpe", max_tokens=24)
         payload = identity_payload(plain)
         assert "tokenizer" not in payload and payload["max_tokens"] == 24
         assert plain.identity(FRAMED)["tokenizer_sha256"] == FRAMED.sha256
-        assert plain.identity(None) == payload  # vendor mode: no file, no hash
+        # A budget that declares a tokenizer is never identified without its loaded tokenizer: the hash is
+        # the one field the identity exists to carry (two files are not told apart by name).
+        with pytest.raises(ConfigError, match="loaded tokenizer"):
+            plain.identity(None)
+        with pytest.raises(ConfigError, match="not the budget's"):
+            plain.identity(WORDS)  # a different tokenizer's hash would mis-describe the budget
         other = TextBudget(tokenizer="test/word-level", max_tokens=24)
         assert identity_payload(other) == payload  # the name is runtime: same numbers, same identity
 

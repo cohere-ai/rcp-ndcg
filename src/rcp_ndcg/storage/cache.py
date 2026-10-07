@@ -25,13 +25,14 @@ import json
 import re
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 from rcp_ndcg.errors import MissingInputError
 from rcp_ndcg.storage import core
 from rcp_ndcg.storage.uri import is_remote, local_path
 from rcp_ndcg.support.identity import hash_text, short
 from rcp_ndcg.support.logging import get_logger
+from rcp_ndcg.support.urls import safe_url
 
 logger = get_logger(__name__)
 
@@ -84,15 +85,6 @@ def cache_path_for(uri: str) -> Path:
     (shortened) so the directory stays readable.
     """
     return _cache_dir() / f"{short(hash_text(uri), 32)}_{_readable_name(uri)}"
-
-
-def _safe_uri(uri: str) -> str:
-    """The URI without its query string or user info, for messages that end up in logs."""
-    parts = urlsplit(uri)
-    netloc = parts.hostname or ""
-    if parts.port:
-        netloc = f"{netloc}:{parts.port}"
-    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
 
 
 def _reusable(cached_file: Path, metadata_path: Path, remote_identity: dict[str, str]) -> bool:
@@ -152,12 +144,12 @@ def cache(uri: str | Path) -> Path:
         remote_identity = _identity(core.info(text))
     except FileNotFoundError as exc:
         raise MissingInputError(
-            f"remote object not found: {_safe_uri(text)}",
+            f"remote object not found: {safe_url(text)}",
             hint="the cache reads an existing object: check the URI (and the backend's credentials)",
         ) from exc
     if not remote_identity:
         logger.warning(
-            f"{_safe_uri(text)} exposes no identity metadata the cache can compare (no etag, generation, "
+            f"{safe_url(text)} exposes no identity metadata the cache can compare (no etag, generation, "
             "mtime or size); re-downloading on every call"
         )
 

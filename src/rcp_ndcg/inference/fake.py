@@ -3,9 +3,10 @@
 They sit *below* the transport: a ``fake://`` base URL makes :class:`~rcp_ndcg.inference.transport.Transport`
 send through an in-process ``httpx.MockTransport`` built here, and the transport above it is the real one, so
 routing, retries, parking and usage run in every offline test. The fakes are deterministic: every draw is a
-hash (:func:`fake_uniform`) of the endpoint's seed and the item's text, the same on every machine and in every
-call order, and the reranker scores each document by the same hidden ability (:func:`hidden_ability`) the fake
-judge reads its rubric passes and tournaments out of -- so a tiny run's rerank, judge and calibration agree.
+hash of the endpoint's seed and the item's text (:func:`fake_uniform` for a number, one SHAKE-256 stream per
+vector), the same on every machine and in every call order, and the reranker scores each document by the same
+hidden ability (:func:`hidden_ability`) the fake judge reads its rubric passes and tournaments out of -- so a
+tiny run's rerank, judge and calibration agree.
 
 The routes (``GET /models``, ``POST /embeddings``, ``POST /pooling``, ``POST /rerank``) speak each role's wire;
 the chat completions of a later role's fake, and any third-party route, register with :func:`register_fake_route`.
@@ -208,11 +209,18 @@ def _text(item: object) -> str:
     return str(item)
 
 
-def _unit_vector(*parts: object, dim: int) -> list[float]:
-    """A deterministic unit vector: one hash-seeded draw per component, L2-normalised."""
-    raw = [fake_uniform(*parts, i) * 2.0 - 1.0 for i in range(dim)]
-    norm = math.sqrt(sum(value * value for value in raw)) or 1.0
-    return [value / norm for value in raw]
+def _unit_vector(*parts: object, dim: int) -> np.ndarray:
+    """A deterministic unit vector: one seeded draw per vector, L2-normalised.
+
+    The draw is one SHAKE-256 stream of the parts (encoded as :func:`fake_uniform` encodes them), read as
+    ``dim`` uniforms in [0, 1) -- a wider vector extends the same stream. One hash per vector, never one per
+    component: a 16k-token text at 2048 dimensions stays a matter of seconds. Every step is exactly rounded
+    (elementwise arithmetic, ``math.fsum`` of the squares, ``math.sqrt``), so the bits are the same on every
+    machine; a BLAS reduction (``np.linalg.norm``) rounds its last bit by the CPU's kernel.
+    """
+    stream = hashlib.shake_256("|".join(str(part) for part in parts).encode("utf-8")).digest(8 * dim)
+    raw = (np.frombuffer(stream, dtype=">u8") >> np.uint64(11)) * 2.0**-53 * 2.0 - 1.0
+    return raw / (math.sqrt(math.fsum((raw * raw).tolist())) or 1.0)
 
 
 def _embeddings(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
@@ -233,11 +241,14 @@ def _embeddings(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
                 {
                     "object": "embedding",
                     "index": index,
-                    "embedding": _unit_vector(endpoint.seed, "embedding", text, dim=dim),
+                    "embedding": _unit_vector(endpoint.seed, "embedding", text, dim=dim).tolist(),
                 }
                 for index, text in enumerate(texts)
             ],
-            "usage": {"prompt_tokens": sum(_tokens(text) for text in texts), "total_tokens": 0},
+            "usage": {
+                "prompt_tokens": sum(_tokens(text) for text in texts),
+                "total_tokens": sum(_tokens(text) for text in texts),
+            },
         },
     )
 
@@ -257,6 +268,11 @@ def _pooling(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
     texts = _items(body)
     encoding = body.get("encoding_format", "float")
     dtype = np.dtype(body.get("embed_dtype") or "float16")
+    # The request's declared ``endianness`` is honoured: the adapter sends "little" explicitly, and a frame
+    # declared big is byte-swapped, so the fake speaks the same wire contract the real engine does.
+    endianness = body.get("endianness")
+    if endianness == "big":
+        dtype = dtype.newbyteorder()
     data = []
     for index, text in enumerate(texts):
         count = _tokens(text)
@@ -284,16 +300,27 @@ def _pooling(endpoint: FakeEndpoint, body: dict) -> httpx.Response:
             "object": "list",
             "model": endpoint.model,
             "data": data,
-            "usage": {"prompt_tokens": sum(_tokens(text) for text in texts), "total_tokens": 0},
+            "usage": {
+                "prompt_tokens": sum(_tokens(text) for text in texts),
+                "total_tokens": sum(_tokens(text) for text in texts),
+            },
         },
     )
 
 
 def _documents(body: dict) -> list[str]:
-    """The texts a rerank request's ``documents`` name: a string itself, a mapping by its ``text`` (or its
-    ``id``), anything else by its ``str``."""
+    """The texts a rerank request's ``documents`` name: a string itself, a mapping by its ``id`` when it
+    carries one (the draw the fake judge reads for that document), else by its ``text``, else its ``str``."""
     documents = body.get("documents")
-    return [_text(document) for document in documents] if isinstance(documents, list) else []
+    if not isinstance(documents, list):
+        return []
+    named: list[str] = []
+    for item in documents:
+        if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"]:
+            named.append(item["id"])
+        else:
+            named.append(_text(item))
+    return named
 
 
 def _rerank(endpoint: FakeEndpoint, body: dict) -> httpx.Response:

@@ -22,6 +22,7 @@ import json
 from typing import Any
 
 import httpx
+from rcp_ndcg_core.content import TEXT_JOIN
 
 from ..errors import HarnessError
 from ..recipe import Recipe, client_config
@@ -109,13 +110,33 @@ class Capture:
 
     def texts(self, exchange: dict[str, Any]) -> dict[str, Any]:
         """The texts one captured request carries: ``input`` for the embed roles, ``query``/``documents``
-        for the rerank wire (the spans the engine assembles -- for a reranker, the settled query span)."""
+        for the rerank wire (the spans the engine assembles -- for a reranker, the settled query span).
+
+        A ``messages`` body (the chat-style input: a media item's route, or ``request_shape: messages``)
+        yields one ``input`` per message -- its text parts joined in order with ``TEXT_JOIN`` (``"\n"``, as
+        the engine joins them), the client's rendered text --
+        and ``media``: per message, the placeholders of its media parts in order (their part ``type``, e.g.
+        ``image_url``), which ride beside the rendered text and are never part of it.  A ``token_ids`` body
+        yields its id lists as sent.
+        """
         body = exchange.get("request_body") or {}
         if self.role == "rerank":
             documents = body.get("documents", [])
             if isinstance(documents, str):
                 documents = [documents]
             return {"query": body.get("query"), "documents": [str(document) for document in documents]}
+        if "input" not in body and isinstance(body.get("messages"), list):
+            texts: list[str] = []
+            media: list[list[str]] = []
+            for message in body["messages"]:
+                content = message.get("content") if isinstance(message, dict) else None
+                parts = [{"type": "text", "text": content}] if isinstance(content, str) else list(content or [])
+                # A bare string part is a text part (vLLM's chat_utils reads it so).
+                parts = [{"type": "text", "text": part} if isinstance(part, str) else part for part in parts]
+                # The engine joins a message's text parts with "\n" (vLLM's chat_utils): the product's TEXT_JOIN.
+                texts.append(TEXT_JOIN.join(str(part.get("text", "")) for part in parts if part.get("type") == "text"))
+                media.append([str(part.get("type")) for part in parts if part.get("type") != "text"])
+            return {"input": texts, "media": media}
         inputs = body.get("input", body.get("texts"))
         return {"input": [inputs] if isinstance(inputs, str) else list(inputs or [])}
 

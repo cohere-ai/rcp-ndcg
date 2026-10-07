@@ -6,7 +6,7 @@ and its refusal of a wrong value.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from typing import Any, ClassVar
 
 import numpy as np
@@ -14,7 +14,7 @@ import pytest
 from pydantic import ValidationError
 from rcp_ndcg_core.content import Content
 
-from rcp_ndcg.errors import ConfigError
+from rcp_ndcg.errors import ConfigError, RequestRejectedError
 from rcp_ndcg.inference import (
     ADAPTER_ENTRY_POINTS,
     SELF_HOSTED_APIS,
@@ -70,7 +70,9 @@ class TestCallAndReply:
         assert Call("GET", "/models").headers == {}
 
     def test_a_call_refuses_a_method_that_is_not_get_or_post(self) -> None:
-        with pytest.raises(ValueError, match="GET.*POST"):
+        from rcp_ndcg.errors import DataError
+
+        with pytest.raises(DataError, match="GET.*POST"):
             Call("PUT", "/chat/completions")  # type: ignore[arg-type]
 
     def test_calls_and_replies_are_frozen(self) -> None:
@@ -158,7 +160,9 @@ class TestEmbedTypes:
         assert vectors.num_items == 2 and vectors.dim == 2 and not vectors.is_multi_vector
         ragged = Embeddings.ragged([np.ones((2, 3), dtype=np.float32), np.ones((1, 3), dtype=np.float32)])
         assert ragged.is_multi_vector and ragged.num_items == 2
-        with pytest.raises(ValueError, match="2-D"):
+        from rcp_ndcg.errors import DataError
+
+        with pytest.raises(DataError, match="2-D"):
             Embeddings(vectors=np.zeros(3, dtype=np.float32))
 
     def test_l2_normalize_scales_rows_to_unit_norm(self) -> None:
@@ -178,7 +182,9 @@ class TestRerankTypes:
 
     def test_a_rerank_result_refuses_a_mismatched_score_count(self) -> None:
         request = RerankRequest(Content.from_text("q"), (Content.from_text("a"), Content.from_text("b")))
-        with pytest.raises(ValueError, match="3 score\\(s\\).*2 document"):
+        from rcp_ndcg.errors import DataError
+
+        with pytest.raises(DataError, match="3 score\\(s\\).*2 document"):
             RerankResult.aligned(request, [0.9, 0.1, 0.5])
 
 
@@ -280,8 +286,10 @@ class TestRoleConfigs:
         assert identity_payload(config)["instruction"] == "fold"
 
     def test_a_listwise_reranker_refuses_a_batch_size(self) -> None:
+        from rcp_ndcg.errors import ConfigError
+
         budget = {"tokenizer": "t", "max_tokens": 8192, "use_activation": False}
-        with pytest.raises(ValidationError, match="listwise"):
+        with pytest.raises(ConfigError, match="listwise"):
             RerankEndpoint(base_url="http://a:8000/v1", model="jina-reranker-v3", listwise=True, batch_size=8, **budget)
         assert (
             RerankEndpoint(base_url="http://a:8000/v1", model="qwen3-reranker-8b", batch_size=8, **budget).batch_size
@@ -374,6 +382,11 @@ class _ProbeAdapter:
 
     name = "probe_adapter"
     role: ClassVar[AdapterRole] = "judge"
+    HOSTED = False
+    API_KEY_ENV = ()
+    KEY_REQUIRED = False
+    AUTH_HEADER = None
+    DEFAULT_BASE_URL = None
 
     def calls(self, request: Any, *, model: str) -> list[Call]:
         return [Call("POST", "/chat/completions", {"model": model})]
@@ -393,6 +406,13 @@ class _EmbedProbe(_ProbeAdapter):
 
 class _EmbedProbeAlias(_EmbedProbe):
     """A second class under the same registered name, for the duplicate-plugin refusal test."""
+
+
+class _UsagelessProbe(_EmbedProbe):
+    """An embed adapter whose ``usage`` is not callable: the entry-point loader refuses it at load."""
+
+    name: ClassVar[str] = "usageless_probe"
+    usage = None  # type: ignore[assignment]
 
 
 @pytest.fixture(autouse=True)
@@ -561,6 +581,13 @@ class TestAdapterEntryPoints:
         with pytest.raises(ConfigError, match="not_the_name"):
             known_adapters()
 
+    def test_an_entry_point_class_without_usage_is_refused_at_load(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The entry-point loader checks the adapter's shape like registration does: a class missing a member
+        fails at load with the list, never at its first request."""
+        self._install(monkeypatch, self._entry("embed.usageless_probe", "tests.inference.test_types:_UsagelessProbe"))
+        with pytest.raises(ConfigError, match="usage"):
+            known_adapters()
+
     def test_two_entry_points_registering_one_name_are_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._install(
             monkeypatch,
@@ -674,7 +701,7 @@ class TestEnginesEnv:
             EngineURLs(urls=["http://a:8000/v1", ""])
 
     def test_urls_must_not_list_a_replica_twice(self) -> None:
-        with pytest.raises(ValidationError, match="twice"):
+        with pytest.raises(ConfigError, match="twice"):
             EngineURLs(urls=["http://a:8000/v1", "http://a:8000/v1/"])
         with pytest.raises(ConfigError, match="twice"):
             parse_engines_env('{"judge": {"urls": ["http://a:8000/v1", "http://a:8000/v1"]}}')
@@ -704,3 +731,162 @@ class TestDeclarations:
         assert Endpoint.IDENTITY_ROLES["api"] is FieldRole.CONTENT
         assert Endpoint.IDENTITY_ROLES["headers_env"] is FieldRole.RUNTIME
         assert Endpoint.IDENTITY_ROLES["wait_on_outage_s"] is FieldRole.RUNTIME
+
+
+class TestConfigFamilyRefusals:
+    """One error shape per config family: every policy refusal is a :class:`ConfigError` with a hint naming
+    the field to change -- never a bare ``ValueError`` pydantic wraps into a hintless ``ValidationError``
+    -- and every declared mode the wire cannot carry is refused at the config, never ignored."""
+
+    def test_instruction_system_is_refused_at_the_config(self) -> None:
+        from rcp_ndcg.errors import ConfigError
+
+        budget = {"tokenizer": "t", "max_tokens": 8192, "use_activation": False}
+        with pytest.raises(ConfigError, match="system") as caught:
+            RerankEndpoint(base_url="http://a:8000/v1", model="m", instruction="system", **budget)
+        assert "fold" in (caught.value.hint or ""), "the hint names the modes a rerank wire can carry"
+
+    def test_a_pooling_config_refuses_an_inert_dimensions(self) -> None:
+        from rcp_ndcg.errors import ConfigError
+
+        with pytest.raises(ConfigError, match="dimensions") as caught:
+            PoolingEndpoint(
+                base_url="http://a:8000/v1", model="colqwen", dim=128, dimensions=32, tokenizer="t", max_tokens=8192
+            )
+        assert "drop dimensions" in (caught.value.hint or "")
+
+    @pytest.mark.parametrize(
+        ("kwargs", "message"),
+        [
+            ({"tokenizer": "t", "max_tokens": 1024, "on_overflow": "chunk"}, "chunk geometry"),
+            ({"tokenizer": "t", "max_tokens": 1024, "empty_doc_text": "NULL"}, "send_text"),
+        ],
+    )
+    def test_the_policy_refusals_carry_hints(self, kwargs: dict[str, Any], message: str) -> None:
+        from rcp_ndcg.errors import ConfigError
+
+        with pytest.raises(ConfigError, match=message) as caught:
+            EmbeddingEndpoint(api="cohere", model="m", **kwargs)
+        assert caught.value.hint, "a policy refusal names the next step"
+
+    def test_the_query_share_refusal_names_both_fields(self) -> None:
+        from rcp_ndcg.errors import ConfigError
+
+        with pytest.raises(ConfigError, match="query_max_tokens") as caught:
+            RerankEndpoint(
+                base_url="http://a:8000/v1",
+                model="m",
+                tokenizer="t",
+                max_tokens=100,
+                query_max_tokens=100,
+                use_activation=False,
+            )
+        assert "below max_tokens" in (caught.value.hint or "")
+
+
+class TestAdapterContractKit:
+    """The RFC-promised contract kit (``rcp_ndcg.testing.adapter_contract``): one check a wire adapter's own
+    tests call, refusing a class the transport would only trip over at its first request."""
+
+    def test_a_shipped_adapter_satisfies_the_contract(self) -> None:
+        from rcp_ndcg.inference.adapters.embeddings import OpenAIEmbeddings
+        from rcp_ndcg.testing import adapter_contract
+
+        adapter_contract(OpenAIEmbeddings, role="embed")
+        adapter_contract(OpenAIEmbeddings, role="embed", config=None)
+
+    def test_a_fact_less_class_fails_with_the_list(self) -> None:
+        from rcp_ndcg.testing import adapter_contract
+
+        class _FactLess:
+            name = "factless_probe"
+            role: ClassVar[AdapterRole] = "embed"
+
+            def calls(self, request: Any, *, model: str) -> list[Call]:
+                return []
+
+            def interpret(self, request: Any, replies: list[Reply]) -> Any:
+                return None
+
+            def usage(self, reply: Reply) -> None:
+                return None
+
+        with pytest.raises(AssertionError) as caught:
+            adapter_contract(_FactLess)
+        message = str(caught.value)
+        assert "credential fact HOSTED" in message and "DEFAULT_BASE_URL" in message
+        assert "did not construct" in message, "the constructor convention is part of the contract"
+        listed = message.splitlines()[1:]
+        assert len(listed) > 1 and all(line.startswith("  - ") for line in listed), "one bullet per failure"
+
+    def test_a_recorded_round_is_checked(self) -> None:
+        from rcp_ndcg.testing import adapter_contract
+
+        class _OkAdapter:
+            name = "ok_probe"
+            role: ClassVar[AdapterRole] = "embed"
+            HOSTED = False
+            API_KEY_ENV = ()
+            KEY_REQUIRED = False
+            AUTH_HEADER = None
+            DEFAULT_BASE_URL = None
+
+            def __init__(self, config: Any = None) -> None:
+                self.config = config  # the constructor convention: built with the role config
+
+            def calls(self, request: Any, *, model: str) -> list[Call]:
+                return [Call("POST", "/embeddings", {"model": model})]
+
+            def interpret(self, request: Any, replies: Sequence[Reply]) -> Any:
+                if len(replies) != 1:
+                    raise RequestRejectedError("one reply per call")
+                return "ok"
+
+            def usage(self, reply: Reply) -> None:
+                return None
+
+        request = object()
+        replies = [Reply(200, {"data": [{"index": 0, "embedding": [1.0, 1.0]}]}, {})]
+        adapter_contract(_OkAdapter, role="embed", request=request, replies=replies)
+
+        class _SilentAdapter(_OkAdapter):
+            interpret = _OkAdapter.calls  # type: ignore[assignment]  # never refuses anything
+
+        with pytest.raises(AssertionError) as caught:
+            adapter_contract(_SilentAdapter, role="embed", request=request, replies=replies)
+        assert "twice the replies" in str(caught.value)
+
+
+class TestConfigErrorsCarryNoUrlSecrets:
+    """A config refusal that names its URLs names them through the one redactor: credentials embedded in a
+    URL (userinfo, a query key) never reach the message, the hint or pydantic's rendered input value."""
+
+    SECRET = "https://u:fake-secret-pw@gw.example/v1?key=fake-secret-q"
+
+    @staticmethod
+    def _said(make: Any) -> str:
+        with pytest.raises(Exception) as caught:  # noqa: PT011 - any refusal; its text is the subject
+            make()
+        return f"{caught.value} {getattr(caught.value, 'hint', '')} {getattr(caught.value, 'details', '')}"
+
+    @pytest.mark.parametrize(
+        "make",
+        [
+            lambda url: Endpoint(base_url=[url, url], model="m"),
+            lambda url: Endpoint(base_url=[url, "fake://x"], model="m"),
+            lambda url: _judge_config(base_url=[url, url]),
+            lambda url: _judge_config(base_url=[url, "fake://x"]),
+            lambda url: EngineURLs(urls=(url, url)),
+        ],
+        ids=["endpoint-twice", "endpoint-fake-mix", "judge-twice", "judge-fake-mix", "engine-urls-twice"],
+    )
+    def test_a_url_refusal_is_redacted(self, make: Any) -> None:
+        said = self._said(lambda: make(self.SECRET))
+        assert "gw.example" in said
+        assert "fake-secret" not in said
+
+
+def _judge_config(**fields: Any) -> Any:
+    from rcp_ndcg.llm import JudgeConfig
+
+    return JudgeConfig(model="m", **fields)

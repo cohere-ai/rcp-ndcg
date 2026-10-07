@@ -32,6 +32,42 @@ released together.
   copies the client's cut to make an over-cap row pass. `schema/recipe.schema.json` carries the new value,
   and the new read-only property `ReferenceSpec.over_cap_deviation` names the declared over-cap deviation
   (or `None`), which the harness's stages read.
+- **The adapter seam's contract is declared and checked** (`rcp_ndcg.inference.adapters.base`): `AdapterBase`
+  carries the credential and capability ClassVars (`HOSTED`, `API_KEY_ENV`, `KEY_REQUIRED`, `AUTH_HEADER`,
+  `DEFAULT_BASE_URL`, `MAX_BATCH`, `SUPPORTS_DIMENSIONS`, `ENCODING_FORMAT`, `REQUEST_SHAPES`) with declared
+  defaults and the
+  constructor convention (an adapter is built with its role config). `register_adapter` and the
+  `rcp_ndcg.adapters` entry-point loader refuse a class without the three members (`calls`, `interpret`,
+  `usage`) or the five credential facts, and a class that does not declare `HOSTED` itself (the base's
+  `False` would silently serve a hosted wire as an engine) -- previously duck-typed with defaults that could
+  be wrong, and a
+  missing member failed only at the first request. `rcp_ndcg.testing.adapter_contract` is the contract-test
+  kit the unified-inference design promised: name/role, members, facts, construction, and a recorded round's
+  alignment and usage, as one listed failure set.
+- `AuthProfile.homes` and `AuthProfile.applies_to(url)` (`rcp_ndcg.inference.transport`): the URLs a
+  profile's key variables belong to, and whether they may authenticate a request to a replica URL -- exactly
+  one of them, a trailing slash aside (see Security).
+- `rcp_ndcg.support.urls.safe_url` (public): the form of a URL that may reach a log, an error or a record
+  -- userinfo, query and fragment stripped, the host and path as written. The one redactor: the inference
+  layer's logs, errors and engine records and the storage cache's messages (which lower-cased the bucket
+  name and broke an IPv6 host) all call it. `EngineInfo.url` validates itself through it, so a run manifest
+  never persists credentials embedded in a URL.
+- `rcp_ndcg.data.preprocess`: `fixed_overhead` (the one home of a request frame's fixed token cost, shared by
+  `fit` and the role clients' media allowances), `rendered_request` and `rendered_pair_tokens` (the one home
+  of the assembled render, so a client's budget check measures what `fit` verified), and
+  `TextBudget.shape_max_tokens(shape)` (the one home of a shape's budget: `query_max_tokens` on the embedding
+  roles' query shape, else `max_tokens`).
+- `rcp_ndcg.data.prepare`: `PreparedRequest.content_tokens` (per-content media token counts) and
+  `PreparedRequest.per_content()` (each content's slice of a prepared request, in one pass -- the role
+  clients prepare a request once and fit each wire request's slice, never re-inlining prepared bytes; a
+  corpus encode is one request, so the slicing is linear in it); `MediaCensus.recorded()` (the public read the tests use instead of private
+  state).
+- `rcp_ndcg.data.media`: `data_uri` (the one builder of every inline `data:` URI the package writes) and
+  `DEFAULT_IMAGE_MIME` beside it; `rcp_ndcg.data.prepare.DEFAULT_IMAGE_MIME` is re-exported from the new home.
+- `rcp_ndcg.inference`: `RoleClient.usage` (the sender's accounting, as the judge's), `EmbeddingClient.probe`
+  (the transport's replica probe; the embed client sends no media probe request, so it runs no engine media
+  check), and `VllmPooling.media_probe_baseline` (the media probe's no-media baseline, the same `messages`
+  shape).
 - **The role clients expose their text budget**: `EmbeddingClient`, `PoolingClient` and `RerankClient` gain the
   read-only `text_budget` (the `TextBudget` the client fits every request to, as built from its config; `None`
   without `max_tokens`), so harnesses and case loaders read the client's budget instead of rebuilding it.
@@ -113,6 +149,43 @@ released together.
   re-tokenizing the growing text at every step -- quadratic at 32768-token budgets, the network recipe tests'
   hang. A recipe tokenizer whose count never reaches twice the budget (a truncation ceiling in the file) is
   refused with a `HarnessError` instead of yielding a sample that was never over the cap.
+- **The offline fake draws one seeded stream per vector**: `rcp_ndcg.inference.fake`'s `/embeddings` and
+  `/pooling` vectors are one SHAKE-256 stream of the same parts each (read as `dim` uniforms), no longer one
+  SHA-256 per component, so a 16k-token text at 2048 dimensions answers in seconds instead of minutes. The
+  draw is bit-identical on every machine (the norm is exactly rounded, `math.fsum` of the squares: a BLAS
+  `np.linalg.norm` rounded its last bit by the CPU's kernel), but every fake vector's VALUES move
+  (deliberately; their shape, unit norm and per-text determinism do not); no shipped test or case pinned the
+  old values, and tests now pin the new draw's values and its exact bits. `fake_uniform` (the judge's, the reranker's and the token-id draws) is unchanged. The recipe tests'
+  8-wide probe copy of a 2048-wide multi-vector recipe is no longer what keeps them from hanging (the shipped
+  width now costs about twice the probe's time per text, not minutes) and stays: its assertions are
+  width-independent, and it keeps each probed answer small (an 8192-token text at 2048 dimensions is a
+  64 MiB float32 matrix on each side of the wire).
+- **The equivalence harness's stage 1 reads every wire shape** (`rcp_ndcg_vllm.equivalence`): a
+  `request_shape: token_ids` body is audited on the ids it sends (it crashed the audit with a `TypeError`),
+  the engine `/tokenize` check reports `not_run` for it (the engine tokenizes nothing), and the render check
+  compares those ids with the reference text's ids under the shape's `add_special_tokens` flag (it compared
+  the id list with the text, so a `token_ids` recipe never passed stage 1 with a reference); a `messages`
+  body is audited on its messages' text parts, joined with `rcp_ndcg_core.content.TEXT_JOIN` (`"\n"`, as
+  vLLM joins them), with its media parts listed as placeholders beside them (it
+  extracted as no input, and the audit passed having checked nothing); an audit that read no input now
+  fails. An `anchor: first` head is asserted on the assembled render, not on the head's standalone ids (a
+  byte-level BPE re-tokenizes the head's join with the content -- a trailing space into `Ġdocument`, a
+  Qwen-style `:` into `:Paris` -- which failed every request): a text body must start with the head's
+  characters and open with its tokens lying wholly inside them; a `token_ids` body must open with the head
+  tokens no content can merge away (measured on the head joined to a fixed set of probe continuations).
+  An `anchor: marker` audit counts the markers in the sent content without the post-processor's tokens, so a
+  post-processor that appends the same special (`add_special_tokens: true`) no longer stands in for a marker
+  the client dropped.
+- **The node scripts' Cloud SDK search is declared**: `wave0.sh` and `bootstrap.sh` put an SDK the auth script
+  installed on `PATH` through one function (`gcs_sdk_on_path` in `jobs/gcs.sh`, where each kept its own copy of
+  the loop) that searches `RCP_GCLOUD_SDK_DIRS` (colon-separated; unset, the same five install locations as
+  before; set empty, none). The node-script tests set it empty: their hermetic `PATH` was undone by that
+  search on a machine with an SDK in one of those locations (a GitHub runner's `/usr/lib/google-cloud-sdk`),
+  which then ran the machine's `gcloud storage cp`.
+- **A named recipe plugin is found in every staged wheelhouse**: `bootstrap.sh` installs a plugin named by a
+  recipe (not staged as a file) with one `--find-links` per existing `<stage>/extra/<name>/wheelhouse` beside
+  `<stage>/wheelhouse`, still `--no-index`: a plugin wheel staged through `rc_build.sh`'s `EXTRA_DIRS` lands
+  there and was not found, so the recipes that name it failed.
 - **The release publishes in install order**: `publish-vllm` waits for `publish-core` and `publish-rcp-ndcg` (it
   pins `rcp-ndcg==<version>` exactly, as `rcp-ndcg` pins the core). Every instant of the rollout installs, and a
   failed sibling can no longer strand a permanently uninstallable `rcp-ndcg-vllm` on PyPI.
@@ -1003,9 +1076,84 @@ released together.
   (probability), `empty_doc: send_text "NULL"`, and `mm_processor_kwargs` min_pixels 4096 / max_pixels 1310720
   (1280 tokens/image, R20). `reference.known_deviations: [anchor_drop_over_cap]`: the card's script truncates
   over-cap pairs itself. Status `unverified` until the GPU waves run stages 2-3.
-
-### Fixed
-
+- **The embedding and pooling media allowances count from the item shape's own budget.** Under a declared
+  `query_max_tokens` a query's media were fitted against `max_tokens` while the text fit measured the query
+  against its share, so an image that fit `max_tokens` but not the share was kept whole and the request was
+  refused (`the fixed template overhead ... plus the declared media ... already fill the budget`). The embed
+  role's `messages` route now fits its media like the pooling route: one preparation sliced per item (a second
+  preparation re-inlined the prepared bytes and recorded census rows against `data:` URIs), the kept media
+  recorded, and the allowance reserving the shape's fixed frame.
+- **A hosted rerank profile under `empty_doc: omit_zero` scores the documents after an omitted one.** The
+  vendor path (a documented `max_tokens`, no tokenizer) named its fit outputs by kept position while the
+  client reads original positions, so any omitted document before the last raised a bare `KeyError`.
+- **The judge's engine media check is the served roles' delta check.** The judge's probe now sends the probe
+  image and the same request without it, so a served chat template cancels and an honest engine passes; the
+  delta counts no text, so the check no longer needs (or loads) the judge's tokenizer.
+- **The rerank pair fit with media settles one query span for the whole batch and never ships a pair over the
+  budget.** The settlement probe reserved only the query's media while each pair's fit re-cut the query
+  against its own media-reduced cap, so a candidate set with one plain and one media document crashed on the
+  fit's own consistency check (`DataError: the pair fit settled the shared query differently ... this is a
+  bug`), and a lone media pair shipped the probe's un-cut query beside its media -- over `max_tokens`,
+  leaving the truncation to the engine. The request is now prepared once and sliced, the media fit runs
+  against an allowance that reserves the fixed template overhead (never the bare `max_tokens`, which left a
+  dead zone where the media fit and the text fit disagreed) and `fit`'s own pair invariants, the query's
+  media are decided once for the batch, the probe settles against the documents' maximum media count, and
+  the span the pair fit verified is the span the wire carries, re-checked against the budget before send.
+- **The engine media check compares the engine's media DELTA, not its whole prompt.** The old check demanded
+  exact equality between the engine's `usage.prompt_tokens` and a client count that excludes the chat
+  template and the post-processor specials every real route adds -- any correctly serving engine failed the
+  startup gate. The probe now sends the prepared image and the same request without its media, and the DELTA
+  of the two reports (template and text cancel) is compared with the counted media tokens. The probe's bare
+  assert is gone (the delta needs no tokenizer) and the key-name-heuristic text walker went with it; the
+  passing-path tests pin hand-verified counts, not the client's own arithmetic.
+- **Retrieval-role usage is forwarded and recorded**: the three role clients fold every reply's token report
+  into the transport with `add_usage` (the judge's per-reply rule) and `RoleClient.usage` exposes it -- an
+  embed/pool/rerank run records the tokens its replies reported, never zeros.
+- **`Transport.run()` is thread-safe**: concurrent sync callers queue on a bridge lock instead of racing two
+  `run_until_complete` passes on the shared loop (the second died with `This event loop is already running`
+  and its batch aborted); a `close()` from another thread waits for an in-flight sync-bridge call instead of
+  raising `CancelledError` into it, and defers the pool's close to the last in-flight call on the background
+  thread a `run()` inside a running loop uses (never closing the pool under it, and never waiting for a call
+  that is itself awaiting the close -- code inside such a call may hand `close()` to an executor), and a rebinding concurrency gate closes the previous loop's pool best-effort.
+- A server `Retry-After` of `nan` (sleeping forever, wedging the request inside the retry loop), a negative
+  value (hammering the rate limiter) or any other garbage falls back to the doubling backoff; a usable value
+  is clamped to the retry cap.
+- URL userinfo and query are stripped from every log line, error message and engine record (`safe_url`,
+  an `EngineInfo` validator, and the outage message naming the failure's own words instead of the raw httpx
+  exception whose text carries the request URL).
+- `MediaCensus` survives a torn last line of its shared log (the failure class the judgement store's journal
+  repairs): the tail is skipped with a warning, rows are read defensively, and the dedup key names the
+  outcome (`dropped`) beside the source, so a kept row never hides a later drop; records are serialised.
+- `apply_media_fit` carries `frame_indices` through frame drops: a video whose frames the budget dropped no
+  longer ships a part whose `frame_indices` still record the pre-drop sampling (the next count refused it as
+  a corrupt corpus record).
+- One home for the inline media: every `data:` URI the package writes is built by
+  `rcp_ndcg.data.media.data_uri`; the chat adapter reads the container bytes through the media resolver; a
+  non-base64 `data:` URI is a typed `MediaError` (not `media not found`); `hydrate` takes the inline path for
+  every data URI (hash or not) and never wipes a partial dimension record; a truncated-but-box-structured
+  MP4/MOV header is probed as far as it goes (`recorded unprobed`) instead of raising bare
+  `struct.error`/`IndexError`.
+- The `/pooling` reply's corners are refused by name: duplicated or partial `index` rows are validated like
+  the embeddings parser's rule, a framing metadata header that is JSON but not an object is a
+  `ProviderError` (not a bare `AttributeError`), a usage dict without `prompt_tokens` refuses the dim
+  cross-check instead of silently skipping it, and an unknown `endianness` is a typed refusal (a mislabeled
+  frame silently decoded little would be garbage floats).
+- The hosted batch cap (`MAX_BATCH`) applies to HOSTED use only: a served `openai_embeddings` engine answers
+  its own over-count batch (HTTP 413, mapped to a typed `CapabilityError` naming `batch_size`) instead of a
+  stale client-side 128 refusing a batch the engine would serve. The `OpenAIEmbeddings` 128 constant is gone
+  (its check could never apply to a served engine and its number is stale even for the hosted route, whose
+  own over-count refusal, an HTTP 400, surfaces as a `RequestRejectedError` with the API's message).
+  The rule is the client base's, one for every role: the pooling client used to refuse above any declared
+  cap, a served `/pooling` wire's included.
+- `TextBudget.identity` requires and verifies the budget's loaded tokenizer: the SHA-256 is the one field it
+  exists to carry, and two tokenizers are not told apart by name (a budget without its loaded tokenizer used
+  to produce colliding identities).
+- The fake engine speaks the wire claims its docstrings make: `usage.total_tokens` equals `prompt_tokens`, a
+  rerank document keyed by `id` draws that document's ability, and `/pooling` honours the request's
+  `endianness`.
+- The media gates' `CapabilityError`s carry hints naming the field to change, and `DocStub`-level over-claims
+  are corrected (`MediaFit.tokens`'s exact-vs-bound count, the truncation census' "two mechanisms" listing
+  three).
 - **MaxSim no longer corrupts or drops empty items** (`rcp_ndcg.retrieval.maxsim`): the reduceat grouping
   clamped a trailing empty item's start into the last column/row, which truncated its predecessor's score by
   one token (a 2-token item next to an empty one scored over all but its last token, on either axis), and a
@@ -1321,6 +1469,25 @@ released together.
 
 ### Changed
 
+- **One error shape for the role-config family**: every policy refusal raises `ConfigError` with a hint
+  naming the field to change -- never a bare `ValueError` that pydantic wraps into a hintless
+  `ValidationError` (the chunk geometry, `empty_doc_text`, `query_max_tokens`, `media_sides`, `mrl_dim`, a
+  rerank `request_shape`, `listwise` with `batch_size`). Sibling validators of one family used to raise two
+  error families.
+- **Declared modes the wire cannot carry are refused at the config, never silently ignored**:
+  `instruction: "system"` on a rerank config (no shipped rerank wire has a system-message slot -- the
+  instruction would never reach the model; use `fold`, `field` or `none`), and `PoolingEndpoint.dimensions`
+  (inherited, never sent by `/pooling`, yet re-keying every identity over full-width vectors).
+- **Bare `ValueError`s across the budget and wire types raise typed errors** (AGENTS: typed errors from
+  `rcp_ndcg.errors`): `fit`'s argument checks, the truncation census' mechanism check,
+  `uniform_frame_indices`, `smart_resize`, `Call`, `Embeddings`' layout invariants and `concat`,
+  `RerankResult.aligned` -- now `DataError` with hints. Code that caught `ValueError` for these must catch
+  `rcp_ndcg.errors.DataError`.
+- The role clients instantiate their adapters uniformly with the role config (`adapter_cls(config)`, the
+  documented convention; an adapter that needs no config accepts and ignores it).
+- The `PoolingEndpoint` docstrings state what the `/pooling` wire takes; the vector clients' `on_overflow:
+  chunk` refusal is now described where the fields are declared (chunking is a rerank-only mode: an
+  embedding has no score to pool, token vectors are not scores).
 - **The documentation is reorganised into Concepts, How-to and Reference tiers**: `docs/tutorials/` is now
   `docs/how-to/`; the served-role budgets move from `docs/concepts/preprocessing.md` to
   `docs/concepts/text-budgets.md`; judges and runners split into `docs/concepts/judges.md` and
@@ -1528,6 +1695,26 @@ released together.
 
 ### Security
 
+- **A profile's default key variables travel only to the profile's own default host** (`OPENAI_API_KEY`,
+  `CO_API_KEY`, `VOYAGE_API_KEY`, `GEMINI_API_KEY`, ...). The transport decides it per replica: a request to
+  any other URL (a self-hosted engine, a gateway, a third party, a transport injected on another endpoint, a
+  judge config swapped to another URL, a stranger in a replica list) carries a key only through the
+  config's explicit `api_key_env`. A variable set for one vendor used to authenticate any `base_url`.
+- **A config refusal never prints a URL's credentials**: `Endpoint`/`JudgeConfig.base_url` (a replica listed
+  twice, the offline fakes mixed into a replica list) and `EngineURLs.urls` (a replica listed twice) raise a
+  typed `ConfigError` naming the URLs through `safe_url`, instead of a `ValueError` whose message -- and
+  pydantic's rendered `input_value` -- repeated them with userinfo and query. `safe_url` and `redact_urls`
+  live in `rcp_ndcg.support.urls` (the support layer, so the serve specs below storage can use them).
+- **An explicitly named `api_key_env` travels only to the naming config's own URLs** -- its `base_url`
+  replicas, or the profile's default host when it names none -- never to an injected transport aimed at
+  another URL (fail closed); an injected transport on the config's own URLs keeps receiving it. A home is the
+  exact URL: a host or path that only begins like it, or a query, fragment or userinfo on it, is not home.
+- **Credentials embedded in a URL never reach a record, a log or a traceback** (`https://user:pw@host/v1?key=...`):
+  an engine record's `error` (persisted in the run manifest and the judgement store) carries the failure's
+  type and HTTP status instead of httpx's text, which names the full request URL; the transport chains a
+  redacted stand-in under `BackendUnavailableError` and `RequestRejectedError` instead of the httpx
+  exception; every rerank error names its server through `safe_url`, in the message and in `details`.
+  `rcp_ndcg.support.urls.redact_urls` redacts every URL in free text, beside `safe_url`.
 - Dependabot alerts on the default branch's lock (operator snapshot): every alert the lock could carry is
   closed in this one. The `vllm` alerts (27 open when read, the operator's snapshot counted 11, highs among
   them) and its engine-only dependencies (`xgrammar`, `diskcache`) leave the lock with the extras;

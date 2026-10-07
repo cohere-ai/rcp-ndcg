@@ -5,6 +5,8 @@
 # executed, never printed, and its output is never echoed; it sets up the credentials every path uses),
 # then the transfer path is chosen once and recorded for the report:
 #
+#   gcs_sdk_on_path         -> after the auth script: an installed Cloud SDK's bin dir first on PATH,
+#                              searched in RCP_GCLOUD_SDK_DIRS (empty: no search)
 #   gcs_transfer_detect     -> prints gcloud | gsutil | python
 #   gcs_cp SRC DST [dir|file|auto] -> copy a file or directory, either side gs://; for a gs:// source
 #                              the kind is required (auto is for local sources)
@@ -17,6 +19,27 @@
 # interpreter come from the caller (GCS_TOOLS_DIR, GCS_PYTHON), so no default hides a machine path.
 
 set -euo pipefail
+
+#: Put a Cloud SDK's bin directory first on PATH, once the auth script ran (it may install the SDK; a
+#: child process cannot change our PATH): the first directory of RCP_GCLOUD_SDK_DIRS (colon-separated)
+#: that holds gcloud or gsutil. Unset, the list is the SDK's usual install locations below; set EMPTY,
+#: nothing is searched (the tests' hermetic PATH: a machine's SDK never stands in for an absent CLI).
+gcs_sdk_on_path() {
+  local default="$HOME/google-cloud-sdk/bin:/root/google-cloud-sdk/bin:/opt/google-cloud-sdk/bin"
+  default+=":/usr/lib/google-cloud-sdk/bin:/usr/local/google-cloud-sdk/bin"
+  local dirs="${RCP_GCLOUD_SDK_DIRS-$default}" sdk_bin
+  local -a candidates=()
+  if [[ -n "$dirs" ]]; then
+    IFS=: read -r -a candidates <<<"$dirs"
+  fi
+  for sdk_bin in "${candidates[@]}"; do
+    if [[ -n "$sdk_bin" && (-x "$sdk_bin/gcloud" || -x "$sdk_bin/gsutil") ]]; then
+      export PATH="$sdk_bin:$PATH"
+      return 0
+    fi
+  done
+  return 0
+}
 
 #: The transfer path wave 0 records: gcloud, gsutil, or python (the gcsfs helper).
 gcs_transfer_detect() {

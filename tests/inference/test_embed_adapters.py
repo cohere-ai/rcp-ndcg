@@ -7,6 +7,7 @@ Every test is offline: adapters build and read
 from __future__ import annotations
 
 import base64
+import re
 from typing import Any, ClassVar
 
 import numpy as np
@@ -22,6 +23,7 @@ from rcp_ndcg.inference.adapters.embeddings import (
     VoyageEmbeddings,
 )
 from rcp_ndcg.inference.types import Reply, TokenCount
+from tests.docs._markdown import ROOT
 from tests.inference._embed import embeddings_data, vendor_payload
 
 #: Every shipped embedding adapter, under its registered name.
@@ -183,12 +185,31 @@ class TestGeminiShape:
 
 class TestProfiles:
     def test_every_profile_declares_its_published_batch_cap(self) -> None:
+        """A hosted profile declares its published cap; the shared served shape (``openai_embeddings``)
+        declares none: a served engine's own over-count refusal is the cap."""
         assert {name: cls.MAX_BATCH for name, cls in ADAPTERS.items()} == {
-            "openai_embeddings": 128,
+            "openai_embeddings": None,
             "cohere": 96,
             "voyage": 128,
             "gemini": 100,
         }
+
+    def test_a_declared_batch_cap_is_one_the_client_enforces(self) -> None:
+        """The client refuses an over-cap batch only on a HOSTED profile (a served engine answers its own
+        refusal), so a cap declared on a non-hosted shape is dead: it documents a refusal that never fires."""
+        dead = {name for name, cls in ADAPTERS.items() if cls.MAX_BATCH is not None and not cls.HOSTED}
+        assert dead == set()
+
+    def test_the_concepts_page_lists_exactly_the_caps_the_client_enforces(self) -> None:
+        """``docs/concepts/embeddings.md`` names the batch caps a config is refused above: exactly the HOSTED
+        profiles' ``MAX_BATCH``, no refusal the client never makes (the hosted OpenAI 128 was one)."""
+        page = (ROOT / "docs" / "concepts" / "embeddings.md").read_text(encoding="utf-8")
+        row = next(line for line in page.splitlines() if line.startswith("| `batch_size` |"))
+        listed = re.search(r"published cap \(([^)]*)\)", row)
+        assert listed is not None, row
+        documented = {name.lower(): int(cap) for name, cap in re.findall(r"(\w+) (\d+)", listed.group(1))}
+        enforced = {name: cls.MAX_BATCH for name, cls in ADAPTERS.items() if cls.HOSTED and cls.MAX_BATCH}
+        assert documented == enforced
 
     def test_every_profile_names_its_public_base_url(self) -> None:
         assert {name: cls.DEFAULT_BASE_URL for name, cls in ADAPTERS.items()} == {
@@ -402,3 +423,26 @@ class TestRefusals:
         body = {"data": [{"index": 0, "embedding": [1.0, 0.0]}, {"index": 1, "embedding": [1.0, 0.0, 0.0]}]}
         with pytest.raises(RequestRejectedError, match="differing dimension"):
             self.adapter.interpret(request(texts=("a", "b")), [reply(200, body)])
+
+
+class TestNullEmbeddingRefused:
+    """A NULL embedding (a mutation that survived the sweep's suite) is refused: one entry without usable
+    data is a refused answer, never a silent zero row the corpus would index."""
+
+    def test_a_null_embedding_is_refused(self) -> None:
+        from rcp_ndcg.errors import RequestRejectedError
+
+        reply = Reply(200, {"data": [{"index": 0, "embedding": None}]}, {})
+        with pytest.raises(RequestRejectedError, match="without"):
+            OpenAIEmbeddings().interpret(
+                EmbedRequest(contents=(Content.from_text("x"),), role=EncodeRole.DOCUMENT), [reply]
+            )
+
+    def test_a_missing_embedding_entry_is_refused(self) -> None:
+        from rcp_ndcg.errors import RequestRejectedError
+
+        reply = Reply(200, {"data": [{"index": 0}]}, {})
+        with pytest.raises(RequestRejectedError, match="embedding"):
+            OpenAIEmbeddings().interpret(
+                EmbedRequest(contents=(Content.from_text("x"),), role=EncodeRole.DOCUMENT), [reply]
+            )

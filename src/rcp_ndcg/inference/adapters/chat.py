@@ -34,7 +34,7 @@ from typing import Any, ClassVar, NamedTuple, Protocol
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 
 from rcp_ndcg.errors import CapabilityError, DataError, RequestRejectedError
-from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
+from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, register_adapter
 from rcp_ndcg.inference.types import Call, Completion, CompletionInput, Reply, TokenCount
 from rcp_ndcg.support.logging import get_logger
 
@@ -171,8 +171,7 @@ def _video_block(ref: MediaRef, resolver: Any) -> dict[str, Any]:
             "(`RCP_NDCG_MAX_VIDEO_BYTES`). Shorten or re-encode the clip at ingest, or raise the limit "
             "knowingly -- every window re-sends it."
         )
-    path = resolver.local_path(ref)
-    return {"type": "video_url", "video_url": {"url": _video_data_uri(ref.cache_key, str(path), mime)}}
+    return {"type": "video_url", "video_url": {"url": _video_data_uri(ref.cache_key, ref.model_dump_json(), mime)}}
 
 
 def _image_block(ref: MediaRef) -> dict[str, Any]:
@@ -196,10 +195,15 @@ VIDEO_CACHE_SIZE = int(os.environ.get("RCP_NDCG_VIDEO_CACHE_SIZE", "16"))
 
 
 @lru_cache(maxsize=VIDEO_CACHE_SIZE)
-def _video_data_uri(cache_key: str, path: str, mime: str) -> str:
-    """The data URI for one cached video container, keyed by :attr:`MediaRef.cache_key` (the content hash when
-    there is one)."""
-    return f"data:{mime};base64," + base64.b64encode(Path(path).read_bytes()).decode("ascii")
+def _video_data_uri(cache_key: str, ref_json: str, mime: str) -> str:
+    """The data URI for one cached video container, keyed by the ref's cache key (its content hash when
+    there is one). The bytes are read through the media resolver -- the one read path -- and inlined with
+    the one :func:`~rcp_ndcg.data.media.data_uri` builder, so every data URI the package produces is the
+    same form."""
+    from rcp_ndcg.data.media import data_uri, default_resolver
+
+    ref = MediaRef.model_validate_json(ref_json)
+    return data_uri(mime, base64.b64encode(default_resolver().bytes_of(ref)).decode("ascii"))
 
 
 # ---------------------------------------------------------------------------
@@ -237,7 +241,7 @@ def _flatten(value: object) -> str:
 
 
 @register_adapter
-class OpenAIChat:
+class OpenAIChat(AdapterBase):
     """The judge's wire adapter: one :class:`~rcp_ndcg.inference.types.CompletionInput` in, one
     :class:`~rcp_ndcg.inference.types.Completion` out, over ``POST {base_url}/chat/completions``.
 
@@ -256,8 +260,10 @@ class OpenAIChat:
     role: ClassVar[AdapterRole] = "judge"
     """The role the adapter serves: one prompt in, one answer out."""
 
+    HOSTED: ClassVar[bool] = False  # any OpenAI-compatible chat server; the key is the config's api_key_env
+
     def __init__(self, config: ChatSettings) -> None:
-        self.config = config
+        super().__init__(config)
         self._reasoning_checked = False
         self._answers_without_reasoning = 0
 

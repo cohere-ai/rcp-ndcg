@@ -1,4 +1,4 @@
-"""The role-client base: the one class every role client derives from (R5, R14, R15).
+"""The role-client base: the one class every role client derives from.
 
 Three role clients built in parallel answered the same questions three ways -- how credentials are
 resolved, how a synchronous caller reaches asyncio, how a client closes, where a hosted profile's base
@@ -9,18 +9,18 @@ URL comes from. This base answers each once:
 * **the hosted profile's default base URL** -- the config's ``base_url``, else the adapter's
   ``DEFAULT_BASE_URL``; a config with neither is refused;
 * **the transport** -- built from the resolved config (with the adapter profile's
-  :class:`~rcp_ndcg.inference.transport.AuthProfile`, so the key resolution lives in the transport, R6)
+  :class:`~rcp_ndcg.inference.transport.AuthProfile`, so the key resolution lives in the transport)
   unless the caller supplies a :class:`~rcp_ndcg.inference.transport.Sender`;
 * **the sync bridge, one rule** -- the sender's ``run``: a :class:`~rcp_ndcg.inference.transport.Transport`
   always has it, and any other sender must provide ``run`` (or the constructor raises a ``ConfigError``).
   Chosen over an ``asyncio.run`` fallback: a fresh loop per call would give a non-transport sender no pool
   reuse and would fail inside a running loop (a notebook), where ``Transport.run`` already knows to switch
   to a background thread;
-* **the lifecycle** -- ``close()`` synchronous, ``async aclose()`` awaiting (R15), and both context
+* **the lifecycle** -- ``close()`` synchronous, ``async aclose()`` awaiting, and both context
   managers (``with`` and ``async with``);
-* **the fan-out, one rule** (R7) -- :meth:`RoleClient.gather`: :class:`asyncio.TaskGroup` semantics, so a
+* **the fan-out, one rule** -- :meth:`RoleClient.gather`: :class:`asyncio.TaskGroup` semantics, so a
   failing request cancels its siblings and leaves no task pending;
-* **the text budget and the media** (item 4) -- :class:`~rcp_ndcg.data.preprocess.TextBudget` resolved
+* **the text budget and the media** -- :class:`~rcp_ndcg.data.preprocess.TextBudget` resolved
   from the role config's fields once, the tokenizer it names loaded once, the shared
   :func:`rcp_ndcg.data.preprocess.fit` called from each client's ``_prepare``, and the media prepared per
   request through :func:`~rcp_ndcg.data.prepare.prepare_request` (tokens reserved whole, never cut).
@@ -53,15 +53,16 @@ from rcp_ndcg.data.preprocess import (
     TextBudgetExceededError,
     TextTruncationCensus,
     fit,
+    fixed_overhead,
 )
 from rcp_ndcg.data.resolution import ImagePolicy, MediaTokenCount, VideoPolicy, content_media_tokens
 from rcp_ndcg.data.templates import RequestShape
-from rcp_ndcg.errors import CapabilityError, ConfigError
+from rcp_ndcg.errors import CapabilityError, ConfigError, DataError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
 from rcp_ndcg.inference.adapters.base import AdapterRole, get_adapter
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.transport import AuthProfile, Sender, Transport
-from rcp_ndcg.inference.types import Call, Reply, TokenCount
+from rcp_ndcg.inference.types import Call, Reply, TokenCount, Usage
 from rcp_ndcg.support.logging import get_logger
 
 _TRANSPORT_CLASS = Transport
@@ -74,8 +75,31 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 """The result type of a coroutine the fan-out runs."""
 
-C = TypeVar("C", bound=Endpoint)
-"""The role config a client serves (an :class:`~rcp_ndcg.inference.endpoint.Endpoint` subclass)."""
+
+def _check_batch_size(adapter: type[Any], size: int, *, noun: str = "items") -> None:
+    """Refuse a request size above the profile's published cap, instead of silently capping it -- the one
+    batch-cap rule of every role.
+
+    The cap is a HOSTED profile's own fact: a served engine (vLLM, SGLang, TEI, Infinity -- the
+    ``openai_embeddings`` and ``/pooling`` shapes) answers an over-count batch with its own refusal, which
+    the adapter maps to a typed :class:`~rcp_ndcg.errors.CapabilityError` naming ``batch_size`` -- a stale
+    client-side cap must not refuse a batch the engine would serve.
+
+    Args:
+        adapter: The resolved adapter class (its ``MAX_BATCH`` and ``HOSTED`` facts).
+        size: The request size.
+        noun: What one batch entry is called in the message (``texts``, ``items``).
+
+    Raises:
+        ConfigError: a HOSTED profile's published cap is exceeded.
+    """
+    max_batch = getattr(adapter, "MAX_BATCH", None)
+    if max_batch is not None and getattr(adapter, "HOSTED", False) and size > max_batch:
+        raise ConfigError(
+            f"the {getattr(adapter, 'name', '?')} API takes at most {max_batch} {noun} per request; "
+            f"batch_size is {size}",
+            hint=f"set batch_size to {max_batch} or less, or leave it unset",
+        )
 
 
 class PreparedItems(NamedTuple):
@@ -114,7 +138,8 @@ class RoleClient[C: Endpoint]:
     """
 
     #: The adapter role this client speaks: the registry namespace its config's ``api`` resolves in, and
-    #: the engine role of the configs it serves (F7 keeps the two vocabularies mapped in one place).
+    #: the engine role of the configs it serves (the two vocabularies are mapped in one place, in
+    #: :func:`~rcp_ndcg.inference.adapters.base.check_engine_api`).
     ROLE: ClassVar[AdapterRole]
 
     #: The adapter a config's unset ``api`` resolves to, per client class. The other roles default the field
@@ -127,8 +152,15 @@ class RoleClient[C: Endpoint]:
     #: typed refusal.
     MEDIA_ON_WIRE: ClassVar[bool] = True
 
+    #: How one batch entry is named in the batch-cap refusal (:func:`_check_batch_size`).
+    BATCH_NOUN: ClassVar[str] = "items"
+
     #: The role config, as it was given (a hosted profile's ``base_url`` stays ``None``).
     config: C
+
+    #: The wire adapter instance the subclass builds (an embed/pool adapter is stateless; the rerank
+    #: family's holds the config it serves).
+    _adapter: Any
 
     def __init__(
         self,
@@ -186,7 +218,7 @@ class RoleClient[C: Endpoint]:
     @staticmethod
     def _resolved_endpoint(config: C, adapter: type[Any]) -> C:
         """The config as the transport and adapter receive it: the profile's public URL when ``base_url`` is
-        ``None``. The credentials are the transport's business now (R6): ``api_key_env`` is never cleared."""
+        ``None``. The credentials are the transport's business now: ``api_key_env`` is never cleared."""
         if config.base_url is not None:
             return config
         default = getattr(adapter, "DEFAULT_BASE_URL", None)
@@ -199,7 +231,7 @@ class RoleClient[C: Endpoint]:
         return config.model_copy(update={"base_url": default})
 
     def _check_use_activation(self, config: C) -> None:
-        """F10, keyed on the resolved adapter: a *served* rerank wire (one whose profile is not HOSTED)
+        """Keyed on the resolved adapter: a *served* rerank wire (one whose profile is not HOSTED)
         must be told whether its activation runs -- ``None`` would send nothing and let the engine's
         default apply, and two engines with different defaults would then share an identity. Hosted
         profiles keep ``None`` (their scale is fixed). The shipped names are refused at the config, so the
@@ -230,20 +262,22 @@ class RoleClient[C: Endpoint]:
 
     def _auth_profile(self) -> AuthProfile:
         """The credential facts of this client's config and adapter, for the transport to resolve the key
-        from (R6): the config's ``api_key_env`` names the variable when it is set (an unset named variable is
-        an error, whatever the profile's rule), else the adapter profile's variables with its required-ness;
-        the header is always the adapter's."""
+        from, per replica: the config's ``api_key_env`` names the variable when it is set (required: an
+        unset named variable is an error), homed at the config's own URLs -- its replicas, or the profile's
+        default host when it names none -- so an injected transport aimed elsewhere never receives it; else
+        the adapter profile's variables with its required-ness, homed at the profile's own default host (a
+        variable set for one vendor never authenticates a request to a self-hosted engine, a gateway or a
+        third party, however the transport was built). The header is always the adapter's."""
+        header = getattr(self._adapter_cls, "AUTH_HEADER", None)
         named = getattr(self.config, "api_key_env", None)
         if named is not None:
-            return AuthProfile(
-                variables=(named,),
-                required=True,
-                header=getattr(self._adapter_cls, "AUTH_HEADER", None),
-            )
+            return AuthProfile(variables=(named,), required=True, header=header, homes=self.endpoint.urls)
+        default = getattr(self._adapter_cls, "DEFAULT_BASE_URL", None)
         return AuthProfile(
             variables=tuple(getattr(self._adapter_cls, "API_KEY_ENV", ())),
             required=bool(getattr(self._adapter_cls, "KEY_REQUIRED", False)),
-            header=getattr(self._adapter_cls, "AUTH_HEADER", None),
+            header=header,
+            homes=(default,) if default is not None else (),
         )
 
     def _point_sender_at_the_profile(self) -> None:
@@ -255,7 +289,7 @@ class RoleClient[C: Endpoint]:
         if isinstance(self._sender, _TRANSPORT_CLASS):
             self._sender.set_auth(self._auth_profile())
 
-    # -- the text budget (item 4) -------------------------------------------
+    # -- the text budget ----------------------------------------------------
     @property
     def text_budget(self) -> TextBudget | None:
         """The text budget every request of this client is fitted to, as built from its config (``None``: the
@@ -370,24 +404,39 @@ class RoleClient[C: Endpoint]:
                     raise CapabilityError(
                         f"{self.config.model} is not declared to read {kind} (max_{kind}: 0), but this "
                         f"request carries {count_}. Declare max_{kind} for a checkpoint that reads them, or "
-                        "drop the media parts from the corpus."
+                        "drop the media parts from the corpus.",
+                        hint=f"declare max_{kind} on the role config for a checkpoint that reads them",
                     )
                 if count_ > limit:
                     raise CapabilityError(
                         f"this request carries {count_} {kind} and the endpoint accepts {limit} per request "
-                        f"(max_{kind}). Split the request, or raise the limit on the server and here."
+                        f"(max_{kind}). Split the request, or raise the limit on the server and here.",
+                        hint=f"lower batch_size so fewer {kind} ride one request, or raise max_{kind} (and "
+                        "the server's per-request media limit with it)",
                     )
 
-    def _prepare_request(self, contents: Sequence[Content]) -> PreparedRequest:
+    def _prepare_request(self, contents: Sequence[Content], *, doc_ids: Sequence[str] | None = None) -> PreparedRequest:
         """The one preparation call for a request's contents: media sized exactly as the judge's, the
-        request's media token counts.
+        request's media token counts -- and, when ``doc_ids`` names each content, the kept media recorded
+        into the media census (the judge's rows, beside which the fit records its drops; the outcome is
+        part of the census' dedup key, so a kept row never hides a later drop).
 
         The media gates are each wire call's (see :meth:`_gate_media_calls`), not this call's.
         """
         if not self._media_is_on_wire() and any(content.has_media for content in contents):
             self._refuse_media_before_preparation(contents)
         image, video = self._media_policies()
-        return prepare_request(contents, image, video)
+        prepared = prepare_request(contents, image, video)
+        if doc_ids is not None and prepared.media:
+            if len(doc_ids) != len(contents):
+                raise DataError(
+                    f"{len(doc_ids)} doc_id(s) for {len(contents)} content(s); one doc_id per content names "
+                    "the census rows of a request's prepared media",
+                )
+            for one, doc_id in zip(prepared.per_content(), doc_ids, strict=True):
+                if one.media:
+                    self.media_census.record(corpus=self.ROLE, doc_id=doc_id, media=one.media, dropped=False)
+        return prepared
 
     def _media_is_on_wire(self) -> bool:
         """Whether this client's wire carries media: the class flag (the pool and rerank wires lower media
@@ -418,19 +467,67 @@ class RoleClient[C: Endpoint]:
                         "media-preparation mechanism",
                     )
 
+    def _fit_media_per_item(
+        self, request: PreparedRequest, *, shape: RequestShape, doc_ids: Sequence[str]
+    ) -> tuple[list[Content], list[int]]:
+        """The media fit of a request whose wire carries ONE item per budget (the pooling items, the
+        embeddings inputs): each item's media fitted on its own, sliced from the one preparation
+        (:meth:`PreparedRequest.per_content`, never a second preparation), against the item shape's budget
+        (:meth:`~rcp_ndcg.data.preprocess.TextBudget.shape_max_tokens`) minus that shape's fixed frame
+        (:func:`~rcp_ndcg.data.preprocess.fixed_overhead`) -- the threshold the text fit measures, so the
+        media fit never keeps what the text fit then refuses.
+
+        Args:
+            request: The request's one preparation (:meth:`_prepare_request`).
+            shape: The items' request shape (``query`` or ``document``).
+            doc_ids: One census doc_id per item, for the drop rows.
+
+        Returns:
+            ``(contents, media_tokens)``: per item, the content to send and its media token count after
+            the fit. Without a budget or media, the prepared contents and zeros.
+        """
+        if self._budget is None or not request.media:
+            return list(request.contents), [0] * len(request.contents)
+        allowance = max(self._budget.shape_max_tokens(shape) - fixed_overhead(self._budget, self._tokenizer, shape), 0)
+        fitted = [
+            self._fit_media_for_request(one.contents, doc_ids=[doc_id], prepared=one, allowance=allowance)
+            for one, doc_id in zip(request.per_content(), doc_ids, strict=True)
+        ]
+        return [pair[0][0] for pair in fitted], [pair[1] for pair in fitted]
+
     def _fit_media_for_request(
-        self, contents: Sequence[Content], *, doc_ids: Sequence[str]
+        self,
+        contents: Sequence[Content],
+        *,
+        doc_ids: Sequence[str],
+        prepared: PreparedRequest | None = None,
+        allowance: int | None = None,
     ) -> tuple[list[Content], int]:
         """The media fit for ONE wire request's contents: media never cut, drops recorded.
 
         The budget's ``max_tokens`` bounds one wire request (the shipped tests cut each request
         individually; ``batch_size`` is how fast, never what), so the fit runs per request -- the pool
         role's per item (its media wire is one item per call), the rerank role's per (query, document)
-        pair. When the request's media alone exceed it, the declared overflow policy decides -- ``cut``
-        (the default): :func:`~rcp_ndcg.data.prepare.fit_media_to_budget` shrinks to the policy minimum,
-        then drops whole items most expensive first, every drop recorded in the media census with
+        pair. When the request's media alone exceed the allowance, the declared overflow policy decides --
+        ``cut`` (the default): :func:`~rcp_ndcg.data.prepare.fit_media_to_budget` shrinks to the policy
+        minimum, then drops whole items most expensive first, every drop recorded in the media census with
         ``dropped=True`` under the request's ``doc_ids``; ``fail``: the request is refused naming the media
         tokens and the budget; ``chunk``: refused -- media are not chunkable, a vision block is atomic.
+
+        Args:
+            contents: The wire request's contents, as prepared.
+            doc_ids: One census doc_id per content, for the drop rows.
+            prepared: The caller's own preparation of exactly ``contents`` (it prepared the whole request
+                once, through :meth:`_prepare_request`, and slices it with :meth:`PreparedRequest.per_content`);
+                ``None`` prepares here. A second preparation of already-prepared contents would re-inline
+                the bytes and record census rows against ``data:`` URIs, so callers that already prepared
+                pass the request in.
+            allowance: The token count this wire request's media may cost: the budget minus the fixed
+                template overhead and everything else the request reserves (:func:`fixed_overhead`), never
+                the bare ``max_tokens`` -- in the dead zone between them the media alone fit the budget but
+                the text fit would refuse the request (``the fixed template overhead ... plus the declared
+                media ... already fill the budget``). ``None`` (a caller with no overhead to name): the
+                budget's ``max_tokens``.
 
         Returns:
             ``(contents, tokens)``: the contents to send (the kept media in place, possibly shrunk, drops
@@ -439,17 +536,22 @@ class RoleClient[C: Endpoint]:
             The media gates are the wire call's (see :meth:`_gate_media_calls`), not this method's.
 
         Raises:
-            TextBudgetExceededError: ``on_overflow: fail`` and media alone fill the budget.
-            ConfigError: ``on_overflow: chunk`` and media alone fill the budget.
+            TextBudgetExceededError: ``on_overflow: fail`` and media alone fill the allowance.
+            ConfigError: ``on_overflow: chunk`` and media alone fill the allowance.
         """
         image, video = self._media_policies()
-        prepared = prepare_request(contents, image, video)
+        if prepared is None:
+            prepared = prepare_request(contents, image, video)
         media = prepared.media
         tokens = prepared.tokens.tokens
-        if self._budget is not None and tokens > self._budget.max_tokens:
-            assert image is not None, (
-                "counted media imply an effective image policy (content_media_tokens refused one without a family)"
-            )
+        bound = allowance if allowance is not None else (self._budget.max_tokens if self._budget else None)
+        if self._budget is not None and bound is not None and tokens > bound:
+            if image is None:
+                raise DataError(
+                    f"counted media ({tokens} tokens) imply an effective image policy, and this config declares none",
+                    hint="declare image_processor with a bounded image_policy (a media token count needs a "
+                    "processor family and a pixel budget), or drop the media parts",
+                )
             if self._budget.on_overflow == "fail":
                 raise TextBudgetExceededError(
                     f"this request's media alone cost {tokens} tokens, over the declared text budget of "
@@ -466,7 +568,7 @@ class RoleClient[C: Endpoint]:
                     hint="declare on_overflow: cut (the media fit shrinks to the policy minimum, then drops "
                     "whole items, every drop recorded), or a smaller image_policy",
                 )
-            fit = fit_media_to_budget(media, image=image, video=video, text_budget_tokens=self._budget.max_tokens)
+            fit = fit_media_to_budget(media, image=image, video=video, text_budget_tokens=bound)
             # The dropped items are the original prepared items at their positions; each position's
             # doc_id is its owning content's (doc_ids expanded per media item over the PRE-fit contents,
             # in the part order the fit's decisions index). Built before apply_media_fit, whose contents
@@ -483,9 +585,9 @@ class RoleClient[C: Endpoint]:
                     media=[media[position]],
                     dropped=True,
                 )
-            contents = list(apply_media_fit(contents, fit))
+            contents = list(apply_media_fit(list(prepared.contents), fit))
         else:
-            contents = list(contents)
+            contents = list(prepared.contents)
         counted = self._media_counts_of(contents)
         return contents, sum(count.tokens for count in counted)
 
@@ -537,22 +639,23 @@ class RoleClient[C: Endpoint]:
         return Content.from_parts(parts)
 
     async def check_engine_media(self) -> None:
-        """The startup media probe: one prepared probe image to the engine, its prompt tokens compared
-        with the counted ones (never silent).
+        """The startup media probe: one prepared probe image beside its no-media baseline, the engine's
+        media DELTA compared with the counted media tokens (never silent).
 
         Runs when the role declares an ``image_processor``: the probe sends one prepared image through the
-        adapter, counts the request's prompt tokens exactly (the media block plus the probe's text tokens --
-        what the declared budget counts; a server-side chat template beyond it is the recipe's
-        responsibility), and :func:`~rcp_ndcg.data.resolution.engine_media_check` compares the engine's own
-        ``usage.prompt_tokens`` with it -- the counted number covers the same request (the media block
-        plus the probe's text tokens). A mismatch is a typed :class:`~rcp_ndcg.errors.ProviderError`
-        (the message names ``image_processor`` and the server's media flags); a reply without usage is
-        recorded in the media census as ``not_checked`` -- the check never passes silently.
+        adapter -- and the same request without its media -- and takes the DELTA of the engine's two
+        ``usage.prompt_tokens`` reports. The delta cancels everything the two requests share (a server-side
+        chat template, the route's special tokens, the probe's text), so it reports the media block alone;
+        :func:`~rcp_ndcg.data.resolution.engine_media_check` compares it with the counted media tokens of
+        the prepared probe. A mismatch is a typed :class:`~rcp_ndcg.errors.ProviderError` whose message
+        names ``image_processor`` and the server's media flags; a reply without usage is recorded in the
+        media census as ``not_checked`` -- the check never passes silently. A wire that offers no no-media
+        form of its probe request is recorded ``not_checked`` too.
 
         Raises:
-            CapabilityError: the engine refused the probe request, or the config's own media gate refused
+            CapabilityError: the engine refused a probe request, or the config's own media gate refused
                 the probe (the request's media against ``max_images``/``max_videos``).
-            ProviderError: the engine's prompt-token count disagrees with the counted one.
+            ProviderError: the engine's media delta disagrees with the counted media tokens.
         """
         image_policy, video_policy = self._media_policies()
         if image_policy is None or getattr(self.config, "image_processor", None) is None:
@@ -571,20 +674,11 @@ class RoleClient[C: Endpoint]:
                 probe_path = probe_file.name
             probe = Content.from_image(f"file://{probe_path}")
             prepared = self._prepare_request([probe])
-            # The counted number must cover the same request the engine's report covers (the contract in
-            # :func:`~rcp_ndcg.data.resolution.engine_media_check`): the media block plus every text token
-            # the probe calls carry (the role's query, a text part), in the declared tokenizer's tokens --
-            # what the declared budget counts; a server-side chat template beyond it is the recipe's
-            # responsibility.
-            assert self._tokenizer is not None, "an image_processor implies a declared budget tokenizer"
-            calls = list(self._probe_calls(prepared.contents[0]))
+            probe_content = prepared.contents[0]
+            calls = list(self._probe_calls(probe_content))
             self._gate_media_calls(calls)  # the probe's own request follows the config's limits too
-            counted = sum(count.tokens for count in self._media_counts_of(prepared.contents)) + self._text_tokens_of(
-                calls
-            )
-            replies = await self._sender.send(calls)
-            tokens = self._probe_usage(replies[0])
-            if tokens is None or tokens.input_tokens is None:
+            baseline_calls = self._probe_baseline_calls(probe_content)
+            if baseline_calls is None:
                 self.media_census.record(
                     corpus=self.ROLE,
                     doc_id="engine_media_check:not_checked",
@@ -592,47 +686,60 @@ class RoleClient[C: Endpoint]:
                     dropped=False,
                 )
                 get_logger(__name__).warning(
-                    "engine media check: the %s reply reported no usage, so the counted prompt tokens cannot "
-                    "be verified against the engine (recorded as not_checked); media counting proceeds on "
-                    "the declared %s policy",
+                    "engine media check: the %s adapter offers no no-media baseline for its probe request, "
+                    "so the engine's media delta cannot be taken (recorded as not_checked); media counting "
+                    "proceeds on the declared %s policy",
                     getattr(self._adapter_cls, "name", self.config.api),
                     getattr(self.config, "image_processor", None),
                 )
                 return
-            mismatch = engine_media_check(tokens.input_tokens, counted)
+            # The counted number is the prepared probe's media block alone (the engine's delta is exactly
+            # that: both probe requests carry the same text and whatever template the wire renders, so
+            # those cancel in the difference). The prepared reference carries its sizes, so the count is
+            # exact -- no bound is involved.
+            counted = self._media_counts_of([probe_content])[0].tokens
+            replies = await self._sender.send([*calls, *baseline_calls])
+            with_media = self._probe_usage(replies[0])
+            without_media = self._probe_usage(replies[-1])
+            if (
+                with_media is None
+                or without_media is None
+                or with_media.input_tokens is None
+                or without_media.input_tokens is None
+            ):
+                self.media_census.record(
+                    corpus=self.ROLE,
+                    doc_id="engine_media_check:not_checked",
+                    media=[prepared.media[0]],
+                    dropped=False,
+                )
+                get_logger(__name__).warning(
+                    "engine media check: the %s reply reported no usage, so the engine's media delta cannot "
+                    "be taken (recorded as not_checked); media counting proceeds on the declared %s policy",
+                    getattr(self._adapter_cls, "name", self.config.api),
+                    getattr(self.config, "image_processor", None),
+                )
+                return
+            mismatch = engine_media_check(with_media.input_tokens - without_media.input_tokens, counted)
             if mismatch is not None:
-                raise ProviderError(mismatch.message, hint=mismatch.message)
+                raise ProviderError(
+                    mismatch.message,
+                    hint="verify the served engine's media handling against the declared image_processor and "
+                    "image_policy (no engine-side media flags that resize again), or correct the declaration",
+                )
         finally:
             if probe_path:
                 Path(probe_path).unlink(missing_ok=True)
 
+    def _probe_baseline_calls(self, content: Content) -> Sequence[Call] | None:
+        """The probe request without its media -- the baseline the engine's media DELTA is taken against
+        (the same wire shape, the media parts gone). ``None``: this role's adapter offers no baseline form,
+        and the media check is recorded ``not_checked``."""
+        return None
+
     def _probe_calls(self, content: Content) -> Sequence[Call]:
         """The calls one prepared probe item is sent as (the role's wire)."""
         raise NotImplementedError
-
-    def _text_tokens_of(self, calls: Sequence[Call]) -> int:
-        """The text tokens the probe calls' bodies carry (the query, or the text parts) -- the part of the
-        request's prompt the client can count exactly, beside the media block."""
-        assert self._tokenizer is not None
-
-        def walk(value: Any) -> str:
-            if isinstance(value, str):
-                return value
-            if isinstance(value, dict):
-                texts = [
-                    walk(item)
-                    for key, item in value.items()
-                    if key in ("query", "text", "input", "messages", "documents")
-                ]
-                content = value.get("content")
-                if isinstance(content, list):
-                    texts.extend(part.get("text", "") for part in content if isinstance(part, dict))
-                return " ".join(text for text in texts if text)
-            if isinstance(value, list):
-                return " ".join(walk(item) for item in value)
-            return ""
-
-        return sum(self._tokenizer.count(walk(call.json)) for call in calls)
 
     def _probe_usage(self, reply: Reply) -> TokenCount | None:
         """The reply's prompt-token report (``None``: the engine reported none)."""
@@ -668,7 +775,36 @@ class RoleClient[C: Endpoint]:
             kept.append(content)  # "send": the empty string goes out, as today
         return kept, omitted
 
-    # -- the fan-out, one rule (R7) --------------------------------------------
+    # -- batching -------------------------------------------------------------
+    def _request_size(self, batch_size: int | None) -> int:
+        """The request size of one call: ``batch_size``, else the config's; below 1, or above a HOSTED
+        profile's published cap (:func:`_check_batch_size`), is refused (typed)."""
+        size = getattr(self.config, "batch_size", None) if batch_size is None else batch_size
+        if not isinstance(size, int) or size < 1:
+            raise ConfigError(f"batch_size must be at least 1, got {size}")
+        _check_batch_size(self._adapter_cls, size, noun=self.BATCH_NOUN)
+        return size
+
+    # -- usage (the judge's per-reply rule) ------------------------------------
+    @property
+    def usage(self) -> Usage:
+        """The sender's accounting (requests, failed requests, tokens): the role client folds every reply's
+        token report into it at send time (:meth:`_record_usage`, the rule the judge's replies go through
+        too) -- an embed/pool/rerank run records the tokens its replies reported, never zeros."""
+        return self._sender.usage
+
+    def _record_usage(self, replies: Sequence[Any]) -> None:
+        """Fold each reply's token report into the transport's usage, once per reply -- the one rule every
+        role client (the judge's included) sends its replies through: the adapter reads the tokens (the API's
+        field names are its business), the transport accumulates them. A sender without accounting (a bare
+        fake) adds nothing."""
+        add_usage = getattr(self._sender, "add_usage", None)
+        if add_usage is None:
+            return
+        for reply in replies:
+            add_usage(self._adapter.usage(reply))
+
+    # -- the fan-out, one rule ------------------------------------------------
     @staticmethod
     async def gather(tasks: list[Coroutine[Any, Any, T]]) -> list[T]:
         """Run the request coroutines concurrently, a failure cancelling the siblings: one
@@ -705,7 +841,7 @@ class RoleClient[C: Endpoint]:
             close()
 
     async def aclose(self) -> None:
-        """Close the sender asynchronously (R15): awaited on the pool's own loop. A sender with only a sync
+        """Close the sender asynchronously: awaited on the pool's own loop. A sender with only a sync
         ``close`` falls back to it; safe to call twice."""
         aclose = getattr(self._sender, "aclose", None)
         if aclose is None:

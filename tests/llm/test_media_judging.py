@@ -101,6 +101,19 @@ class TestThePayload:
         assert [block["type"] for block in message["content"]] == ["video_url", "image_url", "image_url", "image_url"]
         assert media_counts(content) == (3, 1)
 
+    def test_a_container_s_bytes_are_read_through_the_media_resolver(self) -> None:
+        """The video block reads the container through the media resolver (the one read path) and inlines
+        it with the one data-URI builder: an inline ``data:`` container -- bytes the resolver decodes, no file
+        behind them -- is sent as the same data URI, never looked up on disk."""
+        import base64
+
+        payload = base64.b64encode(b"\x00\x00\x00\x18ftypmp42-inline-clip").decode("ascii")
+        uri = f"data:video/mp4;base64,{payload}"
+        content = Content.from_parts([VideoPart(ref=MediaRef(uri=uri, mime="video/mp4", num_bytes=26))])
+        (message,) = build_messages(CompletionInput(user_prompt="x", user_content=content))
+        (block,) = message["content"]
+        assert block == {"type": "video_url", "video_url": {"url": uri}}
+
     def test_an_oversized_or_unknown_container_is_refused_by_name(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
