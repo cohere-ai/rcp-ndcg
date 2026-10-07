@@ -490,3 +490,26 @@ def test_the_validation_runs_the_media_stage_on_the_media_rows(tmp_path: Path) -
     assert validated.validation["media_check"] == "passed", validated.validation
     assert len(validated.rows) + len(pruned) == len(plan.rows)
     assert all(row.media for row in validated.rows[-len([r for r in plan.rows if r.media]) :])
+
+
+def test_the_validation_prunes_the_red_text_row_where_a_media_row_precedes_it(tmp_path: Path) -> None:
+    """Stage 1 reports a red row by its position among the TEXT rows; the validation maps it back to the plan.
+    With a media row first, a red text row's stage-1 index is one less than its plan index: the over-budget
+    row is pruned, the media row and the good text row are kept (without the remap, the good row would go)."""
+    import sys
+
+    from rcp_ndcg_vllm.observe.media_set import planned_media_rows
+    from rcp_ndcg_vllm.observe.requests import _validate_and_prune
+
+    recipe = load_recipe(RECIPES / "fixture-vl-embed")
+    media, _ = planned_media_rows(recipe)
+    first = media[0]
+    rows = [
+        PlannedRow(query=first["query"], documents=tuple(first["documents"]), media=first["media"], strata=("media",)),
+        PlannedRow(query="capital of france", documents=("paris is the capital",), strata=("good",)),
+        PlannedRow(query="a long one", documents=(" ".join(["cities and rivers in europe"] * 40),), strata=("long",)),
+    ]
+    plan = RecipePlan(recipe_id=recipe.id, rows=rows)
+    validated, pruned = _validate_and_prune(recipe, plan, sys.executable)
+    assert [row.strata for row in validated.rows] == [("media",), ("good",)]
+    assert [entry["strata"] for entry in pruned] == [["long"]]
