@@ -28,8 +28,8 @@ vendored script's source, never restated.
   resolved with ``huggingface_hub.snapshot_download`` at the recipe's revision, so model and processor load
   the same pinned snapshot.
 
-Media is not exercised here (the media checks are the research's token-level checks and the GPU wave's
-probe-image check): a pairs row carrying media columns is refused loudly (see :func:`_refuse_media_rows`).
+Media is not exercised here (the media checks are token-level CPU checks and the GPU wave's probe-image
+check): a pairs row carrying media columns is refused loudly (see :func:`_refuse_media_rows`).
 The recipe's ONE video sampling policy (64 uniformly spaced frames per clip) governs a future media wave:
 a video row would arrive as its 64 pre-sampled frames and pass through the card's frame-list route at
 ``num_segments`` 64 unchanged. Which over-cap rows the harness reports rather than gates is the

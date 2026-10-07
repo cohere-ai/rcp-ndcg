@@ -88,7 +88,7 @@ CLIENT = {
         "hf_overrides {architectures, classifier_from_token [no, yes], "
         "is_original_qwen3_reranker}; served chat template template.jinja; LAST pooling with "
         "use_activation true pinned server-side and sent on the wire; mm_processor_kwargs "
-        "nested images_kwargs min_pixels 4096 / max_pixels 1310720 (the R20 one shape); one "
+        "nested images_kwargs min_pixels 4096 / max_pixels 1310720 (the one pixel-pin shape); one "
         "media item per request (limit_mm_per_prompt image=1 = max_images 1)"
     ),
     "tokenizer": f"{REPO}@{REVISION}",

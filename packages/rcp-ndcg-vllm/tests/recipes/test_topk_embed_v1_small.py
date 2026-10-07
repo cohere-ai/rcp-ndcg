@@ -13,6 +13,7 @@ red by name. Stage 1 was re-run after the G5 tokenizer-loading fix with over-len
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 from collections.abc import Callable
@@ -771,3 +772,31 @@ def test_mutation_drop_frame_segments_makes_the_render_check_red(tmp_path: Path,
     assert document["render_check"]["passed"] is False
     assert document["render_check"]["failures"], "the reference render must disagree with a frameless fit"
     assert document["passed"] is False
+
+
+#: This family's recipes (the internal-label scan below covers both).
+RECIPE_IDS = ("topk-embed-v1-small", "pplx-embed-v2-context-9b-preview")
+
+#: Internal process labels that must not ship in a recipe (review shorthand, private work directories,
+#: rule ids no public document defines) -- the dense and ctxl families' pattern plus this family's own.
+#: Public rule ids (R29, documented in docs/how-to/add-a-model.md) stay allowed.
+INTERNAL_LABELS = re.compile(
+    r"p1-tail|fam-(?:dense|ctxl|vl|late)|\bsweep|lanes' base|audit-synth"
+    r"|\br-(?:ctxl|jina[35]|octen|zembed1|qwen3-emb|qwen3vl-emb|qwen3vl-rer|topk|pplx)\b"
+    r"|\bresearch\b|\blanes?\b|REVIEW-LOG|ANCHOR-FINDING|\bR(?!29\b)\d{1,2}\b|\bG[1-5]\b|clients-final"
+    r"|\boperator\b|\b09x\b|\.refs/|recipe-common|corrections table|\bfinding #?\d|shake"
+)
+
+
+@pytest.mark.parametrize("recipe_id", RECIPE_IDS)
+def test_shipped_recipe_files_carry_no_internal_labels(recipe_id: str) -> None:
+    """Every shipped file of this family's recipes reads as a self-contained public statement: no
+    internal process shorthand, private work directory or undefined rule id."""
+    hits = [
+        f"{path.name}:{number}: {line.strip()[:120]}"
+        for path in sorted((RECIPE_DIR.parent / recipe_id).iterdir())
+        if path.is_file()
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+        if INTERNAL_LABELS.search(line)
+    ]
+    assert not hits, "\n".join(hits)

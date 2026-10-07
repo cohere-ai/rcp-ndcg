@@ -161,7 +161,7 @@ def render(
 def _load_reference(device: str) -> Any:
     """Load the model card's MultiVectorEncoder and assert the surface this file relies on.
 
-    The assertion is the guard the research left as NOT MEASURED: a sentence-transformers change that
+    The assertion guards an unmeasured dependency surface: a sentence-transformers change that
     removes ``tokenizer``/``config``/``encode_query``/``encode_document`` fails here, on the first
     line, instead of mid-check.
     """

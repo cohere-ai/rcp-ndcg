@@ -1,8 +1,7 @@
 # Serving recipe for perplexity-ai/pplx-embed-v2-context-9b-preview on the stock
 # vllm/vllm-openai:v0.31.0 image plus the pure-Python plugin wheel
 # rcp-ndcg-vllm-pplx (packages/rcp-ndcg-vllm/plugins/pplx/). Sources are
-# revision-pinned; the audit rows in research/audit-synth/out/corrections.md
-# (r-pplx table) override the research draft this recipe was derived from.
+# revision-pinned.
 id: pplx-embed-v2-context-9b-preview
 model: perplexity-ai/pplx-embed-v2-context-9b-preview
 revision: "b667039ee8b438a6350fbc91bbcecd86f9d363ba"  # re-checked against the Hub API (sha field) on 2026-10-06
@@ -97,11 +96,7 @@ sources:
   - "rcp-ndcg: src/rcp_ndcg/data/templates.py (TemplateSpec: segments, specials by name with whitespace kept, anchor, add_special_tokens)"
   - "rcp-ndcg: src/rcp_ndcg/data/preprocess.py (TextBudget/fit: content-only cuts, anchors reserved, census)"
   - "rcp-ndcg: transformers 5.x tokenization_utils_tokenizers.py:466 and :1055-1060 (split_special_tokens is the raw tokenizers encode_special_tokens toggle: added SPECIAL tokens textify, non-special added tokens like the boundary marker keep their one id) -- behind the measured 27-vs-26 id render the token-ids contract rests on"
-  # The research and its audit.
-  - "research/r-pplx/out/report.md (serving decision, per-model table, risks)"
-  - "research/r-pplx/out/reference-draft.py (the CPU-verified render draft this reference.py corrects)"
-  - "research/audit-synth/out/corrections.md (r-pplx rows: dtype, vision-tower 1.82 GB, empty-chunk guard, pad_token, stale cites)"
-  - "research/ANCHOR-FINDING.md (cuts never drop anchors)"
+  - "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from)"
 notes: |
   Serving: the out-of-tree vllm.general_plugins distribution rcp-ndcg-vllm-pplx
   (packages/rcp-ndcg-vllm/plugins/pplx/, pure Python, installed with pip install
@@ -145,8 +140,7 @@ notes: |
   the reference's on both shapes (stage 1 proves it), so the id-derivation seam
   is the whole remaining delta.
 
-  Role disambiguation on the engine (the plugin's rule, stated here because the
-  audit found it unstated): first id 248077 -> query, pooled as the mean over
+  Role disambiguation on the engine (the plugin's rule): first id 248077 -> query, pooled as the mean over
   the whole sequence with the prefix token included; leading (62724, 60) ->
   document, pooled as one span mean per chunk between 248079 markers, the
   prefix and the markers excluded from every span. A one-chunk document has no
@@ -159,8 +153,7 @@ notes: |
   produces them is declared preprocessing recorded upstream of this recipe. A
   chunk's text must contain no all-special token of this tokenizer; the
   boundary marker is the declared case (the plugin segments on every 248079, so
-  a marker inside chunk text would create phantom chunks - the r-pplx
-  instrument's segmentation hazard), and the reference's split-side parse makes
+  a marker inside chunk text would create phantom chunks), and the reference's split-side parse makes
   any other all-special token in content diverge from the engine-side parse the
   same way. reference.py re-splits the content on the marker for the model call.
 
@@ -184,8 +177,8 @@ notes: |
   numbers quantify it. The first equivalence plan's float32 rung is deleted:
   it is unservable on this engine. The int8 head stays fp32 on both sides (the
   remote code's _keep_in_fp32_modules; the plugin's head_dtype). Skipping the
-  unused vision tower saves 1.82 GB fp32 (the audit's shard-header parse), not
-  the 3.4 GB first quoted.
+  unused vision tower saves 1.82 GB fp32 (parsed from the checkpoint's shard
+  headers).
 
   Budget: the model's own limit is 262144 tokens model-side (config
   query_length and document_length; the model raises beyond it and truncates
@@ -237,12 +230,10 @@ notes: |
   by default and the end state matches either way. empty_doc: send exercises
   the model's own empty-chunk branch (the zero vector) instead of substituting
   a product-side zero; the wave should confirm the plugin reproduces it - and
-  name the one divergence the audit found between the plugin and the remote
-  code: the remote code RAISES for a non-empty chunk that yields no tokens, the
+  name the one divergence between the plugin and the remote code: the remote code RAISES for a non-empty chunk that yields no tokens, the
   plugin zero-pools it, unreachable under this recipe's declared chunker
   guarantee for this tokenizer. pad_token is the tokenizer's endoftext token
-  and there is no bos token (tokenizer_config.json; the audit row that names a
-  different pad spelling is itself refuted by that file). The card states no
+  and there is no bos token (tokenizer_config.json). The card states no
   chunking policy of its own: chunk boundaries are model input, and the
   chunker's guarantee - no all-special token inside chunk text, the boundary
   marker being the declared case - is declared here.
