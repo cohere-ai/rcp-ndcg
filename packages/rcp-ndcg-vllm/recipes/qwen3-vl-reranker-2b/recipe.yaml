@@ -8,7 +8,7 @@ licence: apache-2.0
 engine:
   name: vllm
   image: "vllm/vllm-openai:v0.31.0"
-  min_version: "0.31.0"
+  min_version: "0.31.0"        # the image actually verified (the family convention)
 resources: {gpus: 1}
 serve:
   runner: pooling
@@ -24,15 +24,19 @@ serve:
                                            # (model_executor/models/config.py:784-815;
                                            # adapters.py:389-396)
   chat_template: template.jinja
-  pooler_config: {}        # leave every pooler field unset: an empty PoolerConfig is the
-                           # engine's defaults (LAST-token pooling, sigmoid with num_labels=1,
-                           # fp32 head); the runner renders --pooler-config {} and changes nothing
+  pooler_config: {use_activation: true}    # the sigmoid default pinned as CONTENT on the server too
+                                           # (v0.31.0 config/pooler.py:60; the engine falls back to the
+                                           # pooler default, model.py:787): client.use_activation: true
+                                           # is the wire field, this covers any caller that does not
+                                           # send it (sweep finding 12). No other pooler field: the
+                                           # defaults are LAST pooling + the sigmoid, pinned above
   trust_remote_code: false # no auto_map, no model .py in the repo; the card sets it defensively
   max_model_len: 32768     # model card context length; config.json allows 262144
   dtype: bfloat16          # config.json dtype
   plugin: null             # native vLLM class + the conversion covers scoring; no plugin
-  mm_processor_kwargs: {min_pixels: 4096, max_pixels: 1310720}   # the reference's numbers (R20);
-                                                                 # 1280 tokens/image at max_pixels
+  mm_processor_kwargs: {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1310720}}   # the reference's numbers (R20); 1280 tokens/image at max_pixels. ONE shape across the media recipes -- nested images_kwargs, decided from the v0.31.0 tag source (the nested dict reaches the HF processor verbatim, context.py:293-309, and overlays the vLLM-side image reads, qwen3_vl.py:958-970; the flat form is the shared namespace and leaks into the video size override, qwen3_vl.py:1369-1377)
+  limit_mm_per_prompt: {"image": 1}        # one media item per request (client.max_images carries the
+                                           # same number): never the engine's multi-item hoist
   extra_args: []           # the wave runner passes --served-model-name <recipe id>; the client's
                            # model field is the same id, so name validation passes
 client:
@@ -40,19 +44,30 @@ client:
   request_shape: text
   recipe: "vllm v0.31.0 pooling/classify: Qwen3VLForSequenceClassification via as_seq_cls_model;
     hf_overrides {architectures, classifier_from_token [no, yes], is_original_qwen3_reranker};
-    served chat template template.jinja; pooler defaults (LAST, sigmoid, fp32 head), no
-    pooler_config; mm_processor_kwargs min_pixels 4096 / max_pixels 1310720"
+    served chat template template.jinja; LAST pooling with use_activation true pinned server-side
+    and sent on the wire; mm_processor_kwargs nested images_kwargs min_pixels 4096 / max_pixels
+    1310720 (the R20 one shape); one media item per request (limit_mm_per_prompt image=1 =
+    max_images 1)"
   tokenizer: "Qwen/Qwen3-VL-Reranker-2B@4bd860ac4f15ad1897a214615cccc700f8f71818"
   max_tokens: 8192         # the model's whole input as the engine sees it (rendered template,
                            # instruction, query and document together), cut client-side BEFORE
                            # sending: the engine's truncate_prompt_tokens right-cuts the composed
                            # prompt and loses the assistant tail (research case 12)
-  query_max_tokens: 4096   # the query's share of the pair budget; the product's own served
-                           # reranker caps the query at 4096 (src/rcp_ndcg/retrieval/
-                           # cross_encoder.py:46 MAX_QUERY_LENGTH, sent as max_tokens_per_query);
-                           # the document gets the rest. The reference caps the whole pair, not
-                           # the query alone, but a declared share is required so an over-long
-                           # query never eats the document's budget
+  query_max_tokens: 4096   # the query's share of the pair budget, settled by the rerank client:
+                           # the pair fit binds on overflow, and the client settles the query at
+                           # its share whenever it exceeds it (it then ships at 4096 even when
+                           # the pair fits). An over-share query is therefore a declared
+                           # divergence row (the reference keeps the query whole) and rows that
+                           # cross the share are dropped from the gates. The 4096 is the served
+                           # reranker's query cap (MAX_QUERY_LENGTH at the pre-unification
+                           # retrieval tree); the reference caps the whole pair, not the query
+                           # alone, but a declared share stops an over-long query from eating the
+                           # document's budget
+  max_images: 1            # the same number as serve.limit_mm_per_prompt: one media item per
+                           # request (an image on the query side or on one document side, never
+                           # two -- the engine's multi-item guard is never crossed). Image
+                           # queries and image documents cannot combine in one request; the
+                           # notes' data discipline matches
   template:
     pair:
       - {fixed: "{special:im_start}system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \"yes\" or \"no\".{special:im_end}\n{special:im_start}user\n<Instruct>: Given a search query, retrieve relevant candidates that answer the query.<Query>:"}
@@ -81,8 +96,9 @@ client:
                            # for the raw (W_yes-W_no).h_last logit instead)
   on_overflow: cut
   empty_doc: send_text     # the card's script sends the literal text "NULL" for an empty side
-  empty_doc_text: "NULL"   # (format_mm_instruction); the served render of an empty document
-                           # would otherwise be '<Document>:' with nothing (research case 8)
+  empty_doc_text: "NULL"   # (format_mm_instruction); the rerank client applies the policy before
+                           # shipping (the wired empty_doc consumer), so the served render of an
+                           # empty side is the card's "NULL", never a bare '<Document>:'
 reference:
   kind: transformers       # the card's scripts/qwen3_vl_reranker.py is the serving referent;
                            # NOT the sentence-transformers referent (1_*/ modules.json declares
@@ -119,7 +135,14 @@ sources:
      W[true] - W[false] at :532-539; vllm/config/model.py:1950 (the ForSequenceClassification
      suffix -> pooling/classify); model_executor/layers/pooler/activations.py:118-141
      (PoolerClassify, num_labels<2 -> sigmoid); model_executor/models/interfaces_base.py:160
-     (default LAST pooling)"
+     (default LAST pooling); vllm/config/pooler.py:60 (use_activation) and
+     config/model.py:787 (the engine defaults it from the pooler when the request sends none)"
+  - "vllm v0.31.0 vllm/multimodal/processing/context.py:45-82, :293-336 (the ONE mm_processor_kwargs
+     shape: nested images_kwargs reaches the HF processor verbatim and overlays the vLLM-side
+     image reads; flat keys are the shared namespace)"
+  - "vllm v0.31.0 vllm/model_executor/models/qwen3_vl.py:958-970 and :1369-1377 (the image budget
+     reads through the overlay, and the flat min_pixels/max_pixels leak into the VIDEO size
+     override -- why the pin is scoped under images_kwargs)"
   - "research/r-qwen3vl-rer/out/{report.md,digest.md,check_template.py,reference-draft.py,
      recipe-draft.yaml}: the 12-case CPU template-equivalence check (28/28), the served-vs-card
      render equality for text, instruction, image, video and media-both-sides shapes, and the
@@ -157,27 +180,46 @@ notes: |
   (is_original_qwen3_reranker is set) and falls back to un-templated pair encoding; the
   per-request ChatTemplateResolutionError path degrades scores silently.
 
-  Media policy (R20): serve.mm_processor_kwargs pins min_pixels 4096 / max_pixels 1310720 --
-  the reference script's own numbers, so the engine and the reference resize identically by
-  construction (the repo's preprocessor default min_pixels 4095 can tip one image token for thin
-  strips). Image-token budget: 1280 tokens/image at max_pixels (px/1024 after the 2x2 merge;
-  the draft's 5120 was a 4x unit error); the client's media reservation (fit's media_tokens)
-  must reserve the same numbers once the media wiring lands (nothing consumes them client-side
-  on this branch -- a declared product gap), and video is out of scope (input: [text, image]). Declared unmeasured:
-  image grid expansion counts need the GPU wave's engine /tokenize probe (R20 p-media
-  engine_check); a side carrying text plus >= 2 images bypasses vLLM's multi-item guard --
-  the engine hoists placeholders to the front of the side and joins the texts with a newline,
-  which the reference cannot express; keep one media item per side.
+  Media policy (R20, both halves). Serve: serve.mm_processor_kwargs pins min_pixels 4096 /
+  max_pixels 1310720 under the nested images_kwargs scope -- ONE shape across the media
+  recipes, decided from the v0.31.0 tag source (the nested dict reaches the HF processor
+  verbatim and scopes the pin to images; the flat form is the shared namespace and leaks into
+  the video size override): the reference script's own numbers, so the engine and the reference
+  resize identically by construction (the repo's preprocessor default min_pixels 4095 can tip
+  one image token for thin strips). Image-token budget: 1280 tokens/image at max_pixels
+  (px/1024 after the 2x2 merge; the draft's 5120 was a 4x unit error). Capacity: one media
+  item per request (serve.limit_mm_per_prompt image=1; client.max_images 1 carries the same
+  number) -- an image on the query side or on one document side, never two in one request, so
+  the engine's multi-item guard is never crossed (a side carrying text plus >= 2 images bypasses
+  it: the engine hoists placeholders to the front of the side and joins the texts with a
+  newline, which the reference cannot express; research, declared unmeasured). Pixel budget
+  client-side (the mirror half of R20): the product's ImagePolicy cannot mirror
+  4096-1310720px yet -- its stock-engine guard refuses any budget outside the stock qwen3_vl
+  envelope (65536-16777216px) even when serve.mm_processor_kwargs pins the engine to the same
+  budget (rcp_ndcg.data.resolution ImagePolicy.for_processor) -- so this recipe deliberately
+  declares no image_processor/image_policy rather than a default that would change numbers
+  silently: image-bearing requests fail loudly at the media token count until the product
+  accepts a pinned budget (product change, lane report). Image grid expansion counts need the
+  GPU wave's engine /tokenize probe (R20 p-media engine_check).
+
+  Video: out of scope (input: [text, image]). A sibling recipe declaring video follows the one
+  video-policy decision (qwen3-vl-embedding-2b: 64 uniformly spaced frames per clip, the
+  container sent as video_url with the engine pinned via --media-io-kwargs); this reference
+  refuses video-bearing rows loudly rather than sampling them at any default.
 
   Empty sides: the recipe pins empty_doc send_text with the card's own "NULL" placeholder
-  (empty_doc_text "NULL") as the declared policy. Declared product gap: nothing consumes
-  empty_doc on this branch (the consumer lands with the clients lane), so the rerank client
-  sends an empty document as-is today, and the served render of an empty side ('<Query>:' or
-  '<Document>:' with nothing) diverges from the reference, which sends "NULL" on an empty side
-  (research case 8 measured exactly this for documents). The stage-1 render check goes red
-  loudly on any empty-side pair -- the wave's gate data carries none -- and the policy binds
-  once the client wiring lands. An empty QUERY has no product field at all: avoid empty queries
-  (a data error upstream), never a silent default.
+  (empty_doc_text "NULL") as the declared policy; the wired rerank client applies
+  empty_doc/empty_doc_text before shipping, so the served render of an empty side is the card's
+  "NULL" like the reference's (research case 8 measured the bare-sided divergence this removes).
+  An empty QUERY is refused by the product's empty_query: refuse default (the typed DataError
+  names the query id); this recipe keeps that default -- an empty query is a data error
+  upstream, never a silent default.
+
+  Budgets: the pair fit binds on overflow and the rerank client settles the query at
+  query_max_tokens (4096) whenever the query exceeds its share -- an over-share query is a
+  declared divergence row (the reference keeps it whole) and the wave's pairs file must keep
+  queries within the share; over-cap pairs (over 8192 assembled) land in the non-gating table
+  under anchor_drop_over_cap.
 
   Stage 1 on CPU proves: the declared pair shape renders byte-identically to the served
   template file (and hence to the card's reference prompt), the anchors survive every
