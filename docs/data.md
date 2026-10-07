@@ -71,7 +71,7 @@ Three places take a Hugging Face address, each in its own form:
 | `rcp-ndcg data fetch --dataset` | a suite name, or `hf://<owner>/<repo>`: the whole repository, downloaded | `hf://fabianschmidt-cohere/rcp-ndcg-bright` |
 
 The same datasets also run through stock `mteb`, with the `rcp_ndcg_tasks.py` file each dataset ships, or through
-`rcp_ndcg.eval.mteb` ([the MTEB tutorial](tutorials/mteb-integration.md)).
+`rcp_ndcg.eval.mteb` ([the MTEB tutorial](how-to/mteb-integration.md)).
 
 ## Revisions and identities
 

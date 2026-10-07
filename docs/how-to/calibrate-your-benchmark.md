@@ -7,7 +7,7 @@ the pools. Judging takes many calls. Every step that calls the judge is therefor
 ## 1. Describe the judge
 
 A judge config names an OpenAI-compatible endpoint and the model; everything else has a default
-([serving](../concepts/serving.md)). The shipped ones load by name (`--judge gpt_oss_120b`); your own is a YAML
+([serving](../concepts/judges.md)). The shipped ones load by name (`--judge gpt_oss_120b`); your own is a YAML
 file:
 
 ```yaml
@@ -23,7 +23,7 @@ concurrency: 256
 ```
 
 No temperature is set, and the server's default sampling applies. Serve an open-weight model with any engine
-and image you choose, under the judge's `model` name and with its reasoning parser ([serving](../concepts/serving.md)
+and image you choose, under the judge's `model` name and with its reasoning parser ([serving](../concepts/judges.md)
 has the commands). For a page-image or video corpus, set the judge's `max_images` (and `image_processor`); the client
 sizes every image as that processor would, so the engine needs no pixel-budget flag.
 

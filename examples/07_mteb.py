@@ -4,7 +4,7 @@
 integer qrels plus `ndcg_float_at_10`, nDCG over the continuous RCP gains with group-mean ties; by default a model
 reranks each query's judged pool. The same tasks run in stock mteb from the `rcp_ndcg_tasks.py` of each dataset.
 
-    pip install ".[mteb]"
+    pip install "rcp-ndcg[mteb]"
     python examples/07_mteb.py
 """
 

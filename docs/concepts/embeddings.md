@@ -18,18 +18,18 @@ An embedding endpoint is an `EmbeddingEndpoint` (`rcp_ndcg.inference.config`): t
 |---|---|
 | `api` | The wire adapter, from the embed role's registry: `openai_embeddings` (default), `cohere`, `voyage`, `gemini`, or a third party's from the `rcp_ndcg.adapters` entry-point group (entries named `embed.<name>`) |
 | `base_url` | The endpoint; `null` for a hosted API, which then uses the profile's public URL |
-| `api_key_env` | The variable holding the key, resolved by the transport; when unset, the wire adapter profile's own variables are tried (a hosted profile's `CO_API_KEY` or `VOYAGE_API_KEY`, the OpenAI route's `OPENAI_API_KEY`), in the profile's header |
+| `api_key_env` | The variable holding the key, resolved by the transport; when unset, the wire adapter profile's own variables are tried in the profile's header -- but only when the request goes to the profile's own default host. Any other `base_url` receives a key only from an explicit `api_key_env` ([the credential rule](../reference/cli.md#credentials)) |
 | `query_prompt`, `doc_prompt` | Text prepended to every query / document (an asymmetric embedder's instruction prefix); refused beside a `template` -- the prefix then goes in as the template's fixed segment, so declaring both would double it |
 | `normalize` | L2-normalise the vectors (the default); normalising twice is harmless |
 | `dimensions` | The Matryoshka cut, sent only when set |
 | `batch_size` | Texts per request, refused above the profile's published cap (Cohere 96, Voyage 128, Gemini 100, the OpenAI route 128) |
 | `concurrency` | Batch requests in flight at once |
-| `recipe`, `tokenizer`, `max_tokens`, `query_max_tokens` | Declared for the served engine's settings and the client-side text budget (below): a self-hosted config must declare both `tokenizer` and `max_tokens`, and the client cuts the content spans itself (`on_overflow: cut`, the default; `chunk` pools scores by max, and an embedding has none to pool, so it is refused). The hosted profiles take no `dimensions` (their APIs fix the output dimension); a config that sets `dimensions` on one is refused. `max_tokens` caps the document shape; `query_max_tokens` (per-shape budgets) caps the query shape whole -- an asymmetric or late-interaction embedder caps queries and documents differently -- and must not exceed `max_tokens` |
+| `recipe`, `tokenizer`, `max_tokens`, `query_max_tokens` | Declared for the served engine's settings and the client-side text budget (below): a self-hosted config must declare both `tokenizer` and `max_tokens`, and the client cuts the content spans itself (`on_overflow: cut`, the default; `chunk` pools scores by max, and an embedding has none to pool, so it is refused). The hosted profiles take no `dimensions` (their APIs fix the output dimension); a config that sets `dimensions` on one is refused when the request is built (the API has no such parameter). `max_tokens` caps the document shape; `query_max_tokens` (per-shape budgets) caps the query shape whole -- an asymmetric or late-interaction embedder caps queries and documents differently -- and must not exceed `max_tokens` |
 
 Two hosted shortcuts: a config with no `base_url` points at the profile's public URL
 (`https://api.cohere.com/v2` for Cohere, and so on), and a profile that requires a key raises a
-`CredentialsError` naming its variables when none is set. A served engine takes no key unless a variable
-holds one -- the profile's own (the OpenAI route's `OPENAI_API_KEY`) or the one `api_key_env` names.
+`CredentialsError` naming its variables when none is set. A served engine receives a key only from an explicit
+`api_key_env`: the profile's own variables apply only to the profile's own default host.
 
 ## The wire adapters
 
@@ -88,7 +88,7 @@ config = EmbeddingEndpoint(
     base_url="http://127.0.0.1:8000/v1",
     model="octen-embedding-8b",
     tokenizer="tok",
-    max_tokens=8192,
+    max_tokens=8192,  # a self-hosted config declares its text budget: the package cuts, never the engine
     query_prompt="query: ",
     doc_prompt="- ",
     normalize=True,
@@ -103,14 +103,14 @@ an `Embeddings` with one vector per content, in the input's order. The client:
 
 * prepends `query_prompt` / `doc_prompt` per side, through one private seam, and then fits every request into
   the declared budget: the side's shape (`query` or `document`), only content spans cut, the template
-  re-attached with its anchors, every cut recorded in the census (a config without `max_tokens` sends every
-  item whole);
+  re-attached with its anchors, every cut recorded in the census (a hosted profile that declares no limit sends
+  every item whole; a self-hosted config must declare its budget);
 * slices the items into `batch_size`-sized requests and keeps at most `concurrency` in flight under one
   `asyncio.TaskGroup` (a failing request cancels its siblings), reassembling in the input's order whatever
   order the replies arrive in;
 * L2-normalises when `normalize`;
 * resolves nothing credential-wise: the key is the transport's, from `api_key_env` (else the profile's own
-  variables), sent in the profile's header.
+  variables, which apply only to the profile's own default host), sent in the profile's header.
 
 The vectors are raw float32 from the adapter -- the normalisation is the client's content decision, not the
 wire's. Each adapter's `usage()` reports the input tokens its API names (OpenAI's `usage.prompt_tokens`,
@@ -123,11 +123,9 @@ and the credentials change where and how fast, and are runtime.
 Two runs share an index only if they computed the same vectors. Which model, checkpoint and wire adapter
 computed them (`api`, `model`, `revision`, `recipe`, the prompts, `normalize`, `dimensions`) is content and
 enters the identity; where and how fast (`base_url`, `batch_size`, `concurrency`, the timeouts) is runtime and
-never does. The tokenizer's name is runtime: the config inherits `Endpoint.identity_extra()`, which returns the SHA-256 of
-its `tokenizer.json` (`{"tokenizer_sha256": ...}`) under that one key. The `retrieve`/`rerank` step identities
-splice the digest in at the encoder and the reranker -- the same rule the judge applies to its `tokenizer` --
-and the index identity carries it too. Every role config with a `tokenizer` (the judge's, the embedding, pooling and rerank configs)
-carries the digest under this one key, from the one helper in `rcp_ndcg.data.tokenizer`.
+never does. The tokenizer's name is runtime and its digest is content
+([the tokenizer's digest](text-budgets.md#the-tokenizers-digest)): the `retrieve`/`rerank` step identities and the
+index identity key on it.
 
 ## Text budgets
 
@@ -141,4 +139,4 @@ naming its shape's budget (`budget_tokens`: the query rows a declared `query_max
 no request asks for truncation, and an over-length HTTP 400 from an engine maps to a `CapabilityError` whose
 hint names `max_tokens` and `batch_size`. A hosted profile may declare only `max_tokens` (its documented
 limit): the content is sent uncut and the limit is recorded as the effective budget (`budget_source:
-vendor`). See [preprocessing](preprocessing.md#text-budgets-for-served-roles) for the mechanism.
+vendor`). See [text budgets for served roles](text-budgets.md) for the mechanism.

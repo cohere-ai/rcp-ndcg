@@ -10,6 +10,7 @@ IMAGE=${IMAGE:-lmsysorg/sglang:v0.5.17-cu129}
 ENGINE=(
   python3 -m sglang.launch_server
   --model-path openai/gpt-oss-120b
+  --revision b5c939de8f754692c1647ca79fbf85e8c1e70f8a
   --served-model-name gpt-oss-120b
   --host 0.0.0.0 --port 8000
   # Parallelism. SGLang's current docs recommend `python3 -m sglang_router.launch_server --dp-size 2` for data

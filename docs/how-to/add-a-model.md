@@ -233,22 +233,22 @@ The exit code is 0 only when every gate passes; `equivalence.json` carries every
 
 ## Submitting a wave
 
+A wave runs on a node against a staged release candidate: [rc_build.sh](release-candidates.md#build-a-release-candidate)
+stages the wheels, the wheelhouse, the recipes and the wave lists; `submit.sh` submits the wave's job against
+that stage, and the node's `bootstrap.sh` builds the three environments and runs the wave runner:
+
 ```bash
 export RCP_KJOBS_CONFIG=/path/to/jobs-config.yaml    # the job CLI's -f config (required, no default)
 export RCP_GCS_AUTH_FILE=/path/to/gcs_auth.sh        # mounted at /etc/rcp/gcs_auth.sh; named, never read
-packages/rcp-ndcg-vllm/jobs/submit.sh <wave-name> <recipes-file> gs://YOUR-BUCKET/stage gs://YOUR-BUCKET/waves
+export RCP_HF_TOKEN_FILE=/path/to/token              # passed as a kjobs secret, never read or echoed
+packages/rcp-ndcg-vllm/jobs/submit.sh gs://YOUR-BUCKET/stage/rc0 gs://YOUR-BUCKET/waves <wave-name>
 ```
 
-`RCP_KJOBS_CONFIG` and `RCP_GCS_AUTH_FILE` are required — the script refuses to run without them, because no
-tracked file may name a machine's paths. `EXTRA_DIRS` (space-separated directories staged into the tarball) and
-`KJOBS=echo` (print the commands instead of running them) are optional.
-
-The script stages a tarball of the current commit (plus any directories in `EXTRA_DIRS`, and the recipes file),
-uploads it to `<stage-prefix>/<wave-name>/code.tar.gz`, and submits the job `rcp-<wave-name>`. The tracked
-`bootstrap.sh` is a superseded stub (it exits with an error naming its replacement): the node bootstrap —
-authenticate, install the packages from the tarball into the image's Python with `--no-deps` so the image's
-vLLM and torch are never touched, run `run_wave.py` with `--record` and `--upload` — ships with the rc-build
-image, not this repository. The wave packs
-recipes onto the node's GPUs, serves one engine per slot, runs smoke, equivalence and the recorder, and writes
-`<out>/<id>/{serve.log, equivalence.json, status.json}` plus a summary. `KJOBS=echo` prints the commands instead
-of running them.
+The three variables are required — the script refuses to run without them, because no tracked file may name a
+machine's paths or a token. The recipe list is the staged `<RC>/wave-lists/<wave>.txt`; `--priority dev-high`,
+`--max-jobs N`, `--script wave0` (the node test) and `KJOBS=echo` (print the plan instead of submitting) are
+optional. The full procedure — the candidate, the wheelhouse, the three environments and wave 0 — is in
+[Release candidates and the GPU waves](release-candidates.md). The wave packs recipes onto the node's GPUs,
+serves one engine per slot with its own GPU slice, port, `VLLM_PORT` and `TMPDIR`, checks the free disk and
+evicts each model's weights after its last use, runs smoke, equivalence and the recorder, and writes
+`<out>/<id>/{serve.log, equivalence.json, status.json}` plus a summary.

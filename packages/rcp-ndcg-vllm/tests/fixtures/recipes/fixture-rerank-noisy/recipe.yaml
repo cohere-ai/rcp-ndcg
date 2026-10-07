@@ -37,6 +37,7 @@ client:
   instruction: fold
   use_activation: true
   on_overflow: cut
+  use_activation: true
   empty_doc: send
 reference:
   kind: transformers

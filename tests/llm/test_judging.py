@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 import pytest
 from rcp_ndcg_core._records import RankingExample
+from rcp_ndcg_core.schemas import JudgementSet
 
 from rcp_ndcg.data.preprocess import ChunkPolicy, Preprocessing, TextPolicy, chunk_ranking_example
 from rcp_ndcg.data.tokenizer import load_tokenizer
@@ -496,6 +497,30 @@ def test_the_load_time_cuts_are_recorded_once_per_store(tmp_path: Path, word_tok
     assert kept == {(doc, 2) for doc in shown} | {(doc, 3) for doc in shown}
 
 
+def test_a_torn_last_census_line_does_not_poison_the_store(
+    tmp_path: Path, word_tokenizer_file: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A pass killed mid-append leaves a torn last line of ``preprocessing.jsonl``; the documented recovery
+    story (re-run over the same store) must survive it: the torn line is skipped with a warning, and a row
+    that is not merely torn but malformed is a typed error naming the line."""
+    policy = Preprocessing(text=TextPolicy(on_overflow="truncate", max_tokens=2))
+    store = tmp_path / "store"
+    _rubric(store, _tokenized(FakeJudge(lambda text: 0.0), word_tokenizer_file), preprocessing=policy)
+    record = store / "preprocessing.jsonl"
+    record.write_text(record.read_text(encoding="utf-8") + '{"mechanism": "doc_pol', encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger="rcp_ndcg"):
+        _rubric(store, _tokenized(FakeJudge(lambda text: 0.0), word_tokenizer_file), preprocessing=policy)
+    assert any("torn" in message for message in caplog.messages)
+
+    record.write_text(
+        "".join(record.read_text(encoding="utf-8").splitlines(keepends=True)[:-1]) + "not json at all\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(DataError, match="preprocessing.jsonl"):
+        _rubric(store, _tokenized(FakeJudge(lambda text: 0.0), word_tokenizer_file), preprocessing=policy)
+
+
 def test_the_window_text_budget_follows_the_context() -> None:
     judge_cfg = JudgeConfig(base_url="http://h/v1", model="m", context_tokens=10_000, max_output_tokens=1_000)
     assert window_tokens(judge_cfg.model_copy(update={"context_tokens": None}), 10, overhead_tokens=500) is None
@@ -648,6 +673,14 @@ class TestPlannedWindows:
         _tournament(tmp_path, again, windows=windows)
         assert again.usage.requests == 0  # asked once: a rerun reuses the stored windows
 
+    def test_an_empty_planned_window_list_is_refused_before_anything_is_asked(self, tmp_path: Path) -> None:
+        """A query whose window list is empty has nothing to ask; a crash after other queries stored their
+        answers (the bare ``max()`` ValueError) would break the recovery workflow mid-flight."""
+        q1 = ROWS[0].doc_ids
+        with pytest.raises(ConfigError, match="no windows"):
+            _tournament(tmp_path, windows={ROWS[0].id: [[q1[0], q1[1]]], ROWS[1].id: []})
+        assert not JudgementStore(tmp_path).identities()  # refused before the store was claimed
+
     def test_a_planned_window_is_one_record_whatever_plan_or_grouping_asks_it(self, tmp_path: Path) -> None:
         first_plan = [["q1-d00", "q1-d05", "q1-d09"]]
         second_plan = [["q1-new", "q1-d02"], ["q1-new", "q1-d07"]]
@@ -668,3 +701,139 @@ class TestPlannedWindows:
             _tournament(tmp_path, windows={ROWS[0].id: [[q1[0], q1[1]]]}, docs={ROWS[0].id: [q1[0]]})
         with pytest.raises(DataError, match="nope"):
             _tournament(tmp_path, windows={ROWS[0].id: [[q1[0], "nope"]]})
+
+
+class TestIdentities:
+    """What names a corpus and an instrument: the store identity, the family key and the record ids."""
+
+    def test_two_row_corpora_never_share_a_store_or_a_record_id(self, tmp_path: Path) -> None:
+        """Two row-sequence passes of different corpora that share query and document ids: the store gate
+        refuses the second (its rows digest differs), and across stores the record ids differ, so a merge
+        keeps both corpora's windows (it used to fuse them, pass 2 silently reusing pass 1's answers)."""
+        other = tuple(
+            row.model_copy(
+                update={"text": f"a different corpus: {row.text}", "docs": [f"other {d}" for d in row.doc_ids]}
+            )  # fmt: skip
+            for row in ROWS
+        )
+        first_store, second_store = tmp_path / "a", tmp_path / "b"
+        first = _tournament(first_store)
+        # The same rows again resume the store as before (the same rows digest).
+        again = _fake()
+        _tournament(first_store, again)
+        assert again.usage.requests == 0
+        # Another corpus (same query and document ids) is refused into the same store.
+        with pytest.raises(IdentityError, match="dataset"):
+            judge(other, None, _fake(), stage="tournament", out=first_store, schedule=TINY_TOURNAMENT)
+        # Into a new store it gets its own record ids, and a merge keeps both corpora's windows.
+        second = judge(other, None, _fake(), stage="tournament", out=second_store, schedule=TINY_TOURNAMENT)
+        assert {j.record_id for j in first.judgements} & {j.record_id for j in second.judgements} == set()
+        merged = JudgementSet.merge([first, second])
+        assert len(merged.judgements) == len(first.judgements) + len(second.judgements)
+
+    def test_the_family_gains_a_declared_judge_setting_and_the_store_refuses_a_change(self, tmp_path: Path) -> None:
+        """temperature, the output and context budgets, extra_body and the wire adapter are CONTENT: a family
+        judged under one never pools with one judged under another (cross-store there is no gate)."""
+        (family,) = _rubric(tmp_path).families.values()
+        assert family.temperature is None and family.max_output_tokens is None  # defaults stay out of the key
+        hot = _fake(config=JudgeConfig.fake(seed=0).model_copy(update={"temperature": 0.7}))
+        (hot_family,) = _rubric(tmp_path / "hot", hot).families.values()
+        assert hot_family.temperature == 0.7
+        assert hot_family.key != family.key
+        assert hot_family.rubric_key == family.rubric_key  # the instrument, not the judge
+        # A store judged under the default refuses a pass of the changed instrument (and vice versa).
+        changed = _fake()
+        changed.config = changed.config.model_copy(update={"temperature": 0.7})
+        with pytest.raises(IdentityError, match="temperature"):
+            _rubric(tmp_path, changed)
+
+    def test_a_row_input_records_its_rows_digest_in_the_store_identity(self, tmp_path: Path) -> None:
+        _tournament(tmp_path)
+        (entry,) = JudgementStore(tmp_path).identities().values()
+        assert entry["identity"]["dataset"]["name"] == "dataset"
+        assert len(entry["identity"]["dataset"]["rows_sha256"]) == 64
+
+
+class _GarbledThenWell(_Garbled):
+    """An endpoint that garbles its first two answers, then answers well."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.well_after = 2
+
+    def _answer(self, request: httpx.Request) -> httpx.Response:
+        if self.usage.requests < self.well_after:
+            return super()._answer(request)
+        return FakeJudge._answer(self, request)
+
+
+def test_a_garbled_answer_is_retried_up_to_three_attempts_then_well(tmp_path: Path) -> None:
+    """The retry loop's contract, pinned: up to MAX_ATTEMPTS (the docs' 'three attempts in total') requests
+    per window, and an answer that turns well on a later attempt is a valid record, not a retry-count
+    fiction: one window spends two garbled attempts, the rest one each."""
+    assert MAX_ATTEMPTS == 3
+    flaky = _GarbledThenWell()
+    result = judge(ROWS[:1], {"q1": ["q1-d00", "q1-d01"]}, flaky, stage="rubric", out=tmp_path)
+    assert result.judgements and all(j.valid for j in result.judgements)
+    assert flaky.usage.requests == len(result.judgements) + 2
+
+
+def test_the_completion_reserve_is_capped_at_half_of_what_is_left() -> None:
+    """``max_output_tokens`` reserves at most half of the usable context (a huge declared completion budget
+    must not starve the window's text to nothing); a small one reserves itself exactly."""
+    judge_cfg = JudgeConfig(base_url="http://h/v1", model="m", context_tokens=10_000)
+    small = judge_cfg.model_copy(update={"max_output_tokens": 1_000})
+    assert window_tokens(small, 10, overhead_tokens=500) == (10_000 - 500 - 1_000) // 10
+    huge = judge_cfg.model_copy(update={"max_output_tokens": 9_000})
+    # usable = 9500; the reserve is min(9000, 9500/2) = 4750: the text keeps half of what is left.
+    assert window_tokens(huge, 10, overhead_tokens=500) == (9_500 - 9_500 // 2) // 10
+
+
+def test_a_long_invalid_reason_is_cut_with_a_marker_not_silently(tmp_path: Path) -> None:
+    """The declared cap of the schema's ``invalid_reason`` (2000): a longer diagnostic carries the cut marker,
+    so a truncation is declared, recorded policy."""
+    pool = {"q1": ["q1-d00", "q1-d01"]}
+
+    class _ProlixRefusal(_Refuses):
+        """Refuses with a very long message."""
+
+        def _answer(self, request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, json={"error": {"message": "x" * 5000}})
+
+    result = judge(ROWS[:1], pool, _ProlixRefusal(), stage="rubric", out=tmp_path)
+    assert result.judgements and not any(j.valid for j in result.judgements)
+    (reason,) = {j.invalid_reason for j in result.judgements}
+    assert len(reason) == 2000 and reason.endswith("(cut)")
+
+
+def test_a_census_append_cuts_the_torn_tail_first(tmp_path: Path, word_tokenizer_file: Path) -> None:
+    """A pass killed mid-append leaves a torn last census row; the NEXT pass's first append must cut it, not
+    merge into it -- a merged line is refused by every later read (the fix's own promise)."""
+    policy = Preprocessing(text=TextPolicy(on_overflow="truncate", max_tokens=2))
+    store = tmp_path / "store"
+    _rubric(store, _tokenized(FakeJudge(lambda text: 0.0), word_tokenizer_file), preprocessing=policy)
+    record = store / "preprocessing.jsonl"
+    good = record.read_text(encoding="utf-8")
+    record.write_text(good + '{"mechanism": "doc_pol', encoding="utf-8")  # the killed pass's torn row
+
+    # The resumed pass cuts differently (so it appends: its first append must cut the torn tail) and a third
+    # pass reads the file clean.
+    longer = Preprocessing(text=TextPolicy(on_overflow="truncate", max_tokens=3))
+    _rubric(store, _tokenized(FakeJudge(lambda text: 0.0), word_tokenizer_file), preprocessing=longer, force=True)
+    _rubric(store, _tokenized(FakeJudge(lambda text: 0.0), word_tokenizer_file), preprocessing=longer)
+    assert record.read_text(encoding="utf-8").endswith("\n"), "the append started on a fresh line"
+    rows = [json.loads(line) for line in record.read_text(encoding="utf-8").splitlines()]
+    assert all(isinstance(row.get("mechanism"), str) for row in rows), "no merged fragment survived"
+
+
+def test_naming_the_default_wire_leaves_the_family_key_alone(tmp_path: Path) -> None:
+    """`api: openai_chat` names the default wire: the same instrument, so the family key is the unset case's
+    (the digest carries the adapter only when it differs from the default, the operator's rule)."""
+    (default,) = _rubric(tmp_path).families.values()
+    named = _fake(config=JudgeConfig.fake(seed=0).model_copy(update={"api": "openai_chat"}))
+    (named_default,) = _rubric(tmp_path / "named", named).families.values()
+    assert named_default.key == default.key
+    # And the store resumes across the spelling: it is the same instrument.
+    again = _fake()
+    again.config = again.config.model_copy(update={"api": "openai_chat"})
+    _rubric(tmp_path, again)  # no IdentityError

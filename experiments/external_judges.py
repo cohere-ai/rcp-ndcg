@@ -26,7 +26,9 @@ from fetch_data import fetch_group, local_path
 
 REPO = "rcp-ndcg-external-validation"
 JUDGES = {"glm-5-3-flash": "GLM-5.3-flash", "deepseek-4-1-flash": "DeepSeek-4.1-flash", "kimi-k3": "Kimi-K3"}
-BRIGHT_WITH_EXCLUSIONS = ["AoPS", "LeetCode", "TheoremQA Questions"]
+# The display labels of the three BRIGHT tasks with excluded ids (fetch_data.BRIGHT_WITH_EXCLUSIONS, whose
+# subset ids these labels normalise to -- pinned in tests/experiments/test_reproduction_rules.py).
+BRIGHT_EXCLUSION_LABELS = ["AoPS", "LeetCode", "TheoremQA Questions"]
 
 
 def judge_decisions(verdicts: pd.DataFrame, keys: list[str], side: str) -> pd.DataFrame:
@@ -94,7 +96,7 @@ def study1(chk: Checker, paper: dict) -> None:
     cons = majority(dec, ("rcp", "qrel"))
     unanimous = dec.apply(lambda r: r.iloc[0] if r.notna().all() and r.nunique() == 1 else None, axis=1)
     s, ds = dec.index.get_level_values("set"), dec.index.get_level_values("dataset")
-    affected = np.isin(ds, BRIGHT_WITH_EXCLUSIONS)
+    affected = np.isin(ds, BRIGHT_EXCLUSION_LABELS)
     selections = {
         "nanobeir_qwen": s == "nanomteb_qwen3.5-397b",
         "nanobeir_oss": s == "nanomteb_gpt-oss-120b",

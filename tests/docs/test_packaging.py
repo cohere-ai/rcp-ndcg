@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
+from pathlib import Path
 
 import pytest
 from packaging.requirements import Requirement
@@ -90,33 +91,53 @@ def test_every_runtime_dependency_is_imported_somewhere() -> None:
 
 
 CONSTRAINTS = ROOT / "requirements-constraints.txt"
+CHECK_CONSTRAINTS = ROOT / ".github" / "scripts" / "check_constraints.py"
 
 
-def _pins(text: str) -> dict[str, str]:
-    """``{name: version}`` of a requirements file's exact pins, comments, markers and layout dropped.
+def _check_constraints_module():
+    """The one implementation of the constraints comparison (CI and the release run this script, not a copy)."""
+    import importlib.util
 
-    The comparison is the semantic one the release check makes (which package is pinned to which version), so a
-    newer uv's re-serialisation of the same export -- marker spacing, quoting, conjunction order, the ``# via``
-    comments -- does not fail it; a moved version does.
-    """
-    pins = {}
-    for line in text.splitlines():
-        line = line.split("#", 1)[0].strip()
-        if line:
-            requirement = Requirement(line)
-            (spec,) = requirement.specifier
-            pins[requirement.name.lower()] = spec.version
-    return pins
+    spec = importlib.util.spec_from_file_location("check_constraints", CHECK_CONSTRAINTS)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-def test_the_pins_comparison_is_semantic_not_textual() -> None:
-    """A newer uv's re-serialisation of the same export compares equal; only a version drift is a difference."""
+def test_the_constraints_check_is_semantic_not_textual(tmp_path: Path) -> None:
+    """The check CI and the release run compares pins, not text (a newer uv's re-serialisation does not fail it;
+    a moved, added or dropped pin does)."""
     committed = "torch==2.8.0 ; platform_system == 'Linux' and platform_machine == 'x86_64'\nnumpy==2.3.0\n"
     reserialised = (
         'torch==2.8.0;platform_machine == "x86_64" and platform_system == "Linux"  # via rcp-ndcg\n'
         "numpy==2.3.0; python_version >= '3.11'\n"
     )
-    assert _pins(reserialised) == _pins(committed) == {"torch": "2.8.0", "numpy": "2.3.0"}
+    assert _check_constraints_module().pins(reserialised) == {"torch": "2.8.0", "numpy": "2.3.0"}
+    base = tmp_path / "committed.txt"
+    other = tmp_path / "exported.txt"
+    base.write_text(committed, encoding="utf-8")
+
+    def run() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, str(CHECK_CONSTRAINTS), str(other), str(base)], capture_output=True, text=True
+        )
+
+    other.write_text(reserialised, encoding="utf-8")
+    assert run().returncode == 0, "the same pins re-serialised must compare equal"
+    other.write_text(reserialised.replace("numpy==2.3.0", "numpy==2.4.0"), encoding="utf-8")
+    assert run().returncode == 1, "a moved pin must be refused"
+    other.write_text(reserialised + "scipy==1.16.0\n", encoding="utf-8")
+    assert run().returncode == 1, "an added pin must be refused"
+
+
+def test_ci_and_the_release_both_run_the_constraints_check() -> None:
+    """One implementation, run on every pull request and at every release -- the tag cannot be the first run."""
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    _, release_text = _release_workflow()
+    invocation = ".github/scripts/check_constraints.py"
+    assert invocation in ci, "CI must run the constraints check"
+    assert invocation in release_text, "the release must run the constraints check"
 
 
 def test_the_constraints_file_is_the_locks_export_for_the_coordinators_extras() -> None:
@@ -125,6 +146,9 @@ def test_the_constraints_file_is_the_locks_export_for_the_coordinators_extras() 
 
     text = CONSTRAINTS.read_text(encoding="utf-8")
     command = text.splitlines()[1].lstrip("# ").split()
+    assert command == list(_check_constraints_module().EXPORT_ARGV), (
+        "the header and the check script must record the same export command (one home)"
+    )
     assert command[:2] == ["uv", "export"] and "--frozen" in command
     extras = [command[i + 1] for i, word in enumerate(command) if word == "--extra"]
     assert sorted(extras) == sorted(COORDINATOR_EXTRAS)
@@ -132,15 +156,14 @@ def test_the_constraints_file_is_the_locks_export_for_the_coordinators_extras() 
     locked: dict[str, set[str]] = {}
     for package in lock["package"]:
         locked.setdefault(package["name"].lower(), set()).add(package["version"])
-    pins = _pins(text)
+    pins = _check_constraints_module().pins(text)
     assert "torch" in pins and "rcp-ndcg" not in pins and "rcp-ndcg-core" not in pins
     stale = {name: pin for name, pin in pins.items() if pin not in locked.get(name, set())}
     assert not stale, f"regenerate requirements-constraints.txt with the command in its header: {stale}"
     uv = shutil.which("uv")
     if uv is not None:  # the exact export, when uv is at hand
-        argv = [uv, *command[1 : command.index("-o")], "--no-header", "-q"]
-        exported = subprocess.run(argv, cwd=ROOT, capture_output=True, text=True, check=True).stdout
-        assert _pins(exported) == pins
+        result = subprocess.run([sys.executable, str(CHECK_CONSTRAINTS)], cwd=ROOT, capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
 
 
 RELEASE_PUBLISH_JOBS = {
@@ -188,7 +211,9 @@ def _assert_one_environment_per_package(workflow: dict) -> None:
         assert len(published) == 1 and published[0]["with"]["packages-dir"] == directory
     assert jobs["publish-core"]["needs"] == "build"
     assert jobs["publish-rcp-ndcg"]["needs"] == "publish-core"  # it pins the core exactly: the core goes first
-    assert jobs["publish-vllm"]["needs"] == "build"
+    # rcp-ndcg-vllm pins rcp-ndcg==<version> exactly (and the core through it): an install must resolve at every
+    # instant of the rollout, so rcp-ndcg-vllm publishes only after both siblings are on PyPI.
+    assert set(jobs["publish-vllm"]["needs"]) == {"build", "publish-core", "publish-rcp-ndcg"}
     assert set(jobs["github-release"]["needs"]) == set(RELEASE_PUBLISH_JOBS)
     tokenised = {name for name, job in jobs.items() if (job.get("permissions") or {}).get("id-token") == "write"}
     assert tokenised == set(RELEASE_PUBLISH_JOBS), "id-token: write belongs to exactly the publish jobs"
@@ -231,22 +256,35 @@ def test_every_workflow_action_is_pinned_to_a_full_commit_sha() -> None:
     assert pinned >= len(WORKFLOW_ACTIONS), "no workflow action found to pin"
 
 
-def test_the_release_workflow_checks_the_vllm_packages_rcp_ndcg_pin(tmp_path) -> None:
-    """When ``rcp-ndcg-vllm`` depends on ``rcp-ndcg``, the release check requires exactly ``==<tag version>``.
+def test_the_release_workflow_pins_each_sibling_at_the_tags_version(tmp_path) -> None:
+    """The release check requires ``rcp-ndcg-core==<tag>`` in this manifest and, where ``rcp-ndcg-vllm`` depends
+    on ``rcp-ndcg``, exactly ``rcp-ndcg==<tag>`` there.
 
-    The check runs the workflow's own step against a manifest in ``tmp_path``; it must pass without the
-    dependency (and without the package), and refuse any other specifier.
+    The check runs the workflow's own step against manifests in ``tmp_path``; a manifest the release builds but
+    cannot find is a failure ("nothing to check" is never a pass), and no dependency means nothing to pin.
     """
     workflow, _ = _release_workflow()
     steps = workflow["jobs"]["build"]["steps"]
-    step = next(step for step in steps if "rcp-ndcg-vllm pins" in str(step.get("name", "")))
+    step = next(step for step in steps if "pins its sibling" in str(step.get("name", "")))
     body = str(step["run"]).split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
 
-    def check(manifest: str | None, version: str = "0.0.1") -> subprocess.CompletedProcess[str]:
+    def check(
+        manifest: str | None,
+        core: str = '"rcp-ndcg-core==0.0.1"',
+        version: str = "0.0.1",
+        core_in_extras: bool = False,
+        extra_core: str | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         tree = tmp_path / f"check-{check.calls:03d}-{version}"
         check.calls += 1
         package = tree / "packages" / "rcp-ndcg-vllm"
         package.mkdir(parents=True)
+        declaration = (
+            f"[project.optional-dependencies]\ndev = [{core}]" if core_in_extras else f"dependencies = [{core}]"
+        )
+        if extra_core is not None:
+            declaration += f"\n[project.optional-dependencies]\nprobe = [{extra_core}]"
+        (tree / "pyproject.toml").write_text(f'[project]\nname = "rcp-ndcg"\n{declaration}\n', encoding="utf-8")
         if manifest is not None:
             (package / "pyproject.toml").write_text(manifest, encoding="utf-8")
         return subprocess.run([sys.executable, "-", version], input=body, capture_output=True, text=True, cwd=tree)
@@ -263,8 +301,28 @@ def test_the_release_workflow_checks_the_vllm_packages_rcp_ndcg_pin(tmp_path) ->
     assert dotted.returncode == 0 and "pins rcp-ndcg==0.0.1" in dotted.stdout, "a . name normalises (PEP 503)"
     dotted_loose = check('[project]\ndependencies = ["RCP.NDCG==0.0.2"]\n')
     assert dotted_loose.returncode == 1 and "==0.0.1" in dotted_loose.stderr, "a . name must still be checked"
-    assert check(None).returncode == 0, "no package, nothing to check"
-    assert check('[project]\ndependencies = ["numpy"]\n').returncode == 0, "no dependency, nothing to check"
+    assert check('[project]\ndependencies = ["numpy"]\n').returncode == 0, "no dependency, nothing to pin"
+    missing = check(None)
+    assert missing.returncode == 1 and "pyproject.toml" in missing.stderr, (
+        "a manifest the release builds may not be absent"
+    )
+    # The root manifest pins the core the same way: exact at the tag's version, however the TOML is spelled.
+    assert check(exact, core='"rcp_ndcg_core == 0.0.1"').returncode == 0, "spaced and _ spelling normalise"
+    assert (
+        check(exact, core='"rcp-ndcg-core==0.0.1"  # a trailing comment in the list does not matter\n').returncode == 0
+    ), "only the dependencies list is read"
+    unpinned = check(exact, core='"numpy"')
+    assert unpinned.returncode == 1 and "rcp-ndcg-core" in unpinned.stderr, "a root manifest must pin the core"
+    extras_only = check(exact, core='"rcp-ndcg-core==0.0.1"', core_in_extras=True)
+    assert extras_only.returncode == 1 and "rcp-ndcg-core" in extras_only.stderr, (
+        "the required pin must be a runtime dependency: `pip install rcp-ndcg` resolves the core unpinned otherwise"
+    )
+    mixed = check(exact, core='"rcp-ndcg-core==0.0.1"', extra_core='"rcp-ndcg-core==0.0.2"')
+    assert mixed.returncode == 1 and "==0.0.1" in mixed.stderr, (
+        "an exact pin must not hide a stale one in an extra: `pip install rcp-ndcg[probe]` would not resolve"
+    )
+    stale = check(exact, core='"rcp-ndcg-core==0.0.2"')
+    assert stale.returncode == 1 and "==0.0.1" in stale.stderr, "a wrong core pin must be refused"
     for wrong in ("rcp-ndcg>=0.0.1", "rcp-ndcg", "rcp-ndcg[calibrate]", "rcp-ndcg==0.0.2"):
         result = check(f'[project]\ndependencies = ["{wrong}"]\n')
         assert result.returncode == 1, f"{wrong} must be refused"
@@ -300,3 +358,86 @@ def test_both_distributions_ship_the_license_and_the_notice() -> None:
                 f"{folder.relative_to(ROOT)}/{name} is stale"
             )
     assert "smart_resize" in (ROOT / "NOTICE").read_text(encoding="utf-8")
+
+
+# The dependency gates of tests/: every test module that gates on an import gets a CI job that opens the gate.
+# "always" names a dependency of the package itself: every job's environment has it. The rest name the extra
+# that provides the import (one home: rcp_ndcg.errors.EXTRA_FOR_MODULE), or "direct:" for a distribution that no
+# extra names.
+DEPENDENCY_GATES = {
+    "PIL": "always",
+    "pyarrow": "always",
+    "fsspec": "always",
+    "torch": "calibrate",
+    "huggingface_hub": "hf",
+    "pypdfium2": "data",
+    "datasets": "data",
+    "mteb": "mteb",
+    "transformers": "mteb",  # mteb's own dependency (uv.lock)
+    "mcp": "direct:mcp",
+    "rcp_ndcg_vllm": "direct:./packages/rcp-ndcg-vllm",  # example 09; the sibling installs from the checkout
+}
+
+
+def test_every_dependency_gate_in_tests_opens_in_ci() -> None:
+    """No test gates on a package that no CI job installs (the two readers and the SDK round trip among them).
+
+    A new ``pytest.importorskip`` must land in ``DEPENDENCY_GATES`` -- with the job that opens it, or the row
+    is a lie -- and the table may never contradict the product's own ``EXTRA_FOR_MODULE``.
+    """
+    from rcp_ndcg.errors import EXTRA_FOR_MODULE
+
+    found = set()
+    for path in sorted((ROOT / "tests").rglob("*.py")):
+        found.update(re.findall(r"importorskip\(\s*[\"']([A-Za-z0-9_]+)", path.read_text(encoding="utf-8")))
+    assert found == set(DEPENDENCY_GATES), f"gates and the table disagree: {sorted(found ^ set(DEPENDENCY_GATES))}"
+    core = {Requirement(spec).name.lower() for spec in PYPROJECT["project"]["dependencies"]}
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))["package"]
+    requirement_name = re.compile(r"[A-Za-z0-9._-]+")
+    deps_of = {
+        p["name"].lower(): {
+            requirement_name.match((d["name"] if isinstance(d, dict) else d).replace("_", "-").lower()).group()
+            for d in p.get("dependencies", [])
+        }
+        for p in lock
+    }
+    for name, provider in DEPENDENCY_GATES.items():
+        distribution = {"PIL": "pillow"}.get(name, name.replace("_", "-")).lower()
+        if provider == "always":
+            assert distribution in core, f"{name}: not a core dependency, so no job is guaranteed to have it"
+        elif provider.startswith("direct:"):
+            pass  # no extra names it: the install line below is its only home
+        elif (mapped := EXTRA_FOR_MODULE.get(name)) is not None:
+            assert mapped == provider, f"{name}: the table says {provider}, the product says {mapped}"
+        else:
+            # No product module imports it directly (nothing maps it): the provider extra must pull it in.
+            assert distribution in deps_of.get(provider, set()), f"{name}: [{provider}] does not depend on it (uv.lock)"
+    # Every provider the table names is opened by one CI job that also runs the whole tests/ tree: the tokens
+    # come from that job's own run steps (a shell comment is not an install; tokens do not pool across jobs).
+    workflow = __import__("yaml").safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    providers = {p.removeprefix("direct:") for p in DEPENDENCY_GATES.values() if p != "always"}
+    openings = []
+    for job in workflow["jobs"].values():
+        code = "\n".join(
+            "\n".join(ln for ln in str(step.get("run", "")).splitlines() if not ln.strip().startswith("#"))
+            for step in job.get("steps", [])
+        )
+        if not re.search(r"pytest tests/(?:\s|$)", code):
+            continue
+        tokens = {t for line in re.findall(r"cpu-env\.sh([^\n]*)", code) for t in line.split() if t != "dev"}
+        for spec in EXTRAS.get("dev", []):
+            tokens |= set(Requirement(spec).extras or ())
+        for install in re.findall(r"pip install([^\n]*)", code):
+            tokens |= {t for t in install.split() if not t.startswith("-")}
+        openings.append(tokens)
+    assert any(providers <= tokens for tokens in openings), (
+        f"no job both installs every gate's provider and runs tests/: {sorted(providers)} vs {openings}"
+    )
+
+
+def test_the_plugin_test_suites_run_in_ci() -> None:
+    """Every test suite under ``packages/rcp-ndcg-vllm/plugins/*/tests`` runs in a CI job (six topk and three pplx
+    modules executed nowhere before this). The plugins fold into rcp-ndcg-vllm with the layout move and then run
+    under the package's own suite."""
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "packages/rcp-ndcg-vllm/plugins/*/tests" in ci, "a CI job must collect the plugins' test suites"

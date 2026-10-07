@@ -61,7 +61,9 @@ def install_argv(
         wheelhouse: A directory, a ``file://`` URL, or an ``http(s)://`` URL of staged wheels, readable where
             the command runs: rendered as ``--find-links <wheelhouse> --no-index`` (a pre-release, or an
             air-gapped node -- the wheelhouse stages every wheel, the CPU torch build included, so no index
-            is asked).
+            is asked). On an air-gapped node set ``constraints`` too: the default constraints file is the
+            release's network URL, fetched even under ``--no-index`` (or stage it in the wheelhouse and
+            default it there).
         constraints: A constraints file (path or URL) replacing the release's
             (:data:`CONSTRAINTS_URL`).
 
@@ -134,7 +136,7 @@ def worker_script(
         install_argv(cmd, wheelhouse=wheelhouse, constraints=constraints) if install else tuple(cmd) for cmd in commands
     ]
     if any(cmd[0] == "uvx" and cmd != orig for cmd, orig in zip(rendered, commands, strict=True)):
-        lines += bootstrap_uv()
+        lines += bootstrap_uv(wheelhouse)
     *head, last = rendered
     for cmd in head:
         lines.append(quote_argv(cmd))
@@ -146,11 +148,23 @@ def worker_script(
 UV_BOOTSTRAP_DIR = "${TMPDIR:-/tmp}/rcp-ndcg-uv"
 
 
-def bootstrap_uv() -> list[str]:
-    """Bash lines that install uv with the image's ``python3 -m pip`` when ``uvx`` is not on ``PATH``."""
+def bootstrap_uv(wheelhouse: str | None = None) -> list[str]:
+    """Bash lines that install uv with the image's ``python3 -m pip`` when ``uvx`` is not on ``PATH``.
+
+    ``wheelhouse``: install uv from the staged wheels (``--find-links ... --no-index``), like the release
+    install the wheelhouse is declared for -- an air-gapped node has no PyPI to ask, and the uv wheel is
+    staged in the wheelhouse beside the package's own. Without one, uv comes from PyPI (a node with network).
+    """
+    if wheelhouse:
+        install = (
+            f"python3 -m pip install --quiet --no-index --find-links {shlex.quote(wheelhouse)} "
+            f'--target "{UV_BOOTSTRAP_DIR}" uv'
+        )
+    else:
+        install = f'python3 -m pip install --quiet --target "{UV_BOOTSTRAP_DIR}" uv'
     return [
         "if ! command -v uvx >/dev/null; then",
-        f'  python3 -m pip install --quiet --target "{UV_BOOTSTRAP_DIR}" uv',
+        f"  {install}",
         f'  export PATH="{UV_BOOTSTRAP_DIR}/bin:$PATH"',
         "fi",
     ]
@@ -232,6 +246,8 @@ _ENGINES_SPEC = """import json, sys
 out = {}
 for spec in sys.argv[1:]:
     role, port, wait, hosts = spec.split(":", 3)
+    # The one URL shape, ServeConfig.url's (support/serve.py) -- this builder is a bare python3 -c script
+    # that runs before the coordinator and cannot import it.
     out[role] = {"urls": [f"http://{h}:{port}/v1" for h in hosts.split(",")], "wait_on_outage_s": int(wait)}
 print(json.dumps(out))
 """

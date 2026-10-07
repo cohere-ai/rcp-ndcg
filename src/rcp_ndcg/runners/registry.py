@@ -37,7 +37,9 @@ def get_runner(name: str, **options: Any) -> JobRunner:
     runner = found[name].load()
     try:
         return runner(**options)
-    except TypeError as exc:
+    except (TypeError, ValueError) as exc:
+        # A plugin whose constructor rejects the options raises what it raises; built-ins and plugins then
+        # fail with the same typed error for the same mistake (JobOptions.parse converts for the built-ins).
         raise ConfigError(f"invalid options for the {name!r} runner: {exc}") from exc
 
 

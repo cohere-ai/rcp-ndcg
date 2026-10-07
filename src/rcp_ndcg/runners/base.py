@@ -155,7 +155,7 @@ class JobOptions(BaseModel):
     air-gapped node set ``constraints`` too: the default release constraints URL is fetched at job start even
     under ``--no-index``. Only runners that install the release take one (a container on SLURM, Kubernetes);
     where the coordinator runs in an environment that already has it, setting one is refused. The wheels are
-    built and staged as ``docs/concepts/serving.md`` ("The coordinator installs itself") describes.
+    built and staged as ``docs/concepts/runs.md`` ("The coordinator installs itself") describes.
     """
     constraints: str | None = Field(default=None, min_length=1)
     """A constraints file (path or URL) replacing the release's, which pins every dependency to the version

@@ -110,7 +110,7 @@ class LocalRunner:
                 raise ConfigError(
                     f"job {job.name!r} starts engine(s) for role(s) {', '.join(serving)}, and the local runner "
                     "starts no engine",
-                    hint="start the engine(s) yourself (docs/concepts/serving.md) and pass the URLs: "
+                    hint="start the engine(s) yourself (docs/concepts/runs.md) and pass the URLs: "
                     "rcp-ndcg run resume --run <run dir> --engine <role>=<url>[,<url>]",
                 )
         return {

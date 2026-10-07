@@ -193,3 +193,32 @@ def test_an_environment_name_that_is_no_shell_identifier_is_refused_everywhere(n
     with pytest.raises(ValidationError, match="not an environment variable name"):
         ServeConfig(image="i", command="serve", env={name: "1"})
     assert JobSpec(name="j", argv=("true",), env={"_HF_HOME2": "1"}).env == {"_HF_HOME2": "1"}
+
+
+def test_the_uv_bootstrap_installs_from_the_wheelhouse_when_one_is_given(tmp_path) -> None:
+    """An air-gapped node (the wheelhouse option's whole point) has no PyPI: the bootstrap installs uv from
+    the wheelhouse too, --no-index, like the release install it stands next to (the uv wheel is staged there)."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "python3").write_text(
+        "#!/usr/bin/env bash\n"
+        f'echo "$@" > {tmp_path}/pip-args\n'
+        'target="${@: -2:1}"\n'
+        'mkdir -p "$target/bin"\n'
+        'printf \'#!/usr/bin/env bash\\necho uvx "$*"\\n\' > "$target/bin/uvx"\n'
+        'chmod +x "$target/bin/uvx"\n'
+    )
+    (bin_dir / "python3").chmod(0o755)
+    for tool in ("bash", "mkdir", "chmod"):
+        (bin_dir / tool).symlink_to(shutil.which(tool))
+    script = worker_script(
+        JobSpec(name="j", argv=("rcp-ndcg", "--help")),
+        install=True,
+        workdir=None,
+        wheelhouse="/shared/wheels",
+    )
+    env = {"PATH": str(bin_dir), "TMPDIR": str(tmp_path)}
+    subprocess.run([str(bin_dir / "bash"), "-c", script], env=env, capture_output=True, text=True, check=True)
+    pip = (tmp_path / "pip-args").read_text()
+    assert "--find-links /shared/wheels" in pip and "--no-index" in pip, pip
+    assert "pypi" not in pip.lower()

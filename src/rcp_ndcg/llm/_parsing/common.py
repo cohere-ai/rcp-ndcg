@@ -4,8 +4,9 @@
 what surrounds the object, and makes exactly two named repairs inside it (items 4
 and 5):
 
-1. it strips ``<think>...</think>`` blocks, and an orphaned leading ``...</think>``
-   (an engine may drop the opening tag and keep the closing one);
+1. it strips ``<think>...</think>`` blocks, and an orphaned ``</think>`` that sits
+   before the object (an engine may drop the opening tag and keep the closing one); one that trails the
+   object is what surrounds it, and never erases the object;
 2. it strips one code fence around the whole answer;
 3. it decodes the first complete JSON object that starts at the first ``{`` and
    ignores whatever follows it (prose, a stray ``}``, a second object);
@@ -38,7 +39,7 @@ from rcp_ndcg_core.schemas import InvalidCategory
 #: observations read from identical text, including the JSON schemas that
 #: :mod:`rcp_ndcg.llm._parsing.schema` sends the endpoint. Part of the judgement
 #: family: observations parsed by different versions are never pooled.
-PARSE_VERSION = 2
+PARSE_VERSION = 3
 
 _THINK_BLOCK = re.compile(r"<think>[\s\S]*?</think>")
 _ORPHANED_THINK_END = re.compile(r"^[\s\S]*?</think>")
@@ -98,10 +99,19 @@ _DECODER = json.JSONDecoder(object_pairs_hook=_object_without_duplicate_keys)
 
 
 def strip_reasoning(text: str) -> str:
-    """``text`` without ``<think>...</think>`` blocks and without an orphaned leading ``...</think>``."""
+    """``text`` without ``<think>...</think>`` blocks, and without an orphaned
+    ``</think>`` that sits before the object.
+
+    An orphaned think-end is reasoning that lost its opening tag, so what leads up to it is stripped --
+    but only up to the first ``{``: a think-end that follows the object is what surrounds it, and the
+    object must survive (the decoder ignores whatever follows the object, so a complete answer plus a
+    stray think-end is parsed, never erased).
+    """
     text = _THINK_BLOCK.sub("", text)
-    text = _ORPHANED_THINK_END.sub("", text)
-    return text.strip()
+    start = text.find("{")
+    if start >= 0:
+        return (_ORPHANED_THINK_END.sub("", text[:start]) + text[start:]).strip()
+    return _ORPHANED_THINK_END.sub("", text).strip()
 
 
 def strip_code_fence(text: str) -> str:

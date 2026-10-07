@@ -155,7 +155,7 @@ def _phased_job(
     if any(phase.engines for phase in phases) and not getattr(backend, "renders_phases", False):
         raise ConfigError(
             f"the {runner} runner does not start a phase's engines (it renders no phases)",
-            hint="start the engines yourself (docs/concepts/serving.md) and resume with --engine <role>=<url>[,<url>]",
+            hint="start the engines yourself (docs/concepts/runs.md) and resume with --engine <role>=<url>[,<url>]",
         )
     if phases and getattr(backend, "renders_phases", False):
         commands: dict[str, Any] = {
@@ -476,7 +476,7 @@ def refuse_serving_here(config: RunConfig) -> None:
     if config.serve is not None:
         raise ConfigError(
             "this run has a serve: section, and a run in this process (or on the local runner) starts no engine",
-            hint="start the engine(s) yourself (docs/concepts/serving.md), drop serve:, and pass the URLs with "
+            hint="start the engine(s) yourself (docs/concepts/runs.md), drop serve:, and pass the URLs with "
             "RCP_NDCG_ENGINES (or run resume --engine <role>=<url>[,<url>])",
         )
 

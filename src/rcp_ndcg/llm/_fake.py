@@ -44,6 +44,7 @@ from rcp_ndcg.inference.fake import (
     register_fake_route,
 )
 from rcp_ndcg.llm.client import FAKE_URL_SCHEME, JudgeClient, JudgeConfig
+from rcp_ndcg.llm.prompts import criterion_labels_in
 from rcp_ndcg.llm.tokens import approx_tokens
 
 #: Criterion difficulties (logits) of the fake rubric, C1 easiest to C5 hardest.
@@ -57,7 +58,6 @@ TOURNAMENT_NOISE = 0.5
 
 _DOC_BLOCK = re.compile(r'<doc id="doc_(\d+)">\n(.*?)\n</doc>', re.S)
 _DOCUMENTS = re.compile(r"<documents>.*?</documents>", re.S)
-_CRITERION = re.compile(r"\bC([1-9][0-9]?)\b")
 
 
 def _difficulties(num_criteria: int) -> tuple[float, ...]:
@@ -79,8 +79,8 @@ def _answer_text(seed: int, ability: Callable[[str], float], severity: float, pr
     if not docs:
         raise ValueError("FakeJudge found no <doc id=...> blocks in the prompt")
     window = "|".join(docs[index] for index in sorted(docs))
-    labels = {int(k) for k in _CRITERION.findall(_DOCUMENTS.sub("", prompt))}
-    if labels and labels == set(range(1, max(labels) + 1)):
+    labels = criterion_labels_in(_DOCUMENTS.sub("", prompt))
+    if labels:
         payload: dict[str, Any] = {
             f"doc_{index}": {
                 "criteria": {
@@ -88,7 +88,7 @@ def _answer_text(seed: int, ability: Callable[[str], float], severity: float, pr
                         _uniform(seed, "rubric", window, body, k)
                         < sigmoid(DISCRIMINATION * (ability(body) - severity - b))
                     )
-                    for k, b in enumerate(_difficulties(max(labels)))
+                    for k, b in enumerate(_difficulties(len(labels)))
                 }
             }
             for index, body in docs.items()

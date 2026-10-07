@@ -486,3 +486,22 @@ class TestRecords:
             Preprocessing(image=ImagePolicy(min_px=65536, max_px=256 * 32 * 32).for_processor("qwen3_vl")).key,
         }
         assert len(keys) == 4
+
+
+class TestCensusReader:
+    def test_an_unterminated_but_parseable_row_is_torn_not_counted(self, tmp_path: Path):
+        """The readers' definition of unfinished matches the cutter's: an unterminated last row (parseable or
+        not) is skipped and recorded again -- the next append can never silently delete a row this read
+        counted as on record."""
+        from rcp_ndcg.data.preprocess import read_census_rows
+
+        sink = tmp_path / "preprocessing.jsonl"
+        sink.write_text('{"mechanism": "doc_policy", "corpus": "c"}\n{"mechanism": "doc_policy", "corpus": "d"}')
+        rows = list(read_census_rows(sink))
+        assert [row["corpus"] for row in rows] == ["c"], "the unterminated row is a torn write: absent"
+        # And a complete line that is not a census row is refused with the typed error.
+        sink.write_text('{"mechanism": "doc_policy", "corpus": "c"}\n{"foo": 1}\n')
+        from rcp_ndcg.errors import DataError
+
+        with pytest.raises(DataError, match="census row"):
+            list(read_census_rows(sink))

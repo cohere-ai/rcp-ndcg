@@ -47,7 +47,7 @@ def rubric_set(
             ids = [p.unit_id for p in placements]
             judgements.append(
                 Judgement(
-                    record_id=judgement_record_id(family.key, query_id, "rubric", seq, ids),
+                    record_id=judgement_record_id(family.key, query_id, "rubric", seq, ids, dataset=dataset),
                     dataset=dataset,
                     query_id=query_id,
                     stage="rubric",

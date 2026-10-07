@@ -18,7 +18,7 @@ import pytest
 from pydantic import ValidationError
 from rcp_ndcg_core.schemas import Judgement, Placement
 
-from rcp_ndcg.llm._parsing.common import MAX_ESCAPE_REPAIRS, UnparseableAnswer, decode_answer
+from rcp_ndcg.llm._parsing.common import MAX_ESCAPE_REPAIRS, PARSE_VERSION, UnparseableAnswer, decode_answer
 from rcp_ndcg.llm._parsing.listwise import judgement_comparisons, parse_calibrated_listwise, window_comparisons
 from rcp_ndcg.llm._parsing.rubric import parse_rubric_criteria
 from rcp_ndcg.llm._parsing.schema import answer_schema, response_format
@@ -64,6 +64,8 @@ RECOVERED = {
     "stray-quote-after-a-number": OBJECT.replace("-2.0}", '-2.0"}'),
     "think-block-with-numbered-prose": "<think>1. doc_3\n2. doc_1\n3. doc_2 {draft}</think>\n" + OBJECT,
     "orphaned-think-end-with-numbered-prose": "Ranking: 3, 1, 2.\n1. doc_3 is best\n</think>\n\n" + OBJECT,
+    "orphaned-think-end-after-the-object": OBJECT + "\n</think>",  # a stray tag never erases the object
+    "orphaned-think-end-after-the-object-with-prose": OBJECT + "\n</think>\n(its reasoning was cut)",
     "code-fence": "```json\n" + OBJECT + "\n```",
     "code-fence-inside-prose": "Here is the ranking:\n```json\n" + OBJECT + "\n```\nI ranked 3 documents.",
     "prose-before-the-json": "Sure. Of documents 1, 2 and 3, doc_3 is weakest:\n" + OBJECT,
@@ -187,8 +189,9 @@ class TestTournament:
 # ---------------------------------------------------------------------------
 
 _PROSE = ["Ranking:", "1.", "2)", "doc_3", "doc_1 >", "best", "3, 1, 2", "\n", "- doc_2", "score 4.5", "#"]
-#: What may follow the object. Not ``</think>``: everything before an orphaned ``</think>`` is reasoning.
-_TAIL = ["}", "}}", "]", "{", '{"ranking": [1]}', "doc_1", "4 3 2 1", "```", "\n", "<think>", '"', "..."]
+#: What may follow the object, an orphaned ``</think>`` included: only what sits before the
+#: object is reasoning, so a tag after it must never erase the object.
+_TAIL = ["}", "}}", "]", "{", '{"ranking": [1]}', "doc_1", "4 3 2 1", "```", "\n", "<think>", "</think>", '"', "..."]
 
 
 def _junk(rng: random.Random, words: list[str], n: int) -> str:
@@ -463,3 +466,10 @@ def test_the_response_format_is_the_openai_standard_json_schema_form() -> None:
     assert fmt["type"] == "json_schema"
     assert set(fmt["json_schema"]) == {"name", "schema", "strict"} and fmt["json_schema"]["strict"] is True
     assert fmt["json_schema"]["schema"] == answer_schema("rubric", 4, ("C1", "C2", "C3", "C4", "C5"))
+
+
+def test_the_parse_version_is_pinned() -> None:
+    """The parse version is part of the judgement family, the policy M5's fix trips: parsing changed in a way
+    that alters the observations read from identical text (a trailing orphaned think-end no longer erases the
+    object), so the version must move (pre- and post-fix observations never pool), pinned as a literal."""
+    assert PARSE_VERSION == 3
