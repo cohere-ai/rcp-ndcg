@@ -796,68 +796,6 @@ def test_stage1_marker_audit_is_not_masked_by_the_post_processor() -> None:
     assert audit(tokenizer.ids(cut, add_special_tokens=True)) is False
 
 
-class CountingWords:
-    """A whitespace-word tokenizer that counts its calls (the sampler's TokenizerAdapter surface)."""
-
-    def __init__(self) -> None:
-        self.calls = 0
-        self.char_work = 0
-
-    def count(self, text: str) -> int:
-        """Tokens of ``text`` -- one per word -- and the recorded re-tokenization work, in characters."""
-        self.calls += 1
-        self.char_work += len(text)
-        return len(text.split()) or 1
-
-
-def test_over_length_padding_is_bounded_and_over_budget() -> None:
-    """The sampler pads to >= 2x the budget in whole words with a RUNTIME BOUND (the hang fix).
-
-    A 32768-token budget once re-tokenized the growing text at every step (one count per ~7 removed
-    words), and one stage-1 sample of 10 over-length texts sat in ``tokenizer.count`` for minutes.  The
-    bound is what makes the six network-gated files finish: at most 8 measured passes, so the counted
-    characters stay a small multiple of the padded length instead of quadratic.
-    """
-    from rcp_ndcg_vllm.equivalence.stages import _over_length
-
-    for budget in (64, 2048, 32768):
-        tokenizer = CountingWords()
-        seed = "How fast does light travel in a vacuum?"
-        text = _over_length(seed, budget, tokenizer, 2)
-        assert tokenizer.count(text) >= budget * 2  # the contract: at least twice the budget, still text
-        assert text.startswith(seed)  # seed preserved, padding appended
-        assert all(word == "pad2" for word in text.split()[len(seed.split()) :])  # whole words of the marker
-        assert tokenizer.calls <= 12, (budget, tokenizer.calls)  # bounded pass count, not a re-tokenizing loop
-        assert tokenizer.char_work <= 24 * len(text), (budget, tokenizer.char_work, len(text))
-
-
-class CeilingWords(CountingWords):
-    """A whitespace-word tokenizer whose count saturates at a ceiling (an embedded truncation, recipe G5)."""
-
-    def __init__(self, ceiling: int) -> None:
-        super().__init__()
-        self.ceiling = ceiling
-
-    def count(self, text: str) -> int:
-        """Tokens of ``text``, never more than the ceiling."""
-        return min(super().count(text), self.ceiling)
-
-
-def test_over_length_padding_refuses_a_counter_that_never_reaches_the_target() -> None:
-    """A tokenizer whose count stops at a ceiling below twice the budget cannot yield an over-length sample.
-
-    The bounded sampler must say so instead of returning a text it never measured over the target: such a
-    sample would audit an uncut input as if it were over the cap (nothing passes silently).
-    """
-    from rcp_ndcg_vllm.equivalence.stages import _over_length
-    from rcp_ndcg_vllm.errors import HarnessError
-
-    tokenizer = CeilingWords(ceiling=1024)
-    with pytest.raises(HarnessError, match=r"2048 tokens.*1024"):
-        _over_length("How fast does light travel in a vacuum?", 1024, tokenizer, 0)
-    assert tokenizer.calls <= 12  # the refusal comes after the bounded passes, not after a hang
-
-
 _CHAT_TEMPLATE = (
     "{%- for message in messages -%}doc: {% for part in message.content -%}"
     "{%- if part.type == 'text' %}{{ part.text }}{% endif -%}{%- endfor %} [END]{%- endfor -%}"

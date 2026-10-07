@@ -96,6 +96,7 @@ CLIENT = {
     "instruction": "none",
     "use_activation": True,
     "query_max_tokens": 4096,
+    "document_max_tokens": None,
     "template": {
         "query": None,
         "document": None,

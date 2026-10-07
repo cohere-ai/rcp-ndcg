@@ -111,6 +111,7 @@ CONTRACT: dict[str, Any] = {
         "instruction": "none",
         "use_activation": True,
         "query_max_tokens": QUERY_MAX_TOKENS,
+        "document_max_tokens": None,
         "template": {
             "query": None,
             "document": None,
