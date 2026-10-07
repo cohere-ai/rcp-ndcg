@@ -44,6 +44,12 @@ test = [
 [project.scripts]
 rcp-ndcg-vllm = "rcp_ndcg_vllm.serve:main"
 
+[project.entry-points."vllm.general_plugins"]
+# Loaded by every vLLM process at startup (vllm/plugins/__init__.py); the callable registers each
+# folded model's architecture as a lazy "module:Class" string. The topk and pplx plugin distributions
+# folded into this wheel (layout-move item 3): one entry point, one version guard.
+rcp-ndcg-vllm = "rcp_ndcg_vllm.models:register"
+
 [project.urls]
 Homepage = "https://github.com/cohere-ai/rcp-ndcg"
 Repository = "https://github.com/cohere-ai/rcp-ndcg"

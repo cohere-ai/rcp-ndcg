@@ -38,7 +38,7 @@ serve:
                                  # default (262144) would over-reserve KV
   dtype: bfloat16                # the checkpoint's dtype; one rounding delta vs the reference's bf16
                                  # head matmul is a stage-2 matter (R6), not a serve setting
-  plugin: topk-embed-vllm        # the plug-topk lane's pure-Python wheel (vllm.general_plugins group;
+  plugin: rcp-ndcg-vllm        # the models fold into this wheel (layout-move item 3): one entry point
                                  # installed with --no-deps; registers TopkEmbedModel as a subclass of
                                  # ColQwen3_5Model mapping head. -> custom_text_proj. and switching the
                                  # 6 full-attention layers to non-causal prefill)

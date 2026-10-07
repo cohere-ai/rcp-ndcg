@@ -1,9 +1,0 @@
-rcp-ndcg-vllm-pplx: a vLLM plugin that serves perplexity-ai/pplx-embed-v2-context-9b-preview as a multi-chunk
-pooling model.
-
-Original work, released under Apache-2.0 together with the rcp-ndcg repository (see LICENSE). The model class is a
-thin subclass of vLLM's own ``Qwen3_5ForCausalLMBase`` (Apache-2.0, vLLM project); the subclasses where that
-inheritance ends at it, and every line that adapts the checkpoint's naming or pooling is this package's own.
-The vLLM engine it registers with is a separate work, served from its own image and covered by its own licence.
-The served model (perplexity-ai/pplx-embed-v2-context-9b-preview) is MIT-licensed by its authors; this plugin
-ships no model weights and downloads nothing.

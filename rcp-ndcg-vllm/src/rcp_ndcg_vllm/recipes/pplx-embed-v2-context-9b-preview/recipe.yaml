@@ -20,7 +20,7 @@ serve:
   trust_remote_code: true  # the config class comes from the repo's auto_map (PplxContextualConfig)
   max_model_len: 262144  # the model's own limit (query_length/document_length); the model raises beyond it
   dtype: float32  # the whole checkpoint is F32 and the reference runs fp32; bfloat16 is the production option pending the stage-2 gate
-  plugin: rcp-ndcg-vllm-pplx  # pure-Python wheel, installed with --no-deps before the engine starts
+  plugin: rcp-ndcg-vllm  # the models fold into this wheel (layout-move item 3): one entry point
   extra_args: []
 client:
   api: vllm_pooling
