@@ -72,8 +72,9 @@ def test_the_papers_engine_scripts_are_valid_bash_and_name_the_presets_model(pat
     assert f"--served-model-name {judge.model}\n" in script
     image = next(line for line in script.splitlines() if line.startswith("IMAGE="))
     assert ":latest" not in image and ":v" in image  # a pinned release tag
-    assert re.search(r"^\s*--revision [0-9a-f]{40}\s*$", script, re.M), (
-        "the weights line pins a Hub revision (a live flag line), not a branch and not a comment"
+    revisions = re.findall(r"^\s*--revision\b(.*)$", script, re.M)
+    assert revisions and all(re.fullmatch(r"\s+[0-9a-f]{40}", rev) for rev in revisions), (
+        "every --revision line pins a live 40-hex Hub revision (never a branch, never a second revision line)"
     )
     if judge.context_tokens is not None:
         assert f" {judge.context_tokens}\n" in script  # the served context is the preset's

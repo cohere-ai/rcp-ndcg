@@ -273,6 +273,7 @@ def test_the_release_workflow_pins_each_sibling_at_the_tags_version(tmp_path) ->
         core: str = '"rcp-ndcg-core==0.0.1"',
         version: str = "0.0.1",
         core_in_extras: bool = False,
+        extra_core: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
         tree = tmp_path / f"check-{check.calls:03d}-{version}"
         check.calls += 1
@@ -281,6 +282,8 @@ def test_the_release_workflow_pins_each_sibling_at_the_tags_version(tmp_path) ->
         declaration = (
             f"[project.optional-dependencies]\ndev = [{core}]" if core_in_extras else f"dependencies = [{core}]"
         )
+        if extra_core is not None:
+            declaration += f"\n[project.optional-dependencies]\nprobe = [{extra_core}]"
         (tree / "pyproject.toml").write_text(f'[project]\nname = "rcp-ndcg"\n{declaration}\n', encoding="utf-8")
         if manifest is not None:
             (package / "pyproject.toml").write_text(manifest, encoding="utf-8")
@@ -313,6 +316,10 @@ def test_the_release_workflow_pins_each_sibling_at_the_tags_version(tmp_path) ->
     extras_only = check(exact, core='"rcp-ndcg-core==0.0.1"', core_in_extras=True)
     assert extras_only.returncode == 1 and "rcp-ndcg-core" in extras_only.stderr, (
         "the required pin must be a runtime dependency: `pip install rcp-ndcg` resolves the core unpinned otherwise"
+    )
+    mixed = check(exact, core='"rcp-ndcg-core==0.0.1"', extra_core='"rcp-ndcg-core==0.0.2"')
+    assert mixed.returncode == 1 and "==0.0.1" in mixed.stderr, (
+        "an exact pin must not hide a stale one in an extra: `pip install rcp-ndcg[probe]` would not resolve"
     )
     stale = check(exact, core='"rcp-ndcg-core==0.0.2"')
     assert stale.returncode == 1 and "==0.0.1" in stale.stderr, "a wrong core pin must be refused"
@@ -404,19 +411,27 @@ def test_every_dependency_gate_in_tests_opens_in_ci() -> None:
         else:
             # No product module imports it directly (nothing maps it): the provider extra must pull it in.
             assert distribution in deps_of.get(provider, set()), f"{name}: [{provider}] does not depend on it (uv.lock)"
-    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert re.search(r"cpu-env\.sh[^\n]*\bdata\b", ci) and re.search(r"cpu-env\.sh[^\n]*\bmteb\b", ci), (
-        "a job must install the [data] and [mteb] extras (pdf reader, hf reader, transformers parity)"
+    # Every provider the table names is opened by one CI job that also runs the whole tests/ tree: the tokens
+    # come from that job's own run steps (a shell comment is not an install; tokens do not pool across jobs).
+    workflow = __import__("yaml").safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    providers = {p.removeprefix("direct:") for p in DEPENDENCY_GATES.values() if p != "always"}
+    openings = []
+    for job in workflow["jobs"].values():
+        code = "\n".join(
+            "\n".join(ln for ln in str(step.get("run", "")).splitlines() if not ln.strip().startswith("#"))
+            for step in job.get("steps", [])
+        )
+        if not re.search(r"pytest tests/(?:\s|$)", code):
+            continue
+        tokens = {t for line in re.findall(r"cpu-env\.sh([^\n]*)", code) for t in line.split() if t != "dev"}
+        for spec in EXTRAS.get("dev", []):
+            tokens |= set(Requirement(spec).extras or ())
+        for install in re.findall(r"pip install([^\n]*)", code):
+            tokens |= {t for t in install.split() if not t.startswith("-")}
+        openings.append(tokens)
+    assert any(providers <= tokens for tokens in openings), (
+        f"no job both installs every gate's provider and runs tests/: {sorted(providers)} vs {openings}"
     )
-    assert re.search(r"pip install[^\n]*\bmcp\b", ci), "a job must install the MCP SDK (no extra names it)"
-    assert "pytest tests/" in ci, "the gated job runs the whole tests/ tree, every gate in it open"
-    # Every provider extra the table names is opened by some CI job's environment: named on a cpu-env.sh line
-    # (which takes the repo's extras), or pulled in by a named extra (dev's `[calibrate,hf]` reference).
-    installed = {token for line in re.findall(r"cpu-env\.sh([^\n]*)", ci) for token in line.split() if token != "dev"}
-    for spec in EXTRAS.get("dev", []):
-        installed |= set(Requirement(spec).extras or ())
-    for provider in {p for p in DEPENDENCY_GATES.values() if p not in ("always",) and not p.startswith("direct:")}:
-        assert provider in installed, f"no CI job installs [{provider}]"
 
 
 def test_the_plugin_test_suites_run_in_ci() -> None:

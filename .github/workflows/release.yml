@@ -72,20 +72,25 @@ jobs:
               if not manifest.is_file():
                   raise SystemExit(f"{path} is not in this tree: the release builds it, so it must pin {name}=={version}")
               project = tomllib.loads(manifest.read_text(encoding="utf-8"))["project"]
-              requirements = list(project.get("dependencies", []))
-              if not required:
-                  # "when it declares" also counts a declaration in an extra; a REQUIRED pin must sit in the
-                  # runtime dependencies (a pin demoted to an extra leaves `pip install` unconstrained otherwise).
-                  for extra in project.get("optional-dependencies", {}).values():
-                      requirements += extra
-              pins = [
-                  re.sub(r"[\s()]", "", m.group(2))  # "( == 0.0.1 )" and "== 0.0.1" are the exact pin "==0.0.1"
-                  for requirement in requirements
-                  if (m := requirement_re.match(requirement.split(";", 1)[0]))
-                  and re.sub(r"[-_.]+", "-", m.group(1).lower()) == re.sub(r"[-_.]+", "-", name.lower())  # PEP 503
-              ]
+              runtime = list(project.get("dependencies", []))
+              declared = list(runtime)
+              # Every declaration, in any scope, must be the exact pin: a stale pin hiding in an extra makes
+              # `pip install <sibling>[<extra>]` unresolvable at tag time. The REQUIRED pin sits in the runtime
+              # dependencies (`pip install` resolves it); the vllm manifest may omit the dependency altogether.
+              for extra in project.get("optional-dependencies", {}).values():
+                  declared += extra
+
+              def pins_of(specs):
+                  return [
+                      re.sub(r"[\s()]", "", m.group(2))  # "( == 0.0.1 )" and "== 0.0.1" are the exact pin "==0.0.1"
+                      for requirement in specs
+                      if (m := requirement_re.match(requirement.split(";", 1)[0]))
+                      and re.sub(r"[-_.]+", "-", m.group(1).lower()) == re.sub(r"[-_.]+", "-", name.lower())  # PEP 503
+                  ]
+
               expected = f"=={version}"
-              if not pins:
+              pins = pins_of(declared)
+              if not (pins_of(runtime) if required else pins):
                   if required:
                       raise SystemExit(f"{path} does not declare {name}: it must pin {name}{expected} exactly")
                   print(f"{path} does not depend on {name}")

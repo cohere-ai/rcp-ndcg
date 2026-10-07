@@ -86,8 +86,10 @@ released together.
   failed sibling can no longer strand a permanently uninstallable `rcp-ndcg-vllm` on PyPI.
 - **The release's sibling pins are read as data**: one `tomllib` check requires `rcp-ndcg-core==<tag>` in
   `pyproject.toml` and, where `rcp-ndcg-vllm` depends on it, `rcp-ndcg==<tag>` exactly (PEP 508 spelling and PEP
-  503 names still normalise). A manifest the release builds but cannot find is now an error -- never "nothing to
-  check" -- and a reflowed dependencies list no longer breaks the tag (the `grep` of one exact TOML line is gone).
+  503 names still normalise). Every declaration of the sibling -- in any extra or scope -- must carry that same
+  exact pin, and the required one must sit in the runtime dependencies. A manifest the release builds but cannot
+  find is now an error -- never "nothing to check" -- and a reflowed dependencies list no longer breaks the tag
+  (the `grep` of one exact TOML line is gone).
 - **The constraints check is semantic, and CI runs it too**: `.github/scripts/check_constraints.py` compares the
   pins (name to exact version) of `requirements-constraints.txt` against `uv export --frozen` of the lock,
   ignoring comments, marker spelling and layout, in a new `constraints` CI job and in the release (the `sed` and
@@ -103,7 +105,9 @@ released together.
   cells (NanoBEIR 5 FEVER + 2 Quora + 2 NFCorpus + 1 HotpotQA cells within 0.08 nDCG points, BRIGHT 13 TheoremQA
   Theorems cells within 2.6 and 12 of the 14 qrel means within 0.25 -- 35 rows), and `experiments/checks.py`
   fails a run whose counts differ in either direction, replacing a wildcard entry that let any NanoBEIR cell
-  drift within 0.08. `experiments/leaderboards.py::check_trecdl` refuses a ragged (query, reranker) matrix,
+  drift within 0.08. Each population names its table position (its `label`) and may be declared once, so
+  equal-valued populations (NanoQuora/NanoNFCorpus) never merge. `experiments/leaderboards.py::check_trecdl`
+  refuses a ragged (query, reranker) matrix,
   naming the missing pairs (and a duplicated row, naming the pair), instead of letting NaN feed the t-test and
   the means.
 - **One definition of `BRIGHT_WITH_EXCLUSIONS`** (in `experiments/fetch_data.py`); `experiments/external_judges.py`

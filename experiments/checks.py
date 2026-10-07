@@ -64,6 +64,17 @@ class Checker:
     deviations: tuple[KnownDeviation, ...] = ()
     rows: list[_Row] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        """Refuse declarations that cannot be accounted for: an unlabelled population (nothing to name in a
+        failure) and one population declared twice (value matching would merge them and half-enforce both)."""
+        seen: set[KnownDeviation] = set()
+        for dev in self.deviations:
+            if not dev.label:
+                raise ValueError(f"a documented deviation must name its population (label): {dev!r}")
+            if dev in seen:
+                raise ValueError(f"one documented population is declared twice (equal declarations merge): {dev.label}")
+            seen.add(dev)
+
     def compare(
         self,
         label: str,

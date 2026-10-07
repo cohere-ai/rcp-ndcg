@@ -55,6 +55,11 @@ def _checker(experiment):
     return experiment("checks").Checker("t")
 
 
+_NANO_REASON = "hub gains come from a refit that differs from the paper's by <= 0.0065 in gain; 10 cells move <= 0.07"
+_THQA_REASON = "paper used the gold ids of a later BRIGHT revision on 27 of 58 ThQA-T queries; hub keeps a75a0eb4"
+_MEAN_REASON = "carries the ThQA-T qrel difference into the mean"
+
+
 # ---------------------------------------------------------------- human study
 
 
@@ -104,7 +109,7 @@ def test_a_judge_decides_only_when_both_display_orders_agree_and_majority_needs_
 
 def test_checker_fails_outside_tolerance_and_accepts_documented_deviations(capsys, experiment):
     checks = experiment("checks")
-    dev = checks.KnownDeviation(0.08, "reason", cells=1)
+    dev = checks.KnownDeviation(0.08, "reason", cells=1, label="t known")
     chk = checks.Checker("t", (dev,))
     assert chk.compare("exact", 87.2, 87.23, 0.05)
     assert chk.compare("known", 87.9, 87.848, 0.05, known=dev)
@@ -119,7 +124,7 @@ def test_a_documented_deviation_is_bounded_to_its_population(experiment):
     ``cells`` compared values may take may not cover a 31st drifting cell (the sweep's reproduction, case 1),
     and a population that does not materialise is drift too."""
     checks = experiment("checks")
-    dev = checks.KnownDeviation(0.05, "documented", cells=2)
+    dev = checks.KnownDeviation(0.05, "documented", cells=2, label="t pop")
     ok = checks.Checker("t", (dev,))
     assert ok.compare("within tolerance", 10.0, 10.01, 0.05, known=dev), "a row that matched took nothing"
     for i in range(2):
@@ -142,15 +147,17 @@ def test_the_known_deviation_populations_are_the_documented_ones(experiment):
     NFCorpus + 1 HotpotQA cells within 0.08, BRIGHT 13 TheoremQA Theorems cells within 2.6 and 12 of the 14 qrel
     means within 0.25 -- 35 rows in total, and no wildcard entry that would cover anything else."""
     lb = experiment("leaderboards")
-    populations = {(s, m, col): (dev.bound, dev.cells) for (s, m, col), dev in lb.KNOWN.items()}
+    populations = {(s, m, col): (dev.bound, dev.cells, dev.reason) for (s, m, col), dev in lb.KNOWN.items()}
     assert populations == {
-        ("nanobeir", "rcp_ndcg10", "NanoFEVERRetrieval"): (0.08, 5),
-        ("nanobeir", "rcp_ndcg10", "NanoQuoraRetrieval"): (0.08, 2),
-        ("nanobeir", "rcp_ndcg10", "NanoNFCorpusRetrieval"): (0.08, 2),
-        ("nanobeir", "rcp_ndcg10", "NanoHotpotQARetrieval"): (0.08, 1),
-        ("bright", "qrel_ndcg10", "theoremqa_theorems"): (2.6, 13),
-        ("bright", "qrel_ndcg10", "mean"): (0.25, 12),
+        ("nanobeir", "rcp_ndcg10", "NanoFEVERRetrieval"): (0.08, 5, _NANO_REASON),
+        ("nanobeir", "rcp_ndcg10", "NanoQuoraRetrieval"): (0.08, 2, _NANO_REASON),
+        ("nanobeir", "rcp_ndcg10", "NanoNFCorpusRetrieval"): (0.08, 2, _NANO_REASON),
+        ("nanobeir", "rcp_ndcg10", "NanoHotpotQARetrieval"): (0.08, 1, _NANO_REASON),
+        ("bright", "qrel_ndcg10", "theoremqa_theorems"): (2.6, 13, _THQA_REASON),
+        ("bright", "qrel_ndcg10", "mean"): (0.25, 12, _MEAN_REASON),
     }
+    for key, dev in lb.KNOWN.items():
+        assert dev.label == " ".join(key), f"{key}: a population's label names its table position (a swap lies)"
 
 
 def test_the_real_known_table_accepts_exactly_the_documented_rows(experiment):
@@ -191,10 +198,23 @@ def test_a_documented_deviation_is_matched_by_value(experiment):
     """A ``KnownDeviation`` with the same fields describes the same population: the accounting matches
     declarations by value, so a re-created instance does not double-fail ("nothing took it" and "stray")."""
     checks = experiment("checks")
-    documented = checks.KnownDeviation(0.05, "documented", cells=1)
+    documented = checks.KnownDeviation(0.05, "documented", cells=1, label="t value")
     chk = checks.Checker("t", (documented,))
-    assert chk.compare("c0", 10.0, 10.04, 0.001, known=checks.KnownDeviation(0.05, "documented", cells=1))
+    assert chk.compare(
+        "c0", 10.0, 10.04, 0.001, known=checks.KnownDeviation(0.05, "documented", cells=1, label="t value")
+    )
     assert chk.finish() == 0
+
+
+def test_the_checker_rejects_unlabelled_or_duplicate_declarations(experiment):
+    """A population must name where it lives (its label), and one population may be declared once: two equal
+    declarations merge under value matching and would half-enforce both."""
+    checks = experiment("checks")
+    with pytest.raises(ValueError, match="label"):
+        checks.Checker("t", (checks.KnownDeviation(0.05, "reason", cells=1),))
+    twin = checks.KnownDeviation(0.05, "reason", cells=1, label="t")
+    with pytest.raises(ValueError, match="declared twice"):
+        checks.Checker("t", (twin, checks.KnownDeviation(0.05, "reason", cells=1, label="t")))
 
 
 def test_the_bright_exclusion_tasks_are_one_concept_with_one_definition(experiment):
@@ -221,7 +241,7 @@ def test_the_two_setup_snippets_give_the_same_install_commands():
             match.group().strip()
             for block in re.findall(r"```bash\n(.*?)```", text, re.S)
             for line in block.splitlines()
-            if (match := re.match(r"(?:python3? -m |uv )?pip install\b.*", line.split("#", 1)[0]))
+            if (match := re.match(r"(?:python(?:3(?:\.\d+)?)? -m |uv )?pip install\b.*", line.strip().split("#", 1)[0]))
         ]
 
     readme = install_commands((ROOT / "experiments" / "README.md").read_text(encoding="utf-8"))
