@@ -496,7 +496,12 @@ class CaseBundle:
 
 
 def default_cases_root() -> Path:
-    """The package's own ``cases/`` directory (where the cases lanes write)."""
+    """The package's own ``cases/`` directory (where the cases lanes write).
+
+    Checkout-only by design: an installed layout stages the real corpus elsewhere (the wheel drops
+    ``cases/``; the fixture cases travel under ``rcp_ndcg_test/fixtures/``), so a run of the real
+    corpus passes ``cases_root=`` explicitly -- the missing-root error names it.
+    """
     return Path(__file__).resolve().parents[2] / "cases"
 
 
@@ -634,7 +639,11 @@ def load_cases(
 def _case_directories(root: Path, recipe: Recipe | str | None) -> list[Path]:
     """The case directories to load: the one ``recipe``'s, or every child of ``root`` holding YAML files."""
     if not root.is_dir():
-        raise CaseError(f"no cases root at {root}")
+        raise CaseError(
+            f"no cases root at {root}: pass cases_root=<the staged cases directory> (the shipped "
+            "fixture cases are reachable via rcp_ndcg_test.fakes.fixture_path('cases'); the default "
+            "root is the checkout's cases/ directory)"
+        )
     if recipe is not None:
         recipe_id = recipe.id if isinstance(recipe, Recipe) else recipe
         directory = root / recipe_id

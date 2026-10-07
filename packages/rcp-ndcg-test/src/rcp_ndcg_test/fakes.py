@@ -119,7 +119,7 @@ class _FakeHTTPTransport:
         reply = self._engine.handle(request.method, request.url.path, body)
         if reply.json_body is None:
             return httpx.Response(reply.status)
-        return httpx.Response(reply.status, json=reply.json_body)
+        return httpx.Response(reply.status, json=reply.json_body, headers={"content-type": reply.content_type})
 
     async def aclose(self) -> None:
         """Nothing to close (the transport holds no pool); ``httpx.AsyncClient.aclose`` calls it."""

@@ -679,6 +679,15 @@ def test_a_mixed_length_batch_measures_differing_lengths(tmp_path: Path) -> None
         load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
 
 
+def test_the_missing_cases_root_names_the_cases_root_argument(tmp_path: Path) -> None:
+    """(round-2 F6) The checkout-only default cases root fails CLEARLY from any other layout: the
+    error names ``cases_root`` (the shipped fixture cases are reachable via
+    ``rcp_ndcg_test.fakes.fixture_path('cases')``; a real run stages the corpus and passes
+    ``cases_root=``)."""
+    with pytest.raises(CaseError, match="cases_root"):
+        load_cases(tmp_path / "elsewhere")
+
+
 def test_an_empty_instruction_is_refused_not_silently_dropped(tmp_path: Path) -> None:
     """(round-2 F3) ``instruction: ""`` claims the nothing-to-send state -- the field is dropped by
     its absence; a present-but-empty one is refused (the wire carries no instruction, silently)."""
