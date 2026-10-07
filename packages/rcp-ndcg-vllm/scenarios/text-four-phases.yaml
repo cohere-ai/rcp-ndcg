@@ -51,7 +51,8 @@ judge:
     - "131072"
     - --limit-mm-per-prompt
     - '{"image": 10}'
-  fallback: {model: Qwen/Qwen3.8-Flash-Next-FP8, revision: "236dfdf285828023ca3bcd3f37366c58a3469b13"}
+  fallback: {model: Qwen/Qwen3.8-Flash-Next-FP8, revision: "236dfdf285828023ca3bcd3f37366c58a3469b13",
+            tokenizer: "Qwen/Qwen3.8-Flash-Next-FP8@236dfdf285828023ca3bcd3f37366c58a3469b13"}
   fallback_command:
     - vllm
     - serve

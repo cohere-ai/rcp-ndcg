@@ -49,11 +49,9 @@ done
 BOOTSTRAP_SH="${RCP_BOOTSTRAP_SH:-/etc/rcp/files/bootstrap/bootstrap.sh}"
 export AUTH_SCRIPT="${RCP_GCS_AUTH_FILE:-/etc/rcp/gcs_auth.sh}"
 
-STATE="$(mktemp -d "${TMPDIR:-/tmp}/rcp-e2e.XXXXXX")"
-
 if [[ "${E2E_DRY:-0}" == "1" ]]; then
   echo "e2e (dry): would run, in order, on one node:"
-  echo "  1. bootstrap  $BOOTSTRAP_SH envs $RC_STAGE_URI --state $STATE"
+  echo "  1. bootstrap  $BOOTSTRAP_SH envs $RC_STAGE_URI --state <state>"
   echo "                (three environments: the engine untouched, the client the product's own uvx"
   echo "                mechanism from the staged wheelhouse)"
   echo "  2. scenarios  the wave list for '$WAVE_NAME' (${WAVE_LIST_FILE:-<stage>/wave-lists/$WAVE_NAME.txt}):"
@@ -65,6 +63,7 @@ if [[ "${E2E_DRY:-0}" == "1" ]]; then
   exit 0
 fi
 
+STATE="$(mktemp -d "${TMPDIR:-/tmp}/rcp-e2e.XXXXXX")"
 echo "e2e: building the node's environments (bootstrap.sh envs)"
 [[ -f "$BOOTSTRAP_SH" ]] || { echo "e2e: no bootstrap.sh at $BOOTSTRAP_SH (RCP_BOOTSTRAP_SH)" >&2; exit 2; }
 bash "$BOOTSTRAP_SH" envs "$RC_STAGE_URI" --state "$STATE"
@@ -98,6 +97,6 @@ done
 echo "e2e: driving the scenarios of '$WAVE_NAME' ($(grep -cv '^#' "$WAVE_LIST_FILE" || true) entries) with the client mechanism"
 exec "$STATE/client" python -m rcp_ndcg_vllm.e2e \
   "${scenario_args[@]}" "${recipe_args[@]}" \
-  --out "$STATE/e2e" --runs-dir "$STATE/runs" \
+  --out "$STATE/e2e" \
   --wheelhouse "$STAGE/wheelhouse" --constraints "$STAGE/requirements-constraints.txt" --version "$VERSION" \
   --upload "$OUT_URI"

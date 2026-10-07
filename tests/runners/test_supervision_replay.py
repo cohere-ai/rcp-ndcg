@@ -97,9 +97,11 @@ def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
-def test_the_four_phase_supervision_runs_with_the_fake_engines(stubs: Path) -> None:
+def test_the_four_phase_supervision_runs_with_the_supervision_stubs(stubs: Path) -> None:
     """The T4 supervision re-run: four phases in order, one engine each, each coordinator handed its
-    phase's engines (or ``{}``), and nothing left running at the job's end."""
+    phase's engines (or ``{}``), and nothing left running at the job's end.  The engines are the
+    supervision stubs today -- :func:`fake_engines` is the seam where the verified fake engines (the
+    ``rcp_ndcg.testing.engines`` emulators) take over when lane ``fake-engines`` lands."""
     script = SlurmRunner().render([four_phase_job()])["t4"]
     (stubs / "job.sh").write_text(script, encoding="utf-8")
     env = {

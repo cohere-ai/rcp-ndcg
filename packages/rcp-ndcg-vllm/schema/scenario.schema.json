@@ -114,7 +114,7 @@
     },
     "JudgeModel": {
       "additionalProperties": false,
-      "description": "A judge checkpoint to serve: the revision the run pins.",
+      "description": "A judge checkpoint to serve: the revision the run pins.\n\n``tokenizer`` is the judge config's tokenizer **when this checkpoint serves** (a quantized release of\none base shares its tokenizer files; name it explicitly when it does not) -- the fallback partner's\ntokenizer must follow the winner, since the tokenizer's SHA-256 enters the judgement family.",
       "properties": {
         "model": {
           "description": "the Hub repository id",
@@ -127,6 +127,18 @@
           "pattern": "^[0-9a-f]{40}$",
           "title": "Revision",
           "type": "string"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tokenizer"
         }
       },
       "required": [
