@@ -535,8 +535,7 @@ EXPECTED_REFERENCE = {
     "score_scale": "cosine",
 }
 
-# Two mutants per recipe against the contract pin above (the sweep's weak-contract
-# finding #9): each drift must fail, naming the field.
+# Two mutants per recipe against the contract pin above: each drift must fail, naming the field.
 MUTANTS: list[tuple[str, tuple[str, ...], object, str]] = [
     ("licence drifts to MIT", ("licence",), "MIT", "recipe.licence"),
     ("serve.max_model_len drifts to 16384", ("serve", "max_model_len"), 16384, "max_model_len"),
@@ -583,10 +582,10 @@ def test_two_contract_mutants_are_red(
 
 
 def test_notes_state_the_merged_budget_wiring_and_the_query_cap_check() -> None:
-    """The notes read the merged product (the sweep's #8 wording): the budget is fitted on the
+    """The notes read the merged product: the budget is fitted on the
     wire -- no stale pre-clients-merge status sentence -- and the query_max_tokens check found
     no separate referent cap."""
     notes = load_recipe(RECIPE_DIR).notes
     assert "fitted to the declared budget on the wire" in notes
-    assert "clients-final wiring lands" not in notes and "refuse a\nbudget" not in notes
+    assert "refuse a\nbudget" not in notes  # the stale pre-wiring sentence (labels: the hygiene test)
     assert "no separate query cap exists in the referent" in notes

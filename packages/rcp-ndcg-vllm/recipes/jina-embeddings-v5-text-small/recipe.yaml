@@ -1,8 +1,7 @@
 # jinaai/jina-embeddings-v5-text-small served with stock vLLM: the base repo, whose
 # retrieval LoRA vLLM merges into the base weights at load time (no plugin, no --enable-lora,
-# no custom image). Research lane r-jina5 (every CPU-measurable fact measured), with the
-# audit-synth corrections for r-jina5 applied; serving facts re-verified at the pinned
-# revision on 2026-10-05. The vendor-merged alternative (plain Qwen3Model, no flags) is
+# no custom image). Every CPU-measurable fact below was measured at the pinned revision;
+# serving facts re-verified at the pinned revision on 2026-10-05. The vendor-merged alternative (plain Qwen3Model, no flags) is
 # jinaai/jina-embeddings-v5-text-small-retrieval @ 6856e76bb72982e58de0620458a4e8b3614da340.
 id: jina-embeddings-v5-text-small
 model: jinaai/jina-embeddings-v5-text-small
@@ -15,8 +14,8 @@ engine:
   image: "vllm/vllm-openai:v0.31.0"
   # min_version is the image actually verified (the family's one rule); the measured feature
   # floor (the native JinaEmbeddingsV5Model with jina_task and the is_matryoshka gate first
-  # ships in v0.20.0 - absent from v0.19.0: no jina.py, HTTP 404; present in v0.20.0, r-jina5
-  # measured both tags) is named in the notes.
+  # ships in v0.20.0 - absent from v0.19.0: no jina.py, HTTP 404; present in v0.20.0, both
+  # tags measured) is named in the notes.
   min_version: "0.31.0"
 resources: {gpus: 1}
 serve:
@@ -74,7 +73,7 @@ client:
       - {content: document}
     # The model reads its output from the mask's last real token (modeling:100-108): on these
     # content-final shapes that is the last kept content token, declared anchor: last_content
-    # (p1-tail 2h). No client cut can displace it (content spans only, template re-attached;
+    # (the product's anchor kind for a pooled last content token). No client cut can displace it (content spans only, template re-attached;
     # the engine never truncates because client.max_tokens == max_model_len), and the head
     # markers stay reserved as fixed segments. There is no trailing fixed token: this tokenizer
     # appends no post-processor tokens (add_bos_token false, bos_token null - measured:
@@ -107,9 +106,8 @@ status: {state: unverified, image: null, date: null, report: null}
 sources:
   - "https://huggingface.co/jinaai/jina-embeddings-v5-text-small @ dd76d535f5447ca3897a9c893fb1e612ead98192 (re-checked 2026-10-05): config.json:2-8 (auto_map remote code, architectures [JinaEmbeddingsV5Model]), :19 (max_position_embeddings 32768), :21 (model_type jina_embeddings_v5), :30 (torch_dtype bfloat16); config_sentence_transformers.json:7-9 (prompts 'Query: ' / 'Document: '), :11 (default_prompt_name document); modeling_jina_embeddings_v5.py:79-80 (the prefixes, applied to raw texts), :85-91 (encode truncates right at max_position_embeddings), :95 (set_adapter([task])), :100-108 (mask-based last-real-token pooling), :110-112 (Matryoshka slice, then L2); adapters/retrieval/adapter_config.json:16,18,23,35 (alpha 32, dropout 0.1, r 32, FEATURE_EXTRACTION; scale alpha/r = 1.0, so the merge is exact); tokenizer_config.json:2,229,237 (add_bos_token false, bos_token null, tokenizer_class Qwen2Tokenizer); tokenizer.json sha256 aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4; README.md:148-178 (the transformers snippet the reference follows), :300-310 (the vendor vLLM note)"
   - "https://huggingface.co/jinaai/jina-embeddings-v5-text-small-retrieval @ 6856e76bb72982e58de0620458a4e8b3614da340 (the vendor-merged retrieval variant: same prompts, same tokenizer file; the alternative serve, and the source of the card example cosines the reference cross-checks)"
-  - "vLLM d0d6e5f3a26f484786e7f20490152e911fd4e220 (a vLLM checkout 3 days after the v0.31.0 tag; jina.py byte-identical at the tag and the registry Jina row identical): vllm/model_executor/models/registry.py:223 (JinaEmbeddingsV5Model registered); vllm/model_executor/models/jina.py:142-151 (load-time adapter merge rationale, task selection, _DEFAULT_TASK retrieval), :243 (the silent raw-base-weights fallback warning), :249 (scaling = lora_alpha / r); vllm/pooling_params.py:175,188 (a per-request dimensions needs is_matryoshka + matryoshka_dimensions); vllm/renderers/params.py:183 (the embeddings route tokenizes with add_special_tokens=true); vllm/model_executor/layers/pooler/seqwise/poolers.py:97-105 (the embed pooler: LAST + PoolerNormalize); vllm/model_executor/layers/pooler/seqwise/heads.py:95-113 (Matryoshka slice, then normalise - the reference's order); docs/models/pooling_models/embed.md:47,77-84,99 (the JinaEmbeddingsV5Model row, the jina-v5 serving note, the conversion legend); tests/models/language/pooling_mteb_test/test_jina.py:36-39,74 (the MTEB anchor 0.794535707854956 +/- 2e-3, seq_pooling_type LAST, the client-side 'Document: ' prefix); vllm/config/model.py:2327 (a 'Model'-suffix checkpoint converts via --convert embed)"
+  - "vLLM v0.31.0 (line numbers at the tag): vllm/model_executor/models/registry.py:232 (JinaEmbeddingsV5Model registered); vllm/model_executor/models/jina.py:142-151 (load-time adapter merge rationale, task selection, _DEFAULT_TASK retrieval), :243 (the silent raw-base-weights fallback warning), :249 (scaling = lora_alpha / r); vllm/pooling_params.py:175,188 (a per-request dimensions needs is_matryoshka + matryoshka_dimensions); vllm/renderers/params.py:183 (the embeddings route tokenizes with add_special_tokens=true); vllm/model_executor/layers/pooler/seqwise/poolers.py:97-105 (the embed pooler: LAST + PoolerNormalize); vllm/model_executor/layers/pooler/seqwise/heads.py:95-113 (Matryoshka slice, then normalise - the reference's order); docs/models/pooling_models/embed.md:47,77-84,99 (the JinaEmbeddingsV5Model row, the jina-v5 serving note, the conversion legend); tests/models/language/pooling_mteb_test/test_jina.py:36-39,74 (the MTEB anchor 0.794535707854956 +/- 2e-3, seq_pooling_type LAST, the client-side 'Document: ' prefix); vllm/config/model.py:2288 (a 'Model'-suffix checkpoint converts via --convert embed)"
   - "rcp-ndcg: src/rcp_ndcg/data/templates.py (TemplateSpec: the frame, the anchors), src/rcp_ndcg/data/preprocess.py (TextBudget and fit: the content-only, anchor-reserving cut), src/rcp_ndcg/inference/config.py (EmbeddingEndpoint: this client block)"
-  - "research lane r-jina5 (report, digest, recipe and reference drafts, check_tokens_cpu.py and its mutation battery; not shipped) with its review corrections applied; the anchor rule (docs/how-to/add-a-model.md) and the R10/R20 review rows considered (R10: no served chat template exists to ship - see notes; R20: a text-only checkpoint, no media policy to pin)"
 notes: >-
   Serving. The base repo ships four task LoRAs (retrieval, text-matching, classification,
   clustering); the retrieval adapter is required for retrieval scores and is merged into the
@@ -117,8 +115,7 @@ notes: >-
   pinned for clarity). The retrieval adapter's lora_dropout is 0.1 (the classification
   adapter's is 0.05 - do not generalise "all four 0.1"); scale = alpha/r = 1.0, so the merge
   is exact. Do NOT use --enable-lora: per-request task switching on /v1/embeddings is plumbed
-  but unmeasured (entrypoints/pooling/base/serving.py:126, _maybe_get_adapters; the :234 site
-  in the corrections table is a different call site, not the same method), the vendor
+  but unmeasured (entrypoints/pooling/base/serving.py:126, _maybe_get_adapters), the vendor
   prescribes merged weights per task, and one
   adapter serves both roles. SILENT FAILURE MODE: if adapters/retrieval/ cannot be fetched at
   server start (an offline serve without the file cached, a mirror that strips adapters/, a
@@ -137,8 +134,8 @@ notes: >-
   itself is needed only for config parsing (measured: AutoConfig raises without it); the
   served class is vLLM-native. Template: none is served. The prompts go to /v1/embeddings as
   raw rendered text; the client template above declares the frame as data and stage 1 proves
-  its renders against the reference. R10 (the template file must ship) binds models whose
-  request shape is rendered by a served chat template; this checkpoint never takes that route
+  its renders against the reference. A template file ships only for models whose request
+  shape is rendered by a served chat template; this checkpoint never takes that route
   (a messages-shaped pooling request would render the shipped Qwen3 chat frame, measured NOT
   equivalent: 15 tokens vs 10), so there is no served template to ship and nothing for vLLM
   to warn about; the recipe's request_shape is text. Budget: max_tokens 32768 counts the
@@ -156,19 +153,19 @@ notes: >-
   encode(), keeping the head marker and pooling the last kept token), and it never ports the
   client's cut (docs/how-to/add-a-model.md). Under-cap pairs gate byte-identically; over-cap pairs
   ride the declared table -- keep them out of the gated pairs file or read them as expected tail
-  drift.  Per-shape query caps (checked for the sweep's
-  query_max_tokens item): no separate query cap exists in the referent - encode truncates
+  drift.  Per-shape query caps (whether query_max_tokens applies): no separate query cap exists in the referent - encode truncates
   queries and documents alike at 32768 (modeling:85-91) - so query_max_tokens is not declared
-  and both shapes draw on max_tokens.  The anchor is last_content (p1-tail 2h): the model pools
+  and both shapes draw on max_tokens.  The anchor is last_content: the model pools
   the mask's last real token (modeling:100-108) -- the last kept content token of the
   content-final span -- so the shape declares exactly that position. The head markers
   ("Query:" / "Document:" plus their separator space -- separate fixed segments because the
   space merges into the following content token under BPE) stay reserved as fixed segments,
   and the pooled position survives every cut by construction: content spans only are cut and
-  the engine never truncates. Stage 1's anchor_check asserts exactly this, over-length inputs
-  included. Feature floor: the native JinaEmbeddingsV5Model with jina_task and the
+  the engine never truncates. Stage 1's anchor_check does not audit last_content yet (the
+  harness's audit has no branch for it; the recipe test pins that gap as a strict xfail), so the
+  render comparison and the client's census carry this check today. Feature floor: the native JinaEmbeddingsV5Model with jina_task and the
   is_matryoshka gate first ships in v0.20.0 (absent from v0.19.0: no jina.py, HTTP 404;
-  present in v0.20.0 - r-jina5 measured both tags; jina.py is byte-identical at the v0.31.0
+  present in v0.20.0 - both tags measured; jina.py is byte-identical at the v0.31.0
   tag); engine.min_version declares the image actually verified (v0.31.0, the family's one
   rule).
   empty_doc: send - the reference path embeds an empty document as its bare prefix, so
@@ -180,9 +177,8 @@ notes: >-
   a PeftMixedModel); see requirements-reference.txt beside this recipe - the package-level
   requirements-reference.txt does not yet list peft. Reference download: ~1.26 GiB / 1.35 GB
   (base model.safetensors 1,192,133,208 B + four adapters of ~40.4 MB each = 1,353,814,008 B
-  in total; the base blob size re-derived from the Hub tree API at the pinned revision -- the
-  audit-synth corrections table's 1,192,099,840 B is a 33,368 B transcription error, totals
-  agree; the "1.17 GB" in the research report was
-  base + one adapter). CPU numbers: the reference reproduces the merged-repo card example
+  in total; the base blob size from the Hub tree API at the pinned revision; an earlier
+  1,192,099,840 B figure was a 33,368 B transcription error, and a "1.17 GB" figure was the base
+  plus one adapter). CPU numbers: the reference reproduces the merged-repo card example
   cosines to |delta| 0.0004 (gate 0.01); vLLM's own HF-vs-vLLM anchor for this model is MTEB
   0.794535707854956 +/- 2e-3 (test_jina.py:36-37), the GPU wave's headline gate.

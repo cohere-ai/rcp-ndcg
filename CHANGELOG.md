@@ -522,35 +522,44 @@ released together.
   (paper-exact; no instruction is sent or folded -- the family's `instruction: none`). Status `unverified`
   until the GPU waves run the harness's stages 2–3.
 
-- The `ctxl-rerank-v2-instruct-multilingual-1b`/`-2b`/`-6b` recipe family settles its shared policy
-  (sweep-recipes items #1/#2/#5): all three declare `client.instruction: none` (the paper configs' mode; the
-  paper's in-process path never received an instruction) and no reference folds or appends one -- a pairs
-  row's instruction is ignored on both sides. Every recipe states the merged rerank client's settle rule
-  (the pair fit binds its share on overflow only; the client settles the shared query once per call and
-  ships it at `query_max_tokens` whenever it exceeds it), declares over-share queries as divergence rows
-  (the gating pairs keep queries within the share), and its reference stays the paper's: `render` fills
-  the harness's span format with the raw query and documents the paper's prompt builder receives, uncut,
-  and never reproduces the client's cut (over-cap rows are the declared `anchor_drop_over_cap` table;
-  under-cap rows gate exactly). Family conventions: the template file is `template.jinja` in all three (6b's
-  `score-template-6b.jinja` renamed; one trailing-newline convention), `requirements-reference.txt` ships
-  beside every reference (1b gained one), `client.recipe` stays unset (`client_config` records the recipe
-  id), and `engine.startup_timeout_s` is no longer restated at its 1800 default.
+- The `ctxl-rerank-v2-instruct-multilingual-1b`/`-2b`/`-6b` recipe family settles one policy: all three
+  declare `client.instruction: none` (the paper configs' mode; the paper's in-process path never received
+  an instruction), and neither a template nor a reference folds or appends one -- the 6b template and
+  reference drop the vendor's inline instruction slot as 1b and 2b do, and a pairs row's instruction is
+  ignored on both sides. Every recipe states the merged rerank client's settle rule (the pair fit binds its
+  share on overflow only; the client settles the shared query once per call and ships it at
+  `query_max_tokens` whenever it exceeds it), declares over-share queries as divergence rows (the gating
+  pairs keep queries within the share), and its reference stays the paper's: `render` fills the harness's
+  span format with the raw query and documents the paper's prompt builder receives, uncut, and never
+  reproduces the client's cut (over-cap rows are the declared `anchor_drop_over_cap` table; under-cap rows
+  gate exactly); the three references load bfloat16 weights on every device, as the paper's factory did.
+  Family conventions: the template file is `template.jinja` in all three (6b's `score-template-6b.jinja`
+  renamed; one trailing-newline convention), `requirements-reference.txt` ships beside every reference (1b
+  gained one), `client.recipe` stays unset (`client_config` records the recipe id), and
+  `engine.startup_timeout_s` is no longer restated at its 1800 default.
 
 - The dense recipe family (`qwen3-embedding-0.6b`, `octen-embedding-8b`, `jina-embeddings-v5-text-small`,
-  `zembed-1-embedding`, `jina-reranker-v3`) settles the sweep's items: every reference stays the paper's or
-  the model card's and never reproduces the client's cut -- `qwen3-embedding-0.6b`'s `render` now emits the
-  card's uncut prompt (the card truncates ids at encode) and the recipe declares
-  `reference.known_deviations: [over_cap_cut_differs]` (both sides keep the appended anchor; over-cap rows
-  are reported, not gated), and `zembed-1-embedding`'s reference drops its unused copy of the client's cut
-  search (its render needs no tokenizer now) and pins sentence-transformers to the measured 5.1 line. `query_max_tokens` is declared only where the reference caps queries (`jina-reranker-v3`: 512, the
-  checkpoint's `max_query_length`; the embedders' referents cut queries and documents alike, so none
-  declares it); `jina-embeddings-v5-text-small` declares `anchor: last_content`; `jina-reranker-v3` states
-  the merged rerank client's settle rule and no longer claims the client sends per-text engine caps (it
-  sends none), and its reference no longer reconfigures the product's cached tokenizer (a
-  process-wide 2048-token cap). Family conventions: `engine.min_version` is the verified image (0.31.0) with any feature
-  floor in the notes, `requirements-reference.txt` beside every reference (`zembed-1-embedding` gained one),
-  the server-side `use_activation` pin on `jina-reranker-v3`, and every recipe test pins the full contract
-  through the shared helper (two mutants red each) and downloads its tokenizer through the one shared cache.
+  `zembed-1-embedding`, `jina-reranker-v3`): every reference stays the paper's or the model card's and
+  never reproduces the client's cut -- `qwen3-embedding-0.6b`'s `render` now emits the card's uncut prompt
+  (the card truncates ids at encode) and the recipe declares `reference.known_deviations:
+  [over_cap_cut_differs]` (both sides keep the appended anchor; over-cap rows are reported, not gated), and
+  `zembed-1-embedding`'s reference drops its unused copy of the client's cut search (its render needs no
+  tokenizer now). `zembed-1-embedding`'s reference environment pins sentence-transformers to the 5.3 line
+  (the last whose encode calls the checkpoint's remote tokenize; 5.4.0's preprocess-first pipeline drops
+  the pooled suffix) with transformers >= 4.51, so the reference venv reuses the engine image's
+  transformers. `query_max_tokens` is declared only where the reference caps queries (`jina-reranker-v3`:
+  512, the checkpoint's `max_query_length`; the embedders' referents cut queries and documents alike, so
+  none declares it); `jina-embeddings-v5-text-small` declares `anchor: last_content`; `jina-reranker-v3`
+  states the merged rerank client's settle rule, its `client.recipe` identity no longer claims per-text
+  engine caps (the client sends none), its `use_activation` pin is documented as inert (the model's
+  pooler has no head; the score is a cosine), and its reference no longer reconfigures the product's
+  cached tokenizer (a process-wide 2048-token cap). `experiments/paper/rerankers/jina_v3.yaml` states what
+  the served path sends (the 8192/4096 pair cut, no per-text caps). Family conventions:
+  `engine.min_version` is the verified image (0.31.0) with any feature floor in the notes,
+  `requirements-reference.txt` beside every reference (`zembed-1-embedding` gained one), and every recipe
+  test pins the full contract through the shared helper (two mutants red each), downloads its tokenizer
+  through the one shared cache, and checks that no shipped recipe file carries an internal process
+  label.
 
 - The first served recipe in `packages/rcp-ndcg-vllm/recipes/`: `qwen3-reranker-0.6b`
   (Qwen/Qwen3-Reranker-0.6B @ e61197ed45024b0ed8a2d74b80b4d909f1255473, pointwise rerank,

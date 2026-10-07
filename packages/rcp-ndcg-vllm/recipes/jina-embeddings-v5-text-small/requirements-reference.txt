@@ -7,7 +7,7 @@
 # (modeling_jina_embeddings_v5.py:11,15), so peft is required. render mode imports none of
 # these (pure string work), so stage 1 of the equivalence check runs on CPU without the
 # weights. flash-attention is deliberately NOT pinned: the card marks it "Recommended but
-# optional" and the r-jina5 audit flags its GPU kwargs as unmeasured.
+# optional", and its GPU kwargs are unmeasured.
 
 torch>=2.0
 transformers>=4.57

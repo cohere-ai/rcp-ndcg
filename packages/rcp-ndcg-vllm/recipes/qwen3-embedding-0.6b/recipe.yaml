@@ -1,12 +1,11 @@
 # Serving recipe: Qwen/Qwen3-Embedding-0.6B on stock vLLM (image vllm/vllm-openai:v0.31.0).
 #
-# Served path (research r-qwen3-emb, audit-corrected): the checkpoint declares
+# Served path (every fact measured at the pinned revision and the v0.31.0 tag): the checkpoint declares
 # architectures=[Qwen3ForCausalLM] (config.json:4), a generate architecture by suffix, so the engine
 # is told --runner pooling and converts the decoder itself (--convert resolves to embed; the fallback
-# return sits at vllm/config/model.py:1341-1342 in the pinned checkout d0d6e5f3a, :1311 at tag
-# v0.31.0). The pooler needs no flag: the checkpoint's own sentence-transformers metadata resolves
+# return sits at vllm/config/model.py:1311 at tag v0.31.0). The pooler needs no flag: the checkpoint's own sentence-transformers metadata resolves
 # LAST pooling + L2 (modules.json -> 1_Pooling/config.json pooling_mode_lasttoken, Normalize module;
-# vllm/transformers_utils/config.py:990-1076, applied at vllm/config/model.py:771-772). The client
+# vllm/transformers_utils/config.py:982-1063, applied at vllm/config/model.py:740-746). The client
 # owns the content: queries are the sentence-transformers "query" prompt (the model card's
 # get_detailed_instruct, no space after "Query:"), documents are bare, and the engine tokenizes the
 # rendered strings with the tokenizer's post-processor (add_special_tokens=True, the route default,
@@ -29,7 +28,7 @@ serve:
     # checkpoint's own chat template is the Qwen3 *instruct* template -- for the card's example
     # query it renders 13 ids with the tokenizer specials on and no assistant generation prompt
     # (12 without the specials, 15-16 with the generation prompt) vs the reference's 27 (measured).
-    # R10 (ship the template) binds models whose route renders one; this route never does, so a
+    # A template file ships only for a route that renders one; this route never does, so a
     # template file would be inert or harmful.
   pooler_config: {} # resolved from the checkpoint's own ST metadata (LAST + normalize); a user
     # --pooler-config would override it, so none is sent
@@ -91,8 +90,8 @@ sources:
   - "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/raw/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3/config.json (architectures, torch_dtype, max_position_embeddings)"
   - "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/raw/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3/config_sentence_transformers.json (prompts.query / prompts.document, byte-pinned in the template)"
   - "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/raw/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3/modules.json and 1_Pooling/config.json (LAST pooling + Normalize)"
-  - "vllm tag v0.31.0 vllm/config/model.py:2272-2293 (ForCausalLM suffix -> generate; the same table at 2301-2332 in the pinned checkout d0d6e5f3a) and :1311 (pooling runner on a non-pooling arch falls back to convert=embed; 1341-1342 in the checkout)"
-  - "vllm tag v0.31.0 vllm/model_executor/models/registry.py:201 (Qwen3ForCausalLM registration; :194 in the checkout)"
+  - "vllm tag v0.31.0 vllm/config/model.py:2272-2293 (ForCausalLM suffix -> generate) and :1311 (pooling runner on a non-pooling arch falls back to convert=embed)"
+  - "vllm tag v0.31.0 vllm/model_executor/models/registry.py:201 (Qwen3ForCausalLM registration)"
   - "vllm tag v0.31.0 vllm/transformers_utils/config.py:990-1076 (the checkpoint's ST metadata resolves the pooler)"
   - "vllm tag v0.31.0 vllm/renderers/params.py:183 (add_special_tokens defaults to true on the pooling routes), :342-348 (truncate_prompt_tokens with truncation_side unset reaches the tokenizer), :334-341 and :451-465 (a side-set truncation slices ids and drops the anchor)"
   - "vllm tag v0.31.0 vllm/renderers/inputs/preprocess.py:129-132 and vllm/entrypoints/pooling/base/io_processor.py:126-160 (no chat template is applied to string inputs)"
@@ -125,14 +124,14 @@ notes: >
   (measured). The card cuts ids while the client cuts verbatim text, so over the cap the content
   boundary can differ while both keep the anchor: the recipe declares over_cap_cut_differs, the
   reference's render is the card's uncut prompt (it never ports the client's cut), over-cap rows
-  ride the harness's non-gating table and under-cap rows gate byte-exactly. Wiring (post-merge): every request is fitted to
+  ride the harness's non-gating table and under-cap rows gate byte-exactly. Wiring: every request is fitted to
   the declared budget on the wire by the merged product's embedding client
   (rcp_ndcg.data.preprocess.fit), audited in stage 1 against the captured wire. Per-shape query
-  caps (checked for the sweep's query_max_tokens item): no separate query cap exists in the
+  caps (whether query_max_tokens applies): no separate query cap exists in the
   referent -- the card's transformers path truncates queries and documents alike at 8192 -- so
   query_max_tokens is not declared and both shapes draw on max_tokens. The engine image's transformers
   pin at the tag is >=5.10.4, <5.18.0 (requirements/common.txt); the tokenizer files are pinned by
   revision and the stage-1 zero-tolerance token-id check on the GPU host is the designed catch for
-  library drift. R20 (mm_processor_kwargs) does not apply: the model is text-only (input: [text], no
+  library drift. No media processor settings (mm_processor_kwargs) apply: the model is text-only (input: [text], no
   processor files in the repo). Reference environment: requirements-reference.txt (torch,
-  transformers; render mode needs only tokenizers + huggingface_hub -- see reference.py).
+  transformers; render mode needs only huggingface_hub -- see reference.py).

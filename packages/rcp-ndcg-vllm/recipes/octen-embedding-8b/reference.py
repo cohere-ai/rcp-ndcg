@@ -20,7 +20,7 @@ grep-verified against the repository 2026-10-06:
 - ``experiments/paper/retrieval/octen.yaml:9-11``: ``pooling: last``, ``doc_prompt: "- "``,
   ``batch_size: 32``.
 
-Differences from the model card (paper wins; the full list is in the research report):
+Differences from the model card (the paper wins):
 - the card's sentence-transformers config carries a Qwen3-style query instruction and a ``" "``
   (single space) document prompt; the paper uses no instruction and ``"- "``;
 - the card advertises 32,768 / 40,960-token contexts; the paper truncates at 8192 on the right (and

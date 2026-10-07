@@ -7,12 +7,11 @@ trust_remote_code=True, dtype=torch.bfloat16)`` — the remote code (``modeling_
 builds a :class:`peft.PeftMixedModel` over ``Qwen3Model`` with the four task LoRAs and selects the
 task adapter per encode (``set_adapter([task])``, ``modeling_jina_embeddings_v5.py:95``). ``encode``
 applies the ``"Query: "`` / ``"Document: "`` prefix to the RAW texts itself
-(``modeling_jina_embeddings_v5.py:79-80`` — pre-prefixing here would double-prefix, the defect the
-r-jina5 reviewers caught), pools the mask's last real token, slices ``truncate_dim`` and
+(``modeling_jina_embeddings_v5.py:79-80`` — pre-prefixing here would double-prefix, a defect a review
+caught), pools the mask's last real token, slices ``truncate_dim`` and
 L2-normalises (``:100-112``). This reference therefore passes raw texts plus ``prompt_name`` and
 takes the card's defaults for everything else (no ``_attn_implementation`` override: the card
-marks flash-attention "Recommended but optional" and the r-jina5 audit flags its GPU kwargs as
-unmeasured).
+marks flash-attention "Recommended but optional", and its GPU kwargs are unmeasured).
 
 **Reference environment** (its own python — never the harness's process, never the engine image):
 ``torch``, ``transformers>=4.57`` (the card snippet's ``dtype=`` kwarg) and ``peft`` (the remote

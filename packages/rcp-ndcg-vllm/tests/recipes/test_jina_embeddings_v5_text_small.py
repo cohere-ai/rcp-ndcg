@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import shutil
 import sys
 import types
@@ -133,7 +134,7 @@ PAIRS: list[dict[str, Any]] = [
 
 
 def recipe_dir() -> Path:
-    """The recipe directory this lane ships (file-relative layout: resolves against an installed wheel too)."""
+    """The recipe directory this file tests (file-relative layout: resolves against an installed wheel too)."""
     return RECIPE_DIR
 
 
@@ -469,8 +470,7 @@ EXPECTED_REFERENCE = {
     "score_scale": "cosine",
 }
 
-# Two mutants per recipe against the contract pin above (the sweep's weak-contract
-# finding #9): each drift must fail, naming the field.
+# Two mutants per recipe against the contract pin above: each drift must fail, naming the field.
 MUTANTS: list[tuple[str, tuple[str, ...], object, str]] = [
     ("client.template.anchor drifts to first", ("client", "template", "anchor"), "first", "client.template.anchor"),
     (
@@ -522,7 +522,7 @@ def test_two_contract_mutants_are_red(
 
 
 def test_notes_pin_the_query_cap_check_the_feature_floor_and_the_download_figures() -> None:
-    """The sweep items' pins: the query_max_tokens check, the min_version rule with the feature
+    """The notes' pins: the query_max_tokens check, the min_version rule with the feature
     floor in the notes, no restated startup default, and the re-derived download figures."""
     recipe = load_recipe(RECIPE_DIR)
     notes = recipe.notes
@@ -535,16 +535,16 @@ def test_notes_pin_the_query_cap_check_the_feature_floor_and_the_download_figure
 
 
 # ---------------------------------------------------------------------------
-# The harness gap, pinned in the open (this lane's scope: recipes and recipe tests only).
+# The harness gap, pinned in the open (the fix belongs to the harness, not to the recipe).
 # ---------------------------------------------------------------------------
 
 HARNESS_GAP_REASON = (
     "rcp_ndcg_vllm.equivalence.stages._anchor_check/_anchor_edge_ids has no anchor: last_content "
-    "branch (the shipped product AnchorKind p1-tail 2h adds and this recipe declares): with no fixed "
+    "branch (a product AnchorKind this recipe declares): with no fixed "
     "tail and no appended post-processor token the expected tail edge is empty and the `not edge` "
     "test reds every render, though the product's TemplateSpec documents last_content as having no "
     "positional requirement with the head markers reserved and audited.  The fix belongs to the "
-    "harness owner outside lane fam-dense's scope (the brief: stop and report) -- either audit the "
+    "harness, not to this recipe -- either audit the "
     "HEAD edge for last_content (as for first: _anchor_edge_ids already returns it) or skip the "
     "positional check as for mean.  Strict xfail: this test goes XPASS (a FAILURE) the moment the "
     "harness branch lands, forcing this marker to be removed."
@@ -564,3 +564,36 @@ def test_stage1_anchor_check_knows_the_last_content_anchor(tmp_path: Path) -> No
     pairs_path = _write_pairs(tmp_path)
     document = stage1_prompts(stage1_recipe(tokenizer_path), pairs_path, sys.executable, over_length_per_shape=2)
     assert document["anchor_check"]["passed"] is True
+
+
+#: Internal process labels that must not ship in a recipe (review shorthand, private work
+#: directories, rule ids no public document defines). Public rule ids (R29, documented in
+#: docs/how-to/add-a-model.md) stay allowed.
+INTERNAL_LABELS = re.compile(
+    r"p1-tail|fam-(?:dense|ctxl)|\bsweep|lanes' base|audit-synth|\br-(?:ctxl|jina[35]|octen|zembed1|qwen3-emb)\b"
+    r"|\bresearch\b|\blanes?\b|REVIEW-LOG|ANCHOR-FINDING|\bR(?!29\b)\d{1,2}\b|clients-final"
+    r"|\boperator\b|\b09x\b|\.refs/|recipe-common|corrections table|\bfinding #?\d"
+)
+
+
+@pytest.mark.parametrize(
+    "recipe_id",
+    [
+        "qwen3-embedding-0.6b",
+        "octen-embedding-8b",
+        "jina-embeddings-v5-text-small",
+        "zembed-1-embedding",
+        "jina-reranker-v3",
+    ],
+)
+def test_shipped_recipe_files_carry_no_internal_labels(recipe_id: str) -> None:
+    """Every shipped file of the dense recipes reads as a self-contained public statement: no
+    internal process shorthand, private work directory or undefined rule id."""
+    hits = [
+        f"{path.name}:{number}: {line.strip()[:120]}"
+        for path in sorted((RECIPE_DIR.parent / recipe_id).iterdir())
+        if path.is_file()
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+        if INTERNAL_LABELS.search(line)
+    ]
+    assert not hits, "\n".join(hits)

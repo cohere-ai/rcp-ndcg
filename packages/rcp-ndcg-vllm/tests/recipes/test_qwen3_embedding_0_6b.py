@@ -6,7 +6,7 @@ tokenizer files are downloaded into the shared tokenizer cache (``RCP_NDCG_VLLM_
 set, ``tmp_path`` otherwise; ``_served.tokenizer_cache``) and the tests skip with a clear reason
 when the Hub is unreachable or ``huggingface_hub`` is absent (CI's slim venv).
 
-The measured invariants (research lane r-qwen3-emb, final instrument run 14/14): the card's example
+The measured invariants (at the pinned revision): the card's example
 query renders to 27 token ids and the example document to 8, each ending on the post-processor's
 endoftext anchor (id 151643) that last-token pooling reads.
 """
@@ -40,7 +40,7 @@ END_OF_TEXT_ID = 151643
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "qwen3-embedding-0.6b"
 CARD_QUERY = "What is the capital of China?"
 CARD_DOCUMENT = "The capital of China is Beijing."
-#: The measured invariant on the card's example (the research instrument's token equality, run 3).
+#: The measured invariant on the card's example (token equality at the pinned revision).
 CARD_QUERY_IDS = 27
 CARD_DOCUMENT_IDS = 8
 N_PAIRS = 22
@@ -126,7 +126,7 @@ def write_pairs(path: Path, rows: list[dict[str, Any]]) -> Path:
 
 
 def test_the_recipe_loads_and_declares_the_served_path() -> None:
-    """The schema validates and the rendered argv is the researched served path."""
+    """The schema validates and the rendered argv is the served path."""
     recipe = load_recipe(RECIPE_DIR)
     _assert_contract(recipe)  # every serve, client and reference field pinned, exactly
     assert recipe.id == "qwen3-embedding-0.6b"
@@ -204,7 +204,7 @@ def test_stage1_token_ids_and_anchors_pass_on_cpu(tmp_path: Path, hub_cache: Pat
 
 
 def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, hub_cache: Path) -> None:
-    """Token-id equality against the reference subprocess, with the research's measured invariants."""
+    """Token-id equality against the reference subprocess, with the measured invariants."""
     _skip_unless_hub_reachable()
 
     recipe = load_recipe(RECIPE_DIR)
@@ -227,7 +227,7 @@ def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, hub_cache:
     assert query_row["text"] == frame + CARD_QUERY
     assert document_row["text"] == CARD_DOCUMENT
     # The served fit renders the same strings (what the engine receives), and the ids carry the
-    # research's measured invariants: 27 and 8 tokens, each ending on the endoftext anchor.
+    # measured invariants: 27 and 8 tokens, each ending on the endoftext anchor.
     served_query = served_texts(recipe, [CARD_QUERY], "query")[0]
     served_document = served_texts(recipe, [CARD_DOCUMENT], "document")[0]
     assert served_query == query_row["text"]
@@ -382,8 +382,7 @@ EXPECTED_REFERENCE = {
     "score_scale": "cosine",
 }
 
-# Two mutants per recipe against the contract pin above (the sweep's weak-contract
-# finding #9): each drift must fail, naming the field.
+# Two mutants per recipe against the contract pin above: each drift must fail, naming the field.
 MUTANTS: list[tuple[str, tuple[str, ...], object, str]] = [
     ("serve.max_model_len drifts to 40960", ("serve", "max_model_len"), 40960, "max_model_len"),
     ("client.max_tokens drifts to 4096", ("client", "max_tokens"), 4096, "client.max_tokens"),
@@ -430,7 +429,7 @@ def test_two_contract_mutants_are_red(
 
 
 def test_notes_state_the_merged_budget_wiring_and_the_query_cap_check() -> None:
-    """The notes read the merged product (the sweep's #8 wording): the budget is fitted on the
+    """The notes read the merged product: the budget is fitted on the
     wire, and the query_max_tokens check found no separate referent cap."""
     notes = load_recipe(RECIPE_DIR).notes
     assert "fitted to the declared budget on the wire" in notes
