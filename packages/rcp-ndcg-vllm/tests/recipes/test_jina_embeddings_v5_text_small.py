@@ -438,6 +438,7 @@ EXPECTED_CLIENT = {
     "is_matryoshka: true, matryoshka_dimensions [32,64,128,256,512,768,1024]}; pooler defaults "
     "(mask-based last token + PoolerNormalize); raw text on /v1/embeddings",
     "request_shape": "text",
+    "add_generation_prompt": None,
     "revision": "dd76d535f5447ca3897a9c893fb1e612ead98192",
     "template": {
         "add_special_tokens": True,
@@ -524,6 +525,10 @@ def test_notes_pin_the_query_cap_check_the_feature_floor_and_the_download_figure
     floor in the notes, no restated startup default, and the re-derived download figures."""
     recipe = load_recipe(RECIPE_DIR)
     notes = recipe.notes
+    # Lane H's fixes are stated as today's behaviour: the last_content audit runs, over-cap texts are reported.
+    assert "does not audit last_content" not in notes and "strict xfail" not in notes
+    assert "Stage 1's anchor_check audits last_content" in notes
+    assert "does not yet list peft" not in notes
     assert "no separate query cap exists in the referent" in notes
     assert recipe.engine.min_version == "0.31.0"  # the image verified -- not a measured feature floor
     assert recipe.engine.startup_timeout_s == 1800  # the schema default, not restated in the YAML
