@@ -273,9 +273,9 @@ def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
         document["render_check"]["failures"][:1],
     )
     # The anchor check covered every sampled input, over-length ones included (one text per
-    # declared shape per pairs row, one per over-length sample).
+    # declared shape per pairs row -- the query, and EVERY document of the row -- one per sample).
     assert document["anchor_check"]["passed"] is True
-    assert document["anchor_check"]["checked"] == 2 * len(PAIRS) + 10
+    assert document["anchor_check"]["checked"] == len(PAIRS) + sum(len(row["documents"]) for row in PAIRS) + 10
     assert document["anchor_check"]["anchor"] == "first"
     # Both declared shapes carried their five over-length samples and cut them (the content span
     # only; the fixed frame is reserved, which the anchor check just asserted). The facts come from
