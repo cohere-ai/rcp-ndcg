@@ -134,7 +134,7 @@ checkpoint's remote code — the harness process never does. The contract (enfor
 `equivalence/reference.py`'s runner, which all fixture references implement):
 
 ```text
-reference.py --mode <render|score|embed> --pairs <file> --out <file> \
+reference.py --mode <render|score|embed|media> --pairs <file> --out <file> \
              --tokenizer "<repo>@<revision>|path/to/tokenizer.json" --device <cpu|cuda:0>
 ```
 
@@ -150,6 +150,12 @@ reference.py --mode <render|score|embed> --pairs <file> --out <file> \
 - `--mode embed` — embedding roles: `{"rows": [{"index", "query_vectors": [...], "document_vectors": [...]}]}` —
   per text: one vector for a dense embedder, one per-token matrix for a late-interaction model (the same
   nesting for query and document sides, for every text of the row).
+- `--mode media` — a recipe with image or video input: for every pairs row carrying `media`, per side
+  (`query`, `document <i>`) that carries media, what the card's model consumes:
+  `{"rows": [{"index", "side", "placement": ["image", "text"], "media": [{"kind": "image", "width", "height",
+  "tokens"}]}]}` — the parts in the card's order, each image's size after the card's own resize and its
+  prompt tokens (vision markers included); a side the card cannot consume is `{"index", "side", "refused":
+  str}`.
 - The reference environment: `packages/rcp-ndcg-vllm/requirements-reference.txt` pins it for every recipe
   (torch, transformers, sentence-transformers as needed); a recipe may ship its own
   `recipes/<id>/requirements-reference.txt`, which the node's bootstrap installs for that recipe instead of
@@ -251,6 +257,18 @@ on `rcp-ndcg`, so the command is always available) and requires the mean |Δ nDC
 python -m rcp_ndcg_vllm.equivalence --recipe recipes/<id> --base-url http://127.0.0.1:8100 \
     --pairs pairs.jsonl --out /tmp/equiv            # stages 1 and 2 against a running engine
 ```
+
+A recipe with image or video input also runs the **media stage** beside stages 1 and 2 (stages 1 and 2
+compare the pairs file's text rows; its media rows are this stage's). A media row carries `media: {"query":
+[...], "documents": [[...], ...]}`, each entry a `MediaRef` object (the bytes inline as a `data:` URI) plus its
+`kind`; a side's content is its media in entry order, then its text. The stage sends each media side through
+the role client and reads what crossed the wire — the parts in order, each image's prepared size decoded
+from the sent bytes, the tokens the client counted — against the reference's `--mode media`; with an engine,
+it sends each media request again without its media parts, and the difference of the two
+`usage.prompt_tokens` is the engine's own media count, which must equal the client's (an engine whose pixel
+pin is missing re-resizes a prepared image and fails it). Every image gates exactly; a media recipe whose
+pairs carry no media row fails. The pairs generator plans the media rows (one image per size bucket and a
+captioned page, `rcp_ndcg_vllm.observe.media_set`).
 
 The exit code is 0 only when every gate passes; `equivalence.json` carries every number with its referent
 (per document, per query, per subset) and `EQUIVALENCE.md` is the short section for the recipe's report.
