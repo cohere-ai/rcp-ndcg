@@ -2228,3 +2228,38 @@ class TestDeclaredNormalisationIsNoChange:
         client.rerank(" The Query Of The Evidence ", ["a b c"])
         (record,) = client.processing
         assert (record.input_id, record.mechanisms) == (QUERY_DOC_ID, ("query_share",))
+
+
+class TestResidualQueryRefit:
+    """The pair fit's residual-divergence re-fit ships every pair at the shortest verified query span: when that
+    shortens the shared query, the change is recorded under ``<query>`` like any settlement."""
+
+    def test_a_refit_that_shortens_the_query_is_recorded(self, tokenizer_json: str, monkeypatch: Any) -> None:
+        import dataclasses
+
+        client = RerankClient(
+            RerankEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=64,
+                use_activation=False,
+            ),
+            sender=RecordingSender(),
+        )
+        real_fit = client._fit
+        diverged: list[bool] = []
+
+        def diverging_fit(inputs: Any, shape: Any, **kwargs: Any) -> Any:
+            result = real_fit(inputs, shape, **kwargs)
+            if len(inputs) > 1 and not diverged:  # the first pair fit: one pair's query span re-tokenizes shorter
+                diverged.append(True)
+                (query, document), *rest = result.contents
+                result = dataclasses.replace(result, contents=((query.rsplit(" ", 1)[0], document), *rest))
+            return result
+
+        monkeypatch.setattr(client, "_fit", diverging_fit)
+        client.rerank("the query evidence", ["a b c", "the document"])
+        assert diverged
+        records = {record.input_id: record.mechanisms for record in client.processing}
+        assert records == {QUERY_DOC_ID: ("budget_cut",)}
