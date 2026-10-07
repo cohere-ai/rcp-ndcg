@@ -77,6 +77,7 @@ __all__ = [
     "register_line_migration",
     "registry",
     "transport_for",
+    "verification_record",
     "verification_records",
     "verify_corpus_hashes",
     "VllmEmulator",
@@ -125,7 +126,10 @@ _CREDENTIALS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("cookie header", re.compile(r"(?i)\b(?:set-cookie|cookie)\s*[:=]\s*\S+=")),
     ("secret field", re.compile(r'(?i)"(?:api[_-]?key|secret|password|token)"\s*:\s*"[^"]{8,}"')),
     ("secret field (single-quoted)", re.compile(r"(?i)'(?:api[_-]?key|secret|password|token)'\s*:\s*'[^']{8,}'")),
-    ("secret assignment", re.compile(r'(?i)\b(?:password|passwd|secret|api[_-]?key|access[_-]?token)\s*=\s*["\'][^"\']{8,}')),
+    (
+        "secret assignment",
+        re.compile(r'(?i)\b(?:password|passwd|secret|api[_-]?key|access[_-]?token)\s*=\s*["\'][^"\']{8,}'),
+    ),
 )
 
 
@@ -1425,6 +1429,41 @@ def verification_records(corpus_dir: str | Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def verification_record(corpus: Corpus, problems: Sequence[str], *, verified_at: str) -> dict[str, Any]:
+    """The verification record of one conformance run over ``corpus`` (OBSERVATIONS-SPEC section 4):
+    which emulator verified it, against which engine version and recipe revision, with which tolerances,
+    and the result.
+
+    Args:
+        corpus: The verified corpus.
+        problems: The conformance differences the run found (``[]`` is a pass).
+        verified_at: The run's date (``YYYY-MM-DD``).
+
+    Returns:
+        The record, ready for :func:`append_verification`.
+    """
+    from importlib.metadata import version
+
+    recipe = corpus.manifest["recipe"]
+    tolerance = corpus.tolerance
+    return {
+        "schema": VERIFICATION_SCHEMA,
+        "emulator": f"rcp_ndcg.testing.engines (rcp-ndcg {version('rcp-ndcg')})",
+        "engine": dict(corpus.engine),
+        "recipe": {
+            "id": recipe["id"],
+            "revision": recipe["revision"],
+            "behaviour_fingerprint": recipe["behaviour_fingerprint"],
+        },
+        "normalisation_version": NORMALISATION_VERSION,
+        "tolerances": {"abs": tolerance[0], "rel": tolerance[1]},
+        "exchanges": len(corpus.exchanges),
+        "problems": list(problems),
+        "result": "pass" if not problems else "fail",
+        "verified_at": verified_at,
+    }
 
 
 # ---------------------------------------------------------------------------

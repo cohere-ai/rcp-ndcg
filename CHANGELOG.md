@@ -42,9 +42,12 @@ released together.
   (`tests/conformance/`) replays every recorded exchange and the staleness check names the changed
   fingerprint inputs (waivers: `tests/conformance/waivers.json`, empty at release).
 - **`rcp_ndcg_vllm.fingerprint`: the recipe behaviour fingerprint** (GPU-VALIDATION item 8):
-  `behaviour_fingerprint(recipe)` (the SHA-256 of the checkpoint id and revision, the serve block,
-  the template file's bytes, the tokenizer's SHA-256 and the request-shaping client fields) and
-  `fingerprint_inputs(recipe)` (every input named, for staleness messages), with
+  `behaviour_fingerprint(recipe)` (rule `rcp-fp/3`: the SHA-256 of the checkpoint id and revision, the
+  serve block, the template file's bytes, the tokenizer's SHA-256 and exactly the client fields that
+  change the request bytes -- `CLIENT_FIELDS` classifies every client config field, so request packing
+  (`batch_size`) and the media caps are in, client-side post-processing of the reply (`normalize`,
+  `aggregation`, `dim`, `mrl_dim`, `document_skip_token_ids`, `outputs`) is out, and an unclassified
+  field is refused) and `fingerprint_inputs(recipe)` (every input named, for staleness messages), with
   `fingerprint_changes` and the one tokenizer resolution (`load_recipe_tokenizer`,
   `tokenizer_sha256`, `use_tokenizer_store` -- vendored `tokenizer.json` copies whose SHA-256 is
   verified on every read).
@@ -60,9 +63,7 @@ released together.
   pinning the recomputed metrics to 1e-9 with every input observed -- regression pins generated from
   the recorded corpus (the shakedown recorded no subset run); the RC0 subset corpus replaces them with
   the GPU run's numbers.
-- **Behaviour fingerprint inputs, version `rcp-fp/2`**: the client-side post-processing fields
-  (`normalize`, `aggregation`) are out (they cannot change what the model returns) and `batch_size` is
-  in (request packing can change a bf16 batch's numbers). A knob-keyed model layer (the rerank
+- **Conformance details**: a knob-keyed model layer (the rerank
   roles' `use_activation` and `instruction` are part of the observation key), header-checked conformance
   (content type, server), an extended credential scanner (basic auth, api-key headers, cookie and
   single-quoted or assigned secrets), and `RE_ENGINE_URL` exported from `rcp_ndcg.inference.fake`

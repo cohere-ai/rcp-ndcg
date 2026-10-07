@@ -1,0 +1,101 @@
+{
+  "collector": {
+    "documents_format": "recorder-record/1",
+    "generator_version": null,
+    "hostname": "hashed-unavailable",
+    "note": "shakedown corpus (provisional): one repetition per request, no /tokenize ground truth, request bodies as the recorder serialised them (parsed JSON, not raw bytes), no engine image digest. recipe_file_sha256 is the file's hash at corpus compaction: the recorded run predates the four recipe fixes of 2026-10-07, whose renders are byte-identical (verified against the recorded prompts). The release corpus is re-recorded at RC0 with rcp_ndcg_vllm.observe and keyed by fingerprint.",
+    "recorded_at": "2026-10-06",
+    "recorder": "rcp_ndcg_vllm.record (the recorder's fixed exchange set)",
+    "waves": [
+      "shake-a1"
+    ]
+  },
+  "documents": "exchanges.jsonl.gz",
+  "engine": {
+    "image": "vllm/vllm-openai:v0.31.0",
+    "image_digest": null,
+    "min_version": "0.31.0",
+    "name": "vllm",
+    "version": "0.31.0"
+  },
+  "files": {
+    "exchanges.jsonl.gz": "d394b799afef8af639b67ddf52db5118be8389877a8adca774975634c9474f59",
+    "index.json": "c9ebfb201412e8770687cf9ef96c74aa9a9f0e9ec1dbae7fa17a8bf08d76d148"
+  },
+  "model": {
+    "id": "Qwen/Qwen3-VL-Embedding-2B",
+    "revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"
+  },
+  "non_determinism": {
+    "measured_max_abs": 0.0,
+    "measured_max_rel": 0.0,
+    "note": "measured across the corpus's repeated observations of one engine prompt (the recorder's two same-process requests share the pair prompts); one repetition per request, so a second repetition and an after-restart repeat remain for the RC0 corpus to measure",
+    "repeated_prompts": 0,
+    "repetitions": [
+      "same_process"
+    ],
+    "rule": "max-pairwise-difference-across-repeated-observations-of-one-key",
+    "tolerance_abs": 0.0,
+    "tolerance_rel": 0.0
+  },
+  "recipe": {
+    "behaviour_fingerprint": "9f4f62aa91853beb888c13e2f8d7a1ea7015d5b917dbc9575d896b4565151006",
+    "fingerprint_inputs": {
+      "client.api": "openai_embeddings",
+      "client.batch_size": "32",
+      "client.doc_prompt": "",
+      "client.empty_doc": "send_text",
+      "client.empty_doc_text": "NULL",
+      "client.max_images": "1",
+      "client.max_tokens": "8192",
+      "client.max_videos": "1",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_prompt": "",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"{special:im_start}system\\nRepresent the user's input.{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}],\"normalize\":[]}",
+      "fingerprint_schema": "rcp-fp/3",
+      "model": "Qwen/Qwen3-VL-Embedding-2B",
+      "revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
+      "serve.chat_template": "template.jinja",
+      "serve.convert": "embed",
+      "serve.dtype": "bfloat16",
+      "serve.extra_args": "[]",
+      "serve.hf_overrides": "{}",
+      "serve.io_processor_plugin": "null",
+      "serve.limit_mm_per_prompt": "{\"image\":1,\"video\":1}",
+      "serve.max_model_len": "8192",
+      "serve.mm_processor_kwargs": "{\"images_kwargs\":{\"max_pixels\":1843200,\"min_pixels\":4096}}",
+      "serve.plugin": "null",
+      "serve.pooler_config": "{\"seq_pooling_type\":\"LAST\"}",
+      "serve.runner": "pooling",
+      "serve.trust_remote_code": "false",
+      "template_file": "sha256:704aecbd2f1f281de45ec7c66c89eae6d874cfdd7783e42aba8270cc31653868",
+      "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a"
+    },
+    "id": "qwen3-vl-embedding-2b",
+    "recipe_file": "recipe.yaml",
+    "recipe_file_sha256": "32bf68285102e3a3e688075fbfdd342f5655064ed649e929a1eeb1136d6cf7d7",
+    "revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
+    "role": "embed",
+    "scoring": null,
+    "status": {
+      "date": null,
+      "image": null,
+      "report": null,
+      "state": "unverified"
+    }
+  },
+  "schema": "rcp-ndcg.observation/1",
+  "source": {
+    "full_corpus": {
+      "gcs_path": null,
+      "note": "the shakedown recorder's node-local output (12 recipes, files hashed together)",
+      "sha256": "e85f0bd3452b0baf596a5f72f79b5dadcd76c10e54e35e3c40fee77e89430d9b"
+    },
+    "sampling": {
+      "rule": "all exchanges of the recorder's fixed set (the whole shakedown corpus)",
+      "seed": null
+    }
+  }
+}

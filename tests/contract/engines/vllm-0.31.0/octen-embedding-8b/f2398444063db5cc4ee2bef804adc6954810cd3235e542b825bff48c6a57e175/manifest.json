@@ -1,0 +1,100 @@
+{
+  "collector": {
+    "documents_format": "recorder-record/1",
+    "generator_version": null,
+    "hostname": "hashed-unavailable",
+    "note": "shakedown corpus (provisional): one repetition per request, no /tokenize ground truth, request bodies as the recorder serialised them (parsed JSON, not raw bytes), no engine image digest. recipe_file_sha256 is the file's hash at corpus compaction: the recorded run predates the four recipe fixes of 2026-10-07, whose renders are byte-identical (verified against the recorded prompts). The release corpus is re-recorded at RC0 with rcp_ndcg_vllm.observe and keyed by fingerprint.",
+    "recorded_at": "2026-10-06",
+    "recorder": "rcp_ndcg_vllm.record (the recorder's fixed exchange set)",
+    "waves": [
+      "shake-a2"
+    ]
+  },
+  "documents": "exchanges.jsonl.gz",
+  "engine": {
+    "image": "vllm/vllm-openai:v0.31.0",
+    "image_digest": null,
+    "min_version": "0.31.0",
+    "name": "vllm",
+    "version": "0.31.0"
+  },
+  "files": {
+    "exchanges.jsonl.gz": "a1d8075401e0ecfc59cdc4e21cf791a4456d34ecc096557423f006fbeb08edca",
+    "index.json": "4243732104d20087fed7cb89a3af26bbb38669658495b73031cb522f96912a71"
+  },
+  "model": {
+    "id": "Octen/Octen-Embedding-8B",
+    "revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
+  },
+  "non_determinism": {
+    "measured_max_abs": 0.0,
+    "measured_max_rel": 0.0,
+    "note": "measured across the corpus's repeated observations of one engine prompt (the recorder's two same-process requests share the pair prompts); one repetition per request, so a second repetition and an after-restart repeat remain for the RC0 corpus to measure",
+    "repeated_prompts": 1,
+    "repetitions": [
+      "same_process"
+    ],
+    "rule": "max-pairwise-difference-across-repeated-observations-of-one-key",
+    "tolerance_abs": 0.0,
+    "tolerance_rel": 0.0
+  },
+  "recipe": {
+    "behaviour_fingerprint": "f2398444063db5cc4ee2bef804adc6954810cd3235e542b825bff48c6a57e175",
+    "fingerprint_inputs": {
+      "client.api": "openai_embeddings",
+      "client.batch_size": "32",
+      "client.doc_prompt": "",
+      "client.empty_doc": "send",
+      "client.max_images": "0",
+      "client.max_tokens": "8192",
+      "client.max_videos": "0",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_prompt": "",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"- \"},{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"content\":\"query\"}]}",
+      "fingerprint_schema": "rcp-fp/3",
+      "model": "Octen/Octen-Embedding-8B",
+      "revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
+      "serve.chat_template": "null",
+      "serve.convert": "null",
+      "serve.dtype": "bfloat16",
+      "serve.extra_args": "[]",
+      "serve.hf_overrides": "{}",
+      "serve.io_processor_plugin": "null",
+      "serve.limit_mm_per_prompt": "null",
+      "serve.max_model_len": "8192",
+      "serve.mm_processor_kwargs": "{}",
+      "serve.plugin": "null",
+      "serve.pooler_config": "{}",
+      "serve.runner": "pooling",
+      "serve.trust_remote_code": "false",
+      "template_file": "absent",
+      "tokenizer_sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d"
+    },
+    "id": "octen-embedding-8b",
+    "recipe_file": "recipe.yaml",
+    "recipe_file_sha256": "746231e8db2a77591b8543fcaadc7c66d45867f8afdf12752ee2b7c04b57b944",
+    "revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
+    "role": "embed",
+    "scoring": null,
+    "status": {
+      "date": null,
+      "image": null,
+      "report": null,
+      "state": "unverified"
+    }
+  },
+  "schema": "rcp-ndcg.observation/1",
+  "source": {
+    "full_corpus": {
+      "gcs_path": null,
+      "note": "the shakedown recorder's node-local output (12 recipes, files hashed together)",
+      "sha256": "aafcfeed7ced40a2b02f189b9868619a903353eae71863fd9057e4b37a38895e"
+    },
+    "sampling": {
+      "rule": "all exchanges of the recorder's fixed set (the whole shakedown corpus)",
+      "seed": null
+    }
+  }
+}

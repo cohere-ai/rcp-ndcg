@@ -18951,6 +18951,1127 @@
       }
     }
   },
+  "rcp_ndcg.testing.engines": {
+    "all": {
+      "BehaviourDiff": {
+        "bases": [
+          "builtins.dict"
+        ],
+        "defined_in": "rcp_ndcg.testing.engines",
+        "init": "<no signature>",
+        "kind": "class"
+      },
+      "CORPUS_INDEX_SCHEMA": {
+        "kind": "constant",
+        "type": "str",
+        "value": "rcp-ndcg.corpus-index/1"
+      },
+      "Corpus": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.testing.engines",
+        "init": [
+          {
+            "annotation": "Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "root"
+          },
+          {
+            "annotation": "Mapping[str, Any]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "manifest"
+          },
+          {
+            "annotation": "tuple[Exchange, ...]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "exchanges"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "behaviour_fingerprint": "property",
+          "engine": "property",
+          "tolerance": "property"
+        }
+      },
+      "EmulatorRegistry": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.testing.engines",
+        "init": [
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "clear": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "load_entry_points": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "list[str]"
+              }
+            ]
+          },
+          "register": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "VllmEmulator",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "emulator"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "resolve": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "engine_name"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "engine_version"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "fingerprint"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "recipe_id"
+              },
+              {
+                "returns": "VllmEmulator"
+              }
+            ]
+          }
+        }
+      },
+      "EngineFacts": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.testing.engines",
+        "init": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "engine_name"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "engine_version"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "served_name"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "model_root"
+          },
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "max_model_len"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
+      "EnginePrompts": {
+        "bases": [
+          "rcp_ndcg.testing.engines.PromptStrategy"
+        ],
+        "defined_in": "rcp_ndcg.testing.engines",
+        "init": [
+          {
+            "annotation": "Callable[[str, Sequence[str]], str]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "builder"
+          },
+          {
+            "annotation": "bool",
+            "default": true,
+            "kind": "positional_or_keyword",
+            "name": "add_special"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "prompts": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Mapping[str, Any]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "body"
+              },
+              {
+                "returns": "PromptSet"
+              }
+            ]
+          }
+        }
+      },
+      "Exchange": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.testing.engines",
+        "init": [
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "sequence"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "method"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "request_body"
+          },
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "status"
+          },
+          {
+            "annotation": "Mapping[str, str]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "response_headers"
+          },
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "response"
+          },
+          {
+            "annotation": "str",
+            "default": "same_process",
+            "kind": "positional_or_keyword",
+            "name": "repetition"
+          },
+          {
+            "annotation": "str",
+            "default": "",
+            "kind": "positional_or_keyword",
+            "name": "source"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "response_bytes": "property",
+          "response_json": "property"
+        }
+      },
+      "LINE_SCHEMA": {
+        "kind": "constant",
+        "type": "int",
+        "value": 1
+      },
+      "MANIFEST_SCHEMA": {
+        "kind": "constant",
+        "type": "str",
+        "value": "rcp-ndcg.observation/1"
+      },
+      "NORMALISATION_VERSION": {
+        "kind": "constant",
+        "type": "int",
+        "value": 1
+      },
+      "PairPrompts": {
+        "bases": [
+          "rcp_ndcg.testing.engines.PromptStrategy"
+        ],
+        "defined_in": "rcp_ndcg.testing.engines",
+        "init": [
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "template"
+          },
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "tokenizer"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "prompts": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Mapping[str, Any]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "body"
+              },
+              {
+                "returns": "PromptSet"
+              }
+            ]
+          }
+        }
+      },
+      "PromptSet": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.testing.engines",
+        "init": [
+          {
+            "annotation": "tuple[str, ...]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "prompts"
+          },
+          {
+            "annotation": "tuple[bool, ...]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "add_special"
+          },
+          {
+            "annotation": "Literal['vector', 'token_vector', 'score', 'score_list']",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "slot"
+          },
+          {
+            "annotation": "tuple[int, ...]",
+            "default": [],
+            "kind": "positional_or_keyword",
+            "name": "positions"
+          },
+          {
+            "annotation": "tuple[str, ...]",
+            "default": [],
+            "kind": "positional_or_keyword",
+            "name": "knobs"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "counted": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Any",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "tokenizer"
+              },
+              {
+                "returns": "int"
+              }
+            ]
+          },
+          "item_key": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "int",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "index"
+              },
+              {
+                "returns": "str"
+              }
+            ]
+          },
+          "set_key": "property"
+        }
+      },
+      "PromptStrategy": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.testing.engines",
+        "init": [
+          {
+            "returns": null
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "prompts": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Mapping[str, Any]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "body"
+              },
+              {
+                "returns": "PromptSet"
+              }
+            ]
+          }
+        }
+      },
+      "StringsPrompts": {
+        "bases": [
+          "rcp_ndcg.testing.engines.PromptStrategy"
+        ],
+        "defined_in": "rcp_ndcg.testing.engines",
+        "init": [
+          {
+            "annotation": "Literal['vector', 'token_vector']",
+            "default": "vector",
+            "kind": "positional_or_keyword",
+            "name": "slot"
+          },
+          {
+            "annotation": "bool",
+            "default": true,
+            "kind": "positional_or_keyword",
+            "name": "add_special"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "prompts": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "Mapping[str, Any]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "body"
+              },
+              {
+                "returns": "PromptSet"
+              }
+            ]
+          }
+        }
+      },
+      "VERIFICATION_SCHEMA": {
+        "kind": "constant",
+        "type": "str",
+        "value": "rcp-ndcg.verification/1"
+      },
+      "Verified": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.testing.engines",
+        "init": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "engine_name"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "engine_version"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "recipe_id"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "revision"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "behaviour_fingerprint"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class"
+      },
+      "VllmEmulator": {
+        "bases": [],
+        "defined_in": "rcp_ndcg.testing.engines",
+        "init": [
+          {
+            "annotation": "EngineFacts",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "facts"
+          },
+          {
+            "annotation": "PromptStrategy",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "strategy"
+          },
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "tokenizer"
+          },
+          {
+            "annotation": "dict[str, tuple[ModelObservation, ...]]",
+            "default": "<factory>",
+            "kind": "positional_or_keyword",
+            "name": "observations"
+          },
+          {
+            "annotation": "Verified | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "verified"
+          },
+          {
+            "annotation": "str",
+            "default": "vector",
+            "kind": "positional_or_keyword",
+            "name": "slot"
+          },
+          {
+            "annotation": "int",
+            "default": 64,
+            "kind": "positional_or_keyword",
+            "name": "dim"
+          },
+          {
+            "annotation": "tuple[str, ...]",
+            "default": [
+              "malformed JSON -> 400",
+              "empty input -> 400",
+              "model name mismatch -> 404",
+              "too many media items -> 400",
+              "top_n > documents -> truncated to the documents",
+              "the /pooling framings (float/base64/bytes) are emulated from the product's pooling wire but unverified: the shakedown corpus holds no /pooling recording (RC0's corpus records them)",
+              "encoding_format base64 on /v1/embeddings is emulated unverified (the corpus recorded float)"
+            ],
+            "kind": "positional_or_keyword",
+            "name": "unverified_rules"
+          },
+          {
+            "annotation": "list[int]",
+            "default": "<factory>",
+            "kind": "positional_or_keyword",
+            "name": "_counter"
+          },
+          {
+            "annotation": "list[str]",
+            "default": "<factory>",
+            "kind": "positional_or_keyword",
+            "name": "answer_log"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "answer": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "path"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "method"
+              },
+              {
+                "annotation": "Any",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "body"
+              },
+              {
+                "returns": "httpx.Response"
+              }
+            ]
+          },
+          "clear_answer_log": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "from_corpus": {
+            "kind": "classmethod",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "cls"
+              },
+              {
+                "annotation": "Corpus",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "corpus"
+              },
+              {
+                "annotation": "PromptStrategy",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "strategy"
+              },
+              {
+                "annotation": "Any",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "tokenizer"
+              },
+              {
+                "annotation": "EngineFacts",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "facts"
+              },
+              {
+                "annotation": "int",
+                "default": 64,
+                "kind": "keyword_only",
+                "name": "dim"
+              },
+              {
+                "returns": "VllmEmulator"
+              }
+            ]
+          },
+          "handle": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "httpx.Request",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "request"
+              },
+              {
+                "returns": "httpx.Response"
+              }
+            ]
+          },
+          "replays": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "key"
+              },
+              {
+                "returns": "bool"
+              }
+            ]
+          },
+          "require_verified_for": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "recipe_id"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "revision"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "fingerprint"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "engine_version"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          }
+        }
+      },
+      "append_verification": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "corpus_dir"
+          },
+          {
+            "annotation": "Mapping[str, Any]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "record"
+          },
+          {
+            "returns": "None"
+          }
+        ]
+      },
+      "behaviour_diff": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Corpus",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "before"
+          },
+          {
+            "annotation": "Corpus",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "after"
+          },
+          {
+            "returns": "BehaviourDiff"
+          }
+        ]
+      },
+      "compare_exchange": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Exchange",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "recorded"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "method"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "status"
+          },
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "body"
+          },
+          {
+            "annotation": "tuple[float, float]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "tolerance"
+          },
+          {
+            "annotation": "Mapping[str, str] | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "response_headers"
+          },
+          {
+            "returns": "list[str]"
+          }
+        ]
+      },
+      "credential_findings": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "text"
+          },
+          {
+            "returns": "list[str]"
+          }
+        ]
+      },
+      "find_credential_patterns": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "returns": "list[str]"
+          }
+        ]
+      },
+      "load_corpus": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "returns": "Corpus"
+          }
+        ]
+      },
+      "measure_non_determinism": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Corpus",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "corpus"
+          },
+          {
+            "annotation": "PromptStrategy",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "strategy"
+          },
+          {
+            "returns": "dict[str, Any]"
+          }
+        ]
+      },
+      "normalise_body": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "method"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "body"
+          },
+          {
+            "returns": "Any"
+          }
+        ]
+      },
+      "register_corpus_format": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "schema"
+          },
+          {
+            "annotation": "CorpusLoader",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "loader"
+          },
+          {
+            "returns": "None"
+          }
+        ]
+      },
+      "register_line_migration": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "from_version"
+          },
+          {
+            "annotation": "Callable[[Mapping[str, Any]], Mapping[str, Any]]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "migrate"
+          },
+          {
+            "returns": "None"
+          }
+        ]
+      },
+      "registry": {
+        "kind": "constant",
+        "type": "rcp_ndcg.testing.engines.EmulatorRegistry"
+      },
+      "transport_for": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "url"
+          },
+          {
+            "returns": "httpx.MockTransport"
+          }
+        ]
+      },
+      "verification_record": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Corpus",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "corpus"
+          },
+          {
+            "annotation": "Sequence[str]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "problems"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "verified_at"
+          },
+          {
+            "returns": "dict[str, Any]"
+          }
+        ]
+      },
+      "verification_records": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str | Path",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "corpus_dir"
+          },
+          {
+            "returns": "list[dict[str, Any]]"
+          }
+        ]
+      },
+      "verify_corpus_hashes": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Corpus",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "corpus"
+          },
+          {
+            "returns": "list[str]"
+          }
+        ]
+      }
+    }
+  },
   "rcp_ndcg_core": {
     "all": {
       "Content": {

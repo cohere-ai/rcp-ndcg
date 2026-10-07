@@ -1,0 +1,100 @@
+{
+  "collector": {
+    "documents_format": "recorder-record/1",
+    "generator_version": null,
+    "hostname": "hashed-unavailable",
+    "note": "shakedown corpus (provisional): one repetition per request, no /tokenize ground truth, request bodies as the recorder serialised them (parsed JSON, not raw bytes), no engine image digest. recipe_file_sha256 is the file's hash at corpus compaction: the recorded run predates the four recipe fixes of 2026-10-07, whose renders are byte-identical (verified against the recorded prompts). The release corpus is re-recorded at RC0 with rcp_ndcg_vllm.observe and keyed by fingerprint.",
+    "recorded_at": "2026-10-06",
+    "recorder": "rcp_ndcg_vllm.record (the recorder's fixed exchange set)",
+    "waves": [
+      "shake-a2"
+    ]
+  },
+  "documents": "exchanges.jsonl.gz",
+  "engine": {
+    "image": "vllm/vllm-openai:v0.31.0",
+    "image_digest": null,
+    "min_version": "0.20.0",
+    "name": "vllm",
+    "version": "0.31.0"
+  },
+  "files": {
+    "exchanges.jsonl.gz": "04cc55c5b4ec2da6362de33b7e1b2c084b1241e43815e857895bd6377b3955cf",
+    "index.json": "4d09e006577bb3641053673d14b5ddefa9f722b0e2ca1af64d0c91baa9895077"
+  },
+  "model": {
+    "id": "jinaai/jina-embeddings-v5-text-small",
+    "revision": "dd76d535f5447ca3897a9c893fb1e612ead98192"
+  },
+  "non_determinism": {
+    "measured_max_abs": 0.0,
+    "measured_max_rel": 0.0,
+    "note": "measured across the corpus's repeated observations of one engine prompt (the recorder's two same-process requests share the pair prompts); one repetition per request, so a second repetition and an after-restart repeat remain for the RC0 corpus to measure",
+    "repeated_prompts": 0,
+    "repetitions": [
+      "same_process"
+    ],
+    "rule": "max-pairwise-difference-across-repeated-observations-of-one-key",
+    "tolerance_abs": 0.0,
+    "tolerance_rel": 0.0
+  },
+  "recipe": {
+    "behaviour_fingerprint": "31afc0cbb9c08c587f703d9504827cecee042714d1c2f35149d96e00319c2ff8",
+    "fingerprint_inputs": {
+      "client.api": "openai_embeddings",
+      "client.batch_size": "32",
+      "client.doc_prompt": "",
+      "client.empty_doc": "send",
+      "client.max_images": "0",
+      "client.max_tokens": "32768",
+      "client.max_videos": "0",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_prompt": "",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"first\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"Document:\"},{\"fixed\":\" \"},{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"Query:\"},{\"fixed\":\" \"},{\"content\":\"query\"}]}",
+      "fingerprint_schema": "rcp-fp/3",
+      "model": "jinaai/jina-embeddings-v5-text-small",
+      "revision": "dd76d535f5447ca3897a9c893fb1e612ead98192",
+      "serve.chat_template": "null",
+      "serve.convert": "null",
+      "serve.dtype": "bfloat16",
+      "serve.extra_args": "[]",
+      "serve.hf_overrides": "{\"is_matryoshka\":true,\"jina_task\":\"retrieval\",\"matryoshka_dimensions\":[32,64,128,256,512,768,1024]}",
+      "serve.io_processor_plugin": "null",
+      "serve.limit_mm_per_prompt": "null",
+      "serve.max_model_len": "32768",
+      "serve.mm_processor_kwargs": "{}",
+      "serve.plugin": "null",
+      "serve.pooler_config": "{}",
+      "serve.runner": "pooling",
+      "serve.trust_remote_code": "true",
+      "template_file": "absent",
+      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+    },
+    "id": "jina-embeddings-v5-text-small",
+    "recipe_file": "recipe.yaml",
+    "recipe_file_sha256": "b858375b84385f2f248e21a299ad4ae3e1dde6627680ea325f3eccb01b38d341",
+    "revision": "dd76d535f5447ca3897a9c893fb1e612ead98192",
+    "role": "embed",
+    "scoring": null,
+    "status": {
+      "date": null,
+      "image": null,
+      "report": null,
+      "state": "unverified"
+    }
+  },
+  "schema": "rcp-ndcg.observation/1",
+  "source": {
+    "full_corpus": {
+      "gcs_path": null,
+      "note": "the shakedown recorder's node-local output (12 recipes, files hashed together)",
+      "sha256": "19c339a9ee46337ef266fb77c6567d50341b0d966fc4ab5962c1b68affce5be2"
+    },
+    "sampling": {
+      "rule": "all exchanges of the recorder's fixed set (the whole shakedown corpus)",
+      "seed": null
+    }
+  }
+}

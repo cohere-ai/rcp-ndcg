@@ -48,21 +48,27 @@ def staleness(recipe_id: str) -> list[str]:
     return fingerprint_changes(recorded, fingerprint_inputs(recipe))
 
 
+def replay_problems(directory: Path) -> tuple[object, list[str]]:
+    """Replay every recorded exchange of one corpus against its emulator: the conformance differences
+    (identical status and body within the recorded non-determinism), each naming the record."""
+    corpus = load_corpus(directory)
+    recipe_id = corpus.manifest["recipe"]["id"]
+    emulator = emulator_for(recipe_id)
+    problems = []
+    for exchange in corpus.exchanges:
+        answer = emulator.answer(exchange.path, exchange.method, exchange.request_body)
+        found = compare_exchange(
+            exchange, exchange.method, exchange.path, answer.status_code, answer.json(), corpus.tolerance
+        )
+        problems.extend(f"#{exchange.sequence}: {problem}" for problem in found)
+    return corpus, problems
+
+
 def test_every_recorded_exchange_replays_identically() -> None:
     """The conformance core: identical status and body within the recorded non-determinism."""
     for directory in corpus_dirs():
-        corpus = load_corpus(directory)
-        recipe_id = corpus.manifest["recipe"]["id"]
-        emulator = emulator_for(recipe_id)
-        tolerance = corpus.tolerance
-        failures = []
-        for exchange in corpus.exchanges:
-            answer = emulator.answer(exchange.path, exchange.method, exchange.request_body)
-            problems = compare_exchange(
-                exchange, exchange.method, exchange.path, answer.status_code, answer.json(), tolerance
-            )
-            failures.extend(f"{directory.name}/{recipe_id} #{exchange.sequence}: {problem}" for problem in problems)
-        assert not failures, f"{recipe_id}: replay drifted:\n" + "\n".join(failures)
+        _, problems = replay_problems(directory)
+        assert not problems, f"{directory.parent.name}: replay drifted:\n" + "\n".join(problems)
 
 
 def test_usage_counts_use_the_recipes_real_tokenizer() -> None:
@@ -169,20 +175,29 @@ def test_every_corpus_carries_an_append_only_verification_record() -> None:
     """The conformance verifier's record (OBSERVATIONS-SPEC section 4): which emulator verified the
     corpus, against which engine version and recipe revision, with which tolerances, and the result.
 
-    The records are written by ``scratch/run_verification.py`` (never by tests, which write only to
-    ``tmp_path``) and appended, never rewritten."""
+    The latest committed record must be exactly what this suite's replay computes now (its date
+    aside), so a record can only come from this code. ``RCP_APPEND_VERIFICATION=1`` appends the
+    computed record (never rewriting the earlier ones) -- the only writer; tests otherwise write only
+    to ``tmp_path``."""
+    import datetime
+    import os
+
+    from rcp_ndcg.testing.engines import append_verification, verification_record
+
+    appending = bool(os.environ.get("RCP_APPEND_VERIFICATION"))
+    today = datetime.date.today().isoformat()
     for directory in corpus_dirs():
-        corpus = load_corpus(directory)
+        corpus, problems = replay_problems(directory)
+        computed = verification_record(corpus, problems, verified_at=today)
+        if appending:
+            append_verification(directory, computed)
         records = verification_records(directory)
-        assert records, f"{directory}: no verification record"
-        manifest = corpus.manifest
-        latest = records[-1]
+        assert records, f"{directory}: no verification record (RCP_APPEND_VERIFICATION=1 writes one)"
+        latest = dict(records[-1])
         assert latest["result"] == "pass", latest
-        assert latest["recipe"]["revision"] == manifest["recipe"]["revision"]
-        assert latest["recipe"]["behaviour_fingerprint"] == manifest["recipe"]["behaviour_fingerprint"]
-        assert latest["engine"]["version"] == manifest["engine"]["version"]
-        assert latest["tolerances"] == {"abs": corpus.tolerance[0], "rel": corpus.tolerance[1]}
-        assert latest["exchanges"] == len(corpus.exchanges)
+        latest.pop("verified_at")
+        computed.pop("verified_at")
+        assert latest == computed, f"{directory}: the latest record is not this suite's result: {latest}"
 
 
 def test_the_registry_resolves_by_engine_version_and_fingerprint() -> None:
