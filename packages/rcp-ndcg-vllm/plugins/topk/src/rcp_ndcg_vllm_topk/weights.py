@@ -32,7 +32,9 @@ __all__ = [
     "PROJECTION_TARGET_PREFIX",
     "CHECKPOINT_TO_VLLM_PREFIXES",
     "IGNORED_CHECKPOINT_PREFIXES",
+    "ZERO_INITIALISED_PARAMETERS",
     "map_checkpoint_name",
+    "mark_zero_initialised",
 ]
 
 # The trained projection of topk-embed-v1-small: `head` (Linear,
@@ -83,3 +85,28 @@ def map_checkpoint_name(name: str) -> str | None:
                 return None
             return name.replace(prefix, new_prefix, 1)
     return name
+
+
+#: The served module parameters the checkpoint never supplies: the projection's
+#: bias, whose two qualnames share one parameter (the model attribute and the
+#: pooler head's projector).  ColQwen3_5Model builds ``custom_text_proj`` with
+#: ``bias=True`` and zero-initialises it (colqwen3_5.py:177-183 at v0.31.0) so a
+#: bias-less checkpoint behaves exactly as ``bias=False`` -- and a future
+#: revision that ships ``head.bias`` is loaded over the zeros by the in-tree
+#: projection loader.
+ZERO_INITIALISED_PARAMETERS = ("custom_text_proj.bias", "pooler.head.projector.bias")
+
+
+def mark_zero_initialised(loaded: set[str]) -> set[str]:
+    """Mark the projection's zero-initialised bias as initialized in a load tracker's set.
+
+    Inputs: the ``set[str]`` ``ColQwen3_5Model.load_weights`` returns (every parameter the
+    checkpoint's tensors were loaded into).  Output: the same set, with
+    :data:`ZERO_INITIALISED_PARAMETERS` added.  The reason: vLLM v0.31.0's load tracker
+    (``model_loader/default_loader.py:track_weights_loading``) raises for any model
+    parameter outside that set, but this checkpoint is bias-less -- the bias is the
+    constructor's zeros (score-equivalent, module docstring) and a shipped ``head.bias``
+    is already in the set before this call, so the marking is idempotent either way.
+    """
+    loaded.update(ZERO_INITIALISED_PARAMETERS)
+    return loaded

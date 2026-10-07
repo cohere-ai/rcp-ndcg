@@ -56,6 +56,9 @@ from .guard import ensure_vllm_version
 # Refuse untested vLLM lines before any vLLM import (see guard.py).
 ensure_vllm_version()
 
+from collections.abc import Iterable  # noqa: E402
+
+import torch  # noqa: E402
 from vllm.model_executor.models.colqwen3_5 import (  # noqa: E402
     ColQwen3_5Model,
 )
@@ -64,7 +67,11 @@ from vllm.model_executor.models.qwen3_5 import (  # noqa: E402
 )
 from vllm.model_executor.models.utils import WeightsMapper  # noqa: E402
 
-from .weights import PROJECTION_SOURCE_PREFIX, PROJECTION_TARGET_PREFIX  # noqa: E402
+from .weights import (  # noqa: E402
+    PROJECTION_SOURCE_PREFIX,
+    PROJECTION_TARGET_PREFIX,
+    mark_zero_initialised,
+)
 
 __all__ = ["TopkEmbedModel"]
 
@@ -95,3 +102,19 @@ class TopkEmbedModel(ColQwen3_5Model):
             PROJECTION_SOURCE_PREFIX: PROJECTION_TARGET_PREFIX,
         }
     )
+
+    def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
+        """Load the checkpoint, then claim the projection's zero bias as initialized.
+
+        The checkpoint's ``head`` is bias-less while ``ColQwen3_5Model`` builds
+        ``custom_text_proj`` with a zero-initialised bias (score-equivalent to
+        ``bias=False``).  vLLM v0.31.0's load tracker refuses a parameter the
+        checkpoint never supplied (``model_loader/default_loader.py:
+        track_weights_loading``; shake1c: engine load died on
+        ``{'custom_text_proj.bias'}``), so the returned set is annotated under
+        both qualnames exactly as the in-tree projection loader marks a shipped
+        one (``colqwen3_5.py:load_weights``).  A checkpoint revision that ships
+        ``head.bias`` is loaded over the zeros first and needs no annotation.
+        """
+        loaded = super().load_weights(weights)
+        return mark_zero_initialised(loaded)

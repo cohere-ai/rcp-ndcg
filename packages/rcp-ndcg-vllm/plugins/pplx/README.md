@@ -20,9 +20,14 @@ pip install --no-deps rcp_ndcg_vllm_pplx-0.0.1-py3-none-any.whl
 vllm serve perplexity-ai/pplx-embed-v2-context-9b-preview \
   --revision b667039ee8b438a6350fbc91bbcecd86f9d363ba \
   --runner pooling \
-  --pooler-config '{"task": "token_embed"}' \
-  --trust-remote-code
+  --dtype bfloat16 \
+  --pooler-config '{"task": "token_embed"}'
 ```
+
+No `--trust-remote-code`: the plugin registers the checkpoint's configuration class with transformers'
+`AutoConfig` (see `src/rcp_vllm_pplx/hf_config.py`), so the engine parses `config.json` locally and never
+executes the checkpoint's remote config code; `--dtype bfloat16` is the served dtype (vLLM v0.31.0's GDN
+kernels refuse float32 — see the recipe's notes for the two kernel floors and what the GPU wave measures).
 
 The plugin is picked up automatically: every vLLM process loads `vllm.general_plugins` entry points
 (`VLLM_PLUGINS=rcp_vllm_pplx` to pin it by name). At import it refuses any vLLM outside the range it was
@@ -69,7 +74,8 @@ its tokenizer, the ids change and this plugin must be re-pinned — by design, n
 | Registered | What | Modelled on |
 |---|---|---|
 | `PplxContextualModel` → `PplxContextualForPooling` | the model class (lazy `"module:Class"` string) | `ColQwen3_5Model` (vLLM `models/colqwen3_5.py`) |
-| `MODELS_CONFIG_MAP["PplxContextualModel"]` → `PplxContextualConfig` | forces `is_causal = False` on the HF config and the text config (the model's bidirectional contract; also the path `ModelConfig.attn_type` reads) | `ColQwen3_5Config` (vLLM `models/config.py`) |
+| `AutoConfig[pplx_contextual_qwen3_5]` → `hf_config.PplxContextualConfig` | the checkpoint's transformers config class, restated locally (the explicit-local-code path: no `--trust-remote-code`, no remote code execution) | `rcp_ndcg_vllm_topk.config.TopkEmbedConfig` (the topk plugin's registration) |
+| `MODELS_CONFIG_MAP["PplxContextualModel"]` → `config.PplxModelConfigHandler` | forces `is_causal = False` on the HF config and the text config (the model's bidirectional contract; also the path `ModelConfig.attn_type` reads) | `ColQwen3_5Config` (vLLM `models/config.py`) |
 
 It deliberately registers **no multimodal processor** (the ColQwen3.5 precedent does; copying it would make the
 server silently accept images the embedding path never uses) and constructs no vision tower and no `lm_head`
@@ -83,10 +89,11 @@ server silently accept images the embedding path never uses) and constructs no v
   registration (against a stub registry where vLLM is absent), and the `--no-deps` freeze behaviour
   (simulated). Tests that need `vllm` importable (the wired pooler against a real `PoolingMetadata`, the
   tiny-config equivalence through the real model class) skip themselves with a clear reason where vLLM cannot
-  import on CPU, and run on the GPU wave, which has the engine image's vLLM.
+  import on CPU, and run on the GPU wave, which has the engine image's vLLM. The transformers config
+  restatement is pinned field for field against the remote class's constants where transformers imports.
 - `scripts/check_no_deps_freeze.sh` is the check the GPU wave runs: in a venv over the engine environment,
   `pip freeze` must change by exactly the one wheel.
 - On real weights (GPU wave): engine loads, `/pooling` returns `(n_chunks, 2048)` per document and one vector
-  per query, and served vectors match the reference implementation within the recipe's tolerance gate — the
-  dtype rung is `float32` first (the checkpoint is all-fp32; 33.6 GB), then `bfloat16` against a measured
-  tolerance.
+  per query, and served vectors match the reference implementation within the recipe's tolerance gate — served
+  at `bfloat16` (vLLM v0.31.0's GDN kernels refuse float32 on every prefill path; see the recipe's notes),
+  against the fp32 reference, so the tolerance gate covers the cast as well as the kernels.
