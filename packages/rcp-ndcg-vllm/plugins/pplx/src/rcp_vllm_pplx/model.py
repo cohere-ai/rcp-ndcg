@@ -19,8 +19,8 @@ the reason and the in-tree line it follows:
   models — saving the 248320×4096 fp32 vocabulary head (~4 GB) this checkpoint would
   otherwise allocate unused.
 - **Weight prefix mapping.** The checkpoint saves the text backbone under
-  ``language_model.*`` where this class keeps it under ``model.*`` (measured by the
-  r-pplx lane; vLLM's ``ColQwen3_5Model`` ships the analogous
+  ``language_model.*`` where this class keeps it under ``model.*`` (measured at the
+  pinned revision; vLLM's ``ColQwen3_5Model`` ships the analogous
   ``language_model.`` → ``language_model.model.`` map for its VL nesting).
 - **The chunk head.** ``contextual_projection.weight`` (fp32 ``[2048, 4096]``,
   bias-free) loads into the model's ``PplxInt8Projection``, which doubles as the pooler
@@ -79,7 +79,7 @@ class PplxContextualForPooling(Qwen3_5ForCausalLMBase):
     # weight (the WeightsMapper contract for unused tensors, as vLLM maps ``mtp.``).
     hf_to_vllm_mapper = WeightsMapper(
         orig_to_new_prefix={
-            # The checkpoint's text backbone (measured r-pplx: `language_model.*`); the
+            # The checkpoint's text backbone (measured at the pinned revision: `language_model.*`); the
             # base class's own map (qwen3_5.py:323-325) keeps the community
             # `model.language_model.*` variant first so both nestings load.
             "model.language_model.": "model.",

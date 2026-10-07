@@ -1,1 +1,1 @@
-# The vLLM plugin distributions (the plugin lanes write packages/rcp-ndcg-vllm/plugins/<name>/).
+# The vLLM plugin distributions (one directory per plugin: packages/rcp-ndcg-vllm/plugins/<name>/).

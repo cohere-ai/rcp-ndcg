@@ -2,7 +2,7 @@
 
 The reference side of the equivalence is an **independent oracle**: it re-derives the
 reference implementation's pools from the chunk *strings* (char spans, as the remote
-code's ``prepare_inputs``/``_pool`` build them, per the r-pplx research draft), while the
+code's ``prepare_inputs``/``_pool`` build them), while the
 plugin's :func:`rcp_vllm_pplx.pooling_core.pool_sequence` sees only the token ids that
 cross the wire. The two must agree token for token — that agreement is the serving
 contract. The tiny "backbone" that produces the hidden states is a random embedding plus

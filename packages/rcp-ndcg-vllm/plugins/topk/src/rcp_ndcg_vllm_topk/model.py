@@ -41,7 +41,7 @@ Serving contract (why each inherited piece is the right one):
   slice and L2 normalisation — the reference computes the head in bf16 and
   casts the result to fp32, so per-token vectors agree up to bf16 rounding of
   the head operands; the served-vs-reference equivalence on the GPU wave
-  measures that delta (research risk R6), and rcp-ndcg transfers float16 on
+  measures that delta, and rcp-ndcg transfers float16 on
   the client, which dominates it.
 - Multimodal: inherited registration.  The ``@MULTIMODAL_REGISTRY`` decorator
   stores its factories as a class attribute on ``ColQwen3_5Model``, which this

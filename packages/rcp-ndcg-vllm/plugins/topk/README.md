@@ -141,7 +141,8 @@ Three environments, with skips stated by name:
   `token_embed` shapes (one vector per prompt token, 2048 dims, unit-norm),
   the image-token budget (a 4-Mpx page stays within 1280 patch tokens), and
   the per-token cosine + MaxSim equivalence against the card's
-  `MultiVectorEncoder` reference on real weights (research risks R1, R4, R6).
+  `MultiVectorEncoder` reference on real weights (the non-causal layers, the
+  probe-image count, the fp32-vs-bf16 head rounding).
 
 Build: `uv build packages/rcp-ndcg-vllm/plugins/topk` produces one
 `py3-none-any` wheel; `twine check` passes.

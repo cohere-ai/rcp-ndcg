@@ -5,7 +5,7 @@ int8 head are the parts of the served model that stock vLLM v0.31.0 cannot expre
 they are where fidelity to the reference implementation lives. The vLLM-side wiring lives
 in :mod:`rcp_vllm_pplx.pooler` and :mod:`rcp_vllm_pplx.model`.
 
-Semantics (r-pplx research lane, measured against the pinned revision
+Semantics (measured against the pinned revision
 ``b667039ee8b438a6350fbc91bbcecd86f9d363ba`` of the checkpoint and its remote code):
 
 - A **query** is ``[248077] + tokenized text``; the pool is the mean over the whole
@@ -17,7 +17,7 @@ Semantics (r-pplx research lane, measured against the pinned revision
   added id ``248079``. The pool is one **span mean per chunk**, the prefix tokens and the
   boundary markers excluded from every span. A one-chunk document has no marker and is a
   single span; a query is told apart from it by the leading ``248077`` — the leading token
-  id is the role disambiguation rule (an unstated one-chunk case in the r-pplx audit).
+  id is the role disambiguation rule (the one-chunk case).
 - An **empty chunk** (two consecutive markers, or a trailing marker) yields a zero vector
   for that chunk, which is the reference's own behaviour for a chunk with no tokens.
 - A chunk's text containing the literal ``<|chunk_sep|>`` cannot be distinguished, on the
