@@ -9584,6 +9584,12 @@
             "name": "add_special_tokens"
           },
           {
+            "annotation": "bool | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "add_generation_prompt"
+          },
+          {
             "returns": "None"
           }
         ],
@@ -9712,6 +9718,13 @@
         "defined_in": "rcp_ndcg.inference.config",
         "extra": "forbid",
         "fields": {
+          "add_generation_prompt": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal[True] | None"
+          },
           "aggregation": {
             "alias": null,
             "default": "max",
@@ -10611,6 +10624,13 @@
         "defined_in": "rcp_ndcg.inference.config",
         "extra": "forbid",
         "fields": {
+          "add_generation_prompt": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal[True] | None"
+          },
           "aggregation": {
             "alias": null,
             "default": "max",
@@ -13443,6 +13463,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "add_generation_prompt": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal[True] | None"
+          },
           "aggregation": {
             "alias": null,
             "default": "max",
@@ -14134,6 +14161,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "add_generation_prompt": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal[True] | None"
+          },
           "aggregation": {
             "alias": null,
             "default": "max",
@@ -14458,6 +14492,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "add_generation_prompt": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal[True] | None"
+          },
           "aggregation": {
             "alias": null,
             "default": "max",
@@ -14704,6 +14745,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "add_generation_prompt": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal[True] | None"
+          },
           "aggregation": {
             "alias": null,
             "default": "max",
@@ -15246,6 +15294,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "add_generation_prompt": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal[True] | None"
+          },
           "aggregation": {
             "alias": null,
             "default": "max",
@@ -15492,6 +15547,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "add_generation_prompt": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal[True] | None"
+          },
           "aggregation": {
             "alias": null,
             "default": "max",
@@ -16026,6 +16088,13 @@
         "defined_in": "rcp_ndcg.retrieval.config",
         "extra": "forbid",
         "fields": {
+          "add_generation_prompt": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal[True] | None"
+          },
           "aggregation": {
             "alias": null,
             "default": "max",

@@ -55,5 +55,16 @@ def _markdown(document: dict[str, Any]) -> str:
                 lines.append(f"- `{row['gate']}`: {value} vs bound {bound} -> **{row['passed']}**")
                 lines.append(f"  - referent: {row.get('referent', '')}")
         lines.append("")
+    media = document.get("media")
+    if isinstance(media, dict):
+        lines += ["## Media", "", f"- status: {media.get('status')}; passed: **{media.get('passed')}**"]
+        if media.get("status") == "run":
+            engine = media.get("engine_check") or {}
+            lines.append(f"- media rows {media.get('rows')}, sides {media.get('sides')}, items {media.get('items')}")
+            lines.append(f"- failures {len(media.get('failures') or [])}, refusals {len(media.get('refusals') or [])}")
+            lines.append(f"- engine media count: {engine.get('status')}, passed {engine.get('passed')}")
+        else:
+            lines.append(f"- {media.get('reason', '')}")
+        lines.append("")
     lines.append(f"## Verdict: {'PASS' if document.get('passed') else 'FAIL'}")
     return "\n".join(lines) + "\n"

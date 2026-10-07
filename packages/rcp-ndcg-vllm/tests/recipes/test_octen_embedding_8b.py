@@ -513,6 +513,7 @@ EXPECTED_CLIENT = {
     "checkpoint's modules.json (last-token + normalize); bare strings on /v1/embeddings with the "
     "post-processor anchor appended",
     "request_shape": "text",
+    "add_generation_prompt": None,
     "revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
     "template": {
         "add_special_tokens": True,

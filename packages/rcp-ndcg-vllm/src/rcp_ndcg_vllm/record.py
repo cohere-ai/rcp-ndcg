@@ -31,7 +31,7 @@ from .equivalence.wire import role_client
 from .errors import HarnessError
 from .recipe import Recipe
 
-__all__ = ["entry_from_exchange", "record", "record_corpus"]
+__all__ = ["bare_exchange", "entry_from_exchange", "record", "record_corpus", "refusal_exchange"]
 
 _PLACEHOLDER = "http://engine"
 _TIMEOUT_S = 120.0
@@ -263,11 +263,15 @@ def entry_from_exchange(exchange: dict[str, Any]) -> tuple[dict[str, Any], dict[
     return request, response
 
 
-def _bare_exchange(
+def bare_exchange(
     http: httpx.Client, method: str, route: str, body: Any, *, raw: bytes | None = None
 ) -> dict[str, Any]:
-    """One bare probe (deliberate refusals, framing variants) as a captured exchange; a connection error is
-    recorded as a status-less exchange (the request set's answer was "no answer"), never raised."""
+    """One bare probe (deliberate refusals, framing variants, the readiness edge) as a captured exchange.
+
+    Inputs: an ``httpx`` client on the engine's root, the method and route, the JSON body (``None`` for
+    none) or the exact ``raw`` bytes to send.  Output: the exchange in the capture's shape (request and
+    reply bytes base64, the parsed bodies, ``latency_s``); a connection error is recorded as a status-less
+    exchange (the request set's answer was "no answer"), never raised."""
     import time
 
     request_bytes = raw if raw is not None else json.dumps(body).encode("utf-8") if body is not None else b""
@@ -305,6 +309,26 @@ def _safe_json(payload: bytes) -> Any:
         return json.loads(payload)
     except (ValueError, UnicodeDecodeError):
         return None
+
+
+def refusal_exchange(recipe: Recipe, request_id: str, item: str, error: Exception) -> dict[str, Any]:
+    """A request the product's client refused before sending, as a captured exchange: no status (nothing
+    crossed the wire), the refusal's type and message as the reply bytes, and a request body that names the
+    refused item (``client_refusal``) -- so each refusal is its own record and the plan's request id is
+    accounted for."""
+    route = _ROLE_ROUTES[recipe.role]
+    body = {"client_refusal": {"request_id": request_id, "item": item}}
+    message = f"{type(error).__name__}: {error}"
+    return {
+        "url": f"{_PLACEHOLDER}{route}",
+        "method": "POST",
+        "request_bytes": "",
+        "request_body": body,
+        "status": None,
+        "headers": {},
+        "response_bytes": base64.b64encode(message.encode("utf-8")).decode("ascii"),
+        "response_json": None,
+    }
 
 
 class _Collector:
@@ -482,13 +506,16 @@ def _model_layer(
 
     Returns the texts the client actually put on the wire for each input sent alone, as ``(row, item, shape,
     text)`` -- the rendered prompt for an embedder, the settled query span and the document spans for a
-    reranker -- for the engine's ``/tokenize`` of exactly what the client sends.
+    reranker -- for the engine's ``/tokenize`` of exactly what the client sends.  A row carrying inline media
+    (the media request set) sends each media side alone, with its media
+    (:func:`~rcp_ndcg_vllm.equivalence.media.side_contents`).
     """
     from rcp_ndcg_core.content import Content
 
     from rcp_ndcg.inference.types import EncodeRole
 
     from .equivalence.fitting import declared_shapes
+    from .equivalence.media import media_rows, side_contents
 
     client, capture = role_client(recipe, url)
 
@@ -497,6 +524,43 @@ def _model_layer(
     def captured_since(start: int, batch_context: dict[str, Any], inputs: dict[str, Any]) -> None:
         for exchange in capture.exchanges[start:]:
             collected.add(exchange, batch_context=batch_context, inputs=inputs)
+
+    # The media rows (the media request set's inline images): each media side alone, as the media stage
+    # sends it -- one item per request, a reranker's pair per request; their texts are not /tokenize-probed
+    # (the engine's chat render of media is not a text the client sends).
+    from rcp_ndcg.errors import RcpNdcgError
+
+    def send_side(row: dict[str, Any], item: str, side: str, call: Any) -> None:
+        """One media side through the client; a client that refuses it is recorded as its refusal (nothing
+        was sent: the media stage reports the same refusal), never an exception that ends the corpus."""
+        context = {"size": 1, "request_ids": [row["request_id"]], "positions": [0], "media": True}
+        start = len(capture.exchanges)
+        try:
+            call()
+        except RcpNdcgError as error:
+            collected.add(
+                refusal_exchange(recipe, row["request_id"], item, error),
+                batch_context=context,
+                inputs=collected.inputs(row, item=item, side=side, probe="client_refusal"),
+            )
+            return
+        captured_since(start, context, collected.inputs(row, item=item, side=side))
+
+    media = media_rows(rows)
+    for _, row in media:
+        query, documents = side_contents(row)
+        for position, document in enumerate(documents):
+            if not (document.has_media or (recipe.role == "rerank" and query.has_media)):
+                continue
+            if recipe.role == "rerank":
+                call = lambda d=document, q=query, r=row: client.rerank(q, [d], instruction=r.get("instruction"))  # noqa: E731
+            else:
+                call = lambda d=document: client.encode([d], EncodeRole.DOCUMENT)  # noqa: E731
+            send_side(row, f"document:{position}", "document", call)
+        if query.has_media and recipe.role != "rerank":
+            send_side(row, "query:0", "query", lambda q=query: client.encode([q], EncodeRole.QUERY))
+    media_ids = {id(row) for _, row in media}
+    rows = [row for row in rows if id(row) not in media_ids]
 
     if recipe.role == "rerank":
         # One query per /rerank request: the candidate set is the batch, sent in the given and the reversed order.
@@ -584,7 +648,7 @@ def _bare_probes(
             request_id = f"probe:{probe}" if path == route or probe != "ok" else f"probe:{path}"
             inputs = collected.inputs(first, probe=probe, request_id=request_id, stratum="protocol", layer="protocol")
             collected.add(
-                _bare_exchange(http, method, path, body, raw=raw),
+                bare_exchange(http, method, path, body, raw=raw),
                 batch_context={"size": 1, "request_ids": [request_id], "positions": [0]},
                 inputs=inputs,
             )
@@ -596,7 +660,7 @@ def _bare_probes(
                 "layer": row["layer"],
             }
             collected.add(
-                _bare_exchange(http, row["method"], row["path"], row.get("body"), raw=row.get("raw")),
+                bare_exchange(http, row["method"], row["path"], row.get("body"), raw=row.get("raw")),
                 batch_context={"size": 1, "request_ids": [row["request_id"]], "positions": [0]},
                 inputs=inputs,
             )
@@ -626,7 +690,7 @@ def _tokenize_probes(
             request_id = f"tokenize:{row['request_id']}/{item}"
             inputs = collected.inputs(row, probe="tokenize", request_id=request_id, stratum="tokenize", item=item)
             collected.add(
-                _bare_exchange(http, "POST", route, {"model": recipe.id, "prompt": text, "add_special_tokens": flag}),
+                bare_exchange(http, "POST", route, {"model": recipe.id, "prompt": text, "add_special_tokens": flag}),
                 batch_context={"size": 1, "request_ids": [request_id], "positions": [0]},
                 inputs=inputs,
             )

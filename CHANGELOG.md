@@ -25,6 +25,110 @@ released together.
 
 ### Public surface
 
+- **The media gate's fix round**: the recorder records a media side the role client refuses as a
+  `client_refusal` record (`rcp_ndcg_vllm.record.refusal_exchange`; no status, nothing sent), so a refusal never
+  ends a corpus step and loses its text rows (topk-embed-v1-small's image documents); the checkpoint's own files
+  come through one reader (`rcp_ndcg_vllm.equivalence.checkpoint.checkpoint_file`, `checkpoint_pixel_budget`),
+  where only an absent file (the Hub's answer, or the cache's record of it) falls through to the next source; a
+  file neither cached nor askable is unknown, and that or any other read failure is unresolved; the
+  media stage names a side the reference refuses (`reference_refused`, which the generator prunes) before a side
+  the client did not send, and an image whose tokens either side left uncounted fails; the generator's media rows
+  are `observe.media_set.planned_media_rows` (renamed from `media_rows`, which stays the pairs-file reader in
+  `equivalence.media`). The test stub resizes with the product's own `smart_resize`, so on CPU only the
+  reference comparison can catch a product resize bug.
+- **Recipe follow-ups**: `qwen3-vl-embedding-2b` moves to the `messages` route with `add_generation_prompt: true`
+  and the pinned `qwen3_vl` image policy (images and video now travel; its notes say so); `qwen3-vl-reranker-2b`
+  declares the same pinned `qwen3_vl` image policy (its images were refused) and its reference reads a
+  whitespace-only query as the card does (verbatim); both references, and `topk-embed-v1-small`'s, gain
+  `--mode media` (the cards' own image resize; NOTICE attributes the restated `smart_resize` of qwen-vl-utils
+  0.0.14 and of transformers); `jina-reranker-v3` declares `document_max_tokens: 2048` (the checkpoint's
+  per-document cap); `jina-embeddings-v5-text-small`'s notes no longer describe the last_content gap lane H
+  closed. The `qwen3-vl-reranker-2b` corpus is re-keyed (its new client media inputs shape no recorded
+  exchange); the `qwen3-vl-embedding-2b` and `jina-reranker-v3` stale declarations name the inputs that moved.
+- **The media request set is generated and recorded** (`rcp_ndcg_vllm.observe.media_set`, `MEDIA_SET_VERSION` 1,
+  versioned apart from the text sampling so no recipe's text rows move): a recipe with image input plans one
+  pairs row per image size bucket of OBSERVATIONS-SPEC section 1 (tiny, icon, A4 at 72/150/300 dpi, a 16:9
+  slide, a tall receipt, an extreme aspect ratio; deterministic PNGs inline) and a captioned page, after its
+  text rows; the corpus plan sends the edges bare (`edge:too_many_images`: `max_images + 1` images in one
+  item; `edge:corrupt_image`) and records `media:video` absent with the reason (the generator writes no video
+  container). The `BLOCKED` media strata are gone. The generator's validation runs the media stage offline
+  (`validation.media_check` in `pairs/manifest.json`; a media failure is recorded, never pruned), stage 1's
+  red rows map back to the text rows' positions, and the recorder sends each media row with its media, one
+  item (a reranker's pair) per request.
+- **The media stage of the equivalence harness** (`rcp_ndcg_vllm.equivalence.media.stage_media`, run by
+  `equivalence.run` beside stages 1 and 2 for a recipe with image or video input): stages 1 and 2 are text-only, so
+  nothing proved that a served vision-language recipe shows its model the images its reference sees. For every
+  pairs row that carries `media` (inline `MediaRef` entries with their `kind`; a side's content is its media in
+  order, then its text) the stage sends each media side through the recipe's role client (the product's media
+  preparation and fit) and reads what crossed the wire -- the parts in order, each image's prepared geometry
+  decoded from the sent bytes, each video's frames, the tokens the client counted (`content_media_tokens` under
+  the client's effective policies) -- against the reference's new `--mode media` (`REFERENCE_MODES`), and with an
+  engine it sends each media request again without its media: the difference of the two `usage.prompt_tokens`
+  is the engine's own media count, which must equal the client's. Every image item gates exactly (count,
+  placement, geometry, tokens); a container's tokens are reported. A media recipe whose pairs carry no media row
+  fails the stage; stages 1 and 2 compare the text rows only (`media_rows` in stage 1's report). Negative control
+  (f) unpins the nested `images_kwargs` pin (or a flat one) and is caught by the engine count; it is
+  inapplicable, said why, where the pin lies inside the checkpoint's own image budget read at the pinned
+  revision (`equivalence.checkpoint.checkpoint_pixel_budget`: `preprocessor_config.json`, else
+  `processor_config.json`), which an unpinned engine applies and which keeps every image the client prepared
+  -- `qwen3-vl-reranker-2b` (4096..1310720 inside its 4095..1310720) and `topk-embed-v1-small`; served for
+  `qwen3-vl-embedding-2b` (its 1843200 px ceiling leaves its checkpoint's 1310720) -- and `unresolved`, a
+  wave blocker, when that budget cannot be read. The test stub engine resizes images as the engine's processor does
+  (`--model-image-factor`, `--model-image-pixels`, `--mm-processor-kwargs`), and the `fixture-vl-embed`
+  fixture is a vision embedder pinned below its family's stock floor.
+- **A recipe that declares a key twice is refused** (`rcp_ndcg_vllm.load_recipe`): YAML keeps the last of two equal
+  keys silently, so a recipe declaring a field twice served whichever came last. The loader raises
+  `RecipeError` naming the key and its line; the `fixture-rerank-noisy` fixture declared `use_activation` twice
+  (both `true`) and now declares it once.
+- **Change handling reads corpora through the one reader**: `rcp_ndcg_vllm.changes` (the committed-corpora
+  selection and staleness) reads each manifest through `rcp_ndcg.testing.corpus.load_corpus` and refuses a
+  corpus whose hashes do not hold (`HarnessError` naming the mismatches) instead of parsing `manifest.json`
+  itself; the conformance wiring (`tests/_engines.py`) reads through the same reader. The two re-record
+  selections state their scopes: `changes changed` compares the corpora committed in the repository, the
+  wave runner's `--changed-since <wave.json>` a previous wave's index (`observe.corpus.changed_since`).
+- **`rcp_ndcg.runs.execution.stage_run(pipeline)`**: the one staging of a run directory before a job runs it (the
+  layout, the resolved `run.yaml`, the manifest in status `submitted`). `submit_run` calls it, and
+  `rcp_ndcg_vllm.e2e.stage_run_dir` -- the GPU end-to-end driver, which runs the job itself -- now calls it
+  instead of the pipeline's private `run.yaml` writer.
+- **Re-keyed corpora name the manifest they were re-keyed from**: each `recipe.rekeyed` entry carries
+  `from_manifest_sha256` and `from_manifest_file_sha256` beside `from_behaviour_fingerprint`, the link from the
+  repository subset to the full corpus it was cut from (`qwen3-reranker-8b`, `qwen3-vl-reranker-2b`; their
+  manifest digests and the corpus indexes recomputed). The conformance suite requires both on every entry.
+- **The stub engine speaks vLLM's chat path, and stage 2 runs on the messages route**: `rcp-ndcg-vllm`'s test stub
+  engine refused `messages` bodies, so stage 2 on the `messages` route was untested. It now frames each
+  conversation as vLLM v0.31.0's chat path does (parts handed to the served chat template as their modality,
+  the request's `add_generation_prompt`), resizes images as the engine's processor does under the served pixel
+  pin (else the emulated checkpoint's default budget), refuses what the engine refuses (more images than
+  `--limit-mm-per-prompt`, an undecodable image, a video container it cannot decode) and reports
+  `usage.prompt_tokens` on every chat-shaped and `/rerank` reply; a stage-2 test passes a template that frames
+  once and fails one that frames twice.
+- **The harness reads the checkpoint's own chat template** (`rcp_ndcg_vllm.equivalence.stages.checkpoint_chat_template`,
+  `CHECKPOINT_TEMPLATE_FILES`): a `messages` recipe without `serve.chat_template` reported its
+  `template_render_check` as `not_run`, so the frame the engine renders there was never checked. The check now
+  reads the checkpoint's own template at the pinned revision, in the order the engine resolves it
+  (`chat_template.jinja`, `chat_template.json`, `tokenizer_config.json`; vllm/renderers/hf.py:263-300), from the
+  Hub cache (a pinned revision answers without a request) or the Hub, renders it over every captured
+  conversation and names the file and its SHA-256 in the report (`template`, `template_sha256`). A template
+  that cannot be read fails the check (`status: unresolved`), never passes.
+- **A declared generation prompt on the messages route** (`EmbeddingEndpoint.add_generation_prompt`,
+  `EmbedRequest.add_generation_prompt`): vLLM v0.31.0's chat routes default `add_generation_prompt` to false
+  (`vllm/entrypoints/pooling/base/protocol.py:230-237`), so a checkpoint whose frame ends with the chat
+  template's assistant header (Qwen3-VL-Embedding's) rendered without it on the `messages` route. Declaring
+  `add_generation_prompt: true` sends the flag with every `messages` request; it is content (it enters the
+  config's identity and the recipe fingerprint as a request field), refused on any other request shape and
+  on `PoolingEndpoint` (its media lowering sends no such field), and `false` -- the engine's default -- is
+  stored as `None`, so no identity re-keys. The equivalence harness's messages template check renders every
+  captured conversation with the flag that request carried, its parts as vLLM hands them to the template
+  (`rcp_ndcg_vllm.equivalence.stages.engine_conversation`: `image_url` as `{"type": "image"}`, `video_url` as
+  `{"type": "video"}`).
+- **Two public accessors of `rcp-ndcg-vllm`, and the release rule for stale corpora**:
+  `rcp_ndcg_vllm.fingerprint.stored_tokenizer(spec)` returns a registered tokenizer store's verified
+  `tokenizer.json` bytes and SHA-256 (the golden replay materialises the recipe's tokenizer with it), and
+  `rcp_ndcg_vllm.record.bare_exchange` records one bare probe as a captured exchange (the wave runner's
+  readiness edge uses it); no caller imports a private helper for either. With `RCP_NDCG_RELEASE=1` the
+  conformance suite requires `tests/conformance/stale.json` empty, as it requires the waiver file empty; the
+  re-key of a corpus whose fingerprint moved by metadata only is a documented procedure
+  (`docs/how-to/use-verified-fake-engines.md`), never the way to empty the stale list.
 - **An image pixel budget the engine is pinned to** (`ImagePolicy.engine_pixel_pinning`): a budget outside the
   processor family's stock range was refused even when the engine was pinned to it (Qwen3-VL-Embedding's card
   budget, 4096..1843200 px, below `qwen3_vl`'s stock 65536 px floor), so such a client could neither resize nor
@@ -256,9 +360,9 @@ released together.
   `/pooling` recipe whose over-length samples exceed 32768 tokens records its render check as blocked (the
   full-budget stage 1 runs against the engine); a recipe whose validation pruned every row is a skipped
   recipe with the first failure named, never an empty pairs file. The committed `pairs/` hold all 18
-  recipes, generated in render mode on CPU (no model weights); the manifest records two render checks as
-  blocked (`pplx-embed-v2-context-9b-preview`: the offline probe bound; `qwen3-vl-reranker-2b`: its
-  reference refuses the whitespace-only query the product sends).
+  recipes, generated in render mode on CPU (no model weights); the manifest records one render check as
+  blocked (`pplx-embed-v2-context-9b-preview`: the offline probe bound) and, for the media recipes, the media
+  check (`topk-embed-v1-small`'s failed: its client refuses image documents under its skip ids).
 - **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
   are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric
   placements whose document has no Bradley-Terry theta, and the queries absent from `bt_scores`, instead of
@@ -315,6 +419,10 @@ released together.
 
 ### Fixed
 
+- **A role client keeps an item's media placement through the fit**: the fitted text was put before every media
+  part, so a media-first item (a page and then its caption; the vision-language cards build their inputs media
+  first) went out text-first -- another input than the one given. The text now stands where the item's first
+  text part stood.
 - **The offline fake counts tokens as the engine would** (`rcp_ndcg.inference.fake`): `/pooling` answered one
   vector per whitespace word and drew its `prompt_token_ids`, so a pooling client with
   `document_skip_token_ids` over `fake://` refused every text whose words and tokens differ (a
@@ -515,9 +623,12 @@ released together.
   mode needs no torch and no transformers; the recipe directory carries its `requirements-reference.txt`.
 - New serving recipe `rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/` (`Qwen/Qwen3-VL-Embedding-2B` at revision
   `9f2f7e71…`, role `embed`, stock `vllm/vllm-openai:v0.31.0`, no plugin): the chat frame declared as product
-  `TemplateSpec` data with the model's default instruction pinned as fixed text, the template file shipped
-  (`serve.chat_template: template.jinja`, R10), the media pixel budget pinned on both sides
-  (`serve.mm_processor_kwargs` `images_kwargs` min 4096 / max 1843200, mirrored in `client.recipe`, R20),
+  `TemplateSpec` data with the model's default instruction pinned as fixed text, every item sent on the
+  `messages` route and framed once by the checkpoint's own chat template (no template file ships;
+  `add_generation_prompt` and `add_special_tokens` sent true), the media pixel budget pinned on both sides
+  (`serve.mm_processor_kwargs` `images_kwargs` min 4096 / max 1843200; the client's `image_processor:
+  qwen3_vl` and `image_policy` with `engine_pixel_pinning`, R20), its reference's `--mode media` for the
+  media stage,
   explicit `client.tokenizer` + `max_tokens: 8192` with `on_overflow: cut`, `empty_doc: send_text "NULL"`
   (the card's NULL rule), and the subprocess reference running the card's `Qwen3VLEmbedder` (vendored
   verbatim, sha256-pinned; the render mode mirrors the anchor-preserving cut, and the card's whole-prompt

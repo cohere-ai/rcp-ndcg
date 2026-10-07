@@ -23,7 +23,7 @@ embed mode (about 4.4 GB of weights). ``--mode render`` needs only ``huggingface
 
 Subprocess contract (``rcp_ndcg_vllm.equivalence.reference.run_reference``):
 
-    reference.py --mode <render|embed> --pairs <file> --out <file> --tokenizer <repo>@<rev> [--device <d>]
+    reference.py --mode <render|embed|media> --pairs <file> --out <file> --tokenizer <repo>@<rev> [--device <d>]
 
 - ``render``: ``{"rows": [{"index", "shape", "text"}]}`` -- the prompt text the card's model reads, one
   render per declared shape per row (the row's query and its first document, which is what the harness
@@ -43,6 +43,10 @@ Subprocess contract (``rcp_ndcg_vllm.equivalence.reference.run_reference``):
 - ``embed``: ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[[...]]]}]}`` -- fp16
   per-token matrices (n_kept, 2048), one per query and one per document, exactly as the wrapper
   returns them (keep-masked).
+- ``media``: ``{"rows": [{"index", "side", "placement", "media": [{"kind", "width", "height", "tokens"}]}]}``
+  -- for every pairs row carrying ``media``, what the wrapper consumes per image document (its own resize
+  and token count, read from the pinned ``config.json`` and ``processor_config.json``); a side it cannot
+  encode is ``{"index", "side", "refused"}``. Needs ``huggingface_hub`` and Pillow only.
 
 The environment pins live in the recipe's ``notes`` (one home per concept); this docstring states the
 code path and the modes.
@@ -218,9 +222,82 @@ def _fp16_lists(matrix: Any) -> list[list[float]]:
     return [[float(value) for value in vector] for vector in np.asarray(matrix, dtype=np.float16)]
 
 
+def card_resize(height: int, width: int, factor: int, min_pixels: int, max_pixels: int) -> tuple[int, int]:
+    """The resize the wrapper's ``_image_row`` runs (topk_embed_st.py:117-126): the image processor module's
+    own ``smart_resize`` (transformers' Qwen2-VL image processing) with factor patch x merge, min_pixels the
+    processor's ``size.shortest_edge`` and max_pixels ``image_token_budget`` x factor^2 -- each edge rounded to
+    the factor, the area floored into the budget (at least one factor) or ceiled up to the floor; an aspect
+    ratio over 200 is refused."""
+    import math
+
+    if max(height, width) / min(height, width) > 200:
+        raise ValueError(
+            f"absolute aspect ratio must be smaller than 200, got {max(height, width) / min(height, width)}"
+        )
+    h_bar, w_bar = round(height / factor) * factor, round(width / factor) * factor
+    if h_bar * w_bar > max_pixels:
+        beta = math.sqrt((height * width) / max_pixels)
+        h_bar = max(factor, math.floor(height / beta / factor) * factor)
+        w_bar = max(factor, math.floor(width / beta / factor) * factor)
+    elif h_bar * w_bar < min_pixels:
+        beta = math.sqrt(min_pixels / (height * width))
+        h_bar = math.ceil(height * beta / factor) * factor
+        w_bar = math.ceil(width * beta / factor) * factor
+    return h_bar, w_bar
+
+
+def media(rows: list[dict[str, Any]], tokenizer_spec: str) -> dict[str, Any]:
+    """The media stage's reference side: what the wrapper's model consumes for every side carrying media.
+
+    The wrapper encodes an image document ALONE (``preprocess``: "Encode text or images in separate batches";
+    an image query is refused, topk_embed_st.py:71): its prompt is the chat template's user turn around one
+    image, the image resized by :func:`card_resize` and costing its merged patches plus the vision start and
+    end markers (the template's prefix and suffix around the image pads).  A side the wrapper cannot encode --
+    an image query, an image beside a text, several images -- is reported refused, with the wrapper's reason.
+    """
+    import base64
+    import io
+
+    from PIL import Image
+
+    config = _checkpoint_file(tokenizer_spec, "config.json")
+    processor = _checkpoint_file(tokenizer_spec, "processor_config.json")["image_processor"]
+    factor = int(processor["patch_size"]) * int(processor["merge_size"])
+    min_pixels = int(processor["size"]["shortest_edge"])
+    max_pixels = int(config["image_token_budget"]) * factor**2
+    out: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        entries = row.get("media") or {}
+        if entries.get("query"):
+            out.append(
+                {"index": index, "side": "query", "refused": "Queries must be text; images are supported as documents."}
+            )
+        for position, items in enumerate(entries.get("documents") or []):
+            if not items:
+                continue
+            side = f"document {position}"
+            if len(items) > 1 or str(row["documents"][position]):
+                out.append({"index": index, "side": side, "refused": "Encode text or images in separate batches."})
+                continue
+            payload = base64.b64decode(str(items[0]["uri"]).split(",", 1)[1])
+            with Image.open(io.BytesIO(payload)) as handle:
+                width, height = handle.size
+            resized_h, resized_w = card_resize(height, width, factor, min_pixels, max_pixels)
+            tokens = (resized_h // factor) * (resized_w // factor) + 2
+            out.append(
+                {
+                    "index": index,
+                    "side": side,
+                    "placement": ["image"],
+                    "media": [{"kind": "image", "width": resized_w, "height": resized_h, "tokens": tokens}],
+                }
+            )
+    return {"rows": out}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="the topk-embed-v1-small reference (the model card's path)")
-    parser.add_argument("--mode", required=True, choices=["render", "embed"])
+    parser.add_argument("--mode", required=True, choices=["render", "embed", "media"])
     parser.add_argument("--pairs", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--tokenizer", required=True, help="the recipe's tokenizer spec (repo@revision)")
@@ -233,6 +310,8 @@ def main() -> int:
         eos_token = str(_checkpoint_file(args.tokenizer, "tokenizer_config.json").get("eos_token") or "")
         cap = caps(config, _checkpoint_file(args.tokenizer, "sentence_bert_config.json"))
         document = render(config, eos_token, rows, backend=_backend(args.tokenizer), cap=cap)
+    elif args.mode == "media":
+        document = media(rows, args.tokenizer)
     else:
         document = embed(rows, args.device)
     Path(args.out).write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")

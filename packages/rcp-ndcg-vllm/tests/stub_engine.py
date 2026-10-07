@@ -14,6 +14,23 @@ flags describe the emulated MODEL, so the negative controls can break it the way
 ``pooling_type`` yields other numbers) and ``--model-needs-template`` (a reranker scored without its served
 ``--chat-template`` sees the unframed spans and scores differently).
 
+Chat-shaped requests (``messages`` on ``/v1/embeddings`` and ``/pooling``) go through vLLM's chat path: one
+conversation (or a list of them, a batch), its parts handed to the chat template as vLLM hands them
+(``image_url`` as ``{"type": "image"}``), rendered with the served ``--chat-template`` -- else the emulated
+checkpoint's own (``--model-chat-template``), else the text parts joined -- under the request's
+``add_generation_prompt`` (false by default, as vLLM's).  Media parts (and ``/rerank``'s ``{"content": [...]}``
+sides) are decoded and resized as the engine's processor resizes them: ``smart_resize`` with the emulated
+checkpoint's patch factor (``--model-image-factor``) under ``--mm-processor-kwargs``'s pixel pin (nested
+``images_kwargs`` or flat), else the checkpoint's own default budget (``--model-image-pixels MIN,MAX``) -- so
+an unpinned engine re-resizes an image whose prepared size lies outside that default.  The stub resizes with
+the PRODUCT's own ``smart_resize`` (``rcp_ndcg.data.resolution``), the function the client prepares images with:
+against this stub the media stage's engine count catches a missing or different pixel pin, never a bug in the
+product's resize itself -- on CPU only the comparison with the reference's card resize can catch that, and the
+engine count is an independent check only against a real engine.  Every chat-shaped
+reply carries ``usage.prompt_tokens``: the rendered text's tokens plus each image's merged patch tokens and
+its two vision markers; more images than ``--limit-mm-per-prompt`` allows, a video container (the stub
+decodes none) or an undecodable image are a 400, as the engine refuses them.
+
 With ``--port 0`` the stub binds an ephemeral port and prints ``RCPS_STUB_PORT=<n>`` on stdout; the wave runner
 reads that line instead of guessing a port.  An input longer than ``--max-model-len`` tokens gets vLLM's
 over-length 400; an unknown request field gets a 400 validation body, like the error bodies the adapters map.
@@ -36,9 +53,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "fixtures"))
 from deterministic import score, token_vectors, tokens, vector  # noqa: E402
 
 _CUT = {"truncate_prompt_tokens", "truncation_side"}
+_CHAT = {"messages", "add_special_tokens", "add_generation_prompt"}
 _ALLOWED: dict[str, set[str]] = {
-    "/embeddings": {"input", "encoding_format", *_CUT},
-    "/pooling": {"input", "task", "encoding_format", "embed_dtype", "endianness", *_CUT},
+    "/embeddings": {"input", "encoding_format", "dimensions", *_CHAT, *_CUT},
+    "/pooling": {"input", "task", "encoding_format", "embed_dtype", "endianness", *_CHAT, *_CUT},
     "/rerank": {"query", "documents", "top_n", "instruction", "use_activation", *_CUT},
     "/score": {"queries", "documents", "query", "text_1", "text_2"},
 }
@@ -53,6 +71,11 @@ _ARGS = argparse.Namespace(
     chat_template=None,
     model_pooling=None,
     model_needs_template=False,
+    model_chat_template=None,
+    mm_processor_kwargs="{}",
+    limit_mm_per_prompt="{}",
+    model_image_factor=28,
+    model_image_pixels="3136,12845056",
 )
 
 
@@ -117,6 +140,128 @@ def _inputs(body: dict[str, Any]) -> list[str]:
     if isinstance(value, list) and all(isinstance(item, str) for item in value):
         return value
     raise _BadRequest("the stub serves string inputs only")
+
+
+def _json_flag(value: str | None) -> dict[str, Any]:
+    try:
+        parsed = json.loads(value or "{}")
+    except ValueError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _engine_pixels() -> tuple[int, int]:
+    """The pixel budget the engine resizes images to: the served pin (nested ``images_kwargs`` first, as vLLM
+    overlays it for the image modality, else flat keys), else the emulated checkpoint's own default."""
+    kwargs = _json_flag(_ARGS.mm_processor_kwargs)
+    scoped = kwargs.get("images_kwargs") if isinstance(kwargs.get("images_kwargs"), dict) else {}
+    default_min, default_max = (int(value) for value in str(_ARGS.model_image_pixels).split(","))
+    low = scoped.get("min_pixels", kwargs.get("min_pixels", default_min))
+    high = scoped.get("max_pixels", kwargs.get("max_pixels", default_max))
+    return int(low), int(high)
+
+
+def _image(url: str) -> tuple[int, str]:
+    """One image part as the engine reads it: its prompt tokens (merged patches plus the two vision markers)
+    and its resized geometry ``<width>x<height>``."""
+    import io
+
+    from PIL import Image
+
+    from rcp_ndcg.data.resolution import smart_resize
+
+    if not url.startswith("data:") or "," not in url:
+        raise _BadRequest("the stub reads inline data: images only")
+    try:
+        with Image.open(io.BytesIO(base64.b64decode(url.split(",", 1)[1]))) as handle:
+            handle.load()
+            width, height = handle.size
+    except Exception as error:  # noqa: BLE001 - an undecodable image is the engine's 400
+        raise _BadRequest(f"cannot load the image: {type(error).__name__}") from None
+    factor = int(_ARGS.model_image_factor)
+    low, high = _engine_pixels()
+    try:
+        resized_h, resized_w = smart_resize(height, width, factor=factor, min_pixels=low, max_pixels=high)
+    except Exception as error:  # noqa: BLE001 - the processor refuses an extreme aspect ratio
+        raise _BadRequest(str(error)) from None
+    return (resized_h // factor) * (resized_w // factor) + 2, f"{resized_w}x{resized_h}"
+
+
+def _parts(content: Any) -> list[dict[str, Any]]:
+    """A message's or a rerank side's content as a list of parts (a string is one text part)."""
+    if isinstance(content, str):
+        return [{"type": "text", "text": content}]
+    if isinstance(content, dict) and isinstance(content.get("content"), list):
+        content = content["content"]
+    return [{"type": "text", "text": part} if isinstance(part, str) else part for part in content or []]
+
+
+def _media(parts: list[dict[str, Any]]) -> tuple[int, list[str]]:
+    """The media tokens and resized geometries of ``parts``, refused as the engine refuses them."""
+    tokens_total, shapes = 0, []
+    images = [part for part in parts if part.get("type") == "image_url"]
+    limit = _json_flag(_ARGS.limit_mm_per_prompt).get("image")
+    if limit is not None and len(images) > int(limit):
+        raise _BadRequest(f"At most {limit} image(s) may be provided in one prompt, got {len(images)}")
+    for part in parts:
+        kind = part.get("type")
+        if kind == "image_url":
+            count, shape = _image(str((part.get("image_url") or {}).get("url", "")))
+            tokens_total += count
+            shapes.append(shape)
+        elif kind == "video_url":
+            raise _BadRequest("the stub decodes no video containers")
+    return tokens_total, shapes
+
+
+def _count(text: str, *, add_special_tokens: bool = False) -> int:
+    """The engine's token count of a text: its tokenizer when given, the whitespace words otherwise."""
+    if _ARGS.tokenizer:
+        return len(_get_tokenizer_backend().encode(text, add_special_tokens=add_special_tokens).ids)
+    return len(tokens(text))
+
+
+def _chat_prompts(body: dict[str, Any]) -> list[tuple[str, int, str, int]]:
+    """vLLM's chat path over a ``messages`` body: per conversation, the rendered prompt (the template sees each
+    media part as its modality), the prompt tokens (text plus media), the model input key the numbers are
+    drawn from (the prompt, then every media part's resized geometry in order) and the media tokens alone."""
+    from rcp_ndcg_vllm.equivalence.stages import engine_conversation
+
+    messages = body.get("messages")
+    if not isinstance(messages, list) or not messages:
+        raise _BadRequest("messages must be a non-empty list")
+    conversations = messages if all(isinstance(entry, list) for entry in messages) else [messages]
+    path = _ARGS.chat_template or _ARGS.model_chat_template
+    out = []
+    for conversation in conversations:
+        parts = [part for message in conversation for part in _parts(message.get("content"))]
+        media_tokens, shapes = _media(parts)
+        if path:
+            from jinja2.sandbox import ImmutableSandboxedEnvironment
+
+            template = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True).from_string(
+                Path(path).read_text(encoding="utf-8")
+            )
+            # The text is rendered without the media parts and each image adds its whole vision block (its
+            # merged patches and the two markers): the count vLLM reports once the template's one placeholder
+            # per image (``<|vision_start|><|image_pad|><|vision_end|>`` for the Qwen-VL families) is expanded.
+            text_only = [
+                {**message, "content": [part for part in _parts(message.get("content")) if part.get("type") == "text"]}
+                if isinstance(message.get("content"), list)
+                else message
+                for message in conversation
+            ]
+            prompt = template.render(
+                messages=engine_conversation(text_only),
+                add_generation_prompt=bool(body.get("add_generation_prompt", False)),
+                tools=None,
+            )
+        else:
+            prompt = "\n".join(str(part.get("text", "")) for part in parts if part.get("type") == "text")
+        flag = bool(body.get("add_special_tokens", False))
+        key = prompt + "".join(f"\x00{shape}" for shape in shapes)
+        out.append((prompt, _count(prompt, add_special_tokens=flag) + media_tokens, key, media_tokens))
+    return out
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -202,9 +347,17 @@ class _Handler(BaseHTTPRequestHandler):
 
     # -- routes --------------------------------------------------------------------------------------------------
     def _embeddings(self, body: dict[str, Any]) -> None:
-        """One dense float32 vector per input text, float or base64."""
-        inputs = _inputs(body)
-        self._check_length(inputs)
+        """One dense float32 vector per input text (or per conversation, framed by the chat path), float or
+        base64; a chat-shaped request's reply carries its prompt tokens."""
+        usage = None
+        if "messages" in body:
+            chat = _chat_prompts(body)
+            inputs = [key for _, _, key, _ in chat]
+            self._check_length([prompt for prompt, _, _, _ in chat])
+            usage = sum(count for _, count, _, _ in chat)
+        else:
+            inputs = _inputs(body)
+            self._check_length(inputs)
         fmt = body.get("encoding_format", "float")
         data = []
         tag = "embed-wrong-pooling" if _wrong_pooling() else "embed"
@@ -216,10 +369,17 @@ class _Handler(BaseHTTPRequestHandler):
                 data.append({"index": index, "embedding": [float(x) for x in value]})
             else:
                 raise _BadRequest(f"encoding_format {fmt!r} is not served by the stub")
-        self._send_json({"object": "list", "data": data})
+        reply: dict[str, Any] = {"object": "list", "data": data}
+        if usage is not None:
+            reply["usage"] = {"prompt_tokens": usage, "total_tokens": usage}
+        self._send_json(reply)
 
     def _pooling(self, body: dict[str, Any]) -> None:
-        """One vector per whitespace token per input text, in float, base64 (with shape) or raw bytes."""
+        """One vector per whitespace token per input text, in float, base64 (with shape) or raw bytes; a
+        chat-shaped request yields one vector per prompt token (its media tokens included) and its usage."""
+        if "messages" in body:
+            self._pooling_chat(body)
+            return
         inputs = _inputs(body)
         self._check_length(inputs)
         fmt = body.get("encoding_format", "float")
@@ -251,20 +411,67 @@ class _Handler(BaseHTTPRequestHandler):
                 raise _BadRequest(f"encoding_format {fmt!r} is not served by the stub")
         self._send_json({"object": "list", "data": data})
 
+    def _pooling_chat(self, body: dict[str, Any]) -> None:
+        """A chat-shaped ``/pooling`` request: per conversation, one vector per prompt token -- the rendered
+        text's whitespace tokens, then one per media token -- with ``usage.prompt_tokens`` their count."""
+        dtype = body.get("embed_dtype", "float16")
+        code = {"float16": "<f2", "float32": "<f4"}.get(str(dtype))
+        if code is None:
+            raise _BadRequest(f"embed_dtype {dtype!r} is not served by the stub")
+        data, total = [], 0
+        for index, (prompt, _, key, media_tokens) in enumerate(_chat_prompts(body)):
+            rows = [vector(word, "tok", noise=_ARGS.noise) for word in tokens(prompt)]
+            rows += [vector(f"{key}\x00media{position}", "tok", noise=_ARGS.noise) for position in range(media_tokens)]
+            if not rows:
+                raise _BadRequest("the prompt is empty")
+            matrix = np.stack(rows).astype(code)
+            total += len(rows)
+            data.append(
+                {
+                    "index": index,
+                    "data": base64.b64encode(matrix.reshape(-1).tobytes()).decode("ascii"),
+                    "shape": list(matrix.shape),
+                }
+            )
+        self._send_json({"object": "list", "data": data, "usage": {"prompt_tokens": total, "total_tokens": total}})
+
     def _rerank(self, body: dict[str, Any]) -> None:
         """The Cohere shape: results sorted by relevance score, one per document."""
         query = body.get("query")
         documents = body.get("documents")
-        if not isinstance(query, str) or not isinstance(documents, list):
+        if not isinstance(query, (str, dict)) or not isinstance(documents, list):
             raise _BadRequest("rerank needs a query and documents")
-        self._check_length([query] + [str(document) for document in documents])
-        scores = [self._pair_score(query, str(document), body) for document in documents]
+        # A side carrying media is ``{"content": [parts]}``: its text parts joined, its media read as the
+        # engine reads them (the usage counts them; the score is drawn over the text and the geometry).
+        query_text, query_tokens, query_key = self._side(query)
+        sides = [self._side(document) for document in documents]
+        self._check_length([query_text] + [text for text, _, _ in sides])
+        scores = [self._pair_score(query_key, key, body) for _, _, key in sides]
         order = sorted(range(len(documents)), key=lambda index: scores[index], reverse=True)
         results = [
-            {"index": index, "document": {"text": documents[index]}, "relevance_score": scores[index]}
-            for index in order
+            {"index": index, "document": {"text": sides[index][0]}, "relevance_score": scores[index]} for index in order
         ]
-        self._send_json({"object": "list", "results": results})
+        prompt_tokens = sum(
+            _count(query_text) + query_tokens + _count(text) + media_tokens for text, media_tokens, _ in sides
+        )
+        self._send_json(
+            {
+                "object": "list",
+                "results": results,
+                "usage": {"prompt_tokens": prompt_tokens, "total_tokens": prompt_tokens},
+            }
+        )
+
+    @staticmethod
+    def _side(value: Any) -> tuple[str, int, str]:
+        """One rerank side: its text, its media tokens and the key its score is drawn over (the text alone for a
+        plain string, so a text-only pair scores exactly as before)."""
+        if isinstance(value, str):
+            return value, 0, value
+        parts = _parts(value)
+        text = "\n".join(str(part.get("text", "")) for part in parts if part.get("type") == "text")
+        media_tokens, shapes = _media(parts)
+        return text, media_tokens, text + "".join(f"\x00{shape}" for shape in shapes)
 
     def _pair_score(self, query: str, document: str, body: dict[str, Any]) -> float:
         """One pair's score as vLLM serves it: the engine-side cut, the template, the pooling, the activation."""
@@ -328,6 +535,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--chat-template", default=None)
     parser.add_argument("--model-pooling", default=None)
     parser.add_argument("--model-needs-template", action="store_true")
+    parser.add_argument("--model-chat-template", default=None)
+    parser.add_argument("--mm-processor-kwargs", default="{}")
+    parser.add_argument("--limit-mm-per-prompt", default="{}")
+    parser.add_argument("--model-image-factor", type=int, default=28)
+    parser.add_argument("--model-image-pixels", default="3136,12845056")
     args, _unknown = parser.parse_known_args(argv)
     _ARGS = args
     server = ThreadingHTTPServer((args.host, args.port), _Handler)

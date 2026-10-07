@@ -384,3 +384,32 @@ def test_every_committed_corpus_declares_its_tolerance_unmeasured() -> None:
         report = json.loads((directory / "nondeterminism.json").read_text(encoding="utf-8"))
         assert report["derived"]["measured"] is False and report["derived"]["repeated_requests"] == 0, directory
         assert corpus_tolerance(load_corpus(directory)) is None
+
+
+@pytest.mark.skipif(
+    __import__("os").environ.get("RCP_NDCG_RELEASE") != "1",
+    reason="the release rule: set RCP_NDCG_RELEASE=1 (the release checklist runs the suite with it)",
+)
+def test_the_stale_declarations_are_empty_at_release() -> None:
+    """The release rule for re-recording (mirrors the waiver file's): every corpus declared stale has been
+    re-recorded before the tag, so ``tests/conformance/stale.json`` ships empty."""
+    stale = json.loads((Path(__file__).resolve().parent / "stale.json").read_text(encoding="utf-8"))
+    assert stale == [], "stale corpora must be re-recorded before release: " + ", ".join(
+        str(entry.get("recipe_id")) for entry in stale
+    )
+
+
+def test_a_rekeyed_corpus_names_the_manifest_it_was_rekeyed_from() -> None:
+    """A re-key rewrites the manifest (its fingerprint and inputs), so the subset's manifest is no longer the
+    full corpus's byte for byte: each ``rekeyed`` entry keeps the old fingerprint AND the old manifest's
+    digest and file SHA-256, which link the subset to the full corpus it was cut from without git history."""
+    found = 0
+    for directory in all_corpus_dirs():
+        manifest = load_corpus(directory).manifest
+        for entry in manifest["recipe"].get("rekeyed") or []:
+            found += 1
+            name = manifest["recipe"]["id"]
+            for key in ("from_behaviour_fingerprint", "from_manifest_sha256", "from_manifest_file_sha256"):
+                value = entry.get(key)
+                assert isinstance(value, str) and len(value) == 64, f"{name}: rekeyed entry lacks {key}"
+    assert found, "no re-keyed corpus: the check would pass vacuously"

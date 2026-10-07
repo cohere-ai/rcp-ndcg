@@ -82,9 +82,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from rcp_ndcg.errors import RcpNdcgError
 from rcp_ndcg.runners.script import bootstrap_uv, install_argv
 from rcp_ndcg.runs.config import RunConfig
-from rcp_ndcg.runs.execution import job_for
+from rcp_ndcg.runs.execution import job_for, stage_run
 from rcp_ndcg.runs.layout import RunLayout
-from rcp_ndcg.runs.manifest import RunManifest, RunStatus, StepStatus
+from rcp_ndcg.runs.manifest import RunManifest, StepStatus
 from rcp_ndcg.runs.run import prepare
 from rcp_ndcg.support.resources import Resources
 from rcp_ndcg.support.serve import ServeByRole, ServeConfig
@@ -590,10 +590,7 @@ def stage_run_dir(pipeline: Any) -> None:
     staged exactly as the product stages one: the layout, the product's own ``run.yaml`` writer and the
     manifest in status ``submitted``.
     """
-    pipeline.layout.ensure()
-    pipeline._write_config()  # noqa: SLF001 - the product's own run.yaml writer (R30: consume, never copy)
-    pipeline.manifest.status = RunStatus.SUBMITTED
-    pipeline.manifest.save(pipeline.layout)
+    stage_run(pipeline)  # the product's one staging step (R30: consume, never copy)
 
 
 def render_phased_script(

@@ -32,7 +32,7 @@
     },
     "qwen3-reranker-8b/bcfe8f25e8191c82ded8c1535a63c6b6c1722f595997b00f95a5b00322582dba": {
       "behaviour_fingerprint": "bcfe8f25e8191c82ded8c1535a63c6b6c1722f595997b00f95a5b00322582dba",
-      "manifest_sha256": "1bc0904b48697adc3b40334652105f7e5f18cf91e0edc2e1304d7055aecda881",
+      "manifest_sha256": "1cf168c126a3c4bd0712eefdfc161ad3fa0b0f5616c8c93521e961d4154cb3da",
       "recipe_revision": "77d193c791ed757ca307ee72715aa132723da912"
     },
     "qwen3-vl-embedding-2b/9f4f62aa91853beb888c13e2f8d7a1ea7015d5b917dbc9575d896b4565151006": {
@@ -40,9 +40,9 @@
       "manifest_sha256": "9f6cdfca1778422904663eee5b51acbc50dc8f87dd7b93e12e9daf7df01db1cd",
       "recipe_revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"
     },
-    "qwen3-vl-reranker-2b/34e4d2d45840645e515d0f3f518d703a2a25b6f2ad2911d8bdcb17c713b392f9": {
-      "behaviour_fingerprint": "34e4d2d45840645e515d0f3f518d703a2a25b6f2ad2911d8bdcb17c713b392f9",
-      "manifest_sha256": "7ee0bf8efdb5b33fd5b1cd44df544a1f7a7bede3302b5184bde1bd71dc64b11a",
+    "qwen3-vl-reranker-2b/93b72164254937df0b065b49201346bc9ef8961958b1c70907c2f373acc21515": {
+      "behaviour_fingerprint": "93b72164254937df0b065b49201346bc9ef8961958b1c70907c2f373acc21515",
+      "manifest_sha256": "9554f18258244c25df3096fe3ca5ee9d002048fdfbc30e82e6a3bfc689394352",
       "recipe_revision": "4bd860ac4f15ad1897a214615cccc700f8f71818"
     },
     "zembed-1-embedding/adbcf96f08fa6db4c288b4ef4d4a2f53582e2d01498f09999ed3d8ae8d099270": {

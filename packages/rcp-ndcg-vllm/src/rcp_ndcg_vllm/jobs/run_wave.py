@@ -740,10 +740,10 @@ def _observe_corpus(
         if port:
             import httpx
 
-            from ..record import _bare_exchange
+            from ..record import bare_exchange
 
             with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=10.0) as http:
-                loading.append(_bare_exchange(http, "GET", "/v1/models", None))
+                loading.append(bare_exchange(http, "GET", "/v1/models", None))
         deadline = time.monotonic() + run.timeout_s
         while time.monotonic() < deadline:
             if fresh.exited():
@@ -846,8 +846,9 @@ def _quality(
 def _control_gates(
     recipe: Recipe, base_url: str, out_dir: Path, pairs_path: Path, reference_python: str
 ) -> dict[str, Any]:
-    """Stages 1 and 2 for one control: the ordinary gates, which must fail it.  An error the served side raises
-    (a garbled frame the client cannot decode) is the stage failing on that request, recorded with its text."""
+    """Stages 1 and 2 (and a media recipe's media stage) for one control: the ordinary gates, which must fail
+    it.  An error the served side raises (a garbled frame the client cannot decode) is the stage failing on that
+    request, recorded with its text."""
     from rcp_ndcg.errors import RcpNdcgError
 
     try:
@@ -866,6 +867,7 @@ def _control_gates(
         "passed": bool(document["passed"]),
         "stage1": document.get("stage1", {}).get("passed"),
         "stage2": document.get("stage2", {}).get("passed"),
+        "media": (document.get("media") or {}).get("passed"),
     }
 
 
@@ -906,6 +908,10 @@ def _controls(
     for variant in variants:
         if variant["kind"] is None:
             rows.append({"control": variant["control"], "name": variant["name"], "reason": variant["reason"]})
+        elif variant["kind"] == "unresolved":
+            # Undecidable is never inapplicable: the row counts as a control the gates did not catch.
+            gates = {"passed": None, "error": variant["reason"]}
+            rows.append({"control": variant["control"], "name": variant["name"], "equivalence": gates})
         elif variant["kind"] == "wire":
             with patched_wire(variant["wire_patch"]):
                 gates = _control_gates(recipe, live_url, work / variant["name"], pairs_path, reference_python)

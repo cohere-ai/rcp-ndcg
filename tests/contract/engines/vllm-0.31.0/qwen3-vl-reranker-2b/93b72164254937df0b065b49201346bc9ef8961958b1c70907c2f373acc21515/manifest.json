@@ -71,7 +71,7 @@
   "recipe": {
     "id": "qwen3-vl-reranker-2b",
     "file_sha256": "47d26b7ce2acf9ec3bcfd303ff1df11d15bdf69707bee355e29da0d64165f66f",
-    "behaviour_fingerprint": "34e4d2d45840645e515d0f3f518d703a2a25b6f2ad2911d8bdcb17c713b392f9",
+    "behaviour_fingerprint": "93b72164254937df0b065b49201346bc9ef8961958b1c70907c2f373acc21515",
     "fingerprint_inputs": {
       "fingerprint_schema": "rcp-fp/3",
       "model": "Qwen/Qwen3-VL-Reranker-2B",
@@ -95,7 +95,8 @@
       "client.empty_doc": "send_text",
       "client.empty_doc_text": "NULL",
       "client.empty_query": "refuse",
-      "client.image_policy": "{\"max_px\":1310720,\"min_px\":4096}",
+      "client.image_policy": "{\"engine_pixel_pinning\":true,\"max_px\":1310720,\"min_px\":4096}",
+      "client.image_processor": "qwen3_vl",
       "client.instruction": "none",
       "client.listwise": "false",
       "client.max_images": "1",
@@ -118,6 +119,8 @@
     "rekeyed": [
       {
         "from_behaviour_fingerprint": "104f225bef53f79a889b609588458e0585702577d6c917ec846a3f1b88de32a8",
+        "from_manifest_sha256": "0c387f9f20e72af1053a835c2b6a0c25da19dbfbc275b5293f00b8e50eae38f7",
+        "from_manifest_file_sha256": "8cff691c45e7d5729fab41357397bfa0a062d182026a48c0b047d8562c9a976d",
         "changed_inputs": {
           "client.image_policy": [
             null,
@@ -137,6 +140,23 @@
           ]
         },
         "reason": "metadata only for every recorded exchange: the corpus records text-only /rerank and /v1/models exchanges, so the media inputs (client.image_policy, serve.limit_mm_per_prompt, serve.mm_processor_kwargs moved under images_kwargs) shape no recorded request or output; serve.pooler_config {} -> {use_activation: true} restates vLLM v0.31.0's default for classify (None -> True)",
+        "date": "2026-10-07"
+      },
+      {
+        "from_behaviour_fingerprint": "34e4d2d45840645e515d0f3f518d703a2a25b6f2ad2911d8bdcb17c713b392f9",
+        "from_manifest_sha256": "a5876a7d4403e779bcc49589f664606dfe1f292c603abe1fc2005d2cf3231047",
+        "from_manifest_file_sha256": "f6b0d6e2ad15ba9908dff02c559ae46ee32db2c8a5b8aa30a1fbdc70ff1160af",
+        "changed_inputs": {
+          "client.image_policy": [
+            "{\"max_px\":1310720,\"min_px\":4096}",
+            "{\"engine_pixel_pinning\":true,\"max_px\":1310720,\"min_px\":4096}"
+          ],
+          "client.image_processor": [
+            null,
+            "qwen3_vl"
+          ]
+        },
+        "reason": "metadata only for every recorded exchange: the corpus records text-only /rerank and /v1/models exchanges, and client.image_processor (qwen3_vl) and client.image_policy (engine_pixel_pinning true) shape only requests that carry an image",
         "date": "2026-10-07"
       }
     ]
@@ -193,6 +213,6 @@
       }
     },
     "records_count": 4,
-    "manifest_sha256": "5f5d8ead4ce795dc3848d0dc3bb6062357230c1c672dbfb495e6de4f2e255b5a"
+    "manifest_sha256": "de289e4e76fe56fe3f5a495fadc57148f2a0d1c1954db62498d801aa200699f2"
   }
 }

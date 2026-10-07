@@ -330,6 +330,10 @@ class OpenAIEmbeddings(_EmbedAdapter):
             body = {"model": model, "messages": conversations[0] if len(conversations) == 1 else conversations}
             if request.add_special_tokens is not None:
                 body["add_special_tokens"] = request.add_special_tokens
+            if request.add_generation_prompt is not None:
+                # The declared frame's generation prompt (the chat routes default it to false,
+                # vllm/entrypoints/pooling/base/protocol.py:230-237).
+                body["add_generation_prompt"] = request.add_generation_prompt
         elif request.request_shape == "token_ids":
             _refuse_media(request.contents, adapter=self.name)
             body = {"model": model, "input": [list(ids) for ids in request.token_ids]}

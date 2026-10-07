@@ -207,6 +207,27 @@ def render_run(pipeline: Any, runner: str, options: Mapping[str, Any] | None = N
     return render([job])
 
 
+def stage_run(pipeline: Any) -> RunLayout:
+    """Stage ``pipeline``'s run directory for a job that will run it: the layout, the resolved ``run.yaml`` (the
+    pipeline's own writer) and the manifest in status ``submitted``.
+
+    The one staging step: :func:`submit_run` calls it before it hands the job to a runner, and a driver that
+    runs the job itself (the GPU end-to-end driver, whose job re-enters ``run resume`` on this directory)
+    stages exactly the same way.
+
+    Args:
+        pipeline: The run's :class:`~rcp_ndcg.runs.pipeline.Pipeline` (from :func:`~rcp_ndcg.runs.run.prepare`).
+
+    Returns:
+        The run's layout, its directories created.
+    """
+    layout = pipeline.layout.ensure()
+    pipeline._write_config()
+    pipeline.manifest.status = RunStatus.SUBMITTED
+    pipeline.manifest.save(layout)
+    return layout
+
+
 def submit_run(pipeline: Any, runner: str, options: Mapping[str, Any] | None = None) -> Run:
     """Hand a prepared run to ``runner`` as one job: a new run's directory is created first, an existing run's
     directory is submitted again (``run resume --runner``).
@@ -239,10 +260,7 @@ def submit_run(pipeline: Any, runner: str, options: Mapping[str, Any] | None = N
     if render is not None:
         render([job])  # a runner refuses what it cannot run while nothing is written yet
     config: RunConfig = pipeline.config
-    layout = layout.ensure()
-    pipeline._write_config()
-    pipeline.manifest.status = RunStatus.SUBMITTED
-    pipeline.manifest.save(layout)
+    layout = stage_run(pipeline)
     record: dict[str, Any] = {"runner": runner, "options": runner_options, "jobs": [{"name": job.name, "handle": None}]}
     _write_record(layout, record)
     try:
@@ -492,6 +510,7 @@ __all__ = [
     "restore_for_resubmission",
     "run",
     "run_argv",
+    "stage_run",
     "status",
     "submit_run",
 ]

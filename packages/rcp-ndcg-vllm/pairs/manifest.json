@@ -1749,10 +1749,46 @@
     {
       "recipe": "jina-reranker-v3",
       "path": "jina-reranker-v3.jsonl",
-      "sha256": "1aaf6bc92e8c71c4e177fe9d24d5282aed723bfe470b5e702d7ca21057f3c078",
-      "bytes": 45945,
-      "rows": 22,
+      "sha256": "9287a4ca41cfab90a549aa2cc497fc50aac51673ac79da84240dad0e9d60dc31",
+      "bytes": 50258,
+      "rows": 23,
       "strata": {
+        "media:image:tiny": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:icon": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_72dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_150dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:a4_300dpi": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:slide_16_9": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:tall_receipt": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image:extreme_aspect": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "media:image+text": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
         "shapes:pair": {
           "present": true
         },
@@ -2135,6 +2171,16 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "length:at_90"
+          },
+          "strata": [
+            "length:at_90",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "length:at_budget"
           },
           "strata": [
@@ -2146,7 +2192,7 @@
       "skipped_sources": [],
       "validation": {
         "render_check": "passed",
-        "pruned_rows": 1,
+        "pruned_rows": 0,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
       }
@@ -4713,10 +4759,53 @@
     {
       "recipe": "qwen3-vl-embedding-2b",
       "path": "qwen3-vl-embedding-2b.jsonl",
-      "sha256": "a2f06c6c57c280d870f353461cfeca47a96e3c0b656c473315843724c558d3dd",
-      "bytes": 77918,
-      "rows": 24,
+      "sha256": "bcf4ebffc6aadc9f68333b180fc5801ac8acd4d5e91caa7fe9c9660673238235",
+      "bytes": 181724,
+      "rows": 33,
       "strata": {
+        "media:image:tiny": {
+          "present": true,
+          "width": 16,
+          "height": 16
+        },
+        "media:image:icon": {
+          "present": true,
+          "width": 64,
+          "height": 64
+        },
+        "media:image:a4_72dpi": {
+          "present": true,
+          "width": 595,
+          "height": 842
+        },
+        "media:image:a4_150dpi": {
+          "present": true,
+          "width": 1240,
+          "height": 1754
+        },
+        "media:image:a4_300dpi": {
+          "present": true,
+          "width": 2480,
+          "height": 3508
+        },
+        "media:image:slide_16_9": {
+          "present": true,
+          "width": 1920,
+          "height": 1080
+        },
+        "media:image:tall_receipt": {
+          "present": true,
+          "width": 576,
+          "height": 4096
+        },
+        "media:image:extreme_aspect": {
+          "present": true,
+          "width": 3000,
+          "height": 20
+        },
+        "media:image+text": {
+          "present": true
+        },
         "shapes:document+query": {
           "present": true
         },
@@ -5132,11 +5221,111 @@
             "length:at_budget",
             "shapes:document+query"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "tiny"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tiny"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "icon"
+          },
+          "strata": [
+            "media:image",
+            "media:image:icon"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "a4_72dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_72dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "a4_150dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_150dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "a4_300dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_300dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "slide_16_9"
+          },
+          "strata": [
+            "media:image",
+            "media:image:slide_16_9"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "tall_receipt"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tall_receipt"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "extreme_aspect"
+          },
+          "strata": [
+            "media:image",
+            "media:image:extreme_aspect"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "a4_72dpi+caption"
+          },
+          "strata": [
+            "media:image",
+            "media:image+text"
+          ]
         }
       ],
       "skipped_sources": [],
       "validation": {
         "render_check": "passed",
+        "media_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
@@ -5145,10 +5334,53 @@
     {
       "recipe": "qwen3-vl-reranker-2b",
       "path": "qwen3-vl-reranker-2b.jsonl",
-      "sha256": "b7fbc93cb472abb1d8cc120a5dd0cd6e91c952f5f1b5fd9f26b263fe86110d5a",
-      "bytes": 82607,
-      "rows": 24,
+      "sha256": "640da61fde6342fdbae3000dec8311387cf7959f786cc171771c42d2ff509c01",
+      "bytes": 186413,
+      "rows": 33,
       "strata": {
+        "media:image:tiny": {
+          "present": true,
+          "width": 16,
+          "height": 16
+        },
+        "media:image:icon": {
+          "present": true,
+          "width": 64,
+          "height": 64
+        },
+        "media:image:a4_72dpi": {
+          "present": true,
+          "width": 595,
+          "height": 842
+        },
+        "media:image:a4_150dpi": {
+          "present": true,
+          "width": 1240,
+          "height": 1754
+        },
+        "media:image:a4_300dpi": {
+          "present": true,
+          "width": 2480,
+          "height": 3508
+        },
+        "media:image:slide_16_9": {
+          "present": true,
+          "width": 1920,
+          "height": 1080
+        },
+        "media:image:tall_receipt": {
+          "present": true,
+          "width": 576,
+          "height": 4096
+        },
+        "media:image:extreme_aspect": {
+          "present": true,
+          "width": 3000,
+          "height": 20
+        },
+        "media:image+text": {
+          "present": true
+        },
         "shapes:pair": {
           "present": true
         },
@@ -5558,11 +5790,111 @@
             "length:at_budget",
             "shapes:pair"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "tiny"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tiny"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "icon"
+          },
+          "strata": [
+            "media:image",
+            "media:image:icon"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "a4_72dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_72dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "a4_150dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_150dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "a4_300dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_300dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "slide_16_9"
+          },
+          "strata": [
+            "media:image",
+            "media:image:slide_16_9"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "tall_receipt"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tall_receipt"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "extreme_aspect"
+          },
+          "strata": [
+            "media:image",
+            "media:image:extreme_aspect"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "a4_72dpi+caption"
+          },
+          "strata": [
+            "media:image",
+            "media:image+text"
+          ]
         }
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "blocked: the reference subprocess could not run: the reference subprocess (render) failed with exit code 1: pairs row 14 carries an empty query, and the endpoint refuses one (empty_query: refuse, the declared policy): drop the row, nothing is defaulted\n",
+        "render_check": "passed",
+        "media_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
@@ -5571,10 +5903,53 @@
     {
       "recipe": "topk-embed-v1-small",
       "path": "topk-embed-v1-small.jsonl",
-      "sha256": "182ece587988f23003401faa798c4751a0451f66524bd237593af03a95201b72",
-      "bytes": 67463,
-      "rows": 21,
+      "sha256": "7046a8dd9e13f2533f61574dd0b1ca215320a370231e2585dd39f7a33c5fa1b4",
+      "bytes": 166398,
+      "rows": 29,
       "strata": {
+        "media:image:tiny": {
+          "present": true,
+          "width": 16,
+          "height": 16
+        },
+        "media:image:icon": {
+          "present": true,
+          "width": 64,
+          "height": 64
+        },
+        "media:image:a4_72dpi": {
+          "present": true,
+          "width": 595,
+          "height": 842
+        },
+        "media:image:a4_150dpi": {
+          "present": true,
+          "width": 1240,
+          "height": 1754
+        },
+        "media:image:a4_300dpi": {
+          "present": true,
+          "width": 2480,
+          "height": 3508
+        },
+        "media:image:slide_16_9": {
+          "present": true,
+          "width": 1920,
+          "height": 1080
+        },
+        "media:image:tall_receipt": {
+          "present": true,
+          "width": 576,
+          "height": 4096
+        },
+        "media:image:extreme_aspect": {
+          "present": true,
+          "width": 3000,
+          "height": 20
+        },
+        "media:image+text": {
+          "present": true
+        },
         "shapes:document+query": {
           "present": true
         },
@@ -5951,12 +6326,212 @@
             "length:at_budget",
             "shapes:document+query"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "tiny"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tiny"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "icon"
+          },
+          "strata": [
+            "media:image",
+            "media:image:icon"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "a4_72dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_72dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "a4_150dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_150dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "a4_300dpi"
+          },
+          "strata": [
+            "media:image",
+            "media:image:a4_300dpi"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "slide_16_9"
+          },
+          "strata": [
+            "media:image",
+            "media:image:slide_16_9"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "tall_receipt"
+          },
+          "strata": [
+            "media:image",
+            "media:image:tall_receipt"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 1,
+            "bucket": "extreme_aspect"
+          },
+          "strata": [
+            "media:image",
+            "media:image:extreme_aspect"
+          ]
         }
       ],
       "skipped_sources": [],
       "validation": {
         "render_check": "passed",
-        "pruned_rows": 2,
+        "media_check": {
+          "status": "run",
+          "failures": [
+            {
+              "row": 21,
+              "side": "document 0",
+              "check": "client",
+              "note": "the client sent no such side"
+            },
+            {
+              "row": 22,
+              "side": "document 0",
+              "check": "client",
+              "note": "the client sent no such side"
+            },
+            {
+              "row": 23,
+              "side": "document 0",
+              "check": "client",
+              "note": "the client sent no such side"
+            },
+            {
+              "row": 24,
+              "side": "document 0",
+              "check": "client",
+              "note": "the client sent no such side"
+            },
+            {
+              "row": 25,
+              "side": "document 0",
+              "check": "client",
+              "note": "the client sent no such side"
+            },
+            {
+              "row": 26,
+              "side": "document 0",
+              "check": "client",
+              "note": "the client sent no such side"
+            },
+            {
+              "row": 27,
+              "side": "document 0",
+              "check": "client",
+              "note": "the client sent no such side"
+            },
+            {
+              "row": 28,
+              "side": "document 0",
+              "check": "client",
+              "note": "the client sent no such side"
+            }
+          ],
+          "refusals": [
+            {
+              "row": 21,
+              "sides": [
+                "document 0"
+              ],
+              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
+            },
+            {
+              "row": 22,
+              "sides": [
+                "document 0"
+              ],
+              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
+            },
+            {
+              "row": 23,
+              "sides": [
+                "document 0"
+              ],
+              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
+            },
+            {
+              "row": 24,
+              "sides": [
+                "document 0"
+              ],
+              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
+            },
+            {
+              "row": 25,
+              "sides": [
+                "document 0"
+              ],
+              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
+            },
+            {
+              "row": 26,
+              "sides": [
+                "document 0"
+              ],
+              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
+            },
+            {
+              "row": 27,
+              "sides": [
+                "document 0"
+              ],
+              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
+            },
+            {
+              "row": 28,
+              "sides": [
+                "document 0"
+              ],
+              "error": "CapabilityError: topk-embed-v1-small declares document_skip_token_ids, but this batch carries media: a media request's vector positions are the server's chat-template render, which the client cannot tokenise, so the skip positions cannot be found there"
+            }
+          ],
+          "reason": null
+        },
+        "pruned_rows": 3,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
       }
@@ -7725,18 +8300,6 @@
       "reason": "{\"actual_ids_head\": [7524, 25, 220], \"actual_ids_tail\": [7524, 25, 220], \"check\": \"no_content_token\", \"expected_head_ids\": [7524, 25, 220], \"expected_head_text\": \"Document: \", \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"document\"}"
     },
     {
-      "recipe": "jina-reranker-v3",
-      "source": {
-        "suite": "synthetic",
-        "content_kind": "length:at_90"
-      },
-      "strata": [
-        "length:at_90",
-        "shapes:pair"
-      ],
-      "reason": "{\"index\": 21, \"reference_text_head\": \"at_90 document pad00000 pad00001 pad00002 pad00003 pad00004 pad00005 pad00006 pad00007 pad00008 pad00009 pad00010 pad00011 pad00012 pad00013 pad00014 pad00015 pad00016 pad00017 pad00018 pad00019 pad00020 pad00021 pad00022 pad00023 pad00024 \", \"served_text_head\": \"at_90 document pad00000 pad00001 pad00002 pad00003 pad00004 pad00005 pad00006 pad00007 pad00008 pa"
-    },
-    {
       "recipe": "topk-embed-v1-small",
       "source": {
         "suite": "bright",
@@ -7768,6 +8331,19 @@
         "shapes:document+query"
       ],
       "reason": "{\"index\": 14, \"reference_text_head\": \"Document:\", \"served_text_head\": \"Document: \", \"shape\": \"document\"}"
+    },
+    {
+      "recipe": "topk-embed-v1-small",
+      "source": {
+        "suite": "synthetic",
+        "media_set": 1,
+        "bucket": "a4_72dpi+caption"
+      },
+      "strata": [
+        "media:image",
+        "media:image+text"
+      ],
+      "reason": "media_check: the reference refuses the document 0: Encode text or images in separate batches."
     }
   ]
 }

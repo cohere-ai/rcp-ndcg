@@ -15,6 +15,7 @@ settlement.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 from pathlib import Path
@@ -30,7 +31,16 @@ from .gates import kendall_tau_b, resolve_gates
 from .reference import run_reference
 from .wire import Capture, role_client
 
-__all__ = ["load_pairs", "stage1_prompts", "stage2_scores"]
+__all__ = [
+    "CHECKPOINT_TEMPLATE_FILES",
+    "checkpoint_chat_template",
+    "engine_conversation",
+    "load_pairs",
+    "render_chat",
+    "served_chat_template",
+    "stage1_prompts",
+    "stage2_scores",
+]
 
 _SNIPPET = 240
 _OUTPUT_SNIPPET = 500
@@ -62,17 +72,23 @@ def stage1_prompts(
       tolerance (needs ``--reference-python``; reported ``not_run`` without one).  Under a declared
       over-cap deviation, over-cap rows are reported separately and do not gate;
     - ``template_render_check`` — when ``serve.chat_template`` is set: the template file's jinja2 render (the
-      engine's settings) of every declared shape against the client's render of the same inputs;
+      engine's settings) of every declared shape against the client's render of the same inputs; on the
+      ``messages`` route the served chat template (the checkpoint's own at the pinned revision when the recipe
+      serves none) rendered over every captured conversation against the declared frame;
     - ``engine_tokenize_check`` — with an engine URL: the engine's ``/tokenize`` of every captured text must
       equal the recipe tokenizer's ids; reported ``not_run`` without an engine, never as passed.
     """
+    from .media import text_rows
+
     tokenizer = fitting.tokenizer_of(recipe)
-    rows = load_pairs(pairs_path)
+    loaded = load_pairs(pairs_path)
+    rows = text_rows(loaded)  # the media rows are the media stage's (rcp_ndcg_vllm.equivalence.media)
     shown = rows if limit is None else rows[:limit]
     sampled = _sampled_rows(recipe, shown, tokenizer, over_length_per_shape)
     probe = _probe(recipe, sampled, base_url, tokenizer)
     document: dict[str, Any] = {
         "pairs": len(rows),
+        "media_rows": len(loaded) - len(rows),
         "sampled": len(sampled),
         "checked": probe["checked"],
         "client": probe["client"],
@@ -264,7 +280,7 @@ def _probe_vectors(
 
     budget = getattr(client, "text_budget", None)
 
-    def _captured(start: int, shape: str, conversations: list[Any]) -> list[Any]:
+    def _captured(start: int, shape: str, conversations: list[Any], generation: list[bool]) -> list[Any]:
         texts: list[Any] = []
         for exchange in capture.exchanges[start:]:
             captured = capture.texts(exchange)
@@ -272,6 +288,7 @@ def _probe_vectors(
                 texts.extend(captured["input"])
                 continue
             conversations.extend(captured["conversations"])
+            generation.extend([captured["add_generation_prompt"]] * len(captured["conversations"]))
             for content in captured["input"]:
                 texts.append(
                     rendered_request(budget, tokenizer, fitting.cast_shape(shape), query=content, document=content)
@@ -284,6 +301,7 @@ def _probe_vectors(
         if shape == "pair":
             continue  # the embed roles have no pair wire; a rerank recipe owns that shape
         conversations: list[Any] = []
+        generation: list[bool] = []
         inputs = [row["query"]] if shape == "query" else list(row["documents"])
         role = EncodeRole.QUERY if shape == "query" else EncodeRole.DOCUMENT
         texts: list[Any] = []
@@ -294,13 +312,13 @@ def _probe_vectors(
         for text in inputs:
             start, records_start = len(capture.exchanges), len(client.processing)
             client.encode([Content.from_text(text)], role)
-            sent = _captured(start, shape, conversations)
+            sent = _captured(start, shape, conversations, generation)
             texts.extend(sent)
             changed.extend([any(record.changed for record in client.processing[records_start:])] * len(sent))
         entry["shapes"][shape] = {
             "texts": texts,
             "changed": changed,
-            **({"conversations": conversations} if conversations else {}),
+            **({"conversations": conversations, "add_generation_prompt": generation} if conversations else {}),
         }
 
 
@@ -871,35 +889,40 @@ def _messages_template_check(recipe: Recipe, probe: dict[str, Any]) -> dict[str,
     """The ``messages`` route's frame check: the engine frames each sent conversation exactly once.
 
     vLLM v0.31.0 renders every chat-shaped ``/embeddings`` request through the served chat template
-    (vllm/entrypoints/pooling/embed/io_processor.py:302-355, with ``add_generation_prompt`` false by default,
-    vllm/entrypoints/pooling/base/protocol.py:230-237), and the client sends the content only.  So the served
-    template file, rendered with transformers' jinja2 settings over every captured conversation (its content
-    parts as sent), must equal the declared template's render of the same content -- the frame the client's
-    budget reserved, once.  Without ``serve.chat_template`` the engine renders the checkpoint's own template,
-    which the harness does not read: ``not_run``, never passed (the recipe's own test pins that file).
+    (vllm/entrypoints/pooling/embed/io_processor.py:302-355, with the request's ``add_generation_prompt``,
+    false by default, vllm/entrypoints/pooling/base/protocol.py:230-237), and the client sends the content
+    only.  So the served template file, rendered with transformers' jinja2 settings over every captured
+    conversation (its content parts as the engine hands them to the template, :func:`engine_conversation`)
+    and with the flag that request carried, must equal the declared template's render of the same content --
+    the frame the client's budget reserved, once.  Without ``serve.chat_template`` the engine renders the
+    checkpoint's own template, which the check reads at the pinned revision
+    (:func:`checkpoint_chat_template`); one that cannot be read fails the check (``unresolved``), never passes.
     """
-    if recipe.serve.chat_template is None:
+    try:
+        source, template_text = served_chat_template(recipe)
+    except HarnessError as error:
         return {
-            "status": "not_run",
-            "passed": None,
-            "reason": "request_shape messages without serve.chat_template: the engine frames the content with the "
-            "checkpoint's own chat template, which the harness does not read (the recipe's test must pin it)",
+            "status": "unresolved",
+            "passed": False,
+            "failures": [{"check": "checkpoint_chat_template", "note": str(error)}],
+            "reason": "the engine frames the content with the checkpoint's own chat template, and it could "
+            "not be read: the frame is unchecked, which never passes",
         }
-    directory = recipe._dir
-    if directory is None:  # pragma: no cover - load_recipe sets it
-        raise HarnessError(f"recipe {recipe.id} was not loaded from a directory")
-    template = _jinja_environment(strict=False).from_string(
-        (directory / recipe.serve.chat_template).read_text(encoding="utf-8")
-    )
+    template = _jinja_environment(strict=False).from_string(template_text)
     failures: list[dict[str, Any]] = []
     checked = 0
     for index, entry in enumerate(probe["rows"]):
         for shape, shape_body in entry["shapes"].items():
-            for conversation, declared in zip(
-                shape_body.get("conversations", []), shape_body.get("texts", []), strict=False
+            flags = shape_body.get("add_generation_prompt", [])
+            for position, (conversation, declared) in enumerate(
+                zip(shape_body.get("conversations", []), shape_body.get("texts", []), strict=False)
             ):
                 checked += 1
-                engine = template.render(messages=conversation, add_generation_prompt=False, tools=None)
+                engine = template.render(
+                    messages=engine_conversation(conversation),
+                    add_generation_prompt=bool(flags[position]) if position < len(flags) else False,
+                    tools=None,
+                )
                 if engine != declared:
                     failures.append(
                         {
@@ -912,14 +935,80 @@ def _messages_template_check(recipe: Recipe, probe: dict[str, Any]) -> dict[str,
     if not checked:
         failures.append({"check": "nothing_checked", "note": "no captured conversation to render"})
     return {
-        "template": recipe.serve.chat_template,
+        "template": source,
+        "template_sha256": hashlib.sha256(template_text.encode("utf-8")).hexdigest(),
         "status": "run",
         "checked": checked,
         "passed": not failures,
         "failures": failures,
-        "referent": "the served chat template, rendered over every conversation the client sent (its content), "
-        "must render exactly the declared template's frame around it -- framed once",
+        "referent": "the served chat template (serve.chat_template, else the checkpoint's own at the pinned "
+        "revision), rendered over every conversation the client sent (its content), must render exactly the "
+        "declared template's frame around it -- framed once",
     }
+
+
+def served_chat_template(recipe: Recipe) -> tuple[str, str]:
+    """The chat template the engine frames a chat-shaped request with: ``serve.chat_template``'s file, else the
+    checkpoint's own at the pinned revision (:func:`checkpoint_chat_template`).  Output: ``(source, text)``."""
+    if recipe.serve.chat_template is None:
+        return checkpoint_chat_template(recipe)
+    directory = recipe._dir
+    if directory is None:  # pragma: no cover - load_recipe sets it
+        raise HarnessError(f"recipe {recipe.id} was not loaded from a directory")
+    return recipe.serve.chat_template, (directory / recipe.serve.chat_template).read_text(encoding="utf-8")
+
+
+def render_chat(template_text: str, conversation: list[Any], *, add_generation_prompt: bool) -> str:
+    """One sent conversation rendered as the engine renders it: the template under transformers' jinja2
+    settings, the parts as vLLM hands them (:func:`engine_conversation`), the request's generation flag."""
+    template = _jinja_environment(strict=False).from_string(template_text)
+    return template.render(
+        messages=engine_conversation(conversation), add_generation_prompt=add_generation_prompt, tools=None
+    )
+
+
+CHECKPOINT_TEMPLATE_FILES = ("chat_template.jinja", "chat_template.json", "tokenizer_config.json")
+"""Where a checkpoint carries its chat template, in the order the engine's resolution reads them: vLLM v0.31.0
+takes the AutoProcessor's template, then the AutoTokenizer's (vllm/renderers/hf.py:263-300), and transformers
+reads a processor's from ``chat_template.jinja`` (else ``chat_template.json``) and a tokenizer's from
+``chat_template.jinja`` (else ``tokenizer_config.json``'s ``chat_template``)."""
+
+
+def checkpoint_chat_template(recipe: Recipe) -> tuple[str, str]:
+    """The checkpoint's own chat template at the recipe's pinned revision: the frame the engine renders a
+    chat-shaped request with when the recipe serves no template file.
+
+    Inputs: the recipe (``model`` and its 40-hex ``revision``).  Output: ``(source, text)`` -- the source names
+    ``<model>@<revision>:<file>`` -- read from the first of :data:`CHECKPOINT_TEMPLATE_FILES` the checkpoint
+    carries (:func:`~rcp_ndcg_vllm.equivalence.checkpoint.checkpoint_file`: the local Hub cache answers a
+    pinned revision without a request; the Hub otherwise, unless offline).  Only an absent file falls through
+    to the next source.  A ``tokenizer_config.json`` or ``chat_template.json`` template is its ``chat_template``
+    value (the ``default`` entry of a named list).  Raises :class:`HarnessError` naming every file tried when
+    none resolves, or the file whose read failed.
+    """
+    from .checkpoint import checkpoint_file
+
+    tried: list[str] = []
+    for name in CHECKPOINT_TEMPLATE_FILES:
+        path = checkpoint_file(recipe, name)  # None only when the file is absent; any other failure raises
+        if path is None:
+            tried.append(f"{name}: absent")
+            continue
+        text = path.read_text(encoding="utf-8")
+        if name.endswith(".json"):
+            value = json.loads(text).get("chat_template")
+            if isinstance(value, list):
+                value = next((entry.get("template") for entry in value if entry.get("name") == "default"), None)
+            if not isinstance(value, str):
+                tried.append(f"{name}: no chat_template")
+                continue
+            text = value
+        return f"{recipe.model}@{recipe.revision}:{name}", text
+    raise HarnessError(
+        f"recipe {recipe.id}: no chat template resolves for {recipe.model} at {recipe.revision} ("
+        + "; ".join(tried)
+        + "): populate the Hub cache, or serve the template as serve.chat_template"
+    )
 
 
 def _jinja_environment(*, strict: bool = True) -> Any:
@@ -937,6 +1026,36 @@ def _jinja_environment(*, strict: bool = True) -> Any:
     if not strict:
         return ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True)
     return ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True, undefined=StrictUndefined)
+
+
+def engine_conversation(conversation: list[Any]) -> list[dict[str, Any]]:
+    """A sent conversation as vLLM v0.31.0 hands it to a chat template (the ``openai`` content format).
+
+    vllm/entrypoints/chat_utils.py:1875-1999 (``_parse_chat_message_content_part`` with ``wrap_dicts``): a
+    string part becomes ``{"type": "text", "text": ...}``, a text part keeps its text, an ``image_url`` part
+    becomes ``{"type": "image"}`` and a ``video_url`` part ``{"type": "video"}`` -- the template sees the
+    modality, never the URL.  A message whose content is a string stays as it is.
+    """
+    engine: list[dict[str, Any]] = []
+    for message in conversation:
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list):
+            engine.append(dict(message))
+            continue
+        parts: list[dict[str, Any]] = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append({"type": "text", "text": part})
+            elif part.get("type") in ("text", "input_text"):
+                parts.append({"type": "text", "text": str(part.get("text", ""))})
+            elif part.get("type") in ("image_url", "input_image", "image"):
+                parts.append({"type": "image"})
+            elif part.get("type") in ("video_url", "video"):
+                parts.append({"type": "video"})
+            else:
+                parts.append(dict(part))
+        engine.append({**message, "content": parts})
+    return engine
 
 
 def _engine_tokenize_check(
@@ -1214,7 +1333,9 @@ def stage2_scores(
     injection point), never from a second request path.  The reference runs as a subprocess in its own
     environment (``--reference-python``, required); the harness process imports no torch.
     """
-    rows = load_pairs(pairs_path)
+    from .media import text_rows
+
+    rows = text_rows(load_pairs(pairs_path))  # the media rows are the media stage's
     reference = _reference_outputs(recipe, reference_python, rows, device=device)
     gates = resolve_gates(recipe)
     if recipe.role == "rerank":

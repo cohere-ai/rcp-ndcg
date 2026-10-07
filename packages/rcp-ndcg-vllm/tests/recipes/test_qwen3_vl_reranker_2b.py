@@ -27,6 +27,7 @@ from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.inference.config import RerankEndpoint
+from tests.conftest import start_stub
 
 from ._contract import assert_recipe_contract
 from ._served import served_pair, stage1_facts
@@ -77,8 +78,8 @@ CLIENT = {
     "connect_timeout_s": 5.0,
     "max_retries": 2,
     "wait_on_outage_s": None,
-    "image_processor": None,
-    "image_policy": {"min_px": 4096, "max_px": 1310720, "processor": None},
+    "image_processor": "qwen3_vl",
+    "image_policy": {"min_px": 4096, "max_px": 1310720, "processor": None, "engine_pixel_pinning": True},
     "video_policy": None,
     "max_images": 1,
     "max_videos": 0,
@@ -88,8 +89,9 @@ CLIENT = {
         "hf_overrides {architectures, classifier_from_token [no, yes], "
         "is_original_qwen3_reranker}; served chat template template.jinja; LAST pooling with "
         "use_activation true pinned server-side and sent on the wire; mm_processor_kwargs "
-        "nested images_kwargs min_pixels 4096 / max_pixels 1310720 (the one pixel-pin shape); one "
-        "media item per request (limit_mm_per_prompt image=1 = max_images 1)"
+        "nested images_kwargs min_pixels 4096 / max_pixels 1310720 (the one pixel-pin shape) with the "
+        "client's image_processor qwen3_vl under the pinned budget (engine_pixel_pinning); one media item "
+        "per request (limit_mm_per_prompt image=1 = max_images 1)"
     ),
     "tokenizer": f"{REPO}@{REVISION}",
     "max_tokens": 8192,
@@ -398,3 +400,80 @@ def test_reference_renders_the_card_cut_not_the_client_cut(tmp_path: Path, snaps
         add_special_tokens=True,
     )
     assert len(client_ids) <= loaded.client.max_tokens < len(card_ids) <= loaded.client.max_tokens + 5
+
+
+@pytest.mark.network
+def test_a_whitespace_only_query_is_the_cards_verbatim_text(tmp_path: Path, snapshot: Path) -> None:
+    """The card's format_mm_content keeps any non-empty text verbatim, so a whitespace-only query is a query:
+    the client sends it (only the empty string is refused, empty_query: refuse) and the reference renders it as
+    the card does -- the spans are equal."""
+    from rcp_ndcg_vllm.equivalence.reference import run_reference
+
+    loaded = stage1_recipe(snapshot)
+    rows = [{"query": "   ", "documents": ["Paris is the capital of France."]}]
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(json.dumps(rows[0]) + "\n", encoding="utf-8")
+    out = tmp_path / "render.json"
+    run_reference(
+        sys.executable,
+        str(RECIPE_DIR / "reference.py"),
+        mode="render",
+        pairs_path=pairs,
+        out_path=out,
+        tokenizer_spec=str(snapshot),
+    )
+    (card,) = json.loads(out.read_text(encoding="utf-8"))["rows"]
+    shipped = served_pair(loaded, rows[0]["query"], rows[0]["documents"])
+    assert card["query"] == shipped["query"] == "   " and card["documents"] == shipped["documents"]
+
+
+def _media_pairs(tmp_path: Path) -> Path:
+    """One text row and the media request set's rows (the generator's synthetic image buckets)."""
+    from rcp_ndcg_vllm.observe.media_set import planned_media_rows
+
+    rows, _ = planned_media_rows(recipe())
+    text = {"query": "what is the capital of France", "documents": ["Paris is the capital of France."]}
+    lines = [text, *[{key: row[key] for key in ("query", "documents", "media")} for row in rows]]
+    path = tmp_path / "pairs.jsonl"
+    path.write_text("".join(json.dumps(row) + "\n" for row in lines), encoding="utf-8")
+    return path
+
+
+@pytest.mark.network
+def test_the_media_stage_holds_the_client_to_the_card(tmp_path: Path, snapshot: Path) -> None:
+    """Offline, the product's rerank client and the card agree on every image of the media request set (one
+    pair per request): the placement, the prepared geometry under the pinned budget, the tokens. Against the
+    stub engine emulating the checkpoint (factor 32, its own preprocessor_config budget 4095..1310720 px),
+    the engine's media count equals the client's under the pin -- and unpinned too: the pin restates the
+    checkpoint's default, so negative control (f) does not apply (its row says so, read from the checkpoint's
+    own preprocessor_config.json at the pinned revision); an engine pinned to other numbers fails."""
+    from rcp_ndcg_vllm.equivalence.media import stage_media
+    from rcp_ndcg_vllm.observe.controls import control_variants
+    from rcp_ndcg_vllm.observe.media_set import MEDIA_BUCKETS
+
+    loaded = stage1_recipe(snapshot)
+    pairs = _media_pairs(tmp_path)
+    document = stage_media(loaded, pairs, sys.executable)
+    assert document is not None and document["passed"] is True, (document["failures"][:3], document["refusals"][:2])
+    assert document["items"] == len(MEDIA_BUCKETS) + 1
+    (control,) = [v for v in control_variants(loaded) if v["control"] == "(f)"]
+    assert control["kind"] is None and "4095-1310720" in control["reason"], control
+    unpinned = loaded.model_copy(update={"serve": loaded.serve.model_copy(update={"mm_processor_kwargs": {}})})
+    moved = loaded.model_copy(
+        update={
+            "serve": loaded.serve.model_copy(update={"mm_processor_kwargs": {"images_kwargs": {"max_pixels": 655360}}})
+        }
+    )
+    results = {}
+    for name, served in (("pinned", loaded), ("unpinned", unpinned), ("moved", moved)):
+        argv = serve_argv(served, port=0, served_model_name=loaded.id)
+        flags = [value for value in argv[argv.index(served.model) + 1 :] if value not in ("0.0.0.0", "--host")]
+        model = ["--model-image-factor", "32", "--model-image-pixels", "4095,1310720"]
+        engine = start_stub("--tokenizer", str(snapshot / "tokenizer.json"), *flags, *model)
+        try:
+            results[name] = stage_media(loaded, pairs, sys.executable, base_url=engine.base_url)
+        finally:
+            engine.stop()
+    assert results["pinned"]["passed"] is True, results["pinned"]["engine_check"]
+    assert results["unpinned"]["passed"] is True, results["unpinned"]["engine_check"]
+    assert results["moved"]["engine_check"]["passed"] is False

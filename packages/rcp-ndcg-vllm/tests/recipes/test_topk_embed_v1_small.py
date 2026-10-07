@@ -238,6 +238,7 @@ EXPECTED_CLIENT = {
     "empty_doc": "omit_zero",
     "empty_doc_text": None,
     "request_shape": "text",
+    "add_generation_prompt": None,
     "query_prompt": "",
     "doc_prompt": "",
     "normalize": True,
@@ -318,6 +319,25 @@ EXPECTED_TOP = {
     "input": ["text", "image"],
     "model": "topk-io/topk-embed-v1-small",
 }
+
+
+def test_the_recorder_records_topks_refused_media_row_as_a_refusal(tmp_path: Path, tokenizer) -> None:
+    """The client refuses an image document under document_skip_token_ids (the recipe's named open gap): the
+    recorder's model layer records the media request set's first row as that refusal, never an exception that
+    would end the corpus step and lose the text rows with it."""
+    from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
+    from rcp_ndcg_vllm.observe.media_set import planned_media_rows
+    from rcp_ndcg_vllm.record import _Collector, _model_layer
+
+    recipe = load_recipe(_mutated_recipe(tmp_path, lambda data: {**data, "client": {**data["client"], "dim": 8}}))
+    assert recipe.client.document_skip_token_ids, "the refusal needs the shipped skip ids"
+    rows, _ = planned_media_rows(recipe)
+    row = {**{key: rows[0][key] for key in ("query", "documents", "media")}, "request_id": "pairs:21"}
+    collected = _Collector(recipe, tokenizer_of(recipe))
+    _model_layer(recipe, "", [row], collected, (1,))
+    (record,) = collected.records
+    assert record["inputs"]["probe"] == "client_refusal" and record["inputs"]["request_id"] == "pairs:21"
+    assert record["response"]["status"] is None and "CapabilityError" in json.dumps(record["response"])
 
 
 def test_recipe_contract() -> None:

@@ -52,6 +52,7 @@ __all__ = [
     "fingerprint_changes",
     "fingerprint_inputs",
     "load_recipe_tokenizer",
+    "stored_tokenizer",
     "tokenizer_sha256",
     "use_tokenizer_store",
 ]
@@ -76,6 +77,7 @@ CLIENT_FIELDS: dict[str, str] = {
     "empty_doc_text": "request",
     "empty_query": "request",
     "request_shape": "request",  # text, messages or token ids on the wire
+    "add_generation_prompt": "request",  # sent on the messages route: the engine's frame gains its header
     "query_prompt": "request",
     "doc_prompt": "request",
     "dimensions": "request",  # sent in the /v1/embeddings body
@@ -161,8 +163,19 @@ def _template_file_sha(recipe: Recipe) -> str:
     return f"sha256:{hashlib.sha256(data).hexdigest()}"
 
 
-def _store_lookup(spec: str) -> tuple[bytes, str] | None:
-    """The vendored ``tokenizer.json`` bytes and SHA-256 for ``spec`` in a registered store, else ``None``."""
+def stored_tokenizer(spec: str) -> tuple[bytes, str] | None:
+    """The vendored ``tokenizer.json`` of ``spec`` from the registered tokenizer stores.
+
+    Args:
+        spec: The tokenizer spec exactly as a recipe's ``client.tokenizer`` names it (``org/model@<revision>``).
+
+    Returns:
+        ``(bytes, sha256)`` from the first registered store whose index names ``spec`` (the bytes verified
+        against the index's SHA-256), else ``None``.
+
+    Raises:
+        HarnessError: an index entry lacks ``file`` or ``sha256``, or the vendored copy does not hash to it.
+    """
     for store in _STORES:
         index_path = store / "index.json"
         try:
@@ -194,7 +207,7 @@ def _load_bytes(recipe: Recipe) -> tuple[bytes, str]:
     if path.is_file():
         data = path.read_bytes()
         return data, hashlib.sha256(data).hexdigest()
-    found = _store_lookup(spec)
+    found = stored_tokenizer(spec)
     if found is not None:
         return found
     try:

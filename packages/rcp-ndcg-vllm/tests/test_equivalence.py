@@ -7,6 +7,7 @@ subprocess's outputs.  The harness process never imports torch or transformers.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import sys
@@ -19,7 +20,7 @@ from rcp_ndcg_vllm.equivalence import stage1_prompts, stage2_scores
 from rcp_ndcg_vllm.equivalence.gates import ResolvedGates
 from rcp_ndcg_vllm.equivalence.metrics import stage3_metrics
 
-from tests.conftest import RECIPES, TOKENIZER, sample_pairs, start_stub, write_pairs
+from tests.conftest import RECIPES, TOKENIZER, hub_cache, sample_pairs, start_stub, write_pairs
 
 REFERENCE_PYTHON = sys.executable
 
@@ -803,8 +804,9 @@ _CHAT_TEMPLATE = (
 """A served chat template that frames one user turn exactly as ``fixture-embed`` declares it (``doc: ... [END]``)."""
 
 
-def _messages_recipe(tmp_path: Path, chat_template: str) -> Any:
-    """``fixture-embed`` on the ``messages`` route, served with ``chat_template`` (the engine's frame)."""
+def _messages_recipe(tmp_path: Path, chat_template: str, *, client_extra: str = "") -> Any:
+    """``fixture-embed`` on the ``messages`` route, served with ``chat_template`` (the engine's frame); the
+    ``client_extra`` YAML lines join the client block."""
     directory = tmp_path / "scratch" / "recipes" / "embed-messages"
     directory.mkdir(parents=True)
     shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "scratch" / "deterministic.py")
@@ -812,7 +814,7 @@ def _messages_recipe(tmp_path: Path, chat_template: str) -> Any:
     (directory / "chat.jinja").write_text(chat_template, encoding="utf-8")
     manifest = _rebased((RECIPES / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8"), "embed-messages")
     manifest = manifest.replace("  chat_template: null", "  chat_template: chat.jinja").replace(
-        "  api: openai_embeddings", "  api: openai_embeddings\n  request_shape: messages"
+        "  api: openai_embeddings", "  api: openai_embeddings\n  request_shape: messages" + client_extra
     )
     (directory / "recipe.yaml").write_text(manifest, encoding="utf-8")
     return load_recipe(directory)
@@ -836,3 +838,114 @@ def test_stage1_messages_route_is_framed_once_by_the_served_chat_template(tmp_pa
     assert check["passed"] is False
     failure = check["failures"][0]
     assert failure["engine_head"].startswith("doc: doc: ") and failure["declared_head"].count("doc: ") == 1
+
+
+def test_stage1_messages_route_renders_the_declared_generation_prompt(tmp_path: Path) -> None:
+    """A served chat template whose closing frame renders only under ``add_generation_prompt`` (the
+    assistant header of Qwen3-VL-Embedding's template): the engine renders each captured request with the
+    flag it carries (vLLM's default false when absent), so without the declared flag the served render
+    misses the declared tail and the check fails; with ``add_generation_prompt: true`` it is the frame."""
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    template = _CHAT_TEMPLATE.replace(" [END]", "{% if add_generation_prompt %} [END]{% endif %}")
+    without = _messages_recipe(tmp_path / "without", template)
+    check = stage1_prompts(without, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["passed"] is False and not check["failures"][0]["engine_head"].endswith("[END]")
+    declared = _messages_recipe(tmp_path / "declared", template, client_extra="\n  add_generation_prompt: true")
+    assert declared.client.add_generation_prompt is True
+    check = stage1_prompts(declared, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["passed"] is True and check["checked"] > 0, check["failures"][:1]
+
+
+def _hub_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, files: dict[str, str], absent: tuple[str, ...] = ()
+) -> None:
+    """An offline Hub cache holding ``fixtures/DenseEmbedder`` at fixture-embed's pinned revision with ``files``
+    (``absent``: the files it records as not in the repository)."""
+    hub_cache(
+        tmp_path, monkeypatch, "fixtures/DenseEmbedder", "0123456789abcdef0123456789abcdef01234567", files, absent
+    )
+
+
+def test_stage1_messages_route_render_checks_the_checkpoints_own_chat_template(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without ``serve.chat_template`` the engine frames the messages route with the checkpoint's own chat
+    template at the pinned revision: the harness reads that file (the Hub cache, or a pinned fetch) and
+    render-checks against it -- run and passed when it frames the declared template once, failed when it does
+    not, and failed (never passed, never silently skipped) when the file cannot be resolved."""
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    recipe = _messages_recipe(tmp_path / "own", _CHAT_TEMPLATE)
+    recipe = recipe.model_copy(update={"serve": recipe.serve.model_copy(update={"chat_template": None})})
+    _hub_cache(tmp_path / "good", monkeypatch, {"chat_template.jinja": _CHAT_TEMPLATE})
+    check = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["status"] == "run" and check["passed"] is True and check["checked"] > 0, check
+    assert check["template"] == "fixtures/DenseEmbedder@0123456789abcdef0123456789abcdef01234567:chat_template.jinja"
+    assert check["template_sha256"] == hashlib.sha256(_CHAT_TEMPLATE.encode("utf-8")).hexdigest()
+
+    _hub_cache(tmp_path / "twice", monkeypatch, {"chat_template.jinja": _CHAT_TEMPLATE.replace("doc: ", "doc: doc: ")})
+    assert stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]["passed"] is False
+
+    config = json.dumps({"chat_template": _CHAT_TEMPLATE})
+    absent = ("chat_template.jinja", "chat_template.json")
+    _hub_cache(tmp_path / "config", monkeypatch, {"tokenizer_config.json": config}, absent)
+    check = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["passed"] is True and check["template"].endswith(":tokenizer_config.json"), check
+
+    # Not cached and no Hub to ask is not "absent": the checkpoint may ship a chat_template.jinja, so rendering
+    # tokenizer_config.json's template in its place would check the wrong template.
+    _hub_cache(tmp_path / "unknown", monkeypatch, {"tokenizer_config.json": config})
+    check = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["status"] == "unresolved" and check["passed"] is False, check
+    assert "chat_template.jinja" in check["failures"][0]["note"], check
+
+    _hub_cache(tmp_path / "empty", monkeypatch, {})
+    check = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["status"] == "unresolved" and check["passed"] is False, check
+
+
+def test_stage2_on_the_messages_route_through_the_stub(tmp_path: Path) -> None:
+    """Stage 2 on the ``messages`` route: the client sends each item's content as one conversation, and the
+    stub, like vLLM's chat path, frames it with the served chat template (the request's
+    ``add_generation_prompt``, false by default) before embedding. A template that frames the declared turn
+    once passes the gates; one that frames it twice changes what the model reads, and the vectors fail."""
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:2])
+    for name, chat_template, passes in (
+        ("once", _CHAT_TEMPLATE, True),
+        ("twice", _CHAT_TEMPLATE.replace("doc: ", "doc: doc: "), False),
+    ):
+        recipe = _messages_recipe(tmp_path / name, chat_template)
+        assert recipe._dir is not None
+        engine = start_stub("--tokenizer", str(TOKENIZER), "--chat-template", str(recipe._dir / "chat.jinja"))
+        try:
+            document = stage2_scores(recipe, pairs, REFERENCE_PYTHON, base_url=engine.base_url)
+        finally:
+            engine.stop()
+        assert document["passed"] is passes, (name, document["per_vector"][:2])
+        assert document["n_vectors"] == sum(len(row["documents"]) for row in sample_pairs()[:2])
+
+
+def test_a_checkpoint_template_read_error_is_unresolved_never_a_fall_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only an absent file falls through to the next template source: any other failure reading
+    ``chat_template.jinja`` (a broken cache, a refused download) fails the check as unresolved, never
+    renders ``tokenizer_config.json``'s template in its place."""
+    import huggingface_hub
+
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    recipe = _messages_recipe(tmp_path / "own", _CHAT_TEMPLATE)
+    recipe = recipe.model_copy(update={"serve": recipe.serve.model_copy(update={"chat_template": None})})
+    _hub_cache(
+        tmp_path / "config", monkeypatch, {"tokenizer_config.json": json.dumps({"chat_template": _CHAT_TEMPLATE})}
+    )
+    real = huggingface_hub.hf_hub_download
+
+    def broken(repo_id: str, filename: str, **kwargs: Any) -> str:
+        if filename == "chat_template.jinja":
+            raise OSError("the cache's blob is unreadable")
+        return real(repo_id, filename, **kwargs)
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", broken)
+    check = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["status"] == "unresolved" and check["passed"] is False, check
+    assert "chat_template.jinja" in check["failures"][0]["note"]

@@ -494,13 +494,36 @@ def _build_client(role: str, client_data: dict[str, Any], recipe_id: str, revisi
         raise RecipeError(f"the client block is not a valid {endpoint_cls.__name__}: {error}") from error
 
 
+class _DuplicateKeyError(ValueError):
+    """A YAML mapping declares one key twice (YAML would keep the last silently)."""
+
+
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """``yaml.SafeLoader`` that refuses a mapping declaring one key twice: YAML keeps the last of two equal keys
+    silently, so a recipe that declares a field twice would serve whichever value came last."""
+
+
+def _unique_mapping(loader: _UniqueKeyLoader, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
+    seen: set[Any] = set()
+    for key_node, _ in node.value:
+        key = loader.construct_object(key_node, deep=deep)  # pyright: ignore[reportUnknownMemberType]
+        if key in seen:
+            raise _DuplicateKeyError(f"duplicate key {key!r} at line {key_node.start_mark.line + 1}")
+        seen.add(key)
+    return loader.construct_mapping(node, deep=deep)
+
+
+_UniqueKeyLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _unique_mapping)
+
+
 def load_recipe(path: str | Path) -> Recipe:
     """Load and validate one recipe from a recipe directory or a ``recipe.yaml`` file.
 
     Inputs: ``path``, the recipe directory (containing ``recipe.yaml``) or the YAML file itself.  Outputs: a
     frozen :class:`Recipe` whose ``client`` is the product's endpoint model (validated at load, with the
     product's messages) and whose ``_dir`` records where it came from.  Raises :class:`RecipeError` with the
-    file path and the validator message when the YAML does not satisfy the schema, when ``id`` differs from the
+    file path and the validator message when the YAML declares a key twice in one mapping (YAML would keep the
+    last silently) or does not satisfy the schema, when ``id`` differs from the
     directory name, or when a referenced file (``serve.chat_template``, ``reference.entry``) does not exist.
     """
     path = Path(path)
@@ -508,7 +531,9 @@ def load_recipe(path: str | Path) -> Recipe:
     if not yaml_path.is_file():
         raise RecipeError(f"no recipe at {path}: expected {yaml_path}")
     try:
-        data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        data = yaml.load(yaml_path.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)  # noqa: S506 - safe loader
+    except _DuplicateKeyError as error:
+        raise RecipeError(f"{yaml_path}: {error}") from error
     except yaml.YAMLError as error:
         raise RecipeError(f"{yaml_path} is not valid YAML: {error}") from error
     if not isinstance(data, dict):

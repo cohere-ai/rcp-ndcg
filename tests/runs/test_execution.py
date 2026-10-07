@@ -252,3 +252,17 @@ class TestCancel:
         state = _ok("run", "cancel", "--run", started["run_dir"])
         assert scheduler.cancelled == [] and state["status"] == "failed"
         assert Run(started["run_dir"]).manifest.status.value == "submitted"
+
+
+def test_stage_run_writes_the_run_directory_a_runner_is_handed(data: Path, tmp_path: Path) -> None:
+    """The one staging of a run directory before a job runs it (``submit_run`` and any driver that runs the
+    job itself): the layout, the resolved ``run.yaml`` and the manifest in status ``submitted``."""
+    from rcp_ndcg.runs.execution import stage_run
+    from rcp_ndcg.runs.manifest import RunStatus
+    from rcp_ndcg.runs.run import prepare
+
+    pipeline = prepare(tiny_config(data), runs_dir=str(tmp_path))
+    layout = stage_run(pipeline)
+    assert layout.root == pipeline.layout.root
+    assert yaml.safe_load(Path(layout.config).read_text(encoding="utf-8")) == pipeline.config.resolved()
+    assert Run(layout.root).manifest.status is RunStatus.SUBMITTED

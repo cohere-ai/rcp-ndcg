@@ -151,9 +151,9 @@ notes: >-
   declared over_cap_cut_differs table carries (reported, not gated). The reference's render is
   the uncut frame+text (its truncation is the model's own assembled-prompt right cut inside
   encode(), keeping the head marker and pooling the last kept token), and it never ports the
-  client's cut (docs/how-to/add-a-model.md). Under-cap pairs gate byte-identically; over-cap pairs
-  ride the declared table -- keep them out of the gated pairs file or read them as expected tail
-  drift.  Per-shape query caps (whether query_max_tokens applies): no separate query cap exists in the referent - encode truncates
+  client's cut (docs/how-to/add-a-model.md). Under-cap pairs gate byte-identically; every text the
+  client cut (its processing record names the budget cut) rides the declared table, reported and
+  not gated.  Per-shape query caps (whether query_max_tokens applies): no separate query cap exists in the referent - encode truncates
   queries and documents alike at 32768 (modeling:85-91) - so query_max_tokens is not declared
   and both shapes draw on max_tokens.  The anchor is last_content: the model pools
   the mask's last real token (modeling:100-108) -- the last kept content token of the
@@ -161,9 +161,8 @@ notes: >-
   ("Query:" / "Document:" plus their separator space -- separate fixed segments because the
   space merges into the following content token under BPE) stay reserved as fixed segments,
   and the pooled position survives every cut by construction: content spans only are cut and
-  the engine never truncates. Stage 1's anchor_check does not audit last_content yet (the
-  harness's audit has no branch for it; the recipe test pins that gap as a strict xfail), so the
-  render comparison and the client's census carry this check today. Feature floor: the native JinaEmbeddingsV5Model with jina_task and the
+  the engine never truncates. Stage 1's anchor_check audits last_content (the head marker opens
+  every render and a content token closes it, over-length samples included). Feature floor: the native JinaEmbeddingsV5Model with jina_task and the
   is_matryoshka gate first ships in v0.20.0 (absent from v0.19.0: no jina.py, HTTP 404;
   present in v0.20.0 - both tags measured; jina.py is byte-identical at the v0.31.0
   tag); engine.min_version declares the image actually verified (v0.31.0, the family's one
@@ -174,8 +173,7 @@ notes: >-
   wave's gates (the MTEB anchor 0.794535707854956 +/- 2e-3 among them) settle it. Licence
   cc-by-nc-4.0 is non-commercial; product use needs a Jina AI licence. The reference
   environment (reference.py's own python) is torch + transformers + peft (the remote code is
-  a PeftMixedModel); see requirements-reference.txt beside this recipe - the package-level
-  requirements-reference.txt does not yet list peft. Reference download: ~1.26 GiB / 1.35 GB
+  a PeftMixedModel); see requirements-reference.txt beside this recipe, which lists peft. Reference download: ~1.26 GiB / 1.35 GB
   (base model.safetensors 1,192,133,208 B + four adapters of ~40.4 MB each = 1,353,814,008 B
   in total; the base blob size from the Hub tree API at the pinned revision; an earlier
   1,192,099,840 B figure was a 33,368 B transcription error, and a "1.17 GB" figure was the base

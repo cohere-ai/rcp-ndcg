@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import ClassVar, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from rcp_ndcg.data.preprocess import ChunkPolicy
 from rcp_ndcg.data.resolution import ImagePolicy, ImageProcessor, VideoPolicy
@@ -289,6 +289,13 @@ class EmbeddingEndpoint(_MediaEndpoint):
             ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the
             routes that take them). Declares what the adapter sends; the client refuses a shape its wire
             adapter does not implement. Content.
+        add_generation_prompt: ``true`` sends ``add_generation_prompt: true`` with every ``messages`` request,
+            so the engine's chat template renders its generation prompt (the assistant header) after the
+            user turn -- the frame of a checkpoint whose declared template ends with it (Qwen3-VL-Embedding).
+            vLLM's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237 at
+            v0.31.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other
+            route renders a chat template); ``false`` is that default and declares nothing (stored as
+            ``None``, no re-key). Content.
         query_prompt: Text prepended to every query (an asymmetric embedder's instruction prefix). Content.
         doc_prompt: Text prepended to every document. Content.
         normalize: Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising
@@ -310,6 +317,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
         "empty_doc": FieldRole.CONTENT,
         "empty_doc_text": FieldRole.CONTENT,
         "request_shape": FieldRole.CONTENT,
+        "add_generation_prompt": FieldRole.CONTENT,
         "query_prompt": FieldRole.CONTENT,
         "doc_prompt": FieldRole.CONTENT,
         "normalize": FieldRole.CONTENT,
@@ -329,11 +337,18 @@ class EmbeddingEndpoint(_MediaEndpoint):
     empty_doc: Literal["omit_zero", "send", "send_text"] = "send"
     empty_doc_text: str | None = None
     request_shape: Literal["text", "messages", "token_ids"] = "text"
+    add_generation_prompt: Literal[True] | None = None
     query_prompt: str = ""
     doc_prompt: str = ""
     normalize: bool = True
     dimensions: int | None = Field(default=None, ge=1)
     batch_size: int = Field(default=32, ge=1)
+
+    @field_validator("add_generation_prompt", mode="before")
+    @classmethod
+    def _false_declares_no_generation_prompt(cls, value: object) -> object:
+        """``false`` is the chat routes' own default: stored as ``None``, so it never re-keys an identity."""
+        return None if value is False else value
 
     @model_validator(mode="after")
     def _explicit_budget_and_empty_documents(self) -> EmbeddingEndpoint:
@@ -346,6 +361,13 @@ class EmbeddingEndpoint(_MediaEndpoint):
         _empty_doc_pairing(self)
         _media_sides_and_the_media_fields(self)
         _one_home_for_a_prompt_prefix(self)
+        if self.add_generation_prompt and self.request_shape != "messages":
+            raise ConfigError(
+                f"add_generation_prompt frames a chat render, and request_shape {self.request_shape!r} renders "
+                "no chat template: the flag would be sent nowhere",
+                hint="declare request_shape: messages (the engine's chat template frames the content), or drop "
+                "add_generation_prompt",
+            )
         if (
             self.query_max_tokens is not None
             and self.max_tokens is not None
@@ -412,6 +434,18 @@ class PoolingEndpoint(EmbeddingEndpoint):
     document_skip_token_ids: tuple[int, ...] = ()
     mrl_dim: int | None = Field(default=None, ge=1)
     outputs: Literal["per_token", "per_chunk"] = "per_token"
+
+    @model_validator(mode="after")
+    def _no_generation_prompt_on_pooling(self) -> PoolingEndpoint:
+        """``add_generation_prompt`` is inherited, but the ``/pooling`` media lowering sends no such field:
+        a declared flag would be inert -- refused, never ignored."""
+        if self.add_generation_prompt:
+            raise ConfigError(
+                "PoolingEndpoint.add_generation_prompt would be inert: the /pooling messages lowering sends no "
+                "add_generation_prompt field",
+                hint="drop add_generation_prompt (it frames the openai_embeddings messages route)",
+            )
+        return self
 
     @model_validator(mode="after")
     def _mrl_dim_below_the_checkpoint_width(self) -> PoolingEndpoint:

@@ -35,16 +35,16 @@ def stale_corpora() -> dict[str, dict[str, Any]]:
 
 def current_corpora() -> list[Path]:
     """Every committed corpus a conformance replay runs on: the ones not declared stale (found by scanning
-    manifests). A declared-stale corpus is checked to fail the staleness gate instead."""
-    import json
-
+    manifests, each read through the one corpus reader, ``rcp_ndcg.testing.corpus.load_corpus``). A
+    declared-stale corpus is checked to fail the staleness gate instead."""
+    from rcp_ndcg.testing.corpus import load_corpus
     from rcp_ndcg.testing.engines import find_corpora
 
     stale = stale_corpora()
     return [
         directory
         for directory in find_corpora(ENGINES_ROOT)
-        if json.loads((directory / "manifest.json").read_text(encoding="utf-8"))["recipe"]["id"] not in stale
+        if load_corpus(directory).manifest["recipe"]["id"] not in stale
     ]
 
 
