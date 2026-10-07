@@ -82,8 +82,9 @@ def run_wave(
     _MODEL_SIZES.clear()  # each wave asks the Hub for its models' sizes once
     recipes = _resolve_recipes(recipe_ids, recipes_root)
     skipped_unchanged: list[str] = []
+    change_verdict: dict[str, Any] | None = None
     if changed_since_index is not None:
-        recipes, skipped_unchanged = _filter_changed(recipes, Path(changed_since_index))
+        recipes, skipped_unchanged, change_verdict = _filter_changed(recipes, Path(changed_since_index), vllm_cmd)
     results: dict[str, dict[str, Any]] = {}
     used_gpus: set[int] = set()
     pending = list(recipes)
@@ -173,7 +174,7 @@ def run_wave(
             _upload(out, upload)
     if upload is not None:
         _upload(out, upload)
-    document = _wave_document(gpus, results, skipped_unchanged=skipped_unchanged)
+    document = _wave_document(gpus, results, skipped_unchanged=skipped_unchanged, change_verdict=change_verdict)
     (out / "wave.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     (out / "WAVE.md").write_text(_wave_markdown(document), encoding="utf-8")
     return document
@@ -199,6 +200,7 @@ class _EngineRun:
         self.log_path = log_path
         self.out_dir = out_dir
         self.disk: dict[str, Any] = disk or {}
+        self.env: dict[str, str] = {}
         self.started = time.monotonic()
         self.timeout_s = float(recipe.engine.startup_timeout_s)
         self.status: dict[str, Any] = _status(recipe, "running", port=port, gpus=gpus, steps={})
@@ -336,6 +338,7 @@ def _start(
         disk=disk,
     )
     run.status["serve_argv"] = argv
+    run.env = env
     run.status["steps"]["serve"] = {"state": "running", "port": port, "gpus": gpus}
     return run
 
@@ -428,6 +431,7 @@ def _finalise(
     ``server_run_id`` per engine run).
     """
     restarted: list[_EngineRun] = []
+    run.status["ready_wait_s"] = round(time.monotonic() - run.started, 3)
     try:
         if error is None and run.port == 0:
             announced = run.announced_port(_ANNOUNCE_TIMEOUT_S)
@@ -441,7 +445,10 @@ def _finalise(
         if error is None:
             base_url = f"http://127.0.0.1:{run.port}"
             run.status["steps"]["smoke"] = _smoke(run.recipe, base_url)
-            run.status["steps"]["equivalence"] = _equivalence(run.recipe, base_url, out, pairs_dir, reference_python)
+            served: list[dict[str, Any]] = []
+            run.status["steps"]["equivalence"] = _equivalence(
+                run.recipe, base_url, out, pairs_dir, reference_python, recorder=served if record_corpus else None
+            )
             if record:
                 run.status["steps"]["record"] = _record(run.recipe, base_url, out)
             if record_corpus:
@@ -452,9 +459,11 @@ def _finalise(
                     vllm_cmd=vllm_cmd,
                     port_base=port_base,
                     restarted=restarted,
+                    equivalence_exchanges=served if run.status["steps"]["equivalence"].get("stages") else None,
                 )
                 run.status["steps"]["observation_corpus"] = step
                 run.status["behaviour_fingerprint"] = fingerprint
+                run.status["engine_version"] = _engine_version(run.recipe, vllm_cmd)
             steps = run.status["steps"]
             record_ok = not record or steps["record"].get("state") == "passed"
             corpus_ok = not record_corpus or steps["observation_corpus"].get("state") != "failed"
@@ -519,8 +528,11 @@ def _equivalence(
     out: Path,
     pairs_dir: str | Path | None,
     reference_python: str | None,
+    *,
+    recorder: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Stages 1 and 2 for one recipe, written to ``<out>/<id>/equivalence.json``."""
+    """Stages 1 and 2 for one recipe, written to ``<out>/<id>/equivalence.json``; ``recorder`` collects stage 2's
+    captured exchanges (the corpus step checks its replies against them)."""
     pairs_path = _pairs_path(recipe, pairs_dir)
     if pairs_path is None:
         return {"state": "skipped", "reason": "no pairs file; give --pairs-dir"}
@@ -533,6 +545,7 @@ def _equivalence(
             stages=[1, 2],
             reference_python=reference_python,
             served_model_name=recipe.id,
+            recorder=recorder,
         )
         return {"state": "passed" if document["passed"] else "failed", "passed": document["passed"], "stages": [1, 2]}
     except HarnessError as error:
@@ -559,6 +572,11 @@ def _record(recipe: Recipe, base_url: str, out: Path) -> dict[str, Any]:
     return {"state": "passed", "files": [str(path) for path in written]}
 
 
+def _engine_version(recipe: Recipe, vllm_cmd: str | None) -> str:
+    """The engine version a recording is keyed by: the image's tag, or ``test-stub`` when a stub serves."""
+    return "test-stub" if vllm_cmd else recipe.engine.image.rpartition(":")[2].removeprefix("v")
+
+
 def _observe_corpus(
     run: _EngineRun,
     out: Path,
@@ -567,19 +585,29 @@ def _observe_corpus(
     vllm_cmd: str | None,
     port_base: int,
     restarted: list[_EngineRun],
+    equivalence_exchanges: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], str | None]:
     """One observation corpus for the recipe over the request plan's rows (OBSERVATIONS-SPEC 1-6).
 
-    Returns the step document and the recipe's behaviour fingerprint.  The ``restart`` closure stops
-    the engine and starts it again on the same slot (its port re-resolved in test mode), so the
-    collector sends its ``after_restart`` pass against the restarted server.
+    The corpus lands at its keyed, immutable path (:func:`~rcp_ndcg_vllm.observe.corpus.corpus_path`:
+    ``<out>/observations/vllm-<version>/<recipe>/<fingerprint>/<recorded-at>/``), keyed by the one behaviour
+    fingerprint (:func:`rcp_ndcg_vllm.fingerprint.behaviour_fingerprint`).  The ``restart`` closure stops the
+    engine and starts it again on the same slot, so the ``after_restart`` pass runs against a new engine
+    process with its own run id.  The engine block is probed (``nvidia-smi``, the engine environment's Python
+    named by ``RCP_ENGINE_PYTHON``); in test mode a stub serves and no vLLM fact is claimed.  Returns the step
+    document and the fingerprint.
     """
-    from ..equivalence.fitting import load_pairs, tokenizer_of
-    from ..observe.corpus import fingerprint_of
+    from ..equivalence.fitting import load_pairs
+    from ..fingerprint import behaviour_fingerprint
+    from ..observe.corpus import corpus_path
+    from ..observe.provenance import collector_facts, engine_facts
     from ..record import record_corpus
 
     recipe = run.recipe
-    fingerprint = fingerprint_of(recipe, tokenizer_sha256=tokenizer_of(recipe).sha256)["fingerprint"]
+    try:
+        fingerprint = behaviour_fingerprint(recipe)
+    except HarnessError as error:
+        return {"state": "failed", "error": f"the behaviour fingerprint cannot be computed: {error}"}, None
     pairs_path = _pairs_path(recipe, pairs_dir)
     if pairs_path is None:
         return {"state": "skipped", "reason": "no pairs file; give --pairs-dir"}, fingerprint
@@ -589,14 +617,17 @@ def _observe_corpus(
         rows.append(
             {
                 **row,
-                "request_id": str(row.get("request_id", index)),
+                "request_id": str(row.get("request_id", f"pairs:{index}")),
                 "stratum": str(strata[0]) if strata else "",
             }
         )
     slot = max(run.port - port_base, 0) if port_base else 0
     base_url = f"http://127.0.0.1:{run.port}"
+    started = _now()
+    version = _engine_version(recipe, vllm_cmd)
+    directory = corpus_path(out, version, recipe.id, fingerprint, started)
 
-    def restart() -> str | None:
+    def restart() -> tuple[str, str] | None:
         run.stop()
         fresh = _start(recipe, run.gpus, slot, out, vllm_cmd, port_base, disk=run.disk)
         restarted.append(fresh)
@@ -605,52 +636,60 @@ def _observe_corpus(
             if fresh.exited():
                 return None
             if fresh.ready():
-                return f"http://127.0.0.1:{fresh.port}"
+                return f"http://127.0.0.1:{fresh.port}", f"{recipe.id}@{_now()}"
             time.sleep(_POLL_S)
         return None
 
-    if vllm_cmd:
-        # A stub engine in test mode replaces ``vllm serve``: the corpus names what actually served
-        # (the measured vLLM status table keys on the real engine's version and skivers).
-        engine_facts = {
-            "version": "test-stub",
-            "image": "stub",
-            "note": "a stub engine replaces vllm serve in test mode; no vLLM behaviour is claimed",
-        }
-    else:
-        engine_facts = {
-            "version": recipe.engine.image.rpartition(":")[2].removeprefix("v"),
-            "image": recipe.engine.image,
-        }
+    engine = engine_facts(
+        image="test-stub (no vLLM behaviour is claimed)" if vllm_cmd else recipe.engine.image,
+        serve_argv=list(run.status.get("serve_argv") or []),
+        engine_python=None if vllm_cmd else os.environ.get("RCP_ENGINE_PYTHON"),
+        environ=run.env,
+        started=run.status.get("started"),
+        ready_wait_s=run.status.get("ready_wait_s"),
+    )
+    engine["version"] = version
+    collector = collector_facts(
+        wave_id=os.environ.get("RCP_WAVE_ID") or out.name,
+        job_id=os.environ.get("RCP_JOB_ID"),
+        started=started,
+        finished=None,
+    )
     try:
         report = record_corpus(
             recipe,
             base_url,
             rows,
-            out / recipe.id / "corpus",
-            server_run_id=f"{recipe.id}@{run.status.get('started', _now())}",
-            engine_facts=engine_facts,
+            directory,
+            server_run_id=f"{recipe.id}@{run.status.get('started', started)}",
+            engine_facts=engine,
+            collector=collector,
             restart=restart,
+            equivalence_exchanges=equivalence_exchanges,
         )
     except Exception as error:  # noqa: BLE001 - the corpus step fails this recipe, never the wave
         return {"state": "failed", "error": f"{type(error).__name__}: {error}"}, fingerprint
     return {"state": "passed" if report["passed"] else "failed", **report}, fingerprint
 
 
-def _filter_changed(recipes: list[Recipe], index_path: Path) -> tuple[list[Recipe], list[str]]:
-    """OBSERVATIONS-SPEC section 7's re-record-changed-only: keep the recipes whose behaviour
-    fingerprint differs from the previous index's (a ``wave.json`` or a corpus index), and return the
-    untouched ones' ids for the summary."""
-    from ..equivalence.fitting import tokenizer_of
+def _filter_changed(
+    recipes: list[Recipe], index_path: Path, vllm_cmd: str | None
+) -> tuple[list[Recipe], list[str], dict[str, Any]]:
+    """OBSERVATIONS-SPEC section 7's re-record-changed-only: keep the recipes whose corpus key -- behaviour
+    fingerprint and engine version -- differs from the previous ``wave.json``'s, and return the untouched ones'
+    ids and the verdict (why each changed, which engine versions are new) for the wave document."""
     from ..observe.corpus import changed_since
 
     try:
         index = json.loads(index_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise HarnessError(f"--changed-since {index_path} is unreadable: {error}") from error
-    verdict = changed_since(recipes, index, tokenizer_sha256_of=lambda recipe: tokenizer_of(recipe).sha256)
+    try:
+        verdict = changed_since(recipes, index, engine_version_of=lambda recipe: _engine_version(recipe, vllm_cmd))
+    except HarnessError as error:
+        raise HarnessError(f"--changed-since cannot fingerprint the wave's recipes: {error}") from error
     changed = set(verdict["changed"])
-    return [recipe for recipe in recipes if recipe.id in changed], verdict["unchanged"]
+    return [recipe for recipe in recipes if recipe.id in changed], verdict["unchanged"], verdict
 
 
 def _resolve_recipes(recipe_ids: list[str], recipes_root: str | Path | None) -> list[Recipe]:
@@ -723,16 +762,24 @@ def _status(recipe: Recipe, state: str, **fields: Any) -> dict[str, Any]:
 
 
 def _wave_document(
-    gpus: int, results: dict[str, dict[str, Any]], *, skipped_unchanged: tuple[str, ...] | list[str] = ()
+    gpus: int,
+    results: dict[str, dict[str, Any]],
+    *,
+    skipped_unchanged: tuple[str, ...] | list[str] = (),
+    change_verdict: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The wave summary: one row per recipe, the behaviour fingerprints, the wave's verdict last."""
+    """The wave summary: one row per recipe, the corpus keys (fingerprints and engine versions), the verdict."""
     rows = [results[recipe_id] for recipe_id in sorted(results)]
     fingerprints = {row["recipe"]: row["behaviour_fingerprint"] for row in rows if row.get("behaviour_fingerprint")}
+    engine_versions = {row["recipe"]: row["engine_version"] for row in rows if row.get("behaviour_fingerprint")}
     return {
         "gpus": gpus,
         "recipes": rows,
         "skipped_unchanged": list(skipped_unchanged),
+        "changes": (change_verdict or {}).get("changes", {}),
+        "protocol_due": (change_verdict or {}).get("protocol_due", []),
         "fingerprints": fingerprints,
+        "engine_versions": engine_versions,
         "passed": (bool(rows) or bool(skipped_unchanged)) and all(row["state"] == "verified" for row in rows),
         "finished": _now(),
     }

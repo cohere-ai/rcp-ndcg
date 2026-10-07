@@ -49,6 +49,7 @@ from .adversarial import CONTENT_KINDS, synthetic_text
 from .sources import SUITE_SUBSETS, SourceCorpus, SourceDoc, SourceQuery
 
 __all__ = [
+    "CORPUS_PLAN_VERSION",
     "GENERATOR_VERSION",
     "PINNED_DATASET_COMMITS",
     "SEED",
@@ -62,6 +63,11 @@ __all__ = [
 
 GENERATOR_VERSION = 1
 """The generator's version: any change to what it generates (strata, selection, pads) bumps it."""
+
+CORPUS_PLAN_VERSION = 1
+"""The version of the corpus request plan beyond the pairs rows (:func:`corpus_plan`: the over-length ladder,
+the uncut content kinds, the wire variants and the protocol edges).  Versioned apart from
+:data:`GENERATOR_VERSION` so the pairs files (and their seeded sampling) stay as generated."""
 
 SEED = "rcp-observe-v1"
 """The generator's seed: the deterministic stream every sampling draws from.  Change only with

@@ -88,7 +88,11 @@ class CapturingTransport(httpx.AsyncBaseTransport):
                 "request_bytes": base64.b64encode(raw).decode("ascii"),
                 "request_body": body,
                 "status": response.status_code,
-                "headers": {key: response.headers.get(key, "") for key in ("content-type", "server")},
+                "headers": {
+                    **{key: response.headers.get(key, "") for key in ("content-type", "server")},
+                    # A /pooling ``bytes`` reply's framing: its vectors do not decode without it.
+                    **({"metadata": response.headers["metadata"]} if "metadata" in response.headers else {}),
+                },
                 "response_bytes": base64.b64encode(response.content).decode("ascii"),
                 "response_json": response_json,
             }

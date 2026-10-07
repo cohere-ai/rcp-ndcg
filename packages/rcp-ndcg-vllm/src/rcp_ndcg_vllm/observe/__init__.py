@@ -14,9 +14,11 @@ Public surface:
   :func:`~rcp_ndcg_vllm.observe.requests.pairs_jsonl`,
   :func:`~rcp_ndcg_vllm.observe.requests.write_pairs_file`,
   :func:`~rcp_ndcg_vllm.observe.requests.write_manifest`.
-- :func:`~rcp_ndcg_vllm.observe.corpus.build_corpus`, :func:`~rcp_ndcg_vllm.observe.corpus.verify_corpus`
-  (the observation-corpus format: ``RECORD_SCHEMA`` records and the hash-chained manifest), and
-  :func:`~rcp_ndcg_vllm.observe.corpus.behaviour_fingerprint` (GPU-VALIDATION.md item 8).
+- :mod:`rcp_ndcg_vllm.observe.corpus` writes and accepts observation corpora in the format whose one reader is
+  the product's :mod:`rcp_ndcg.testing.corpus`; the corpus key is the engine version and the behaviour
+  fingerprint of :mod:`rcp_ndcg_vllm.fingerprint` (GPU-VALIDATION.md item 8).
+- :mod:`rcp_ndcg_vllm.observe.provenance` (the manifest's section-4 provenance) and
+  :mod:`rcp_ndcg_vllm.observe.controls` (the negative controls).
 """
 
 from __future__ import annotations

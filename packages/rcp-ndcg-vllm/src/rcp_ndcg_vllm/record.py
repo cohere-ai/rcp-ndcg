@@ -29,15 +29,9 @@ import httpx
 
 from .equivalence.wire import role_client
 from .errors import HarnessError
-from .observe.corpus import (
-    build_record,
-    summarise_nondeterminism,
-    verify_corpus,
-    write_corpus,
-)
 from .recipe import Recipe
 
-__all__ = ["record", "record_corpus"]
+__all__ = ["entry_from_exchange", "record", "record_corpus"]
 
 _PLACEHOLDER = "http://engine"
 _TIMEOUT_S = 120.0
@@ -223,44 +217,47 @@ def _slug(exchange: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# The observation corpus (OBSERVATIONS-SPEC sections 1-3): raw-first records.
+# The observation corpus (OBSERVATIONS-SPEC sections 1-6): raw-first records, provenance, the checks.
 # ---------------------------------------------------------------------------
+
+_ENTRY_HEADERS = ("content-type", "server", "x-vllm-version", "metadata")
+"""The response headers that matter: the content type, the server and its version header, and ``metadata`` (a
+``/pooling`` ``bytes`` reply's framing -- its vectors do not decode without it).  Anything else, authorisation
+and gateway headers included, is stripped before a record is written."""
+
+_REQUEST_HEADERS = ("content-type",)
 
 
 def _entry_body(raw: bytes, parsed: Any) -> dict[str, Any]:
-    """One request/response body as sent or received: raw bytes (base64 when not UTF-8) and its parsed JSON."""
+    """One body as sent or received: raw (UTF-8 text, else ``{"base64": ...}``) and its parsed JSON."""
     try:
-        text = raw.decode("utf-8")
-        body_raw: Any = text
+        body_raw: Any = raw.decode("utf-8")
     except UnicodeDecodeError:
         body_raw = {"base64": base64.b64encode(raw).decode("ascii")}
     return {"body_raw": body_raw, "body_parsed": parsed}
 
 
-_ENTRY_HEADERS = ("content-type", "server", "x-vllm-version")
-"""The response headers that matter (content type, the server's version header); anything else --
-authorisation and gateway headers included -- is stripped before a record is written."""
+def entry_from_exchange(exchange: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """One captured exchange (:class:`~rcp_ndcg_vllm.equivalence.wire.CapturingTransport`'s or a bare probe's)
+    as a corpus record's ``request`` and ``response`` (OBSERVATIONS-SPEC section 3).
 
-
-def _entry_from_exchange(exchange: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    """One captured exchange as the corpus record's ``request`` and ``response`` (section 3).
-
-    Only the headers that matter cross (:data:`_ENTRY_HEADERS` on the response, content type on the
-    request); authorisation and gateway headers never reach a record, and the URL is a path (no
-    hostname is recorded).
+    Only the headers that matter cross; authorisation and gateway headers never reach a record, and the URL
+    becomes a root-relative path (no hostname is recorded).
     """
+    url = str(exchange["url"])
+    path = "/" + url.split("://", 1)[-1].split("/", 1)[-1] if "://" in url else url
     raw_request = base64.b64decode(exchange.get("request_bytes", ""))
     request = {
         "method": exchange["method"],
-        "path": exchange["url"].removeprefix(_PLACEHOLDER),
-        "headers": {key: value for key, value in exchange.get("headers", {}).items() if key == "content-type"},
+        "path": path.split("?", 1)[0],
+        "headers": {key: "application/json" for key in _REQUEST_HEADERS if raw_request},
         **_entry_body(raw_request, exchange.get("request_body")),
     }
-    response_bytes = base64.b64decode(exchange["response_bytes"])
+    headers = exchange.get("headers", {})
     response = {
         "status": exchange["status"],
-        "headers": {key: value for key, value in exchange.get("headers", {}).items() if key in _ENTRY_HEADERS},
-        **_entry_body(response_bytes, exchange.get("response_json")),
+        "headers": {key: value for key, value in headers.items() if key in _ENTRY_HEADERS and value},
+        **_entry_body(base64.b64decode(exchange["response_bytes"]), exchange.get("response_json")),
         "latency_s": exchange.get("latency_s"),
     }
     return request, response
@@ -269,23 +266,37 @@ def _entry_from_exchange(exchange: dict[str, Any]) -> tuple[dict[str, Any], dict
 def _bare_exchange(
     http: httpx.Client, method: str, route: str, body: Any, *, raw: bytes | None = None
 ) -> dict[str, Any]:
-    """One bare probe (deliberate refusals and framing variants) as a captured exchange."""
+    """One bare probe (deliberate refusals, framing variants) as a captured exchange; a connection error is
+    recorded as a status-less exchange (the request set's answer was "no answer"), never raised."""
+    import time
+
     request_bytes = raw if raw is not None else json.dumps(body).encode("utf-8") if body is not None else b""
-    headers = {"content-type": "application/json"} if body is not None or raw is not None else {}
-    payload = request_bytes if (body is not None or raw is not None) else None
+    headers = {"content-type": "application/json"} if request_bytes else {}
+    started = time.monotonic()
     try:
-        response = http.request(method, route, content=payload, headers=headers)
+        response = http.request(method, route, content=request_bytes or None, headers=headers)
     except httpx.HTTPError as error:
-        raise HarnessError(f"recording {method} {route} failed: {error}") from error
+        return {
+            "url": f"{_PLACEHOLDER}{route}",
+            "method": method,
+            "request_bytes": base64.b64encode(request_bytes).decode("ascii"),
+            "request_body": body,
+            "status": None,
+            "headers": {},
+            "response_bytes": base64.b64encode(f"{type(error).__name__}".encode()).decode("ascii"),
+            "response_json": None,
+            "latency_s": time.monotonic() - started,
+        }
     return {
         "url": f"{_PLACEHOLDER}{route}",
         "method": method,
         "request_bytes": base64.b64encode(request_bytes).decode("ascii"),
         "request_body": body,
         "status": response.status_code,
-        "headers": {key: response.headers.get(key, "") for key in ("content-type", "server")},
+        "headers": {key: response.headers.get(key, "") for key in _ENTRY_HEADERS},
         "response_bytes": base64.b64encode(response.content).decode("ascii"),
         "response_json": _safe_json(response.content),
+        "latency_s": time.monotonic() - started,
     }
 
 
@@ -296,6 +307,51 @@ def _safe_json(payload: bytes) -> Any:
         return None
 
 
+class _Collector:
+    """One corpus recording: the records in sending order, the pass being sent and its engine run."""
+
+    def __init__(self, recipe: Recipe, tokenizer: Any) -> None:
+        self.recipe = recipe
+        self.tokenizer = tokenizer
+        self.records: list[dict[str, Any]] = []
+        self.repetition = "same_process_1"
+        self.server_run_id = ""
+
+    def add(self, exchange: dict[str, Any], *, batch_context: dict[str, Any], inputs: dict[str, Any]) -> None:
+        """One exchange as the next record of the current pass."""
+        from .observe.corpus import build_record
+
+        request, response = entry_from_exchange(exchange)
+        self.records.append(
+            build_record(
+                sequence=len(self.records),
+                repetition=self.repetition,
+                batch_context=batch_context,
+                server_run_id=self.server_run_id,
+                request=request,
+                response=response,
+                inputs=inputs,
+            )
+        )
+
+    def inputs(self, row: dict[str, Any], **extra: Any) -> dict[str, Any]:
+        """What the request set meant by one row: ids, strata, source, layer, token counts, media."""
+        return {
+            "request_id": str(row.get("request_id", "")),
+            "stratum": str(row.get("stratum", "")),
+            "probe": "ok",
+            "layer": "model",
+            "source": row.get("_source") or row.get("source"),
+            "strata": row.get("_strata") or row.get("strata") or [],
+            "token_counts": {
+                "query_tokens": self.tokenizer.count(row["query"]),
+                "document_tokens": [self.tokenizer.count(document) for document in row["documents"]],
+            },
+            "media": row.get("media"),
+            **extra,
+        }
+
+
 def record_corpus(
     recipe: Recipe,
     base_url: str,
@@ -303,308 +359,204 @@ def record_corpus(
     out_dir: str | Path,
     *,
     server_run_id: str,
-    engine_facts: dict[str, Any] | None = None,
-    after_restart_base_url: str | None = None,
+    engine_facts: dict[str, Any],
+    collector: dict[str, Any] | None = None,
+    after_restart: tuple[str, str] | None = None,
     restart: Any | None = None,
     batch_sizes: tuple[int, ...] = (1, 2, 8, 32),
+    plan_ids: list[str] | None = None,
+    equivalence_exchanges: list[dict[str, Any]] | None = None,
+    hub_cache: str | Path | None = None,
+    plugin_wheel: str | Path | None = None,
     timeout_s: float = _TIMEOUT_S,
 ) -> dict[str, Any]:
-    """Record one observation corpus for ``recipe`` over the plan's rows (OBSERVATIONS-SPEC 1-3, 5-6).
+    """Record one observation corpus for ``recipe`` over the request plan's rows (OBSERVATIONS-SPEC 1-6).
 
-    Every request is sent **twice in the same server process** and the whole set once more **after the
-    engine restart** -- ``after_restart_base_url`` names the restarted engine, or ``restart()`` stops
-    and restarts it and returns the URL (the wave's closure; ``None`` records the pass's absence
-    with a note); each sampled input travels alone and inside batches of the declared sizes (bf16
-    kernels can change numbers with batch composition), the rerank candidate set also in reverse
-    order, and every sampled input's ``/tokenize`` reply (ids and count) is recorded as ground truth.
-    The request/response record is
-    raw-first (:data:`~rcp_ndcg_vllm.observe.corpus.RECORD_SCHEMA`; the role requests are the product
-    role clients', captured at the product's transport seam); the bare probes cover the routes and the
-    error bodies (over-length, unknown field, malformed JSON, wrong model name, empty input) with the
-    status table that shake1c measured on vLLM v0.31.0.
+    The whole set is sent twice in the same engine process (``same_process_1``, ``same_process_2``, both under
+    ``server_run_id``) and once after an engine restart (``after_restart``, under the restarted engine's own
+    run id): ``after_restart`` names the restarted engine as ``(base_url, server_run_id)``, or ``restart()``
+    stops and restarts it and returns that pair (``None``: the pass is recorded absent, with the reason).  The
+    model layer is the product's role client on every row -- for an embedder each input text alone and in
+    batches of ``batch_sizes`` per side, for a reranker each row with its candidates in the given and the
+    reversed order --, captured at the product's transport seam.  Every pass also sends the protocol probes
+    (routes and error bodies) and the engine's ``/tokenize`` of each sampled input.
 
-    Output: the corpus report ``{"passed": ..., "corpus_dir": ...}``; the corpus directory holds
-    ``records.jsonl``, ``nondeterminism.json`` and the hash-chained ``manifest.json``, and is checked
-    by :func:`~rcp_ndcg_vllm.observe.corpus.verify_corpus` before this returns (a failing corpus is
-    never silently accepted).
+    Inputs beyond the rows: the engine block (:func:`rcp_ndcg_vllm.observe.provenance.engine_facts`), the
+    collector block (default: :func:`~rcp_ndcg_vllm.observe.provenance.collector_facts` without wave or job
+    ids), the plan's request ids (default: the rows'), the equivalence stage's captured exchanges of the same
+    wave (checked for consistency), and where the model facts read from (the Hub cache, the plugin wheel).
+
+    Output: ``{"passed", "checks", "corpus_dir", "records"}``; the corpus directory holds ``records.jsonl``,
+    ``nondeterminism.json`` and the hash-chained ``manifest.json`` with the section-4 provenance and the plan,
+    and :func:`~rcp_ndcg_vllm.observe.corpus.verify_corpus` has accepted or refused it before this returns.
     """
     from .equivalence.fitting import tokenizer_of
+    from .observe.corpus import summarise_nondeterminism, verify_corpus, write_corpus
+    from .observe.provenance import collector_facts, model_facts, recipe_facts, unavailable
 
-    rows = [row for row in rows]
+    started = _now()
+    rows = [{**row, "request_id": str(row.get("request_id", f"pairs:{index}"))} for index, row in enumerate(rows)]
     if not rows:
         raise HarnessError("record_corpus needs at least one request row")
-    tokenizer = tokenizer_of(recipe)
-    collected: list[dict[str, Any]] = []
-    pass_names: list[str] = []
-    restarted_note = None
-    sequence = 0
+    collected = _Collector(recipe, tokenizer_of(recipe))
+    passes: list[dict[str, Any]] = []
 
-    def one_pass(repetition: str, url: str) -> None:
-        """Send the whole set once against ``url`` (rows alone and batched, probes, /tokenize)."""
-        nonlocal sequence
-        client, capture = role_client(recipe, url)
-        for size in batch_sizes:
-            for group_start in range(0, len(rows), size):
-                group = rows[group_start : group_start + size]
-                request_ids = [str(row.get("request_id", group_start + offset)) for offset, row in enumerate(group)]
-                batch_context = {
-                    "size": len(group),
-                    "request_ids": request_ids,
-                    "positions": list(range(len(group))),
-                }
-                sequence = _send_row_group(
-                    recipe,
-                    client,
-                    capture,
-                    group,
-                    collected,
-                    sequence=sequence,
-                    repetition=repetition,
-                    batch_context=batch_context,
-                    server_run_id=server_run_id,
-                    tokenizer=tokenizer,
-                )
-                if recipe.role == "rerank" and size == 1:
-                    reversed_row = {**group[0], "documents": list(reversed(list(group[0]["documents"])))}
-                    sequence = _send_row_group(
-                        recipe,
-                        client,
-                        capture,
-                        [reversed_row],
-                        collected,
-                        sequence=sequence,
-                        repetition=repetition,
-                        batch_context={**batch_context, "probe": "order_reversed"},
-                        server_run_id=server_run_id,
-                        tokenizer=tokenizer,
-                    )
-        collected.extend(
-            _bare_probes(
-                recipe,
-                url,
-                rows,
-                sequence,
-                repetition=repetition,
-                server_run_id=server_run_id,
-                tokenizer=tokenizer,
-                timeout_s=timeout_s,
-            )
+    def one_pass(repetition: str, url: str, run_id: str) -> None:
+        collected.repetition, collected.server_run_id = repetition, run_id
+        _model_layer(recipe, url, rows, collected, batch_sizes)
+        _bare_probes(recipe, url, rows, collected, timeout_s=timeout_s)
+        passes.append({"repetition": repetition, "server_run_id": run_id})
+
+    one_pass("same_process_1", base_url, server_run_id)
+    one_pass("same_process_2", base_url, server_run_id)
+    restarted = after_restart if after_restart is not None else (restart() if restart is not None else None)
+    if restarted:
+        one_pass("after_restart", restarted[0], restarted[1])
+    else:
+        passes.append(
+            {"repetition": "after_restart", "absent": "the engine did not restart (no restart given, or it failed)"}
         )
-        pass_names.append(repetition)
 
-    # Twice in the same server process, THEN (and only then) the restart and the after-restart pass.
-    one_pass("same_process", base_url)
-    one_pass("same_process", base_url)
-    if after_restart_base_url:
-        one_pass("after_restart", after_restart_base_url)
-    elif restart is not None:
-        restarted_url = restart()
-        if restarted_url:
-            one_pass("after_restart", restarted_url)
-        else:
-            restarted_note = "the engine did not restart in time; the after_restart pass is absent"
-
-    nondeterminism = summarise_nondeterminism(collected)
     directory = Path(out_dir)
     directory.mkdir(parents=True, exist_ok=True)
+    nondeterminism = summarise_nondeterminism(collected.records, dim=getattr(recipe.client, "dim", None))
     (directory / "nondeterminism.json").write_text(
         json.dumps(nondeterminism, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
+    collector_block = collector or collector_facts(wave_id=None, job_id=None, started=started, finished=None)
+    collector_block = {**collector_block, "finished": _now(), "module": "rcp_ndcg_vllm.record.record_corpus"}
     manifest = {
-        "engine": engine_facts or {"version": "unknown"},
-        "recipe": {"id": recipe.id, "model": recipe.model, "revision": recipe.revision},
-        "collector": {
-            "module": "rcp_ndcg_vllm.record.record_corpus",
-            "server_run_id": server_run_id,
-            "batch_sizes": list(batch_sizes),
-            "repetitions": pass_names,
-            **({"note": restarted_note} if restarted_note else {}),
-        },
+        "engine": engine_facts,
+        "model": model_facts(recipe, hub_cache=hub_cache, plugin_wheel=plugin_wheel),
+        "recipe": recipe_facts(recipe),
+        "collector": {**collector_block, "batch_sizes": list(batch_sizes), "passes": passes},
+        "plan": {"request_ids": list(plan_ids) if plan_ids is not None else [row["request_id"] for row in rows]},
     }
-    write_corpus(directory, manifest, collected)
-    report = verify_corpus(directory)
+    if not restarted:
+        manifest["collector"]["after_restart"] = unavailable("the engine did not restart; the pass is absent")
+    write_corpus(directory, manifest, collected.records)
+    report = verify_corpus(directory, equivalence_exchanges=equivalence_exchanges)
     return {
         "passed": report["passed"],
         "checks": report["checks"],
         "corpus_dir": str(directory),
-        "records": len(collected),
+        "records": len(collected.records),
     }
 
 
-def _send_row_group(
-    recipe: Recipe,
-    client: Any,
-    capture: Any,
-    group: list[dict[str, Any]],
-    collected: list[dict[str, Any]],
-    *,
-    sequence: int,
-    repetition: str,
-    batch_context: dict[str, Any],
-    server_run_id: str,
-    tokenizer: Any,
-) -> int:
-    """One client call for one request group; the captured requests become corpus records in place."""
-    started = __import__("time").monotonic()
-    start = len(capture.exchanges)
-    _drive_client(recipe, client, group)
-    latency = __import__("time").monotonic() - started
-    for offset, exchange in enumerate(capture.exchanges[start:]):
-        request, response = _entry_from_exchange(exchange)
-        response["latency_s"] = latency
-        if len(group) > 1:
-            joined = "+".join(str(row.get("request_id", "")) for row in group)
-            row = {**group[0], "request_id": joined}
-        else:
-            row = group[min(offset, len(group) - 1)]
-        collected.append(
-            build_record(
-                sequence=sequence + offset,
-                repetition=repetition,
-                batch_context=batch_context,
-                server_run_id=server_run_id,
-                request=request,
-                response=response,
-                inputs=_inputs_of(row, tokenizer),
-            )
-        )
-    return sequence + max(len(capture.exchanges) - start, 1)
+def _now() -> str:
+    from datetime import UTC, datetime
+
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-def _drive_client(recipe: Recipe, client: Any, group: list[dict[str, Any]]) -> None:
-    """The product's role client sends one row group exactly as the served path would."""
+def _model_layer(
+    recipe: Recipe, url: str, rows: list[dict[str, Any]], collected: _Collector, batch_sizes: tuple[int, ...]
+) -> None:
+    """The model layer of one pass: the product's role client on every row, as the served path sends it."""
     from rcp_ndcg_core.content import Content
 
     from rcp_ndcg.inference.types import EncodeRole
 
-    if recipe.role == "rerank":
-        for row in group:
-            client.rerank(row["query"], list(row["documents"]), instruction=row.get("instruction"))
-        return
-    queries = [row["query"] for row in group if row["query"]]
-    documents = [document for row in group for document in row["documents"]]
     from .equivalence.fitting import declared_shapes
 
+    client, capture = role_client(recipe, url)
+
+    def captured_since(start: int, batch_context: dict[str, Any], inputs: dict[str, Any]) -> None:
+        for exchange in capture.exchanges[start:]:
+            collected.add(exchange, batch_context=batch_context, inputs=inputs)
+
+    if recipe.role == "rerank":
+        # One query per /rerank request: the candidate set is the batch, sent in the given and the reversed order.
+        for row in rows:
+            for order in ("given", "reversed"):
+                documents = list(row["documents"]) if order == "given" else list(reversed(row["documents"]))
+                start = len(capture.exchanges)
+                client.rerank(row["query"], documents, instruction=row.get("instruction"))
+                context = {"size": 1, "request_ids": [row["request_id"]], "positions": [0], "order": order}
+                captured_since(start, context, collected.inputs(row, order=order))
+        return
     declared = set(declared_shapes(recipe))
-    if queries and "query" in declared:
-        client.encode([Content.from_text(text) for text in queries], EncodeRole.QUERY)
-    if documents and "document" in declared:
-        client.encode([Content.from_text(text) for text in documents], EncodeRole.DOCUMENT)
-    if queries and not ("query" in declared or "document" in declared):
-        client.encode([Content.from_text(text) for text in queries], EncodeRole.DOCUMENT)
-
-
-def _inputs_of(row: dict[str, Any], tokenizer: Any) -> dict[str, Any]:
-    """What the generator meant for one row: source ids, strata, token counts and declared media."""
-    return {
-        "request_id": str(row.get("request_id", "")),
-        "stratum": str(row.get("stratum", "")),
-        "probe": str(row.get("probe", "ok")),
-        "source": row.get("_source") or row.get("source"),
-        "strata": row.get("_strata") or row.get("strata") or [],
-        "token_counts": {
-            "query_tokens": tokenizer.count(row["query"]),
-            "document_tokens": [tokenizer.count(document) for document in row["documents"]],
-        },
-        "media": row.get("media"),
-    }
+    sides = [("query", EncodeRole.QUERY)] if "query" in declared else []
+    if declared & {"document", "pair"} or not sides:
+        sides.append(("document", EncodeRole.DOCUMENT))
+    for side, role in sides:
+        items: list[tuple[dict[str, Any], str, str]] = []
+        for row in rows:
+            texts = [row["query"]] if side == "query" else list(row["documents"])
+            items.extend((row, f"{side}:{index}", text) for index, text in enumerate(texts))
+        for size in batch_sizes:
+            for start_index in range(0, len(items), size):
+                group = items[start_index : start_index + size]
+                context = {
+                    "size": len(group),
+                    "request_ids": [row["request_id"] for row, _, _ in group],
+                    "items": [item for _, item, _ in group],
+                    "positions": list(range(len(group))),
+                }
+                row, item, _ = group[0]
+                inputs = collected.inputs(row, item=item, side=side)
+                if len(group) > 1:
+                    inputs["request_id"] = "batch:" + "+".join(f"{r['request_id']}/{i}" for r, i, _ in group)
+                start = len(capture.exchanges)
+                client.encode([Content.from_text(text) for _, _, text in group], role)
+                captured_since(start, context, inputs)
 
 
 def _bare_probes(
-    recipe: Recipe,
-    base_url: str,
-    rows: list[dict[str, Any]],
-    sequence: int,
-    *,
-    repetition: str,
-    server_run_id: str,
-    tokenizer: Any,
-    timeout_s: float,
-) -> list[dict[str, Any]]:
-    """The protocol probes (routes and error bodies) as bare calls: the refusals the adapters map.
+    recipe: Recipe, base_url: str, rows: list[dict[str, Any]], collected: _Collector, *, timeout_s: float
+) -> None:
+    """The protocol probes of one pass (routes and error bodies), sent bare: the refusals the adapters map.
 
-    An unknown request field is answered 200 by vLLM v0.31.0 on every role route (measured, shake1c);
-    the corpus records what the engine answered, and the acceptance check's status table expects the
-    measurement.  ``wrong_model`` and ``empty_input`` are recorded with no measured expectation.
+    An unknown request field is answered 200 by vLLM v0.31.0 on every role route (measured in the shakedown);
+    the corpus records what the engine answered and the acceptance check's status table expects the
+    measurement.  ``wrong_model`` and ``empty_input`` carry no measured expectation.
     """
     route = _ROLE_ROUTES[recipe.role]
     over_length = "a " * (recipe.serve.max_model_len * 2)
-    template_row = dict(rows[0])
-    probes: list[dict[str, Any]] = [
-        {"probe": "ok", "method": "GET", "path": "/v1/models", "body": None, "raw": None},
-        {"probe": "ok", "method": "GET", "path": "/health", "body": None, "raw": None},
-        {
-            "probe": "unknown_field",
-            "method": "POST",
-            "path": route,
-            "body": _role_body(recipe, template_row, unknown_field=True),
-            "raw": None,
-        },
-        {"probe": "malformed_json", "method": "POST", "path": route, "body": None, "raw": b"{not json"},
-        {
-            "probe": "wrong_model",
-            "method": "POST",
-            "path": route,
-            "body": _role_body(recipe, template_row, model="not-a-model"),
-            "raw": None,
-        },
-        {
-            "probe": "empty_input",
-            "method": "POST",
-            "path": route,
-            "body": _role_body(recipe, template_row, empty=True),
-            "raw": None,
-        },
-        {
-            "probe": "over_length",
-            "method": "POST",
-            "path": route,
-            "body": _role_body(recipe, {**template_row, "query": over_length, "documents": [over_length]}),
-            "raw": None,
-        },
+    first = dict(rows[0])
+    probes: list[tuple[str, str, str, Any, bytes | None]] = [
+        ("ok", "GET", "/v1/models", None, None),
+        ("ok", "GET", "/health", None, None),
+        ("unknown_field", "POST", route, _role_body(recipe, first, unknown_field=True), None),
+        ("malformed_json", "POST", route, None, b"{not json"),
+        ("wrong_model", "POST", route, _role_body(recipe, first, model="not-a-model"), None),
+        ("empty_input", "POST", route, _role_body(recipe, first, empty=True), None),
+        (
+            "over_length",
+            "POST",
+            route,
+            _role_body(recipe, {**first, "query": over_length, "documents": [over_length]}),
+            None,
+        ),
     ]
-    out: list[dict[str, Any]] = []
     with httpx.Client(base_url=_engine_root(base_url), timeout=timeout_s) as http:
-        for probe_row in probes:
-            exchange = _bare_exchange(
-                http,
-                str(probe_row["method"]),
-                str(probe_row["path"]),
-                probe_row["body"],
-                raw=probe_row["raw"],
+        for probe, method, path, body, raw in probes:
+            inputs = collected.inputs(
+                first, probe=probe, request_id=f"probe:{probe}", stratum="protocol", layer="protocol"
             )
-            request, response = _entry_from_exchange(exchange)
-            inputs = _inputs_of(template_row, tokenizer)
-            inputs.update(
-                {
-                    "probe": probe_row["probe"],
-                    "request_id": f"probe:{probe_row['probe']}",
-                    "stratum": "protocol",
-                }
+            collected.add(
+                _bare_exchange(http, method, path, body, raw=raw),
+                batch_context={"size": 1, "request_ids": [f"probe:{probe}"], "positions": [0]},
+                inputs=inputs,
             )
-            out.append(
-                build_record(
-                    sequence=sequence + len(out),
-                    repetition=repetition,
+        from .equivalence.stages import tokenize_url
+
+        tokenize_route = tokenize_url(base_url).removeprefix(_engine_root(base_url))
+        for index, row in enumerate(rows):
+            for side, text in (
+                ("query", row["query"]),
+                *((f"document:{k}", d) for k, d in enumerate(row["documents"])),
+            ):
+                body = {"model": recipe.id, "prompt": text, "add_special_tokens": True}
+                inputs = collected.inputs(
+                    row, probe="tokenize", request_id=f"tokenize:{index}:{side}", stratum="tokenize", side=side
+                )
+                collected.add(
+                    _bare_exchange(http, "POST", tokenize_route, body),
                     batch_context={"size": 1, "request_ids": [inputs["request_id"]], "positions": [0]},
-                    server_run_id=server_run_id,
-                    request=request,
-                    response=response,
                     inputs=inputs,
                 )
-            )
-    out.extend(
-        _tokenize_probes(
-            recipe,
-            base_url,
-            rows,
-            sequence + len(out),
-            server_run_id=server_run_id,
-            tokenizer=tokenizer,
-            repetition=repetition,
-        )
-    )
-    return out
 
 
 def _role_body(
@@ -615,7 +567,7 @@ def _role_body(
     unknown_field: bool = False,
     empty: bool = False,
 ) -> dict[str, Any]:
-    """One bare request body on the recipe's role route (the exact wire shape the adapter speaks)."""
+    """One bare request body on the recipe's role route (the wire shape the adapter speaks)."""
     body: dict[str, Any]
     if recipe.role == "rerank":
         body = {
@@ -624,62 +576,14 @@ def _role_body(
             "documents": [] if empty else list(row["documents"]),
         }
     elif recipe.role == "embed":
-        body = {
-            "model": model or recipe.id,
-            "input": [""] if empty else ([row["query"]] or [row["documents"][0]]),
-            "encoding_format": "float",
-        }
+        body = {"model": model or recipe.id, "input": [""] if empty else [row["query"]], "encoding_format": "float"}
     else:
         body = {
             "model": model or recipe.id,
-            "input": [""] if empty else ([row["query"]] or [row["documents"][0]]),
+            "input": [""] if empty else [row["query"]],
             "task": "token_embed",
             "encoding_format": "float",
         }
     if unknown_field:
         body["unknown_field"] = "map-the-error"
     return body
-
-
-def _tokenize_probes(
-    recipe: Recipe,
-    base_url: str,
-    rows: list[dict[str, Any]],
-    sequence: int,
-    *,
-    repetition: str,
-    server_run_id: str,
-    tokenizer: Any,
-) -> list[dict[str, Any]]:
-    """The engine's own ``/tokenize`` reply per sampled input (ids and count): the token ground truth."""
-    from .equivalence.stages import tokenize_url
-
-    out: list[dict[str, Any]] = []
-    with httpx.Client(base_url=_engine_root(base_url), timeout=_TIMEOUT_S) as http:
-        for row_index, row in enumerate(rows):
-            for side, text in (("query", row["query"]), ("document", row["documents"][0])):
-                body = {"model": recipe.id, "prompt": text, "add_special_tokens": True}
-                route = tokenize_url(base_url).removeprefix(_engine_root(base_url))
-                exchange = _bare_exchange(http, "POST", route, body)
-                request, response = _entry_from_exchange(exchange)
-                inputs = _inputs_of(row, tokenizer)
-                inputs.update(
-                    {
-                        "probe": "tokenize",
-                        "request_id": f"tokenize:{row_index}:{side}",
-                        "stratum": "tokenize",
-                        "side": side,
-                    }
-                )
-                out.append(
-                    build_record(
-                        sequence=sequence + len(out),
-                        repetition=repetition,
-                        batch_context={"size": 1, "request_ids": [inputs["request_id"]], "positions": [0]},
-                        server_run_id=server_run_id,
-                        request=request,
-                        response=response,
-                        inputs=inputs,
-                    )
-                )
-    return out
