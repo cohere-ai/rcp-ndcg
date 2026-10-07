@@ -25,6 +25,39 @@ released together.
 
 ### Public surface
 
+- **`rcp_ndcg.testing.engines`: the verified fake engines** (GPU-VALIDATION items 2-4, 7 and 8). One
+  emulator per (engine, version, recipe, behaviour fingerprint), selected as
+  `fake://vllm-0.31.0/<recipe>` (`rcp_ndcg.inference.fake` routes engine-version hosts there); the
+  protocol is emulated (routes, request validation, error bodies, result ordering and framing, usage
+  counts and token counting with the recipe's real tokenizer files) and the model outputs are
+  replayed for observed inputs -- a declared deterministic surrogate for unseen ones, marked
+  `replayed`/`surrogate`/`mixed` in `x-rcp-ndcg-emulator-source`, recorded per reply in `answer_log`.
+  The corpus seam (`load_corpus`, `register_corpus_format`, `register_line_migration`,
+  `NORMALISATION_VERSION`) reads the shakedown's recorder format today and takes
+  `rcp_ndcg_vllm.observe`'s writer when it lands; `behaviour_diff` writes the per-input delta report,
+  `measure_non_determinism` derives the verification tolerances from the corpus's own repeats, and
+  the registry (`registry`, `transport_for`) resolves by (engine, version, fingerprint) with the
+  `rcp_ndcg.emulators` entry-point group for out-of-tree emulators. An emulator refuses an engine
+  version or recipe revision it was not verified against; the conformance suite
+  (`tests/conformance/`) replays every recorded exchange and the staleness check names the changed
+  fingerprint inputs (waivers: `tests/conformance/waivers.json`, empty at release).
+- **`rcp_ndcg_vllm.fingerprint`: the recipe behaviour fingerprint** (GPU-VALIDATION item 8):
+  `behaviour_fingerprint(recipe)` (the SHA-256 of the checkpoint id and revision, the serve block,
+  the template file's bytes, the tokenizer's SHA-256 and the request-shaping client fields) and
+  `fingerprint_inputs(recipe)` (every input named, for staleness messages), with
+  `fingerprint_changes` and the one tokenizer resolution (`load_recipe_tokenizer`,
+  `tokenizer_sha256`, `use_tokenizer_store` -- vendored `tokenizer.json` copies whose SHA-256 is
+  verified on every read).
+- **`rcp_ndcg_vllm.changes`: change handling** (OBSERVATIONS-SPEC section 7): `changed_recipes` (the
+  re-record-changed-only selection: `unchanged`/`changed`/`new`/`unloadable` per recipe, the changed
+  inputs named) and `behaviour_report` (the behaviour diff of two corpora of one recipe), as
+  functions and `python -m rcp_ndcg_vllm.changes` (`changed` and `diff`).
+- **The corpora under `tests/contract/engines/`**: the compact shakedown corpus (12 recipes, 48
+  raw-first exchanges, manifest hashes per file and in the repository's corpus index, a shared
+  vendored tokenizer store) with the append-only verification record (`verification.jsonl`), and the
+  golden replays (`tests/e2e/test_golden_replay.py`): NanoBEIR-shaped and ViDoRe-shaped minis through
+  the full retrieval and rerank path, reproducing the goldens to 1e-9 with every input observed.
+
 - **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
   are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric
   placements whose document has no Bradley-Terry theta, and the queries absent from `bt_scores`, instead of
@@ -80,6 +113,13 @@ released together.
   `ConfigError` naming the template segment to use instead (the fields stay for template-less configs).
 
 ### Fixed
+
+- **Four shake1c recipes load again** (`qwen3-embedding-0.6b`, `octen-embedding-8b`): a template shape
+  may end on a content span of its own without a trailing empty fixed segment (byte-identical
+  renders; TemplateSpec refuses an empty fixed segment), and the two VL recipes
+  (`qwen3-vl-embedding-2b`, `qwen3-vl-reranker-2b`) declare the client media policy
+  (`max_images: 1`, with `max_videos: 1` where the modality is declared) mirroring
+  `serve.limit_mm_per_prompt`.
 
 - **A tokenizer file's embedded truncation and padding no longer cap the counts** (G5): a `tokenizer.json`
   can ship `truncation: {max_length: 1024}` (topk-embed-v1-small does) or fixed-length padding, and an

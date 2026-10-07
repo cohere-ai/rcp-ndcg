@@ -26,6 +26,13 @@ vLLM and torch.
   clients and audited on the captured wire.
 - `src/rcp_ndcg_vllm/record.py` — records one fixed request/response exchange per engine route under
   `<out>/<engine>-<version>/<recipe-id>/`, the fixtures the engine adapters' contract tests replay.
+- `src/rcp_ndcg_vllm/fingerprint.py` — the recipe **behaviour fingerprint** (GPU-VALIDATION item 8):
+  `behaviour_fingerprint(recipe)` and its named `fingerprint_inputs(recipe)`, plus the one tokenizer
+  resolution (`load_recipe_tokenizer`, `use_tokenizer_store`) the fingerprint, the emulators and the
+  clients share.
+- `src/rcp_ndcg_vllm/changes.py` — change handling (OBSERVATIONS-SPEC section 7): `changed` (the
+  re-record-changed-only selection) and `diff` (the behaviour diff of two corpora of one recipe), as
+  functions and `python -m rcp_ndcg_vllm.changes`.
 - `src/rcp_ndcg_vllm/jobs/` — `run_wave.py` (packs recipes onto one node's GPUs, with per-slot isolation and
   the free-disk check and eviction), `wave0_probe.py` and `wave0_report.py` (wave 0's probes and the report
   schema), and `plugins.py` (the plugin wheels a wave's recipes install into the engine environment).

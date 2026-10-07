@@ -237,6 +237,7 @@ def test_out_of_tree_emulators_register_through_the_entry_point_group() -> None:
     registry.clear()
     registry._entry_points_loaded = False
     original = metadata.entry_points
+
     def fake_entry_points(**kwargs):
         return [_Entry()] if kwargs.get("group") == "rcp_ndcg.emulators" else original(**kwargs)
 
