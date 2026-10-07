@@ -14,11 +14,12 @@
   "engine": {
     "image": "vllm/vllm-openai:v0.31.0",
     "image_digest": null,
+    "min_version": "0.31.0",
     "name": "vllm",
     "version": "0.31.0"
   },
   "files": {
-    "exchanges.jsonl.gz": "4b767264413c166ff253e51cdd8397ecc69d6e40467eb1adc51274206164de2a"
+    "exchanges.jsonl.gz": "e66dc38ff19b03ce57e7389b5742cc544753c87fe081beeee31a75a84eb5225f"
   },
   "model": {
     "id": "zeroentropy/zembed-1-embedding",

@@ -88,16 +88,14 @@ def _listwise_builder(recipe: Any):
 
 
 @functools.cache
-def emulator_for(recipe_id: str) -> Any:
-    """The registered emulator of ``recipe_id`` (facts from the recipe and its corpus): one per recipe
-    per process -- the registry is keyed (engine, version, recipe, fingerprint), and the conformance and
-    golden suites share the one verified instance."""
+def _build_emulator(recipe_id: str) -> Any:
+    """The one emulator of ``recipe_id``, built once per process (facts from the recipe and its corpus)."""
+    harness()
     from rcp_ndcg_vllm.fingerprint import behaviour_fingerprint, load_recipe_tokenizer
 
     from rcp_ndcg.testing.engines import EngineFacts, VllmEmulator, registry
 
     recipe = load_recipe(recipe_id)
-    harness()
     tokenizer = load_recipe_tokenizer(recipe)
     corpus = corpus_of(recipe)
     facts = EngineFacts(
@@ -112,5 +110,15 @@ def emulator_for(recipe_id: str) -> Any:
     emulator.require_verified_for(
         recipe.id, recipe.revision, behaviour_fingerprint(recipe), str(corpus.engine["version"])
     )
+    registry.register(emulator)
+    return emulator
+
+
+def emulator_for(recipe_id: str) -> Any:
+    """The registered emulator of ``recipe_id``: one per recipe per process, and re-registered on every
+    call (the registry may have been reset between tests)."""
+    from rcp_ndcg.testing.engines import registry
+
+    emulator = _build_emulator(recipe_id)
     registry.register(emulator)
     return emulator

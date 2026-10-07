@@ -14,11 +14,12 @@
   "engine": {
     "image": "vllm/vllm-openai:v0.31.0",
     "image_digest": null,
+    "min_version": "0.31.0",
     "name": "vllm",
     "version": "0.31.0"
   },
   "files": {
-    "exchanges.jsonl.gz": "bc0cb03c841b2a7d7062c90ae26d895985723819c18d47fc7ef17bbc167b523c"
+    "exchanges.jsonl.gz": "baf3dc9d7dbb606c083cf27e553f03fe2626bb2adfae078aaa356a9a2cbe6615"
   },
   "model": {
     "id": "zeroentropy/zerank-2-reranker",
