@@ -6,7 +6,9 @@ Read this file completely, then `AGENTS.md` (binding), then the workstream promp
 `handover/specs/` (sanitized copies of the operator's working notes; any `<operator-notes>/...` or `<repo>/...` path
 inside them points to the operator's machine and is not available to you — the content you need is in `handover/`).
 `handover/` is temporary scaffolding on `rfc-0001`: read it, write your reports into `handover/reports/`, and delete the
-whole directory in one commit before the release (it must not ship; no distribution packages it).
+whole directory in one commit before the release (it must not ship; no distribution packages it), together with
+the exclusion of `handover/` in `tests/docs/_markdown.py` (`markdown_files`), which keeps these working notes out of
+the docs tests while they exist.
 
 ## 1. Mission and scope
 
