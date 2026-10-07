@@ -148,7 +148,10 @@ def test_recipe_validates() -> None:
     assert client.instruction == "none"  # the paper's fixed default instruction
     assert client.template.anchor == "last"
     assert client.template.shapes() == ("pair",)
-    assert recipe.reference.known_deviations == []  # the paper code drops no anchor (measured)
+    # One over-cap policy family-wide (the operator's 09:2x decision): the reference keeps every
+    # anchor and cuts over-cap content the paper's way (the joint longest_first pair cut), never
+    # copying the client's cut -- so over-cap rows are reported, not gated.
+    assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
     assert recipe.reference.score_scale == "probability"
     assert recipe.status.state == "unverified"
     assert recipe.sources, "the recipe lists its sources"
@@ -263,6 +266,59 @@ def test_mutation_dropping_the_trailing_anchor_segment_reddens_the_template_chec
     # post-processor declaration
     with pytest.raises(ValueError, match="anchor: last"):
         TemplateSpec(pair=tuple(segment for segment in template.pair[:-1]), anchor="last", add_special_tokens=False)
+
+
+def test_non_nfc_rows_compare_byte_identical_spans(tmp_path: Path, tokenizer_dir: Path) -> None:
+    """NFD (non-NFC) input: the render comparison byte-equals the RAW characters.
+
+    ``tok.decode(tok.encode(x))`` is not the identity for this checkpoint (its normalizer maps
+    non-NFC text to NFC, keeping the ids equal but not the characters): the reference must cut at
+    raw character offsets (verbatim prefixes), never decode the kept ids back. On decomposed-accent
+    rows the shipped spans and the reference's must match byte for byte — this goes red the moment
+    either side decodes instead of cutting (finding 4: ``bytes_equal=False, ids_equal=True``).
+    """
+    decomposed = "cafe" + chr(101) + chr(769)  # e + combining acute: NFD, never NFC
+    rows = [
+        {"query": f"what about {decomposed}?", "documents": [f"The {decomposed} is served over the river."]},
+        {
+            "query": f"menu of the {decomposed} {decomposed} house",
+            "documents": [f"{decomposed} soup and {decomposed} pie, with notes on the {decomposed} " * 12],
+        },
+    ]
+    recipe = local_recipe(tokenizer_dir)
+    pairs_path = write_pairs(tmp_path / "pairs.jsonl", rows)
+    document = stage1_prompts(recipe, pairs_path, sys.executable, over_length_per_shape=1)
+    assert document["render_check"]["status"] == "run" and document["render_check"]["rows"] == 2
+    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
+
+
+def test_the_client_settles_an_over_share_query_once_at_its_share(tmp_path: Path, tokenizer_dir: Path) -> None:
+    """The settle rule, pinned on the wire: an over-share query is NOT sent whole.
+
+    The rerank client settles the shared query once per call and ships it at its declared
+    ``query_max_tokens`` (4096) whenever the query exceeds it — the shipped span is a verbatim
+    prefix of the raw query (a raw character cut, never a decode round trip), identical for every
+    document of the request.
+    """
+    from rcp_ndcg.data.tokenizer import load_tokenizer
+
+    recipe = local_recipe(tokenizer_dir)
+    tokenizer = load_tokenizer(str(tokenizer_dir))
+    long_query = "over share query filler token " * 1400
+    assert tokenizer.count(long_query) > QUERY_MAX_TOKENS
+    spans = served_pair(recipe, long_query, ["a short document.", "another short document."])
+    settled = spans["query"]
+    assert settled != long_query, "an over-share query must be cut at its share, never sent whole"
+    assert long_query.startswith(settled), "the settled span must be a verbatim prefix of the raw query"
+    assert 4080 <= tokenizer.count(settled) <= QUERY_MAX_TOKENS
+
+
+def test_the_short_query_ships_whole(tmp_path: Path, tokenizer_dir: Path) -> None:
+    """The other half of the settle rule: an under-share query is sent uncut (nothing settles it)."""
+    recipe = local_recipe(tokenizer_dir)
+    query = "capital of france"
+    spans = served_pair(recipe, query, ["paris is the capital of france."])
+    assert spans["query"] == query
 
 
 def test_the_recipe_refuses_an_undeclared_query_share(tmp_path: Path) -> None:
