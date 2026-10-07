@@ -181,15 +181,7 @@ class PoolingClient(RoleClient):
                 [np.zeros((0, 0), dtype=self.config.embed_dtype)] * len(contents),
                 dtype=self.config.embed_dtype,
             )
-        if batch_size is not None and batch_size < 1:
-            raise ConfigError(f"batch_size must be at least 1, got {batch_size}")
-        size = batch_size or self.config.batch_size
-        max_batch = getattr(self._adapter_cls, "MAX_BATCH", None)
-        if max_batch is not None and size > max_batch:
-            raise ConfigError(
-                f"the {self.config.api} pooling API takes at most {max_batch} items per request; batch_size is {size}",
-                hint=f"set batch_size to {max_batch} or less, or leave it unset",
-            )
+        size = self._request_size(batch_size)
         batches = [prepared.items[start : start + size] for start in range(0, len(prepared.items), size)]
         id_batches = [prepared.token_ids[start : start + size] for start in range(0, len(prepared.items), size)]
         gate = asyncio.Semaphore(self.config.concurrency)

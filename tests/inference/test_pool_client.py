@@ -85,6 +85,22 @@ class TestEncode:
         asyncio.run(client.aencode([Content.from_text(f"d{i}") for i in range(3)], EncodeRole.DOCUMENT, batch_size=1))
         assert len(sender.sent) == 4
 
+    def test_a_served_wire_s_declared_cap_never_refuses_a_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The batch cap is a HOSTED profile's fact on every role (one rule, the embed role's): a served
+        /pooling engine answers its own over-count refusal, so a cap declared on a served wire refuses
+        nothing client-side -- the batch goes out whole."""
+        from rcp_ndcg.inference.adapters.pooling import VllmPooling
+
+        monkeypatch.setattr(VllmPooling, "MAX_BATCH", 2)
+        assert VllmPooling.HOSTED is False
+        vectors = {f"d{i}": np.ones((1, 2), dtype=np.float16) for i in range(4)}
+        sender = _GatedSender(PoolingServer(vectors))
+        client = _client(sender, batch_size=4)
+
+        asyncio.run(client.aencode([Content.from_text(f"d{i}") for i in range(4)], EncodeRole.DOCUMENT))
+
+        assert len(sender.sent) == 1
+
     def test_prompts_apply_per_role(self) -> None:
         sender = _GatedSender(PoolingServer({}, default=np.ones((1, 2), dtype=np.float16)))
         client = _client(sender, query_prompt="Query: ", doc_prompt="Document: ")

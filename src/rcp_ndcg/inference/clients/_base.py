@@ -76,6 +76,32 @@ T = TypeVar("T")
 """The result type of a coroutine the fan-out runs."""
 
 
+def _check_batch_size(adapter: type[Any], size: int, *, noun: str = "items") -> None:
+    """Refuse a request size above the profile's published cap, instead of silently capping it -- the one
+    batch-cap rule of every role.
+
+    The cap is a HOSTED profile's own fact: a served engine (vLLM, SGLang, TEI, Infinity -- the
+    ``openai_embeddings`` and ``/pooling`` shapes) answers an over-count batch with its own refusal, which
+    the adapter maps to a typed :class:`~rcp_ndcg.errors.CapabilityError` naming ``batch_size`` -- a stale
+    client-side cap must not refuse a batch the engine would serve.
+
+    Args:
+        adapter: The resolved adapter class (its ``MAX_BATCH`` and ``HOSTED`` facts).
+        size: The request size.
+        noun: What one batch entry is called in the message (``texts``, ``items``).
+
+    Raises:
+        ConfigError: a HOSTED profile's published cap is exceeded.
+    """
+    max_batch = getattr(adapter, "MAX_BATCH", None)
+    if max_batch is not None and getattr(adapter, "HOSTED", False) and size > max_batch:
+        raise ConfigError(
+            f"the {getattr(adapter, 'name', '?')} API takes at most {max_batch} {noun} per request; "
+            f"batch_size is {size}",
+            hint=f"set batch_size to {max_batch} or less, or leave it unset",
+        )
+
+
 class PreparedItems(NamedTuple):
     """What a role client's ``_prepare`` decided to send, aligned back to the inputs.
 
@@ -125,6 +151,9 @@ class RoleClient[C: Endpoint]:
     #: refuses a media-carrying request before the media is fetched or counted, with the adapter's own
     #: typed refusal.
     MEDIA_ON_WIRE: ClassVar[bool] = True
+
+    #: How one batch entry is named in the batch-cap refusal (:func:`_check_batch_size`).
+    BATCH_NOUN: ClassVar[str] = "items"
 
     #: The role config, as it was given (a hosted profile's ``base_url`` stays ``None``).
     config: C
@@ -752,6 +781,16 @@ class RoleClient[C: Endpoint]:
                     continue
             kept.append(content)  # "send": the empty string goes out, as today
         return kept, omitted
+
+    # -- batching -------------------------------------------------------------
+    def _request_size(self, batch_size: int | None) -> int:
+        """The request size of one call: ``batch_size``, else the config's; below 1, or above a HOSTED
+        profile's published cap (:func:`_check_batch_size`), is refused (typed)."""
+        size = getattr(self.config, "batch_size", None) if batch_size is None else batch_size
+        if not isinstance(size, int) or size < 1:
+            raise ConfigError(f"batch_size must be at least 1, got {size}")
+        _check_batch_size(self._adapter_cls, size, noun=self.BATCH_NOUN)
+        return size
 
     # -- usage (the judge's per-reply rule) ------------------------------------
     @property

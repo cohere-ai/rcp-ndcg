@@ -40,7 +40,7 @@ from rcp_ndcg.data.templates import RequestShape
 from rcp_ndcg.errors import ConfigError, RequestRejectedError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
 from rcp_ndcg.inference.adapters.base import get_adapter
-from rcp_ndcg.inference.clients._base import PreparedItems, RoleClient
+from rcp_ndcg.inference.clients._base import PreparedItems, RoleClient, _check_batch_size
 from rcp_ndcg.inference.config import EmbeddingEndpoint
 from rcp_ndcg.inference.transport import Sender
 from rcp_ndcg.inference.types import Embeddings, EmbedRequest, EncodeRole, l2_normalize
@@ -49,23 +49,6 @@ from rcp_ndcg.inference.types import Embeddings, EmbedRequest, EncodeRole, l2_no
 def _profile(adapter: type[Any], attribute: str, default: Any) -> Any:
     """A profile attribute an adapter may leave out (``MAX_BATCH``, ``DEFAULT_BASE_URL``, ...)."""
     return getattr(adapter, attribute, default)
-
-
-def _check_batch_size(adapter: type[Any], size: int) -> None:
-    """Refuse a request size above the profile's published cap, instead of silently capping it.
-
-    The cap is a HOSTED profile's own fact: a served engine (vLLM, SGLang, TEI, Infinity -- the
-    ``openai_embeddings`` shape) answers an over-count batch with its own refusal, which the adapter maps to
-    a typed :class:`~rcp_ndcg.errors.CapabilityError` naming ``batch_size`` -- a stale client-side cap must
-    not refuse a batch the engine would serve.
-    """
-    max_batch = _profile(adapter, "MAX_BATCH", None)
-    if max_batch is not None and getattr(adapter, "HOSTED", False) and size > max_batch:
-        raise ConfigError(
-            f"the {getattr(adapter, 'name', '?')} embedding API takes at most {max_batch} texts per request; "
-            f"batch_size is {size}",
-            hint=f"set batch_size to {max_batch} or less, or leave it unset",
-        )
 
 
 class EmbeddingClient(RoleClient):
@@ -93,6 +76,7 @@ class EmbeddingClient(RoleClient):
     #: The embed role's shipped adapters are text-only by default: media rides the ``messages`` route only
     #: (2e), and only when the wire implements it (the adapter's ``REQUEST_SHAPES``).
     MEDIA_ON_WIRE = False
+    BATCH_NOUN = "texts"
 
     def __init__(
         self,
@@ -108,7 +92,7 @@ class EmbeddingClient(RoleClient):
                 f"the {config.api} embedding API takes no dimensions parameter; the cut would be silently ignored",
                 hint="drop dimensions, or use api: openai_embeddings for a Matryoshka cut",
             )
-        _check_batch_size(adapter_cls, config.batch_size)
+        _check_batch_size(adapter_cls, config.batch_size, noun=self.BATCH_NOUN)
         if config.on_overflow == "chunk":
             raise ConfigError(
                 "on_overflow 'chunk' pools scores by max, and an embedding has no score to pool: the declared "
@@ -271,15 +255,6 @@ class EmbeddingClient(RoleClient):
         shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
         flag = self.config.template.adds_special_tokens(shape) if self.config.template is not None else True
         return tuple(tuple(self._tokenizer.ids(item.text, add_special_tokens=flag)) for item in items)
-
-    def _request_size(self, batch_size: int | None) -> int:
-        """The request size of one call: ``batch_size``, else the config's; below 1 or above the profile's
-        cap is refused (typed, R12)."""
-        size = self.config.batch_size if batch_size is None else batch_size
-        if size < 1:
-            raise ConfigError(f"batch_size must be at least 1, got {size}")
-        _check_batch_size(self._adapter_cls, size)
-        return size
 
     async def probe(self) -> Any:
         """The role's startup probe: the transport's replica probe. The embed role sends no media probe
