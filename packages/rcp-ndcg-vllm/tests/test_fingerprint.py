@@ -212,7 +212,7 @@ def test_the_aggregation_rule_is_not_an_input() -> None:
         (RERANK, "batch_size", 4),  # documents per pointwise request
         (EMBED, "max_tokens", 64),  # the client cut: the text sent
         (MULTI, "embed_dtype", "float32"),  # sent in the /pooling body
-        (RERANK, "use_activation", True),  # sent in the /rerank body, changes the score
+        (RERANK, "use_activation", False),  # sent in the /rerank body, changes the score (the fixture says true)
     ],
 )
 def test_a_request_shaping_field_moves_the_fingerprint_and_is_named(
