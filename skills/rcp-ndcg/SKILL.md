@@ -70,9 +70,10 @@ confidence intervals is `<run_dir>/metrics/report.json`) of the third. `rejudge_
 with the package (`run start` takes a packaged config's name or a YAML path; paths inside a config are relative to
 the config file). `data.steps` lists every planned step in run order (`pending` until it starts), each judging step
 with `progress: {done, planned}` in judge windows. Poll `run status` until `data.done` is true: `data.status` is then
-`completed`, `partial`, `failed` or `cancelled`. `run start --only` records just those steps as the run's plan (the
-run then ends `completed`); `run resume --run <dir> --only <step>` runs just those now and leaves the run `partial`
-(exit 0), and a later `run resume --run <dir>` runs the rest.
+`completed`, `partial`, `failed` or `cancelled`. `run start --only` records just those steps as the run's plan
+(the run then ends `completed`; `run resume --only` names for it are refused: they are not steps of this run).
+On a run whose plan holds more steps -- one a job interrupted -- `run resume --run <dir> --only <step>` runs just
+those now (the run `partial`, exit 0), and a later `run resume --run <dir>` runs the rest.
 
 **4. Reproduce a table of the paper** (from a checkout, no LLM): `python experiments/fetch_data.py`, then
 `python experiments/run_all.py`. Exit code 0 means every value matched the paper within its tolerance.
@@ -110,6 +111,8 @@ run then ends `completed`); `run resume --run <dir> --only <step>` runs just tho
   each document's theta, gain and per-criterion pass probabilities (the criteria's `gamma` and `beta` once, in
   `data.items`), and `data.deltas`: the gap to the first system at cutoff `data.k`, split into `selection` and
   `ordering`. Texts are left out unless `--include-text`.
+
+## Recipes and runs
 
 Score documents a calibration lacks (added to a pool after the fit, or without a theta in it because their windows
 failed) without refitting (items frozen); the judgement store is append-only, so only the new windows are asked. A

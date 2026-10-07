@@ -74,6 +74,8 @@ def test_network_examples_run(example: Path, tmp_path: Path, monkeypatch: pytest
     pytest.importorskip("huggingface_hub")
     if example.name == "07_mteb.py":
         pytest.importorskip("mteb")
+    if example.name == "09_serve_recipe_score.py":
+        pytest.importorskip("rcp_ndcg_vllm")
     monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
     monkeypatch.delenv("HF_HUB_CACHE", raising=False)
     result = _run(example, tmp_path)

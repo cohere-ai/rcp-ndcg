@@ -157,9 +157,13 @@ dataset: suite:nanobeir
 candidates:
   from: retrieval
   # with `rcp-ndcg-vllm` installed, `encoder: {recipe: qwen3-embedding-0.6b}` (and `rerank: {recipe:
-  # qwen3-reranker-0.6b}`) take their whole client block from the recipe instead of the fields below
-  retrieval: {kind: dense, encoder: {api: openai_embeddings, model: my-encoder}}
-  rerank: {api: rerank, model: my-reranker}
+  # qwen3-reranker-0.6b}`) take their whole client block from the recipe instead of the fields below; a
+  # self-hosted role config here must still declare its text budget (tokenizer + max_tokens), and a served
+  # reranker sets use_activation explicitly
+  retrieval: {kind: dense, encoder: {api: openai_embeddings, model: my-encoder,
+                                     tokenizer: my-encoder-tokenizer, max_tokens: 8192}}
+  rerank: {api: rerank, model: my-reranker, use_activation: true,
+           tokenizer: my-reranker-tokenizer, max_tokens: 8192}
   depth: 50
 judge: my-judge.yaml               # your judge config (or the name of a shipped one; see the judges page)
 steps: [retrieve, rerank, tournament, rubric, calibrate, evaluate]

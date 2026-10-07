@@ -110,7 +110,7 @@ an `Embeddings` with one vector per content, in the input's order. The client:
   order the replies arrive in;
 * L2-normalises when `normalize`;
 * resolves nothing credential-wise: the key is the transport's, from `api_key_env` (else the profile's own
-  variables), sent in the profile's header.
+  variables, which apply only to the profile's own default host), sent in the profile's header.
 
 The vectors are raw float32 from the adapter -- the normalisation is the client's content decision, not the
 wire's. Each adapter's `usage()` reports the input tokens its API names (OpenAI's `usage.prompt_tokens`,

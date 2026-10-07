@@ -163,8 +163,10 @@ overridden:
 judge: gpt_oss_120b
 candidates:
   from: retrieval
-  retrieval: {kind: dense, encoder: {api: openai_embeddings, model: octen-embedding-8b}}
-  rerank: {api: rerank, model: qwen3-reranker-8b}
+  retrieval: {kind: dense, encoder: {api: openai_embeddings, model: octen-embedding-8b,
+                                      tokenizer: Octen/Octen-Embedding-8B, max_tokens: 8192}}
+  rerank: {api: rerank, model: qwen3-reranker-8b, use_activation: true,
+           tokenizer: Qwen/Qwen3-Reranker-8B, max_tokens: 8192, query_max_tokens: 4096}
 steps: [retrieve, rerank, tournament, rubric, calibrate, evaluate]
 serve:
   encoder:

@@ -164,7 +164,8 @@ reproducible from the store after its file moves or changes.
 - **Identity.** `identity.json` records what produced the store: the judgement family (judge model and revision,
   prompt hash, criteria, parse version, decoding, preprocessing, tokenizer hash), the judge's content fields, the
   schedule and the dataset. It holds content only: the prompt and the tokenizer enter by their SHA-256, and a local
-  dataset by its absolute path, so the same file under another name or path is the same identity; the names the pass
+  dataset by its path absolute and normalised, so the same file named from another directory (`./rows.jsonl`) is
+  one identity -- the same bytes copied under another directory are not; the names the pass
   was given are kept beside it (`sources`). Judging into a store of another identity raises `IdentityError` and names
   the differing fields.
   `force=True` moves the old records aside instead. Beside the identity, each stage's entry lists what the judge's

@@ -10,8 +10,6 @@ then retrieves with the recipe's client block against the running engine.
 import json
 import os
 
-from rcp_ndcg_vllm.recipe import iter_recipes, serve_argv
-
 import rcp_ndcg as rcp
 from rcp_ndcg.examples import tiny
 from rcp_ndcg.retrieval import validate_retriever
@@ -20,6 +18,12 @@ url = os.environ.get("RCP_NDCG_ENGINE_URL")  # e.g. http://127.0.0.1:8000/v1
 if not url:
     print("skipped: start an engine with `rcp-ndcg-vllm serve qwen3-embedding-0.6b` and set RCP_NDCG_ENGINE_URL")
     raise SystemExit(0)
+
+try:
+    from rcp_ndcg_vllm.recipe import iter_recipes, serve_argv
+except ImportError:
+    print("skipped: install the serving package first (python3 -m pip install --no-deps rcp-ndcg-vllm)")
+    raise SystemExit(0) from None
 
 recipe = next(r for r in iter_recipes() if r.id == "qwen3-embedding-0.6b")
 print("engine argv:", serve_argv(recipe, port=8000, served_model_name=recipe.id))

@@ -97,3 +97,5 @@ the metric are `rcp-ndcg` and `rcp-ndcg-core`.
 ## License
 
 Apache-2.0: `LICENSE` and `NOTICE` ship in every wheel and sdist.
+Security reports: [SECURITY.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/SECURITY.md) (GitHub private
+vulnerability reporting).

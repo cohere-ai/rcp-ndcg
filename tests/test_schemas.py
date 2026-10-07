@@ -144,5 +144,7 @@ def test_a_written_run_config_and_the_docs_runner_examples_validate_against_the_
     for where, data in documented:
         for key, value in data.items():
             assert problems(schema["properties"][key], value, root=schema) == [], (where, key)
+        if "dataset" in data and "steps" in data:  # a complete run config, not a runner fragment
+            RunConfig.model_validate(data)  # the loader `run start` uses: a documented example must load today
     typo = {"name": "slurm", "options": {"partitoin": "gpu"}}
     assert problems(schema["properties"]["runner"], typo, root=schema) != []
