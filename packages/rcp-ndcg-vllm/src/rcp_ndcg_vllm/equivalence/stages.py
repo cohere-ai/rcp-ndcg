@@ -345,11 +345,12 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
     segment at the anchor side, plus the post-processor tokens ``add_special_tokens`` puts there) sits at its
     declared position of every captured body's ids -- an ``anchor: first`` head as the engine reads it in the
     assembled render (:func:`_head_edge_ids`), an ``anchor: marker`` shape's markers in the sent content
-    without the post-processor's tokens (:func:`_content_ids`).  The rerank wire ships spans -- the engine assembles the
-    frame -- so its audit asserts the client's settle-once: one query span per row, identical across the row's
-    pointwise requests, within its declared ``query_max_tokens``, and no cut on an in-budget pair (a cut
-    recorded in the client's census for a pair under budget would mean the client shortened something the
-    budget allowed whole).
+    without the post-processor's tokens (:func:`_content_ids`), an ``anchor: last_content`` shape's head
+    marker and its last content token (:func:`_audit_last_content`).  The rerank wire ships spans -- the
+    engine assembles the frame -- so its audit asserts the client's settle-once: one query span per row,
+    identical across the row's pointwise requests, within its declared ``query_max_tokens``, and no cut on an
+    in-budget pair (a cut recorded in the client's census for a pair under budget would mean the client
+    shortened something the budget allowed whole).
     """
     template = recipe.client.template
     failures: list[dict[str, Any]] = []
@@ -362,6 +363,9 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
                 checked += _audit_rerank_span(index, shape, shape_body, share, max_tokens, entry, failures, tokenizer)
                 continue
             flag = _add_specials_flag(recipe, shape)
+            if template is not None and template.anchor == "last_content":
+                checked += _audit_last_content(recipe, tokenizer, shape, shape_body["texts"], index, failures)
+                continue
             at_start = template is not None and template.anchor == "first"
             edge = [] if at_start else _anchor_edge_ids(recipe, tokenizer, shape)
             head, prefix = _head_parts(recipe, tokenizer, shape) if at_start else ("", [])
@@ -434,6 +438,72 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
         "at their declared positions in the client's rendered request; a reranker's settled query must be one "
         "span per row, within its declared share, and no in-budget pair may be cut",
     }
+
+
+def _audit_last_content(
+    recipe: Recipe,
+    tokenizer: Any,
+    shape: str,
+    bodies: list[Any],
+    row_index: int,
+    failures: list[dict[str, Any]],
+) -> int:
+    """The ``anchor: last_content`` audit of one shape's captured bodies, per the product's definition
+    (:data:`rcp_ndcg.data.templates.AnchorKind`): the model reads the last kept *content* token, and the fixed
+    segments (a head marker) are still reserved and audited.
+
+    Per body: the shape must end on its content span (a fixed tail would be the last token, not content); the
+    head -- the fixed segments before the content, as the engine reads them in the assembled render, after the
+    post-processor's prefix (:func:`_head_edge_ids`) -- must open the ids; the post-processor's tail (when the
+    shape declares ``add_special_tokens``) must close them; and at least one token must sit between the two,
+    which on a content-final shape is the last kept content token (the token a head marker merges into across
+    the join counts as content: it carries the content's first characters).  Returns the bodies checked.
+    """
+    template = recipe.client.template
+    assert template is not None  # the caller branches on the template's anchor
+    segments = template.segments(fitting.cast_shape(shape))
+    flag = _add_specials_flag(recipe, shape)
+    if segments[-1].content is None:
+        failures.append(
+            {
+                "shape": shape,
+                "check": "content_final",
+                "row": row_index,
+                "note": "anchor: last_content reads the last kept content token, but the declared shape ends "
+                "with a fixed segment: its last token is the frame's",
+            }
+        )
+        return len(bodies)
+    leading = segments[: next(position for position, segment in enumerate(segments) if segment.content is not None)]
+    head = "".join(segment.render(tokenizer) for segment in leading)
+    prefix = _post_processor_prefix(tokenizer, "x") if flag else []
+    tail = _post_processor_tail(tokenizer, "x") if flag else []
+    stable = _stable_head_tokens(tokenizer, head)
+    for body in bodies:
+        ids = list(body) if isinstance(body, list) else list(tokenizer.ids(body, add_special_tokens=flag))
+        head_edge = _head_edge_ids(tokenizer, head, list(prefix), stable, body)
+        problem = None
+        if head_edge is None or ids[: len(head_edge)] != head_edge:
+            problem = "head"
+        elif tail and ids[len(ids) - len(tail) :] != tail:
+            problem = "tail"
+        elif len(ids) - len(tail) <= len(head_edge):
+            problem = "no_content_token"
+        if problem is not None:
+            failures.append(
+                {
+                    "shape": shape,
+                    "check": problem,
+                    "row": row_index,
+                    "expected_head_text": head[:_SNIPPET],
+                    "expected_head_ids": head_edge,
+                    "expected_tail_ids": list(tail),
+                    "actual_ids_head": ids[:24],
+                    "actual_ids_tail": ids[-8:],
+                    "text": _head_of(body),
+                }
+            )
+    return len(bodies)
 
 
 def _audit_rerank_span(

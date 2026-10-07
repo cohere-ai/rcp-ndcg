@@ -128,6 +128,13 @@ released together.
 
 ### Fixed
 
+- **The anchor audit implements `anchor: last_content`** (`rcp_ndcg_vllm.equivalence`): a recipe declaring
+  it (jina-embeddings-v5) fell into the `last` branch, whose edge -- the last fixed segment, not at the edge,
+  plus the post-processor's tail -- is empty for a content-final shape on a tokenizer that appends nothing, so
+  its audit could never pass. The branch follows the product's definition: the shape ends on its content
+  span, the fixed head segments open every captured body as the engine reads them in the assembled render
+  (after the post-processor's prefix), the post-processor's tail closes it when the shape declares one, and a
+  content token sits between them -- the last kept content token the model pools.
 - **The equivalence harness reports exactly the rows the client changed** (`rcp_ndcg_vllm.equivalence`,
   decision 9): a row was reported non-gating only when a census cut's content count exceeded `max_tokens`,
   and the census counts content only -- so a row whose framed request was over the budget while its content

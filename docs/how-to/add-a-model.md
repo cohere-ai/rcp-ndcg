@@ -39,8 +39,10 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
   anchors but cuts over-cap content its own way (a joint `longest_first` truncation, say, where the client settles
   the query at its share) declares `[over_cap_cut_differs]`; either way the harness reports those pairs
   separately, outside the gates. The reference stays the paper's or the model card's: it never copies the
-  client's cut to make an over-cap pair pass. The declared shape's `anchor` is `last`, `first`, `mean` or `marker`
-  (with `anchor_markers`), and stage 1 samples over-length inputs (at least 20 per shape) and asserts every
+  client's cut to make an over-cap pair pass. The declared shape's `anchor` is `last`, `first`, `last_content` (a
+  model that pools the last real token of raw text: the shape ends on its content span, and the audit asserts
+  the head marker opening the render and a content token closing it, before the post-processor's tail), `mean`
+  or `marker` (with `anchor_markers`), and stage 1 samples over-length inputs (at least 20 per shape) and asserts every
   anchor survived — reported as `anchor_check`, separately from token-id mismatches.
 - **Segments: `fixed` and `content`, nothing else.** A shape is an ordered list of segments with exactly two
   kinds: `fixed` — ordinary template text, which may name special tokens as `{special:<name>}` placeholders
