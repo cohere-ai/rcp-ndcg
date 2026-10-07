@@ -293,19 +293,6 @@ class Recipe(BaseModel):
     """The directory the recipe was loaded from (set by :func:`load_recipe`; ``serve_argv`` resolves
     ``serve.chat_template`` against it)."""
 
-    @field_validator("client")
-    @classmethod
-    def _client_takes_no_ids(cls, value: dict[str, Any]) -> dict[str, Any]:
-        """``model`` and ``revision`` are the recipe's own; the YAML may not carry them (``load_recipe``
-        injects both)."""
-        for injected in ("model", "revision"):
-            if injected in value:
-                raise ValueError(
-                    f"client.{injected} is the recipe's own {injected}; drop the field: load injects both "
-                    "from the recipe's id and revision"
-                )
-        return value
-
     @field_validator("sources")
     @classmethod
     def _sources_are_strings(cls, value: list[str]) -> list[str]:
@@ -386,6 +373,12 @@ def load_recipe(path: str | Path) -> Recipe:
         raise RecipeError(f"{yaml_path} must contain a YAML mapping of the Recipe schema, got {type(data).__name__}")
     directory = path if path.is_dir() else yaml_path.parent
     client = dict(data.get("client") or {})
+    for injected in ("model", "revision"):
+        if injected in client:
+            raise RecipeError(
+                f"{yaml_path}: client.{injected} is the recipe's own {injected}; drop the field: "
+                "load injects both from the recipe's id and revision"
+            )
     client.update({"model": data.get("id"), "revision": data.get("revision")})
     try:
         recipe = Recipe.model_validate({**data, "client": client})
