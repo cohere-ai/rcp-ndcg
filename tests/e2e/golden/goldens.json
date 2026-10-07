@@ -17,7 +17,7 @@
   },
   "vidore": {
     "fingerprints": {
-      "qwen3-vl-reranker-2b": "34e4d2d45840645e515d0f3f518d703a2a25b6f2ad2911d8bdcb17c713b392f9"
+      "qwen3-vl-reranker-2b": "93b72164254937df0b065b49201346bc9ef8961958b1c70907c2f373acc21515"
     },
     "kind": "regression-pin",
     "provenance": "computed by tests/e2e/test_golden_replay.py from the provisional shakedown corpus, which recorded no subset run: a regression pin of the replayed path, not an independent GPU-run number",

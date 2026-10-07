@@ -46,7 +46,8 @@ client:
     hf_overrides {architectures, classifier_from_token [no, yes], is_original_qwen3_reranker};
     served chat template template.jinja; LAST pooling with use_activation true pinned server-side
     and sent on the wire; mm_processor_kwargs nested images_kwargs min_pixels 4096 / max_pixels
-    1310720 (the one pixel-pin shape); one media item per request (limit_mm_per_prompt image=1 =
+    1310720 (the one pixel-pin shape) with the client's image_processor qwen3_vl under the pinned
+    budget (engine_pixel_pinning); one media item per request (limit_mm_per_prompt image=1 =
     max_images 1)"
   tokenizer: "Qwen/Qwen3-VL-Reranker-2B@4bd860ac4f15ad1897a214615cccc700f8f71818"
   max_tokens: 8192         # the model's whole input as the engine sees it (rendered template,
@@ -68,12 +69,12 @@ client:
                            # two -- the engine's multi-item guard is never crossed). Image
                            # queries and image documents cannot combine in one request; the
                            # notes' data discipline matches
-  image_policy: {min_px: 4096, max_px: 1310720}   # the pixel pin's client half: the same numbers as
-                           # serve.mm_processor_kwargs. No image_processor: the product's qwen3_vl
-                           # geometry refuses a budget below its stock floor (65536 px), so the
-                           # client cannot count an image under this budget -- an image-bearing
-                           # request is refused loudly (a typed ConfigError) until the product
-                           # accepts a pinned budget (notes, "Media policy")
+  image_processor: qwen3_vl # the checkpoint's Qwen3VLProcessor family (patch 16 x merge 2): the
+                           # client resizes and counts every image as the engine's processor does
+  image_policy: {min_px: 4096, max_px: 1310720, engine_pixel_pinning: true}   # the pixel pin's client
+                           # half: the same numbers as serve.mm_processor_kwargs; engine_pixel_pinning
+                           # declares the engine pinned to them, which admits the card's 4096 px
+                           # floor below the family's stock 65536 (notes, "Media policy")
   template:
     pair:
       - {fixed: "{special:im_start}system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \"yes\" or \"no\".{special:im_end}\n{special:im_start}user\n<Instruct>: Given a search query, retrieve relevant candidates that answer the query.<Query>:"}
@@ -194,13 +195,14 @@ notes: |
   document side, never two in one request, so the engine's multi-item guard is never crossed
   (a side carrying text plus >= 2 images bypasses it: the engine hoists placeholders to the
   front of the side and joins the texts with a newline, which the reference cannot express;
-  declared, unmeasured). Client half: client.image_policy declares the same pixel
-  numbers, but the product cannot apply them yet -- its qwen3_vl geometry refuses any budget
-  below the stock floor (65536 px) even when serve pins the engine to the very same budget
-  (rcp_ndcg.data.resolution _budget_problem), so no image_processor is declared and the client
-  cannot count an image here: the rerank wire refuses an image-bearing request with a typed
-  ConfigError before sending, never a silent default (a product change, requested). Image
-  grid expansion counts need the GPU wave's engine /tokenize probe (the probe-image check).
+  declared, unmeasured). Client half: image_processor qwen3_vl and client.image_policy with the
+  same pixel numbers and engine_pixel_pinning true -- the declaration that admits the card's
+  4096 px floor below the family's stock 65536 px -- so the client resizes every image as the
+  card's process_vision_info does (qwen-vl-utils smart_resize, factor 32) and counts it as the
+  engine does; an image rides its side as {"content": [image, text]}, one pair per request. The
+  harness's media stage holds the client's sent images (count, placement, prepared geometry,
+  tokens) to reference.py --mode media and, against the engine, the engine's media count to the
+  client's; the negative control that unpins the budget fails it.
 
   Video: out of scope (input: [text, image]). A sibling recipe declaring video follows the one
   video-policy decision (qwen3-vl-embedding-2b: 64 uniformly spaced frames per clip, the
@@ -213,7 +215,9 @@ notes: |
   "NULL" like the reference's (a bare '<Document>:' side was measured to diverge).
   An empty QUERY is refused by the product's empty_query: refuse default (the typed DataError
   names the query id); this recipe keeps that default -- an empty query is a data error
-  upstream, never a silent default.
+  upstream, never a silent default. A whitespace-only query is not empty, to the card as to the
+  client: the card's format_mm_content keeps any non-empty text verbatim, the client sends it,
+  and reference.py renders it as the card does.
 
   Budgets: the pair fit binds on overflow and the rerank client settles the query at
   query_max_tokens (4096) whenever the query exceeds its share, even when the pair fits. The
@@ -228,13 +232,10 @@ notes: |
   model's read-out position), so the label stays, with this exception declared here; the client
   never ships such a pair (its query settles at 4096).
 
-  What the harness does today: it treats a pair as over cap only when a cut's own content
-  tokens (query plus document text, no frame) exceed client.max_tokens (8192). Such pairs are
-  reported in the non-gating table under the declared deviation. Every other cut pair is gated:
-  an over-share query (over 4096 tokens) in a pair whose content is under 8192, and a pair that
-  overflows only with the 66-token frame (content between 8127 and 8192 tokens) -- the card's cut
-  differs there, so those rows fail. The wave's pairs files must keep queries within the
-  4096-token share and pairs within 8126 content tokens.
+  What the harness does: every pair the client changed (its processing record: the query
+  settled at its 4096-token share, which changes every pair of the row, or a budget cut counted
+  with the 66-token frame) is reported in the non-gating table under the declared deviation;
+  every other pair gates exactly.
 
   Stage 1 on CPU proves: the declared pair shape renders byte-identically to the served
   template file (and hence to the card's reference prompt), the anchors survive every

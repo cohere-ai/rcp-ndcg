@@ -30,6 +30,11 @@ Modes and output JSON (the harness's contract):
   on the rendered prompt -- verbatim prefixes, never a decode. Nothing here follows the product
   client's cut (its query share, its settle-once rule); where the two cuts differ the recipe
   declares ``over_cap_cut_differs``. Media columns are refused (below).
+- ``media`` -- ``{"rows": [{"index", "side", "placement", "media": [{"kind", "width", "height",
+  "tokens"}]}]}``: for every pairs row carrying ``media``, per side, what the card's model consumes (the
+  parts after the side's prefix in the card's order, each image's size after the card's resize --
+  qwen-vl-utils' ``smart_resize`` at factor 32 under the image part's 4096..1310720 px -- and its tokens).
+  Needs Pillow only.
 - ``score`` -- ``{"rows": [{"index", "scores": [...]}]}`` on the recipe's
   ``reference.score_scale`` (probability: the sigmoid above). Needs torch, transformers and the
   ~4.0 GB weights; never runs on the CPU stage (stage 2 needs a served engine anyway).
@@ -423,7 +428,8 @@ def render_rows(pairs: list[dict[str, Any]], tokenizer_spec: str) -> list[dict[s
 
     The card's empty-side rule rides with the spans (an empty document is the literal "NULL", which the
     recipe's ``empty_doc: send_text`` also sends); an empty QUERY is refused (the product's
-    ``empty_query: refuse`` default) and a media column is refused loudly -- the pairs contract is text,
+    ``empty_query: refuse`` default) while a whitespace-only query is the card's verbatim text (its
+    ``format_mm_content`` keeps any non-empty text), and a media column is refused loudly -- the pairs contract is text,
     images ride score mode's named columns, and video is out of this recipe's serving form (see the module
     docstring). Nothing is silently dropped or defaulted.
     """
@@ -440,7 +446,10 @@ def render_rows(pairs: list[dict[str, Any]], tokenizer_spec: str) -> list[dict[s
                 "and video is out of this recipe's serving form"
             )
         query = str(row["query"])
-        if not query.strip():
+        if not query:
+            # The card renders an empty side as "NULL"; the endpoint refuses an empty query instead (empty_query:
+            # refuse, the declared policy), so no such request exists to compare. A whitespace-only query is not
+            # empty to the card (format_mm_content's ``if text`` keeps it verbatim), and the client sends it.
             raise SystemExit(
                 f"pairs row {index} carries an empty query, and the endpoint refuses one "
                 "(empty_query: refuse, the declared policy): drop the row, nothing is defaulted"
@@ -449,6 +458,75 @@ def render_rows(pairs: list[dict[str, Any]], tokenizer_spec: str) -> list[dict[s
         spans = [card_spans(tok, query, document) for document in documents]
         rows.append({"index": index, "shape": "pair", "query": spans[0][0], "documents": [span[1] for span in spans]})
     return rows
+
+
+def card_resize(height: int, width: int, factor: int, min_pixels: int, max_pixels: int) -> tuple[int, int]:
+    """``qwen_vl_utils.vision_process.smart_resize`` (qwen-vl-utils 0.0.14), as the card's
+    ``process_vision_info(..., image_patch_size=16)`` calls it per image (factor 32, the image part's own
+    min_pixels/max_pixels): each edge rounded to the factor (at least one factor), the area floored into
+    ``max_pixels`` or ceiled up to ``min_pixels``; an aspect ratio over 200 is refused."""
+    import math
+
+    if max(height, width) / min(height, width) > 200:
+        raise SystemExit(
+            f"absolute aspect ratio must be smaller than 200, got {max(height, width) / min(height, width)}"
+        )
+    h_bar = max(factor, round(height / factor) * factor)
+    w_bar = max(factor, round(width / factor) * factor)
+    if h_bar * w_bar > max_pixels:
+        beta = math.sqrt((height * width) / max_pixels)
+        h_bar = math.floor(height / beta / factor) * factor
+        w_bar = math.floor(width / beta / factor) * factor
+    elif h_bar * w_bar < min_pixels:
+        beta = math.sqrt(min_pixels / (height * width))
+        h_bar = math.ceil(height * beta / factor) * factor
+        w_bar = math.ceil(width * beta / factor) * factor
+    return h_bar, w_bar
+
+
+IMAGE_FACTOR = 32
+"""The card's image factor: ``process_vision_info(..., image_patch_size=16)`` times the spatial merge 2."""
+
+
+def media_rows(pairs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The media stage's reference side: per pairs row and side carrying media, what the card's model
+    consumes -- :func:`_content_parts`' order after the side's prefix (video, image, text; one image per side,
+    video refused), each image resized by :func:`card_resize` under the image part's own min/max pixels and
+    costing its merged patches plus the vision start and end markers."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    out: list[dict[str, Any]] = []
+    for index, row in enumerate(pairs):
+        media = row.get("media") or {}
+        sides = [("query", str(row["query"]), list(media.get("query") or []))]
+        sides += [
+            (f"document {position}", str(row["documents"][position]), list(entries or []))
+            for position, entries in enumerate(media.get("documents") or [])
+        ]
+        for side, text, entries in sides:
+            if not entries:
+                continue
+            if any(entry.get("kind") == "video" for entry in entries) or len(entries) > 1:
+                out.append({"index": index, "side": side, "refused": "one image per side; video is out of scope"})
+                continue
+            payload = base64.b64decode(str(entries[0]["uri"]).split(",", 1)[1])
+            with Image.open(io.BytesIO(payload)) as handle:
+                width, height = handle.size
+            part = _content_parts("", text, image="image")[1]
+            resized_h, resized_w = card_resize(height, width, IMAGE_FACTOR, part["min_pixels"], part["max_pixels"])
+            tokens = (resized_h // IMAGE_FACTOR) * (resized_w // IMAGE_FACTOR) + 2
+            out.append(
+                {
+                    "index": index,
+                    "side": side,
+                    "placement": ["image"] + (["text"] if text else []),
+                    "media": [{"kind": "image", "width": resized_w, "height": resized_h, "tokens": tokens}],
+                }
+            )
+    return out
 
 
 def _repo_and_revision(spec: str) -> tuple[str, str | None]:
@@ -466,7 +544,7 @@ def _repo_and_revision(spec: str) -> tuple[str, str | None]:
 def main() -> int:
     """The subprocess CLI the harness launches (``--mode render|score``)."""
     parser = argparse.ArgumentParser(description="the qwen3-vl-reranker-2b reference")
-    parser.add_argument("--mode", required=True, choices=["render", "score"])
+    parser.add_argument("--mode", required=True, choices=["render", "score", "media"])
     parser.add_argument("--pairs", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--tokenizer", required=True)
@@ -480,6 +558,8 @@ def main() -> int:
         # The harness compares content spans; these are the card's own (its prompt, its cut). The
         # instruction is the recipe's declared none: the card's default instruction, always.
         document = {"rows": render_rows(rows_raw, args.tokenizer), "render_path": "card-content-spans"}
+    elif args.mode == "media":
+        document = {"rows": media_rows(rows_raw)}
     else:
         reference = Qwen3VLRerankerReference(args.tokenizer).load(args.device)
         for index, row in enumerate(rows_raw):
