@@ -86,6 +86,13 @@ released together.
 
 ### Fixed
 
+- **NOTICE attributes every third-party file the recipes and plugins carry**, each re-checked at its pinned
+  revision (upstream SHA-256 and licence): the reference modules that port model-card or remote code
+  (ctxl, jina-reranker-v3, qwen3-embedding-0.6b, the qwen3-reranker and zerank families,
+  qwen3-vl-reranker-2b), the topk plugin's restated config class and the pplx plugin's pooling core and
+  pooler join the templates and the vendored Qwen3-VL-Embedding script; the pplx plugin's paths are
+  corrected. Two packaging tests keep it so: every repository path NOTICE names exists, and every recipe
+  template, vendored recipe module and audited port is named.
 - **The equivalence harness's stage-1 over-length sampler is bounded** (`rcp-ndcg-vllm`): it measures the
   padding's token rate once and sizes each append from the measured deficit (at most 8 passes), instead of
   re-tokenizing the growing text at every step -- quadratic at 32768-token budgets, the network recipe tests'

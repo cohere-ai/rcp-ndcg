@@ -300,3 +300,53 @@ def test_both_distributions_ship_the_license_and_the_notice() -> None:
                 f"{folder.relative_to(ROOT)}/{name} is stale"
             )
     assert "smart_resize" in (ROOT / "NOTICE").read_text(encoding="utf-8")
+
+
+#: Repository paths NOTICE names (its upstream paths, such as ``src/transformers/...``, are not checked).
+_NOTICE_PATH = re.compile(r"\b((?:src/rcp_ndcg|tests|experiments|packages)/[A-Za-z0-9_./-]+\.(?:py|jinja))\b")
+
+#: The audited derived files under the recipes and plugins: each ports, adapts or restates third-party code
+#: (a model card's usage code, a checkpoint's remote code, vLLM internals), so NOTICE must name it. Every
+#: template and every vendored module of a recipe directory is added automatically below.
+_DERIVED_RECIPE_AND_PLUGIN_FILES = (
+    "packages/rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-1b/reference.py",
+    "packages/rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-2b/reference.py",
+    "packages/rcp-ndcg-vllm/recipes/ctxl-rerank-v2-instruct-multilingual-6b/reference.py",
+    "packages/rcp-ndcg-vllm/recipes/jina-reranker-v3/reference.py",
+    "packages/rcp-ndcg-vllm/recipes/qwen3-embedding-0.6b/reference.py",
+    "packages/rcp-ndcg-vllm/recipes/qwen3-reranker-0.6b/reference.py",
+    "packages/rcp-ndcg-vllm/recipes/qwen3-reranker-4b/reference.py",
+    "packages/rcp-ndcg-vllm/recipes/qwen3-reranker-8b/reference.py",
+    "packages/rcp-ndcg-vllm/recipes/qwen3-vl-reranker-2b/reference.py",
+    "packages/rcp-ndcg-vllm/recipes/zerank-1-reranker/reference.py",
+    "packages/rcp-ndcg-vllm/recipes/zerank-1-small-reranker/reference.py",
+    "packages/rcp-ndcg-vllm/recipes/zerank-2-reranker/reference.py",
+    "packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/model.py",
+    "packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/pooler.py",
+    "packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/pooling_core.py",
+    "packages/rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/config.py",
+    "packages/rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/model.py",
+    "packages/rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/weights.py",
+)
+
+
+def test_every_repository_path_the_notice_names_exists() -> None:
+    """An attribution that names a moved or misspelled file attributes nothing."""
+    named = set(_NOTICE_PATH.findall((ROOT / "NOTICE").read_text(encoding="utf-8")))
+    assert named, "NOTICE names no repository path"
+    missing = sorted(path for path in named if not (ROOT / path).is_file())
+    assert not missing, f"NOTICE names files that do not exist: {missing}"
+
+
+def test_the_notice_attributes_every_third_party_recipe_and_plugin_file() -> None:
+    """Every recipe template, every vendored recipe module and every audited port is named in NOTICE."""
+    notice = (ROOT / "NOTICE").read_text(encoding="utf-8")
+    recipes = ROOT / "packages" / "rcp-ndcg-vllm" / "recipes"
+    automatic = {
+        path.relative_to(ROOT).as_posix()
+        for path in recipes.glob("*/*")
+        if path.suffix == ".jinja" or (path.suffix == ".py" and path.name != "reference.py")
+    }
+    expected = automatic | set(_DERIVED_RECIPE_AND_PLUGIN_FILES)
+    missing = sorted(path for path in expected if path not in notice)
+    assert not missing, f"NOTICE does not attribute: {missing}"
