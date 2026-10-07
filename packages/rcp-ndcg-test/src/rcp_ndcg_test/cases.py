@@ -786,17 +786,23 @@ def _recipe_fitter(recipe: Recipe) -> tuple[Any, Any]:
     digest = hashlib.sha256((recipe.client.model_dump_json() + "\0" + str(recipe._dir or "")).encode()).hexdigest()
     cached = _FITTER_CACHE.get(digest)
     if cached is None:
-        from rcp_ndcg_vllm.equivalence.fitting import budget_of, tokenizer_of
+        from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
+        from rcp_ndcg_vllm.equivalence.wire import role_client
 
         try:
             tokenizer = tokenizer_of(recipe)
+            client, _ = role_client(recipe, None)
         except Exception as error:
             raise CaseError(
                 f"recipe {recipe.id}: loading its tokenizer ({recipe.client.tokenizer!r}) failed: {error}; a "
                 "recipe whose tokenizer lives on the Hub needs it cached or a network run (load_cases(..., "
                 "check_lengths=False) records the check as skipped instead)"
             ) from error
-        cached = (tokenizer, budget_of(recipe).model_copy(update={"tokenizer": tokenizer.name}))
+        budget = client.text_budget
+        client.close()
+        if budget is None:
+            raise CaseError(f"recipe {recipe.id}: its client declares no max_tokens, so no length stratum applies")
+        cached = (tokenizer, budget.model_copy(update={"tokenizer": tokenizer.name}))
         _FITTER_CACHE[digest] = cached
     return cached
 

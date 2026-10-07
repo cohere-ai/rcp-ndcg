@@ -90,6 +90,21 @@ def texts(*items: str) -> list[Content]:
 
 
 class TestEmbedBudget:
+    def test_the_client_exposes_the_text_budget_it_fits_to(self, tokenizer_json: str) -> None:
+        """Harnesses and case loaders read the budget the client built, never rebuild it from the config."""
+        config = EmbeddingEndpoint(
+            base_url="http://127.0.0.1:9000/v1",
+            model="m",
+            tokenizer=tokenizer_json,
+            max_tokens=6,
+            query_max_tokens=4,
+        )
+        budget = EmbeddingClient(config, sender=RecordingSender()).text_budget
+        assert budget is not None
+        assert (budget.max_tokens, budget.query_max_tokens, budget.tokenizer) == (6, 4, tokenizer_json)
+        unbudgeted = EmbeddingEndpoint(base_url="http://127.0.0.1:9000/v1", model="m", api="cohere")
+        assert EmbeddingClient(unbudgeted, sender=RecordingSender()).text_budget is None
+
     def test_a_budget_cuts_the_content_and_records_the_census(self, tokenizer_json: str) -> None:
         sender = RecordingSender()
         census = TextTruncationCensus()

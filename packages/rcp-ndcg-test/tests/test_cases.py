@@ -14,6 +14,7 @@ import pytest
 from rcp_ndcg_test.cases import Case, CaseBundle, load_case, load_cases, text_of
 from rcp_ndcg_test.errors import CaseError
 from rcp_ndcg_test.fakes import fixture_path
+from rcp_ndcg_vllm.errors import RecipeError
 from rcp_ndcg_vllm.recipe import load_recipe
 
 PACKAGED = fixture_path("cases")
@@ -911,55 +912,21 @@ def test_a_run_level_instruction_must_be_on_the_wire_for_the_embed_side(tmp_path
 
 
 def test_a_media_case_needs_the_recipe_to_declare_its_media_policy(tmp_path: Path) -> None:
-    """(the shakedown's sweep-recipes finding #7) A case naming an image needs a recipe whose client
-    declares it reads images (``max_images >= 1`` and an ``image_policy``; ``max_videos`` /
-    ``video_policy`` for video): the product's own gate refuses the send otherwise. The load fails
-    instead -- the mistake the shakedown hit (``recipe.input`` declares image while the client's
-    media policy is empty) is refused here, and only here is the case allowed to name media.
-    """
+    """(the shakedown's sweep-recipes finding #7) A recipe whose ``input`` declares images while its client reads
+    none (``max_images: 0``) is the shakedown's exact mistake: the recipe loader itself refuses it now, so no media
+    case can ever be loaded against it (the case loader's own media gate stays as defence in depth)."""
     import shutil
 
     shutil.copytree(TEST_RECIPES, tmp_path / "recipes")
-    (tmp_path / "tokenizer.json").write_bytes(
-        (Path(__file__).resolve().parent / "fixtures" / "tokenizer.json").read_bytes()
-    )
-    # the fixture recipe with its media policy removed: the shakedown's exact mistake
     recipe_yaml = tmp_path / "recipes" / "fake-pool" / "recipe.yaml"
     cfg = recipe_yaml.read_text(encoding="utf-8")
     stripped = "  image_policy: {min_px: 3136, max_px: 1003520, processor: qwen2_vl}\n"
-    assert stripped in cfg, "the fixture recipe's media policy moved; fix this test against its shape"
-    cfg = cfg.replace("  max_images: 4\n", "  max_images: 0\n").replace(stripped, "")
-    recipe_yaml.write_text(cfg, encoding="utf-8")
-    assert "image_policy" not in cfg and "max_images: 0" in cfg, "the surgery must apply (nothing silent)"
-
-    body = """
-        id: fake-pool/policy-missing
-        recipe: fake-pool
-        role: multi_vector
-        source: {kind: generated}
-        strata:
-          modality: image
-          length: short
-          batch: single
-        inputs:
-          queries: [{id: q1, text: describe the image}]
-          documents:
-            - id: d1
-              text: an image of a round shape
-              image: media/pixel.png
-        expected:
-          kind: similarity_matrix
-          values: null
-          tolerance: {abs: 0.01}
-          origin: reference
-          status: pending_gpu
-    """
-    case_file = write_case(tmp_path / "cases", "fake-pool", "policy-missing", body)
-    (case_file.parent / "media").mkdir()
-    (case_file.parent / "media" / "pixel.png").write_bytes(_tiny_png_bytes())
-    recipe = load_recipe(tmp_path / "recipes" / "fake-pool")
-    with pytest.raises(CaseError, match="does not declare it reads images"):
-        load_cases(tmp_path / "cases", recipe, recipes_root=tmp_path / "recipes", check_lengths=False)
+    assert stripped in cfg and "  max_images: 4\n" in cfg, "the fixture recipe's media policy moved; fix this test"
+    recipe_yaml.write_text(
+        cfg.replace("  max_images: 4\n", "  max_images: 0\n").replace(stripped, ""), encoding="utf-8"
+    )
+    with pytest.raises(RecipeError, match="max_images"):
+        load_recipe(tmp_path / "recipes" / "fake-pool")
 
 
 def test_the_strata_grid_must_be_complete(tmp_path: Path) -> None:

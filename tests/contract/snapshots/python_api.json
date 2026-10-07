@@ -11135,7 +11135,8 @@
                 "returns": "frozenset[str]"
               }
             ]
-          }
+          },
+          "text_budget": "property"
         }
       },
       "SELF_HOSTED_APIS": {

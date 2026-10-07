@@ -25,6 +25,9 @@ released together.
 
 ### Public surface
 
+- **The role clients expose their text budget**: `EmbeddingClient`, `PoolingClient` and `RerankClient` gain the
+  read-only `text_budget` (the `TextBudget` the client fits every request to, as built from its config; `None`
+  without `max_tokens`), so harnesses and case loaders read the client's budget instead of rebuilding it.
 - **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
   are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric
   placements whose document has no Bradley-Terry theta, and the queries absent from `bt_scores`, instead of

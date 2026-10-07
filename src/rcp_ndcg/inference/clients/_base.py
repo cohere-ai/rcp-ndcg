@@ -256,6 +256,12 @@ class RoleClient[C: Endpoint]:
             self._sender.set_auth(self._auth_profile())
 
     # -- the text budget (item 4) -------------------------------------------
+    @property
+    def text_budget(self) -> TextBudget | None:
+        """The text budget every request of this client is fitted to, as built from its config (``None``: the
+        config declares no ``max_tokens``, so nothing is fitted or cut)."""
+        return self._budget
+
     def _resolve_budget(self) -> tuple[TextBudget | None, TextTokenizer | None]:
         """The client's text budget, from the role config's fields, with the tokenizer it names loaded once.
 
