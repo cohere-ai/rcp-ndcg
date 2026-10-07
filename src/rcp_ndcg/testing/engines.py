@@ -14,11 +14,18 @@ One emulator per (engine, version, recipe, behaviour fingerprint), selected as
   surrogate for unseen ones, clearly marked in the reply (``x-rcp-ndcg-emulator-source:`` ``replayed``,
   ``surrogate`` or ``mixed``) -- so a test that asserts numbers can only use observed inputs.
 
-Replay is keyed on the **engine prompt** -- the exact string(s) the engine renders and tokenizes per
-request (the wire's input strings for ``/v1/embeddings`` and ``/pooling``, the pair prompts for a
-pointwise ``/rerank``, the N-passage prompt for a listwise one). Prompt derivation is versioned and
-recomputed from the raw records (:data:`NORMALISATION_VERSION` strips the volatile fields a comparison
-ignores -- request ids, ``created`` timestamps), never stored in the corpus.
+Replay is keyed on the **behaviour-shaping context**: the engine prompt -- the exact string(s) the
+engine renders and tokenizes per request (the wire's input strings for ``/v1/embeddings`` and
+``/pooling``, the pair prompts for a pointwise ``/rerank``, the N-passage prompt for a listwise one) --
+plus every request field that changes what the model returns (:data:`FIELD_CLASSES`: ``use_activation``,
+``dimensions``, ``add_special_tokens``, ``task``). An unobserved context answers the surrogate; a field
+the emulator does not model (an ``instruction``, a ``truncate_prompt_tokens``) is refused with a marked
+400; a field the engine's request model does not declare is ignored, as the engine ignores it. A corpus
+whose one key holds different outputs is refused. Batch composition is not part of the key: it can move
+numbers only within the engine's numeric noise, which the batching strata of a release corpus
+(OBSERVATIONS-SPEC section 1) are recorded to measure; a corpus without them declares it unmeasured. The key
+is recomputed from the raw records by versioned code (:data:`NORMALISATION_VERSION` strips the volatile
+fields a comparison ignores -- request ids, ``created`` timestamps), never stored in the corpus.
 
 The corpus seam: :func:`load_corpus` dispatches on the manifest's ``schema`` over a registry of loaders
 (:func:`register_corpus_format`), with per-line migrations for older schemas
@@ -39,7 +46,7 @@ import json
 import re
 import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal, cast
 from urllib.parse import parse_qsl, urlsplit
@@ -56,6 +63,8 @@ __all__ = [
     "VERIFICATION_SCHEMA",
     "BehaviourDiff",
     "Corpus",
+    "FIELD_CLASSES",
+    "ROUTE_FIELDS",
     "EngineFacts",
     "EnginePrompts",
     "EmulatorRegistry",
@@ -77,7 +86,9 @@ __all__ = [
     "normalise_body",
     "register_corpus_format",
     "register_line_migration",
+    "route_of",
     "registry",
+    "request_context",
     "request_digest",
     "transport_for",
     "verification_record",
@@ -237,10 +248,14 @@ class Corpus:
         """``(abs, rel)`` the measured non-determinism derives (OBSERVATIONS-SPEC section 2: measured,
         never chosen by hand), or ``None`` when the corpus holds no same-request repetition (unmeasured:
         a replay is compared exactly)."""
-        nondet = self.manifest["non_determinism"]
-        if nondet.get("status") != "measured":
-            return None
-        return (float(nondet["tolerance_abs"]), float(nondet["tolerance_rel"]))
+        return _tolerance_of(self.manifest)
+
+
+def _tolerance_of(manifest: Mapping[str, Any]) -> tuple[float, float] | None:
+    nondet = manifest.get("non_determinism") or {}
+    if nondet.get("status") != "measured":
+        return None
+    return (float(nondet["tolerance_abs"]), float(nondet["tolerance_rel"]))
 
 
 #: One corpus-document loader: the file lines -> :class:`Exchange` tuples.
@@ -550,52 +565,188 @@ def _numeric_diff(expected: float, actual: float, path: str, tolerance: tuple[fl
 
 
 # ---------------------------------------------------------------------------
-# prompt strategies: what the engine renders and tokenizes per request
+# the request fields per route (vLLM v0.31.0's request models), and the replay key they make
 # ---------------------------------------------------------------------------
+
+_COMMON_FIELDS = frozenset(
+    {
+        "model",
+        "user",
+        "truncate_prompt_tokens",
+        "padding",
+        "truncation_side",
+        "request_id",
+        "priority",
+        "mm_processor_kwargs",
+        "cache_salt",
+    }
+)
+_ENCODE_FIELDS = frozenset(
+    {"input", "messages", "add_special_tokens", "encoding_format", "embed_dtype", "endianness", "dimensions"}
+)
+
+ROUTE_FIELDS: Mapping[str, frozenset[str]] = {
+    "embeddings": _COMMON_FIELDS | _ENCODE_FIELDS | {"use_activation"},
+    "pooling": _COMMON_FIELDS | _ENCODE_FIELDS | {"use_activation", "task"},
+    "rerank": _COMMON_FIELDS
+    | {
+        "query",
+        "documents",
+        "top_n",
+        "use_activation",
+        "instruction",
+        "chat_template_kwargs",
+        "max_tokens_per_query",
+        "max_tokens_per_doc",
+    },
+}
+"""The request fields each model route's request model declares in vLLM v0.31.0
+(``vllm/entrypoints/pooling/{embed,pooling,scoring}/protocol.py`` and their mixins in
+``pooling/base/protocol.py``). A field a route does not declare is **ignored** by the engine (its
+``OpenAIBaseModel`` drops extra keys: ``vllm/entrypoints/serve/engine/protocol.py``, "fields were
+present in the request but ignored"), so it shapes nothing and is not part of the replay key."""
+
+FIELD_CLASSES: Mapping[str, str] = {
+    # prompt: carries the engine prompt(s) -- the key's first part
+    "input": "prompt",
+    "query": "prompt",
+    "documents": "prompt",
+    # protocol: emulated, never changes a model output
+    "model": "protocol",  # validated against the served name
+    "user": "protocol",
+    "request_id": "protocol",
+    "priority": "protocol",
+    "cache_salt": "protocol",  # salts the prefix cache only
+    "encoding_format": "protocol",  # the framing of the same output
+    "embed_dtype": "protocol",
+    "endianness": "protocol",
+    "top_n": "protocol",  # truncates the ranked list
+    # output: changes what the model returns -- part of the replay key
+    "add_special_tokens": "output",  # another tokenization of the prompt (emulated in the counts too)
+    "use_activation": "output",  # raw logit or activation
+    "dimensions": "output",  # the engine's Matryoshka cut
+    "task": "output",  # which pooling task runs
+    # unmodelled: changes the prompt or its cut in ways the emulator does not render -> a marked 400
+    "messages": "unmodelled",  # the chat-style request: rendered by the engine's chat template
+    "instruction": "unmodelled",  # folded into chat_template_kwargs and rendered by the template
+    "chat_template_kwargs": "unmodelled",
+    "truncate_prompt_tokens": "unmodelled",  # the engine cuts instead of refusing
+    "truncation_side": "unmodelled",
+    "max_tokens_per_query": "unmodelled",
+    "max_tokens_per_doc": "unmodelled",
+    "padding": "unmodelled",
+    "mm_processor_kwargs": "unmodelled",
+}
+"""Every declared request field, classified by what it does to a reply (:data:`ROUTE_FIELDS`). Only
+``output`` fields enter the replay key beside the prompts: an output is replayed only for the exact
+context it was observed under, an unobserved context answers the declared surrogate, and an
+``unmodelled`` field is refused with a 400 marked ``refused-unmodelled`` -- never answered from
+another request's observation."""
+
+_ROUTE_DEFAULTS: Mapping[str, Mapping[str, Any]] = {
+    "embeddings": {"add_special_tokens": True},
+    "pooling": {"add_special_tokens": True},
+}
+"""The declared defaults of ``output`` fields (``CompletionRequestMixin.add_special_tokens = True``): an
+absent field and its default ask the same question. Every other absent field stays distinct from any
+value (``use_activation`` absent leaves the model's own default, which no record pins)."""
+
+
+def route_of(path: str) -> str | None:
+    """The model route a request path names (``embeddings``, ``pooling``, ``rerank``), any root prefix."""
+    route = path.rstrip("/")
+    for name in ("embeddings", "pooling", "rerank"):
+        if route.endswith("/" + name):
+            return name
+    return None
+
+
+def request_context(route: str, body: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """The behaviour-shaping context of one request: its ``output`` fields (defaults applied), and the
+    ``unmodelled`` fields it carries.
+
+    Args:
+        route: The model route (:func:`route_of`).
+        body: The parsed request body.
+
+    Returns:
+        ``(context, unmodelled)``: the ``output`` field values that key the replay (beside the prompts)
+        and the sorted names of the declared fields the emulator refuses.
+    """
+    declared = ROUTE_FIELDS[route]
+    context = dict(_ROUTE_DEFAULTS.get(route, {}))
+    unmodelled = []
+    for name, value in body.items():
+        if name not in declared:
+            continue  # the engine ignores it
+        kind = FIELD_CLASSES[name]
+        if kind == "output":
+            context[name] = value
+        elif kind == "unmodelled":
+            unmodelled.append(name)
+    return context, sorted(unmodelled)
+
+
+#: One engine prompt: the text the engine tokenizes, or the token ids a request sent as is.
+Prompt = str | tuple[int, ...]
 
 
 @dataclass(frozen=True)
 class PromptSet:
-    """One request's engine prompts and what each produces.
+    """One request's engine prompts, what each produces, and the context they were asked under.
 
     Attributes:
-        prompts: The engine prompt strings, in request order.
+        prompts: The engine prompts, in request order: strings, or token-id tuples a request sent as is.
         add_special: Per prompt: whether the engine tokenizes it with the post-processor's tokens.
         slot: What one prompt's model output is: a ``vector`` (dense embedding), a ``token_vector``
             matrix (late interaction), a ``score`` (pointwise rerank one document) or a ``score_list``
             (a listwise prompt scores the whole candidate set at once).
         positions: For ``score``: the document index each prompt scores (prompt order is document
             order); otherwise identity.
-        knobs: The request's behaviour-shaping fields as canonical strings (the rerank roles'
-            ``use_activation`` and ``instruction``, ``absent`` distinct from any value): part of the
-            model layer's key, so a request field the engine folds into the prompt or the score is
-            never answered from another request's observation.
+        context: The canonical JSON of the request's ``output`` fields (:func:`request_context`): the
+            second part of the replay key.
     """
 
-    prompts: tuple[str, ...]
+    prompts: tuple[Prompt, ...]
     add_special: tuple[bool, ...]
     slot: Literal["vector", "token_vector", "score", "score_list"]
     positions: tuple[int, ...] = ()
-    knobs: tuple[str, ...] = ()
+    context: str = "{}"
 
     def item_key(self, index: int) -> str:
-        """The model-layer observation key of one output: its prompt plus the request's knobs (the
-        whole set's key for a listwise prompt, whose one output scores the set)."""
-        prompts = list(self.prompts) if self.slot == "score_list" else [self.prompts[index]]
-        return json.dumps([prompts, list(self.knobs)], sort_keys=True, ensure_ascii=False)
+        """The replay key of one output: its engine prompt and the request's context (a listwise
+        prompt's one output is keyed by the whole set: :attr:`set_key`)."""
+        if self.slot == "score_list":
+            return self.set_key
+        return json.dumps([_prompt_key(self.prompts[index]), self.context], ensure_ascii=False)
 
     @property
     def set_key(self) -> str:
-        """The key of a set-level output (a listwise prompt scores its whole candidate set at once)."""
-        return json.dumps([list(self.prompts), list(self.knobs)], sort_keys=True, ensure_ascii=False)
+        """The replay key of a set-level output (a listwise prompt scores its whole candidate set)."""
+        return json.dumps([[_prompt_key(prompt) for prompt in self.prompts], self.context], ensure_ascii=False)
+
+    def ids(self, index: int, tokenizer: Any) -> list[int]:
+        """The token ids the engine sees for one prompt (token-id prompts as sent)."""
+        prompt = self.prompts[index]
+        if isinstance(prompt, tuple):
+            return list(prompt)
+        return list(tokenizer.ids(prompt, add_special_tokens=self.add_special[index]))
+
+    def count(self, index: int, tokenizer: Any) -> int:
+        """The prompt tokens the engine counts for one prompt."""
+        prompt = self.prompts[index]
+        if isinstance(prompt, tuple):
+            return len(prompt)
+        return tokenizer.count(prompt, add_special_tokens=self.add_special[index])
 
     def counted(self, tokenizer: Any) -> int:
         """The engine's ``usage.prompt_tokens`` over this request's prompts (the recorded rule: the sum
         of each engine prompt's tokens, the post-processor included per flag)."""
-        return sum(
-            tokenizer.count(prompt, add_special_tokens=flag)
-            for prompt, flag in zip(self.prompts, self.add_special, strict=False)
-        )
+        return sum(self.count(index, tokenizer) for index in range(len(self.prompts)))
+
+
+def _prompt_key(prompt: Prompt) -> Any:
+    return {"token_ids": list(prompt)} if isinstance(prompt, tuple) else prompt
 
 
 class PromptStrategy:
@@ -607,17 +758,21 @@ class PromptStrategy:
 
 @dataclass(frozen=True)
 class StringsPrompts(PromptStrategy):
-    """The pooling/embeddings routes: each request input is an engine prompt (the route adds the
-    tokenizer's post-processor tokens, add_special_tokens default true)."""
+    """The pooling/embeddings routes: each request input is an engine prompt (a string, or a token-id
+    list sent as is); the route adds the tokenizer's post-processor tokens unless the request's
+    ``add_special_tokens`` says otherwise (vLLM's default: true)."""
 
     slot: Literal["vector", "token_vector"] = "vector"
     add_special: bool = True
 
     def prompts(self, body: Mapping[str, Any]) -> PromptSet:
         items = body.get("input")
-        strings = [items] if isinstance(items, str) else list(items or [])
-        prompts = tuple(_text(item) for item in strings)
-        return PromptSet(prompts, (self.add_special,) * len(prompts), self.slot, tuple(range(len(prompts))))
+        if isinstance(items, str) or _is_token_ids(items):
+            items = [items]
+        prompts = tuple(_prompt(item) for item in items or [])
+        flag = body.get("add_special_tokens", self.add_special)
+        flag = flag if isinstance(flag, bool) else self.add_special
+        return PromptSet(prompts, (flag,) * len(prompts), self.slot, tuple(range(len(prompts))))
 
 
 @dataclass(frozen=True)
@@ -636,7 +791,7 @@ class PairPrompts(PromptStrategy):
             self.template.render("pair", self.tokenizer, query=query, document=document) for document in documents
         )
         flag = self.template.adds_special_tokens("pair")
-        return PromptSet(prompts, (flag,) * len(prompts), "score", tuple(range(len(documents))), _rerank_knobs(body))
+        return PromptSet(prompts, (flag,) * len(prompts), "score", tuple(range(len(documents))))
 
 
 @dataclass(frozen=True)
@@ -652,23 +807,21 @@ class EnginePrompts(PromptStrategy):
     def prompts(self, body: Mapping[str, Any]) -> PromptSet:
         query = _text(body.get("query"))
         documents = [_text(document) for document in body.get("documents") or []]
-        return PromptSet(
-            (self.builder(query, documents),), (self.add_special,), "score_list", (0,), _rerank_knobs(body)
-        )
+        return PromptSet((self.builder(query, documents),), (self.add_special,), "score_list", (0,))
 
 
-def _rerank_knobs(body: Mapping[str, Any]) -> tuple[str, ...]:
-    """The rerank request's behaviour-shaping fields, canonical strings with ``absent`` distinct from
-    any value: the engine folds ``use_activation`` (raw logit vs probability) and its ``instruction``
-    into what it returns, so an observation under one value never answers a request carrying another."""
-    return tuple(
-        f"{name}=" + ("absent" if name not in body else json.dumps(body[name], sort_keys=True))
-        for name in ("use_activation", "instruction")
-    )
+def _is_token_ids(item: Any) -> bool:
+    return isinstance(item, list) and bool(item) and all(isinstance(v, int) and not isinstance(v, bool) for v in item)
+
+
+def _prompt(item: Any) -> Prompt:
+    """One ``input`` item as the engine takes it: token ids as sent, anything else as its text."""
+    return tuple(item) if _is_token_ids(item) else _text(item)
 
 
 def _text(item: Any) -> str:
-    """One wire text: a string itself, a ``{"text": ...}`` echo or content-parts object by its text."""
+    """One wire text: a string itself, or a ``{"text": ...}`` / content-parts object by its text; any
+    other shape is refused (a stringified object is never a prompt)."""
     if isinstance(item, str):
         return item
     if isinstance(item, dict):
@@ -677,7 +830,7 @@ def _text(item: Any) -> str:
         parts = item.get("content")
         if isinstance(parts, list):
             return " ".join(_text(part) for part in parts)
-    return str(item)
+    raise ValueError(f"an input item of type {type(item).__name__} is not a text the emulator models")
 
 
 # ---------------------------------------------------------------------------
@@ -835,15 +988,32 @@ class VllmEmulator:
             The emulator, keyed to the corpus's behaviour fingerprint (model layer) and the engine
             version (protocol layer).
         """
-        observations: dict[str, list[ModelObservation]] = {}
+        observed: dict[str, list[tuple[int, ModelObservation]]] = {}
         for exchange in corpus.exchanges:
-            if exchange.status != 200 or exchange.path.endswith("/models"):
+            route = route_of(exchange.path)
+            if exchange.status != 200 or route is None:
                 continue
-            set_ = strategy.prompts(exchange.request_body or {})
-            outputs = _outputs_from_response(set_, exchange)
-            for key, observation in outputs:
-                observations.setdefault(key, []).append(observation)
-        merged = {key: tuple(values) for key, values in observations.items()}
+            body = exchange.request_body if isinstance(exchange.request_body, dict) else {}
+            context, unmodelled = request_context(route, body)
+            if unmodelled:
+                raise DataError(
+                    f"{exchange.source or exchange.path} #{exchange.sequence}: the recorded request carries "
+                    f"{unmodelled}, which the emulator does not model; model them before replaying this corpus"
+                )
+            set_ = replace(strategy.prompts(body), context=_canonical_context(context))
+            for key, observation in _outputs_from_response(set_, exchange):
+                observed.setdefault(key, []).append((exchange.sequence, observation))
+        tolerance = _tolerance_of(corpus.manifest)
+        for key, history in observed.items():
+            first_sequence, first = history[0]
+            for sequence, other in history[1:]:
+                if _observation_differences(first, other, tolerance):
+                    raise DataError(
+                        f"recipe {corpus.manifest['recipe']['id']}: exchanges #{first_sequence} and #{sequence} "
+                        f"answer one replay key with different outputs ({key[:160]}...): the key misses a "
+                        "behaviour-shaping field, or the engine varies beyond the measured tolerance"
+                    )
+        merged = {key: tuple(observation for _, observation in history) for key, history in observed.items()}
         manifest_recipe = corpus.manifest["recipe"]
         return cls(
             facts=facts,
@@ -970,23 +1140,37 @@ class VllmEmulator:
             },
         )
 
-    def _prompts_or_error(self, body: Mapping[str, Any]) -> tuple[PromptSet | None, httpx.Response | None]:
+    def _prompts_or_error(self, route: str, body: Mapping[str, Any]) -> tuple[PromptSet | None, httpx.Response | None]:
+        """The request's engine prompts keyed by its context, or the refusal the engine (or, for an
+        unmodelled field, the emulator -- marked) answers instead."""
         if body.get("model") not in (None, self.facts.served_name):
             return None, _error(
                 404,
                 f"The model `{body.get('model')}` does not exist.",
                 kind="NotFoundError",
             )
+        context, unmodelled = request_context(route, body)
+        if unmodelled:
+            refusal = _error(
+                400,
+                f"the verified fake engine does not model the request field(s) {unmodelled} (no recording "
+                "shows the engine's behaviour for them); it refuses instead of answering from another "
+                "request's observation",
+                param=unmodelled[0],
+                kind="EmulatorUnmodelledError",
+            )
+            refusal.headers["x-rcp-ndcg-emulator"] = "rcp-ndcg.testing.engines"
+            refusal.headers["x-rcp-ndcg-emulator-source"] = "refused-unmodelled"
+            self.answer_log.append("refused-unmodelled")
+            return None, refusal
         try:
-            set_ = self.strategy.prompts(body)
+            set_ = replace(self.strategy.prompts(body), context=_canonical_context(context))
         except Exception as error:  # noqa: BLE001 - malformed requests are wire refusals
             return None, _error(400, f"invalid request: {error}", kind="BadRequestError")
         if not set_.prompts:
             return None, _error(400, "invalid request: empty input", param="input", kind="BadRequestError")
         over = [
-            index
-            for index, (prompt, flag) in enumerate(zip(set_.prompts, set_.add_special, strict=False))
-            if self.tokenizer.count(prompt, add_special_tokens=flag) > self.facts.max_model_len
+            index for index in range(len(set_.prompts)) if set_.count(index, self.tokenizer) > self.facts.max_model_len
         ]
         if over:
             cap = self.facts.max_model_len
@@ -1008,18 +1192,20 @@ class VllmEmulator:
         return ModelObservation(), "surrogate"
 
     def _embeddings(self, body: Mapping[str, Any]) -> httpx.Response:
-        set_, error = self._prompts_or_error(body)
+        set_, error = self._prompts_or_error("embeddings", body)
         if error is not None:
             return error
         assert set_ is not None
         dimensions = body.get("dimensions") if isinstance(body.get("dimensions"), int) else None
         sources, data = [], []
-        for index, prompt in enumerate(set_.prompts):
-            observation, source = self._observation(set_.item_key(index))
+        for index in range(len(set_.prompts)):
+            key = set_.item_key(index)
+            observation, source = self._observation(key)
             sources.append(source)
-            vector = list(observation.vector or surrogate_vector(0, "embedding", prompt, dim=self.dim))
-            if dimensions:
-                vector = _l2(vector[:dimensions])
+            if observation.vector is not None:
+                vector = list(observation.vector)  # observed under this very context (dimensions included)
+            else:
+                vector = surrogate_vector(0, "embedding", key, dim=dimensions or self.dim)
             data.append({"object": "embedding", "index": index, "embedding": vector})
         usage = self._usage(set_)
         return self._marked(
@@ -1045,7 +1231,7 @@ class VllmEmulator:
         return response
 
     def _pooling(self, body: Mapping[str, Any]) -> httpx.Response:
-        set_, error = self._prompts_or_error(body)
+        set_, error = self._prompts_or_error("pooling", body)
         if error is not None:
             return error
         assert set_ is not None
@@ -1053,17 +1239,16 @@ class VllmEmulator:
         sources, data = [], []
         raw = bytearray()
         framing: list[dict[str, Any]] = []
-        for index, prompt in enumerate(set_.prompts):
-            observation, source = self._observation(set_.item_key(index))
+        for index in range(len(set_.prompts)):
+            key = set_.item_key(index)
+            observation, source = self._observation(key)
             sources.append(source)
             if observation.matrix is not None:
                 matrix = [list(row) for row in observation.matrix]
-                token_ids = list(
-                    observation.token_ids or self.tokenizer.ids(prompt, add_special_tokens=set_.add_special[index])
-                )
+                token_ids = list(observation.token_ids or set_.ids(index, self.tokenizer))
             else:
-                token_ids = self.tokenizer.ids(prompt, add_special_tokens=set_.add_special[index])
-                matrix = surrogate_matrix(0, "pooling", prompt, tokens=len(token_ids), dim=self.dim)
+                token_ids = set_.ids(index, self.tokenizer)
+                matrix = surrogate_matrix(0, "pooling", key, tokens=len(token_ids), dim=self.dim)
             packed: Any
             if encoding == "base64":
                 packed = _encode_matrix(matrix, body.get("embed_dtype") or "float16")
@@ -1110,7 +1295,7 @@ class VllmEmulator:
         )
 
     def _rerank(self, body: Mapping[str, Any]) -> httpx.Response:
-        set_, error = self._prompts_or_error(body)
+        set_, error = self._prompts_or_error("rerank", body)
         if error is not None:
             return error
         assert set_ is not None
@@ -1118,24 +1303,27 @@ class VllmEmulator:
         sources: list[str] = []
         scored: list[dict[str, Any]] = []
         if set_.slot == "score_list":
-            prompt = set_.prompts[0]
             observation, source = self._observation(set_.set_key)
             sources.append(source)
             if observation.scores is not None:
                 scored = [{"index": position, "relevance_score": score} for position, score in observation.scores]
             else:
                 scored = [
-                    {"index": i, "relevance_score": surrogate_scores(0, "rerank", prompt, count=len(documents))[i]}
+                    {
+                        "index": i,
+                        "relevance_score": surrogate_scores(0, "rerank", set_.set_key, count=len(documents))[i],
+                    }
                     for i in range(len(documents))
                 ]
         else:
-            for position, prompt in enumerate(set_.prompts):
-                observation, source = self._observation(set_.item_key(position))
+            for position in range(len(set_.prompts)):
+                key = set_.item_key(position)
+                observation, source = self._observation(key)
                 sources.append(source)
                 score = (
                     observation.score
                     if observation.score is not None
-                    else surrogate_scores(0, "rerank", prompt, count=1)[0]
+                    else surrogate_scores(0, "rerank", key, count=1)[0]
                 )
                 scored.append(
                     {"index": set_.positions[position] if set_.positions else position, "relevance_score": score}
@@ -1530,8 +1718,21 @@ def _slot_of(strategy: PromptStrategy) -> str:
     return getattr(strategy, "slot", "vector")
 
 
+def _canonical_context(context: Mapping[str, Any]) -> str:
+    return json.dumps(dict(context), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def _observation_differences(
+    first: ModelObservation, other: ModelObservation, tolerance: tuple[float, float] | None
+) -> list[str]:
+    """Where two observations of one replay key disagree (exact when the tolerance is unmeasured)."""
+    plain = json.loads(json.dumps(asdict(first)))
+    again = json.loads(json.dumps(asdict(other)))
+    return _diff_bodies(plain, again, "", tolerance or (0.0, 0.0))
+
+
 def _outputs_from_response(set_: PromptSet, exchange: Exchange) -> list[tuple[str, ModelObservation]]:
-    """The model outputs one recorded 2xx exchange holds, keyed per observation key (prompt + knobs).
+    """The model outputs one recorded 2xx exchange holds, keyed per replay key (prompt + context).
 
     A framed body (``bytes``/``bytes_only``) is decoded from its ``metadata`` framing when it carries
     one, base64 item payloads in the request's ``embed_dtype``; anything else is refused loudly --
@@ -1548,9 +1749,9 @@ def _outputs_from_response(set_: PromptSet, exchange: Exchange) -> list[tuple[st
             raw = base64.b64decode(envelope["base64"])
             frames = json.loads(header).get("data") or []
             dtype = str(exchange.request_body.get("embed_dtype") or "float16")
-            for item, frame in zip((exchange.request_body.get("input") or []), frames, strict=False):
+            for index, frame in enumerate(frames[: len(set_.prompts)]):
                 matrix = _decode_frame(raw[int(frame["start"]) : int(frame["end"])], dtype, tuple(frame["shape"]))
-                pairs.append((_string(item), ModelObservation(matrix=matrix, token_ids=())))
+                pairs.append((set_.item_key(index), ModelObservation(matrix=matrix)))
             return pairs
         raise DataError(
             f"{exchange.source or exchange.path}: a framed response without metadata cannot be decomposed "
@@ -1587,10 +1788,6 @@ def _outputs_from_response(set_: PromptSet, exchange: Exchange) -> list[tuple[st
     else:
         pairs.append((set_.set_key, ModelObservation(scores=tuple(sorted(scores.items())))))
     return pairs
-
-
-def _string(item: Any) -> str:
-    return _text(item)
 
 
 def _frame_width(raw: bytes, dtype: str, tokens: int) -> int:
@@ -1657,8 +1854,3 @@ def _pack_frame(matrix: Sequence[Sequence[float]], dtype: str) -> bytes:
     import numpy as np
 
     return np.asarray(matrix, dtype=np.dtype("<f4" if dtype == "float32" else "<f2")).tobytes()
-
-
-def _l2(vector: Sequence[float]) -> list[float]:
-    norm = sum(value * value for value in vector) ** 0.5 or 1.0
-    return [value / norm for value in vector]

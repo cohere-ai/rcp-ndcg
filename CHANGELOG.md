@@ -70,8 +70,12 @@ released together.
   pinning the recomputed metrics to 1e-9 with every input observed -- regression pins generated from
   the recorded corpus (the shakedown recorded no subset run); the RC0 subset corpus replaces them with
   the GPU run's numbers.
-- **Conformance details**: a knob-keyed model layer (the rerank
-  roles' `use_activation` and `instruction` are part of the observation key), header-checked conformance
+- **Conformance details**: the model layer replays an output only for the behaviour-shaping context it
+  was observed under (`FIELD_CLASSES` over vLLM v0.31.0's `ROUTE_FIELDS`: the engine prompt plus
+  `use_activation`, `dimensions`, `add_special_tokens` and `task`); an unobserved context answers the
+  marked surrogate, a field the emulator does not model (`instruction`, `truncate_prompt_tokens`, ...)
+  a 400 marked `refused-unmodelled`, an undeclared field is ignored as the engine ignores it, and a
+  corpus whose one key holds different outputs is refused. Header-checked conformance
   (content type, server), an extended credential scanner (basic auth, api-key headers, cookie and
   single-quoted or assigned secrets), and `RE_ENGINE_URL` exported from `rcp_ndcg.inference.fake`
   (`rcp_ndcg.testing.engines` is pinned as public API).

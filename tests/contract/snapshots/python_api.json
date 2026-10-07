@@ -19251,6 +19251,37 @@
           "response_json": "property"
         }
       },
+      "FIELD_CLASSES": {
+        "kind": "constant",
+        "type": "dict",
+        "value": {
+          "add_special_tokens": "output",
+          "cache_salt": "protocol",
+          "chat_template_kwargs": "unmodelled",
+          "dimensions": "output",
+          "documents": "prompt",
+          "embed_dtype": "protocol",
+          "encoding_format": "protocol",
+          "endianness": "protocol",
+          "input": "prompt",
+          "instruction": "unmodelled",
+          "max_tokens_per_doc": "unmodelled",
+          "max_tokens_per_query": "unmodelled",
+          "messages": "unmodelled",
+          "mm_processor_kwargs": "unmodelled",
+          "model": "protocol",
+          "padding": "unmodelled",
+          "priority": "protocol",
+          "query": "prompt",
+          "request_id": "protocol",
+          "task": "output",
+          "top_n": "protocol",
+          "truncate_prompt_tokens": "unmodelled",
+          "truncation_side": "unmodelled",
+          "use_activation": "output",
+          "user": "protocol"
+        }
+      },
       "LINE_SCHEMA": {
         "kind": "constant",
         "type": "int",
@@ -19322,7 +19353,7 @@
         "defined_in": "rcp_ndcg.testing.engines",
         "init": [
           {
-            "annotation": "tuple[str, ...]",
+            "annotation": "tuple[Prompt, ...]",
             "default": "<required>",
             "kind": "positional_or_keyword",
             "name": "prompts"
@@ -19346,10 +19377,10 @@
             "name": "positions"
           },
           {
-            "annotation": "tuple[str, ...]",
-            "default": [],
+            "annotation": "str",
+            "default": "{}",
             "kind": "positional_or_keyword",
-            "name": "knobs"
+            "name": "context"
           },
           {
             "returns": "None"
@@ -19357,6 +19388,32 @@
         ],
         "kind": "class",
         "members": {
+          "count": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "int",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "index"
+              },
+              {
+                "annotation": "Any",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "tokenizer"
+              },
+              {
+                "returns": "int"
+              }
+            ]
+          },
           "counted": {
             "kind": "method",
             "signature": [
@@ -19374,6 +19431,32 @@
               },
               {
                 "returns": "int"
+              }
+            ]
+          },
+          "ids": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "int",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "index"
+              },
+              {
+                "annotation": "Any",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "tokenizer"
+              },
+              {
+                "returns": "list[int]"
               }
             ]
           },
@@ -19431,6 +19514,15 @@
             ]
           }
         }
+      },
+      "ROUTE_FIELDS": {
+        "keys": [
+          "embeddings",
+          "pooling",
+          "rerank"
+        ],
+        "kind": "constant",
+        "type": "dict"
       },
       "StringsPrompts": {
         "bases": [
@@ -20030,6 +20122,27 @@
         "kind": "constant",
         "type": "rcp_ndcg.testing.engines.EmulatorRegistry"
       },
+      "request_context": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "route"
+          },
+          {
+            "annotation": "Mapping[str, Any]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "body"
+          },
+          {
+            "returns": "tuple[dict[str, Any], list[str]]"
+          }
+        ]
+      },
       "request_digest": {
         "defined_in": "rcp_ndcg.testing.engines",
         "kind": "function",
@@ -20042,6 +20155,21 @@
           },
           {
             "returns": "str"
+          }
+        ]
+      },
+      "route_of": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "returns": "str | None"
           }
         ]
       },
