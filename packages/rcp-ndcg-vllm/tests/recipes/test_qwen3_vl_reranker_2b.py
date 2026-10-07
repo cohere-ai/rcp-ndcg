@@ -429,9 +429,9 @@ def test_a_whitespace_only_query_is_the_cards_verbatim_text(tmp_path: Path, snap
 
 def _media_pairs(tmp_path: Path) -> Path:
     """One text row and the media request set's rows (the generator's synthetic image buckets)."""
-    from rcp_ndcg_vllm.observe.media_set import media_rows
+    from rcp_ndcg_vllm.observe.media_set import planned_media_rows
 
-    rows, _ = media_rows(recipe())
+    rows, _ = planned_media_rows(recipe())
     text = {"query": "what is the capital of France", "documents": ["Paris is the capital of France."]}
     lines = [text, *[{key: row[key] for key in ("query", "documents", "media")} for row in rows]]
     path = tmp_path / "pairs.jsonl"

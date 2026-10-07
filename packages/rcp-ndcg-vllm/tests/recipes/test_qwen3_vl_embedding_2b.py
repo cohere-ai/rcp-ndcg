@@ -473,9 +473,9 @@ def test_the_served_render_is_the_declared_frame_only_with_the_generation_prompt
 
 def _media_pairs(tmp_path: Path) -> Path:
     """One text row and the media request set's rows (the generator's synthetic image buckets)."""
-    from rcp_ndcg_vllm.observe.media_set import media_rows
+    from rcp_ndcg_vllm.observe.media_set import planned_media_rows
 
-    rows, _ = media_rows(load_recipe(RECIPE_DIR))
+    rows, _ = planned_media_rows(load_recipe(RECIPE_DIR))
     return _pairs(tmp_path, [_PAIRS[0], *[{key: row[key] for key in ("query", "documents", "media")} for row in rows]])
 
 

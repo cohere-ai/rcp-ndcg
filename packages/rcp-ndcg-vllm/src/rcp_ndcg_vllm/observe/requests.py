@@ -583,9 +583,9 @@ def plan_recipe(recipe: Any, tokenizer: Any, corpora: dict[str, list[SourceCorpu
     synthetic_kinds = {str(row.source.get("content_kind")) for row in synthetic if row.source}
     length_rows, length_strata = _length_rows(recipe, tokenizer, _token_medians(source_rows, tokenizer))
 
-    from .media_set import media_rows as synthetic_media
+    from .media_set import planned_media_rows
 
-    planned_media, media_strata = synthetic_media(recipe)
+    planned_media, media_strata = planned_media_rows(recipe)
     media = [
         PlannedRow(
             query=row["query"],

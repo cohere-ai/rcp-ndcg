@@ -8,7 +8,7 @@ The protocol edges -- more images than the recipe's ``max_images`` in one reques
 bare requests of the corpus plan (:func:`media_edges`).  Versioned apart from the generator's sampling
 (``GENERATOR_VERSION``), so adding or changing the media set never re-samples a recipe's text rows.
 
-Public surface: :data:`MEDIA_SET_VERSION`, :data:`MEDIA_BUCKETS`, :func:`image_entry`, :func:`media_rows`,
+Public surface: :data:`MEDIA_SET_VERSION`, :data:`MEDIA_BUCKETS`, :func:`image_entry`, :func:`planned_media_rows`,
 :func:`media_edges`.
 """
 
@@ -19,7 +19,7 @@ import hashlib
 import io
 from typing import Any
 
-__all__ = ["MEDIA_BUCKETS", "MEDIA_SET_VERSION", "image_entry", "media_edges", "media_rows"]
+__all__ = ["MEDIA_BUCKETS", "MEDIA_SET_VERSION", "image_entry", "media_edges", "planned_media_rows"]
 
 MEDIA_SET_VERSION = 1
 """The media set's version: any change to its images or rows bumps it."""
@@ -69,8 +69,9 @@ def image_entry(name: str, width: int, height: int, *, payload: bytes | None = N
     }
 
 
-def media_rows(recipe: Any) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
-    """The media rows of one recipe and their strata.
+def planned_media_rows(recipe: Any) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    """The media rows the generator plans for one recipe (from the recipe, not from a pairs file), and their
+    strata.
 
     Input: a loaded recipe.  Output: ``(rows, strata)`` -- for a recipe with image input, one row per
     :data:`MEDIA_BUCKETS` entry (an image-only document) and one captioned page, each ``{"query", "documents",
