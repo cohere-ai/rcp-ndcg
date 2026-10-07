@@ -542,7 +542,7 @@ released together.
   card's uncut prompt (the card truncates ids at encode) and the recipe declares
   `reference.known_deviations: [over_cap_cut_differs]` (both sides keep the appended anchor; over-cap rows
   are reported, not gated), and `zembed-1-embedding`'s reference drops its unused copy of the client's cut
-  search. `query_max_tokens` is declared only where the reference caps queries (`jina-reranker-v3`: 512, the
+  search (its render needs no tokenizer now) and pins sentence-transformers to the measured 5.1 line. `query_max_tokens` is declared only where the reference caps queries (`jina-reranker-v3`: 512, the
   checkpoint's `max_query_length`; the embedders' referents cut queries and documents alike, so none
   declares it); `jina-embeddings-v5-text-small` declares `anchor: last_content`; `jina-reranker-v3` states
   the merged rerank client's settle rule and no longer claims the client sends per-text engine caps (it
