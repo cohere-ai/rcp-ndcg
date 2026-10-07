@@ -106,6 +106,7 @@ def test_recipe_loads_and_declares_the_product_endpoint() -> None:
     assert recipe.client.tokenizer == f"{REPO}@{REVISION}"
     assert recipe.client.max_tokens == 3219
     assert recipe.client.query_max_tokens == 512
+    assert recipe.client.document_max_tokens == 2048  # the checkpoint's max_doc_length, beside the pair budget
     assert recipe.client.on_overflow == "cut"
     assert recipe.client.empty_doc == "omit_zero"
     assert recipe.client.use_activation is False
@@ -285,7 +286,7 @@ EXPECTED_CLIENT = {
     "model": "jina-reranker-v3",
     "on_overflow": "cut",
     "query_max_tokens": 512,
-    "document_max_tokens": None,
+    "document_max_tokens": 2048,
     "recipe": "vllm v0.31.0: --runner pooling; the server-side Jina ranking prompt builder and the marker-token "
     "projector pooler (float32 cosine); no per-text request caps are sent (the client cuts to its pair budget)",
     "request_shape": "text",
@@ -401,6 +402,8 @@ def test_notes_state_the_settle_rule_and_the_query_cap() -> None:
     assert "fit binds on overflow only" in notes
     assert "settles the shared query span once per call" in notes
     assert "query_max_tokens 512 declares exactly it" in notes
+    assert "document_max_tokens 2048 declares exactly it" in notes
+    assert "no per-document cap beside the pair budget" not in notes
     # The served client's wire, as merged: no per-text request caps are ever sent (the stale claim
     # that it sends max_tokens_per_query=4096 and truncate_prompt_tokens=8192 is gone).
     assert "never sends the engine's per-text request caps" in notes

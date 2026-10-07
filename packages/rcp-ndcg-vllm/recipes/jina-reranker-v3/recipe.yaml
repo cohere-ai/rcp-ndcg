@@ -55,6 +55,7 @@ client:
   tokenizer: "jinaai/jina-reranker-v3@d7d7e73b6ea138ced340b83865931b5dfb6c97aa"
   max_tokens: 3219
   query_max_tokens: 512
+  document_max_tokens: 2048     # the checkpoint's max_doc_length (modeling.py rerank(): documents cut at 2048 tokens, queries at 512): every document over it is cut to it client-side, also in a pair the budget would take whole
   on_overflow: cut
   empty_doc: omit_zero
   use_activation: false
@@ -106,20 +107,23 @@ notes: >-
   with the settled query, exactly the checkpoint's single truncation. Per-shape query cap
   (whether query_max_tokens applies): the reference truncates queries at 512
   tokens (the checkpoint's max_query_length, decode-back, modeling.py _truncate_texts) --
-  query_max_tokens 512 declares exactly it.  Budget: max_tokens 3219 = the measured fixed frame (147 tokens, empty content,
+  query_max_tokens 512 declares exactly it.  Per-document cap: the reference truncates every
+  document at 2048 tokens (the checkpoint's max_doc_length, the same _truncate_texts) --
+  document_max_tokens 2048 declares exactly it: the client cuts each document over 2048 tokens to
+  2048 on its content span and records the cut (document_share), so no document reaches the model
+  longer than the checkpoint reads it.  Budget: max_tokens 3219 = the measured fixed frame (147 tokens, empty content,
   pinned tokenizer) + query_max_tokens 512 TWICE (the query spans the prompt two times -- the intro
   line and the <query> block -- so the budget reserves both copies) + 2048 (the checkpoint's
   per-document cap); 147 + 2*512 + 2048 = 3219 is the checkpoint's own worst-case 1-vs-1 prompt, and
   every pair within its per-text caps (query <= 512, document <= 2048) renders under this budget
-  uncut.  The client's document cut therefore binds at 3072 - 2*q_tokens (q = the fitted query's
-  tokens), at or above the checkpoint's 2048 cap for every declared query.  Product gap (this
-  recipe cannot fix it; reported to the owner): the merged rerank client cuts client-side and never
-  sends the engine's per-text request caps (no max_tokens_per_doc, max_tokens_per_query or
-  truncate_prompt_tokens: src/rcp_ndcg/inference/clients/rerank.py module docstring), and the
-  schema has no per-document cap beside the pair budget, so a document in (2048, 3072 - 2*q]
-  reaches the model uncut where the checkpoint truncates it per text BEFORE templating -- such a
-  pair is a divergence row the stage-1 render comparison fails loudly (the evaluated-pairs rule
-  below keeps documents at or under 2048 tokens).  The instruction is none (the paper sends the
+  uncut.  The client's document cut therefore binds at the 2048-token cap, below the pair budget's
+  3072 - 2*q_tokens (q = the fitted query's tokens) for every query within its share.  The rerank
+  client cuts client-side and never sends the engine's per-text request caps (no max_tokens_per_doc,
+  max_tokens_per_query or truncate_prompt_tokens: src/rcp_ndcg/inference/clients/rerank.py module
+  docstring); the checkpoint truncates by decode-back, the client by an offset cut on the content
+  span, so a document over 2048 tokens is cut by both, each its own way -- the declared
+  over_cap_cut_differs: the harness reports such a pair (the client's processing record names the
+  document_share cut) instead of gating it.  The instruction is none (the paper sends the
   bare query), and empty_doc: omit_zero declares the paper's rule (an empty document scores exactly
   0.0 without a model call).  EQUIVALENCE HAS
   TWO REGIMES.  (1) Single-block (fewer than 125 documents AND residual capacity 131072 - 2*q_len
@@ -138,7 +142,7 @@ notes: >-
   512-d embeds in docs-then-query order; the client chunks documents exactly like rerank(), scores
   each block in float32, weights blocks by max((1+cos)/2), averages the query embeds, and emits the
   final float32 cosines.  That loop is not expressible in the recipe schema (a product gap: no
-  block-loop field, no per-document budget next to the pair budget) -- reported, not worked around.
+  block-loop field) -- reported, not worked around.
   HEADROOM for that client (record-audit-corrected numbers): rerank()'s capacity loop counts only
   document bodies, but each passage costs 13-16 wrapper+joiner prompt tokens on top of its body (the
   record's own averages: 13.86/document at a 63-document block, 14.28 at 150; the exact +/-1 boundary
@@ -160,12 +164,9 @@ notes: >-
   cannot express that, so a pairs row whose query or document contains a marker literal would fail
   stage 1's render check by design -- keep marker literals out of evaluated inputs.  Stage 1's render
   check is likewise a byte comparison for pairs whose contents sit at or under the checkpoint's
-  per-text caps: the client's room-bound cut is 3072 - 2*q_tokens, so a pairs row whose document
-  sits between the checkpoint's per-text cap (2048) and that cut renders differently on the two
-  sides (the checkpoint truncates, the declared budget does not yet bind), and evaluated pairs
-  therefore keep documents at or under 2048 tokens and queries at or under 512 (147 + 2*512 + 2048
-  = 3219 = the budget, so such pairs always render uncut); over-budget behaviour rides the
-  declared over_cap_cut_differs table (reported, not gated).  An over-share query (over 512 tokens) is a
-  declared divergence row: the client settles the query verbatim at its 512-token share while the
-  checkpoint truncates decode-back (both honour the cap; the boundary bytes can differ), so
-  evaluated pairs keep queries at or under 512 tokens.
+  per-text caps (147 + 2*512 + 2048 = 3219 = the budget, so such pairs always render uncut).  A
+  document over 2048 tokens is cut by the client at document_max_tokens and by the checkpoint
+  decode-back, and a query over 512 tokens is settled by the client verbatim at its share while the
+  checkpoint truncates it decode-back: both honour the caps, the boundary bytes can differ, and the
+  harness reports every such pair (the client's processing record names the document_share or
+  query_share cut) in the declared over_cap_cut_differs table instead of gating it.

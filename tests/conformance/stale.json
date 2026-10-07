@@ -13,9 +13,10 @@
     "recipe_id": "jina-reranker-v3",
     "recorded_fingerprint": "279e67fbab5d61b271d4f54fb97f0a5db06cd8096959340ac0b244cbe974beb9",
     "changed_inputs": [
+      "client.document_max_tokens",
       "serve.pooler_config"
     ],
-    "reason": "the families' recipe changes (M2) moved behaviour-shaping inputs: serve.pooler_config now declares use_activation: false: the scores the engine returns can change",
+    "reason": "the families' recipe changes (M2) moved behaviour-shaping inputs: serve.pooler_config now declares use_activation: false: the scores the engine returns can change; then client.document_max_tokens 2048 (the checkpoint's per-document cap) changes the document text sent",
     "decided": "2026-10-07",
     "action": "re-record on the RC0 wave (python -m rcp_ndcg_vllm.changes changed lists it)"
   },
