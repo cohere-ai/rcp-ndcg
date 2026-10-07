@@ -161,11 +161,12 @@ def test_stage1_without_a_reference_python_reports_not_run(tmp_path: Path) -> No
     assert document["anchor_check"]["passed"] is True
 
 
-def test_stage1_carves_over_cap_rows_out_of_the_render_check_when_declared(tmp_path: Path) -> None:
-    """With anchor_drop_over_cap declared, over-cap pairs-file rows are reported non-gating in stage 1 too."""
+@pytest.mark.parametrize("deviation", ["anchor_drop_over_cap", "over_cap_cut_differs"])
+def test_stage1_carves_over_cap_rows_out_of_the_render_check_when_declared(tmp_path: Path, deviation: str) -> None:
+    """With an over-cap deviation declared, over-cap pairs-file rows are reported non-gating in stage 1 too."""
     recipe = load("fixture-rerank-pointwise")
     deviating = recipe.model_copy(
-        update={"reference": recipe.reference.model_copy(update={"known_deviations": ["anchor_drop_over_cap"]})}
+        update={"reference": recipe.reference.model_copy(update={"known_deviations": [deviation]})}
     )
     over_cap_row = {"query": "over the cap " * 40, "documents": ["document tokens"]}
     pairs = write_pairs(tmp_path / "pairs.jsonl", [over_cap_row, *sample_pairs(1)])
@@ -235,11 +236,12 @@ def test_stage2_multi_vector_compares_every_text_and_fails_on_noise(tmp_path: Pa
         noisy.stop()
 
 
-def test_stage2_gates_only_under_cap_pairs_when_the_deviation_is_declared(tmp_path: Path) -> None:
-    """With anchor_drop_over_cap, over-cap pairs (the client's own census) are non-gating; the rest gate."""
+@pytest.mark.parametrize("deviation", ["anchor_drop_over_cap", "over_cap_cut_differs"])
+def test_stage2_gates_only_under_cap_pairs_when_the_deviation_is_declared(tmp_path: Path, deviation: str) -> None:
+    """With an over-cap deviation, over-cap pairs (the client's own census) are non-gating; the rest gate."""
     recipe = load("fixture-rerank-pointwise")
     deviating = recipe.model_copy(
-        update={"reference": recipe.reference.model_copy(update={"known_deviations": ["anchor_drop_over_cap"]})}
+        update={"reference": recipe.reference.model_copy(update={"known_deviations": [deviation]})}
     )
     pairs = write_pairs(
         tmp_path / "pairs.jsonl",
