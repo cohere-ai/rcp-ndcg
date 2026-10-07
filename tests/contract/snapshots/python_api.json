@@ -18999,6 +18999,18 @@
           "tolerance": "property"
         }
       },
+      "EMULATED_ROUTES": {
+        "kind": "constant",
+        "type": "tuple",
+        "value": [
+          "GET /health",
+          "GET /v1/models",
+          "POST /pooling",
+          "POST /rerank",
+          "POST /tokenize",
+          "POST /v1/embeddings"
+        ]
+      },
       "EmulatorRegistry": {
         "bases": [],
         "defined_in": "rcp_ndcg.testing.engines",
@@ -19242,12 +19254,24 @@
             "name": "source"
           },
           {
+            "annotation": "bytes | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "request_raw"
+          },
+          {
+            "annotation": "bytes | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "response_raw"
+          },
+          {
             "returns": "None"
           }
         ],
         "kind": "class",
         "members": {
-          "response_bytes": "property",
+          "raw_body": "property",
           "response_json": "property"
         }
       },
@@ -19300,7 +19324,7 @@
       "NORMALISATION_VERSION": {
         "kind": "constant",
         "type": "int",
-        "value": 1
+        "value": 2
       },
       "PairPrompts": {
         "bases": [
@@ -19667,13 +19691,17 @@
               "malformed JSON -> 400",
               "empty input -> 400",
               "model name mismatch -> 404",
-              "too many media items -> 400",
-              "top_n > documents -> truncated to the documents",
-              "the /pooling framings (float/base64/bytes) are emulated from the product's pooling wire but unverified: the shakedown corpus holds no /pooling recording (RC0's corpus records them)",
-              "encoding_format base64 on /v1/embeddings is emulated unverified (the corpus recorded float)"
+              "top_n > documents -> the whole ranked list",
+              "the base64 and bytes framings on a route the corpus recorded as float JSON"
             ],
             "kind": "positional_or_keyword",
             "name": "unverified_rules"
+          },
+          {
+            "annotation": "frozenset[str]",
+            "default": [],
+            "kind": "positional_or_keyword",
+            "name": "observed_routes"
           },
           {
             "annotation": "list[int]",
@@ -19860,7 +19888,8 @@
                 "returns": "None"
               }
             ]
-          }
+          },
+          "unobserved_routes": "property"
         }
       },
       "append_verification": {
@@ -19916,40 +19945,16 @@
             "name": "recorded"
           },
           {
-            "annotation": "str",
+            "annotation": "httpx.Response",
             "default": "<required>",
             "kind": "positional_or_keyword",
-            "name": "method"
-          },
-          {
-            "annotation": "str",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "path"
-          },
-          {
-            "annotation": "int",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "status"
-          },
-          {
-            "annotation": "Any",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "body"
+            "name": "replayed"
           },
           {
             "annotation": "tuple[float, float] | None",
             "default": "<required>",
             "kind": "positional_or_keyword",
             "name": "tolerance"
-          },
-          {
-            "annotation": "Mapping[str, str] | None",
-            "default": null,
-            "kind": "positional_or_keyword",
-            "name": "response_headers"
           },
           {
             "returns": "list[str]"
@@ -20076,6 +20081,21 @@
           }
         ]
       },
+      "normalise_raw": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "bytes",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "raw"
+          },
+          {
+            "returns": "bytes"
+          }
+        ]
+      },
       "register_corpus_format": {
         "defined_in": "rcp_ndcg.testing.engines",
         "kind": "function",
@@ -20158,6 +20178,27 @@
           }
         ]
       },
+      "route_name": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "method"
+          },
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "path"
+          },
+          {
+            "returns": "str | None"
+          }
+        ]
+      },
       "route_of": {
         "defined_in": "rcp_ndcg.testing.engines",
         "kind": "function",
@@ -20209,6 +20250,12 @@
             "default": "<required>",
             "kind": "keyword_only",
             "name": "verified_at"
+          },
+          {
+            "annotation": "VllmEmulator | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "emulator"
           },
           {
             "returns": "dict[str, Any]"

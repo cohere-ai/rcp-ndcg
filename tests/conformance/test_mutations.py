@@ -72,13 +72,13 @@ def test_the_over_length_threshold_moving_by_one_token_makes_conformance_red() -
 
     recorded_ok = Exchange(0, "POST", "/v1/embeddings", _body(EDGE), 200, {}, at_edge.json())
     recorded_refused = Exchange(1, "POST", "/v1/embeddings", _body(LONG), 400, {}, refused.json())
-    assert compare_exchange(recorded_ok, "POST", "/v1/embeddings", 200, at_edge.json(), (0.0, 0.0)) == []
-    assert compare_exchange(recorded_refused, "POST", "/v1/embeddings", 400, refused.json(), (0.0, 0.0)) == []
+    assert compare_exchange(recorded_ok, at_edge, None) == []
+    assert compare_exchange(recorded_refused, refused, None) == []
 
     # the mutation: the over-length threshold moved by one token (the cap reads one less)
     mutant = replace(emulator, facts=replace(emulator.facts, max_model_len=7))
     answer = mutant.answer("/v1/embeddings", "POST", _body(EDGE))
-    problems = compare_exchange(recorded_ok, "POST", "/v1/embeddings", answer.status_code, answer.json(), (0.0, 0.0))
+    problems = compare_exchange(recorded_ok, answer, None)
     assert problems and problems[0].startswith("status 400"), problems
     # and the boundary is exactly one token wide: the 8-token edge now refuses where 7 still fits
     assert mutant.answer("/v1/embeddings", "POST", _body(SHORT)).status_code == 200
@@ -103,11 +103,8 @@ def test_the_result_ordering_making_conformance_red() -> None:
     flipped["results"] = list(reversed(flipped["results"]))
     problem = compare_exchange(
         Exchange(0, "POST", "/rerank", body, 200, {}, original.json()),
-        "POST",
-        "/rerank",
-        200,
-        flipped,
-        (0.0, 0.0),
+        httpx.Response(200, json=flipped),
+        None,
     )
     assert problem and any(".results[0].index" in item for item in problem), problem
 
@@ -161,7 +158,6 @@ def test_the_surrogate_marking_is_honest(tmp_path: Path) -> None:
     assert unseen.headers["x-rcp-ndcg-emulator-source"] == "surrogate"
     assert "x-rcp-ndcg-emulator-source" not in refused.headers  # an error carries no model output
     assert replayed.answer_log[-2:] == ["replayed", "surrogate"]
-    _ = httpx  # the transport shape is exercised through fake:// elsewhere
 
 
 def test_an_edited_recipe_fails_the_gate_naming_the_changed_input(tmp_path: Path) -> None:

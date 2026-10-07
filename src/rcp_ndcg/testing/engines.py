@@ -65,6 +65,7 @@ __all__ = [
     "Corpus",
     "FIELD_CLASSES",
     "ROUTE_FIELDS",
+    "EMULATED_ROUTES",
     "EngineFacts",
     "EnginePrompts",
     "EmulatorRegistry",
@@ -84,8 +85,10 @@ __all__ = [
     "NON_DETERMINISM_RULE",
     "measure_non_determinism",
     "normalise_body",
+    "normalise_raw",
     "register_corpus_format",
     "register_line_migration",
+    "route_name",
     "route_of",
     "registry",
     "request_context",
@@ -110,18 +113,25 @@ CORPUS_INDEX_SCHEMA = "rcp-ndcg.corpus-index/1"
 VERIFICATION_SCHEMA = "rcp-ndcg.verification/1"
 """The append-only verification record's schema (written by the conformance verifier)."""
 
-NORMALISATION_VERSION = 1
-"""The derived-views version: which volatile fields :func:`normalise_body` strips before comparing two
-bodies. A change here is a new version (2), never a silent edit of 1's rule."""
+NORMALISATION_VERSION = 2
+"""The derived-views version: which volatile fields :func:`normalise_body` and :func:`normalise_raw`
+strip before comparing two replies. A change here is a new version, never a silent edit of a rule.
+Version 2 strips the ``id`` of every model route's reply (``/pooling`` included) and of the ``bytes``
+framing's ``metadata`` header, and masks the same values in raw bytes."""
 
-#: ``NORMALISATION_VERSION == 1`` strips exactly these volatile leaves (``$`` is the body root, ``*`` any
+#: ``NORMALISATION_VERSION == 2`` strips exactly these volatile leaves (``$`` is the body root, ``*`` any
 #: list element): the reply's request ids and creation timestamps. Everything else is compared.
-VOLATILE_FIELDS_1: tuple[str, ...] = (
+VOLATILE_FIELDS: tuple[str, ...] = (
     "$.created",
-    "$.id(embeddings|rerank)",
+    "$.id (every POST model route; and in the bytes framing's metadata header)",
     "$.data[*].created",
     "$.data[*].permission[*].created",
     "$.data[*].permission[*].id",
+)
+
+_VOLATILE_RAW = (
+    (re.compile(rb'"id":"(?:embd|score|pool|modelperm|rerank|cmpl)-[0-9A-Za-z-]+"'), b'"id":"<volatile>"'),
+    (re.compile(rb'"created":[0-9]+'), b'"created":0'),
 )
 
 
@@ -188,6 +198,9 @@ class Exchange:
         repetition: ``same_process`` or ``after_restart`` (OBSERVATIONS-SPEC section 2); the shakedown
             recorder sent one repetition.
         source: The record's provenance (its file name in the source corpus).
+        request_raw: The request body's exact bytes as sent, when the corpus recorded them.
+        response_raw: The response body's exact bytes as received, when the corpus recorded them (the
+            shakedown recorder kept parsed JSON only; its binary bodies ride in the envelope).
     """
 
     sequence: int
@@ -199,6 +212,8 @@ class Exchange:
     response: Any
     repetition: str = "same_process"
     source: str = ""
+    request_raw: bytes | None = None
+    response_raw: bytes | None = None
 
     @property
     def response_json(self) -> Any:
@@ -206,13 +221,16 @@ class Exchange:
         return self.response if not _is_bytes_envelope(self.response) else None
 
     @property
-    def response_bytes(self) -> bytes:
-        """The raw response bytes (a JSON body re-encoded canonically, a binary body kept exact)."""
+    def raw_body(self) -> bytes | None:
+        """The response's exact bytes: as recorded, or a binary body's envelope decoded; ``None`` when the
+        corpus kept only the parsed JSON (never a re-encoding passed off as raw)."""
+        if self.response_raw is not None:
+            return self.response_raw
         if _is_bytes_envelope(self.response):
             import base64
 
             return base64.b64decode(self.response["base64"])
-        return json.dumps(self.response, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return None
 
 
 def _is_bytes_envelope(body: Any) -> bool:
@@ -337,9 +355,18 @@ def _read_exchanges(root: Path, manifest: Mapping[str, Any]) -> tuple[Exchange, 
                 response=doc["response"],
                 repetition=str(doc.get("repetition", "same_process")),
                 source=str(doc.get("source", "")),
+                request_raw=_raw_field(doc, "request_raw_base64"),
+                response_raw=_raw_field(doc, "response_raw_base64"),
             )
         )
     return tuple(exchanges)
+
+
+def _raw_field(doc: Mapping[str, Any], name: str) -> bytes | None:
+    import base64
+
+    value = doc.get(name)
+    return None if value is None else base64.b64decode(value)
 
 
 register_corpus_format(MANIFEST_SCHEMA, _read_exchanges)
@@ -435,12 +462,12 @@ def verify_corpus_hashes(corpus: Corpus) -> list[str]:
 
 
 def normalise_body(method: str, path: str, body: Any) -> Any:
-    """The body with :data:`VOLATILE_FIELDS_1` stripped, so two replies compare equal when they differ
+    """The body with :data:`VOLATILE_FIELDS` stripped, so two replies compare equal when they differ
     only in request ids and creation timestamps.
 
     Args:
         method: The request method (rules are route-aware).
-        path: The request path (``/v1/embeddings``, ``/rerank``, ``/v1/rerank``).
+        path: The request path (``/v1/embeddings``, ``/pooling``, ``/rerank``, ``/v1/models``).
         body: The parsed response body.
 
     Returns:
@@ -449,15 +476,21 @@ def normalise_body(method: str, path: str, body: Any) -> Any:
     if not isinstance(body, dict):
         return body
     out = dict(body)
-    if "created" in out:
-        out.pop("created")
-    route = path.rstrip("/")
-    if "id" in out and method.upper() == "POST" and route.endswith(("embeddings", "rerank", "v1/rerank")):
-        out.pop("id")
+    out.pop("created", None)
+    if method.upper() == "POST" and route_of(path) is not None:
+        out.pop("id", None)
     data = out.get("data")
-    if isinstance(data, list) and route.endswith(("models", "embeddings")):
+    if isinstance(data, list) and path.rstrip("/").endswith(("models", "embeddings", "pooling")):
         out["data"] = [_normalise_item(item) for item in data]
     return out
+
+
+def normalise_raw(raw: bytes) -> bytes:
+    """Raw reply bytes with the volatile values of :data:`VOLATILE_FIELDS` masked in place (the engine's
+    compact JSON), so the bytes compare exactly otherwise."""
+    for pattern, mask in _VOLATILE_RAW:
+        raw = pattern.sub(mask, raw)
+    return raw
 
 
 def _normalise_item(item: Any) -> Any:
@@ -489,47 +522,60 @@ def _float_leaves(value: Any, prefix: str = "") -> dict[str, float]:
     return leaves
 
 
-def compare_exchange(
-    recorded: Exchange,
-    method: str,
-    path: str,
-    status: int,
-    body: Any,
-    tolerance: tuple[float, float] | None,
-    response_headers: Mapping[str, str] | None = None,
-) -> list[str]:
-    """The conformance check of one replayed exchange: identical status and body within the recorded
-    non-determinism (volatile fields stripped by :data:`NORMALISATION_VERSION`), plus the headers that
-    matter (content type, server) when the caller passes the replayed ones -- framing is protocol
-    behaviour (GPU-VALIDATION item 1) and a wrong ``content-type`` must not pass.
+def compare_exchange(recorded: Exchange, replayed: httpx.Response, tolerance: tuple[float, float] | None) -> list[str]:
+    """The conformance check of one replayed exchange, as the transport reads it: identical status, the
+    recorded headers that matter (content type, server, the framing ``metadata`` -- volatile fields
+    stripped), and the body within the recorded non-determinism -- its raw bytes too where the corpus
+    recorded them (volatile values masked, :data:`NORMALISATION_VERSION`).
 
     Args:
         recorded: The recorded exchange.
-        method: The replayed request's method.
-        path: The replayed request's path.
-        status: The replayed response's status.
-        body: The replayed response body (as the transport reads it).
+        replayed: The emulator's reply to the recorded request.
         tolerance: ``(abs, rel)`` from the corpus's measured non-determinism, each bound applying
             jointly; ``None`` (unmeasured) compares exactly.
-        response_headers: The replayed response's headers (checked against the recorded ones that
-            matter; ``None`` skips the header check).
 
     Returns:
-        A list of differences (``[]`` is conformant); each names the field that moved.
+        A list of differences (``[]`` is conformant); each names what moved. An undecodable replayed
+        body is a named difference, never an exception or a silent pass.
     """
     problems = []
-    if status != recorded.status:
-        problems.append(f"status {status} != recorded {recorded.status}")
+    if replayed.status_code != recorded.status:
+        return [f"status {replayed.status_code} != recorded {recorded.status}"]
+    for name, expected in dict(recorded.response_headers).items():
+        actual = replayed.headers.get(name)
+        if name.lower() == "metadata" and actual is not None:
+            if _volatile_free(actual) != _volatile_free(expected):
+                problems.append(f"header metadata: {actual!r} != recorded {expected!r}")
+        elif actual != expected:
+            problems.append(f"header {name.lower()}: {actual!r} != recorded {expected!r}")
+    content = replayed.content
+    if recorded.response_json is None:  # a binary reply: the exact frames
+        expected_raw = recorded.raw_body or b""
+        if content != expected_raw:
+            problems.append(f"body bytes: {len(content)} bytes differ from the recorded {len(expected_raw)}")
         return problems
-    if response_headers is not None:
-        for name, expected in dict(recorded.response_headers).items():
-            actual = response_headers.get(name)
-            if actual != expected:
-                problems.append(f"header {name}: {actual!r} != recorded {expected!r}")
+    try:
+        actual_body = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as error:
+        problems.append(f"undecodable body ({replayed.headers.get('content-type')!r}): {error}")
+        return problems
     expected_body = normalise_body(recorded.method, recorded.path, recorded.response_json)
-    actual = normalise_body(method, path, body)
+    actual = normalise_body(recorded.method, recorded.path, actual_body)
     problems.extend(_diff_bodies(expected_body, actual, "", tolerance or (0.0, 0.0)))
+    if recorded.response_raw is not None and not problems and tolerance is None:
+        if normalise_raw(content) != normalise_raw(recorded.response_raw):
+            problems.append("raw bytes differ from the recorded bytes (volatile values masked)")
     return problems
+
+
+def _volatile_free(header: str) -> Any:
+    try:
+        value = json.loads(header)
+    except ValueError:
+        return header
+    return (
+        {key: item for key, item in value.items() if key not in ("id", "created")} if isinstance(value, dict) else value
+    )
 
 
 def _diff_bodies(expected: Any, actual: Any, path: str, tolerance: tuple[float, float]) -> list[str]:
@@ -650,6 +696,30 @@ _ROUTE_DEFAULTS: Mapping[str, Mapping[str, Any]] = {
 """The declared defaults of ``output`` fields (``CompletionRequestMixin.add_special_tokens = True``): an
 absent field and its default ask the same question. Every other absent field stays distinct from any
 value (``use_activation`` absent leaves the model's own default, which no record pins)."""
+
+
+EMULATED_ROUTES: tuple[str, ...] = (
+    "GET /health",
+    "GET /v1/models",
+    "POST /pooling",
+    "POST /rerank",
+    "POST /tokenize",
+    "POST /v1/embeddings",
+)
+"""Every route the emulator answers. A route no recording of the corpus covers is **unobserved**: its
+replies follow the engine's source and say so (``x-rcp-ndcg-emulator-route: unobserved``), and the
+verification record lists it."""
+
+
+def route_name(method: str, path: str) -> str | None:
+    """The :data:`EMULATED_ROUTES` entry a request names (any root prefix, ``/v1`` or not), else ``None``."""
+    route = "/" + path.strip("/").removeprefix("v1/").rsplit("/v1/", 1)[-1]
+    for name in EMULATED_ROUTES:
+        verb, suffix = name.split(" ", 1)
+        bare = suffix.removeprefix("/v1")
+        if method.upper() == verb and (route == bare or route.endswith(bare) and route[-len(bare) - 1] == "/"):
+            return name
+    return None
 
 
 def route_of(path: str) -> str | None:
@@ -951,12 +1021,13 @@ class VllmEmulator:
         "malformed JSON -> 400",
         "empty input -> 400",
         "model name mismatch -> 404",
-        "too many media items -> 400",
-        "top_n > documents -> truncated to the documents",
-        "the /pooling framings (float/base64/bytes) are emulated from the product's pooling wire but "
-        "unverified: the shakedown corpus holds no /pooling recording (RC0's corpus records them)",
-        "encoding_format base64 on /v1/embeddings is emulated unverified (the corpus recorded float)",
+        "top_n > documents -> the whole ranked list",
+        "the base64 and bytes framings on a route the corpus recorded as float JSON",
     )
+    """Protocol rules the emulator follows from the engine's source without a recording that shows
+    them (beside :attr:`unobserved_routes`); listed in the verification record."""
+    observed_routes: frozenset[str] = frozenset()
+    """The :data:`EMULATED_ROUTES` the corpus recorded (any status)."""
     _counter: list[int] = field(default_factory=lambda: [0])
     answer_log: list[str] = field(default_factory=list)
     """The provenance of every composed model-output reply (``/embeddings``, ``/pooling``, ``/rerank``;
@@ -1014,12 +1085,14 @@ class VllmEmulator:
                         "behaviour-shaping field, or the engine varies beyond the measured tolerance"
                     )
         merged = {key: tuple(observation for _, observation in history) for key, history in observed.items()}
+        routes = {route_name(exchange.method, exchange.path) for exchange in corpus.exchanges}
         manifest_recipe = corpus.manifest["recipe"]
         return cls(
             facts=facts,
             strategy=strategy,
             tokenizer=tokenizer,
             observations=merged,
+            observed_routes=frozenset(route for route in routes if route is not None),
             slot=_slot_of(strategy),
             dim=dim,
             verified=Verified(
@@ -1086,7 +1159,18 @@ class VllmEmulator:
         Raises:
             nothing: refusals are responses, as on the wire.
         """
-        body = body if isinstance(body, dict) else {}
+        response = self._answer(path, method.upper(), body if isinstance(body, dict) else {})
+        name = route_name(method, path)
+        response.headers["x-rcp-ndcg-emulator-route"] = "observed" if name in self.observed_routes else "unobserved"
+        return response
+
+    @property
+    def unobserved_routes(self) -> tuple[str, ...]:
+        """The :data:`EMULATED_ROUTES` no recording of the corpus covers (their replies follow the
+        engine's source, unverified)."""
+        return tuple(route for route in EMULATED_ROUTES if route not in self.observed_routes)
+
+    def _answer(self, path: str, method: str, body: Mapping[str, Any]) -> httpx.Response:
         if method == "GET" and path.rstrip("/").endswith("/models"):
             return self._models()
         if method == "GET" and path.rstrip("/").endswith("/health"):
@@ -1196,6 +1280,9 @@ class VllmEmulator:
         if error is not None:
             return error
         assert set_ is not None
+        encoding, dtype, endianness, refusal = self._encoding(body, ("float", "base64"))
+        if refusal is not None:
+            return refusal
         dimensions = body.get("dimensions") if isinstance(body.get("dimensions"), int) else None
         sources, data = [], []
         for index in range(len(set_.prompts)):
@@ -1206,13 +1293,16 @@ class VllmEmulator:
                 vector = list(observation.vector)  # observed under this very context (dimensions included)
             else:
                 vector = surrogate_vector(0, "embedding", key, dim=dimensions or self.dim)
-            data.append({"object": "embedding", "index": index, "embedding": vector})
+            data.append({"index": index, "object": "embedding", "embedding": vector})
+        if encoding == "base64":
+            for item in data:
+                item["embedding"] = _encode_base64([item["embedding"]], dtype, endianness)
         usage = self._usage(set_)
         return self._marked(
             _json(
                 200,
                 {
-                    "id": f"embedding-{self._volatile_hex(16)}",
+                    "id": f"embd-{self._volatile_hex(16)}",
                     "object": "list",
                     "created": self._volatile_time(),
                     "model": self.facts.served_name,
@@ -1231,68 +1321,96 @@ class VllmEmulator:
         return response
 
     def _pooling(self, body: Mapping[str, Any]) -> httpx.Response:
+        """``POST /pooling``: the token-vector matrix per input, in the request's framing (vLLM
+        v0.31.0's ``PoolingResponse``, or the ``bytes`` framing of
+        ``vllm/entrypoints/pooling/utils.py::build_pooling_bytes_streaming_response``)."""
         set_, error = self._prompts_or_error("pooling", body)
         if error is not None:
             return error
         assert set_ is not None
-        encoding = body.get("encoding_format") or "float"
-        sources, data = [], []
-        raw = bytearray()
-        framing: list[dict[str, Any]] = []
+        encoding, dtype, endianness, refusal = self._encoding(body, ("float", "base64", "bytes", "bytes_only"))
+        if refusal is not None:
+            return refusal
+        sources, matrices = [], []
         for index in range(len(set_.prompts)):
             key = set_.item_key(index)
             observation, source = self._observation(key)
             sources.append(source)
             if observation.matrix is not None:
-                matrix = [list(row) for row in observation.matrix]
-                token_ids = list(observation.token_ids or set_.ids(index, self.tokenizer))
+                matrices.append([list(row) for row in observation.matrix])
             else:
-                token_ids = set_.ids(index, self.tokenizer)
-                matrix = surrogate_matrix(0, "pooling", key, tokens=len(token_ids), dim=self.dim)
-            packed: Any
-            if encoding == "base64":
-                packed = _encode_matrix(matrix, body.get("embed_dtype") or "float16")
-            elif encoding in ("bytes", "bytes_only"):
-                packed = None
-                dtype = str(body.get("embed_dtype") or "float16")
-                frame = _pack_frame(matrix, dtype)
-                start = len(raw)
-                raw += frame
+                tokens = len(set_.ids(index, self.tokenizer))
+                matrices.append(surrogate_matrix(0, "pooling", key, tokens=tokens, dim=self.dim))
+        usage = self._usage(set_)
+        identity = {
+            "id": f"pool-{self._volatile_hex(16)}",
+            "created": self._volatile_time(),
+            "model": self.facts.served_name,
+        }
+        if encoding in ("bytes", "bytes_only"):
+            raw, framing = bytearray(), []
+            for index, matrix in enumerate(matrices):
+                frame = _pack_frame(matrix, dtype, endianness)
                 framing.append(
                     {
                         "index": index,
                         "embed_dtype": dtype,
-                        "endianness": "little",
-                        "start": start,
-                        "end": len(raw),
+                        "endianness": endianness,
+                        "start": len(raw),
+                        "end": len(raw) + len(frame),
                         "shape": [len(matrix), len(matrix[0]) if matrix else 0],
                     }
                 )
-            else:
-                packed = matrix
-            if packed is not None:
-                data.append({"object": "pooling", "index": index, "data": packed, "prompt_token_ids": token_ids})
-        usage = self._usage(set_)
-        if encoding in ("bytes", "bytes_only"):
-            # the pooling wire's bytes framing (vllm/entrypoints/pooling/utils.py::encode_pooling_bytes):
-            # raw frames in one body, split by the ``metadata`` header's start/end/shape; ``bytes_only``
-            # sends no metadata and the product's adapter refuses it, naming the lane that will pin it.
+                raw += frame
             headers = {"content-type": "application/octet-stream"}
-            if encoding == "bytes":
-                headers["metadata"] = json.dumps({"data": framing, "usage": _usage_body(usage, wide=False)})
+            if encoding == "bytes":  # bytes_only sends no metadata (the product's adapter refuses it)
+                metadata = {**identity, "data": framing, "usage": _usage_body(usage, wide=False)}
+                headers["metadata"] = json.dumps(metadata)
             return self._marked(httpx.Response(200, content=bytes(raw), headers=headers), sources)
-        return self._marked(
-            _json(
-                200,
-                {
-                    "object": "list",
-                    "model": self.facts.served_name,
-                    "data": data,
-                    "usage": _usage_body(usage, wide=False),
-                },
-            ),
-            sources,
-        )
+        data = [
+            {
+                "index": index,
+                "object": "pooling",
+                "data": matrix if encoding == "float" else _encode_base64(matrix, dtype, endianness),
+            }
+            for index, matrix in enumerate(matrices)
+        ]
+        body_out = {
+            "id": identity["id"],
+            "object": "list",
+            "created": identity["created"],
+            "model": identity["model"],
+            "data": data,
+            "usage": _usage_body(usage, wide=True),
+        }
+        return self._marked(_json(200, body_out), sources)
+
+    def _encoding(
+        self, body: Mapping[str, Any], formats: tuple[str, ...]
+    ) -> tuple[str, str, str, httpx.Response | None]:
+        """The request's framing (vLLM's defaults: ``float``, ``float32``, ``native``); a framing the
+        emulator cannot produce (an fp8 dtype) is refused marked, never approximated."""
+        encoding = str(body.get("encoding_format") or "float")
+        dtype = str(body.get("embed_dtype") or "float32")
+        endianness = str(body.get("endianness") or "native")
+        if encoding not in formats:
+            return (
+                encoding,
+                dtype,
+                endianness,
+                _error(400, f"invalid encoding_format {encoding!r}", param="encoding_format"),
+            )
+        if dtype not in _DTYPES or endianness not in ("native", "little", "big"):
+            refusal = _error(
+                400,
+                f"the verified fake engine does not model embed_dtype={dtype!r} / endianness={endianness!r}",
+                param="embed_dtype",
+                kind="EmulatorUnmodelledError",
+            )
+            refusal.headers["x-rcp-ndcg-emulator-source"] = "refused-unmodelled"
+            self.answer_log.append("refused-unmodelled")
+            return encoding, dtype, endianness, refusal
+        return encoding, dtype, endianness, None
 
     def _rerank(self, body: Mapping[str, Any]) -> httpx.Response:
         set_, error = self._prompts_or_error("rerank", body)
@@ -1335,8 +1453,8 @@ class VllmEmulator:
         results = [
             {
                 "index": entry["index"],
-                "relevance_score": entry["relevance_score"],
                 "document": {"text": _text(documents[entry["index"]]), "multi_modal": None},
+                "relevance_score": entry["relevance_score"],
             }
             for entry in scored
         ]
@@ -1347,27 +1465,25 @@ class VllmEmulator:
                 {
                     "id": f"score-{self._volatile_hex(16)}",
                     "model": self.facts.served_name,
-                    "results": results,
                     "usage": _usage_body(usage, wide=False),
+                    "results": results,
                 },
             ),
             sources,
         )
 
     def _tokenize(self, body: Mapping[str, Any]) -> httpx.Response:
-        """``POST /tokenize``: the engine's tokenization of the request's prompts (the fake engines'
-        token counting IS the recipe's real tokenizer), as token ids and counts."""
-        items = body.get("input", body.get("prompt", []))
-        strings = [items] if isinstance(items, str) else list(items or [])
-        add_special = bool(body.get("add_special_tokens", True))
-        rows = [
-            {"prompt": _text(item), "token_ids": self.tokenizer.ids(_text(item), add_special_tokens=add_special)}
-            for item in strings
-        ]
-        for row in rows:
-            row["count"] = len(row["token_ids"])
+        """``POST /tokenize`` (vLLM v0.31.0's ``TokenizeCompletionRequest`` -> ``TokenizeResponse``): the
+        prompt's token ids with the recipe's real tokenizer, ``token_strs`` left ``null`` (the emulator
+        does not model ``return_token_strs``)."""
+        prompt = body.get("prompt")
+        if not isinstance(prompt, str):
+            return _error(400, "invalid request: 'prompt' must be a string", param="prompt")
+        add_special = body.get("add_special_tokens", True)
+        tokens = list(self.tokenizer.ids(prompt, add_special_tokens=bool(add_special)))
         return _json(
-            200, {"model": self.facts.served_name, "tokenized": rows, "count": sum(row["count"] for row in rows)}
+            200,
+            {"count": len(tokens), "max_model_len": self.facts.max_model_len, "tokens": tokens, "token_strs": None},
         )
 
     def _usage(self, set_: PromptSet) -> int:
@@ -1670,7 +1786,9 @@ def verification_records(corpus_dir: str | Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def verification_record(corpus: Corpus, problems: Sequence[str], *, verified_at: str) -> dict[str, Any]:
+def verification_record(
+    corpus: Corpus, problems: Sequence[str], *, verified_at: str, emulator: VllmEmulator | None = None
+) -> dict[str, Any]:
     """The verification record of one conformance run over ``corpus`` (OBSERVATIONS-SPEC section 4):
     which emulator verified it, against which engine version and recipe revision, with which tolerances,
     and the result.
@@ -1679,6 +1797,7 @@ def verification_record(corpus: Corpus, problems: Sequence[str], *, verified_at:
         corpus: The verified corpus.
         problems: The conformance differences the run found (``[]`` is a pass).
         verified_at: The run's date (``YYYY-MM-DD``).
+        emulator: The verified emulator (its unobserved routes and unverified rules are recorded).
 
     Returns:
         The record, ready for :func:`append_verification`.
@@ -1699,6 +1818,8 @@ def verification_record(corpus: Corpus, problems: Sequence[str], *, verified_at:
         "normalisation_version": NORMALISATION_VERSION,
         "tolerances": None if tolerance is None else {"abs": tolerance[0], "rel": tolerance[1]},
         "exchanges": len(corpus.exchanges),
+        "unobserved_routes": list(emulator.unobserved_routes) if emulator else [],
+        "unverified_rules": list(emulator.unverified_rules) if emulator else [],
         "problems": list(problems),
         "result": "pass" if not problems else "fail",
         "verified_at": verified_at,
@@ -1734,104 +1855,137 @@ def _observation_differences(
 def _outputs_from_response(set_: PromptSet, exchange: Exchange) -> list[tuple[str, ModelObservation]]:
     """The model outputs one recorded 2xx exchange holds, keyed per replay key (prompt + context).
 
-    A framed body (``bytes``/``bytes_only``) is decoded from its ``metadata`` framing when it carries
-    one, base64 item payloads in the request's ``embed_dtype``; anything else is refused loudly --
-    a corpus record whose outputs cannot be derived must never read as an empty replay table.
+    Decodes vLLM v0.31.0's framings: JSON floats, ``base64`` vectors (``embed_dtype`` and
+    ``endianness`` from the request, vLLM's defaults otherwise), and the ``bytes`` framing by its
+    ``metadata`` header's per-item ``start``/``end``/``shape``. Anything it cannot decode -- a base64
+    token matrix (vLLM sends no shape), a frame without metadata, a missing score -- is refused naming
+    the record: a corpus whose outputs cannot be derived never reads as an empty or guessed table.
     """
+    where = f"{exchange.source or exchange.path} #{exchange.sequence}"
+    request = exchange.request_body if isinstance(exchange.request_body, dict) else {}
+    dtype = str(request.get("embed_dtype") or "float32")
+    endianness = str(request.get("endianness") or "native")
     body = exchange.response_json
-    pairs: list[tuple[str, ModelObservation]] = []
-    if body is None:
-        envelope = exchange.response if isinstance(exchange.response, dict) else {}
-        header = (envelope.get("framing_headers") or {}).get("metadata")
-        if header:
-            import base64
-
-            raw = base64.b64decode(envelope["base64"])
-            frames = json.loads(header).get("data") or []
-            dtype = str(exchange.request_body.get("embed_dtype") or "float16")
-            for index, frame in enumerate(frames[: len(set_.prompts)]):
-                matrix = _decode_frame(raw[int(frame["start"]) : int(frame["end"])], dtype, tuple(frame["shape"]))
-                pairs.append((set_.item_key(index), ModelObservation(matrix=matrix)))
-            return pairs
-        raise DataError(
-            f"{exchange.source or exchange.path}: a framed response without metadata cannot be decomposed "
-            "into per-prompt observations"
-        )
-    if set_.slot in ("vector", "token_vector"):
-        data = body.get("data") or []
-        for index, (_prompt, item) in enumerate(zip(set_.prompts, data, strict=False)):
-            if set_.slot == "vector":
-                pairs.append((set_.item_key(index), ModelObservation(vector=tuple(item.get("embedding") or ()))))
-                continue
-            payload = item.get("data")
-            ids = tuple(item.get("prompt_token_ids") or ())
-            if isinstance(payload, str):
-                dtype = str(exchange.request_body.get("embed_dtype") or "float16")
-                matrix = _decode_base64_matrix(payload, dtype, tokens=len(ids))
-            elif isinstance(payload, list):
-                matrix = tuple(tuple(float(v) for v in row) for row in payload)
-            elif _is_bytes_envelope(payload):
-                dtype = str(exchange.request_body.get("embed_dtype") or "float16")
-                import base64
-
-                raw = base64.b64decode(payload["base64"])
-                matrix = _decode_frame(raw, dtype, (len(ids), _frame_width(raw, dtype, len(ids))))
-            else:
-                raise DataError(f"{exchange.source or exchange.path}: an unparsable token-vector payload")
-            pairs.append((set_.item_key(index), ModelObservation(matrix=matrix, token_ids=ids)))
+    if body is None:  # a binary reply: the bytes framing
+        header = {key.lower(): value for key, value in dict(exchange.response_headers).items()}.get("metadata")
+        if not header:
+            raise DataError(f"{where}: a binary response without its metadata framing cannot be decoded")
+        raw = exchange.raw_body or b""
+        frames = json.loads(header).get("data") or []
+        if len(frames) != len(set_.prompts):
+            raise DataError(f"{where}: {len(frames)} frames for {len(set_.prompts)} prompts")
+        pairs = []
+        for index, frame in enumerate(frames):
+            chunk = raw[int(frame["start"]) : int(frame["end"])]
+            values = _unpack_frame(
+                chunk, str(frame.get("embed_dtype") or dtype), str(frame.get("endianness") or endianness)
+            )
+            shape = tuple(int(size) for size in frame["shape"])
+            pairs.append((set_.item_key(index), _observation_of(set_.slot, values, shape, where)))
         return pairs
-    results = body.get("results") or []
+    if not isinstance(body, dict):
+        raise DataError(f"{where}: a 2xx body that is not a JSON object cannot be decoded")
+    if set_.slot in ("vector", "token_vector"):
+        data = body.get("data")
+        if not isinstance(data, list) or len(data) != len(set_.prompts):
+            raise DataError(f"{where}: {len(data or [])} data items for {len(set_.prompts)} prompts")
+        pairs = []
+        for index, item in enumerate(sorted(data, key=lambda entry: int(entry.get("index", 0)))):
+            payload = item.get("embedding" if set_.slot == "vector" else "data")
+            if isinstance(payload, str):
+                if set_.slot == "token_vector":
+                    raise DataError(
+                        f"{where}: a base64 token-vector item carries no shape (vLLM v0.31.0 sends none); "
+                        "record /pooling in float or bytes framing"
+                    )
+                values = _unpack_frame(_b64(payload, where), dtype, endianness)
+                pairs.append((set_.item_key(index), ModelObservation(vector=tuple(values))))
+            elif isinstance(payload, list) and set_.slot == "vector":
+                pairs.append((set_.item_key(index), ModelObservation(vector=tuple(float(v) for v in payload))))
+            elif isinstance(payload, list) and all(isinstance(row, list) for row in payload):
+                matrix = tuple(tuple(float(v) for v in row) for row in payload)
+                pairs.append((set_.item_key(index), ModelObservation(matrix=matrix)))
+            else:
+                raise DataError(f"{where}: item {index} carries no decodable {set_.slot} payload")
+        return pairs
+    results = body.get("results")
+    if not isinstance(results, list) or any("relevance_score" not in entry for entry in results):
+        raise DataError(f"{where}: a rerank reply without scored results cannot be decoded")
     scores = {int(entry.get("index", i)): float(entry["relevance_score"]) for i, entry in enumerate(results)}
     if set_.slot == "score":
-        for position, _prompt in enumerate(set_.prompts):
-            pairs.append((set_.item_key(position), ModelObservation(score=scores.get(position))))
-    else:
-        pairs.append((set_.set_key, ModelObservation(scores=tuple(sorted(scores.items())))))
-    return pairs
+        return [
+            (set_.item_key(position), ModelObservation(score=scores.get(position)))
+            for position in range(len(set_.prompts))
+        ]
+    return [(set_.set_key, ModelObservation(scores=tuple(sorted(scores.items()))))]
 
 
-def _frame_width(raw: bytes, dtype: str, tokens: int) -> int:
-    import numpy as np
+def _observation_of(slot: str, values: list[float], shape: tuple[int, ...], where: str) -> ModelObservation:
+    import math
 
-    if tokens <= 0:
-        return 0
-    return len(np.frombuffer(raw, dtype=np.dtype("<f4" if dtype == "float32" else "<f2"))) // tokens
-
-
-def _decode_frame(raw: bytes, dtype: str, shape: tuple[int, ...]) -> tuple[tuple[float, ...], ...]:
-    import numpy as np
-
-    array = np.frombuffer(raw, dtype=np.dtype("<f4" if dtype == "float32" else "<f2"))
-    return tuple(tuple(float(v) for v in row) for row in array.reshape(shape))
+    if math.prod(shape) != len(values):
+        raise DataError(f"{where}: a frame of {len(values)} values does not fill its declared shape {list(shape)}")
+    if slot == "vector" and len(shape) == 1:
+        return ModelObservation(vector=tuple(values))
+    if slot == "token_vector" and len(shape) == 2:
+        width = shape[1]
+        return ModelObservation(matrix=tuple(tuple(values[row * width : (row + 1) * width]) for row in range(shape[0])))
+    raise DataError(f"{where}: a frame of shape {list(shape)} is not a {slot}")
 
 
-def _decode_base64_matrix(payload: str, dtype: str, *, tokens: int) -> tuple[tuple[float, ...], ...]:
+def _b64(payload: str, where: str) -> bytes:
     import base64
+    import binascii
 
-    raw = base64.b64decode(payload)
-    return _decode_frame(raw, dtype, (tokens, _frame_width(raw, dtype, tokens)))
+    try:
+        return base64.b64decode(payload, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise DataError(f"{where}: an undecodable base64 payload ({error})") from error
+
+
+def _unpack_frame(raw: bytes, dtype: str, endianness: str) -> list[float]:
+    """The inverse of :func:`_pack_frame` (refusing a dtype or a length it cannot decode)."""
+    import sys
+
+    import numpy as np
+
+    if dtype not in _DTYPES:
+        raise DataError(f"an embed_dtype the emulator cannot decode: {dtype!r}")
+    width = 4 if dtype == "float32" else 2
+    if len(raw) % width:
+        raise DataError(f"a {dtype} frame of {len(raw)} bytes is not whole values")
+    order = sys.byteorder if endianness == "native" else endianness
+    marker = "<" if order == "little" else ">"
+    if dtype == "bfloat16":
+        upper = np.frombuffer(raw, dtype=marker + "u2").astype(np.uint32) << np.uint32(16)
+        return [float(v) for v in upper.view(np.float32)]
+    return [float(v) for v in np.frombuffer(raw, dtype=marker + ("f4" if dtype == "float32" else "f2"))]
 
 
 def _usage_body(usage: int, *, wide: bool) -> dict[str, Any]:
-    """The route's usage shape (protocol behaviour, replayed byte-for-byte): /rerank and /pooling report
-    the two-key shape, /v1/embeddings the OpenAI five-key one (measured on the recorded corpus)."""
+    """The route's usage shape: ``/rerank`` and the ``bytes`` metadata report ``RerankUsage``'s two keys,
+    ``/v1/embeddings`` and ``/pooling`` vLLM's ``UsageInfo`` (five keys, in its field order)."""
     if not wide:
         return {"prompt_tokens": usage, "total_tokens": usage}
     return {
-        "completion_tokens": 0,
-        "completion_tokens_details": None,
         "prompt_tokens": usage,
-        "prompt_tokens_details": None,
         "total_tokens": usage,
+        "completion_tokens": 0,
+        "prompt_tokens_details": None,
+        "completion_tokens_details": None,
     }
 
 
 def _error(status: int, message: str, *, param: str | None = None, kind: str = "BadRequestError") -> httpx.Response:
-    return _json(status, {"error": {"code": status, "message": message, "param": param, "type": kind}})
+    """vLLM's ``ErrorResponse`` (``ErrorInfo``: message, type, param, code)."""
+    return _json(status, {"error": {"message": message, "type": kind, "param": param, "code": status}})
 
 
 def _json(status: int, body: Any) -> httpx.Response:
-    return httpx.Response(status, headers={"content-type": "application/json", "server": "uvicorn"}, json=body)
+    """A JSON reply rendered as the engine renders it (Starlette's ``JSONResponse``: compact separators,
+    UTF-8, no ASCII escaping), so its raw bytes compare with recorded raw bytes."""
+    content = json.dumps(body, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
+    return httpx.Response(status, headers={"content-type": "application/json", "server": "uvicorn"}, content=content)
 
 
 def _marked(response: httpx.Response, sources: Sequence[str]) -> httpx.Response:
@@ -1844,13 +1998,35 @@ def _marked(response: httpx.Response, sources: Sequence[str]) -> httpx.Response:
     return response
 
 
-def _encode_matrix(matrix: Sequence[Sequence[float]], dtype: str) -> str:
-    import base64
+_DTYPES = ("float32", "float16", "bfloat16")
+"""The ``embed_dtype`` values the emulator packs exactly as vLLM's ``tensor2binary`` does
+(``vllm/utils/serial_utils.py``); the fp8 ones are refused as unmodelled."""
 
-    return base64.b64encode(_pack_frame(matrix, dtype)).decode("ascii")
 
+def _pack_frame(matrix: Sequence[Sequence[float]] | Sequence[float], dtype: str, endianness: str) -> bytes:
+    """Values in ``dtype`` and ``endianness`` (``native`` is the host's), flattened -- ``tensor2binary``;
+    ``bfloat16`` is float32 rounded to nearest even on the upper 16 bits, as torch converts."""
+    import sys
 
-def _pack_frame(matrix: Sequence[Sequence[float]], dtype: str) -> bytes:
     import numpy as np
 
-    return np.asarray(matrix, dtype=np.dtype("<f4" if dtype == "float32" else "<f2")).tobytes()
+    values = np.asarray(matrix, dtype=np.float32).ravel()
+    if dtype == "bfloat16":
+        bits = values.view(np.uint32)
+        rounded = ((bits + np.uint32(0x7FFF) + ((bits >> np.uint32(16)) & np.uint32(1))) >> np.uint32(16)).astype(
+            np.uint16
+        )
+        array: Any = rounded
+    else:
+        array = values.astype(np.float16 if dtype == "float16" else np.float32)
+    order = sys.byteorder if endianness == "native" else endianness
+    if order != sys.byteorder:
+        array = array.byteswap()
+    return array.tobytes()
+
+
+def _encode_base64(matrix: Sequence[Sequence[float]], dtype: str, endianness: str) -> str:
+    """The ``base64`` framing of one item: :func:`_pack_frame`, base64-encoded."""
+    import base64
+
+    return base64.b64encode(_pack_frame(matrix, dtype, endianness)).decode("ascii")

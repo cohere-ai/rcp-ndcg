@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import httpx
 import pytest
 
 from rcp_ndcg.testing.engines import (
@@ -44,12 +45,23 @@ def replay_problems(directory: Path) -> tuple[object, list[str]]:
     emulator = emulator_for(recipe_id)
     problems = []
     for exchange in corpus.exchanges:
-        answer = emulator.answer(exchange.path, exchange.method, exchange.request_body)
-        found = compare_exchange(
-            exchange, exchange.method, exchange.path, answer.status_code, answer.json(), corpus.tolerance
-        )
+        answer = emulator.handle(as_request(exchange))
+        found = compare_exchange(exchange, answer, corpus.tolerance)
         problems.extend(f"#{exchange.sequence}: {problem}" for problem in found)
     return corpus, problems
+
+
+def as_request(exchange) -> httpx.Request:
+    """The recorded request as the emulator's HTTP surface reads it: the exact bytes where the corpus
+    recorded them, else the parsed body encoded as JSON."""
+    if exchange.request_raw is not None:
+        content = exchange.request_raw
+    elif exchange.request_body is None:
+        content = b""
+    else:
+        content = json.dumps(exchange.request_body).encode("utf-8")
+    headers = {"content-type": "application/json"} if content else {}
+    return httpx.Request(exchange.method, f"http://engine{exchange.path}", content=content, headers=headers)
 
 
 def test_every_recorded_exchange_replays_identically() -> None:
@@ -180,7 +192,9 @@ def test_every_corpus_carries_an_append_only_verification_record() -> None:
     today = datetime.date.today().isoformat()
     for directory in corpus_dirs():
         corpus, problems = replay_problems(directory)
-        computed = verification_record(corpus, problems, verified_at=today)
+        computed = verification_record(
+            corpus, problems, verified_at=today, emulator=emulator_for(corpus.manifest["recipe"]["id"])
+        )
         if appending:
             append_verification(directory, computed)
         records = verification_records(directory)
@@ -330,12 +344,13 @@ def test_every_value_is_bounded_by_the_joint_condition() -> None:
 
     body = {"model": "m", "query": "q", "documents": ["d"]}
     recorded = _rerank_exchange(0, body, 1.0)
-    replay = _rerank_exchange(1, body, 1.0005).response
-    assert compare_exchange(recorded, "POST", "/rerank", 200, replay, (1e-3, 1e-6)), "inside abs, outside rel"
-    assert compare_exchange(recorded, "POST", "/rerank", 200, replay, (1e-6, 1e-3)), "inside rel, outside abs"
-    assert compare_exchange(recorded, "POST", "/rerank", 200, replay, (1e-3, 1e-3)) == []
-    assert compare_exchange(recorded, "POST", "/rerank", 200, replay, None), "unmeasured is exact"
-    assert compare_exchange(recorded, "POST", "/rerank", 200, recorded.response, None) == []
+    replay = httpx.Response(200, json=_rerank_exchange(1, body, 1.0005).response, headers=recorded.response_headers)
+    same = httpx.Response(200, json=recorded.response, headers=recorded.response_headers)
+    assert compare_exchange(recorded, replay, (1e-3, 1e-6)), "inside abs, outside rel"
+    assert compare_exchange(recorded, replay, (1e-6, 1e-3)), "inside rel, outside abs"
+    assert compare_exchange(recorded, replay, (1e-3, 1e-3)) == []
+    assert compare_exchange(recorded, replay, None), "unmeasured is exact"
+    assert compare_exchange(recorded, same, None) == []
 
 
 def test_every_manifest_states_the_non_determinism_its_raw_records_measure() -> None:

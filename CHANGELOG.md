@@ -75,8 +75,16 @@ released together.
   `use_activation`, `dimensions`, `add_special_tokens` and `task`); an unobserved context answers the
   marked surrogate, a field the emulator does not model (`instruction`, `truncate_prompt_tokens`, ...)
   a 400 marked `refused-unmodelled`, an undeclared field is ignored as the engine ignores it, and a
-  corpus whose one key holds different outputs is refused. Header-checked conformance
-  (content type, server), an extended credential scanner (basic auth, api-key headers, cookie and
+  corpus whose one key holds different outputs is refused. `compare_exchange` checks a
+  reply as the transport reads it: the status, the recorded headers that matter (content type, server,
+  the bytes framing's `metadata`), the body, and its raw bytes where the corpus recorded them
+  (`normalise_raw`, `NORMALISATION_VERSION` 2 masks the volatile ids and stamps); an undecodable body
+  is a named difference, and a recorded body the reader cannot decode (a base64 token matrix: vLLM
+  sends no shape) is refused naming the record. Every reply says whether a recording covers its route
+  (`x-rcp-ndcg-emulator-route`, `EMULATED_ROUTES`, `VllmEmulator.unobserved_routes`, listed in the
+  verification record); the unobserved `/pooling` and `/tokenize` follow vLLM v0.31.0's source
+  (`PoolingResponse`, the bytes framing's `metadata`, `TokenizeResponse`; `embed_dtype` `float32`,
+  `endianness` `native` by default). An extended credential scanner (basic auth, api-key headers, cookie and
   single-quoted or assigned secrets), and `RE_ENGINE_URL` exported from `rcp_ndcg.inference.fake`
   (`rcp_ndcg.testing.engines` is pinned as public API).
 
