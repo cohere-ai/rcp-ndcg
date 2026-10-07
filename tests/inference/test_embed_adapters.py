@@ -183,8 +183,12 @@ class TestGeminiShape:
 
 class TestProfiles:
     def test_every_profile_declares_its_published_batch_cap(self) -> None:
+        """A profile that publishes a cap declares it (and enforces it through the HOSTED gate). The shared
+        served shape (`openai_embeddings`) declares none: a served engine's own over-count refusal is the
+        cap, and the historical 128 was both unreachable (this shape is never HOSTED) and stale even for the
+        hosted route -- the round-2 confirmation's finding A."""
         assert {name: cls.MAX_BATCH for name, cls in ADAPTERS.items()} == {
-            "openai_embeddings": 128,
+            "openai_embeddings": None,
             "cohere": 96,
             "voyage": 128,
             "gemini": 100,

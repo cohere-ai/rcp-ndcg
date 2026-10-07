@@ -630,7 +630,8 @@ released together.
   frame silently decoded little would be garbage floats).
 - The hosted batch cap (`MAX_BATCH`) applies to HOSTED use only: a served `openai_embeddings` engine answers
   its own over-count batch (HTTP 413, mapped to a typed `CapabilityError` naming `batch_size`) instead of a
-  stale client-side 128 refusing a batch the engine would serve.
+  stale client-side 128 refusing a batch the engine would serve. The `OpenAIEmbeddings` 128 constant is gone
+  (its check could never apply to a served engine and its number is stale even for the hosted route).
 - `TextBudget.identity` requires and verifies the budget's loaded tokenizer: the SHA-256 is the one field it
   exists to carry, and two tokenizers are not told apart by name (a budget without its loaded tokenizer used
   to produce colliding identities).

@@ -403,8 +403,9 @@ class RerankEndpoint(_MediaEndpoint):
             ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder,
             :attr:`empty_doc_text`). Content.
         empty_doc_text: The placeholder text ``empty_doc: send_text`` sends. Content.
-        request_shape: How a request crosses the wire: ``text`` (the default), ``messages`` or ``token_ids``;
-            the adapters implement it. Content.
+        request_shape: How a request crosses the wire: ``text`` (the default); ``messages`` and
+            ``token_ids`` are refused until a wire adapter implements them (a declared shape the wire does
+            not send would be silently ignored). Content.
         instruction: How the reranker's instruction reaches the model: ``"fold"`` folds it into the query text
             (``Task: ...\\nQuery: ...``, today's served behaviour), ``"field"`` sends the engine's own
             ``instruction`` request field (vLLM), ``"none"`` sends none. ``"system"`` is refused at the

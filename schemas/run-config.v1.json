@@ -779,7 +779,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default), ``messages`` or ``token_ids``; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default); ``messages`` and ``token_ids`` are refused until a wire adapter implements them (a declared shape the wire does not send would be silently ignored). Content.",
           "enum": [
             "text",
             "messages",
@@ -2856,7 +2856,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default), ``messages`` or ``token_ids``; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default); ``messages`` and ``token_ids`` are refused until a wire adapter implements them (a declared shape the wire does not send would be silently ignored). Content.",
           "enum": [
             "text",
             "messages",
@@ -4296,7 +4296,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default), ``messages`` or ``token_ids``; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default); ``messages`` and ``token_ids`` are refused until a wire adapter implements them (a declared shape the wire does not send would be silently ignored). Content.",
           "enum": [
             "text",
             "messages",
@@ -5442,7 +5442,7 @@
         },
         "request_shape": {
           "default": "text",
-          "description": "How a request crosses the wire: ``text`` (the default), ``messages`` or ``token_ids``; the adapters implement it. Content.",
+          "description": "How a request crosses the wire: ``text`` (the default); ``messages`` and ``token_ids`` are refused until a wire adapter implements them (a declared shape the wire does not send would be silently ignored). Content.",
           "enum": [
             "text",
             "messages",
