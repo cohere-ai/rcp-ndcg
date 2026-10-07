@@ -7,7 +7,8 @@ markers, the media before the text (the order the card builds its inputs in).
 
 Modes: ``render`` and ``embed`` as the fixture embedder's (text rows; deterministic vectors), and ``media``:
 per pairs row and side that carries media, ``{"index", "side", "placement", "media": [{"kind", "width",
-"height", "tokens"}]}`` -- what the card's model consumes.
+"height", "tokens"}]}`` -- what the card's model consumes; the card takes one image per document, and a side
+with more is ``{"index", "side", "refused"}``.
 """
 
 from __future__ import annotations
@@ -88,7 +89,9 @@ def main() -> int:
             if media.get("query"):
                 rows.append({"index": index, "side": "query", **media_facts(row["query"], media["query"])})
             for position, entries in enumerate(media.get("documents") or []):
-                if entries:
+                if len(entries or []) > 1:
+                    rows.append({"index": index, "side": f"document {position}", "refused": "one image per document"})
+                elif entries:
                     facts = media_facts(row["documents"][position], entries)
                     rows.append({"index": index, "side": f"document {position}", **facts})
     Path(args.out).write_text(json.dumps({"rows": rows}) + "\n", encoding="utf-8")

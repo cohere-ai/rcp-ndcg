@@ -173,3 +173,43 @@ def test_a_media_recipe_without_media_rows_fails_and_a_text_recipe_has_no_media_
     document = stage_media(recipe, pairs, REFERENCE_PYTHON)
     assert document is not None and document["status"] == "no_media_rows" and document["passed"] is False
     assert stage_media(load_recipe(RECIPES / "fixture-embed"), pairs, REFERENCE_PYTHON) is None
+
+
+def test_a_side_the_reference_refuses_fails_as_refused_even_when_the_client_refused_it_too(
+    recipe: Any, tmp_path: Path
+) -> None:
+    """Two images on one document: the client refuses the request (max_images 1) and the card does not define
+    it. The stage names the card's refusal -- what the generator prunes -- not merely a side the client did not
+    send."""
+    rows = [{"query": "two pages", "documents": [""], "media": {"documents": [[png_entry(64, 64), png_entry(32, 32)]]}}]
+    document = stage_media(recipe, write_pairs(tmp_path / "pairs.jsonl", rows), REFERENCE_PYTHON)
+    assert document is not None and document["passed"] is False
+    assert [failure["check"] for failure in document["failures"]] == ["reference_refused"]
+    assert document["refusals"] and "CapabilityError" in document["refusals"][0]["error"]
+
+
+def test_an_image_whose_tokens_are_not_counted_fails(
+    recipe: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A token count neither side produced is never an equality: uncounted (None) on both sides fails the item."""
+    from rcp_ndcg_vllm.equivalence import media
+
+    from rcp_ndcg.data import resolution
+
+    def uncountable(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("no count")
+
+    real = media._reference_facts
+
+    def uncounted_reference(*args: Any, **kwargs: Any) -> Any:
+        facts = real(*args, **kwargs)
+        for side in facts.values():
+            for item in side["media"]:
+                item["tokens"] = None
+        return facts
+
+    monkeypatch.setattr(resolution, "content_media_tokens", uncountable)
+    monkeypatch.setattr(media, "_reference_facts", uncounted_reference)
+    document = stage_media(recipe, media_pairs(tmp_path / "pairs.jsonl"), REFERENCE_PYTHON)
+    assert document is not None and document["passed"] is False
+    assert {failure["check"] for failure in document["failures"]} == {"tokens"}

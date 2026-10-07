@@ -377,7 +377,10 @@ def _compare(key: tuple[int, str], client: dict[str, Any], reference: dict[str, 
     for position, (sent, consumed) in enumerate(zip(client["media"], reference["media"], strict=True)):
         names = ("kind", "width", "height", "frames") + (("tokens",) if sent["kind"] == "image" else ())
         for name in names:
-            if sent.get(name) != consumed.get(name):
+            counted = name != "tokens" or all(
+                isinstance(value, int) and not isinstance(value, bool) for value in (sent.get(name), consumed.get(name))
+            )  # an image's tokens gate as counts: uncounted on either side is a failure, never None == None
+            if not counted or sent.get(name) != consumed.get(name):
                 failures.append(
                     {
                         **where,
@@ -426,6 +429,12 @@ def stage_media(
         if key not in reference:
             failures.append(
                 {"row": key[0], "side": key[1], "check": "reference", "note": "the reference reported no media facts"}
+            )
+        elif reference[key].get("refused"):
+            # The card does not define this input: that decides the row (the generator prunes it), whether or
+            # not the client sent it.
+            failures.append(
+                {"row": key[0], "side": key[1], "check": "reference_refused", "reason": reference[key]["refused"]}
             )
         elif key not in client:
             failures.append({"row": key[0], "side": key[1], "check": "client", "note": "the client sent no such side"})
