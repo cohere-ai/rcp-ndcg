@@ -281,24 +281,22 @@ def test_the_release_workflow_check_fails_when_two_environments_are_swapped() ->
         _assert_one_environment_per_package(workflow)
 
 
-def test_both_distributions_ship_the_license_and_the_notice() -> None:
+def test_every_distribution_ships_the_license_and_the_notice() -> None:
     """NOTICE attributes the third-party code (Apache-2.0 section 4(d)); each distribution carries the same copy.
 
-    Three distributions today (``rcp-ndcg``, ``rcp-ndcg-core``, ``rcp-ndcg-vllm``), plus the vLLM plugin
-    distributions under ``rcp-ndcg-vllm/plugins/*`` when the plugin lanes have landed them.
+    All four distributions (docs-release Q2/Q4): ``rcp-ndcg``, ``rcp-ndcg-core``, ``rcp-ndcg-vllm`` and the
+    unpublished ``rcp-ndcg-test``, one merged NOTICE byte-identical in each (including the folded-in plugins'
+    attributions -- the plugin distributions are deleted, layout-move item 3).
     """
-    folders = [ROOT, ROOT / "rcp-ndcg-core", ROOT / "rcp-ndcg-vllm"]
-    plugins = ROOT / "rcp-ndcg-vllm" / "plugins"
-    if plugins.is_dir():
-        folders += sorted(
-            folder for folder in plugins.iterdir() if folder.is_dir() and (folder / "pyproject.toml").is_file()
-        )
+    folders = [ROOT / "rcp-ndcg", ROOT / "rcp-ndcg-core", ROOT / "rcp-ndcg-vllm", ROOT / "rcp-ndcg-test"]
     for folder in folders:
         project = tomllib.loads((folder / "pyproject.toml").read_text(encoding="utf-8"))["project"]
         assert project["license-files"] == ["LICENSE", "NOTICE"], folder
     for name in ("LICENSE", "NOTICE"):
         for folder in folders[1:]:
-            assert (folder / name).read_bytes() == (ROOT / name).read_bytes(), (
+            assert (folder / name).read_bytes() == folders[0].joinpath(name).read_bytes(), (
                 f"{folder.relative_to(ROOT)}/{name} is stale"
             )
-    assert "smart_resize" in (ROOT / "NOTICE").read_text(encoding="utf-8")
+    notice = (ROOT / "NOTICE").read_text(encoding="utf-8")
+    assert "smart_resize" in notice
+    assert "The folded model plugins" in notice and "TopkEmbedModel" in notice and "PplxContextualModel" in notice

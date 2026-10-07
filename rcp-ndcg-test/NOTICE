@@ -47,3 +47,28 @@ Qwen3-Reranker
     rcp-ndcg/src/rcp_ndcg/retrieval/external_rerankers.py): `QwenOGRerank` follows the
     Transformers usage code of the model card (the prompt prefix and suffix,
     `process_inputs` and the yes/no log-softmax score).
+
+The folded model plugins (rcp-ndcg-vllm: the former separate plugin distributions, vllm.general_plugins)
+---------------------------------------------------------------------------------------------
+
+vLLM (model plugin code)
+  https://github.com/vllm-project/vllm
+  Copyright contributors to the vLLM project.
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/topk/model.py: `TopkEmbedModel` subclasses
+    `vllm.model_executor.models.colqwen3_5.ColQwen3_5Model` (vLLM v0.31.0) and
+    reuses its weight mapping, pooling wiring and forward pass unmodified.
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/topk/weights.py: the checkpoint-name mapping table
+    restates the prefix mappings of `vllm/model_executor/models/qwen3_vl.py`
+    (`hf_to_vllm_mapper`) so the tests can verify the served mapping without
+    importing vLLM.
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/: the PplxContextualModel is a thin
+    subclass of vLLM's own `Qwen3_5ForCausalLMBase` (Apache-2.0, vLLM project); the
+    subclasses where that inheritance ends at it, and every line that adapts the
+    checkpoint's naming or pooling, is this repository's own.
+
+The topk model class is written for the checkpoint of
+topk-io/topk-embed-v1-small (Apache-2.0) at revision
+e54485ebab921f2c18c4d092b3f4c40dcca26781; the pplx model class for
+perplexity-ai/pplx-embed-v2-context-9b-preview (MIT, by its authors). Neither
+plugin vendors weights and neither performs downloads.
+
