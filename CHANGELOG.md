@@ -25,6 +25,13 @@ released together.
 
 ### Public surface
 
+- **`rcp_ndcg_vllm.observe` (the `rcp-ndcg-vllm` distribution)**: the deterministic observation request
+  generator -- `GENERATOR_VERSION`, `SEED`, `PINNED_DATASET_COMMITS`, the synthetic adversarial set stored as
+  text -- writing one stage-2 pairs file per recipe in the harness's pairs format plus `pairs/manifest.json`
+  (per-row provenance, stratum presence records, file hashes, excluded source ids, the recipes that could not
+  load with their error, and what stage-1 validation ran). `python -m rcp_ndcg_vllm.observe.requests` generates
+  it under a stall watchdog (`faulthandler` to stderr every 60 s); runs merge into the manifest, so one bounded
+  invocation per recipe composes.
 - **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
   are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric
   placements whose document has no Bradley-Terry theta, and the queries absent from `bt_scores`, instead of
@@ -81,6 +88,11 @@ released together.
 
 ### Fixed
 
+- **Stage 1's over-length padding is one tokenization** (`rcp-ndcg-vllm`): the growth loop repeatedly
+  tokenized whole candidate strings and went quadratic on a long seed (122 s per call measured on a
+  4000-word synthetic document); the pad is now located with the tokenizer's offset mapping in one pass,
+  keeps the seed verbatim and pads with whole indexed pad words.  A runtime bound on a long synthetic
+  document guards it.
 - **A tokenizer file's embedded truncation and padding no longer cap the counts** (G5): a `tokenizer.json`
   can ship `truncation: {max_length: 1024}` (topk-embed-v1-small does) or fixed-length padding, and an
   un-reset backend silently topped every count and id list at those lengths, so no budget above them could
@@ -1092,6 +1104,9 @@ released together.
 
 ### Changed
 
+- **`packages/rcp-ndcg-vllm/jobs/rc_build.sh` stages the pairs files from `packages/rcp-ndcg-vllm/pairs/`**
+  (their one home, where the request generator writes them): a stray `<checkout-root>/pairs/` is refused with
+  the home named instead of being silently staged, and a checkout without pairs stages none.
 - **The BM25 index is persisted in bm25s' own format, never a pickle** (`rcp_ndcg.retrieval.sparse`): the
   index directory's model is stored with `BM25.save(..., allow_pickle=False)` (npz arrays + JSON parameters)
   and loaded with `allow_pickle=False` -- the index directory comes from ordinary user paths (`retrieval index

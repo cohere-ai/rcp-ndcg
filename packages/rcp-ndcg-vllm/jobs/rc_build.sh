@@ -21,12 +21,32 @@
 #   <RC_NAME>/recipes/                     the recipe directories (each with recipe.yaml and reference.py)
 #   <RC_NAME>/plugins/                     public plugin packages, when the package ships any
 #   <RC_NAME>/wave-lists/<wave>.txt        the wave lists (one recipe id per line)
-#   <RC_NAME>/pairs/                       the stage-2 pairs files, when the checkout has any
+#   <RC_NAME>/pairs/                       the stage-2 pairs files, from packages/rcp-ndcg-vllm/pairs/ (one home)
 #   <RC_NAME>/extra/<name>/                the EXTRA_DIRS entries, as they are
 #   <RC_NAME>/manifest.json                the commit, the version and the SHA-256 of every staged file
 
 set -euo pipefail
 
+# The pairs files' one home in the checkout (the wave runner consumes <pairs-dir>/<recipe>.jsonl).
+PACKAGES_PAIRS="packages/rcp-ndcg-vllm/pairs"
+
+stage_pairs() {
+  # stage_pairs <SRC-checkout> <STAGE-dir>: stage <SRC>/packages/rcp-ndcg-vllm/pairs/ as <STAGE>/pairs/.
+  # One home: a stray <SRC>/pairs/ is refused (never silently staged), and no pairs at all stages none
+  # (the wave runner then reports its missing pairs).
+  local src="$1" stage="$2"
+  if [[ -d "$src/$PACKAGES_PAIRS" ]]; then
+    cp -r "$src/$PACKAGES_PAIRS" "$stage/pairs"
+    echo "rc_build: staged the pairs files from $PACKAGES_PAIRS"
+  elif [[ -d "$src/pairs" ]]; then
+    echo "rc_build: pairs have one home: $PACKAGES_PAIRS (found a stray $src/pairs instead; move the files)" >&2
+    return 1
+  else
+    echo "rc_build: no $PACKAGES_PAIRS in the checkout; staging no pairs (the wave runner reports its missing pairs)"
+  fi
+}
+
+rc_build_main() {
 RC_NAME="${1:?usage: rc_build.sh <RC_NAME> [<COMMIT>]}"
 COMMIT="${2:-HEAD}"
 : "${RCP_STAGE_PREFIX:?set RCP_STAGE_PREFIX to the stage location (a gs:// or /shared/ URI; the RC stages to <prefix>/<RC_NAME>)}"
@@ -145,9 +165,7 @@ if [[ -d wave-lists ]]; then
 else
   echo "rc_build: the checkout has no wave-lists/ directory; stage one via EXTRA_DIRS or commit it" >&2
 fi
-if [[ -d pairs ]]; then
-  cp -r pairs stage/"$RC_NAME"/pairs
-fi
+stage_pairs "$SRC" "stage/$RC_NAME"
 if [[ -n "${EXTRA_DIRS:-}" ]]; then
   for extra in $EXTRA_DIRS; do
     [[ -d "$extra" ]] || { echo "rc_build: EXTRA_DIRS entry is not a directory: $extra" >&2; exit 1; }
@@ -211,3 +229,8 @@ else
   gsutil -m cp -r stage/"$RC_NAME" "${RCP_STAGE_PREFIX%/}/"
 fi
 echo "rc_build: staged $(du -sh stage/"$RC_NAME" | cut -f1) to ${RCP_STAGE_PREFIX%/}/$RC_NAME/ (manifest: manifest.json)"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  rc_build_main "$@"
+fi
