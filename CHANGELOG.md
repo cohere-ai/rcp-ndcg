@@ -28,8 +28,10 @@ released together.
 - **`rcp-ndcg-vllm` recipes: `reference.known_deviations` accepts `over_cap_cut_differs`** beside
   `anchor_drop_over_cap`: a reference that keeps the anchors but cuts over-cap content its own way (a joint
   `longest_first` truncation where the client settles the query at its share) declares it, and the harness
-  reports those inputs outside the gates. A reference stays the paper's or the model card's; it never
-  copies the client's cut to make an over-cap row pass. `schema/recipe.schema.json` carries the new value.
+  reports those inputs outside the gates. A score reference stays the paper's or the model card's; it
+  never copies the client's cut to make an over-cap row pass (a reference whose declared semantics are the
+  served wire's cut may mirror the client's cut in its render mode by declaration). `schema/recipe.schema.json`
+  carries the new value.
 - **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
   are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric
   placements whose document has no Bradley-Terry theta, and the queries absent from `bt_scores`, instead of

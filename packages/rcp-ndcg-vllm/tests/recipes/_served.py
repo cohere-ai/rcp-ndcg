@@ -21,7 +21,7 @@ from typing import Any
 
 from rcp_ndcg_vllm.equivalence import fitting, stages
 
-__all__ = ["fetch_tokenizer", "served_pair", "served_rows", "served_texts", "stage1_facts", "tokenizer_cache"]
+__all__ = ["served_pair", "served_rows", "served_texts", "stage1_facts", "tokenizer_cache"]
 
 CACHE_VARIABLE = "RCP_NDCG_VLLM_TOKENIZER_CACHE"
 """The environment variable naming the tokenizer download cache (the lane's scratch dir)."""
@@ -41,7 +41,9 @@ def fetch_tokenizer(url: str, name: str, tmp_path: Path, *, sha256: str | None =
     Inputs: the file's URL, the file name to cache it under (``<name>``), the test's ``tmp_path`` as
     fallback root, and the pinned SHA-256 the download must match when given.  Output: the local path
     (a cached copy with the pinned hash is reused, offline runs included).  Skips with a clear reason
-    when the file is needed and neither cached nor downloadable.
+    when the file is needed and neither cached nor downloadable.  Consumed by the six rewritten recipe
+    tests' URL-fetched tokenizers (jina-embeddings-v5-text-small, qwen3-reranker-8b): one home for the
+    raw-URL tokenizer fetch, cache reused across runs.
     """
     import hashlib
 
