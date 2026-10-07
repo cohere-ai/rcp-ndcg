@@ -5,8 +5,8 @@ Read this file completely, then `AGENTS.md` (binding), then the workstream promp
 (`handover/01-*.md` ... `handover/07-*.md`). The reference specifications the workstreams cite are in
 `handover/specs/` (sanitized copies of the operator's working notes; any `<operator-notes>/...` or `<repo>/...` path
 inside them points to the operator's machine and is not available to you — the content you need is in `handover/`).
-`handover/` lives only on the branch `wip/handover`; keep it out of `rfc-0001` (read it from that branch or a
-separate worktree; write your reports there too).
+`handover/` is temporary scaffolding on `rfc-0001`: read it, write your reports into `handover/reports/`, and delete the
+whole directory in one commit before the release (it must not ship; no distribution packages it).
 
 ## 1. Mission and scope
 
