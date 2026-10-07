@@ -2082,9 +2082,33 @@ class TestProcessingRecords:
         records = {record.input_id: record.mechanisms for record in client.processing}
         assert records == {QUERY_DOC_ID: ("query_share",), "1": ("document_share",), "2": ("empty_doc",)}
 
+    @staticmethod
+    def _media_client(tokenizer_json: str, max_tokens: int) -> PoolingClient:
+        return PoolingClient(
+            PoolingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=max_tokens,
+                dim=2,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                image_processor="qwen2_vl",
+                max_images=1,
+            ),
+            sender=RecordingSender(),
+        )
+
+    def test_a_media_drop_is_named_apart_from_a_resize(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """A budget too small even for the image's minimum (6 tokens at 56x56 px, wrapper included): the media
+        fit drops it -- ``media_drop``, never ``media_resize``."""
+        client = self._media_client(tokenizer_json, max_tokens=4)
+        client.encode([_image_content(tmp_path, 1, 448)], EncodeRole.DOCUMENT)
+        (record,) = client.processing
+        assert (record.input_id, record.mechanisms) == ("0", ("media_drop",))
+
     def test_a_media_change_is_named(self, tokenizer_json: str, tmp_path: Any) -> None:
-        """A budget too small for a document's image as prepared: the media fit shrinks it (``media_resize``) or
-        drops it (``media_drop``) -- named on the document's row; the text cut beside it too."""
+        """A budget too small for a document's image as prepared but not for its minimum: the media fit shrinks
+        it (``media_resize``, never ``media_drop``) -- named on the document's row; the text cut beside it."""
         client = PoolingClient(
             PoolingEndpoint(
                 base_url="http://127.0.0.1:9000/v1",
@@ -2101,7 +2125,7 @@ class TestProcessingRecords:
         page = _image_content(tmp_path, 0, 448)
         client.encode([Content.from_parts([TextPart(text="a caption"), *page.parts])], EncodeRole.DOCUMENT)
         (record,) = client.processing
-        assert record.input_id == "0" and {"media_resize", "media_drop"} & set(record.mechanisms)
+        assert (record.input_id, record.mechanisms) == ("0", ("media_resize", "budget_cut"))
 
 
 class TestEmptyDocumentsBeforeTheFrame:
