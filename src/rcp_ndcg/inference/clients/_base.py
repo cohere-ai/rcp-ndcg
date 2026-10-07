@@ -262,30 +262,22 @@ class RoleClient[C: Endpoint]:
 
     def _auth_profile(self) -> AuthProfile:
         """The credential facts of this client's config and adapter, for the transport to resolve the key
-        from the config's own rule: the config's ``api_key_env`` names the variable when it is set (an
-        unset named variable is an error, whatever the profile's rule), else the adapter profile's variables
-        -- but only when the request goes to the profile's own default host (a variable set for one vendor
-        must never authenticate a request to a self-hosted engine or a third party, so any other
-        ``base_url`` carries a key only through an explicit ``api_key_env``); the header is always the
-        adapter's."""
+        from: the config's ``api_key_env`` names the variable when it is set (explicit: it goes to every
+        replica, and an unset named variable is an error, whatever the profile's rule), else the adapter
+        profile's variables with its required-ness and its ``home`` -- the profile's own default host. The
+        transport applies them per replica, only at that home (a variable set for one vendor never
+        authenticates a request to a self-hosted engine, a gateway or a third party, however the transport
+        was built); the header is always the adapter's."""
+        header = getattr(self._adapter_cls, "AUTH_HEADER", None)
         named = getattr(self.config, "api_key_env", None)
         if named is not None:
-            return AuthProfile(
-                variables=(named,),
-                required=True,
-                header=getattr(self._adapter_cls, "AUTH_HEADER", None),
-            )
-        header = getattr(self._adapter_cls, "AUTH_HEADER", None)
-        default = getattr(self._adapter_cls, "DEFAULT_BASE_URL", None)
-        if default is not None and self.endpoint.base_url == default:
-            return AuthProfile(
-                variables=tuple(getattr(self._adapter_cls, "API_KEY_ENV", ())),
-                required=bool(getattr(self._adapter_cls, "KEY_REQUIRED", False)),
-                header=header,
-            )
-        # Not the profile's own host: no key is resolved here (a gateway in front of the wire injects its
-        # own credential, or the config names one with api_key_env).
-        return AuthProfile(variables=(), required=False, header=header)
+            return AuthProfile(variables=(named,), required=True, header=header, explicit=True)
+        return AuthProfile(
+            variables=tuple(getattr(self._adapter_cls, "API_KEY_ENV", ())),
+            required=bool(getattr(self._adapter_cls, "KEY_REQUIRED", False)),
+            header=header,
+            home=getattr(self._adapter_cls, "DEFAULT_BASE_URL", None),
+        )
 
     def _point_sender_at_the_profile(self) -> None:
         """An injected ``Transport`` is pointed at this client's credential facts, so an auth-bearing profile

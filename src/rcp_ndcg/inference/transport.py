@@ -68,6 +68,8 @@ class AuthProfile:
 
     A transport built without a profile (the judge's, or any sender without an adapter) resolves only the
     config's ``api_key_env``, into ``Authorization: Bearer`` -- the behaviour the judge client relies on.
+    The key-host rule lives here, per replica (:meth:`applies_to`): a profile's own variables go only to
+    its :attr:`home`.
     """
 
     variables: tuple[str, ...] = ()
@@ -79,6 +81,22 @@ class AuthProfile:
 
     header: str | None = None
     """The header the key goes in; ``None`` is the OpenAI-standard ``Authorization: Bearer <key>``."""
+
+    home: str | None = None
+    """The one URL the profile's :attr:`variables` belong to (a hosted profile's public API root): the
+    transport resolves them only for a replica at exactly this URL, so a vendor's key never travels to a
+    self-hosted engine, a gateway or a stranger -- whichever way the transport was built or injected.
+    ``None``: the variables go nowhere (fail closed), unless :attr:`explicit`."""
+
+    explicit: bool = False
+    """The variables are the config's own explicitly named ``api_key_env``: the user chose where that key
+    goes, so it is sent to every replica of the endpoint."""
+
+    def applies_to(self, url: str) -> bool:
+        """Whether this profile's variables may authenticate a request to the replica at ``url``."""
+        if self.explicit:
+            return True
+        return self.home is not None and url.rstrip("/") == self.home.rstrip("/")
 
 
 @runtime_checkable
@@ -308,7 +326,8 @@ class Transport:
             raise ValueError("send() needs at least one call")
         calls = list(calls)
         try:
-            headers = self._base_headers()
+            # Per replica (the key-host rule is the replica URL's), all resolved before anything is queued.
+            headers = {replica.url: self._base_headers(replica.url) for replica in self._replicas}
         except CredentialsError:
             self._usage = self._usage.merged_with(  # the request failed before it was queued
                 Usage(failed_requests=len(calls))
@@ -328,7 +347,7 @@ class Transport:
                 replica.in_flight += 1
                 replica.sent += 1
                 try:
-                    replies = await self._send_on(replica, calls, headers)
+                    replies = await self._send_on(replica, calls, headers[replica.url])
                 except _Unavailable as exc:
                     index = self._replicas.index(replica)
                     if index in failed_at and replica.successes > failed_at[index]:
@@ -401,7 +420,7 @@ class Transport:
         query = "&".join(part for part in (base_query, path_query) if part)
         return f"{base}{path_only}?{query}" if query else f"{base}{path_only}"
 
-    def _base_headers(self) -> dict[str, str]:
+    def _base_headers(self, url: str) -> dict[str, str]:
         """The endpoint's credentials and gateway headers of one send; every value is read from the environment
         only, at send time, and never logged.
 
@@ -418,8 +437,12 @@ class Transport:
         api_key_env = self.endpoint.api_key_env
         if api_key_env is not None:
             variables, required = (api_key_env,), True
-        else:
+        elif self._auth.applies_to(url):
             variables, required = self._auth.variables, self._auth.required
+        else:
+            # Not the profile's home: its variables never travel here (a gateway injects its own credential,
+            # or the config names one with api_key_env).
+            variables, required = (), False
         value = next((os.environ[name] for name in variables if os.environ.get(name)), None)
         if value is None and (required or api_key_env is not None):
             if api_key_env is not None:
@@ -570,7 +593,7 @@ class Transport:
                 self._client(),
                 replica.url,
                 model=self.endpoint.model,
-                headers=self._base_headers(),
+                headers=self._base_headers(replica.url),
                 timeout=self._timeout(),
                 system_fingerprint=fingerprint,
             )

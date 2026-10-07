@@ -35,10 +35,8 @@ released together.
   missing member failed only at the first request. `rcp_ndcg.testing.adapter_contract` is the contract-test
   kit the unified-inference design promised: name/role, members, facts, construction, and a recorded round's
   alignment and usage, as one listed failure set.
-- **A profile's default key variables travel only to the profile's own default host** (`OPENAI_API_KEY`, ...):
-  a request to any other `base_url` (a self-hosted engine, a third party, a gateway) carries a key only
-  through an explicit `api_key_env`. A variable set for one vendor must never authenticate a request
-  somewhere else.
+- `AuthProfile.home` and `AuthProfile.explicit` (`rcp_ndcg.inference.transport`): the URL a profile's key
+  variables belong to, and whether they are the config's own named `api_key_env` (see Security).
 - `rcp_ndcg.storage.uri.safe_url` (public): the form of a URL that may reach a log, an error or a record
   -- userinfo, query and fragment stripped, the host and path as written. The one redactor: the inference
   layer's logs, errors and engine records and the storage cache's messages (which lower-cased the bucket
@@ -851,9 +849,6 @@ released together.
   (`GET <url>/models`).
 - The `ServeConfig` fields' schema descriptions are role-neutral (the same engine shape serves the judge, the
   retrieval encoder and the reranker); no property changed.
-
-### Fixed
-
 - **The embedding and pooling media allowances count from the item shape's own budget.** Under a declared
   `query_max_tokens` a query's media were fitted against `max_tokens` while the text fit measured the query
   against its share, so an image that fit `max_tokens` but not the share was kept whole and the request was
@@ -1439,6 +1434,11 @@ released together.
 
 ### Security
 
+- **A profile's default key variables travel only to the profile's own default host** (`OPENAI_API_KEY`,
+  `CO_API_KEY`, `VOYAGE_API_KEY`, `GEMINI_API_KEY`, ...). The transport decides it per replica: a request to
+  any other URL (a self-hosted engine, a gateway, a third party, a transport injected on another endpoint, a
+  judge config swapped to another URL, a stranger in a replica list) carries a key only through the
+  config's explicit `api_key_env`. A variable set for one vendor used to authenticate any `base_url`.
 - Dependabot alerts on the default branch's lock (operator snapshot): every alert the lock could carry is
   closed in this one. The `vllm` alerts (27 open when read, the operator's snapshot counted 11, highs among
   them) and its engine-only dependencies (`xgrammar`, `diskcache`) leave the lock with the extras;
