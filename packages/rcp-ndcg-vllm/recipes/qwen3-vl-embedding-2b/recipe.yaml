@@ -36,11 +36,13 @@ client:
   video_policy: {num_frames: 64, wire: video_url, engine_video_pinning: true}   # THE video sampling policy, one rule on every side: 64 uniformly spaced frames per clip, the container sent as video_url and the engine pinned to the same 64 by serve.extra_args --media-io-kwargs (engine_video_pinning). Supersedes both older samplers (the served default fps 2 / max_frames 768; the card's fps 1 / max_frames 64): see notes
   template:
     query:
-      - {fixed: "{special:im_start}system\nRepresent the user's input.{special:im_end}\n{special:im_start}user\n"}   # the card frames a query exactly like a document: its default instruction (format_model_input; config_sentence_transformers.json prompts.default) -- every usage example on the card encodes queries with it
+      - {fixed: "{special:im_start}system\nRepresent the user's input."}   # the card frames a query exactly like a document: its default instruction (format_model_input; config_sentence_transformers.json prompts.default) -- every usage example on the card encodes queries with it. The instruction closes its own segment, so it is a whole delimited unit of the query frame (the case loader's rule)
+      - {fixed: "{special:im_end}\n{special:im_start}user\n"}
       - {content: query}
       - {fixed: "{special:im_end}\n{special:im_start}assistant\n"}
     document:
-      - {fixed: "{special:im_start}system\nRepresent the user's input.{special:im_end}\n{special:im_start}user\n"}   # the same default instruction, part of the fixed frame
+      - {fixed: "{special:im_start}system\nRepresent the user's input."}   # the same default instruction, part of the fixed frame (split as the query's)
+      - {fixed: "{special:im_end}\n{special:im_start}user\n"}
       - {content: document}
       - {fixed: "{special:im_end}\n{special:im_start}assistant\n"}   # the trailing fixed segment + the post-processor's endoftext are the anchor the model pools from
     anchor: last

@@ -43,8 +43,10 @@ CARD_SHA256 = "8ffa74a1a6bb759610c57865ea416fd4daf9936cb787520e1112a3e1d547f36a"
 CHAT_TEMPLATE_SHA256 = "a47e6afb389f86f45be7810f17d2686fd42b2bec7ba6e6958abf85845af258c5"
 DEFAULT_INSTRUCTION = "Represent the user's input."
 OVER_LENGTH_PER_SHAPE = 5
-#: The declared frame of both shapes (the card frames a query exactly like a document).
-_HEAD = "{special:im_start}system\nRepresent the user's input.{special:im_end}\n{special:im_start}user\n"
+#: The declared frame of both shapes (the card frames a query exactly like a document); the instruction
+#: closes its own segment, a whole delimited unit of the query frame (the case loader's rule).
+_SYSTEM = "{special:im_start}system\nRepresent the user's input."
+_USER = "{special:im_end}\n{special:im_start}user\n"
 _TAIL = "{special:im_end}\n{special:im_start}assistant\n"
 
 #: The resolved blocks the contract pins (the product's ``model_dump(mode="json")`` shape): every
@@ -102,12 +104,14 @@ CLIENT = {
     "query_max_tokens": None,
     "template": {
         "query": [
-            {"fixed": _HEAD, "content": None},
+            {"fixed": _SYSTEM, "content": None},
+            {"fixed": _USER, "content": None},
             {"fixed": None, "content": "query"},
             {"fixed": _TAIL, "content": None},
         ],
         "document": [
-            {"fixed": _HEAD, "content": None},
+            {"fixed": _SYSTEM, "content": None},
+            {"fixed": _USER, "content": None},
             {"fixed": None, "content": "document"},
             {"fixed": _TAIL, "content": None},
         ],
