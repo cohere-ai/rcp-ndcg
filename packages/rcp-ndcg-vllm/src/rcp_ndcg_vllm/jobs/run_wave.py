@@ -689,7 +689,8 @@ def _wave_markdown(document: dict[str, Any]) -> str:
         "|---|---|---|---|",
     ]
     for row in document["recipes"]:
-        error = (row.get("error") or "").replace("|", "\\|")
+        # The error cell is one table line however the message wraps (pydantic's are multi-line).
+        error = " ".join((row.get("error") or "").split()).replace("|", "\\|")
         gpus = row.get("gpus")
         lines.append(f"| {row['recipe']} | {gpus if gpus is not None else '-'} | {row['state']} | {error} |")
     lines += ["", f"Verdict: **{'PASS' if document['passed'] else 'FAIL'}**"]

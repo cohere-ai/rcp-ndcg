@@ -23,6 +23,13 @@ VLLM_CMD = f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py
 REFERENCE_PY = sys.executable
 
 
+@pytest.fixture(autouse=True)
+def _hub_is_offline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No network in tests: every wave's Hub question (the model's bytes) answers "unknown" here;
+    the tests that need a size monkeypatch their own value on top of this."""
+    monkeypatch.setattr(weights, "model_disk_bytes", lambda model, revision=None: None)
+
+
 def test_record_writes_exchanges_per_route(tmp_path: Path) -> None:
     """The recorded set: models, the role route, /score, the over-length 400 and the unknown-field 400."""
 
@@ -351,6 +358,9 @@ def test_wave_marks_an_invalid_recipe_failed_with_the_validation_message(tmp_pat
     assert (out / "broken-recipe" / "status.json").is_file()
     wave_md = (out / "WAVE.md").read_text(encoding="utf-8")
     assert "broken-recipe" in wave_md and "failed" in wave_md
+    pipe_rows = [line for line in wave_md.splitlines() if line.startswith("|")]
+    assert len(pipe_rows) == 2 + 2  # header, separator and ONE row per recipe (errors are one line)
+    assert all(line.rstrip().endswith("|") for line in pipe_rows)  # no cell split across lines
 
 
 def test_wave_fails_the_recipes_of_a_plugin_the_bootstrap_could_not_install(tmp_path: Path) -> None:

@@ -92,7 +92,8 @@ released together.
   the report's `reference` block records `torch` and `torch_is_image_build`, and a CPU torch on a GPU node is
   a failed bootstrap. Every disk check measures a not-yet-created cache at its nearest existing parent, each
   engine slot's `TMPDIR` is short enough for vLLM's ZMQ IPC paths (AF_UNIX's 107 characters) whatever the
-  recipe id is, and `steps.serve.state` records the serve step's own success (a clean stop is not a failure).
+  recipe id is, and `steps.serve.state` records the serve step's own success (a clean stop is not a failure). The
+  `WAVE.md` table keeps one row per recipe whatever the message wraps.
 - **A tokenizer file's embedded truncation and padding no longer cap the counts** (G5): a `tokenizer.json`
   can ship `truncation: {max_length: 1024}` (topk-embed-v1-small does) or fixed-length padding, and an
   un-reset backend silently topped every count and id list at those lengths, so no budget above them could
