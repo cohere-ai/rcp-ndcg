@@ -1,7 +1,7 @@
 # Workstream 10: data I/O and MTEB interoperability
 
 Read these first:
-- `handover/00-MASTER.md`, decisions 27-32;
+- `handover/00-MASTER.md`, decisions 27-33;
 - `handover/specs/mteb-data-model.md`, the evidence: MTEB's loader, model protocols, results and upload layout, with
   `file:line` citations.
 
@@ -98,11 +98,21 @@ Elsewhere:
      paper's layout, decision 31).
    - If formatting enters an identity or fingerprint (`rcp-fp/3`, run identities), bump it per the versioning page.
    - `run_all` must stay unchanged. If a number moves because it re-joins text, stop and report it to the owner.
-3. **The instruction format is declared too.**
-   - Today `Task: <instruction>\nQuery: <text>`.
-   - `mteb` style: `query + " " + instruction`.
-   - It stays a separate field on `Query`. Whether the default should follow mteb too is the owner's call: ask before
-     changing it, because it changes every instruction-bearing prompt (BRIGHT).
+3. **Two kinds of instruction, kept apart** (decision 33; mteb separates them the same way).
+   - **Task instructions** say what the model is asked to do for a whole task, for example "Given a web search query,
+     retrieve relevant passages" (NanoBEIR, the model cards). They are model-owned and come before the query, through
+     the model's own template. mteb does the same: the model wrapper's `get_instruction`/`instruction_template`
+     (`models/abs_encoder.py:186-252`, `models/instruct_wrapper.py:36-117`). Our recipes already declare these; no
+     change.
+   - **Per-query instructions** are part of the data: mteb's InstructionRetrieval tasks (FollowIR, Core17) carry
+     narratives that redefine relevance. mteb appends them, `query + " " + instruction`
+     (`_create_dataloaders.py:77-89`).
+   - `Query.instruction` stays a separate field. The dataset declares where it goes: `prefix` (today's
+     `Task: <instruction>\nQuery: <text>`, the default, for task-style instructions carried in data such as BRIGHT's)
+     or `append` (mteb's join).
+   - The Hub and `mteb:` readers set `append` for a dataset with an mteb `instruction` config or column, so
+     InstructionRetrieval tasks read byte-identically to mteb. A caller may override the placement.
+   - *Recommended; the owner's confirmation is pending.*
 4. **Deferred, both additive:** conversation-style queries and audio.
 
 ## D. Export

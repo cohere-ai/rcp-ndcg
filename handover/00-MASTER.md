@@ -162,6 +162,11 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
 32. **Retire the column-heuristics `hf` reader**: the Hub contract is MTEB's layout; other data is converted once.
     Its `document_parts` option and image persistence move into the new reader.
 
+33. **Two kinds of instruction**: task instructions (NanoBEIR, model cards) are model-owned and prefixed through the
+    model's template, as mteb does; per-query instructions in the data keep a declared placement, `prefix` by default
+    and `append` (mteb's) for mteb InstructionRetrieval data, which the readers set (workstream 10, C.3).
+    *Recommended; the owner's confirmation is pending.*
+
 ## 6. Engineering rules (in addition to AGENTS.md)
 
 - **R30 — consume the product, never copy it.** Harnesses, recipes, references' harness glue, plugins, fakes, cases
@@ -218,7 +223,7 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
 | 05 | `05-layout-move.md` and its "Amendments after M3" | M3 (now) | the quiet window; carries decisions 18-22 |
 | 08 | `08-vllm-only-and-judge-recipes.md` | 05 | decisions 14-17 |
 | 09 | `09-processing-pipeline.md` | 05 (ideally right after it, before module paths freeze) | decision 23 |
-| 10 | `10-data-io-and-mteb.md` (evidence: `specs/mteb-data-model.md`) | 09 (both touch `data/`) | decisions 27-32; core record changes, so before 07's surface freeze |
+| 10 | `10-data-io-and-mteb.md` (evidence: `specs/mteb-data-model.md`) | 09 (both touch `data/`) | decisions 27-33; core record changes, so before 07's surface freeze |
 | 06 | `06-docs-final.md` and its amendments | 08, 09, 10 | |
 | 07 | `07-qa-and-release-prep.md` and its amendments | 08, 09, 10 | in parallel with 06 |
 
