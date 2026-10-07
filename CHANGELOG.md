@@ -29,7 +29,8 @@ released together.
   `client_refusal` record (`rcp_ndcg_vllm.record.refusal_exchange`; no status, nothing sent), so a refusal never
   ends a corpus step and loses its text rows (topk-embed-v1-small's image documents); the checkpoint's own files
   come through one reader (`rcp_ndcg_vllm.equivalence.checkpoint.checkpoint_file`, `checkpoint_pixel_budget`),
-  where only an absent file falls through to the next source and any other read failure is unresolved; the
+  where only an absent file (the Hub's answer, or the cache's record of it) falls through to the next source; a
+  file neither cached nor askable is unknown, and that or any other read failure is unresolved; the
   media stage names a side the reference refuses (`reference_refused`, which the generator prunes) before a side
   the client did not send, and an image whose tokens either side left uncounted fails; the generator's media rows
   are `observe.media_set.planned_media_rows` (renamed from `media_rows`, which stays the pairs-file reader in

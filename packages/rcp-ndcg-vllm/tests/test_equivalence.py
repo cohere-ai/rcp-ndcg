@@ -856,9 +856,14 @@ def test_stage1_messages_route_renders_the_declared_generation_prompt(tmp_path: 
     assert check["passed"] is True and check["checked"] > 0, check["failures"][:1]
 
 
-def _hub_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, files: dict[str, str]) -> None:
-    """An offline Hub cache holding ``fixtures/DenseEmbedder`` at fixture-embed's pinned revision with ``files``."""
-    hub_cache(tmp_path, monkeypatch, "fixtures/DenseEmbedder", "0123456789abcdef0123456789abcdef01234567", files)
+def _hub_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, files: dict[str, str], absent: tuple[str, ...] = ()
+) -> None:
+    """An offline Hub cache holding ``fixtures/DenseEmbedder`` at fixture-embed's pinned revision with ``files``
+    (``absent``: the files it records as not in the repository)."""
+    hub_cache(
+        tmp_path, monkeypatch, "fixtures/DenseEmbedder", "0123456789abcdef0123456789abcdef01234567", files, absent
+    )
 
 
 def test_stage1_messages_route_render_checks_the_checkpoints_own_chat_template(
@@ -881,9 +886,17 @@ def test_stage1_messages_route_render_checks_the_checkpoints_own_chat_template(
     assert stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]["passed"] is False
 
     config = json.dumps({"chat_template": _CHAT_TEMPLATE})
-    _hub_cache(tmp_path / "config", monkeypatch, {"tokenizer_config.json": config})
+    absent = ("chat_template.jinja", "chat_template.json")
+    _hub_cache(tmp_path / "config", monkeypatch, {"tokenizer_config.json": config}, absent)
     check = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]
     assert check["passed"] is True and check["template"].endswith(":tokenizer_config.json"), check
+
+    # Not cached and no Hub to ask is not "absent": the checkpoint may ship a chat_template.jinja, so rendering
+    # tokenizer_config.json's template in its place would check the wrong template.
+    _hub_cache(tmp_path / "unknown", monkeypatch, {"tokenizer_config.json": config})
+    check = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["status"] == "unresolved" and check["passed"] is False, check
+    assert "chat_template.jinja" in check["failures"][0]["note"], check
 
     _hub_cache(tmp_path / "empty", monkeypatch, {})
     check = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]

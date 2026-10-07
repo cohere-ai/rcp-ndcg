@@ -2,10 +2,11 @@
 
 One reader for the harness and the negative controls: :func:`checkpoint_file` resolves a file of the recipe's
 ``model`` at its 40-hex ``revision`` through ``huggingface_hub`` (the local Hub cache answers a pinned revision
-without a request; the Hub otherwise, unless offline).  An ABSENT file (``EntryNotFoundError``, or
-``LocalEntryNotFoundError`` -- not in the cache and no Hub to ask) is ``None``, so a caller may try the next
-source; any other failure is a :class:`~rcp_ndcg_vllm.errors.HarnessError` naming the file, never a silent
-fall-through to another source.
+without a request; the Hub otherwise, unless offline).  An ABSENT file -- the Hub says the repository has no
+such file, or the cache recorded that answer (its ``.no_exist`` marker) -- is ``None``, so a caller may try the
+next source.  A file the cache does not hold while the Hub cannot be asked is unknown, not absent; that and any
+other failure is a :class:`~rcp_ndcg_vllm.errors.HarnessError` naming the file, never a silent fall-through to
+another source.
 
 Public surface: :func:`checkpoint_file`, :func:`checkpoint_pixel_budget`, :data:`PIXEL_BUDGET_FILES`.
 """
@@ -28,19 +29,27 @@ processor config's ``image_processor`` block."""
 
 def checkpoint_file(recipe: Recipe, name: str) -> Path | None:
     """The local path of the checkpoint file ``name`` at the recipe's pinned revision, or ``None`` when the
-    file is absent (not in the checkpoint, or not in the cache with no Hub to ask).
+    checkpoint has no such file (the Hub says so, or the cache recorded that it did).
 
     Raises:
-        HarnessError: any other failure (a broken cache, a refused download), naming the file.
+        HarnessError: the file is not cached and the Hub cannot be asked (unknown, not absent), or any other
+            failure (a broken cache, a refused download), naming the file.
     """
     try:
-        from huggingface_hub import hf_hub_download
+        from huggingface_hub import _CACHED_NO_EXIST, hf_hub_download, try_to_load_from_cache
         from huggingface_hub.errors import EntryNotFoundError, LocalEntryNotFoundError
     except ImportError as error:  # pragma: no cover - huggingface_hub ships with the harness's [test] extra
         raise HarnessError("reading the checkpoint's files needs huggingface_hub") from error
     try:
         return Path(hf_hub_download(recipe.model, name, revision=recipe.revision))
-    except (EntryNotFoundError, LocalEntryNotFoundError):
+    except LocalEntryNotFoundError as error:  # before EntryNotFoundError, its base class
+        if try_to_load_from_cache(recipe.model, name, revision=recipe.revision) is _CACHED_NO_EXIST:
+            return None
+        raise HarnessError(
+            f"recipe {recipe.id}: {name} of {recipe.model}@{recipe.revision} is not in the Hub cache and the Hub "
+            "cannot be asked, so whether the checkpoint ships it is unknown: populate the cache, or reach the Hub"
+        ) from error
+    except EntryNotFoundError:
         return None
     except Exception as error:  # noqa: BLE001 - every other failure is named, never a fall-through
         raise HarnessError(

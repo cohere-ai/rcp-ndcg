@@ -148,16 +148,30 @@ def sample_pairs(documents: int = 4) -> list[dict]:
     ]
 
 
-def hub_cache(root: Path, monkeypatch: pytest.MonkeyPatch, repo: str, revision: str, files: dict[str, str]) -> Path:
+def hub_cache(
+    root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repo: str,
+    revision: str,
+    files: dict[str, str],
+    absent: tuple[str, ...] = (),
+) -> Path:
     """An offline Hub cache under ``root`` holding ``files`` for ``repo`` at ``revision`` (the layout
     huggingface_hub reads a commit-hash revision from without any request); the Hub is offline meanwhile.
-    Calling it again with another root replaces the cache."""
+    ``absent`` names the files the cache records as not in the repository (the ``.no_exist`` markers an online
+    lookup leaves); a file neither held nor marked is unknown. Calling it again with another root replaces the
+    cache."""
     import huggingface_hub.constants as constants
 
-    snapshot = root / "hub" / ("models--" + repo.replace("/", "--")) / "snapshots" / revision
+    model_dir = root / "hub" / ("models--" + repo.replace("/", "--"))
+    snapshot = model_dir / "snapshots" / revision
     snapshot.mkdir(parents=True, exist_ok=True)
     for name, text in files.items():
         (snapshot / name).write_text(text, encoding="utf-8")
+    for name in absent:
+        marker = model_dir / ".no_exist" / revision / name
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
     monkeypatch.setattr(constants, "HF_HUB_CACHE", str(root / "hub"))
     monkeypatch.setattr(constants, "HF_HUB_OFFLINE", True)
     return snapshot

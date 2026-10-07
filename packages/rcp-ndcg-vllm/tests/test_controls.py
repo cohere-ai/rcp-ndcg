@@ -182,7 +182,9 @@ def test_control_f_applies_only_where_the_pin_leaves_the_checkpoints_own_budget(
     hub_cache(tmp_path / "e", monkeypatch, *VL_EMBEDDING, {"preprocessor_config.json": json.dumps(embedding)})
     assert _control_f(_shipped("qwen3-vl-embedding-2b"))["kind"] == "recipe"
     topk = {"image_processor": {"size": {"shortest_edge": 65536, "longest_edge": 16777216}}}
-    hub_cache(tmp_path / "t", monkeypatch, *TOPK, {"processor_config.json": json.dumps(topk)})
+    hub_cache(
+        tmp_path / "t", monkeypatch, *TOPK, {"processor_config.json": json.dumps(topk)}, ("preprocessor_config.json",)
+    )
     row = _control_f(_shipped("topk-embed-v1-small"))
     assert row["kind"] is None and "processor_config.json" in row["reason"]
 
@@ -194,7 +196,10 @@ def test_control_f_with_an_unreadable_checkpoint_budget_is_a_blocker(
     never declared inapplicable on a guess -- it is unresolved, and the wave's summary counts it a blocker."""
     from tests.conftest import hub_cache
 
-    hub_cache(tmp_path, monkeypatch, *VL_RERANKER, {})
+    hub_cache(tmp_path / "unknown", monkeypatch, *VL_RERANKER, {})
+    unknown = _control_f(_shipped("qwen3-vl-reranker-2b"))
+    assert unknown["kind"] == "unresolved" and "preprocessor_config.json" in unknown["reason"], unknown
+    hub_cache(tmp_path, monkeypatch, *VL_RERANKER, {}, ("preprocessor_config.json", "processor_config.json"))
     row = _control_f(_shipped("qwen3-vl-reranker-2b"))
     assert row["kind"] == "unresolved" and "no pixel budget resolves" in row["reason"]
     summary = controls_summary([{"control": "(f)", "name": row["name"], "equivalence": {"passed": None}}])
