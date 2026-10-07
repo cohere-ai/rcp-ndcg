@@ -273,6 +273,9 @@ class Transport:
         self._bridge_lock = threading.Lock()
         """Serialises :meth:`run` (and a foreign-thread :meth:`close`) on the bridge loop: two threads'
         ``run_until_complete`` on one loop is a ``RuntimeError`` that would abort one caller's batch."""
+        self._background_lock = threading.Lock()
+        """Guards the background loop's lazy start: two threads inside their own running loops (notebooks)
+        must share one private thread, not start one each."""
         self._background_loop: asyncio.AbstractEventLoop | None = None
         self._background_thread: threading.Thread | None = None
         self._last_error: BaseException | None = None
@@ -654,13 +657,17 @@ class Transport:
             return loop.run_until_complete(coroutine)
 
     def _background(self) -> asyncio.AbstractEventLoop:
-        """The transport's private background loop, started once, for :meth:`run` inside a running loop."""
+        """The transport's private background loop, started once, for :meth:`run` inside a running loop.
+        The lazy start is double-checked under its lock: two threads each inside their own running loop
+        share this one loop and thread rather than starting one each."""
         if self._background_loop is None:
-            self._background_loop = asyncio.new_event_loop()
-            self._background_thread = threading.Thread(
-                target=self._background_loop.run_forever, name="rcp-ndcg-transport", daemon=True
-            )
-            self._background_thread.start()
+            with self._background_lock:
+                if self._background_loop is None:
+                    self._background_loop = asyncio.new_event_loop()
+                    self._background_thread = threading.Thread(
+                        target=self._background_loop.run_forever, name="rcp-ndcg-transport", daemon=True
+                    )
+                    self._background_thread.start()
         return self._background_loop
 
     def set_auth(self, auth: AuthProfile) -> None:
@@ -691,7 +698,7 @@ class Transport:
             await pool.aclose()
         finally:
             self._bridge_close = None
-            self._close_own_loop()
+            self._close_own_loop_when_free()
 
     def close(self) -> None:
         """The synchronous twin of :meth:`aclose`: closes the pool on the loop it serves and the sync
@@ -699,17 +706,29 @@ class Transport:
 
         Called from the loop the pool serves (an async caller closing without an ``await``), the close is
         scheduled instead of blocking that loop on itself. Called from another thread while a ``run()`` is
-        mid-flight, it waits for that call to finish (the bridge lock), then closes -- never raising into
-        the caller, and never pulling the in-flight call's feet out from under it.
+        mid-flight, it waits for that call to finish -- the bridge lock is held across the call and across
+        these closes, so the loop is never closed while it runs -- then closes both, never raising into the
+        caller and never pulling the in-flight call's feet out from under it.
         """
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            with self._bridge_lock:  # a foreign thread: serialise against the bridge's own run
+            with self._bridge_lock:  # a foreign thread: wait out the bridge's in-flight call, then close
                 self._close_pool()
-        else:
-            self._close_pool()  # inside the pool's loop: the close is scheduled, not blocking
-        self._close_own_loop()
+                self._close_own_loop()
+            return
+        self._close_pool()  # inside a running loop: the close is scheduled, not blocking
+        self._close_own_loop_when_free()
+
+    def _close_own_loop_when_free(self) -> None:
+        """Close the bridge loop unless a bridge call holds the lock. A call's own thread cannot take the
+        lock (its ``run()`` holds it), and a foreign loop must not block itself on a competing call: both
+        leave the loop to the drain rule -- whichever caller closes next finishes it."""
+        if self._bridge_lock.acquire(blocking=False):
+            try:
+                self._close_own_loop()
+            finally:
+                self._bridge_lock.release()
 
     def _close_pool(self) -> None:
         """The pool's close, on the loop it serves (see :meth:`close`)."""
