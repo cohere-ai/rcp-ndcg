@@ -711,7 +711,6 @@ def test_a_media_path_may_not_escape_the_media_directory_even_when_the_target_ex
     case_file = write_case(tmp_path / "cases", "fake-pool", "escape", body)
     (case_file.parent / "outside.png").write_bytes(_tiny_png_bytes())  # the escape TARGET EXISTS
     (case_file.parent / "media").mkdir()
-    recipe = load_recipe(tmp_path / "recipes" / "fake-pool")
     with pytest.raises(CaseError, match="escapes the media directory"):
         load_case(case_file)
 
