@@ -187,7 +187,7 @@ class TestPooling:
         """The vectors are the same on every machine: one SHAKE-256 stream per vector, pinned here (a change of
         the draw moves these values, deliberately and with a CHANGELOG entry)."""
         vector = fake_module._unit_vector(0, "embedding", "hello", dim=4)
-        assert np.allclose(vector, PINNED_UNIT_VECTOR, rtol=0.0, atol=1e-12), vector.tolist()
+        assert np.allclose(vector, PINNED_UNIT_VECTOR, rtol=0.0, atol=1e-12), np.asarray(vector).tolist()
         wider = fake_module._unit_vector(0, "embedding", "hello", dim=8)
         assert np.allclose(wider[:4] / np.linalg.norm(wider[:4]), vector)  # a wider draw extends the stream
 
