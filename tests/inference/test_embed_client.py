@@ -195,6 +195,19 @@ class TestBatching:
         with pytest.raises(ConfigError, match="at least 1"):
             client.encode(texts(*"abcd"), EncodeRole.DOCUMENT, batch_size=0)
 
+    def test_the_hosted_openai_route_refuses_no_batch_client_side(self) -> None:
+        """At its own default host (the hosted OpenAI API) an ``openai_embeddings`` config is still not
+        HOSTED, so no client-side cap applies: 129 texts go out as one request, the route answers its own
+        refusal if it has one."""
+        items = [f"t{index}" for index in range(129)]
+        sender = FakeSender(handler("openai_embeddings", dict.fromkeys(items, 1.0)))
+        client = EmbeddingClient(endpoint(batch_size=129), sender=sender)
+        assert client.config.base_url is None  # the profile's default host, https://api.openai.com/v1
+
+        client.encode(texts(*items), EncodeRole.DOCUMENT)
+
+        assert [len(call.json["input"]) for call in sender.calls] == [129]
+
     def test_a_hosted_profile_still_enforces_its_published_cap(self) -> None:
         with pytest.raises(ConfigError, match="at most 96"):
             EmbeddingClient(

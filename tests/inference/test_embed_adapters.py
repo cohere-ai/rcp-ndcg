@@ -7,6 +7,7 @@ Every test is offline: adapters build and read
 from __future__ import annotations
 
 import base64
+import re
 from typing import Any, ClassVar
 
 import numpy as np
@@ -22,6 +23,7 @@ from rcp_ndcg.inference.adapters.embeddings import (
     VoyageEmbeddings,
 )
 from rcp_ndcg.inference.types import Reply, TokenCount
+from tests.docs._markdown import ROOT
 from tests.inference._embed import embeddings_data, vendor_payload
 
 #: Every shipped embedding adapter, under its registered name.
@@ -197,6 +199,17 @@ class TestProfiles:
         refusal), so a cap declared on a non-hosted shape is dead: it documents a refusal that never fires."""
         dead = {name for name, cls in ADAPTERS.items() if cls.MAX_BATCH is not None and not cls.HOSTED}
         assert dead == set()
+
+    def test_the_concepts_page_lists_exactly_the_caps_the_client_enforces(self) -> None:
+        """``docs/concepts/embeddings.md`` names the batch caps a config is refused above: exactly the HOSTED
+        profiles' ``MAX_BATCH``, no refusal the client never makes (the hosted OpenAI 128 was one)."""
+        page = (ROOT / "docs" / "concepts" / "embeddings.md").read_text(encoding="utf-8")
+        row = next(line for line in page.splitlines() if line.startswith("| `batch_size` |"))
+        listed = re.search(r"published cap \(([^)]*)\)", row)
+        assert listed is not None, row
+        documented = {name.lower(): int(cap) for name, cap in re.findall(r"(\w+) (\d+)", listed.group(1))}
+        enforced = {name: cls.MAX_BATCH for name, cls in ADAPTERS.items() if cls.HOSTED and cls.MAX_BATCH}
+        assert documented == enforced
 
     def test_every_profile_names_its_public_base_url(self) -> None:
         assert {name: cls.DEFAULT_BASE_URL for name, cls in ADAPTERS.items()} == {
