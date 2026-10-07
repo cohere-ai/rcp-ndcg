@@ -93,6 +93,9 @@ __all__ = [
     "registry",
     "request_context",
     "request_digest",
+    "surrogate_matrix",
+    "surrogate_scores",
+    "surrogate_vector",
     "transport_for",
     "verification_record",
     "verification_records",
@@ -961,23 +964,22 @@ class Verified:
 
 def surrogate_scores(seed: int, *parts: object, count: int) -> list[float]:
     """The declared deterministic surrogate: ``count`` scores in [-1, 1], hashed from ``seed`` and
-    ``parts`` (the product's one draw, :func:`~rcp_ndcg.inference.fake.fake_uniform`), stable on every
+    ``parts`` (the product's scalar draw, :func:`~rcp_ndcg.inference.fake.fake_uniform`), stable on every
     machine and in every call order. Marked in every reply it answers (``x-rcp-ndcg-emulator-source``)."""
-    return [2.0 * _uniform(seed, "surrogate-score", *parts, index) - 1.0 for index in range(count)]
+    from rcp_ndcg.inference.fake import fake_uniform
+
+    return [2.0 * fake_uniform(seed, "surrogate-score", *parts, index) - 1.0 for index in range(count)]
 
 
 def surrogate_vector(seed: int, *parts: object, dim: int) -> list[float]:
-    """The declared deterministic surrogate: one hash-seeded unit vector of width ``dim``."""
-    raw = [2.0 * _uniform(seed, "surrogate-vector", *parts, index) - 1.0 for index in range(dim)]
-    norm = sum(value * value for value in raw) ** 0.5 or 1.0
-    return [value / norm for value in raw]
+    """The declared deterministic surrogate: one unit vector of width ``dim`` from **one** seeded draw
+    per vector -- a SHAKE-256 stream of the parts read as ``dim`` uniforms, as the offline fake draws its
+    vectors -- never one hash per component. Its values are declared surrogate, never pinned."""
+    import numpy as np
 
-
-def _uniform(seed: int, *parts: object) -> float:
-    """One deterministic draw in [0, 1) -- the product's single fakes draw (``fake_uniform``)."""
-    from rcp_ndcg.inference.fake import fake_uniform
-
-    return fake_uniform(seed, *parts)
+    stream = hashlib.shake_256("|".join(str(part) for part in (seed, "surrogate-vector", *parts)).encode("utf-8"))
+    raw = (np.frombuffer(stream.digest(8 * dim), dtype=">u8") >> np.uint64(11)) * 2.0**-53 * 2.0 - 1.0
+    return (raw / (float(np.linalg.norm(raw)) or 1.0)).tolist()
 
 
 def surrogate_matrix(seed: int, *parts: object, tokens: int, dim: int) -> list[list[float]]:

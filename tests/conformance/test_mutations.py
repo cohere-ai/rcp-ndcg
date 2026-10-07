@@ -179,3 +179,30 @@ def test_an_edited_recipe_fails_the_gate_naming_the_changed_input(tmp_path: Path
         corpus_of(edited)
     assert "client.max_tokens" in str(error.value), error.value
     assert "no manifest" not in str(error.value)
+
+
+def test_the_surrogate_is_one_draw_per_vector_and_pins_no_values(monkeypatch) -> None:
+    """The declared surrogate is deterministic, unit-norm and keyed by the replay key; it draws once per
+    vector (the offline fake's own per-vector draw), so a long surrogate matrix stays fast. No test pins
+    its values: they follow the offline fake's draw, which may change (it changed from one hash per
+    component to one stream per vector)."""
+    import math
+    import time
+
+    from rcp_ndcg.testing.engines import surrogate_matrix, surrogate_vector
+
+    first = surrogate_vector(0, "embedding", "key-a", dim=64)
+    assert first == surrogate_vector(0, "embedding", "key-a", dim=64)
+    assert first != surrogate_vector(0, "embedding", "key-b", dim=64)
+    assert len(first) == 64 and math.isclose(math.fsum(v * v for v in first), 1.0, rel_tol=1e-9)
+    from rcp_ndcg.inference import fake
+
+    calls = []
+    scalar_draw = fake.fake_uniform
+    monkeypatch.setattr(fake, "fake_uniform", lambda *parts: calls.append(parts) or scalar_draw(*parts))
+    surrogate_matrix(0, "pooling", "key-c", tokens=8, dim=64)
+    assert calls == [], f"{len(calls)} scalar draws for 8 vectors"
+    started = time.perf_counter()
+    matrix = surrogate_matrix(0, "pooling", "key-a", tokens=2048, dim=1024)
+    assert len(matrix) == 2048 and len(matrix[0]) == 1024
+    assert time.perf_counter() - started < 10.0, "one draw per vector, never one hash per component"

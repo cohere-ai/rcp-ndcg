@@ -30,7 +30,9 @@ released together.
   `fake://vllm-0.31.0/<recipe>` (`rcp_ndcg.inference.fake` routes engine-version hosts there); the
   protocol is emulated (routes, request validation, error bodies, result ordering and framing, usage
   counts and token counting with the recipe's real tokenizer files) and the model outputs are
-  replayed for observed inputs -- a declared deterministic surrogate for unseen ones, marked
+  replayed for observed inputs -- a declared deterministic surrogate for unseen ones (`surrogate_vector`
+  and `surrogate_matrix` draw one SHAKE-256 stream per vector, `surrogate_scores` one draw per score;
+  no value is pinned), marked
   `replayed`/`surrogate`/`mixed` in `x-rcp-ndcg-emulator-source`, recorded per reply in `answer_log`.
   The corpus seam (`load_corpus`, `register_corpus_format`, `register_line_migration`,
   `NORMALISATION_VERSION`) reads the shakedown's recorder format today and takes

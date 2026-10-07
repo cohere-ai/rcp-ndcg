@@ -20214,6 +20214,93 @@
           }
         ]
       },
+      "surrogate_matrix": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "seed"
+          },
+          {
+            "annotation": "object",
+            "default": "<required>",
+            "kind": "var_positional",
+            "name": "parts"
+          },
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "tokens"
+          },
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "dim"
+          },
+          {
+            "returns": "list[list[float]]"
+          }
+        ]
+      },
+      "surrogate_scores": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "seed"
+          },
+          {
+            "annotation": "object",
+            "default": "<required>",
+            "kind": "var_positional",
+            "name": "parts"
+          },
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "count"
+          },
+          {
+            "returns": "list[float]"
+          }
+        ]
+      },
+      "surrogate_vector": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "seed"
+          },
+          {
+            "annotation": "object",
+            "default": "<required>",
+            "kind": "var_positional",
+            "name": "parts"
+          },
+          {
+            "annotation": "int",
+            "default": "<required>",
+            "kind": "keyword_only",
+            "name": "dim"
+          },
+          {
+            "returns": "list[float]"
+          }
+        ]
+      },
       "transport_for": {
         "defined_in": "rcp_ndcg.testing.engines",
         "kind": "function",
