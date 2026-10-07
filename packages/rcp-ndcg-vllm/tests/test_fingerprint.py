@@ -213,6 +213,7 @@ def test_the_aggregation_rule_is_not_an_input() -> None:
         (EMBED, "max_tokens", 64),  # the client cut: the text sent
         (MULTI, "embed_dtype", "float32"),  # sent in the /pooling body
         (RERANK, "use_activation", False),  # sent in the /rerank body, changes the score (the fixture says true)
+        (RERANK, "document_max_tokens", 16),  # the per-document cap: the document text sent
     ],
 )
 def test_a_request_shaping_field_moves_the_fingerprint_and_is_named(

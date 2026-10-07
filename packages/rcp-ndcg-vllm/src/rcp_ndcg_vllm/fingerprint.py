@@ -68,6 +68,7 @@ CLIENT_FIELDS: dict[str, str] = {
     "api": "request",  # the wire adapter: route and body shape
     "max_tokens": "request",  # the client cut: the text sent
     "query_max_tokens": "request",
+    "document_max_tokens": "request",  # the per-document cap: the document text sent
     "template": "request",  # the rendered prompt
     "on_overflow": "request",  # cut, chunk or refuse: which requests are sent
     "chunk": "request",

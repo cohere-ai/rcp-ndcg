@@ -251,8 +251,8 @@ released together.
   load with their error, and what stage-1 validation ran). `python -m rcp_ndcg_vllm.observe.requests` generates
   it under a stall watchdog (`faulthandler` to stderr every 60 s); runs merge into the manifest per recipe (a
   recipe a run touched replaces its file, skipped and pruned entries), so one bounded invocation per recipe
-  composes. Stage-1 validation probes the offline fake with a `/pooling` recipe's reply-side fields bounded
-  (`dim` 8 without an `mrl_dim`, `document_skip_token_ids` emptied; every request field unchanged); a
+  composes. Stage-1 validation probes the offline fake with a `/pooling` recipe's reply width bounded (`dim` 8
+  without an `mrl_dim`; every request field unchanged); a
   `/pooling` recipe whose over-length samples exceed 32768 tokens records its render check as blocked (the
   full-budget stage 1 runs against the engine); a recipe whose validation pruned every row is a skipped
   recipe with the first failure named, never an empty pairs file. The committed `pairs/` hold 17 of the 18

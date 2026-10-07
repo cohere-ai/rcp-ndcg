@@ -943,23 +943,19 @@ _PROBE_DIM = 8
 
 
 def _offline_probe(recipe: Any) -> Any:
-    """The recipe as stage 1 probes it on the product's offline fake: reply-side ``/pooling`` fields bounded.
+    """The recipe as stage 1 probes it on the product's offline fake: a ``/pooling`` reply's width bounded.
 
-    Stage 1 audits what the role client SENDS; the fake's reply is scaffolding.  Two client fields of a
-    ``vllm_pooling`` recipe shape only the reply, and the probe copy bounds exactly those: ``dim`` (the
-    adapter decodes the reply by it; no request carries it) drops to 8 -- the fake answers one vector per
-    whitespace word, so the shipped width at twice a 262k-token budget is a multi-GiB reply per probed text
-    -- unless a Matryoshka ``mrl_dim`` is declared; and ``document_skip_token_ids`` (the client drops those
-    positions from the reply) is emptied, since the fake's word count is not the recipe tokenizer's and the
-    client refuses a reply whose vector count is not its sent ids' count.  Input: a loaded recipe.  Output:
-    the recipe itself (nothing to bound), or its copy; every field a request is built from is unchanged.
+    Stage 1 audits what the role client SENDS; the fake's reply is scaffolding.  A ``vllm_pooling`` recipe's
+    ``dim`` shapes only the reply (the adapter decodes the reply by it; no request carries it), and the fake
+    answers one ``dim``-wide vector per token, so the shipped width at twice a long budget is a multi-GiB
+    reply per probed text: the probe copy drops it to 8, unless a Matryoshka ``mrl_dim`` is declared.  Input:
+    a loaded recipe.  Output: the recipe itself (nothing to bound), or its copy; every field a request is
+    built from is unchanged.
     """
     client = recipe.client
     if getattr(client, "api", None) != "vllm_pooling":
         return recipe
     update: dict[str, Any] = {}
-    if getattr(client, "document_skip_token_ids", None):
-        update["document_skip_token_ids"] = ()
     dim = getattr(client, "dim", None)
     if dim is not None and dim > _PROBE_DIM and getattr(client, "mrl_dim", None) is None:
         update["dim"] = _PROBE_DIM

@@ -279,10 +279,9 @@ def test_the_wire_variants_and_the_protocol_edges_cover_each_route() -> None:
 def test_stage1_validation_runs_a_skip_list_recipe_on_the_offline_fake(tmp_path: Path) -> None:
     """A multi-vector recipe that declares ``document_skip_token_ids`` validates on the product's offline fake.
 
-    The fake answers one vector per whitespace word, not per recipe token, and the pooling client refuses a
-    reply whose vector count is not the count of the ids it sent (the skip positions would not align). The
-    skip list acts on the reply only, so the generator's stage-1 validation probes a copy without it: the
-    requests stage 1 audits are unchanged, and the generation no longer dies on the fake's reply.
+    The pooling client refuses a reply whose vector count is not the count of the ids it sent (the skip
+    positions would not align); the fake counts a text in the recipe's declared tokenizer, as the engine does,
+    so the recipe validates as shipped (the generation once died here on a whitespace-word count).
     """
     import shutil
     import sys
@@ -315,11 +314,11 @@ def test_stage1_validation_runs_a_skip_list_recipe_on_the_offline_fake(tmp_path:
     assert validated.validation["render_check"] == "passed", validated.validation
 
 
-def test_the_offline_probe_bounds_only_reply_side_pooling_fields() -> None:
+def test_the_offline_probe_bounds_only_the_pooling_reply_width() -> None:
     """A ``/pooling`` recipe's ``dim`` sizes the reply only (the adapter decodes by it; no request carries it),
-    so stage 1's offline probe answers 8-wide vectors: the shipped width at 2 x a 262k-token budget would be a
-    multi-GiB fake reply per probed text.  Every other client field -- everything a request is built from --
-    is the recipe's own; a non-pooling recipe is probed as it ships."""
+    so stage 1's offline probe answers 8-wide vectors: the shipped width at 2 x a long budget would be a
+    multi-GiB fake reply per probed text.  Every other client field -- everything a request is built from,
+    and the skip list -- is the recipe's own; a non-pooling recipe is probed as it ships."""
     from rcp_ndcg_vllm.observe.requests import _offline_probe
 
     recipe = load_recipe(RECIPES / "fixture-multi-vector")
@@ -327,8 +326,8 @@ def test_the_offline_probe_bounds_only_reply_side_pooling_fields() -> None:
         update={"client": recipe.client.model_copy(update={"dim": 2048, "document_skip_token_ids": (2,)})}
     )
     probe = _offline_probe(wide)
-    assert probe.client.dim == 8 and not probe.client.document_skip_token_ids
-    unchanged = {"dim", "document_skip_token_ids"}
+    assert probe.client.dim == 8 and tuple(probe.client.document_skip_token_ids) == (2,)
+    unchanged = {"dim"}
     assert probe.client.model_dump(exclude=unchanged) == wide.client.model_dump(exclude=unchanged)
     assert probe._dir == wide._dir  # noqa: SLF001 - the reference still resolves from the recipe directory
     embed = load_recipe(RECIPES / "fixture-embed")
