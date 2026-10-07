@@ -416,7 +416,9 @@ class TestRequestShapes:
         client = self._messages_client(sender, template=template, max_tokens=12)
         image = self._png(tmp_path, "page.png")
         for text in ("a caption", " ".join(["the"] * 40)):
-            client.encode([Content.from_parts([ImagePart(ref=image.media[0]), TextPart(text=text)])], EncodeRole.DOCUMENT)
+            client.encode(
+                [Content.from_parts([ImagePart(ref=image.media[0]), TextPart(text=text)])], EncodeRole.DOCUMENT
+            )
             parts = sender.calls[-1].json["messages"][0]["content"]
             assert [part["type"] for part in parts] == ["image_url", "text"], text
 

@@ -25,6 +25,23 @@ released together.
 
 ### Public surface
 
+- **The media stage of the equivalence harness** (`rcp_ndcg_vllm.equivalence.media.stage_media`, run by
+  `equivalence.run` beside stages 1 and 2 for a recipe with image or video input): stages 1 and 2 are text-only, so
+  nothing proved that a served vision-language recipe shows its model the images its reference sees. For every
+  pairs row that carries `media` (inline `MediaRef` entries with their `kind`; a side's content is its media in
+  order, then its text) the stage sends each media side through the recipe's role client (the product's media
+  preparation and fit) and reads what crossed the wire -- the parts in order, each image's prepared geometry
+  decoded from the sent bytes, each video's frames, the tokens the client counted (`content_media_tokens` under
+  the client's effective policies) -- against the reference's new `--mode media` (`REFERENCE_MODES`), and with an
+  engine it sends each media request again without its media: the difference of the two `usage.prompt_tokens`
+  is the engine's own media count, which must equal the client's. Every image item gates exactly (count,
+  placement, geometry, tokens); a container's tokens are reported. A media recipe whose pairs carry no media row
+  fails the stage; stages 1 and 2 compare the text rows only (`media_rows` in stage 1's report). Negative control
+  (f) unpins the nested `images_kwargs` pin (or a flat one) and is caught by the engine count; it is
+  inapplicable, said why, where the client prepares every image inside its family's stock range (an unpinned
+  engine keeps such an image). The test stub engine resizes images as the engine's processor does
+  (`--model-image-factor`, `--model-image-pixels`, `--mm-processor-kwargs`), and the `fixture-vl-embed`
+  fixture is a vision embedder pinned below its family's stock floor.
 - **A recipe that declares a key twice is refused** (`rcp_ndcg_vllm.load_recipe`): YAML keeps the last of two equal
   keys silently, so a recipe declaring a field twice served whichever came last. The loader raises
   `RecipeError` naming the key and its line; the `fixture-rerank-noisy` fixture declared `use_activation` twice

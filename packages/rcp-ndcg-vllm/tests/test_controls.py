@@ -6,8 +6,8 @@ and requires the gates to fail them; a control that passes is a blocker.  Here e
 ``truncate_prompt_tokens``/``truncation_side``, ``use_activation`` and the requested ``embed_dtype``; and, as
 properties of the emulated checkpoint, ``--model-pooling`` and ``--model-needs-template``).  One test per
 control asserts its row was CAUGHT (the gates failed it) while the recipe's own gates passed; the mutation test
-makes a gate a no-op and shows the wave flag the control as a blocker; (f) has no media gate to fail it on CPU
-and none on the node either -- its test pins that the summary reports it as a blocker, not a pass.
+makes a gate a no-op and shows the wave flag the control as a blocker; (f) is caught by the media stage's engine
+count on a vision embedder whose pixel pin lies below the family's stock floor.
 """
 
 from __future__ import annotations
@@ -110,19 +110,46 @@ def test_control_e_float32_read_as_float16_fails_the_gates(pooling_wave: dict[st
     assert step["passed"] is True and step["blockers"] == []
 
 
-def test_control_f_has_no_media_gate_and_is_reported_as_a_blocker() -> None:
-    """(f) unpins ``max_pixels``: no gate of the harness sends media (stage 2 is text only), so on a VL recipe
-    the control passes and the summary MUST flag it -- a blocker owned by the harness's missing media stage."""
-    base = load_recipe(RECIPES / "fixture-embed")
-    media = base.model_copy(
-        update={
-            "input": ["text", "image"],
-            "serve": base.serve.model_copy(update={"mm_processor_kwargs": {"max_pixels": 1003520, "min_pixels": 3136}}),
-        }
+def test_control_f_an_unpinned_pixel_budget_fails_the_media_stage(tmp_path: Path) -> None:
+    """(f) unpins the nested ``images_kwargs`` pin of a vision embedder whose budget lies below the family's
+    stock floor: the variant's engine re-resizes the prepared images under that floor, the media stage's engine
+    count differs from the client's, and the control is caught -- while the recipe's own gates pass."""
+    from tests.test_media import media_pairs
+
+    pairs = tmp_path / "pairs"
+    pairs.mkdir()
+    media_pairs(pairs / "fixture-vl-embed.jsonl")
+    document = run_wave(
+        ["fixture-vl-embed"],
+        RECIPES,
+        gpus=1,
+        out_dir=tmp_path / "wave",
+        pairs_dir=pairs,
+        reference_python=sys.executable,
+        vllm_cmd=f"{STUB} --model-pooling LAST",
+        port_base=0,
+        controls=True,
     )
-    variant = next(v for v in control_variants(media) if v["control"] == "(f)")
-    assert variant["kind"] == "recipe" and variant["recipe"].serve.mm_processor_kwargs == {}
-    summary = controls_summary([{"control": "(f)", "name": variant["name"], "equivalence": {"passed": True}}])
+    step = _controls(document)
+    row = _caught(step, "(f)")
+    assert row["caught"] is True and row["gates_passed"] is False
+    variant = next(v for v in control_variants(load_recipe(RECIPES / "fixture-vl-embed")) if v["control"] == "(f)")
+    assert variant["recipe"].serve.mm_processor_kwargs == {}
+    assert step["passed"] is True and step["blockers"] == [], step["blockers"]
+
+
+def test_control_f_does_not_apply_where_the_client_prepares_inside_the_stock_range() -> None:
+    """A client that prepares every image inside its processor family's stock range (topk-embed-v1-small's
+    65536..1310720 px under qwen3_vl) sends images an unpinned engine keeps: the control says so instead of
+    passing as a blocker; a pinned budget below the floor (the fixture's) is served."""
+    from rcp_ndcg_vllm.recipe import iter_recipes
+
+    topk = next(recipe for recipe in iter_recipes() if recipe.id == "topk-embed-v1-small")
+    (row,) = [v for v in control_variants(topk) if v["control"] == "(f)"]
+    assert row["kind"] is None and "stock range" in row["reason"]
+    (row,) = [v for v in control_variants(load_recipe(RECIPES / "fixture-vl-embed")) if v["control"] == "(f)"]
+    assert row["kind"] == "recipe"
+    summary = controls_summary([{"control": "(f)", "name": row["name"], "equivalence": {"passed": True}}])
     assert summary["passed"] is False and summary["blockers"][0]["control"] == "(f)"
 
 

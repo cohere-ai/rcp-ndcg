@@ -19,6 +19,11 @@ The modes, and the JSON each writes to ``--out``:
 - ``embed`` — stage 2 for the embedding roles: one vector per text for the row's query (role ``query``) and
   each document (role ``document``); a late-interaction reference returns one vector per token.
   ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[[...]]]}]}``.
+- ``media`` -- the media stage's reference side (:mod:`rcp_ndcg_vllm.equivalence.media`), for the pairs rows
+  that carry ``media``: per row and side that carries media (``query``, ``document <i>``), what the card's
+  model consumes -- ``{"rows": [{"index", "side", "placement": ["image", "text", ...], "media": [{"kind",
+  "width", "height", "tokens"} | {"kind": "video", "frames", "tokens"}]}]}``: the parts in the card's order,
+  each image's size after the card's own resize and its prompt tokens (its vision markers included).
 
 The instruction travels in the pairs file (per row); the reference folds it in the product's
 ``Task: <instruction>\nQuery: <text>`` format for ``instruction: fold``.  On the node the
@@ -38,8 +43,9 @@ from ..errors import HarnessError
 
 __all__ = ["REFERENCE_MODES", "run_reference"]
 
-REFERENCE_MODES = ("render", "score", "embed")
-"""The reference CLI's modes: ``render`` for stage 1's id comparison, ``score`` and ``embed`` for stage 2."""
+REFERENCE_MODES = ("render", "score", "embed", "media")
+"""The reference CLI's modes: ``render`` for stage 1's id comparison, ``score`` and ``embed`` for stage 2, ``media``
+for the media stage."""
 
 _TIMEOUT_S = 3600.0
 _OUTPUT_SNIPPET = 500

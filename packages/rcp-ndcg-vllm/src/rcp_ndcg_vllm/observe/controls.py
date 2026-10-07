@@ -11,7 +11,9 @@ engine that refuses its argv would fail every gate and prove nothing):
 - **recipe variants** (served as their own engine, client and engine agreeing on the variant's id): (a) drops
   ``serve.chat_template``; (c) flips the client's ``use_activation`` (or the pooler config's); (d) flips the
   pooling key the recipe declares (``seq_pooling_type`` or ``pooling_type`` -- vLLM refuses both at once);
-  (f) unpins ``max_pixels``/``min_pixels`` from ``serve.mm_processor_kwargs``;
+  (f) unpins ``max_pixels``/``min_pixels`` from ``serve.mm_processor_kwargs`` (the nested ``images_kwargs`` pin
+  or a flat one) -- inapplicable, said why, when the client prepares every image inside the processor family's
+  stock range, which an unpinned engine keeps;
 - **wire variants** (the recipe's own engine, the request bodies patched on the way out through
   :func:`rcp_ndcg_vllm.equivalence.wire.patched_wire`): (b) adds the request fields vLLM cuts with
   (``truncate_prompt_tokens`` + ``truncation_side: right`` -- a request field, not a serve flag, in v0.31.0);
@@ -130,15 +132,38 @@ def _float32_read_as_float16(recipe: Any) -> tuple[str | None, dict[str, Any], s
     return "wire", {"/pooling": {"embed_dtype": other}}, ""
 
 
+_PIXEL_KEYS = ("min_pixels", "max_pixels")
+
+
 def _unpinned_max_pixels(recipe: Any) -> tuple[str | None, dict[str, Any], str]:
     if "image" not in recipe.input:
         return None, {}, "the recipe is text-only: no image is resized"
     blocks = _blocks(recipe)
     kwargs = dict(blocks["serve"].get("mm_processor_kwargs") or {})
-    if "max_pixels" not in kwargs and "min_pixels" not in kwargs:
+    scoped = dict(kwargs.get("images_kwargs") or {}) if isinstance(kwargs.get("images_kwargs"), dict) else {}
+    if not any(key in kwargs or key in scoped for key in _PIXEL_KEYS):
         return None, {}, "the recipe pins no max_pixels or min_pixels to unpin (a finding of its own for a VL recipe)"
-    kwargs.pop("max_pixels", None)
-    kwargs.pop("min_pixels", None)
+    policy = getattr(recipe.client, "image_policy", None)
+    processor = getattr(recipe.client, "image_processor", None)
+    if policy is not None and processor is not None and policy.max_px is not None and not policy.pinned:
+        from rcp_ndcg.data.resolution import PROCESSORS
+
+        geometry = PROCESSORS[processor]
+        return (
+            None,
+            {},
+            f"the client prepares every image inside the {processor} stock range ({policy.min_px}-{policy.max_px} px "
+            f"within {geometry.min_pixels}-{geometry.max_pixels} px), which an unpinned engine keeps: unpinning "
+            "changes nothing the engine reads (the pin binds an image the client sends unprepared, and this "
+            "client prepares every image)",
+        )
+    for key in _PIXEL_KEYS:  # the ONE pin shape is nested images_kwargs; a flat pin is unpinned the same way
+        kwargs.pop(key, None)
+        scoped.pop(key, None)
+    if scoped:
+        kwargs["images_kwargs"] = scoped
+    else:
+        kwargs.pop("images_kwargs", None)
     blocks["serve"]["mm_processor_kwargs"] = kwargs
     return "recipe", blocks, ""
 
@@ -182,8 +207,9 @@ CONTROLS: tuple[ControlSpec, ...] = (
     ControlSpec(
         "(f)",
         "unpinned-max-pixels",
-        "max_pixels/min_pixels are unpinned from mm_processor_kwargs (image tokens per page move): a media gate "
-        "must catch the drift",
+        "max_pixels/min_pixels are unpinned from mm_processor_kwargs (nested images_kwargs or flat): the engine "
+        "re-resizes a prepared image outside its stock budget, and the media stage's engine count must catch the "
+        "drift",
         _unpinned_max_pixels,
     ),
 )

@@ -76,13 +76,17 @@ def stage1_prompts(
     - ``engine_tokenize_check`` — with an engine URL: the engine's ``/tokenize`` of every captured text must
       equal the recipe tokenizer's ids; reported ``not_run`` without an engine, never as passed.
     """
+    from .media import text_rows
+
     tokenizer = fitting.tokenizer_of(recipe)
-    rows = load_pairs(pairs_path)
+    loaded = load_pairs(pairs_path)
+    rows = text_rows(loaded)  # the media rows are the media stage's (rcp_ndcg_vllm.equivalence.media)
     shown = rows if limit is None else rows[:limit]
     sampled = _sampled_rows(recipe, shown, tokenizer, over_length_per_shape)
     probe = _probe(recipe, sampled, base_url, tokenizer)
     document: dict[str, Any] = {
         "pairs": len(rows),
+        "media_rows": len(loaded) - len(rows),
         "sampled": len(sampled),
         "checked": probe["checked"],
         "client": probe["client"],
@@ -1316,7 +1320,9 @@ def stage2_scores(
     injection point), never from a second request path.  The reference runs as a subprocess in its own
     environment (``--reference-python``, required); the harness process imports no torch.
     """
-    rows = load_pairs(pairs_path)
+    from .media import text_rows
+
+    rows = text_rows(load_pairs(pairs_path))  # the media rows are the media stage's
     reference = _reference_outputs(recipe, reference_python, rows, device=device)
     gates = resolve_gates(recipe)
     if recipe.role == "rerank":

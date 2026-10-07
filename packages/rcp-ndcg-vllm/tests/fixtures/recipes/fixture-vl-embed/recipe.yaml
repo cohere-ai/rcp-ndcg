@@ -1,0 +1,47 @@
+id: fixture-vl-embed
+model: fixtures/VisionEmbedder
+revision: "0123456789abcdef0123456789abcdef01234567"
+role: embed
+input: [text, image]
+licence: apache-2.0
+engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0", startup_timeout_s: 60}
+resources: {gpus: 1}
+serve:
+  runner: pooling
+  convert: null
+  hf_overrides: {}
+  chat_template: chat.jinja
+  pooler_config: {seq_pooling_type: LAST}
+  trust_remote_code: false
+  max_model_len: 512
+  dtype: bfloat16
+  plugin: null
+  mm_processor_kwargs: {"images_kwargs": {"min_pixels": 784, "max_pixels": 200704}}
+  limit_mm_per_prompt: {"image": 1}
+  extra_args: []
+client:
+  api: openai_embeddings
+  request_shape: messages
+  add_generation_prompt: true
+  tokenizer: ../../tokenizer.json
+  max_tokens: 400
+  template:
+    document:
+      - {fixed: "doc: "}
+      - {content: document}
+      - {fixed: " [END]"}
+    anchor: last
+  image_processor: qwen2_vl
+  image_policy: {min_px: 784, max_px: 200704, engine_pixel_pinning: true}
+  max_images: 1
+  on_overflow: cut
+  empty_doc: send
+  normalize: true
+reference:
+  kind: transformers
+  score_scale: cosine
+  entry: reference.py
+gates: {}
+status: {state: unverified, image: null, date: null, report: null}
+sources: []
+notes: "A fixture for the media stage: a vision embedder on the messages route, its pixel budget pinned below the family's stock floor."
