@@ -7,7 +7,9 @@
 # canonical repo. Base: Qwen3-4B (25/26 shared config keys equal with Qwen/Qwen3-4B; the extra key is
 # auto_map, transformers_version 4.51.3 vs 4.51.0 differs). Scoring: sigmoid(yes_logit / 5) at the
 # last prompt position, "Yes" = token 9454 (single token), so stock vLLM serves it natively:
-# --runner pooling --convert classify wraps the native Qwen3ForCausalLM with as_seq_cls_model, the
+# --runner pooling wraps the native Qwen3ForCausalLM with as_seq_cls_model (convert: classify
+# resolves automatically from the hf_overrides' ForSequenceClassification suffix - a rerank recipe
+# NEVER passes --convert: it flags a classify endpoint, and the product's load rule refuses it), the
 # no_post_processing weight surgery points the 1-label head at the "Yes" row of the tied LM head, and
 # logit_sigma: 5 makes the head compute sigmoid(yes_logit / 5). No plugin, no trust_remote_code
 # (the repo's auto_map resolves to native Qwen3Config with trust_remote_code false; measured).
@@ -23,7 +25,14 @@ engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0"}
 resources: {gpus: 1}                     # ~8.0 GB bf16 weights + KV cache
 serve:
   runner: pooling
-  convert: classify
+  convert: null                 # NEVER --convert on a rerank recipe: classify flags a classify endpoint,
+                                # not a reranker (the product's load rule refuses serve.convert here); the
+                                # checkpoint's scorer is declared through serve.hf_overrides below.
+                                # --convert auto resolves to classify from the overridden
+                                # ForSequenceClassification suffix at the v0.31.0 tag
+                                # (vllm/config/model.py: _SUFFIX_TO_DEFAULTS "ForSequenceClassification" ->
+                                # pooling/classify :2279, the architectures property reading the
+                                # hf_overrides-merged config :1149-1150, _get_default_convert_type :1284)
   hf_overrides:
     architectures: ["Qwen3ForSequenceClassification"]
     classifier_from_token: ["Yes"]       # single token, id 9454; dropping method or this token yields
