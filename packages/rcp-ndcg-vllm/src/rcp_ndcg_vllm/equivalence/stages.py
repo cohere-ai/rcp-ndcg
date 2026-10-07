@@ -36,6 +36,8 @@ __all__ = [
     "checkpoint_chat_template",
     "engine_conversation",
     "load_pairs",
+    "render_chat",
+    "served_chat_template",
     "stage1_prompts",
     "stage2_scores",
 ]
@@ -896,23 +898,16 @@ def _messages_template_check(recipe: Recipe, probe: dict[str, Any]) -> dict[str,
     checkpoint's own template, which the check reads at the pinned revision
     (:func:`checkpoint_chat_template`); one that cannot be read fails the check (``unresolved``), never passes.
     """
-    if recipe.serve.chat_template is None:
-        try:
-            source, template_text = checkpoint_chat_template(recipe)
-        except HarnessError as error:
-            return {
-                "status": "unresolved",
-                "passed": False,
-                "failures": [{"check": "checkpoint_chat_template", "note": str(error)}],
-                "reason": "the engine frames the content with the checkpoint's own chat template, and it could "
-                "not be read: the frame is unchecked, which never passes",
-            }
-    else:
-        directory = recipe._dir
-        if directory is None:  # pragma: no cover - load_recipe sets it
-            raise HarnessError(f"recipe {recipe.id} was not loaded from a directory")
-        source = recipe.serve.chat_template
-        template_text = (directory / recipe.serve.chat_template).read_text(encoding="utf-8")
+    try:
+        source, template_text = served_chat_template(recipe)
+    except HarnessError as error:
+        return {
+            "status": "unresolved",
+            "passed": False,
+            "failures": [{"check": "checkpoint_chat_template", "note": str(error)}],
+            "reason": "the engine frames the content with the checkpoint's own chat template, and it could "
+            "not be read: the frame is unchecked, which never passes",
+        }
     template = _jinja_environment(strict=False).from_string(template_text)
     failures: list[dict[str, Any]] = []
     checked = 0
@@ -950,6 +945,26 @@ def _messages_template_check(recipe: Recipe, probe: dict[str, Any]) -> dict[str,
         "revision), rendered over every conversation the client sent (its content), must render exactly the "
         "declared template's frame around it -- framed once",
     }
+
+
+def served_chat_template(recipe: Recipe) -> tuple[str, str]:
+    """The chat template the engine frames a chat-shaped request with: ``serve.chat_template``'s file, else the
+    checkpoint's own at the pinned revision (:func:`checkpoint_chat_template`).  Output: ``(source, text)``."""
+    if recipe.serve.chat_template is None:
+        return checkpoint_chat_template(recipe)
+    directory = recipe._dir
+    if directory is None:  # pragma: no cover - load_recipe sets it
+        raise HarnessError(f"recipe {recipe.id} was not loaded from a directory")
+    return recipe.serve.chat_template, (directory / recipe.serve.chat_template).read_text(encoding="utf-8")
+
+
+def render_chat(template_text: str, conversation: list[Any], *, add_generation_prompt: bool) -> str:
+    """One sent conversation rendered as the engine renders it: the template under transformers' jinja2
+    settings, the parts as vLLM hands them (:func:`engine_conversation`), the request's generation flag."""
+    template = _jinja_environment(strict=False).from_string(template_text)
+    return template.render(
+        messages=engine_conversation(conversation), add_generation_prompt=add_generation_prompt, tools=None
+    )
 
 
 CHECKPOINT_TEMPLATE_FILES = ("chat_template.jinja", "chat_template.json", "tokenizer_config.json")

@@ -238,8 +238,17 @@ def _chat_prompts(body: dict[str, Any]) -> list[tuple[str, int, str, int]]:
             template = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True).from_string(
                 Path(path).read_text(encoding="utf-8")
             )
+            # The text is rendered without the media parts and each image adds its whole vision block (its
+            # merged patches and the two markers): the count vLLM reports once the template's one placeholder
+            # per image (``<|vision_start|><|image_pad|><|vision_end|>`` for the Qwen-VL families) is expanded.
+            text_only = [
+                {**message, "content": [part for part in _parts(message.get("content")) if part.get("type") == "text"]}
+                if isinstance(message.get("content"), list)
+                else message
+                for message in conversation
+            ]
             prompt = template.render(
-                messages=engine_conversation(conversation),
+                messages=engine_conversation(text_only),
                 add_generation_prompt=bool(body.get("add_generation_prompt", False)),
                 tools=None,
             )

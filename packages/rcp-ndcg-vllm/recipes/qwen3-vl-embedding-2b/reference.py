@@ -28,12 +28,15 @@ vendored script's source, never restated.
   resolved with ``huggingface_hub.snapshot_download`` at the recipe's revision, so model and processor load
   the same pinned snapshot.
 
-Media is not exercised here (the media checks are token-level CPU checks and the GPU wave's probe-image
-check): a pairs row carrying media columns is refused loudly (see :func:`_refuse_media_rows`).
-The recipe's ONE video sampling policy (64 uniformly spaced frames per clip) governs a future media wave:
-a video row would arrive as its 64 pre-sampled frames and pass through the card's frame-list route at
-``num_segments`` 64 unchanged. Which over-cap rows the harness reports rather than gates is the
-recipe's notes' ("Budgets"); the pairs files keep every text within the budget minus the frame.
+- ``--mode media`` (the media stage's reference side): for every pairs row carrying ``media``, per side, what
+  the card's model consumes -- the user turn's parts in the card's order (video, image, text), each image's
+  size after the card's ``fetch_image`` resize (qwen-vl-utils' ``smart_resize`` under the card's
+  MIN/MAX_PIXELS, read from the vendored script) and its tokens (merged patches plus the two vision markers).
+  Needs PIL only. The render and embed modes compare text rows (a media column there is refused loudly,
+  :func:`_refuse_media_rows`). The recipe's ONE video sampling policy (64 uniformly spaced frames per clip)
+  reaches the card as its 64 pre-sampled frames through the frame-list route at ``num_segments`` 64.
+
+Which over-cap rows the harness reports rather than gates is the recipe's notes' ("Budgets").
 
 Reference environment (``requirements-reference.txt`` in this directory, installed into the reference
 python): torch (the card pins 2.8.0), transformers>=4.57 (Qwen3VL), qwen-vl-utils>=0.0.14, pyyaml,
@@ -215,6 +218,111 @@ def mode_render(pairs: list[dict[str, Any]], tokenizer_spec: str) -> dict[str, A
     return {"rows": rows}
 
 
+def card_media_constants() -> dict[str, int]:
+    """The card script's image constants, evaluated from the vendored file's module-level assignments (never
+    restated): ``IMAGE_FACTOR`` (16 x 2: the patch the card hands ``process_vision_info`` as
+    ``image_patch_size=16``, times the spatial merge), ``MIN_PIXELS``, ``MAX_PIXELS`` and ``MAX_FRAMES``."""
+    import ast
+
+    tree = ast.parse((Path(__file__).resolve().parent / CARD_SCRIPT).read_text(encoding="utf-8"))
+    env: dict[str, Any] = {}
+    names = ("IMAGE_BASE_FACTOR", "IMAGE_FACTOR", "MIN_PIXELS", "MAX_PIXELS", "MAX_FRAMES")
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            if node.targets[0].id in names:
+                expression = ast.Expression(body=node.value)
+                env[node.targets[0].id] = eval(
+                    compile(expression, CARD_SCRIPT, "eval"), {"__builtins__": {}}, dict(env)
+                )  # noqa: S307
+    if set(env) != set(names):
+        raise SystemExit(f"{CARD_SCRIPT} no longer defines {sorted(set(names) - set(env))}")
+    return env
+
+
+def card_resize(height: int, width: int, factor: int, min_pixels: int, max_pixels: int) -> tuple[int, int]:
+    """``qwen_vl_utils.vision_process.smart_resize`` (qwen-vl-utils 0.0.14, the card's preprocessing), as
+    ``fetch_image`` calls it with the card's per-item ``min_pixels``/``max_pixels``: both edges rounded to the
+    factor (at least one factor), the area floored into ``max_pixels`` or ceiled up to ``min_pixels``; an
+    aspect ratio over 200 is refused."""
+    import math
+
+    if max(height, width) / min(height, width) > 200:
+        raise SystemExit(
+            f"absolute aspect ratio must be smaller than 200, got {max(height, width) / min(height, width)}"
+        )
+    h_bar = max(factor, round(height / factor) * factor)
+    w_bar = max(factor, round(width / factor) * factor)
+    if h_bar * w_bar > max_pixels:
+        beta = math.sqrt((height * width) / max_pixels)
+        h_bar = math.floor(height / beta / factor) * factor
+        w_bar = math.floor(width / beta / factor) * factor
+    elif h_bar * w_bar < min_pixels:
+        beta = math.sqrt(min_pixels / (height * width))
+        h_bar = math.ceil(height * beta / factor) * factor
+        w_bar = math.ceil(width * beta / factor) * factor
+    return h_bar, w_bar
+
+
+def _image_size(entry: dict[str, Any]) -> tuple[int, int]:
+    """An entry's image as the card loads it (``fetch_image``: a ``data:image`` URI's bytes, or a file)."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    uri = str(entry.get("uri", ""))
+    if uri.startswith("data:"):
+        source: Any = io.BytesIO(base64.b64decode(uri.split(",", 1)[1]))
+    else:
+        source = uri.removeprefix("file://")
+    with Image.open(source) as handle:
+        return handle.size
+
+
+def media_side(text: str, entries: list[dict[str, Any]], constants: dict[str, int]) -> dict[str, Any]:
+    """One side as the card's model consumes it: ``format_model_input`` builds the user turn video first, then
+    the image, then the text (one image and one video per input); each image is resized by ``fetch_image``
+    under the card's MIN/MAX_PIXELS and costs its merged patches ((h/32) x (w/32) image pads, the
+    processor's do_resize being off) plus its vision start and end markers; a video is the card's frame list
+    (``sample_frames`` at ``MAX_FRAMES`` segments) -- its tokens are the processor's and are not counted
+    here."""
+    images = [entry for entry in entries if entry.get("kind", "image") == "image"]
+    videos = [entry for entry in entries if entry.get("kind") == "video"]
+    if len(images) > 1 or len(videos) > 1:
+        raise SystemExit("the card's format_model_input takes one image and one video per input")
+    factor = constants["IMAGE_FACTOR"]
+    media: list[dict[str, Any]] = []
+    placement: list[str] = []
+    for _video in videos:
+        placement.append("video")
+        media.append({"kind": "video", "frames": constants["MAX_FRAMES"], "tokens": None})
+    for entry in images:
+        width, height = _image_size(entry)
+        resized_h, resized_w = card_resize(height, width, factor, constants["MIN_PIXELS"], constants["MAX_PIXELS"])
+        placement.append("image")
+        tokens = (resized_h // factor) * (resized_w // factor) + 2
+        media.append({"kind": "image", "width": resized_w, "height": resized_h, "tokens": tokens})
+    if text:
+        placement.append("text")
+    return {"placement": placement, "media": media}
+
+
+def mode_media(pairs: list[dict[str, Any]]) -> dict[str, Any]:
+    """The media stage's reference side: per row and side that carries media, what the card's model consumes
+    (:func:`media_side`)."""
+    constants = card_media_constants()
+    rows: list[dict[str, Any]] = []
+    for index, row in enumerate(pairs):
+        media = row.get("media") or {}
+        if media.get("query"):
+            rows.append({"index": index, "side": "query", **media_side(str(row["query"]), media["query"], constants)})
+        for position, entries in enumerate(media.get("documents") or []):
+            if entries:
+                side = media_side(str(row["documents"][position]), entries, constants)
+                rows.append({"index": index, "side": f"document {position}", **side})
+    return {"rows": rows}
+
+
 def _load_recipe() -> dict[str, Any]:
     """This recipe's YAML (the model and revision the embed mode loads), read from beside this file."""
     import yaml
@@ -265,7 +373,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="the qwen3-vl-embedding-2b reference (the card's Qwen3VLEmbedder path)"
     )
-    parser.add_argument("--mode", required=True, choices=["render", "embed"])
+    parser.add_argument("--mode", required=True, choices=["render", "embed", "media"])
     parser.add_argument("--pairs", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--tokenizer", required=True)
@@ -280,6 +388,8 @@ def main() -> int:
     pairs = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
     if args.mode == "render":
         output = mode_render(pairs, args.tokenizer)
+    elif args.mode == "media":
+        output = mode_media(pairs)
     else:
         output = mode_embed(_load_recipe(), pairs, args.device)
     Path(args.out).write_text(json.dumps(output) + "\n", encoding="utf-8")

@@ -10,9 +10,10 @@ are shown red. The stage-1 run exercises the harness's own checks (fit renders, 
 engine /tokenize against the stub engine carrying the same tokenizer) plus the reference subprocess's
 render mode. What the client ships is read from the product's own role client (``_served``), never
 re-derived. The tests add what the harness cannot check for this recipe: both declared shapes render the
-checkpoint's own chat template, the reference renders the card's own over-cap truncation (the declared
-``anchor_drop_over_cap``: the client keeps the frame, the card does not), and an image item is refused on
-the declared text route.
+checkpoint's own chat template, the served render is that frame only with the declared generation prompt,
+the reference renders the card's own over-cap truncation (the declared ``anchor_drop_over_cap``: the client
+keeps the frame, the card does not), and the media stage holds every image of the media request set to the
+card's resize -- and, against the stub engine, the engine's media count to the client's, pinned and not.
 """
 
 from __future__ import annotations
@@ -79,8 +80,8 @@ CLIENT = {
     "connect_timeout_s": 5.0,
     "max_retries": 2,
     "wait_on_outage_s": None,
-    "image_processor": None,
-    "image_policy": {"min_px": 4096, "max_px": 1843200, "processor": None},
+    "image_processor": "qwen3_vl",
+    "image_policy": {"min_px": 4096, "max_px": 1843200, "processor": None, "engine_pixel_pinning": True},
     "video_policy": {
         "num_frames": 64,
         "wire": "video_url",
@@ -92,13 +93,15 @@ CLIENT = {
     "media_sides": ["query", "document"],
     "recipe": (
         "vLLM 0.31.0 pooling runner (--convert embed), seq_pooling_type LAST with the default "
-        "PoolerNormalize head; no served chat template (completion-style text route, the frame is the "
-        "client's); media: nested images_kwargs min_pixels=4096 max_pixels=1843200 "
+        "PoolerNormalize head; no served chat template (the checkpoint's own frames the messages route); "
+        "media: nested images_kwargs min_pixels=4096 max_pixels=1843200 "
         "(serve.mm_processor_kwargs, the one pixel-pin shape), one media item per request "
         "(serve.limit_mm_per_prompt image=1 video=1 = client.max_images/max_videos 1/1), "
         "video_policy 64 uniform frames per clip as video_url with --media-io-kwargs video "
-        "num_frames 64 pinned (engine_video_pinning); request_shape text: fit's rendered frame "
-        "goes out as the input string and the engine's post-processor appends the end anchor"
+        "num_frames 64 pinned (engine_video_pinning); request_shape messages with add_generation_prompt "
+        "and add_special_tokens true: the checkpoint's chat template frames each item once and the engine's "
+        "post-processor appends the end anchor; image_processor qwen3_vl under the pinned budget "
+        "(engine_pixel_pinning)"
     ),
     "tokenizer": f"{MODEL}@{REVISION}",
     "max_tokens": 8192,
@@ -127,7 +130,8 @@ CLIENT = {
     "aggregation": "max",
     "empty_doc": "send_text",
     "empty_doc_text": "NULL",
-    "request_shape": "text",
+    "request_shape": "messages",
+    "add_generation_prompt": True,
     "query_prompt": "",
     "doc_prompt": "",
     "normalize": True,
@@ -384,7 +388,9 @@ def test_stage1_on_cpu(recipe_cpu: Any, tokenizer: Path, tmp_path: Path) -> None
     render = document["render_check"]
     assert render["status"] == "run" and render["passed"] is True, render["failures"][:1]
     assert render["rows"] == 2 * len(_PAIRS), "one render per declared shape per pairs row"
-    assert document["template_render_check"] is None, "no served template file (see the chat-template test)"
+    template = document["template_render_check"]
+    assert template["status"] == "run" and template["passed"] is True, template["failures"][:1]
+    assert template["template"].endswith(":chat_template.jinja") and template["template_sha256"] == CHAT_TEMPLATE_SHA256
     engine_check = document["engine_tokenize_check"]
     assert engine_check["status"] == "run" and engine_check["passed"] is True, engine_check["failures"][:1]
     assert document["passed"] is True
@@ -438,19 +444,84 @@ def test_an_empty_document_renders_the_card_null(recipe_cpu: Any, tmp_path: Path
 
 
 @pytest.mark.network
-def test_an_image_item_is_refused_on_the_declared_text_route(recipe_cpu: Any, tmp_path: Path) -> None:
-    """The recipe declares media capacity, but its text route carries no media parts: the product refuses
-    an image item loudly (a typed CapabilityError naming the route), before anything is fetched."""
+def test_the_served_render_is_the_declared_frame_only_with_the_generation_prompt(
+    recipe_cpu: Any, chat_template: str
+) -> None:
+    """The messages route ships the content; the engine frames it with the checkpoint's chat template. With
+    the declared ``add_generation_prompt: true`` (sent) the render is the declared frame byte for byte; without
+    it -- vLLM's chat default, false -- the assistant header is missing, and with it the pooled anchor."""
     from rcp_ndcg_core.content import Content
+    from rcp_ndcg_vllm.equivalence import fitting, stages
     from rcp_ndcg_vllm.equivalence.wire import role_client
 
-    from rcp_ndcg.errors import CapabilityError
     from rcp_ndcg.inference.types import EncodeRole
 
     client, capture = role_client(recipe_cpu, None)
-    with pytest.raises(CapabilityError, match="takes text only"):
-        client.encode([Content.from_image(f"file://{tmp_path / 'never-read.png'}")], EncodeRole.DOCUMENT)
-    assert not capture.exchanges, "nothing was sent"
+    tokenizer = fitting.tokenizer_of(recipe_cpu)
+    for role, shape in ((EncodeRole.QUERY, "query"), (EncodeRole.DOCUMENT, "document")):
+        client.encode([Content.from_text("Paris is the capital of France.")], role)
+        body = capture.exchanges[-1]["request_body"]
+        assert body["add_generation_prompt"] is True and body["add_special_tokens"] is True
+        conversation = body["messages"]
+        declared = recipe_cpu.client.template.render(
+            shape, tokenizer, query="Paris is the capital of France.", document="Paris is the capital of France."
+        )
+        assert stages.render_chat(chat_template, conversation, add_generation_prompt=True) == declared
+        without = stages.render_chat(chat_template, conversation, add_generation_prompt=False)
+        assert declared.startswith(without) and declared[len(without) :] == "<|im_start|>assistant\n"
+
+
+def _media_pairs(tmp_path: Path) -> Path:
+    """One text row and the media request set's rows (the generator's synthetic image buckets)."""
+    from rcp_ndcg_vllm.observe.media_set import media_rows
+
+    rows, _ = media_rows(load_recipe(RECIPE_DIR))
+    return _pairs(tmp_path, [_PAIRS[0], *[{key: row[key] for key in ("query", "documents", "media")} for row in rows]])
+
+
+@pytest.mark.network
+def test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket(recipe_cpu: Any, tmp_path: Path) -> None:
+    """Offline, the product's client and the card's reference agree on every image of the media request set:
+    the placement (media before text), the prepared geometry under the pinned budget and the tokens."""
+    from rcp_ndcg_vllm.equivalence.media import stage_media
+    from rcp_ndcg_vllm.observe.media_set import MEDIA_BUCKETS
+
+    document = stage_media(recipe_cpu, _media_pairs(tmp_path), sys.executable)
+    assert document is not None and document["passed"] is True, document["failures"][:3]
+    assert document["items"] == len(MEDIA_BUCKETS) + 1 and document["refusals"] == []
+
+
+@pytest.mark.network
+def test_the_engine_media_count_holds_under_the_pin_and_fails_unpinned(
+    recipe_cpu: Any, chat_template: str, tokenizer: Path, tmp_path: Path
+) -> None:
+    """Against the stub engine emulating the checkpoint (its chat template, the qwen3_vl patch factor, the
+    checkpoint's own default budget 4096..1310720 px): served with the recipe's pin, the engine counts every
+    image as the client does; served without it (negative control (f)), every page the client prepared above
+    1310720 px is resized again and the engine's count differs."""
+    from rcp_ndcg_vllm.equivalence.media import stage_media
+    from rcp_ndcg_vllm.observe.controls import control_variants
+
+    template_file = tmp_path / "chat_template.jinja"
+    template_file.write_text(chat_template, encoding="utf-8")
+    model = ["--model-chat-template", str(template_file), "--model-image-factor", "32"]
+    model += ["--model-image-pixels", "4096,1310720", "--max-model-len", "8192"]
+    pairs = _media_pairs(tmp_path)
+    (unpinned,) = [v["recipe"] for v in control_variants(recipe_cpu) if v["control"] == "(f)"]
+    results = {}
+    for name, served in (("pinned", recipe_cpu), ("unpinned", unpinned)):
+        argv = serve_argv(served, port=0, served_model_name=recipe_cpu.id)
+        flags = [value for value in argv[argv.index(served.model) + 1 :] if value != "0.0.0.0"]
+        flags = [flag for flag in flags if flag != "--host"]
+        engine = start_stub("--tokenizer", str(tokenizer), *flags, *model)
+        try:
+            results[name] = stage_media(recipe_cpu, pairs, sys.executable, base_url=engine.base_url)
+        finally:
+            engine.stop()
+    pinned, broken = results["pinned"], results["unpinned"]
+    assert pinned is not None and pinned["passed"] is True, (pinned["failures"][:2], pinned["engine_check"])
+    assert broken is not None and broken["passed"] is False
+    assert {failure["row"] for failure in broken["engine_check"]["failures"]}, "the unpinned engine counts differently"
 
 
 @pytest.mark.network

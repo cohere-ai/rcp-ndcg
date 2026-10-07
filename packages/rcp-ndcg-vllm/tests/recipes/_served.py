@@ -141,7 +141,8 @@ def stage1_facts(
 
 
 def served_texts(recipe: Any, texts: Iterable[str], shape: str) -> list[str]:
-    """What the role client SHIPS for each input text at ``shape`` (``query`` or ``document``).
+    """What the role client SHIPS for each input text at ``shape`` (``query`` or ``document``): the request text
+    on the text route, and on the messages route the engine's chat-template render of the sent conversation.
 
     One capture per input (the client fans out concurrently; per-call captures keep position
     attribution exact), read from the request bodies of the product's own client.
@@ -154,10 +155,20 @@ def served_texts(recipe: Any, texts: Iterable[str], shape: str) -> list[str]:
     client, capture = role_client(recipe, None)
     role = _encode_role(shape)
     shipped: list[str] = []
+    template: str | None = None
     for text in texts:
         start = len(capture.exchanges)
         client.encode([Content.from_text(text)], role)
-        shipped.append(capture.texts(capture.exchanges[start])["input"][0])
+        captured = capture.texts(capture.exchanges[start])
+        if "conversations" not in captured:
+            shipped.append(captured["input"][0])
+            continue
+        # The messages route ships the content; the engine's chat template frames it -- the prompt the engine
+        # reads is that render (the served template, else the checkpoint's own), under the request's flag.
+        if template is None:
+            template = stages.served_chat_template(recipe)[1]
+        flag = bool(captured["add_generation_prompt"])
+        shipped.append(stages.render_chat(template, captured["conversations"][0], add_generation_prompt=flag))
     return shipped
 
 
