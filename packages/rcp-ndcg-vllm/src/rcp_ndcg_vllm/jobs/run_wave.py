@@ -33,9 +33,11 @@ import argparse
 import json
 import os
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections.abc import Iterable
@@ -53,6 +55,24 @@ __all__ = ["main", "run_wave"]
 
 _POLL_S = 2.0
 _ANNOUNCE_TIMEOUT_S = 60.0
+
+_ZMQ_IPC_SUFFIX_CHARS = 37
+"""One vLLM ZMQ IPC socket path under a slot's TMPDIR: ``/`` plus the 36-character uuid.  AF_UNIX's
+``sun_path`` caps total paths at 107 characters, so a slot's TMPDIR must leave this much room
+(``<slot tmpdir>`` + this <= 107; the shakedown's ctxl failures, FINDINGS shake1c)."""
+
+
+def _slot_tmp_dir(slot: int) -> Path:
+    """One engine slot's TMPDIR: short, unique per wave and slot, outside the output tree.
+
+    vLLM's ZMQ IPC sockets live under the slot's TMPDIR as ``<uuid>`` and AF_UNIX caps paths at 107
+    characters - a TMPDIR of ``<out>/<recipe-id>/tmp`` blew the cap for long recipe ids on the
+    shakedown (the ctxl recipes).  The directory is ``<system temp>/rcp-s<pid>-<slot>`` (≈ 22
+    characters): whatever the recipe id and the state prefix are.  The runner removes it with its
+    engine (it is scratch).  Inputs: the slot index.  Output: the directory (not yet created).
+    Units: none.
+    """
+    return Path(tempfile.gettempdir()) / f"rcp-s{os.getpid()}-{slot}"
 
 
 def run_wave(
@@ -187,6 +207,7 @@ class _EngineRun:
         log_path: Path,
         out_dir: Path,
         disk: dict[str, Any] | None = None,
+        tmpdir: Path | None = None,
     ) -> None:
         self.recipe = recipe
         self.gpus = gpus
@@ -194,6 +215,7 @@ class _EngineRun:
         self.popen = popen
         self.log_path = log_path
         self.out_dir = out_dir
+        self.tmpdir = Path(tmpdir) if tmpdir is not None else log_path.parent / "tmp"
         self.disk: dict[str, Any] = disk or {}
         self.started = time.monotonic()
         self.timeout_s = float(recipe.engine.startup_timeout_s)
@@ -331,8 +353,10 @@ def _start(
     directory.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
     env["CUDA_VISIBLE_DEVICES"] = ",".join(str(g) for g in gpus)
-    tmpdir = directory / "tmp"
-    tmpdir.mkdir(exist_ok=True)
+    # One home per slot, kept SHORT and outside the output tree: the slot's TMPDIR carries vLLM's ZMQ
+    # IPC sockets, whose paths must fit AF_UNIX's 107 characters whatever the recipe id is.
+    tmpdir = _slot_tmp_dir(slot)
+    tmpdir.mkdir(parents=True, exist_ok=True)
     env["TMPDIR"] = str(tmpdir)
     if port_base != 0:
         # The engine's internal port, distinct per slot (test mode leaves it to the stub).
@@ -351,9 +375,10 @@ def _start(
         directory / "serve.log",
         directory,
         disk=disk,
+        tmpdir=tmpdir,
     )
     run.status["serve_argv"] = argv
-    run.status["steps"]["serve"] = {"state": "running", "port": port, "gpus": gpus}
+    run.status["steps"]["serve"] = {"state": "running", "port": port, "gpus": gpus, "tmpdir": str(tmpdir)}
     return run
 
 
@@ -412,12 +437,14 @@ def _evict(recipe: Recipe, *, reuse: bool) -> dict[str, Any]:
 
 
 def _mark_serve_step(run: _EngineRun, state: str) -> None:
-    """Record the serve step's final state, keeping any error the failure path recorded."""
+    """Record the serve step's final state (and its slot's TMPDIR), keeping any error the failure
+    path recorded."""
     step = run.status["steps"].get("serve") or {}
     run.status["steps"]["serve"] = {
         "state": state,
         "port": run.port,
         "gpus": run.gpus,
+        "tmpdir": str(run.tmpdir),
         **({"error": step["error"]} if step.get("error") else {}),
     }
 
@@ -470,9 +497,20 @@ def _finalise(
         run.status["state"] = "failed"
         run.status["error"] = f"{type(step_error).__name__}: {step_error}"
     finally:
-        serve_state = "failed" if (error is not None or run.status["state"] == "failed") else "passed"
-        _mark_serve_step(run, serve_state)
+        # The serve step records ITS outcome (FINDINGS shake1c): "the engine answered and was stopped
+        # cleanly" is a success, whatever a later step's verdict is - a clean stop is not a failure.
+        _mark_serve_step(run, "passed" if error is None else "failed")
+        if run.status["state"] == "failed" and not run.status.get("error"):
+            # A row never fails bare: when only skips stand between it and verified, name them.
+            skipped = [
+                f"{name} ({step['reason']})" if step.get("reason") else name
+                for name, step in run.status["steps"].items()
+                if isinstance(step, dict) and step.get("state") == "skipped"
+            ]
+            if skipped:
+                run.status["error"] = f"verification incomplete: {', '.join(skipped)}"
         run.stop()
+        shutil.rmtree(run.tmpdir, ignore_errors=True)  # the slot's scratch TMPDIR leaves with its engine
         run.status["disk"] = {**run.disk, **_evict(run.recipe, reuse=reuse)}
         run.status["finished"] = _now()
         _write_status(run)

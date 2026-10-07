@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
 from rcp_ndcg_vllm import load_recipe
 from rcp_ndcg_vllm.equivalence.metrics import stage3_metrics
 from rcp_ndcg_vllm.jobs import weights
-from rcp_ndcg_vllm.jobs.run_wave import run_wave
+from rcp_ndcg_vllm.jobs.run_wave import _ZMQ_IPC_SUFFIX_CHARS, _slot_tmp_dir, run_wave
 from rcp_ndcg_vllm.record import record
 
 from tests.conftest import RECIPES, TOKENIZER, sample_pairs, start_stub
@@ -240,8 +241,15 @@ def test_wave_runs_on_a_fresh_pod_before_the_cache_exists(tmp_path: Path, monkey
     assert not cache.exists()  # even the eviction did not create the cache directory
 
 
-def test_wave_gives_each_slot_its_own_paths(tmp_path: Path) -> None:
-    """Node-runtime item 7: each slot's engine gets its own TMPDIR (test-mode ports are ephemeral)."""
+def test_wave_gives_each_slot_its_own_short_tmpdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Node-runtime item 7 (the shakedown's ctxl failures): vLLM's ZMQ IPC sockets live under the
+    slot's TMPDIR as ``<uuid>``, and AF_UNIX caps paths at 107 characters -- so each slot's TMPDIR is a
+    short per-slot dir OUTSIDE the output tree (recipe ids and the state prefix never reach it), one
+    per slot, and it is removed with its engine."""
+    slots_root = tmp_path / "slots"
+    slots_root.mkdir()
+    monkeypatch.setenv("TMPDIR", str(slots_root))
+    monkeypatch.setattr(tempfile, "tempdir", None)
     document = run_wave(
         ["fixture-embed", "fixture-embed-cls"],
         RECIPES,
@@ -253,8 +261,27 @@ def test_wave_gives_each_slot_its_own_paths(tmp_path: Path) -> None:
         port_base=0,
     )
     assert all(row["state"] == "verified" for row in document["recipes"])
+    tmpdirs = {}
     for row in document["recipes"]:
-        assert (tmp_path / "wave" / row["recipe"] / "tmp").is_dir()
+        tmpdir = row["steps"]["serve"]["tmpdir"]  # recorded, per slot
+        assert row["recipe"] not in tmpdir  # the recipe id never lengthens the path
+        assert Path(tmpdir).is_relative_to(slots_root)
+        assert not Path(tmpdir).exists()  # removed with its engine
+        tmpdirs[row["recipe"]] = tmpdir
+    assert len(set(tmpdirs.values())) == 2  # one home per slot
+
+
+def test_slot_tmp_dirs_fit_vllms_zmq_ipc_with_the_longest_recipe_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 107-character AF_UNIX budget with the bootstrap's real prefix as the temp root and the
+    longest recipe ids in play: ``<slot tmpdir>/<uuid>`` must fit whatever the recipe id is."""
+    monkeypatch.setattr(tempfile, "tempdir", "/tmp/rcp-bootstrap.XXXXXX")  # the bootstrap's real prefix
+    longest = max((directory.name for directory in RECIPES.iterdir() if directory.is_dir()), key=len)
+    for slot in range(3):
+        tmpdir = _slot_tmp_dir(slot)
+        assert longest not in str(tmpdir) and "ctxl" not in str(tmpdir)  # no id in the path: any length
+        assert len(str(tmpdir)) + _ZMQ_IPC_SUFFIX_CHARS <= 107  # sun_path, including the uuid + its slash
 
 
 def _pairs_dir(tmp_path: Path, recipe_ids: set[str]) -> Path:
@@ -266,6 +293,29 @@ def _pairs_dir(tmp_path: Path, recipe_ids: set[str]) -> Path:
             "".join(json.dumps(row) + "\n" for row in sample_pairs()[:1]), encoding="utf-8"
         )
     return pairs
+
+
+def test_wave_records_the_serve_step_success_and_a_clean_stop(tmp_path: Path) -> None:
+    """FINDINGS shake1c: with smoke and record passed and equivalence deliberately skipped (no pairs
+    yet), the serve step records ITS success and a clean stop is not a failure -- and a row that does
+    not verify says why, never bare."""
+    document = run_wave(
+        ["fixture-embed"],
+        RECIPES,
+        gpus=1,
+        out_dir=tmp_path / "wave",
+        reference_python=REFERENCE_PYTHON,
+        vllm_cmd=f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'} --tokenizer {TOKENIZER}",
+        port_base=0,
+        record=True,
+    )
+    row = document["recipes"][0]
+    assert row["steps"]["smoke"]["state"] == "passed"
+    assert row["steps"]["record"]["state"] == "passed"
+    assert row["steps"]["equivalence"]["state"] == "skipped"
+    assert row["steps"]["serve"]["state"] == "passed"  # serving succeeded; a clean stop is no failure
+    assert row["state"] == "failed"  # unverified (equivalence skipped), with the reason recorded:
+    assert "verification incomplete" in (row.get("error") or "") and "no pairs file" in (row.get("error") or "")
 
 
 def test_wave_marks_an_invalid_recipe_failed_with_the_validation_message(tmp_path: Path) -> None:
