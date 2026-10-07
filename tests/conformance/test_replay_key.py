@@ -22,7 +22,9 @@ SOURCE = "x-rcp-ndcg-emulator-source"
 
 def _recorded(recipe_id: str, sequence: int) -> dict:
     corpus = corpus_of(load_recipe(recipe_id))
-    (exchange,) = [item for item in corpus.exchanges if item.sequence == sequence]
+    from rcp_ndcg.testing.engines import exchanges_of
+
+    (exchange,) = [item for item in exchanges_of(corpus) if item.sequence == sequence]
     return dict(exchange.request_body)
 
 
@@ -92,7 +94,8 @@ def test_an_unknown_field_is_ignored_as_the_engine_ignores_it() -> None:
 def test_a_corpus_whose_key_holds_different_outputs_is_refused(tmp_path: Path) -> None:
     """Two observations under one key that disagree mean the key misses a behaviour-shaping field (or the
     engine is non-deterministic beyond the measured tolerance): never pick one silently."""
-    from rcp_ndcg.testing.engines import Corpus, EngineFacts, Exchange, StringsPrompts, VllmEmulator
+    from rcp_ndcg.testing.engines import EngineFacts, Exchange, StringsPrompts, VllmEmulator
+    from tests._engines import observation_corpus
     from tests._tokenizers import word_tokenizer
 
     def exchange(sequence: int, body: dict, value: float) -> Exchange:
@@ -100,12 +103,7 @@ def test_a_corpus_whose_key_holds_different_outputs_is_refused(tmp_path: Path) -
         return Exchange(sequence, "POST", "/v1/embeddings", body, 200, {}, reply)
 
     body = {"model": "tiny", "input": ["the a"]}
-    manifest = {
-        "recipe": {"id": "tiny", "revision": "f" * 40, "behaviour_fingerprint": "e" * 64},
-        "engine": {"name": "vllm", "version": "0.31.0"},
-        "non_determinism": {"status": "unmeasured"},
-    }
-    corpus = Corpus(tmp_path, manifest, (exchange(0, body, 1.0), exchange(1, {**body, "ignored": 1}, 0.5)))
+    corpus = observation_corpus(tmp_path, [exchange(0, body, 1.0), exchange(1, {**body, "ignored": 1}, 0.5)])
     facts = EngineFacts("vllm", "0.31.0", "tiny", "fixtures/Tiny", 8)
     with pytest.raises(DataError) as error:
         VllmEmulator.from_corpus(corpus, StringsPrompts(), word_tokenizer(), facts, dim=2)

@@ -1,0 +1,18 @@
+{
+  "normalisation_version": 1,
+  "per_input": {},
+  "summary": {
+    "max_abs_diff": 0.0,
+    "max_rel_diff": 0.0,
+    "min_cosine": null
+  },
+  "derived": {
+    "rule": "verification tolerance = 3x the maximum difference measured between repeated sendings of the SAME request (exchange_id: twice in one engine process and once after a restart), with absolute floor 1e-9 and relative floor 1e-6; no repeated request measured means no tolerance (declared unmeasured, never invented)",
+    "measured": false,
+    "repeated_requests": 0,
+    "statuses_differ": false,
+    "bodies_differ": false,
+    "abs_tolerance": null,
+    "rel_tolerance": null
+  }
+}

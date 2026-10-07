@@ -46,7 +46,7 @@ def corpus_of(recipe: Any) -> Any:
     manifests (``rcp_ndcg_vllm.changes.resolve_corpus``); a stale recipe raises ``StaleCorpusError``
     naming the fingerprint inputs that moved -- never another fingerprint's corpus, never a missing
     directory."""
-    from rcp_ndcg.testing.engines import load_corpus
+    from rcp_ndcg.testing.corpus import load_corpus
 
     harness()
     from rcp_ndcg_vllm.changes import resolve_corpus
@@ -100,8 +100,8 @@ def _build_emulator(recipe_id: str) -> Any:
     tokenizer = load_recipe_tokenizer(recipe)
     corpus = corpus_of(recipe)
     facts = EngineFacts(
-        engine_name=str(corpus.engine["name"]),
-        engine_version=str(corpus.engine["version"]),
+        engine_name=str(corpus.manifest["engine"]["name"]),
+        engine_version=str(corpus.manifest["engine"]["version"]),
         served_name=recipe.id,
         model_root=recipe.model,
         max_model_len=recipe.serve.max_model_len,
@@ -109,7 +109,7 @@ def _build_emulator(recipe_id: str) -> Any:
     emulator = VllmEmulator.from_corpus(corpus, prompt_strategy(recipe, tokenizer), tokenizer, facts)
     assert emulator.verified is not None
     emulator.require_verified_for(
-        recipe.id, recipe.revision, behaviour_fingerprint(recipe), str(corpus.engine["version"])
+        recipe.id, recipe.revision, behaviour_fingerprint(recipe), str(corpus.manifest["engine"]["version"])
     )
     registry.register(emulator)
     return emulator
@@ -123,3 +123,65 @@ def emulator_for(recipe_id: str) -> Any:
     emulator = _build_emulator(recipe_id)
     registry.register(emulator)
     return emulator
+
+
+def observation_corpus(
+    directory: Path,
+    exchanges: Any,
+    *,
+    recipe_id: str = "tiny",
+    fingerprint: str = "e" * 64,
+    tolerance: tuple[float, float] | None = None,
+) -> Any:
+    """An in-memory corpus in the observation-corpus format (``rcp_ndcg.testing.corpus``) for synthetic
+    tests: each :class:`~rcp_ndcg.testing.engines.Exchange` becomes one ``RECORD_SCHEMA`` record (its
+    ``body_raw`` declared reconstructed unless the exchange carries raw bytes), and ``nondeterminism.json``
+    declares ``tolerance`` measured, or nothing measured."""
+    import base64
+    import hashlib
+    import json
+
+    from rcp_ndcg.testing.corpus import CORPUS_SCHEMA, NONDETERMINISM_FILE, RECORD_SCHEMA, ObservationCorpus
+
+    records = []
+    for exchange in exchanges:
+        request_raw = json.dumps(exchange.request_body) if exchange.request_body is not None else ""
+        if exchange.response_raw is not None and exchange.response is None:
+            response_raw: Any = {"base64": base64.b64encode(exchange.response_raw).decode("ascii")}
+        else:
+            response_raw = (exchange.response_raw or json.dumps(exchange.response).encode()).decode("utf-8")
+        canonical = json.dumps([exchange.method, exchange.path, request_raw])
+        records.append(
+            {
+                "record_schema": RECORD_SCHEMA,
+                "exchange_id": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+                "sequence": exchange.sequence,
+                "repetition": "same_process_1",
+                "request": {
+                    "method": exchange.method,
+                    "path": exchange.path,
+                    "headers": {},
+                    "body_raw": request_raw,
+                    "body_parsed": exchange.request_body,
+                },
+                "response": {
+                    "status": exchange.status,
+                    "headers": dict(exchange.response_headers),
+                    "body_raw": response_raw,
+                    "body_parsed": exchange.response,
+                },
+                "inputs": {} if exchange.response_raw is not None else {"body_raw": "reconstructed: a test fixture"},
+            }
+        )
+    derived = {"measured": False}
+    if tolerance is not None:
+        derived = {"measured": True, "abs_tolerance": tolerance[0], "rel_tolerance": tolerance[1]}
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / NONDETERMINISM_FILE).write_text(json.dumps({"derived": derived}), encoding="utf-8")
+    manifest = {
+        "schema": CORPUS_SCHEMA,
+        "engine": {"name": "vllm", "version": "0.31.0"},
+        "model": {"id": "fixtures/Tiny", "revision": "f" * 40},
+        "recipe": {"id": recipe_id, "behaviour_fingerprint": fingerprint},
+    }
+    return ObservationCorpus(directory=directory, manifest=manifest, records=records, records_file="records.jsonl")

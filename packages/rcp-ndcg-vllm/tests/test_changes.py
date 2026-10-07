@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import gzip
 import json
 from pathlib import Path
 
@@ -13,42 +12,49 @@ from rcp_ndcg_vllm.recipe import load_recipe
 RECIPES = Path(__file__).resolve().parent / "fixtures" / "recipes"
 
 
+def _record(embedding: list[float]) -> dict:
+    """One record in the observation-corpus format (``rcp_ndcg.testing.corpus``, ``RECORD_SCHEMA`` 1)."""
+    request = {"model": "fixture-embed", "input": ["doc: hi [END]"]}
+    reply = {
+        "object": "list",
+        "data": [{"object": "embedding", "index": 0, "embedding": embedding}],
+        "usage": {"prompt_tokens": 2, "total_tokens": 2},
+    }
+    return {
+        "record_schema": 1,
+        "exchange_id": "a" * 64,
+        "sequence": 0,
+        "repetition": "same_process_1",
+        "request": {
+            "method": "POST",
+            "path": "/v1/embeddings",
+            "headers": {},
+            "body_raw": json.dumps(request),
+            "body_parsed": request,
+        },
+        "response": {
+            "status": 200,
+            "headers": {"content-type": "application/json"},
+            "body_raw": json.dumps(reply),
+            "body_parsed": reply,
+        },
+        "inputs": {},
+    }
+
+
 def _corpora_root(tmp_path: Path, index: dict) -> Path:
     """A corpora root whose manifests carry ``index``'s fingerprints over the fixture recipe."""
     for fingerprint, inputs in index.items():
         directory = tmp_path / "vllm-0.31.0" / "fixture-embed" / fingerprint
         directory.mkdir(parents=True)
         manifest = {
-            "schema": "rcp-ndcg.observation/1",
-            "documents": "exchanges.jsonl.gz",
+            "schema": "rcp-ndcg.observation-corpus/1",
             "engine": {"name": "vllm", "version": "0.31.0", "image": "vllm/vllm-openai:v0.31.0"},
-            "recipe": {
-                "id": "fixture-embed",
-                "revision": "0123456789abcdef0123456789abcdef01234567",
-                "behaviour_fingerprint": fingerprint,
-                "fingerprint_inputs": inputs,
-            },
+            "model": {"id": "fixtures/DenseEmbedder", "revision": "0123456789abcdef0123456789abcdef01234567"},
+            "recipe": {"id": "fixture-embed", "behaviour_fingerprint": fingerprint, "fingerprint_inputs": inputs},
         }
         (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-        rows = [
-            {
-                "line_schema": 1,
-                "sequence": 0,
-                "method": "POST",
-                "path": "/v1/embeddings",
-                "request_body": {"model": "fixture-embed", "input": ["doc: hi [END]"]},
-                "status": 200,
-                "response_headers": {"content-type": "application/json"},
-                "response": {
-                    "object": "list",
-                    "data": [{"object": "embedding", "index": 0, "embedding": [0.5, 0.5]}],
-                    "usage": {"prompt_tokens": 2, "total_tokens": 2},
-                },
-            }
-        ]
-        (directory / "exchanges.jsonl.gz").write_bytes(
-            gzip.compress("".join(json.dumps(row) + "\n" for row in rows).encode())
-        )
+        (directory / "records.jsonl").write_text(json.dumps(_record([0.5, 0.5])) + "\n", encoding="utf-8")
     return tmp_path / "vllm-0.31.0"
 
 
@@ -82,10 +88,7 @@ def test_the_behaviour_diff_reports_per_input_deltas(tmp_path: Path) -> None:
     before = root / "fixture-embed" / ("0" * 64)
     after = before.parent / ("1" * 64)
     after.mkdir()
-    document = json.loads(gzip.decompress((before / "exchanges.jsonl.gz").read_bytes()))
-    document["response"]["data"][0]["embedding"] = [0.5, 0.75]  # one vector component moved
-    rows = json.dumps(document) + "\n"
-    (after / "exchanges.jsonl.gz").write_bytes(gzip.compress(rows.encode()))
+    (after / "records.jsonl").write_text(json.dumps(_record([0.5, 0.75])) + "\n", encoding="utf-8")  # one moved
     manifest = json.loads((before / "manifest.json").read_text(encoding="utf-8"))
     manifest["recipe"]["behaviour_fingerprint"] = "1" * 64
     (after / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")

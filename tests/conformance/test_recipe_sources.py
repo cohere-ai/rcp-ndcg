@@ -61,7 +61,8 @@ def test_every_recorded_embedding_request_renders_from_the_current_recipe() -> N
     the emulator itself and checked by every conformance replay.)"""
     from rcp_ndcg_vllm.fingerprint import load_recipe_tokenizer
 
-    from rcp_ndcg.testing.engines import find_corpora, load_corpus
+    from rcp_ndcg.testing.corpus import load_corpus
+    from rcp_ndcg.testing.engines import exchanges_of, find_corpora
     from tests._engines import load_recipe
 
     checked = 0
@@ -72,7 +73,7 @@ def test_every_recorded_embedding_request_renders_from_the_current_recipe() -> N
             continue
         role_request = next(
             exchange.request_body
-            for exchange in corpus.exchanges
+            for exchange in exchanges_of(corpus)
             if exchange.path.endswith("/embeddings")
             and exchange.status == 200
             and "unknown_field" not in exchange.request_body

@@ -22,35 +22,22 @@ from rcp_ndcg.testing.engines import (
     VllmEmulator,
     compare_exchange,
 )
-from tests._engines import RECIPES_ROOT, corpus_of, harness, load_recipe
+from tests._engines import RECIPES_ROOT, corpus_of, harness, load_recipe, observation_corpus
 
 SHORT = "the a of to in is it"  # 7 tokens in the fixture word tokenizer
 EDGE = "the a of to in is it evidence"  # 8 tokens: exactly at the tiny cap
 LONG = "the a of to in is it evidence query"  # 9 tokens
 
 
-def _fake_corpus(exchanges=()):
-    """An in-memory corpus stand-in (``from_corpus`` reads the manifest and the raw records)."""
-
-    class _M:
-        manifest = {
-            "recipe": {"id": "tiny", "revision": "f" * 40, "behaviour_fingerprint": "e" * 64},
-            "engine": {"name": "vllm", "version": "0.31.0", "image": "vllm/vllm-openai:v0.31.0"},
-        }
-        engine = manifest["engine"]
-
-    _M.exchanges = tuple(exchanges)
-    return _M()
-
-
-def _tiny(cap: int = 8) -> tuple[VllmEmulator, object]:
+def _tiny(directory: Path, cap: int = 8, exchanges=()) -> tuple[VllmEmulator, object]:
     """A tiny verified emulator with an exact token boundary at ``cap`` (the product's fixture word
-    tokenizer: one word is one token)."""
+    tokenizer: one word is one token), over a corpus of ``exchanges``."""
     from tests._tokenizers import word_tokenizer
 
     tokenizer = word_tokenizer()
     facts = EngineFacts("vllm", "0.31.0", "tiny", "fixtures/Tiny", cap)
-    emulator = VllmEmulator.from_corpus(_fake_corpus(), StringsPrompts(), tokenizer, facts, dim=4)
+    corpus = observation_corpus(directory, exchanges)
+    emulator = VllmEmulator.from_corpus(corpus, StringsPrompts(), tokenizer, facts, dim=4)
     return emulator, tokenizer
 
 
@@ -58,10 +45,10 @@ def _body(text: str) -> dict:
     return {"model": "tiny", "input": [text], "encoding_format": "float"}
 
 
-def test_the_over_length_threshold_moving_by_one_token_makes_conformance_red() -> None:
+def test_the_over_length_threshold_moving_by_one_token_makes_conformance_red(tmp_path: Path) -> None:
     """Mutation: the refusal threshold one token earlier. Every recorded exchange that fit now
     refuses -- conformance goes red with the status change named."""
-    emulator, tokenizer = _tiny(cap=8)
+    emulator, tokenizer = _tiny(tmp_path, cap=8)
     assert tokenizer.count(SHORT, add_special_tokens=True) == 7
     # recorded behaviour: 7 and 8 tokens fit (200), 9 tokens is refused exactly as the engine refuses it
     ok = emulator.answer("/v1/embeddings", "POST", _body(SHORT))
@@ -85,12 +72,12 @@ def test_the_over_length_threshold_moving_by_one_token_makes_conformance_red() -
     assert mutant.answer("/v1/embeddings", "POST", _body(EDGE)).status_code == 400
 
 
-def test_the_result_ordering_making_conformance_red() -> None:
+def test_the_result_ordering_making_conformance_red(tmp_path: Path) -> None:
     """Mutation: the rerank results come back worst-first. The recorded order is best-first (the
     engine's ranked replies), so conformance goes red naming the permuted entries."""
     from rcp_ndcg.testing.engines import EnginePrompts
 
-    emulator, tokenizer = _tiny(cap=128)
+    emulator, tokenizer = _tiny(tmp_path, cap=128)
     emulator.strategy = EnginePrompts(builder=lambda query, documents: f"{query}|{'|'.join(documents)}")
     body = {"model": "tiny", "query": "query", "documents": ["page", "answer"]}
     original = emulator.answer("/rerank", "POST", body)
@@ -139,17 +126,11 @@ def test_editing_a_recipes_template_fails_staleness_naming_the_template(tmp_path
 def test_the_surrogate_marking_is_honest(tmp_path: Path) -> None:
     """An unseen input answers a declared marked surrogate; an observed input answers the replay (the
     guard the golden replay asserts against)."""
-    emulator, _ = _tiny()
+    emulator, _ = _tiny(tmp_path / "empty")
     first = emulator.answer("/v1/embeddings", "POST", _body(SHORT))
     assert first.headers["x-rcp-ndcg-emulator-source"] == "surrogate"  # nothing recorded yet: all unseen
     observed = Exchange(0, "POST", "/v1/embeddings", _body(SHORT), 200, {}, first.json())
-    replayed = VllmEmulator.from_corpus(
-        _fake_corpus((observed,)),
-        StringsPrompts(),
-        emulator.tokenizer,
-        emulator.facts,
-        dim=4,
-    )
+    replayed, _ = _tiny(tmp_path / "observed", exchanges=(observed,))
     again = replayed.answer("/v1/embeddings", "POST", _body(SHORT))
     unseen = replayed.answer("/v1/embeddings", "POST", _body("evidence page"))  # unobserved, in budget
     refused = replayed.answer("/v1/embeddings", "POST", _body(LONG))  # over the cap: no model output

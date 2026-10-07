@@ -199,7 +199,8 @@ def behaviour_report(before: str | Path, after: str | Path) -> Any:
     Returns:
         The JSON-ready behaviour-diff document (per-input deltas and the summary by stratum).
     """
-    from rcp_ndcg.testing.engines import behaviour_diff, load_corpus
+    from rcp_ndcg.testing.corpus import load_corpus
+    from rcp_ndcg.testing.engines import behaviour_diff
 
     return behaviour_diff(load_corpus(before), load_corpus(after))
 

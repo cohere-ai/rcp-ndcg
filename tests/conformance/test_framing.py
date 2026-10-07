@@ -84,7 +84,8 @@ def test_binary_framing_is_compared_byte_for_byte() -> None:
         {"input": ["x"], "encoding_format": "bytes"},
         200,
         {"content-type": "application/octet-stream", "metadata": json.dumps(metadata)},
-        {"base64": base64.b64encode(frame).decode(), "framing_headers": {}},
+        None,
+        response_raw=frame,
     )
     headers = {"content-type": "application/octet-stream", "metadata": json.dumps({**metadata, "id": "pool-2"})}
     assert compare_exchange(recorded, _reply(200, frame, headers), None) == []  # metadata's id is volatile
@@ -95,21 +96,17 @@ def test_binary_framing_is_compared_byte_for_byte() -> None:
 def test_an_undecodable_recorded_body_is_refused_loudly(tmp_path: Path) -> None:
     """A recorded 2xx body whose outputs cannot be derived (a base64 /pooling item: vLLM sends no
     shape) is refused naming the record -- never an empty or guessed replay table."""
-    from rcp_ndcg.testing.engines import Corpus, EngineFacts, StringsPrompts, VllmEmulator
+    from rcp_ndcg.testing.engines import EngineFacts, StringsPrompts, VllmEmulator
+    from tests._engines import observation_corpus
     from tests._tokenizers import word_tokenizer
 
     payload = base64.b64encode(b"\x00\x3c" * 6).decode()
     reply = {"object": "list", "data": [{"index": 0, "object": "pooling", "data": payload}]}
     exchange = Exchange(3, "POST", "/pooling", {"input": ["the a of"], "encoding_format": "base64"}, 200, JSON, reply)
-    manifest = {
-        "recipe": {"id": "tiny", "revision": "f" * 40, "behaviour_fingerprint": "e" * 64},
-        "engine": {"name": "vllm", "version": "0.31.0"},
-    }
     facts = EngineFacts("vllm", "0.31.0", "tiny", "fixtures/Tiny", 8)
+    corpus = observation_corpus(tmp_path, [exchange])
     with pytest.raises(DataError) as error:
-        VllmEmulator.from_corpus(
-            Corpus(tmp_path, manifest, (exchange,)), StringsPrompts("token_vector"), word_tokenizer(), facts
-        )
+        VllmEmulator.from_corpus(corpus, StringsPrompts("token_vector"), word_tokenizer(), facts)
     assert "#3" in str(error.value) and "shape" in str(error.value)
 
 

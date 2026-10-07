@@ -23,24 +23,24 @@ the emulator does not model (an ``instruction``, a ``truncate_prompt_tokens``) i
 400; a field the engine's request model does not declare is ignored, as the engine ignores it. A corpus
 whose one key holds different outputs is refused. Batch composition is not part of the key: it can move
 numbers only within the engine's numeric noise, which the batching strata of a release corpus
-(OBSERVATIONS-SPEC section 1) are recorded to measure; a corpus without them declares it unmeasured. The key
-is recomputed from the raw records by versioned code (:data:`NORMALISATION_VERSION` strips the volatile
-fields a comparison ignores -- request ids, ``created`` timestamps), never stored in the corpus.
+(OBSERVATIONS-SPEC section 1) are recorded to measure; a corpus without them declares it unmeasured.
 
-The corpus seam: :func:`load_corpus` dispatches on the manifest's ``schema`` over a registry of loaders
-(:func:`register_corpus_format`), with per-line migrations for older schemas
-(:func:`register_line_migration`), so ``rcp_ndcg_vllm.observe``'s writer plugs in when it lands.
+The corpora are read through the format's one reader, :mod:`rcp_ndcg.testing.corpus` (``load_corpus``,
+``integrity_mismatches``, ``normalise_body``, ``credential_findings``): this module consumes its records
+(:func:`exchanges_of`) and the measured non-determinism the corpus stores (:func:`corpus_tolerance`), and
+adds what only the emulators need -- the byte-level form of the normalisation (:func:`normalise_raw`),
+the manifest scan (:func:`find_corpora`) and the append-only verification record.
 
 The registry resolves by (engine, version, fingerprint) and loads out-of-tree emulators through the
 ``rcp_ndcg.emulators`` entry-point group (entry points value: a callable returning
-:class:`Emulator <VllmEmulator>` instances). Verification is recorded append-only in the corpus
-directory (``verification.jsonl``) and an emulator refuses a corpus or recipe revision it was not
-verified against.
+:class:`Emulator <VllmEmulator>` instances). Verification is recorded append-only beside the corpus
+(``verification.jsonl``, not part of the recorded corpus, so its index does not hash it) and an emulator
+refuses an engine version or recipe revision it was not verified against.
 """
 
 from __future__ import annotations
 
-import gzip
+import base64
 import hashlib
 import json
 import re
@@ -54,45 +54,36 @@ from urllib.parse import parse_qsl, urlsplit
 import httpx
 
 from rcp_ndcg.errors import ConfigError, DataError
+from rcp_ndcg.testing.corpus import NONDETERMINISM_FILE, NORMALISATION_VERSION, ObservationCorpus, normalise_body
 
 __all__ = [
     "CORPUS_INDEX_SCHEMA",
-    "LINE_SCHEMA",
-    "MANIFEST_SCHEMA",
-    "NORMALISATION_VERSION",
-    "VERIFICATION_SCHEMA",
-    "BehaviourDiff",
-    "Corpus",
+    "EMULATED_ROUTES",
     "FIELD_CLASSES",
     "ROUTE_FIELDS",
-    "EMULATED_ROUTES",
+    "VERIFICATION_SCHEMA",
+    "BehaviourDiff",
+    "EmulatorRegistry",
     "EngineFacts",
     "EnginePrompts",
-    "EmulatorRegistry",
     "Exchange",
     "PairPrompts",
     "PromptSet",
     "PromptStrategy",
     "StringsPrompts",
     "Verified",
+    "VllmEmulator",
     "append_verification",
     "behaviour_diff",
     "compare_exchange",
-    "credential_findings",
+    "corpus_tolerance",
+    "exchanges_of",
     "find_corpora",
-    "find_credential_patterns",
-    "load_corpus",
-    "NON_DETERMINISM_RULE",
-    "measure_non_determinism",
-    "normalise_body",
     "normalise_raw",
-    "register_corpus_format",
-    "register_line_migration",
-    "route_name",
-    "route_of",
     "registry",
     "request_context",
-    "request_digest",
+    "route_name",
+    "route_of",
     "split_engine_host",
     "surrogate_matrix",
     "surrogate_scores",
@@ -100,16 +91,7 @@ __all__ = [
     "transport_for",
     "verification_record",
     "verification_records",
-    "verify_corpus_hashes",
-    "VllmEmulator",
 ]
-
-MANIFEST_SCHEMA = "rcp-ndcg.observation/1"
-"""The corpus manifest's schema (OBSERVATIONS-SPEC section 3-4, as the compact corpus writes it)."""
-
-LINE_SCHEMA = 1
-"""The corpus document schema version; older documents are migrated at load (see
-:func:`register_line_migration`)."""
 
 CORPUS_INDEX_SCHEMA = "rcp-ndcg.corpus-index/1"
 """The repository corpus index's schema: the manifest hash of every committed corpus."""
@@ -117,99 +99,37 @@ CORPUS_INDEX_SCHEMA = "rcp-ndcg.corpus-index/1"
 VERIFICATION_SCHEMA = "rcp-ndcg.verification/1"
 """The append-only verification record's schema (written by the conformance verifier)."""
 
-NORMALISATION_VERSION = 2
-"""The derived-views version: which volatile fields :func:`normalise_body` and :func:`normalise_raw`
-strip before comparing two replies. A change here is a new version, never a silent edit of a rule.
-Version 2 strips the ``id`` of every model route's reply (``/pooling`` included) and of the ``bytes``
-framing's ``metadata`` header, and masks the same values in raw bytes."""
-
-#: ``NORMALISATION_VERSION == 2`` strips exactly these volatile leaves (``$`` is the body root, ``*`` any
-#: list element): the reply's request ids and creation timestamps. Everything else is compared.
-VOLATILE_FIELDS: tuple[str, ...] = (
-    "$.created",
-    "$.id (every POST model route; and in the bytes framing's metadata header)",
-    "$.data[*].created",
-    "$.data[*].permission[*].created",
-    "$.data[*].permission[*].id",
-)
-
 _VOLATILE_RAW = (
-    (re.compile(rb'"id":"(?:embd|score|pool|modelperm|rerank|cmpl)-[0-9A-Za-z-]+"'), b'"id":"<volatile>"'),
-    (re.compile(rb'"created":[0-9]+'), b'"created":0'),
+    (re.compile(rb'"id":\s*"(?:embd|score|pool|modelperm|rerank|cmpl)-[0-9A-Za-z-]+"'), b'"id":"<volatile>"'),
+    (re.compile(rb'"created":\s*[0-9]+'), b'"created":0'),
 )
+""":func:`rcp_ndcg.testing.corpus.normalise_body`'s volatile leaves, masked in raw bytes."""
 
 
 # ---------------------------------------------------------------------------
-# credential scan (OBSERVATIONS-SPEC section 6: no credential-shaped string anywhere)
-# ---------------------------------------------------------------------------
-
-_CREDENTIALS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    # a header in any serialisation (``Authorization: ...``, a JSON key) with a credential-shaped value --
-    # never a tokenizer vocabulary's ``"authorization": <token id>``
-    (
-        "authorization header",
-        re.compile(r"(?i)\bauthorization\b[\"']?\s*[:=]\s*[\"']?(?:bearer|basic|token)?\s*[A-Za-z0-9._~+/=-]{8,}"),
-    ),
-    ("bearer token", re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{16,}")),
-    ("basic auth", re.compile(r"(?i)\bbasic\s+[A-Za-z0-9+/=]{16,}")),
-    ("api key header", re.compile(r"(?i)\bx-api-key\b[\"']?\s*[:=]\s*[\"']?[A-Za-z0-9._~+/=-]{8,}")),
-    ("hugging face token", re.compile(r"\bhf_[A-Za-z0-9]{20,}")),
-    ("google api key", re.compile(r"\bAIza[A-Za-z0-9_\-]{20,}")),
-    ("private key block", re.compile(r"BEGIN [A-Z ]*PRIVATE KEY")),
-    ("cookie header", re.compile(r"(?i)\b(?:set-cookie|cookie)\s*[:=]\s*\S+=")),
-    ("secret field", re.compile(r'(?i)"(?:api[_-]?key|secret|password|token)"\s*:\s*"[^"]{8,}"')),
-    ("secret field (single-quoted)", re.compile(r"(?i)'(?:api[_-]?key|secret|password|token)'\s*:\s*'[^']{8,}'")),
-    (
-        "secret assignment",
-        re.compile(r'(?i)\b(?:password|passwd|secret|api[_-]?key|access[_-]?token)\s*=\s*["\'][^"\']{8,}'),
-    ),
-)
-
-
-def credential_findings(text: str) -> list[str]:
-    """The credential **patterns** found in ``text`` (never the matched values): one name per hit kind.
-
-    Args:
-        text: Any corpus content (a whole file, a JSON line).
-
-    Returns:
-        The sorted pattern names that matched (``[]`` is clean).
-    """
-    return sorted({name for name, pattern in _CREDENTIALS if pattern.search(text)})
-
-
-def find_credential_patterns(path: str | Path) -> list[str]:
-    """Every credential pattern found in a corpus file (the file is read and decompressed if ``.gz``)."""
-    raw = Path(path).read_bytes()
-    if str(path).endswith(".gz"):
-        raw = gzip.decompress(raw)
-    return credential_findings(raw.decode("utf-8", errors="replace"))
-
-
-# ---------------------------------------------------------------------------
-# the corpus: raw records, derived views, hashes
+# the corpus records, as the emulators read them
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class Exchange:
-    """One recorded request/response pair, raw first.
+    """One recorded exchange as the emulators read it: a view of one corpus record
+    (:data:`rcp_ndcg.testing.corpus.RECORD_SCHEMA`), raw first.
 
     Attributes:
-        sequence: The order the recorder sent it.
+        sequence: The order the collector sent it.
         method: The HTTP method (``GET``, ``POST``).
         path: The route (``/v1/embeddings``).
-        request_body: The request body as sent (parsed JSON, else the ``{"base64": ....}`` envelope).
+        request_body: The request body as parsed JSON (``None`` when none was sent or it is not JSON).
         status: The response status.
-        response_headers: The headers that matter (content type, server, framing).
-        response: The response as received: parsed JSON, or ``{"base64", "framing_headers"}`` for a
-            binary body (the exact bytes).
-        repetition: ``same_process`` or ``after_restart`` (OBSERVATIONS-SPEC section 2); the shakedown
-            recorder sent one repetition.
-        source: The record's provenance (its file name in the source corpus).
-        request_raw: The request body's exact bytes as sent, when the corpus recorded them.
-        response_raw: The response body's exact bytes as received, when the corpus recorded them (the
-            shakedown recorder kept parsed JSON only; its binary bodies ride in the envelope).
+        response_headers: The headers that matter (content type, server, the bytes framing's metadata).
+        response: The response body as parsed JSON, ``None`` when it is not JSON (a binary body).
+        repetition: Which sending (``same_process_1``, ``same_process_2``, ``after_restart``).
+        source: The record's provenance (its ``exchange_id``, or the source file the collector names).
+        request_raw: The request's exact bytes, when the record carries them as sent.
+        response_raw: The response's exact bytes, when the record carries them as received (``None`` for a
+            record whose ``body_raw`` is declared reconstructed: never a re-encoding passed off as raw).
+        exchange_id: The record's content address (the SHA-256 of the canonical request).
     """
 
     sequence: int
@@ -219,194 +139,79 @@ class Exchange:
     status: int
     response_headers: Mapping[str, str]
     response: Any
-    repetition: str = "same_process"
+    repetition: str = "same_process_1"
     source: str = ""
     request_raw: bytes | None = None
     response_raw: bytes | None = None
+    exchange_id: str = ""
 
     @property
     def response_json(self) -> Any:
-        """The parsed response body, or ``None`` for a binary one."""
-        return self.response if not _is_bytes_envelope(self.response) else None
+        """The parsed response body, or ``None`` for one that is not JSON."""
+        return self.response
 
     @property
     def raw_body(self) -> bytes | None:
-        """The response's exact bytes: as recorded, or a binary body's envelope decoded; ``None`` when the
-        corpus kept only the parsed JSON (never a re-encoding passed off as raw)."""
-        if self.response_raw is not None:
-            return self.response_raw
-        if _is_bytes_envelope(self.response):
-            import base64
+        """The response's exact bytes, or ``None`` when the record kept only its parsed form."""
+        return self.response_raw
 
-            return base64.b64decode(self.response["base64"])
-        return None
-
-
-def _is_bytes_envelope(body: Any) -> bool:
-    return isinstance(body, dict) and set(body) == {"base64", "framing_headers"}
-
-
-@dataclass(frozen=True)
-class Corpus:
-    """An observation corpus: its manifest and its raw exchanges.
-
-    Attributes:
-        root: The corpus directory (``<engine>-<version>/<recipe>/<fingerprint>/``).
-        manifest: The manifest document (a mapping), hash-checked against ``files``.
-        exchanges: The raw records, in recording order.
-    """
-
-    root: Path
-    manifest: Mapping[str, Any]
-    exchanges: tuple[Exchange, ...]
-
-    @property
-    def engine(self) -> Mapping[str, Any]:
-        """``{"name", "version", "image"}`` of the recorded engine."""
-        return self.manifest["engine"]
-
-    @property
-    def behaviour_fingerprint(self) -> str:
-        """The model layer's key (the fingerprint recorded at corpus-write time)."""
-        return str(self.manifest["recipe"]["behaviour_fingerprint"])
-
-    @property
-    def tolerance(self) -> tuple[float, float] | None:
-        """``(abs, rel)`` the measured non-determinism derives (OBSERVATIONS-SPEC section 2: measured,
-        never chosen by hand), or ``None`` when the corpus holds no same-request repetition (unmeasured:
-        a replay is compared exactly)."""
-        return _tolerance_of(self.manifest)
-
-
-def _tolerance_of(manifest: Mapping[str, Any]) -> tuple[float, float] | None:
-    nondet = manifest.get("non_determinism") or {}
-    if nondet.get("status") != "measured":
-        return None
-    return (float(nondet["tolerance_abs"]), float(nondet["tolerance_rel"]))
-
-
-#: One corpus-document loader: the file lines -> :class:`Exchange` tuples.
-CorpusLoader = Callable[[Path, Mapping[str, Any]], tuple[Exchange, ...]]
-
-_CORPUS_FORMATS: dict[str, CorpusLoader] = {}
-_LINE_MIGRATIONS: dict[int, Callable[[Mapping[str, Any]], Mapping[str, Any]]] = {}
-_LOCK = threading.Lock()
-
-
-def register_corpus_format(schema: str, loader: CorpusLoader) -> None:
-    """Register a corpus **format** reader under its manifest ``schema`` (the seam where
-    ``rcp_ndcg_vllm.observe``'s writer plugs in: its loader registers as its schema and
-    :func:`load_corpus` dispatches to it).
-
-    Args:
-        schema: The manifest's ``schema`` value (e.g. :data:`MANIFEST_SCHEMA`).
-        loader: ``(root, manifest) -> exchanges``.
-    """
-    with _LOCK:
-        if schema in _CORPUS_FORMATS and _CORPUS_FORMATS[schema] is not loader:
-            raise ConfigError(f"a corpus loader is already registered for schema {schema!r}")
-        _CORPUS_FORMATS[schema] = loader
-
-
-def register_line_migration(from_version: int, migrate: Callable[[Mapping[str, Any]], Mapping[str, Any]]) -> None:
-    """Register a **line migration** from an older document schema to the next version.
-
-    Readers support every document schema ever written: a line whose ``line_schema`` predates
-    :data:`LINE_SCHEMA` walks the chain of registered migrations at load, so a schema bump never
-    invalidates an old corpus (OBSERVATIONS-SPEC section 7). One step at a time: ``from_version + 1`` is
-    the version the callable produces.
-
-    Args:
-        from_version: The schema version the callable reads.
-        migrate: The transform (a raw corpus document to its successor).
-    """
-    with _LOCK:
-        if from_version in _LINE_MIGRATIONS and _LINE_MIGRATIONS[from_version] is not migrate:
-            raise ConfigError(f"a line migration is already registered for schema {from_version}")
-        _LINE_MIGRATIONS[from_version] = migrate
-
-
-def _migrate(document: Mapping[str, Any], source: str) -> dict[str, Any]:
-    """One raw corpus document, walked through the registered migrations up to :data:`LINE_SCHEMA`."""
-    version = int(document.get("line_schema", 0))
-    doc = dict(document)
-    while version < LINE_SCHEMA:
-        step = _LINE_MIGRATIONS.get(version)
-        if step is None:
-            raise DataError(
-                f"{source}: corpus line_schema {version} cannot reach {LINE_SCHEMA}: no migration "
-                f"registered for {version} (register_line_migration)"
-            )
-        doc = dict(step(doc))
-        version += 1
-    return doc
-
-
-def _read_exchanges(root: Path, manifest: Mapping[str, Any]) -> tuple[Exchange, ...]:
-    """The document loader of :data:`MANIFEST_SCHEMA`: compressed JSON Lines, one exchange per line."""
-    name = manifest["documents"]
-    raw = (root / name).read_bytes()
-    if name.endswith(".gz"):
-        raw = gzip.decompress(raw)
-    exchanges = []
-    for number, line in enumerate(raw.decode("utf-8").splitlines(), start=1):
-        if not line.strip():
-            continue
-        doc = _migrate(json.loads(line), f"{root / name}:{number}")
-        exchanges.append(
-            Exchange(
-                sequence=int(doc["sequence"]),
-                method=str(doc["method"]),
-                path=str(doc["path"]),
-                request_body=doc["request_body"],
-                status=int(doc["status"]),
-                response_headers=dict(doc.get("response_headers") or {}),
-                response=doc["response"],
-                repetition=str(doc.get("repetition", "same_process")),
-                source=str(doc.get("source", "")),
-                request_raw=_raw_field(doc, "request_raw_base64"),
-                response_raw=_raw_field(doc, "response_raw_base64"),
-            )
+    @classmethod
+    def from_record(cls, record: Mapping[str, Any]) -> Exchange:
+        """The view of one corpus record (``request``/``response`` with ``body_raw`` -- UTF-8 text or
+        ``{"base64": ...}`` -- and ``body_parsed``). A record whose ``inputs.body_raw`` says
+        ``reconstructed`` carries no raw bytes for the comparison."""
+        request, response = record.get("request") or {}, record.get("response") or {}
+        inputs = record.get("inputs") or {}
+        reconstructed = str(inputs.get("body_raw") or "").startswith("reconstructed")
+        source = inputs.get("source") or {}
+        return cls(
+            sequence=int(record.get("sequence", 0)),
+            method=str(request.get("method", "")),
+            path=str(request.get("path", "")),
+            request_body=request.get("body_parsed"),
+            status=int(response.get("status", 0)),
+            response_headers=dict(response.get("headers") or {}),
+            response=response.get("body_parsed"),
+            repetition=str(record.get("repetition", "")),
+            source=str(
+                source.get("file") if isinstance(source, dict) and source.get("file") else record.get("exchange_id", "")
+            ),
+            request_raw=None if reconstructed else _raw(request.get("body_raw")),
+            response_raw=None if reconstructed else _raw(response.get("body_raw")),
+            exchange_id=str(record.get("exchange_id", "")),
         )
-    return tuple(exchanges)
 
 
-def _raw_field(doc: Mapping[str, Any], name: str) -> bytes | None:
-    import base64
-
-    value = doc.get(name)
-    return None if value is None else base64.b64decode(value)
-
-
-register_corpus_format(MANIFEST_SCHEMA, _read_exchanges)
+def _raw(body_raw: Any) -> bytes | None:
+    if isinstance(body_raw, dict) and isinstance(body_raw.get("base64"), str):
+        return base64.b64decode(body_raw["base64"])
+    if isinstance(body_raw, str):
+        return body_raw.encode("utf-8")
+    return None
 
 
-def load_corpus(path: str | Path) -> Corpus:
-    """Load an observation corpus from its directory (``manifest.json`` + the documents it names).
+def exchanges_of(corpus: ObservationCorpus) -> tuple[Exchange, ...]:
+    """Every record of a corpus as an :class:`Exchange`, in record order."""
+    return tuple(Exchange.from_record(record) for record in corpus.records)
 
-    The format seam: the manifest's ``schema`` selects the registered loader, and the documents walk
-    their :func:`register_line_migration` chain to :data:`LINE_SCHEMA`. Hashes are **not** checked here
-    (a reader need not be a verifier); call :func:`verify_corpus_hashes` for that.
 
-    Args:
-        path: The corpus directory.
-
-    Returns:
-        The :class:`Corpus` (raw records; every derived view is recomputed from them).
+def corpus_tolerance(corpus: ObservationCorpus) -> tuple[float, float] | None:
+    """``(abs, rel)``: the verification tolerance the corpus's measured non-determinism derived
+    (``nondeterminism.json``'s ``derived`` block, with the rule that derived it), or ``None`` when no
+    request was sent twice (``measured: false``: a replay is compared exactly, never with an invented
+    tolerance).
 
     Raises:
-        DataError: no manifest, an unknown schema, or no loader registered for the schema.
+        DataError: the corpus carries no non-determinism report.
     """
-    root = Path(path)
-    manifest_path = root / "manifest.json"
-    if not manifest_path.is_file():
-        raise DataError(f"{root}: no manifest.json (a corpus directory names its manifest)")
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    schema = manifest.get("schema")
-    loader = _CORPUS_FORMATS.get(str(schema))
-    if loader is None:
-        raise DataError(f"{manifest_path}: schema {schema!r} has no registered corpus loader (register_corpus_format)")
-    return Corpus(root=root, manifest=manifest, exchanges=loader(root, manifest))
+    path = corpus.directory / NONDETERMINISM_FILE
+    try:
+        derived = json.loads(path.read_text(encoding="utf-8")).get("derived") or {}
+    except (OSError, ValueError) as error:
+        raise DataError(f"{path}: the corpus's non-determinism report is unreadable: {error}") from error
+    if not derived.get("measured"):
+        return None
+    return (float(derived["abs_tolerance"]), float(derived["rel_tolerance"]))
 
 
 def find_corpora(
@@ -421,7 +226,7 @@ def find_corpora(
     from (and the staleness check can name what moved).
 
     Args:
-        root: Where to scan (``tests/contract/engines``, one engine-version directory, or a GCS mirror).
+        root: Where to scan (``tests/contract/engines``, one engine-version directory, or a mirror).
         recipe_id: Keep only the corpora whose manifest names this recipe.
         engine_name: Keep only this engine (``vllm``).
         engine_version: Keep only this engine version (``0.31.0``).
@@ -444,75 +249,17 @@ def find_corpora(
     return found
 
 
-def verify_corpus_hashes(corpus: Corpus) -> list[str]:
-    """The corpus's integrity check (OBSERVATIONS-SPEC section 4): every file hashes to the manifest.
-
-    Args:
-        corpus: The loaded corpus.
-
-    Returns:
-        A list of problems (``[]`` is intact): each names the file and what moved.
-    """
-    problems = []
-    for name, expected in dict(corpus.manifest["files"]).items():
-        path = corpus.root / name
-        if not path.is_file():
-            problems.append(f"{name}: named in the manifest, missing on disk")
-            continue
-        actual = hashlib.sha256(path.read_bytes()).hexdigest()
-        if actual != expected:
-            problems.append(f"{name}: hashes to {actual}, the manifest declares {expected}")
-    return problems
-
-
 # ---------------------------------------------------------------------------
-# derived views: the volatile fields a comparison strips (versioned)
+# derived views: the volatile fields a comparison strips (rcp_ndcg.testing.corpus.NORMALISATION_VERSION)
 # ---------------------------------------------------------------------------
-
-
-def normalise_body(method: str, path: str, body: Any) -> Any:
-    """The body with :data:`VOLATILE_FIELDS` stripped, so two replies compare equal when they differ
-    only in request ids and creation timestamps.
-
-    Args:
-        method: The request method (rules are route-aware).
-        path: The request path (``/v1/embeddings``, ``/pooling``, ``/rerank``, ``/v1/models``).
-        body: The parsed response body.
-
-    Returns:
-        The normalised body (a copy; the input is untouched).
-    """
-    if not isinstance(body, dict):
-        return body
-    out = dict(body)
-    out.pop("created", None)
-    if method.upper() == "POST" and route_of(path) is not None:
-        out.pop("id", None)
-    data = out.get("data")
-    if isinstance(data, list) and path.rstrip("/").endswith(("models", "embeddings", "pooling")):
-        out["data"] = [_normalise_item(item) for item in data]
-    return out
 
 
 def normalise_raw(raw: bytes) -> bytes:
-    """Raw reply bytes with the volatile values of :data:`VOLATILE_FIELDS` masked in place (the engine's
-    compact JSON), so the bytes compare exactly otherwise."""
+    """Raw reply bytes with :func:`rcp_ndcg.testing.corpus.normalise_body`'s volatile values (request ids,
+    ``created`` stamps) masked in place, so the bytes compare exactly otherwise."""
     for pattern, mask in _VOLATILE_RAW:
         raw = pattern.sub(mask, raw)
     return raw
-
-
-def _normalise_item(item: Any) -> Any:
-    if not isinstance(item, dict):
-        return item
-    fixed = {key: value for key, value in item.items() if key != "created"}
-    if isinstance(fixed.get("permission"), list):
-        fixed["permission"] = [
-            {key: value for key, value in perm.items() if key not in ("created", "id")}
-            for perm in fixed["permission"]
-            if isinstance(perm, dict)
-        ]
-    return fixed
 
 
 def _float_leaves(value: Any, prefix: str = "") -> dict[str, float]:
@@ -568,8 +315,8 @@ def compare_exchange(recorded: Exchange, replayed: httpx.Response, tolerance: tu
     except (UnicodeDecodeError, ValueError) as error:
         problems.append(f"undecodable body ({replayed.headers.get('content-type')!r}): {error}")
         return problems
-    expected_body = normalise_body(recorded.method, recorded.path, recorded.response_json)
-    actual = normalise_body(recorded.method, recorded.path, actual_body)
+    expected_body = normalise_body(recorded.response_json)
+    actual = normalise_body(actual_body)
     problems.extend(_diff_bodies(expected_body, actual, "", tolerance or (0.0, 0.0)))
     if recorded.response_raw is not None and not problems and tolerance is None:
         if normalise_raw(content) != normalise_raw(recorded.response_raw):
@@ -1045,7 +792,7 @@ class VllmEmulator:
     @classmethod
     def from_corpus(
         cls,
-        corpus: Corpus,
+        corpus: ObservationCorpus,
         strategy: PromptStrategy,
         tokenizer: Any,
         facts: EngineFacts,
@@ -1067,7 +814,8 @@ class VllmEmulator:
             version (protocol layer).
         """
         observed: dict[str, list[tuple[int, ModelObservation]]] = {}
-        for exchange in corpus.exchanges:
+        exchanges = exchanges_of(corpus)
+        for exchange in exchanges:
             route = route_of(exchange.path)
             if exchange.status != 200 or route is None:
                 continue
@@ -1081,7 +829,7 @@ class VllmEmulator:
             set_ = replace(strategy.prompts(body), context=_canonical_context(context))
             for key, observation in _outputs_from_response(set_, exchange):
                 observed.setdefault(key, []).append((exchange.sequence, observation))
-        tolerance = _tolerance_of(corpus.manifest)
+        tolerance = corpus_tolerance(corpus)
         for key, history in observed.items():
             first_sequence, first = history[0]
             for sequence, other in history[1:]:
@@ -1092,7 +840,7 @@ class VllmEmulator:
                         "behaviour-shaping field, or the engine varies beyond the measured tolerance"
                     )
         merged = {key: tuple(observation for _, observation in history) for key, history in observed.items()}
-        routes = {route_name(exchange.method, exchange.path) for exchange in corpus.exchanges}
+        routes = {route_name(exchange.method, exchange.path) for exchange in exchanges}
         widths = {_width(observation) for history in merged.values() for observation in history} - {None}
         if dim is None:
             dim = int(widths.pop() or 64) if len(widths) == 1 else 64
@@ -1105,10 +853,10 @@ class VllmEmulator:
             observed_routes=frozenset(route for route in routes if route is not None),
             dim=dim,
             verified=Verified(
-                engine_name=str(corpus.engine["name"]),
-                engine_version=str(corpus.engine["version"]),
+                engine_name=str(corpus.manifest["engine"]["name"]),
+                engine_version=str(corpus.manifest["engine"]["version"]),
                 recipe_id=str(manifest_recipe["id"]),
-                revision=str(manifest_recipe["revision"]),
+                revision=str(corpus.manifest["model"]["revision"]),
                 behaviour_fingerprint=str(manifest_recipe["behaviour_fingerprint"]),
             ),
         )
@@ -1518,7 +1266,7 @@ class BehaviourDiff(dict):
     with ``schema: rcp-ndcg.behaviour-diff/1``, per-input deltas and the summary by route."""
 
 
-def behaviour_diff(before: Corpus, after: Corpus) -> BehaviourDiff:
+def behaviour_diff(before: ObservationCorpus, after: ObservationCorpus) -> BehaviourDiff:
     """The **behaviour diff** of two corpora of one recipe: per input, the score or vector deltas,
     changed statuses, changed refusals and changed protocol behaviour, summarised by stratum (route,
     for corpora recorded without the generator's stratum labels).
@@ -1530,8 +1278,8 @@ def behaviour_diff(before: Corpus, after: Corpus) -> BehaviourDiff:
     Returns:
         The :class:`BehaviourDiff`, JSON-ready.
     """
-    old: dict[str, Exchange] = {_key(exchange): exchange for exchange in before.exchanges}
-    new: dict[str, Exchange] = {_key(exchange): exchange for exchange in after.exchanges}
+    old: dict[str, Exchange] = {_key(exchange): exchange for exchange in exchanges_of(before)}
+    new: dict[str, Exchange] = {_key(exchange): exchange for exchange in exchanges_of(after)}
     inputs = []
     by_route: dict[str, dict[str, int]] = {}
     for key in sorted(set(old) | set(new)):
@@ -1542,8 +1290,8 @@ def behaviour_diff(before: Corpus, after: Corpus) -> BehaviourDiff:
             row["changed"] = True
         else:
             row["status"] = {"before": left.status, "after": right.status}
-            before_body = normalise_body(left.method, left.path, left.response_json)
-            after_body = normalise_body(right.method, right.path, right.response_json)
+            before_body = normalise_body(left.response_json)
+            after_body = normalise_body(right.response_json)
             leaves_a, leaves_b = _float_leaves(before_body), _float_leaves(after_body)
             deltas = {
                 path: round(leaves_b[path] - leaves_a[path], 12)
@@ -1572,8 +1320,8 @@ def behaviour_diff(before: Corpus, after: Corpus) -> BehaviourDiff:
             "schema": "rcp-ndcg.behaviour-diff/1",
             "recipe": after.manifest["recipe"]["id"],
             "fingerprints": {
-                "before": before.behaviour_fingerprint,
-                "after": after.behaviour_fingerprint,
+                "before": before.manifest["recipe"]["behaviour_fingerprint"],
+                "after": after.manifest["recipe"]["behaviour_fingerprint"],
             },
             "inputs": inputs,
             "summary": {
@@ -1585,75 +1333,6 @@ def behaviour_diff(before: Corpus, after: Corpus) -> BehaviourDiff:
     )
 
 
-NON_DETERMINISM_RULE = (
-    "same-request repetitions only: exchanges whose request digest (method, path and the canonical "
-    "request body) is identical are repetitions of one question; the measured value is the largest "
-    "absolute and relative difference of any numeric leaf of their normalised response bodies between "
-    "any two of them; the verification tolerance is the measured pair itself, each bound applying "
-    "jointly; without a repetition the tolerance is unmeasured and a replay is compared exactly"
-)
-"""How :func:`measure_non_determinism` derives the verification tolerance (stored with the numbers)."""
-
-
-def measure_non_determinism(corpus: Corpus) -> dict[str, Any]:
-    """The measured, never assumed, non-determinism of one corpus (OBSERVATIONS-SPEC section 2).
-
-    Only true repetitions count: exchanges with the same request digest (:data:`NON_DETERMINISM_RULE`).
-    Two requests that differ in any byte -- a ``use_activation``, a ``top_n``, an ignored unknown field
-    -- are different questions, so their differences measure nothing. With no repetition the block says
-    ``status: unmeasured`` and carries no tolerance (``None``): the emulator then replays the one
-    observation it has and conformance compares exactly; a number is never invented.
-
-    Args:
-        corpus: The raw corpus.
-
-    Returns:
-        The ``non_determinism`` manifest block: ``rule``, ``status`` (``measured``/``unmeasured``),
-        ``same_request_repetitions`` (the repeated request digests), ``measured_max_abs`` and
-        ``measured_max_rel``, and the tolerances they derive (``tolerance_abs``, ``tolerance_rel``).
-    """
-    groups: dict[str, list[Exchange]] = {}
-    for exchange in corpus.exchanges:
-        if exchange.status == 200 and exchange.response_json is not None:
-            groups.setdefault(request_digest(exchange), []).append(exchange)
-    repeated = [group for group in groups.values() if len(group) > 1]
-    max_abs, max_rel = 0.0, 0.0
-    for group in repeated:
-        leaves = [_float_leaves(normalise_body(item.method, item.path, item.response_json)) for item in group]
-        for index, first in enumerate(leaves):
-            for second in leaves[index + 1 :]:
-                for name in set(first) | set(second):
-                    a, b = first.get(name), second.get(name)
-                    if a is None or b is None:
-                        continue
-                    difference = abs(a - b)
-                    max_abs = max(max_abs, difference)
-                    max_rel = max(max_rel, difference / max(abs(a), abs(b), 1e-300))
-    measured = bool(repeated)
-    return {
-        "rule": NON_DETERMINISM_RULE,
-        "status": "measured" if measured else "unmeasured",
-        "same_request_repetitions": len(repeated),
-        "measured_max_abs": max_abs if measured else None,
-        "measured_max_rel": max_rel if measured else None,
-        "tolerance_abs": max_abs if measured else None,
-        "tolerance_rel": max_rel if measured else None,
-    }
-
-
-def request_digest(exchange: Exchange) -> str:
-    """The content address of one request: SHA-256 of its method, path and canonical body. Two
-    exchanges with one digest asked the same question (a repetition)."""
-    canonical = json.dumps(
-        [exchange.method.upper(), exchange.path, exchange.request_body],
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        default=str,
-    )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
 def _frame_of(body: Any) -> Any:
     """A normalised body without its model outputs (``results``, ``data``) and counts: the protocol part."""
     if not isinstance(body, dict):
@@ -1662,12 +1341,16 @@ def _frame_of(body: Any) -> Any:
 
 
 def _key(exchange: Exchange) -> str:
-    return f"{exchange.method} {exchange.path} {request_digest(exchange)[:16]}"
+    """An input across two corpora: the record's content address (the same request bytes)."""
+    return f"{exchange.method} {exchange.path} {exchange.exchange_id[:16]}"
 
 
 # ---------------------------------------------------------------------------
 # the registry: (engine, version, fingerprint) + the entry-point seam
 # ---------------------------------------------------------------------------
+
+
+_LOCK = threading.Lock()
 
 
 class EmulatorRegistry:
@@ -1811,7 +1494,7 @@ def verification_records(corpus_dir: str | Path) -> list[dict[str, Any]]:
 
 
 def verification_record(
-    corpus: Corpus, problems: Sequence[str], *, verified_at: str, emulator: VllmEmulator | None = None
+    corpus: ObservationCorpus, problems: Sequence[str], *, verified_at: str, emulator: VllmEmulator | None = None
 ) -> dict[str, Any]:
     """The verification record of one conformance run over ``corpus`` (OBSERVATIONS-SPEC section 4):
     which emulator verified it, against which engine version and recipe revision, with which tolerances,
@@ -1829,19 +1512,19 @@ def verification_record(
     from importlib.metadata import version
 
     recipe = corpus.manifest["recipe"]
-    tolerance = corpus.tolerance
+    tolerance = corpus_tolerance(corpus)
     return {
         "schema": VERIFICATION_SCHEMA,
         "emulator": f"rcp_ndcg.testing.engines (rcp-ndcg {version('rcp-ndcg')})",
-        "engine": dict(corpus.engine),
+        "engine": {"name": corpus.manifest["engine"]["name"], "version": corpus.manifest["engine"]["version"]},
         "recipe": {
             "id": recipe["id"],
-            "revision": recipe["revision"],
+            "revision": corpus.manifest["model"]["revision"],
             "behaviour_fingerprint": recipe["behaviour_fingerprint"],
         },
         "normalisation_version": NORMALISATION_VERSION,
         "tolerances": None if tolerance is None else {"abs": tolerance[0], "rel": tolerance[1]},
-        "exchanges": len(corpus.exchanges),
+        "exchanges": len(corpus.records),
         "unobserved_routes": list(emulator.unobserved_routes) if emulator else [],
         "unverified_rules": list(emulator.unverified_rules) if emulator else [],
         "problems": list(problems),

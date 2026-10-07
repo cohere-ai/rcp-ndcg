@@ -1,9 +1,30 @@
 {
-  "full_corpus_sha256": "300aca73ae7e79146234828327426f09bf4012cf6bde3b116c2e488a642d6f24",
-  "gcs_path": null,
-  "sampling": {
-    "rule": "all exchanges of the recorder's fixed set (the whole shakedown corpus)",
-    "seed": null
+  "schema": "rcp-ndcg.observation-subset/1",
+  "full_corpus": {
+    "path": "unavailable: the shakedown corpus is the recorder's node-local output, never uploaded",
+    "manifest_file_sha256": "e0b4902f0bf9d637f6d6e5c10b6e5f49903c3f0c66153f61421732f617978c25",
+    "manifest_sha256": "92056e1c952052946de8d113d09576a51bcf70160a3b9d0038c753172b75f361"
   },
-  "schema": "rcp-ndcg.corpus-index/1"
+  "sampling": {
+    "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",
+    "budget_bytes": 2097152,
+    "strata_covered": [
+      "probe:ok",
+      "probe:over_length",
+      "probe:provenance",
+      "probe:unknown_field"
+    ],
+    "rows": 4,
+    "of_rows": 4
+  },
+  "files": {
+    "nondeterminism.json": {
+      "sha256": "095a5477e6146d9ffcbab95e9e412f498e6d54f893352b5b8ad03dc55f92447c",
+      "bytes": 653
+    },
+    "records.jsonl.gz": {
+      "sha256": "e81d48cdf3fa3ca5e8118854f37e96dd6cd9f3ead2a649ee9e3bddfbfd497db6",
+      "bytes": 3970
+    }
+  }
 }

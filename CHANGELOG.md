@@ -34,13 +34,12 @@ released together.
   and `surrogate_matrix` draw one SHAKE-256 stream per vector, `surrogate_scores` one draw per score;
   no value is pinned), marked
   `replayed`/`surrogate`/`mixed` in `x-rcp-ndcg-emulator-source`, recorded per reply in `answer_log`.
-  The corpus seam (`load_corpus`, `register_corpus_format`, `register_line_migration`,
-  `NORMALISATION_VERSION`) reads the shakedown's recorder format today and takes
-  `rcp_ndcg_vllm.observe`'s writer when it lands; `behaviour_diff` writes the per-input delta report,
-  `measure_non_determinism` measures only true same-request repetitions (one `request_digest`) and
-  derives the verification tolerance from them under `NON_DETERMINISM_RULE` -- each measured bound
-  applies jointly, and without a repetition the tolerance is declared unmeasured (`None`: a replay is
-  compared exactly) instead of being invented -- and
+  The emulators read corpora through the format's one reader, `rcp_ndcg.testing.corpus`
+  (`exchanges_of` views its records, `corpus_tolerance` takes the tolerance the corpus's
+  `nondeterminism.json` derived from same-request repetitions -- `None` when none was measured, so a
+  replay is compared exactly, never with an invented tolerance -- and each bound applies jointly);
+  `find_corpora` resolves corpora by scanning manifests, `normalise_raw` is the byte-level form of the
+  format's normalisation, `behaviour_diff` writes the per-input delta report, and
   the registry (`registry`, `transport_for`, `split_engine_host` -- the one engine-host pattern
   `rcp_ndcg.inference.fake.RE_ENGINE_URL` routes) resolves by (engine, version, fingerprint) with the
   `rcp_ndcg.emulators` entry-point group for out-of-tree emulators. An emulator refuses an engine
@@ -65,9 +64,12 @@ released together.
   selection: `unchanged`/`changed`/`new`/`unloadable` per recipe, the changed inputs named) and
   `behaviour_report` (the behaviour diff of two corpora of one recipe), as functions and
   `python -m rcp_ndcg_vllm.changes` (`changed` and `diff`).
-- **The corpora under `tests/contract/engines/`**: the compact shakedown corpus (12 recipes, 48
-  raw-first exchanges, manifest hashes per file and in the repository's corpus index, a shared
-  vendored tokenizer store) with the append-only verification record (`verification.jsonl`), and the
+- **The corpora under `tests/contract/engines/`**: the provisional shakedown corpus (12 recipes, 48
+  exchanges) as repository subsets in the observation-corpus format (`records.jsonl.gz`, the manifest
+  with a `provisional` statement -- valid to build and test the emulators, not release evidence --,
+  `nondeterminism.json`, `index.json`; the manifest hashes in the repository's corpus index; a shared
+  vendored tokenizer store), the append-only verification record beside each (`verification.jsonl`),
+  and the
   golden replays (`tests/e2e/test_golden_replay.py`), **regression pins** labelled as such
   (`kind: regression-pin`: computed by this code from the provisional corpus, which recorded no subset
   run -- not independent GPU-run numbers; the RC0 subset corpus replaces them): a NanoBEIR-shaped mini
@@ -84,14 +86,13 @@ released together.
   corpus whose one key holds different outputs is refused. `compare_exchange` checks a
   reply as the transport reads it: the status, the recorded headers that matter (content type, server,
   the bytes framing's `metadata`), the body, and its raw bytes where the corpus recorded them
-  (`normalise_raw`, `NORMALISATION_VERSION` 2 masks the volatile ids and stamps); an undecodable body
+  (`normalise_raw` masks the volatile ids and stamps); an undecodable body
   is a named difference, and a recorded body the reader cannot decode (a base64 token matrix: vLLM
   sends no shape) is refused naming the record. Every reply says whether a recording covers its route
   (`x-rcp-ndcg-emulator-route`, `EMULATED_ROUTES`, `VllmEmulator.unobserved_routes`, listed in the
   verification record); the unobserved `/pooling` and `/tokenize` follow vLLM v0.31.0's source
   (`PoolingResponse`, the bytes framing's `metadata`, `TokenizeResponse`; `embed_dtype` `float32`,
-  `endianness` `native` by default). An extended credential scanner (basic auth, api-key headers, cookie and
-  single-quoted or assigned secrets), and `RE_ENGINE_URL` exported from `rcp_ndcg.inference.fake`
+  `endianness` `native` by default). `RE_ENGINE_URL` is exported from `rcp_ndcg.inference.fake`
   (`rcp_ndcg.testing.engines` is pinned as public API).
 - **`rcp_ndcg.testing.corpus`: the observation-corpus format and its one reader** (new module; `rcp_ndcg.testing`
   is now a package, its names unchanged). `load_corpus` reads a GPU wave's corpus directory -- the full corpus's

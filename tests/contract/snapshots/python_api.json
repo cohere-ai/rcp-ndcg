@@ -19178,39 +19178,6 @@
         "type": "str",
         "value": "rcp-ndcg.corpus-index/1"
       },
-      "Corpus": {
-        "bases": [],
-        "defined_in": "rcp_ndcg.testing.engines",
-        "init": [
-          {
-            "annotation": "Path",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "root"
-          },
-          {
-            "annotation": "Mapping[str, Any]",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "manifest"
-          },
-          {
-            "annotation": "tuple[Exchange, ...]",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "exchanges"
-          },
-          {
-            "returns": "None"
-          }
-        ],
-        "kind": "class",
-        "members": {
-          "behaviour_fingerprint": "property",
-          "engine": "property",
-          "tolerance": "property"
-        }
-      },
       "EMULATED_ROUTES": {
         "kind": "constant",
         "type": "tuple",
@@ -19487,7 +19454,7 @@
           },
           {
             "annotation": "str",
-            "default": "same_process",
+            "default": "same_process_1",
             "kind": "positional_or_keyword",
             "name": "repetition"
           },
@@ -19510,11 +19477,37 @@
             "name": "response_raw"
           },
           {
+            "annotation": "str",
+            "default": "",
+            "kind": "positional_or_keyword",
+            "name": "exchange_id"
+          },
+          {
             "returns": "None"
           }
         ],
         "kind": "class",
         "members": {
+          "from_record": {
+            "kind": "classmethod",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "cls"
+              },
+              {
+                "annotation": "Mapping[str, Any]",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "record"
+              },
+              {
+                "returns": "Exchange"
+              }
+            ]
+          },
           "raw_body": "property",
           "response_json": "property"
         }
@@ -19549,26 +19542,6 @@
           "use_activation": "output",
           "user": "protocol"
         }
-      },
-      "LINE_SCHEMA": {
-        "kind": "constant",
-        "type": "int",
-        "value": 1
-      },
-      "MANIFEST_SCHEMA": {
-        "kind": "constant",
-        "type": "str",
-        "value": "rcp-ndcg.observation/1"
-      },
-      "NON_DETERMINISM_RULE": {
-        "kind": "constant",
-        "type": "str",
-        "value": "same-request repetitions only: exchanges whose request digest (method, path and the canonical request body) is identical are repetitions of one question; the measured value is the largest absolute and relative difference of any numeric leaf of their normalised response bodies between any two of them; the verification tolerance is the measured pair itself, each bound applying jointly; without a repetition the tolerance is unmeasured and a replay is compared exactly"
-      },
-      "NORMALISATION_VERSION": {
-        "kind": "constant",
-        "type": "int",
-        "value": 2
       },
       "PairPrompts": {
         "bases": [
@@ -20001,7 +19974,7 @@
                 "name": "cls"
               },
               {
-                "annotation": "Corpus",
+                "annotation": "ObservationCorpus",
                 "default": "<required>",
                 "kind": "positional_or_keyword",
                 "name": "corpus"
@@ -20142,13 +20115,13 @@
         "kind": "function",
         "signature": [
           {
-            "annotation": "Corpus",
+            "annotation": "ObservationCorpus",
             "default": "<required>",
             "kind": "positional_or_keyword",
             "name": "before"
           },
           {
-            "annotation": "Corpus",
+            "annotation": "ObservationCorpus",
             "default": "<required>",
             "kind": "positional_or_keyword",
             "name": "after"
@@ -20185,18 +20158,33 @@
           }
         ]
       },
-      "credential_findings": {
+      "corpus_tolerance": {
         "defined_in": "rcp_ndcg.testing.engines",
         "kind": "function",
         "signature": [
           {
-            "annotation": "str",
+            "annotation": "ObservationCorpus",
             "default": "<required>",
             "kind": "positional_or_keyword",
-            "name": "text"
+            "name": "corpus"
           },
           {
-            "returns": "list[str]"
+            "returns": "tuple[float, float] | None"
+          }
+        ]
+      },
+      "exchanges_of": {
+        "defined_in": "rcp_ndcg.testing.engines",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "ObservationCorpus",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "corpus"
+          },
+          {
+            "returns": "tuple[Exchange, ...]"
           }
         ]
       },
@@ -20233,78 +20221,6 @@
           }
         ]
       },
-      "find_credential_patterns": {
-        "defined_in": "rcp_ndcg.testing.engines",
-        "kind": "function",
-        "signature": [
-          {
-            "annotation": "str | Path",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "path"
-          },
-          {
-            "returns": "list[str]"
-          }
-        ]
-      },
-      "load_corpus": {
-        "defined_in": "rcp_ndcg.testing.engines",
-        "kind": "function",
-        "signature": [
-          {
-            "annotation": "str | Path",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "path"
-          },
-          {
-            "returns": "Corpus"
-          }
-        ]
-      },
-      "measure_non_determinism": {
-        "defined_in": "rcp_ndcg.testing.engines",
-        "kind": "function",
-        "signature": [
-          {
-            "annotation": "Corpus",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "corpus"
-          },
-          {
-            "returns": "dict[str, Any]"
-          }
-        ]
-      },
-      "normalise_body": {
-        "defined_in": "rcp_ndcg.testing.engines",
-        "kind": "function",
-        "signature": [
-          {
-            "annotation": "str",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "method"
-          },
-          {
-            "annotation": "str",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "path"
-          },
-          {
-            "annotation": "Any",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "body"
-          },
-          {
-            "returns": "Any"
-          }
-        ]
-      },
       "normalise_raw": {
         "defined_in": "rcp_ndcg.testing.engines",
         "kind": "function",
@@ -20317,48 +20233,6 @@
           },
           {
             "returns": "bytes"
-          }
-        ]
-      },
-      "register_corpus_format": {
-        "defined_in": "rcp_ndcg.testing.engines",
-        "kind": "function",
-        "signature": [
-          {
-            "annotation": "str",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "schema"
-          },
-          {
-            "annotation": "CorpusLoader",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "loader"
-          },
-          {
-            "returns": "None"
-          }
-        ]
-      },
-      "register_line_migration": {
-        "defined_in": "rcp_ndcg.testing.engines",
-        "kind": "function",
-        "signature": [
-          {
-            "annotation": "int",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "from_version"
-          },
-          {
-            "annotation": "Callable[[Mapping[str, Any]], Mapping[str, Any]]",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "migrate"
-          },
-          {
-            "returns": "None"
           }
         ]
       },
@@ -20384,21 +20258,6 @@
           },
           {
             "returns": "tuple[dict[str, Any], list[str]]"
-          }
-        ]
-      },
-      "request_digest": {
-        "defined_in": "rcp_ndcg.testing.engines",
-        "kind": "function",
-        "signature": [
-          {
-            "annotation": "Exchange",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "exchange"
-          },
-          {
-            "returns": "str"
           }
         ]
       },
@@ -20560,7 +20419,7 @@
         "kind": "function",
         "signature": [
           {
-            "annotation": "Corpus",
+            "annotation": "ObservationCorpus",
             "default": "<required>",
             "kind": "positional_or_keyword",
             "name": "corpus"
@@ -20600,21 +20459,6 @@
           },
           {
             "returns": "list[dict[str, Any]]"
-          }
-        ]
-      },
-      "verify_corpus_hashes": {
-        "defined_in": "rcp_ndcg.testing.engines",
-        "kind": "function",
-        "signature": [
-          {
-            "annotation": "Corpus",
-            "default": "<required>",
-            "kind": "positional_or_keyword",
-            "name": "corpus"
-          },
-          {
-            "returns": "list[str]"
           }
         ]
       }

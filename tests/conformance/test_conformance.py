@@ -16,14 +16,13 @@ from pathlib import Path
 import httpx
 import pytest
 
+from rcp_ndcg.testing.corpus import credential_findings, integrity_mismatches, load_corpus
 from rcp_ndcg.testing.engines import (
     compare_exchange,
-    credential_findings,
+    corpus_tolerance,
+    exchanges_of,
     find_corpora,
-    find_credential_patterns,
-    load_corpus,
     verification_records,
-    verify_corpus_hashes,
 )
 from tests._engines import ROOT, corpus_of, emulator_for, load_recipe
 
@@ -44,9 +43,9 @@ def replay_problems(directory: Path) -> tuple[object, list[str]]:
     recipe_id = corpus.manifest["recipe"]["id"]
     emulator = emulator_for(recipe_id)
     problems = []
-    for exchange in corpus.exchanges:
+    for exchange in exchanges_of(corpus):
         answer = emulator.handle(as_request(exchange))
-        found = compare_exchange(exchange, answer, corpus.tolerance)
+        found = compare_exchange(exchange, answer, corpus_tolerance(corpus))
         problems.extend(f"#{exchange.sequence}: {problem}" for problem in found)
     return corpus, problems
 
@@ -77,7 +76,7 @@ def test_usage_counts_use_the_recipes_real_tokenizer() -> None:
     for directory in corpus_dirs():
         corpus = load_corpus(directory)
         emulator = emulator_for(corpus.manifest["recipe"]["id"])
-        for exchange in corpus.exchanges:
+        for exchange in exchanges_of(corpus):
             if exchange.status != 200 or exchange.path.endswith("/models"):
                 continue
             recorded = (exchange.response_json or {}).get("usage", {}).get("prompt_tokens")
@@ -90,46 +89,47 @@ def test_a_tampered_corpus_fails_the_hash_check(tmp_path: Path) -> None:
 
     copy = tmp_path / "corpus"
     shutil.copytree(corpus_dirs()[0], copy)
-    assert verify_corpus_hashes(load_corpus(copy)) == []
-    documents = copy / load_corpus(copy).manifest["documents"]
-    documents.write_bytes(documents.read_bytes() + b"\0")
-    (problem,) = verify_corpus_hashes(load_corpus(copy))
-    assert problem.startswith(documents.name), problem
+    assert integrity_mismatches(load_corpus(copy)) == []
+    import gzip
+
+    records = copy / load_corpus(copy).records_file
+    text = gzip.decompress(records.read_bytes()).decode("utf-8")
+    records.write_bytes(gzip.compress(text.replace('"status": 200', '"status": 201', 1).encode("utf-8")))
+    assert integrity_mismatches(load_corpus(copy)) == [f"{records.name}: hash mismatch"]
 
 
 def test_manifest_and_index_hashes_hold() -> None:
-    """Integrity (OBSERVATIONS-SPEC section 4): every corpus file hashes to its manifest and every
-    manifest hashes to the repository's corpus index. A tampered corpus fails here."""
-    index = json.loads(INDEX.read_text(encoding="utf-8"))
-    corpora = index["corpora"]
+    """Integrity (OBSERVATIONS-SPEC section 4): every corpus file hashes to its subset index, the manifest is
+    the full corpus's, and every manifest hashes to the repository's corpus index."""
+    import hashlib
+
+    corpora = json.loads(INDEX.read_text(encoding="utf-8"))["corpora"]
+    assert len(corpora) == len(corpus_dirs())
     for directory in corpus_dirs():
         corpus = load_corpus(directory)
-        assert verify_corpus_hashes(corpus) == [], directory
+        assert integrity_mismatches(corpus) == [], directory
         key = f"{directory.parent.name}/{directory.name}"
-        manifest_sha = corpora[key]["manifest_sha256"]
-        import hashlib
-
         actual = hashlib.sha256((directory / "manifest.json").read_bytes()).hexdigest()
-        assert actual == manifest_sha, f"{key}: manifest hashes to {actual}, the index declares {manifest_sha}"
-        assert corpora[key]["behaviour_fingerprint"] == corpus.behaviour_fingerprint, key
+        assert actual == corpora[key]["manifest_sha256"], f"{key}: the corpus index declares another manifest"
+        fingerprint = corpus.manifest["recipe"]["behaviour_fingerprint"]
+        assert corpora[key]["behaviour_fingerprint"] == fingerprint == directory.name, key
 
 
-def test_no_credential_shaped_string_is_in_any_corpus(tmp_path: Path) -> None:
-    """Acceptance (OBSERVATIONS-SPEC section 6): no credential-shaped string anywhere -- and the scan
-    finds one when it is there (in a compressed file too)."""
+def test_no_credential_shaped_string_is_in_any_corpus() -> None:
+    """Acceptance (OBSERVATIONS-SPEC section 6): no credential-shaped string in any committed corpus byte
+    (``rcp_ndcg.testing.corpus.credential_findings``) -- and the scan finds a planted one."""
     import gzip
 
     scanned = 0
     for path in sorted(ENGINES_ROOT.rglob("*")):
         if path.is_file() and path.suffix in (".json", ".gz", ".jsonl"):
-            findings = find_credential_patterns(path)
-            assert findings == [], f"{path}: {findings}"
+            raw = path.read_bytes()
+            text = (gzip.decompress(raw) if path.suffix == ".gz" else raw).decode("utf-8", errors="replace")
+            assert credential_findings(text) == [], path
             scanned += 1
-    assert scanned >= 3 * len(corpus_dirs())
-    planted = tmp_path / "exchanges.jsonl.gz"
-    planted.write_bytes(gzip.compress(b'{"headers": {"Authorization": "Bearer abcdefghijklmnopqrstuvwx"}}'))
-    assert find_credential_patterns(planted) == ["authorization header", "bearer token"]
-    assert credential_findings('{"api_key": "0123456789abcdef"}') == ["secret field"]
+    assert scanned >= 5 * len(corpus_dirs())
+    assert credential_findings('{"headers": {"Authorization": "Bearer abcdefghijklmnopqrstuvwx"}}')
+    assert credential_findings('{"authorization":12345}') == []  # a tokenizer vocabulary entry
 
 
 def test_staleness_passes_for_the_unmoved_recipes() -> None:
@@ -301,37 +301,6 @@ def test_out_of_tree_emulators_register_through_the_entry_point_group(monkeypatc
         registry.clear()
 
 
-def test_the_corpus_schema_migrations_never_invalidate_an_old_corpus(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Schema evolution (OBSERVATIONS-SPEC section 7): readers support every document schema ever
-    written; a frozen sample of each old schema is migrated at load."""
-    from rcp_ndcg.testing.engines import load_corpus, register_line_migration
-
-    corpus_dir = corpus_dirs()[0]
-    manifest = json.loads((corpus_dir / "manifest.json").read_text(encoding="utf-8"))
-    line = json.loads(__import__("gzip").decompress((corpus_dir / manifest["documents"]).read_bytes()).splitlines()[0])
-
-    def from_zero(doc: dict) -> dict:
-        return {"line_schema": 1, "sequence": doc["seq"], **{k: v for k, v in doc.items() if k != "seq"}}
-
-    from rcp_ndcg.testing import engines
-
-    monkeypatch.setattr(engines, "_LINE_MIGRATIONS", {})  # the test's migration never outlives it
-    register_line_migration(0, from_zero)
-    old = {
-        "line_schema": 0,
-        "seq": line["sequence"],
-        **{k: v for k, v in line.items() if k not in ("line_schema", "sequence")},
-    }
-    manifest_copy = {**manifest, "documents": "exchanges.jsonl", "files": {}}
-    (tmp_path / "manifest.json").write_text(json.dumps(manifest_copy), encoding="utf-8")
-    (tmp_path / "exchanges.jsonl").write_text(json.dumps(old) + "\n", encoding="utf-8")
-    migrated = load_corpus(tmp_path)
-    assert migrated.exchanges[0].sequence == line["sequence"]
-    assert migrated.exchanges[0].path == line["path"]
-
-
 # -- M1: measured, never assumed, non-determinism ------------------------------------------------------
 
 
@@ -342,25 +311,21 @@ def _rerank_exchange(sequence: int, body: dict, score: float):
     return Exchange(sequence, "POST", "/rerank", body, 200, {"content-type": "application/json"}, reply)
 
 
-def test_non_determinism_is_measured_only_across_same_request_repetitions(tmp_path: Path) -> None:
-    """Two requests that differ in any byte (here ``use_activation``) are different questions, never a
-    repetition: with no true repetition the tolerance is declared unmeasured, not invented. A true
-    repetition (an identical request digest) is measured."""
-    from rcp_ndcg.testing.engines import Corpus, measure_non_determinism
+def test_the_tolerance_is_the_corpus_measured_one_and_never_invented(tmp_path: Path) -> None:
+    """The emulators verify with the tolerance the corpus's non-determinism report derived from same-request
+    repetitions (``nondeterminism.json``); with none measured there is no tolerance and replays compare
+    exactly; a corpus without the report is refused."""
+    from rcp_ndcg.errors import DataError
+    from tests._engines import observation_corpus
 
-    body = {"model": "m", "query": "q", "documents": ["d"], "use_activation": True}
-    other = {key: value for key, value in body.items() if key != "use_activation"}
-    different = Corpus(tmp_path, {}, (_rerank_exchange(0, body, 0.9246), _rerank_exchange(1, other, 0.9238)))
-    block = measure_non_determinism(different)
-    assert block["status"] == "unmeasured" and block["same_request_repetitions"] == 0, block
-    assert block["tolerance_abs"] is None and block["tolerance_rel"] is None
-
-    repeated = Corpus(tmp_path, {}, (_rerank_exchange(0, body, 0.9246), _rerank_exchange(1, dict(body), 0.9244)))
-    block = measure_non_determinism(repeated)
-    assert block["status"] == "measured" and block["same_request_repetitions"] == 1, block
-    assert block["measured_max_abs"] == pytest.approx(0.0002)
-    assert block["tolerance_abs"] == block["measured_max_abs"]
-    assert block["tolerance_rel"] == block["measured_max_rel"]
+    exchange = _rerank_exchange(0, {"model": "m", "query": "q", "documents": ["d"]}, 0.5)
+    unmeasured = observation_corpus(tmp_path / "none", [exchange])
+    assert corpus_tolerance(unmeasured) is None
+    measured = observation_corpus(tmp_path / "measured", [exchange], tolerance=(3e-7, 1e-6))
+    assert corpus_tolerance(measured) == (3e-7, 1e-6)
+    (tmp_path / "none" / "nondeterminism.json").unlink()
+    with pytest.raises(DataError):
+        corpus_tolerance(unmeasured)
 
 
 def test_every_value_is_bounded_by_the_joint_condition() -> None:
@@ -379,31 +344,9 @@ def test_every_value_is_bounded_by_the_joint_condition() -> None:
     assert compare_exchange(recorded, same, None) == []
 
 
-def test_every_manifest_states_the_non_determinism_its_raw_records_measure() -> None:
-    """The stored block is exactly what the versioned code recomputes from the raw records; the
-    shakedown sent every request once, so its tolerance is declared unmeasured."""
-    from rcp_ndcg.testing.engines import measure_non_determinism
-
+def test_every_committed_corpus_declares_its_tolerance_unmeasured() -> None:
+    """The shakedown sent every request once: no corpus measured a repetition, so none carries a tolerance."""
     for directory in corpus_dirs():
-        corpus = load_corpus(directory)
-        assert corpus.manifest["non_determinism"] == measure_non_determinism(corpus), directory
-        assert corpus.manifest["non_determinism"]["status"] == "unmeasured", directory
-        assert corpus.tolerance is None
-
-
-@pytest.mark.parametrize(
-    "text",
-    [
-        '{"Authorization": "Bearer abcdefgh12345678"}',
-        "authorization: Basic QWxhZGRpbjpvcGVu",
-        "{'X-Api-Key': 'abcdefgh12345678'}",
-        '"x-api-key":"abcdefgh12345678"',
-    ],
-)
-def test_the_scanner_finds_credential_headers_in_every_serialisation(text: str) -> None:
-    assert credential_findings(text), text
-
-
-def test_the_scanner_ignores_a_vocabulary_entry() -> None:
-    """A vendored tokenizer's vocabulary maps the word to a token id: no credential."""
-    assert credential_findings('{"authorization":12345,"Authorization":23456}') == []
+        report = json.loads((directory / "nondeterminism.json").read_text(encoding="utf-8"))
+        assert report["derived"]["measured"] is False and report["derived"]["repeated_requests"] == 0, directory
+        assert corpus_tolerance(load_corpus(directory)) is None

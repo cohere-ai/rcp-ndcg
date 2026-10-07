@@ -1,65 +1,78 @@
 {
-  "collector": {
-    "documents_format": "recorder-record/1",
-    "generator_version": null,
-    "hostname": "hashed-unavailable",
-    "note": "shakedown corpus: one repetition per request, no /tokenize ground truth, request and response bodies as the recorder serialised them (parsed JSON, not raw bytes), no engine image digest. recipe_file_sha256 is the recipe file's hash when the corpus was compacted, not at recording: the recorded run predates the recipe fixes of 2026-10-07; the recorded prompts still render from the current recipes, which tests/conformance/test_recipe_sources.py checks for the embedding requests and every conformance replay checks for the rerank pair prompts. The release corpus is re-recorded at RC0 with rcp_ndcg_vllm.observe and keyed by fingerprint.",
-    "recorded_at": "2026-10-06",
-    "recorder": "rcp_ndcg_vllm.record (the recorder's fixed exchange set)",
-    "waves": [
-      "shake-a1"
-    ]
-  },
-  "documents": "exchanges.jsonl.gz",
+  "schema": "rcp-ndcg.observation-corpus/1",
+  "record_schema": 1,
+  "normalisation_version": 1,
   "engine": {
-    "image": "vllm/vllm-openai:v0.31.0",
-    "image_digest": null,
-    "min_version": "0.31.0",
     "name": "vllm",
-    "version": "0.31.0"
-  },
-  "files": {
-    "exchanges.jsonl.gz": "2e1f3a8b1cac4e59f9c0bab109f252f097d58cf050a7639cea664b0fcdc1f5d5",
-    "index.json": "c33634c968b1a67c4b402499c3ce45859f945727de3d69eca87ef79f65b81f9a"
+    "version": "0.31.0",
+    "image": "vllm/vllm-openai:v0.31.0",
+    "image_digest": {
+      "unavailable": "the shakedown recorded no image digest"
+    },
+    "vllm_version": {
+      "unavailable": "the shakedown recorder did not probe the engine environment"
+    },
+    "vllm_commit": {
+      "unavailable": "the shakedown recorder did not probe the engine environment"
+    },
+    "torch": {
+      "unavailable": "the shakedown recorder did not probe the engine environment"
+    },
+    "cuda": {
+      "unavailable": "the shakedown recorder did not probe the engine environment"
+    },
+    "driver": {
+      "unavailable": "the shakedown recorder did not query the GPUs"
+    },
+    "gpus": {
+      "unavailable": "the shakedown recorder did not query the GPUs"
+    },
+    "serve_argv": {
+      "unavailable": "the shakedown recorder kept no serve argv"
+    },
+    "env": {
+      "unavailable": "the shakedown recorder kept no engine environment"
+    },
+    "started": {
+      "unavailable": "the shakedown recorder kept no engine start time"
+    },
+    "ready_wait_s": {
+      "unavailable": "the shakedown recorder kept no readiness wait"
+    }
   },
   "model": {
     "id": "Qwen/Qwen3-VL-Reranker-2B",
-    "revision": "4bd860ac4f15ad1897a214615cccc700f8f71818"
-  },
-  "non_determinism": {
-    "measured_max_abs": null,
-    "measured_max_rel": null,
-    "rule": "same-request repetitions only: exchanges whose request digest (method, path and the canonical request body) is identical are repetitions of one question; the measured value is the largest absolute and relative difference of any numeric leaf of their normalised response bodies between any two of them; the verification tolerance is the measured pair itself, each bound applying jointly; without a repetition the tolerance is unmeasured and a replay is compared exactly",
-    "same_request_repetitions": 0,
-    "status": "unmeasured",
-    "tolerance_abs": null,
-    "tolerance_rel": null
-  },
-  "provisional": {
-    "not_valid_for": "release evidence: no recipe is verified, no GPU-run number is reproduced from this corpus",
-    "replaced_by": "the RC0 recording wave (rcp_ndcg_vllm.observe), keyed by behaviour fingerprint",
-    "status": "provisional",
-    "valid_for": "building and testing the verified fake engines (the emulators and their conformance suite)",
-    "why": "recorded by the GPU shakedown (waves shake-a1/shake-a2 of 2026-10-06) with the recorder's fixed exchange set: one repetition per request, request and response bodies kept as parsed JSON (not raw bytes), no engine image digest, no /tokenize ground truth, no /pooling recording; some recipes of that shakedown were served with temporary shakedown-only patches"
+    "revision": "4bd860ac4f15ad1897a214615cccc700f8f71818",
+    "weights": {
+      "unavailable": "Qwen/Qwen3-VL-Reranker-2B@4bd860ac4f15ad1897a214615cccc700f8f71818: the cached snapshot holds no weight files"
+    },
+    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    "template_sha256": "3f8373557f57b9d775557323cadf4dadf83e388fc922025fa6e5e26cbe3d2188",
+    "plugin": {
+      "unavailable": "the recipe installs no plugin"
+    },
+    "hf_overrides": {
+      "architectures": [
+        "Qwen3VLForSequenceClassification"
+      ],
+      "classifier_from_token": [
+        "no",
+        "yes"
+      ],
+      "is_original_qwen3_reranker": true
+    },
+    "pooler_config": {},
+    "mm_processor_kwargs": {
+      "min_pixels": 4096,
+      "max_pixels": 1310720
+    },
+    "dtype": "bfloat16"
   },
   "recipe": {
+    "id": "qwen3-vl-reranker-2b",
+    "file_sha256": "47d26b7ce2acf9ec3bcfd303ff1df11d15bdf69707bee355e29da0d64165f66f",
     "behaviour_fingerprint": "104f225bef53f79a889b609588458e0585702577d6c917ec846a3f1b88de32a8",
     "fingerprint_inputs": {
-      "client.api": "rerank",
-      "client.empty_doc": "send_text",
-      "client.empty_doc_text": "NULL",
-      "client.empty_query": "refuse",
-      "client.instruction": "none",
-      "client.listwise": "false",
-      "client.max_images": "1",
-      "client.max_tokens": "8192",
-      "client.max_videos": "0",
-      "client.media_sides": "[\"query\",\"document\"]",
-      "client.on_overflow": "cut",
-      "client.query_max_tokens": "4096",
-      "client.request_shape": "text",
-      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \\\"yes\\\" or \\\"no\\\".{special:im_end}\\n{special:im_start}user\\n<Instruct>: Given a search query, retrieve relevant candidates that answer the query.<Query>:\"},{\"content\":\"query\"},{\"fixed\":\"\\n<Document>:\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
-      "client.use_activation": "true",
       "fingerprint_schema": "rcp-fp/3",
       "model": "Qwen/Qwen3-VL-Reranker-2B",
       "revision": "4bd860ac4f15ad1897a214615cccc700f8f71818",
@@ -77,31 +90,83 @@
       "serve.runner": "pooling",
       "serve.trust_remote_code": "false",
       "template_file": "sha256:3f8373557f57b9d775557323cadf4dadf83e388fc922025fa6e5e26cbe3d2188",
-      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+      "client.api": "rerank",
+      "client.empty_doc": "send_text",
+      "client.empty_doc_text": "NULL",
+      "client.empty_query": "refuse",
+      "client.instruction": "none",
+      "client.listwise": "false",
+      "client.max_images": "1",
+      "client.max_tokens": "8192",
+      "client.max_videos": "0",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_max_tokens": "4096",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \\\"yes\\\" or \\\"no\\\".{special:im_end}\\n{special:im_start}user\\n<Instruct>: Given a search query, retrieve relevant candidates that answer the query.<Query>:\"},{\"content\":\"query\"},{\"fixed\":\"\\n<Document>:\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
+      "client.use_activation": "true"
     },
-    "id": "qwen3-vl-reranker-2b",
-    "recipe_file": "recipe.yaml",
-    "recipe_file_sha256": "47d26b7ce2acf9ec3bcfd303ff1df11d15bdf69707bee355e29da0d64165f66f",
-    "revision": "4bd860ac4f15ad1897a214615cccc700f8f71818",
-    "role": "rerank",
-    "scoring": "pointwise",
     "status": {
-      "date": null,
+      "state": "unverified",
       "image": null,
-      "report": null,
-      "state": "unverified"
-    }
-  },
-  "schema": "rcp-ndcg.observation/1",
-  "source": {
-    "full_corpus": {
-      "gcs_path": null,
-      "note": "the shakedown recorder's node-local output (12 recipes, files hashed together)",
-      "sha256": "36aaba898f1f83bd600e3535a2a8ca720dbfb8b8551e47032d081512aa134790"
+      "date": null,
+      "report": null
     },
-    "sampling": {
-      "rule": "all exchanges of the recorder's fixed set (the whole shakedown corpus)",
-      "seed": null
-    }
+    "declared_dim": null
+  },
+  "collector": {
+    "package": "rcp-ndcg-vllm",
+    "version": {
+      "unavailable": "the shakedown's rc build version was not recorded"
+    },
+    "commit": {
+      "unavailable": "the shakedown's source commit was not recorded"
+    },
+    "generator_version": {
+      "unavailable": "the recorder's fixed exchange set predates the request generator"
+    },
+    "corpus_plan_version": {
+      "unavailable": "the recorder's fixed exchange set predates the corpus plan"
+    },
+    "record_schema": 1,
+    "seed": {
+      "unavailable": "the recorder's fixed exchange set draws nothing"
+    },
+    "dataset_commits": {
+      "unavailable": "the recorder's fixed exchange set samples no dataset"
+    },
+    "wave_id": "shake-a1",
+    "job_id": {
+      "unavailable": "the shakedown's job id is not public"
+    },
+    "started": "2026-10-06",
+    "finished": "2026-10-06",
+    "host_sha256": {
+      "unavailable": "the shakedown recorder did not hash the node's hostname"
+    },
+    "recorder": "rcp_ndcg_vllm.record (the recorder's fixed exchange set)",
+    "note": "shakedown corpus, rewritten in the observation-corpus format without touching a recorded value: one repetition per request, no /tokenize ground truth, no engine image digest, bodies as the recorder kept them (parsed JSON; body_raw reconstructed, said so per record). recipe.file_sha256 is the recipe file's hash when the corpus was rewritten, not at recording: the recorded run predates the recipe fixes of 2026-10-07; the recorded prompts still render from the current recipes, which tests/conformance/test_recipe_sources.py checks for the embedding requests and every conformance replay checks for the rerank pair prompts."
+  },
+  "provisional": {
+    "status": "provisional",
+    "valid_for": "building and testing the verified fake engines (the emulators and their conformance suite)",
+    "not_valid_for": "release evidence: no recipe is verified, no GPU-run number is reproduced from this corpus",
+    "why": "recorded by the GPU shakedown (waves shake-a1/shake-a2 of 2026-10-06) with the recorder's fixed exchange set: one repetition per request, request and response bodies kept as parsed JSON (not raw bytes), no engine image digest, no /tokenize ground truth, no /pooling recording; some recipes of that shakedown were served with temporary shakedown-only patches",
+    "replaced_by": "the RC0 recording wave (rcp_ndcg_vllm.observe), keyed by behaviour fingerprint"
+  },
+  "integrity": {
+    "files": {
+      "nondeterminism.json": {
+        "sha256": "095a5477e6146d9ffcbab95e9e412f498e6d54f893352b5b8ad03dc55f92447c",
+        "bytes": 653
+      },
+      "records.jsonl": {
+        "sha256": "5fa49cd1b8abf725a484b9d200f6508777a0d2e83376598ebfdad75ff9631814",
+        "bytes": 270915
+      }
+    },
+    "records_count": 4,
+    "manifest_sha256": "0c387f9f20e72af1053a835c2b6a0c25da19dbfbc275b5293f00b8e50eae38f7"
   }
 }

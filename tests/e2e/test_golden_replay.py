@@ -303,12 +303,13 @@ def test_the_vidore_retrieval_view_waiver_holds() -> None:
     """The documented waiver, as a tripwire on the corpus (never on recipe semantics): the ViDoRe
     retrieval view needs page-image embeddings, and no committed corpus of the VL embedder observes an
     image input. When one does, this fails and names the work."""
-    from rcp_ndcg.testing.engines import find_corpora, load_corpus
+    from rcp_ndcg.testing.corpus import load_corpus
+    from rcp_ndcg.testing.engines import exchanges_of, find_corpora
 
     corpora = find_corpora(ENGINES_ROOT, recipe_id="qwen3-vl-embedding-2b")
     assert corpora, "the VL embedder has no committed corpus"
     for directory in corpora:
-        text = json.dumps([exchange.request_body for exchange in load_corpus(directory).exchanges])
+        text = json.dumps([exchange.request_body for exchange in exchanges_of(load_corpus(directory))])
         assert "image" not in text and "data:" not in text, (
             f"{directory} observes an image input: build the ViDoRe retrieval-view golden "
             "(tests/e2e/test_golden_replay.py, RCP_UPDATE_GOLDENS=1) and drop this waiver"

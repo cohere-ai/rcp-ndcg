@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import base64
 from pathlib import Path
 
 import pytest
 
 from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.testing.engines import Corpus, Exchange, behaviour_diff
+from rcp_ndcg.testing.engines import Exchange, behaviour_diff
 from tests._engines import emulator_for
 
 QUERY = {"query": "What is the capital of France?"}
@@ -35,10 +34,13 @@ def test_a_surrogate_vector_has_the_observed_width() -> None:
     assert widths == {1024}, widths
 
 
-def _corpus(tmp_path: Path, response: dict, fingerprint: str, headers: dict | None = None) -> Corpus:
-    manifest = {"recipe": {"id": "r", "behaviour_fingerprint": fingerprint}}
-    exchange = Exchange(1, "POST", "/rerank", {**QUERY, **DOCUMENTS}, 200, headers or {}, response)
-    return Corpus(tmp_path, manifest, (exchange,))
+def _corpus(
+    tmp_path: Path, response: dict | None, fingerprint: str, headers: dict | None = None, raw: bytes | None = None
+):
+    from tests._engines import observation_corpus
+
+    exchange = Exchange(1, "POST", "/rerank", {**QUERY, **DOCUMENTS}, 200, headers or {}, response, response_raw=raw)
+    return observation_corpus(tmp_path / fingerprint, [exchange], recipe_id="r", fingerprint=fingerprint)
 
 
 def test_the_behaviour_diff_ignores_volatile_ids_and_names_protocol_changes(tmp_path: Path) -> None:
@@ -55,11 +57,11 @@ def test_the_behaviour_diff_ignores_volatile_ids_and_names_protocol_changes(tmp_
 
 
 def test_the_behaviour_diff_compares_binary_bodies(tmp_path: Path) -> None:
-    def framed(payload: bytes) -> dict:
-        return {"base64": base64.b64encode(payload).decode(), "framing_headers": {}}
-
-    moved = behaviour_diff(_corpus(tmp_path, framed(b"\x00\x3c"), "a"), _corpus(tmp_path, framed(b"\x00\x3d"), "b"))
+    before = _corpus(tmp_path, None, "a", raw=b"\x00\x3c")
+    moved = behaviour_diff(before, _corpus(tmp_path, None, "b", raw=b"\x00\x3d"))
     assert moved["summary"]["changed"] == 1, moved["inputs"]
+    same = behaviour_diff(before, _corpus(tmp_path, None, "c", raw=b"\x00\x3c"))
+    assert same["summary"]["changed"] == 0, same["inputs"]
 
 
 def test_the_registry_names_only_the_requested_engine_versions_fingerprints() -> None:
