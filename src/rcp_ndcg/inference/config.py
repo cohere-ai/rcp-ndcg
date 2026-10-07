@@ -123,6 +123,8 @@ def _no_inert_overflow_policies(config: EmbeddingEndpoint | RerankEndpoint) -> N
         inert.append("on_overflow")
     if getattr(config, "query_max_tokens", None) is not None:
         inert.append("query_max_tokens")
+    if getattr(config, "document_max_tokens", None) is not None:
+        inert.append("document_max_tokens")
     if getattr(config, "document_skip_token_ids", ()):
         inert.append("document_skip_token_ids")
     if config.chunk is not None:
@@ -471,6 +473,14 @@ class RerankEndpoint(_MediaEndpoint):
             is verified against the span that ships -- so a pair is never shipped over the budget. ``None``
             (the default) declares no split, and the adapter's recipe decides; a query that alone fills the
             budget is then refused rather than cut undeclared. Content.
+        document_max_tokens: The document's own cap, in the declared tokenizer's content tokens, beside the pair
+            budget -- for a checkpoint that cuts each document itself (jina-reranker-v3 reads 2048 document
+            tokens and 512 query tokens: ``document_max_tokens: 2048`` beside ``query_max_tokens: 512``). The
+            client cuts every document over it to it, also in a pair the budget would take whole, on the
+            content span only (the template re-attached, the anchors kept), records the cut under the
+            document's position (``cause: document_share``) and then fits the pair to :attr:`max_tokens`.
+            ``None`` (the default) declares no cap. It must be below :attr:`max_tokens` (at or over it the
+            pair budget always binds first) and is refused beside ``on_overflow: chunk``. Content.
         template: The pair template as data (:class:`~rcp_ndcg.data.templates.TemplateSpec`), which orders
             query and document per model (document first for some rerankers, and then the query block is an
             anchor), names the specials, and declares the anchor and the per-shape ``add_special_tokens``.
@@ -514,6 +524,7 @@ class RerankEndpoint(_MediaEndpoint):
         "instruction": FieldRole.CONTENT,
         "use_activation": FieldRole.CONTENT,
         "query_max_tokens": FieldRole.CONTENT,
+        "document_max_tokens": FieldRole.CONTENT,
         "template": FieldRole.CONTENT,
         "on_overflow": FieldRole.CONTENT,
         "chunk": FieldRole.CONTENT,
@@ -533,6 +544,7 @@ class RerankEndpoint(_MediaEndpoint):
     instruction: Literal["none", "field", "fold", "system"] = "fold"
     use_activation: bool | None = None
     query_max_tokens: int | None = Field(default=None, ge=1)
+    document_max_tokens: int | None = Field(default=None, ge=1)
     template: TemplateSpec | None = None
     on_overflow: Literal["cut", "chunk", "fail"] = "cut"
     chunk: ChunkPolicy | None = None
@@ -578,6 +590,19 @@ class RerankEndpoint(_MediaEndpoint):
                 "the document's share of the pair budget would be zero or negative",
                 hint="set query_max_tokens below max_tokens (the document keeps the rest of the budget)",
             )
+        if self.document_max_tokens is not None:
+            if self.max_tokens is not None and self.document_max_tokens >= self.max_tokens:
+                raise ConfigError(
+                    f"document_max_tokens ({self.document_max_tokens}) must be smaller than max_tokens "
+                    f"({self.max_tokens}): at or over it the pair budget always binds first, so the cap never would",
+                    hint="set document_max_tokens to the checkpoint's own document cap, below max_tokens, or drop it",
+                )
+            if self.on_overflow == "chunk":
+                raise ConfigError(
+                    "document_max_tokens cuts every document to its cap, and on_overflow 'chunk' splits an "
+                    "over-budget document into chunks instead: the two would decide the same document two ways",
+                    hint="declare one: document_max_tokens (the checkpoint's own cut) or on_overflow: chunk",
+                )
         _empty_doc_pairing(self)
         return self
 

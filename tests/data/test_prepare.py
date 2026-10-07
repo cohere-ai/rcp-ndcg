@@ -357,6 +357,21 @@ class TestFitMediaToBudget:
         assert fit.tokens == self.POLICY.image_tokens(2200, 1700) + 2
         assert fit.dropped == []
 
+    def test_a_pinned_budget_below_the_stock_floor_shrinks_under_its_own_pinning(self, tmp_path: Path):
+        """H4: the shrink step's minimum policy carries every field of the declared one -- the engine pinning
+        included -- so a pinned budget below the family's stock floor (Qwen3-VL-Embedding's 4096..1843200 px)
+        shrinks to its own minimum instead of failing validation."""
+        pinned = ImagePolicy(min_px=4096, max_px=1843200, processor="qwen3_vl", engine_pixel_pinning=True)
+        media = [prepare_image(_png(tmp_path / "page.png", (2560, 2560)), pinned)]
+        full = pinned.image_tokens(2560, 2560) + 2
+
+        fit = fit_media_to_budget(media, image=pinned, video=None, text_budget_tokens=full // 2)
+
+        (item,) = fit.media
+        assert fit.dropped == [] and fit.tokens < full // 2
+        assert (item.sent.height or 0) * (item.sent.width or 0) <= 4096
+        assert pinned.target_size(item.sent.height or 0, item.sent.width or 0) == (item.sent.height, item.sent.width)
+
     def test_an_oversized_image_is_shrunk_to_the_policy_minimum(self, tmp_path: Path):
         """2560x2560 under the page budget costs 1,225 patches; at the 65,536px floor, 64."""
         media = self._prepared(tmp_path, [(2560, 2560)])

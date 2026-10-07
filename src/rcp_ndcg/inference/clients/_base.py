@@ -48,12 +48,15 @@ from rcp_ndcg.data.prepare import (
     prepare_request,
 )
 from rcp_ndcg.data.preprocess import (
+    ChangeMechanism,
     FitResult,
+    ProcessingRecord,
     TextBudget,
     TextBudgetExceededError,
     TextTruncationCensus,
     fit,
     fixed_overhead,
+    processing_records,
 )
 from rcp_ndcg.data.resolution import ImagePolicy, MediaTokenCount, VideoPolicy, content_media_tokens
 from rcp_ndcg.data.templates import RequestShape
@@ -135,6 +138,10 @@ class RoleClient[C: Endpoint]:
         media_census: The :class:`~rcp_ndcg.data.prepare.MediaCensus` the prepared media (and the items a
             budget dropped, with ``dropped=True``) are recorded into -- the one passed in, or a fresh
             in-memory one.
+        processing: The :class:`~rcp_ndcg.data.preprocess.ProcessingRecord` of every input row the client
+            changed before sending it, in the order the requests were prepared (append-only; a row without a
+            record was sent as given). The per-row reading of the census rows and the media fit's decisions:
+            what a consumer such as the equivalence harness decides gating from.
     """
 
     #: The adapter role this client speaks: the registry namespace its config's ``api`` resolves in, and
@@ -199,6 +206,7 @@ class RoleClient[C: Endpoint]:
         self.endpoint = self._resolved_endpoint(config, self._adapter_cls)
         self.census = census if census is not None else TextTruncationCensus()
         self.media_census = media_census if media_census is not None else MediaCensus()
+        self.processing: list[ProcessingRecord] = []
         if sender is None:
             self._sender: Any = Transport(self.endpoint, auth=self._auth_profile())
         elif isinstance(sender, _TRANSPORT_CLASS) or callable(getattr(sender, "run", None)):
@@ -320,6 +328,7 @@ class RoleClient[C: Endpoint]:
             tokenizer=tokenizer_name,
             max_tokens=max_tokens,
             query_max_tokens=getattr(self.config, "query_max_tokens", None),
+            document_max_tokens=getattr(self.config, "document_max_tokens", None),
             template=getattr(self.config, "template", None),
             on_overflow=getattr(self.config, "on_overflow", "cut"),
             chunk=getattr(self.config, "chunk", None),
@@ -468,7 +477,12 @@ class RoleClient[C: Endpoint]:
                     )
 
     def _fit_media_per_item(
-        self, request: PreparedRequest, *, shape: RequestShape, doc_ids: Sequence[str]
+        self,
+        request: PreparedRequest,
+        *,
+        shape: RequestShape,
+        doc_ids: Sequence[str],
+        changes: dict[str, list[ChangeMechanism]] | None = None,
     ) -> tuple[list[Content], list[int]]:
         """The media fit of a request whose wire carries ONE item per budget (the pooling items, the
         embeddings inputs): each item's media fitted on its own, sliced from the one preparation
@@ -490,7 +504,9 @@ class RoleClient[C: Endpoint]:
             return list(request.contents), [0] * len(request.contents)
         allowance = max(self._budget.shape_max_tokens(shape) - fixed_overhead(self._budget, self._tokenizer, shape), 0)
         fitted = [
-            self._fit_media_for_request(one.contents, doc_ids=[doc_id], prepared=one, allowance=allowance)
+            self._fit_media_for_request(
+                one.contents, doc_ids=[doc_id], prepared=one, allowance=allowance, changes=changes
+            )
             for one, doc_id in zip(request.per_content(), doc_ids, strict=True)
         ]
         return [pair[0][0] for pair in fitted], [pair[1] for pair in fitted]
@@ -502,6 +518,7 @@ class RoleClient[C: Endpoint]:
         doc_ids: Sequence[str],
         prepared: PreparedRequest | None = None,
         allowance: int | None = None,
+        changes: dict[str, list[ChangeMechanism]] | None = None,
     ) -> tuple[list[Content], int]:
         """The media fit for ONE wire request's contents: media never cut, drops recorded.
 
@@ -528,6 +545,8 @@ class RoleClient[C: Endpoint]:
                 the text fit would refuse the request (``the fixed template overhead ... plus the declared
                 media ... already fill the budget``). ``None`` (a caller with no overhead to name): the
                 budget's ``max_tokens``.
+            changes: Where the fit notes, per doc_id, a ``media_resize`` (an item shrunk below its prepared
+                size) and a ``media_drop`` (an item dropped) for the row's :class:`ProcessingRecord`.
 
         Returns:
             ``(contents, tokens)``: the contents to send (the kept media in place, possibly shrunk, drops
@@ -585,6 +604,13 @@ class RoleClient[C: Endpoint]:
                     media=[media[position]],
                     dropped=True,
                 )
+            if changes is not None:
+                for position, decision in enumerate(fit.decisions):
+                    owner = media_doc_ids[position] if position < len(media_doc_ids) else self.ROLE
+                    if decision is None:
+                        changes.setdefault(owner, []).append("media_drop")
+                    elif decision != media[position].sent:
+                        changes.setdefault(owner, []).append("media_resize")
             contents = list(apply_media_fit(list(prepared.contents), fit))
         else:
             contents = list(prepared.contents)
@@ -630,6 +656,18 @@ class RoleClient[C: Endpoint]:
             corpus=self.ROLE,
             census=self.census if record else None,
         )
+
+    def _record_processing(
+        self,
+        shape: RequestShape,
+        *,
+        cuts: Sequence[Any] = (),
+        changes: dict[str, list[ChangeMechanism]] | None = None,
+    ) -> None:
+        """Append the :class:`~rcp_ndcg.data.preprocess.ProcessingRecord` of every row one preparation changed
+        to :attr:`processing`: its text cuts (the census rows the fit or the settlement wrote) and the other
+        mechanisms noted per input id (:func:`~rcp_ndcg.data.preprocess.processing_records`)."""
+        self.processing.extend(processing_records(self.ROLE, shape, cuts=cuts, changes=changes))
 
     @staticmethod
     def _with_text(content: Content, text: str) -> Content:
@@ -745,15 +783,26 @@ class RoleClient[C: Endpoint]:
         """The reply's prompt-token report (``None``: the engine reported none)."""
         raise NotImplementedError
 
-    def _apply_empty_documents(self, contents: Sequence[Content]) -> tuple[list[Content], list[int]]:
+    def _apply_empty_documents(
+        self,
+        contents: Sequence[Content],
+        *,
+        changes: dict[str, list[ChangeMechanism]] | None = None,
+        prefix: str = "",
+    ) -> tuple[list[Content], list[int]]:
         """The request's empty documents as the config's ``empty_doc`` policy sends them.
 
         An empty document is one with no text and no media left (a document whose every media item the
-        budget dropped is one, exactly like an empty text document). ``send`` (the default) sends the empty
-        string as today; ``send_text`` sends the configured placeholder text; ``omit_zero`` never sends the
-        item -- it scores 0.0 -- and the caller places the missing result (a zero vector, an empty slice, a
-        0.0 score) at its position. A request is never sent empty: the omitted items leave it, and the
-        caller returns without one when nothing remains.
+        budget dropped is one, exactly like an empty text document), decided on the content -- before the
+        template frames it, and under the side's prompt ``prefix`` (the content then carries the prompt alone):
+        a framed or prompted empty document is still empty. ``send`` (the default) sends the empty string as
+        today; ``send_text`` sends the configured placeholder text (after the prompt, framed like any
+        content); ``omit_zero`` never sends the item -- it scores 0.0 -- and the caller places the missing
+        result (a zero vector, an empty slice, a 0.0 score) at its position. A request is never sent empty:
+        the omitted items leave it, and the caller returns without one when nothing remains.
+
+        ``changes`` (when given) notes ``empty_doc`` under each substituted or omitted input's position, for its
+        :class:`~rcp_ndcg.data.preprocess.ProcessingRecord`.
 
         Returns:
             ``(kept, omitted)``: the contents to send and the indices of the omitted inputs (``omit_zero``).
@@ -762,15 +811,20 @@ class RoleClient[C: Endpoint]:
         kept: list[Content] = []
         omitted: list[int] = []
         for index, content in enumerate(contents):
-            if content.text or content.has_media:
+            if content.text != prefix or content.has_media:
                 kept.append(content)
                 continue
             if policy := getattr(self.config, "empty_doc", "send"):
                 if policy == "omit_zero":
                     omitted.append(index)
+                    if changes is not None:
+                        changes.setdefault(str(index), []).append("empty_doc")
                     continue
                 if policy == "send_text":
-                    kept.append(self._with_text(content, getattr(self.config, "empty_doc_text", None) or ""))
+                    placeholder = getattr(self.config, "empty_doc_text", None) or ""
+                    kept.append(self._with_text(content, prefix + placeholder))
+                    if changes is not None:
+                        changes.setdefault(str(index), []).append("empty_doc")
                     continue
             kept.append(content)  # "send": the empty string goes out, as today
         return kept, omitted

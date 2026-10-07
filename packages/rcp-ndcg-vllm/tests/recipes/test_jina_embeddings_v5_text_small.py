@@ -248,11 +248,9 @@ def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
     # declared shape per pairs row -- the query, and EVERY document of the row -- one per sample).
     assert anchor["checked"] == len(PAIRS) + sum(len(row["documents"]) for row in PAIRS) + 10
     assert anchor["anchor"] == "last_content"
-    # Its ONLY failures are its known gap for last_content (the strict-xfail below pins the gap):
-    # the tail-edge check with an empty expected edge reds every render of a content-final shape
-    # with no appended post-processor token, though the product declares last_content positional-free.
-    for failure in anchor["failures"]:
-        assert failure["check"] == "tail" and failure["expected_edge_ids"] == [], failure
+    # The harness audits last_content as the product defines it: the head markers open every render and a
+    # content token closes it (no fixed tail, no appended post-processor token).
+    assert anchor["passed"] is True, anchor["failures"][:1]
     # Both declared shapes carried their five over-length samples and cut them (the content span
     # only; the fixed frame is reserved, which the anchor check just asserted). The facts come from
     # the role client's own capture and census (what the served path really sent).
@@ -356,8 +354,8 @@ def test_dropping_the_anchor_segment_turns_the_render_check_red(tmp_path: Path) 
     requirement), so the marker's protection is the DECLARED FRAME being byte-identical to the
     checkpoint's own prompts -- and stage 1's render check (the reference's render against the
     fit's captured prompt, zero tolerance) is the gate: dropping the marker silently changes every
-    prompt, and the render check reds naming the row.  (The anchor audit cannot see a frame
-    drop either: see the strict-xfail's harness-gap note.)
+    prompt, and the render check reds naming the row.  (The anchor audit sees a dropped head
+    marker too.)
     """
     tokenizer_path = tokenizer_file(tmp_path)
     mutated_dir = tmp_path / RECIPE_ID
@@ -535,30 +533,14 @@ def test_notes_pin_the_query_cap_check_the_feature_floor_and_the_download_figure
 
 
 # ---------------------------------------------------------------------------
-# The harness gap, pinned in the open (the fix belongs to the harness, not to the recipe).
+# The last_content anchor audit (the harness branch for the anchor kind this recipe declares).
 # ---------------------------------------------------------------------------
 
-HARNESS_GAP_REASON = (
-    "rcp_ndcg_vllm.equivalence.stages._anchor_check/_anchor_edge_ids has no anchor: last_content "
-    "branch (a product AnchorKind this recipe declares): with no fixed "
-    "tail and no appended post-processor token the expected tail edge is empty and the `not edge` "
-    "test reds every render, though the product's TemplateSpec documents last_content as having no "
-    "positional requirement with the head markers reserved and audited.  The fix belongs to the "
-    "harness, not to this recipe -- either audit the "
-    "HEAD edge for last_content (as for first: _anchor_edge_ids already returns it) or skip the "
-    "positional check as for mean.  Strict xfail: this test goes XPASS (a FAILURE) the moment the "
-    "harness branch lands, forcing this marker to be removed."
-)
 
-
-@pytest.mark.xfail(strict=True, reason=HARNESS_GAP_REASON)
 def test_stage1_anchor_check_knows_the_last_content_anchor(tmp_path: Path) -> None:
-    """The anchor gate goes green once the harness audits `anchor: last_content`.
-
-    Everything else in stage 1 already gates (the render comparison, the census facts); only the
-    anchor audit's positional tail check mishandles the declared anchor kind.  Under-cap rows keep
-    their head markers by construction and the cut keeps a content prefix, so a correct audit is
-    green.
+    """The anchor gate is green: the harness audits `anchor: last_content` (the head markers open every render
+    and a content token closes it). Under-cap rows keep their head markers by construction and the cut keeps a
+    content prefix.
     """
     tokenizer_path = tokenizer_file(tmp_path)
     pairs_path = _write_pairs(tmp_path)

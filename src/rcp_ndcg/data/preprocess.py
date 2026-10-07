@@ -351,29 +351,54 @@ def apply_text_policy(
     return cut
 
 
+CutCause = Literal["budget_cut", "query_share", "document_share"]
+"""Why a role client changed what it sends (a ``text_budget`` row's ``cause``): see :class:`TextCutRecord`."""
+
+CUT_CAUSES: tuple[CutCause, ...] = ("budget_cut", "query_share", "document_share")
+"""Every :data:`CutCause`, in the order the client applies them (the budget binds last)."""
+
+
 class TextCutRecord:
     """One observed cut: tokens (of the judge's tokenizer) and characters before and after.
 
     Frozen so a recorded event cannot be rewritten. The limits are in tokens; the characters are information.
     A ``text_budget`` record adds what the judge's mechanisms do not have: which request ``shape`` was cut,
     who computed the budget (``budget_source``: the declared tokenizer, or a hosted vendor's documented limit),
-    and -- on a chunked document -- the ``aggregation`` its chunk scores pool by.
+    and -- on a chunked document -- the ``aggregation`` its chunk scores pool by. A role client's cut also
+    names why it changed what it sends (``cause``) and how large the uncut and the kept request are as the
+    engine would read them (``original_request_tokens``, ``kept_request_tokens``: the frame, its specials,
+    the content and the reserved media) -- ``original_tokens`` counts the content alone, so a request whose
+    frame pushed it over the budget has a content count under it. They are ``None`` on the judge's rows and on
+    a vendor's budget row (a recorded limit, not a cut), and are then left out of :meth:`as_row`. A role
+    client's :class:`ProcessingRecord` of the row reads them.
+
+    ``cause`` is one of :data:`CUT_CAUSES`: ``budget_cut`` (the uncut request exceeded its shape's budget),
+    ``query_share`` (the rerank client settled the shared query to its declared ``query_max_tokens``, also
+    inside a pair under the budget) or ``document_share`` (a document exceeded the declared
+    ``document_max_tokens`` and was cut to it while the pair fitted the budget).
     """
 
     __slots__ = (
         "aggregation",
         "budget_source",
         "budget_tokens",
+        "cause",
         "corpus",
         "doc_id",
         "kept_chars",
         "kept_tokens",
         "mechanism",
+        "kept_request_tokens",
         "original_chars",
+        "original_request_tokens",
         "original_tokens",
         "query_id",
         "shape",
     )
+
+    cause: CutCause | None
+    original_request_tokens: int | None
+    kept_request_tokens: int | None
 
     def __init__(
         self,
@@ -390,6 +415,9 @@ class TextCutRecord:
         aggregation: str | None = None,
         shape: str | None = None,
         budget_tokens: int | None = None,
+        cause: CutCause | None = None,
+        original_request_tokens: int | None = None,
+        kept_request_tokens: int | None = None,
     ) -> None:
         self.corpus = corpus
         self.doc_id = doc_id
@@ -403,6 +431,9 @@ class TextCutRecord:
         self.aggregation = aggregation
         self.shape = shape
         self.budget_tokens = budget_tokens
+        self.cause = cause
+        self.original_request_tokens = original_request_tokens
+        self.kept_request_tokens = kept_request_tokens
 
     def as_row(self) -> dict[str, Any]:
         row: dict[str, Any] = {
@@ -426,6 +457,12 @@ class TextCutRecord:
             row["aggregation"] = self.aggregation
         if self.shape is not None:
             row["shape"] = self.shape
+        if self.cause is not None:
+            row["cause"] = self.cause
+        if self.original_request_tokens is not None:
+            row["original_request_tokens"] = self.original_request_tokens
+        if self.kept_request_tokens is not None:
+            row["kept_request_tokens"] = self.kept_request_tokens
         return row
 
     def __eq__(self, other: object) -> bool:
@@ -612,6 +649,9 @@ class TextTruncationCensus:
         aggregation: str | None = None,
         shape: str | None = None,
         budget_tokens: int | None = None,
+        cause: CutCause | None = None,
+        original_request_tokens: int | None = None,
+        kept_request_tokens: int | None = None,
     ) -> TextCutRecord:
         if mechanism not in self.MECHANISMS:
             raise DataError(
@@ -631,6 +671,9 @@ class TextTruncationCensus:
             aggregation=aggregation,
             shape=shape,
             budget_tokens=budget_tokens,
+            cause=cause,
+            original_request_tokens=original_request_tokens,
+            kept_request_tokens=kept_request_tokens,
         )
         self._cuts.append(cut)
         self._append(cut.as_row())
@@ -884,6 +927,134 @@ class FitResult:
     cuts: tuple[TextCutRecord, ...] = ()
 
 
+ChangeMechanism = Literal["budget_cut", "query_share", "document_share", "empty_doc", "media_resize", "media_drop"]
+"""How a role client's preparation changed an input row (a :class:`ProcessingRecord`'s ``mechanisms``)."""
+
+CHANGE_MECHANISMS: tuple[ChangeMechanism, ...] = (
+    "empty_doc",
+    "media_resize",
+    "media_drop",
+    "document_share",
+    "query_share",
+    "budget_cut",
+)
+"""Every :data:`ChangeMechanism`, in the order a client applies them (a record lists its mechanisms so)."""
+
+
+@dataclass(frozen=True)
+class ProcessingRecord:
+    """What a role client's preparation changed in one input row, relative to the row as given.
+
+    The one per-row record of the role clients (:attr:`~rcp_ndcg.inference.clients._base.RoleClient.processing`
+    collects them): a client emits one for every input row it changed before sending it, and none for a row it
+    sent as given -- so a consumer decides "changed or not" from the record alone (the equivalence harness
+    reports a changed row under a declared over-cap deviation and gates an unchanged one exactly). Each change
+    is named by its mechanism (:data:`CHANGE_MECHANISMS`):
+
+    * ``empty_doc`` -- an empty document substituted (``empty_doc: send_text``) or never sent (``omit_zero``);
+      an empty query is refused or sent as given (``empty_query``), so it never changes a row;
+    * ``media_resize`` / ``media_drop`` -- the request's text budget shrank a media item below its prepared
+      size, or dropped it (:func:`~rcp_ndcg.data.prepare.fit_media_to_budget`; the media census holds the
+      items). The declared image policy's own resize is the instrument, applied alike by the reference
+      (R20), not a change to the row;
+    * ``document_share`` -- a document cut to the declared ``document_max_tokens``;
+    * ``query_share`` -- the reranker's shared query settled at its declared share (row ``<query>``,
+      :data:`~rcp_ndcg.inference.clients.rerank.QUERY_DOC_ID`; it rides every pair of its call);
+    * ``budget_cut`` -- the content cut so that the request -- frame, specials, content and media -- fits its
+      shape's budget (also when the content alone fits it).
+
+    The text mechanisms read the census rows the cut wrote (:class:`TextCutRecord`): nothing is measured twice.
+
+    Attributes:
+        corpus: The role that prepared the row (the census rows' ``corpus``).
+        input_id: The row's id within its call: its position among the call's inputs (``"0"``, ``"1"``, ...),
+            or the reranker's shared query (``"<query>"``). A chunked document is one row.
+        shape: The request shape the row was prepared as.
+        mechanisms: Every change, by mechanism, in :data:`CHANGE_MECHANISMS` order; never empty.
+        original_request_tokens: The uncut request's whole size as the engine would read it (frame, specials,
+            content, reserved media), when a text mechanism measured it; ``None`` otherwise.
+        kept_request_tokens: The sent request's whole size (the largest chunk's, for a chunked document), when
+            measured; ``None`` otherwise.
+        budget_tokens: The shape's budget the text mechanism measured against, when one did.
+    """
+
+    corpus: str
+    input_id: str
+    shape: RequestShape
+    mechanisms: tuple[ChangeMechanism, ...]
+    original_request_tokens: int | None = None
+    kept_request_tokens: int | None = None
+    budget_tokens: int | None = None
+
+    @property
+    def changed(self) -> bool:
+        """Whether the client changed the row (always, for an emitted record; the harness's gating test)."""
+        return bool(self.mechanisms)
+
+    def as_row(self) -> dict[str, Any]:
+        """The record as a JSON-ready row (a report's)."""
+        return {
+            "corpus": self.corpus,
+            "input_id": self.input_id,
+            "shape": self.shape,
+            "mechanisms": list(self.mechanisms),
+            "original_request_tokens": self.original_request_tokens,
+            "kept_request_tokens": self.kept_request_tokens,
+            "budget_tokens": self.budget_tokens,
+        }
+
+
+def processing_records(
+    corpus: str,
+    shape: RequestShape,
+    *,
+    cuts: Sequence[TextCutRecord] = (),
+    changes: Mapping[str, Sequence[ChangeMechanism]] | None = None,
+) -> list[ProcessingRecord]:
+    """The :class:`ProcessingRecord` of every row one preparation changed: its text cuts (read from the census
+    rows ``fit`` or the rerank settlement wrote -- a chunk's ``<id>#<k>`` row counts for its input ``<id>``) and
+    the other mechanisms the client noted per input id (media, empty substitutions).
+
+    Args:
+        corpus: The role's name.
+        shape: The shape the rows were prepared as.
+        cuts: The text-budget cut rows of the preparation (vendor budget rows carry no cause and are skipped).
+        changes: Per input id, the other mechanisms applied.
+
+    Returns:
+        One record per changed input id, in the order the ids first appear (``changes`` first, then the cuts).
+    """
+    mechanisms: dict[str, set[ChangeMechanism]] = {}
+    totals: dict[str, list[TextCutRecord]] = {}
+    for input_id, applied in (changes or {}).items():
+        if applied:
+            mechanisms.setdefault(input_id, set()).update(applied)
+    for cut in cuts:
+        if cut.cause is None:
+            continue
+        input_id = cut.doc_id.rsplit(CHUNK_ID_SEPARATOR, 1)[0] if CHUNK_ID_SEPARATOR in cut.doc_id else cut.doc_id
+        mechanisms.setdefault(input_id, set()).add(cut.cause)
+        totals.setdefault(input_id, []).append(cut)
+    records = []
+    for input_id, applied in mechanisms.items():
+        rows = totals.get(input_id, [])
+        original = [row.original_request_tokens for row in rows if row.original_request_tokens is not None]
+        kept = [row.kept_request_tokens for row in rows if row.kept_request_tokens is not None]
+        budgets = [row.budget_tokens for row in rows if row.budget_tokens is not None]
+        records.append(
+            ProcessingRecord(
+                corpus=corpus,
+                input_id=input_id,
+                shape=shape,
+                mechanisms=tuple(mechanism for mechanism in CHANGE_MECHANISMS if mechanism in applied),
+                original_request_tokens=max(original) if original else None,
+                kept_request_tokens=max(kept) if kept else None,
+                budget_tokens=max(budgets) if budgets else None,
+            )
+        )
+    return records
+
+
 class TextBudget(BaseModel):
     """The declared text budget of a served role: one mechanism that fits every request into a model's input.
 
@@ -916,6 +1087,14 @@ class TextBudget(BaseModel):
             capped the same) -- a pair share at or over the budget is refused one layer up, by the rerank
             config, and ``fit``'s pair cut refuses a query whose settled render would leave the document
             nothing.
+        document_max_tokens: The document's own cap on a ``pair`` budget, in content tokens -- for a checkpoint
+            that cuts each document itself (jina-reranker-v3 reads 2048 document tokens): a document over it is
+            cut to it, also in a pair the budget would take whole (the model never reads past it), the frame
+            re-attached and the cut recorded (``cause: document_share``), before the pair is fitted to
+            ``max_tokens``. The pair shape only (an embedding role's document shape is capped by
+            ``max_tokens``). ``None`` (the default) declares no cap. Above ``max_tokens`` it is refused (the
+            rerank config refuses one at or over it: it could never bind), and beside ``on_overflow: chunk``
+            too (the cap and the chunks would decide the same document two ways).
         template: The request template (:class:`~rcp_ndcg.data.templates.TemplateSpec`), whose fixed
             segments are measured once per (template, shape) and whose specials are resolved from the
             tokenizer. ``None`` fits raw text: the overhead is then the tokenizer post-processor's tokens
@@ -939,6 +1118,7 @@ class TextBudget(BaseModel):
         "tokenizer": FieldRole.RUNTIME,
         "max_tokens": FieldRole.CONTENT,
         "query_max_tokens": FieldRole.CONTENT,
+        "document_max_tokens": FieldRole.CONTENT,
         "template": FieldRole.CONTENT,
         "on_overflow": FieldRole.CONTENT,
         "chunk": FieldRole.CONTENT,
@@ -948,6 +1128,7 @@ class TextBudget(BaseModel):
     tokenizer: str | None = Field(default=None, min_length=1)
     max_tokens: int = Field(ge=1)
     query_max_tokens: int | None = Field(default=None, ge=1)
+    document_max_tokens: int | None = Field(default=None, ge=1, exclude_if=lambda value: value is None)
     template: TemplateSpec | None = None
     on_overflow: Literal["cut", "chunk", "fail"] = "cut"
     chunk: ChunkPolicy | None = Field(default=None, exclude_if=lambda value: value is None)
@@ -978,6 +1159,16 @@ class TextBudget(BaseModel):
                 f"query_max_tokens ({self.query_max_tokens}) must not exceed max_tokens ({self.max_tokens}): "
                 "the query budget would be over the model's whole input budget"
             )
+        if self.document_max_tokens is not None and self.document_max_tokens > self.max_tokens:
+            raise ValueError(
+                f"document_max_tokens ({self.document_max_tokens}) must not exceed max_tokens ({self.max_tokens}): "
+                "the document cap would be over the model's whole input budget"
+            )
+        if self.document_max_tokens is not None and self.on_overflow == "chunk":
+            raise ValueError(
+                "document_max_tokens cuts every document to its cap, and on_overflow 'chunk' splits an over-budget "
+                "document into chunks instead: the two would decide the same document two ways; declare one"
+            )
         return self
 
     @model_validator(mode="after")
@@ -990,6 +1181,7 @@ class TextBudget(BaseModel):
                 for name, value in (
                     ("on_overflow", self.on_overflow),
                     ("query_max_tokens", self.query_max_tokens),
+                    ("document_max_tokens", self.document_max_tokens),
                     ("chunk", self.chunk),
                     ("template", self.template),
                 )
@@ -1000,7 +1192,7 @@ class TextBudget(BaseModel):
                     f"this budget declares no tokenizer, so its content is sent uncut (a hosted vendor "
                     f"profile) and {inert} would be inert",
                     hint="declare tokenizer (the profile then cuts like a self-hosted one), or drop the "
-                    "inert fields (on_overflow, query_max_tokens, chunk, template)",
+                    "inert fields (on_overflow, query_max_tokens, document_max_tokens, chunk, template)",
                 )
         return self
 
@@ -1364,16 +1556,24 @@ def fit(
         original: ContentParts,
         kept: ContentParts,
         aggregation: str | None,
+        request_tokens: int,
         raw: ContentParts | None = None,
+        cause: CutCause = "budget_cut",
     ) -> None:
         """One cut row (also appended to the census when the caller passed one).
 
         ``raw`` is the input as given, when a declared normalisation changed the spans before the cut: the
         row's original side is then the raw text (the input), never the normalised one (declared policy).
+        ``request_tokens`` is the uncut request's whole size as the engine would read it (the frame, its
+        specials, the content and the reserved media); ``cause`` why the content changed.
         """
         source = original if raw is None else raw
         original_text = source if isinstance(source, str) else source[0] + source[1]
         kept_text = kept if isinstance(kept, str) else kept[0] + kept[1]
+        if isinstance(kept, str):
+            kept_render = assemble(kept, "") if shape == "query" else assemble("", kept)
+        else:
+            kept_render = assemble(kept[0], kept[1])
         if tokenizer is None:  # a cut is recorded only on the tokenizer path (fit's guard)
             raise DataError(
                 "a cut is recorded with no tokenizer to measure it",
@@ -1391,6 +1591,9 @@ def fit(
             aggregation=aggregation,
             shape=shape,
             budget_tokens=shape_budget,
+            cause=cause,
+            original_request_tokens=request_tokens,
+            kept_request_tokens=tokenizer.count(kept_render, add_special_tokens=flag) + spent,
         )
         if census is not None:
             census.record(
@@ -1405,6 +1608,9 @@ def fit(
                 aggregation=cut.aggregation,
                 shape=cut.shape,
                 budget_tokens=cut.budget_tokens,
+                cause=cut.cause,
+                original_request_tokens=cut.original_request_tokens,
+                kept_request_tokens=cut.kept_request_tokens,
             )
         cuts.append(cut)
 
@@ -1450,7 +1656,31 @@ def fit(
             assert isinstance(item, str) and isinstance(raw, str)
             query, document = (item, "") if shape == "query" else ("", item)
             original = item
-        if tokenizer.count(assemble(query, document), add_special_tokens=flag) <= cap:
+        uncut_tokens = tokenizer.count(assemble(query, document), add_special_tokens=flag)
+        # The uncut request's whole size as the engine would read it: every census row of this input names it.
+        request_tokens = uncut_tokens + spent
+        # A declared per-document cap binds first, whatever the budget says: the checkpoint never reads past it
+        # (the content span only, the frame re-attached by the render below).
+        document_cap = budget.document_max_tokens if shape == "pair" else None
+        if document_cap is not None and tokenizer.count(document) > document_cap:
+            document = token_prefix(document, document_cap, tokenizer)
+            uncut_tokens = tokenizer.count(assemble(query, document), add_special_tokens=flag)
+            if uncut_tokens <= cap:
+                if template is not None:
+                    texts.append(assemble(query, document))
+                contents.append((query, document))
+                entries.append((input_id, input_id))
+                _record(
+                    doc_id=input_id,
+                    original=original,
+                    kept=(query, document),
+                    aggregation=None,
+                    request_tokens=request_tokens,
+                    raw=raw,
+                    cause="document_share",
+                )
+                continue
+        if uncut_tokens <= cap:
             if not (template is None and shape == "pair"):
                 texts.append(assemble(query, document))
             contents.append(original)
@@ -1502,7 +1732,14 @@ def fit(
                     texts.append(assemble(q_final, d_final))
                 contents.append((q_final, d_final))
                 entries.append((input_id, input_id))
-                _record(doc_id=input_id, original=original, kept=(q_final, d_final), aggregation=None, raw=raw)
+                _record(
+                    doc_id=input_id,
+                    original=original,
+                    kept=(q_final, d_final),
+                    aggregation=None,
+                    request_tokens=request_tokens,
+                    raw=raw,
+                )
             else:
                 pieces = _chunks(document, room, q_final, cap)
                 if len(pieces) == 1:
@@ -1512,7 +1749,14 @@ def fit(
                         texts.append(assemble(q_final, pieces[0]))
                     contents.append((q_final, pieces[0]))
                     entries.append((input_id, input_id))
-                    _record(doc_id=input_id, original=original, kept=(q_final, pieces[0]), aggregation=None, raw=raw)
+                    _record(
+                        doc_id=input_id,
+                        original=original,
+                        kept=(q_final, pieces[0]),
+                        aggregation=None,
+                        request_tokens=request_tokens,
+                        raw=raw,
+                    )
                     continue
                 for k, piece in enumerate(pieces):
                     chunk_id = f"{input_id}{CHUNK_ID_SEPARATOR}{k}"
@@ -1525,6 +1769,7 @@ def fit(
                         original=original,
                         kept=(q_final, piece),
                         aggregation=budget.aggregation,
+                        request_tokens=request_tokens,
                         raw=raw,
                     )
                 chunked_any = True
@@ -1549,14 +1794,28 @@ def fit(
                 texts.append(assemble("", pieces[0]))
                 contents.append(pieces[0])
                 entries.append((input_id, input_id))
-                _record(doc_id=input_id, original=item, kept=pieces[0], aggregation=None, raw=raw)
+                _record(
+                    doc_id=input_id,
+                    original=item,
+                    kept=pieces[0],
+                    aggregation=None,
+                    request_tokens=request_tokens,
+                    raw=raw,
+                )
                 continue
             for k, piece in enumerate(pieces):
                 chunk_id = f"{input_id}{CHUNK_ID_SEPARATOR}{k}"
                 texts.append(assemble("", piece))
                 contents.append(piece)
                 entries.append((chunk_id, input_id))
-                _record(doc_id=chunk_id, original=item, kept=piece, aggregation=budget.aggregation, raw=raw)
+                _record(
+                    doc_id=chunk_id,
+                    original=item,
+                    kept=piece,
+                    aggregation=budget.aggregation,
+                    request_tokens=request_tokens,
+                    raw=raw,
+                )
             chunked_any = True
         else:  # cut
             assert isinstance(item, str)  # the pair's cut is handled above
@@ -1574,7 +1833,7 @@ def fit(
                 texts.append(rendered)
             contents.append(kept)
             entries.append((input_id, input_id))
-            _record(doc_id=input_id, original=item, kept=kept, aggregation=None, raw=raw)
+            _record(doc_id=input_id, original=item, kept=kept, aggregation=None, request_tokens=request_tokens, raw=raw)
 
     out = [entry[0] for entry in entries]
     if len(set(out)) != len(out):
@@ -1640,8 +1899,12 @@ __all__ = [
     "fixed_overhead",
     "rendered_pair_tokens",
     "rendered_request",
+    "CHANGE_MECHANISMS",
     "CHUNK_ID_SEPARATOR",
+    "CUT_CAUSES",
+    "ChangeMechanism",
     "ChunkPolicy",
+    "CutCause",
     "DEFAULT_MAX_TOKENS",
     "DEFAULT_TEXT_POLICY",
     "DocumentOverCapError",
@@ -1652,6 +1915,7 @@ __all__ = [
     "TextCutRecord",
     "ContentParts",
     "OnOverflow",
+    "ProcessingRecord",
     "TextTruncationCensus",
     "TextPolicy",
     "apply_text_policy",
@@ -1663,6 +1927,7 @@ __all__ = [
     "fit",
     "max_pool_rubric_window_by_document",
     "max_pool_scores_by_document",
+    "processing_records",
     "read_census_rows",
     "split_into_chunks",
     "token_prefix",

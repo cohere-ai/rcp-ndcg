@@ -429,13 +429,6 @@ def test_reference_renders_the_card_truncation_not_the_client_cut(recipe_cpu: An
 
 
 @pytest.mark.network
-@pytest.mark.xfail(
-    strict=True,
-    reason="product gap: the embed client applies empty_doc after fit has rendered the frame "
-    "(rcp_ndcg.inference.clients.embed._prepare -> _apply_empty_documents sees the rendered, non-empty "
-    "text), so a templated role's empty_doc: send_text never fires and an empty document ships as an "
-    "empty user turn. Strict: this goes red the day the product applies the policy before the render.",
-)
 def test_an_empty_document_renders_the_card_null(recipe_cpu: Any, tmp_path: Path) -> None:
     """The card renders an empty input as the literal NULL; the declared empty_doc: send_text "NULL" is the
     recipe's way to ship the same prompt."""

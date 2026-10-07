@@ -263,7 +263,18 @@ def fit_media_to_budget(
         return MediaFit(items, tokens, [], tuple(item.sent for item in items))
     if image.resizes:
         assert image.min_px is not None and image.processor is not None
-        minimum = ImagePolicy(min_px=image.min_px, max_px=image.min_px, processor=image.processor)
+        # The declared policy with its budget closed to the minimum: every other field carried, the engine
+        # pinning included (a pinned budget below the family's stock floor stays the engine's own).
+        try:
+            minimum = ImagePolicy.model_validate({**image.model_dump(), "max_px": image.min_px})
+        except ValueError as error:
+            raise DataError(
+                f"the media of this request cost {tokens} tokens, over the {text_budget_tokens} its text budget "
+                f"leaves, and the image policy {image.descriptor} cannot shrink to its minimum ({image.min_px} px): "
+                f"{error}",
+                hint="declare an image policy whose minimum the engine keeps (engine_pixel_pinning for a budget "
+                "the engine is pinned to), or raise the text budget",
+            ) from error
         shrunk: list[PreparedMedia] = []
         for item in items:
             if item.kind == "video":

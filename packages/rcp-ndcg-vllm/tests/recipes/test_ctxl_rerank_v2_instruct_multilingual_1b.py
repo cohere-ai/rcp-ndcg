@@ -92,6 +92,7 @@ EXPECTED_CLIENT = {
     "model": RECIPE_ID,
     "on_overflow": "cut",
     "query_max_tokens": 4096,
+    "document_max_tokens": None,
     "recipe": None,
     "request_shape": "text",
     "revision": REVISION,

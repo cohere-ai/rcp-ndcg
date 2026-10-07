@@ -41,8 +41,10 @@ Three research findings shape the `serve` and `client` blocks, and the schema en
   anchors but cuts over-cap content its own way (a joint `longest_first` truncation, say, where the client settles
   the query at its share) declares `[over_cap_cut_differs]`; either way the harness reports those pairs
   separately, outside the gates. The reference stays the paper's or the model card's: it never copies the
-  client's cut to make an over-cap pair pass. The declared shape's `anchor` is `last`, `first`, `mean` or `marker`
-  (with `anchor_markers`), and stage 1 samples over-length inputs (at least 20 per shape) and asserts every
+  client's cut to make an over-cap pair pass. The declared shape's `anchor` is `last`, `first`, `last_content` (a
+  model that pools the last real token of raw text: the shape ends on its content span, and the audit asserts
+  the head marker opening the render and a content token closing it, before the post-processor's tail), `mean`
+  or `marker` (with `anchor_markers`), and stage 1 samples over-length inputs (at least 20 per shape) and asserts every
   anchor survived — reported as `anchor_check`, separately from token-id mismatches.
 - **Segments: `fixed` and `content`, nothing else.** A shape is an ordered list of segments with exactly two
   kinds: `fixed` — ordinary template text, which may name special tokens as `{special:<name>}` placeholders
@@ -198,10 +200,11 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
 
 - `anchor_check` asserts every anchor survived the client's cut, on the captured requests of every shape —
   the rendered prompt's edge for the embed roles, and for a reranker the settle-once query (one settled span
-  per row, identical across the row's pointwise requests, within its declared `query_max_tokens`, and no cut
-  on an in-budget pair). Every wire shape is read: a `token_ids` body is audited on the ids it sends, a
-  `messages` body on its messages' text parts (joined with `"\n"`, as the engine joins them) (its media parts are listed as placeholders beside them). An
-  audit that read no input fails. An `anchor: first` head is asserted as the engine reads it: where the head
+  per row, identical across the row's pointwise requests, within its declared `query_max_tokens`, every
+  document span within its declared `document_max_tokens`, and no cut on an in-budget pair). Every wire shape is read: a `token_ids` body is audited on the ids it sends, a
+  `messages` body as the declared frame around its conversation's text parts (joined with `"\n"`, as the
+  engine joins them; its media parts are listed as placeholders beside them): the client sends the content
+  and the engine's chat template frames it. An audit that read no input fails. An `anchor: first` head is asserted as the engine reads it: where the head
   meets the content a byte-level BPE re-tokenizes across the join (`"doc: "` then reads `Ġdocument`; under a
   Qwen-style pre-tokenizer `"Query:"` reads `:Paris`), so the edge is the post-processor's prefix and the
   head's own tokens in the assembled render: a text body must start with the head's characters, and its
@@ -212,23 +215,31 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
 - `render_check` compares the reference subprocess's `render` output against the captured texts, zero
   tolerance (a `token_ids` body on ids: the ids it sent against the reference text's ids under the shape's
   `add_special_tokens` flag) — every declared shape of every pairs-file row (a row carrying the per-row `shape` field is
-  compared too; the injected over-length samples are audited, not compared). Under a declared
-  over-cap deviation, the rows the client had to cut are reported in a separate non-gating table here as
-  well (the reference renders them its own way by declaration);
+  compared too; the injected over-length samples are audited, not compared). Under a declared over-cap
+  deviation, the rows the client changed are reported in a separate non-gating table here as well (the
+  reference renders them its own way by declaration): every row the client's census records a cut for, with its
+  `cause` -- the budget counted with the frame (a content under `max_tokens` whose framed request is over it),
+  the reranker's query share (also inside a pair the budget takes whole) or a declared per-document cap. The
+  decision is per text: a reranker's settled query changes every pair of its row, a cut document only its
+  own pair, and every text the client sent uncut gates exactly, also beside a changed sibling;
 - `engine_tokenize_check` (R29, needs the engine) requires the engine's `/tokenize` ids and counts of every
   captured text to equal the recipe tokenizer's; reported `not_run` without an engine, never as passed (and
   for a `token_ids` client, which sends ids and leaves the engine nothing to tokenize);
 - `template_render_check`, when `serve.chat_template` is set: the template file's jinja2 render (the engine's
-  settings) against the declared template's render, for every declared shape.
+  settings) against the declared template's render, for every declared shape. On the `messages` route the file
+  is the engine's chat template: it is rendered over every conversation the client sent and must equal the
+  declared frame around that content, once (without `serve.chat_template` the check is `not_run`: the engine
+  renders the checkpoint's own template, which the recipe's own test pins).
 
 Stage 2 sends the same pairs through the product's role clients (`EmbeddingClient`, `PoolingClient`,
 `RerankClient`) built from the recipe's real budget — the client prompts, fits and settles exactly as the
 served path does (for a reranker, the shared query span settles once per call) — and applies the gates:
 probability |Δ| ≤ 0.02 for 99% of documents and ≤ 0.05 for all; logit |Δ| ≤ 0.05·(1 + |s|); cosine scores
 |Δ| ≤ 0.01; vectors cosine ≥ 1 − 1e-3 per vector (per token, after the same float16 cast); median per-query
-Kendall τ ≥ 0.98. A recipe's `gates` section overrides any of these. With a declared over-cap deviation,
-the inputs the client had to cut (decided on the client's own census) are reported in a separate, non-gating
-table — in stage 2 for every role — and the gates run on the under-cap pairs only.
+Kendall τ ≥ 0.98. A recipe's `gates` section overrides any of these. With
+a declared over-cap deviation, the inputs the client changed (decided on the client's own census rows and
+their `cause`; a reranker's query settlement changes every pair of its call) are reported in a separate,
+non-gating table — in stage 2 for every role — and the gates run on the inputs sent uncut only.
 
 Stage 3 (optional) scores rankings per subset with `rcp-ndcg eval score` as a subprocess (the package depends
 on `rcp-ndcg`, so the command is always available) and requires the mean |Δ nDCG@10| over subsets ≤ 2e-3.

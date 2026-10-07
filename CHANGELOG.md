@@ -25,6 +25,46 @@ released together.
 
 ### Public surface
 
+- **An image pixel budget the engine is pinned to** (`ImagePolicy.engine_pixel_pinning`): a budget outside the
+  processor family's stock range was refused even when the engine was pinned to it (Qwen3-VL-Embedding's card
+  budget, 4096..1843200 px, below `qwen3_vl`'s stock 65536 px floor), so such a client could neither resize nor
+  count an image. Declaring `engine_pixel_pinning: true` admits the budget, and the policy's re-resize check
+  then uses the pinned budget (the engine's own) instead of the stock range; the descriptor says `pinned`.
+  `false` is stored as `None`, so no existing policy re-keys; a declared pinning is a different instrument (it
+  enters the family key). A policy without a budget refuses the declaration. The media fit's shrink step
+  carries the declared policy's every field (the pinning included) into its minimum policy, so a pinned budget
+  below the stock floor shrinks to its own minimum; a shrink the policy cannot express is a typed `DataError`
+  naming the budget. `rcp_ndcg_vllm`'s recipe
+  validator checks both sides: a pinned client needs `serve.mm_processor_kwargs.images_kwargs` with both
+  numbers, and every pixel number serve pins (nested or flat, `min_pixels`/`max_pixels` or the HF processor's
+  `size: {shortest_edge, longest_edge}`) must equal the client's -- a serve pin beside a client that declares
+  no pixel budget is refused too.
+- **A per-document cap beside the pair budget** (`RerankEndpoint.document_max_tokens`,
+  `TextBudget.document_max_tokens`): a reranker whose checkpoint cuts each document itself (jina-reranker-v3
+  reads 2048 document tokens beside its 512-token query share) declares it, mirroring `query_max_tokens`.
+  `fit` cuts every pair's document over it to it on the content span only -- also in a pair the budget would
+  take whole -- re-attaches the frame (the anchors survive) and records the cut under the document's position
+  with `cause: document_share` (`budget_cut` when the pair still overflowed and the budget cut it further). The
+  cap is content (it enters the config's and the budget's identity; unset, both are unchanged), must be below
+  `max_tokens` on the rerank config (at or over it the pair budget always binds first), and is refused
+  beside `on_overflow: chunk` and on a hosted profile without a tokenizer (inert). The equivalence harness's
+  rerank audit holds every captured document span to it, as it holds the query span to its share.
+- **A role client records, per input row, what it changed** (`rcp_ndcg.data.preprocess.ProcessingRecord`,
+  `RoleClient.processing`): every role client's preparation emits one record for each input row it changed
+  before sending it -- none for a row sent as given -- naming each change by its mechanism
+  (`CHANGE_MECHANISMS`: `empty_doc`, `media_resize`, `media_drop`, `document_share`, `query_share`,
+  `budget_cut`) with the uncut and the kept request totals (frame, specials, content and media) and the
+  shape's budget; `processing_records` builds them from the census rows the cut wrote and the media fit's
+  and the empty-document policy's decisions, so nothing is measured twice. The policy's own image resize is
+  the declared instrument (R20), not a change. The text census rows name the same facts:
+  `TextCutRecord.cause` (`budget_cut`, `query_share` or `document_share`; `CutCause` / `CUT_CAUSES`),
+  `original_request_tokens` and `kept_request_tokens`, recorded by `fit` and by the rerank client's
+  shared-query settlement, also on the census sink's rows (`TextTruncationCensus.record` takes them). They are
+  `None` (and absent from `as_row()`) on the judge's rows and on a vendor's budget row, so those rows are
+  unchanged. `original_tokens` counts the content alone: a request whose frame pushed it over the budget has
+  a content count under it, so whether a role client changed an input is read from the record. The pooling
+  client's census rows now name each input's original position (an omitted empty document no longer shifts
+  a later one's id), as the rerank client's do.
 - **`rcp-ndcg-vllm` recipes: `reference.known_deviations` accepts `over_cap_cut_differs`** beside
   `anchor_drop_over_cap`: a reference that keeps the anchors but cuts over-cap content its own way (a joint
   `longest_first` truncation where the client settles the query at its share) declares it, and the harness
@@ -127,6 +167,57 @@ released together.
 
 ### Fixed
 
+- **The offline fake counts tokens as the engine would** (`rcp_ndcg.inference.fake`): `/pooling` answered one
+  vector per whitespace word and drew its `prompt_token_ids`, so a pooling client with
+  `document_skip_token_ids` over `fake://` refused every text whose words and tokens differ (a
+  `ProviderError`: the vector count disagreed with the ids it sent) and per-token outputs had the wrong
+  length. An item's count now follows the request's tokenization: a token-ids input is its ids, a text the
+  ids of the tokenizer the endpoint's config declares under the request's `add_special_tokens` (default true)
+  -- `fake_transport(url, model=..., tokenizer=...)` and the new `FakeEndpoint.tokenizer`; the transport and
+  the equivalence harness pass the config's. Without one (and for a chat conversation) the documented
+  fallback still counts whitespace words. `/embeddings` usage counts the same way.
+- **`empty_doc` decides on the content, before the prompt and the template** (`EmbeddingClient`,
+  `PoolingClient`): the embedding client applied the policy after the template rendered, so an empty
+  document was a non-empty framed turn -- `send_text` (`NULL` on Qwen3-VL-Embedding) never fired, `omit_zero`
+  never omitted, and an empty document went out as an empty framed turn; both clients also judged emptiness
+  after the side's prompt, so a `doc_prompt` hid every empty document. The policy now applies to the content
+  as given; the placeholder is prompted and framed like any content, and the change is the row's `empty_doc`
+  processing record. The embedding client also applied no `empty_doc` at all without a budget; it does now.
+- **The embed `messages` route frames once** (`EmbeddingClient`, `openai_embeddings`): the client sent the
+  declared template's framed render as the user message, and vLLM v0.31.0 renders every chat-shaped
+  `/embeddings` request through its chat template (vllm/entrypoints/pooling/embed/io_processor.py:302-355), so
+  the frame went out twice; the content cannot ride a single client-side frame either, because the template
+  places each media part inside its user turn. The route now sends each item's content (the prompt and the cut
+  content span, its media parts beside it) and the engine frames it once; the request carries the declared
+  `add_special_tokens` (new `EmbedRequest.add_special_tokens`; the chat route's default is false,
+  base/protocol.py:248-257). Each item is its own conversation: several items went as the turns of ONE
+  conversation, which the engine embeds into a single vector (embed/protocol.py:69-102); a batch now sends a
+  list of conversations. The offline fake reads `messages` the same way. The equivalence harness reads a
+  `messages` capture per conversation, audits the declared frame around the sent content, and its
+  `template_render_check` renders the served chat template over every captured conversation against the
+  declared render (`not_run` without `serve.chat_template`).
+- **The anchor audit implements `anchor: last_content`** (`rcp_ndcg_vllm.equivalence`): a recipe declaring
+  it (jina-embeddings-v5) fell into the `last` branch, whose edge -- the last fixed segment, not at the edge,
+  plus the post-processor's tail -- is empty for a content-final shape on a tokenizer that appends nothing, so
+  its audit could never pass. The branch follows the product's definition: the shape ends on its content
+  span, the fixed head segments open every captured body as the engine reads them in the assembled render
+  (after the post-processor's prefix), the post-processor's tail closes it when the shape declares one, and a
+  content token sits between them -- the last kept content token the model pools.
+- **The equivalence harness reports exactly the rows the client changed** (`rcp_ndcg_vllm.equivalence`,
+  decision 9): a row was reported non-gating only when a census cut's content count exceeded `max_tokens`,
+  and the census counts content only -- so a row whose framed request was over the budget while its content
+  was under it, and a reranker's query settled at its share inside a pair the budget takes whole, were gated
+  although the client had cut them (stage 2 skipped the shared query's settlement row altogether). Stage 1
+  and stage 2 now read the client's own processing records (`RoleClient.processing`), per TEXT, never per
+  row: a text is reported, under the declared over-cap deviation, exactly when the client changed it -- any
+  mechanism: a budget cut counted with the frame, a per-document cap, an empty-document substitution, a media
+  resize or drop; a reranker's query settlement changes every pair of its row (the reference renders an
+  over-cap pair its own way, the whole pair), a document's change only that document's pair -- and the report names each change's mechanisms,
+  the uncut and kept request totals and the budget. Every text the client sent uncut gates exactly, also
+  beside a changed sibling in the same row. Declared normalisation (`strip`, `lowercase`) is policy both sides
+  apply, never a change: the rerank settlement compares the normalised query with the settled span and
+  records a cut only when content was removed; the pair fit's residual re-fit at a shorter query span records
+  that settlement too. A record under no input position is attributed to every input of its call.
 - **The case loader reads a recipe template's query frame as the query side's text prefix** (`rcp-ndcg-test`):
   a case's run-level `inputs.instruction` passes when the recipe's `query_prompt` or a fixed segment of its
   template's `query` shape carries it verbatim as a whole delimited unit (starting at the text's start, a

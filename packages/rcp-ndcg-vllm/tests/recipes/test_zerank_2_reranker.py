@@ -93,6 +93,7 @@ CONTRACT: dict[str, Any] = {
         "instruction": "none",
         "use_activation": True,
         "query_max_tokens": 4096,
+        "document_max_tokens": None,
         "template": {
             "query": None,
             "document": None,
@@ -489,8 +490,9 @@ def test_settle_rule_and_declared_normalisation_against_the_papers_spans(
     """The wire's settle-once query and the declared normalisation, against the paper's own spans.
 
     (1) An over-share query (over ``query_max_tokens``) in an under-budget pair is settled at its share
-    by the rerank client (settle-once) while the paper keeps it whole: an under-cap row, so stage 1's
-    render check gates it red -- the reference never ports the settle rule (decision 9); (2)
+    by the rerank client (settle-once) while the paper keeps it whole: a change the client made, so stage 1
+    reports the row's query span under the declared over-cap deviation instead of gating it, naming
+    ``query_share`` -- the reference never ports the settle rule (decision 9); (2)
     whitespace-padded inputs round through the declared normalisation (``normalize: [strip]``: the
     paper's strip) on both sides, byte for byte.
     """
@@ -533,8 +535,11 @@ def test_settle_rule_and_declared_normalisation_against_the_papers_spans(
     assert rows_out[0]["query"] == rows[0]["query"]  # the paper keeps the whole query
     assert {"query": rows_out[1]["query"], "documents": rows_out[1]["documents"]} == spans[1]
     document = stage1_prompts(recipe, pairs, sys.executable, over_length_per_shape=1)
-    failures = document["render_check"]["failures"]
-    assert document["render_check"]["passed"] is False and {failure["index"] for failure in failures} == {0}
+    render = document["render_check"]
+    assert render["passed"] is True, render["failures"][:1]
+    (reported,) = render["over_cap"]["rows"]
+    assert reported["index"] == 0 and [m["span"] for m in reported["mismatches"]] == ["query"]
+    assert [change["mechanisms"] for change in reported["changes"]] == [["query_share"]]
 
 
 # -----------------------------------------------------------------------------------------------

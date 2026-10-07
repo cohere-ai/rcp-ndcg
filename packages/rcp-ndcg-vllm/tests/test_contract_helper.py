@@ -63,6 +63,7 @@ EXPECTED_CLIENT = {
     "model": "qwen3-reranker-8b",
     "on_overflow": "cut",
     "query_max_tokens": 4096,
+    "document_max_tokens": None,
     "recipe": "vLLM v0.31.0 pooling runner; Qwen3ForCausalLM converted to "
     "Qwen3ForSequenceClassification in-engine (hf_overrides: classifier_from_token [no, "
     "yes], is_original_qwen3_reranker); the paper chat template (template.jinja); "

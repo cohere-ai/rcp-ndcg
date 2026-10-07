@@ -34,8 +34,8 @@ one lazy `vllm.general_plugins` entry point (importing `rcp_ndcg_vllm` never imp
 
 ## Budgets
 
-Every recipe declares `client.tokenizer`, `client.max_tokens`, and `query_max_tokens` where the reference caps
-queries; over-budget content is cut client-side at token boundaries with the template's anchors preserved, and
+Every recipe declares `client.tokenizer`, `client.max_tokens`, `query_max_tokens` where the reference caps
+queries, and (a reranker) `document_max_tokens` where the checkpoint cuts each document itself; over-budget content is cut client-side at token boundaries with the template's anchors preserved, and
 every cut is recorded ([text budgets for served roles](../concepts/text-budgets.md)). No limits are repeated
 here -- the recipe file is the source.
 

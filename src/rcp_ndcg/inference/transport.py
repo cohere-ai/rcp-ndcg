@@ -288,7 +288,10 @@ class Transport:
         self._replicas = [_Replica(url) for url in endpoint.urls]
         self._httpx_transport: httpx.AsyncBaseTransport | None = httpx_transport
         if httpx_transport is None and any(url.startswith(FAKE_SCHEME) for url in endpoint.urls):
-            self._httpx_transport = fake_transport(endpoint.urls[0], model=endpoint.model)
+            # The fake counts a text's tokens in the tokenizer the config declares, as the engine would.
+            self._httpx_transport = fake_transport(
+                endpoint.urls[0], model=endpoint.model, tokenizer=getattr(endpoint, "tokenizer", None)
+            )
         self._usage = Usage()
         self._pool: httpx.AsyncClient | None = None
         self._semaphore: asyncio.Semaphore | None = None
