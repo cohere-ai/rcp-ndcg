@@ -498,6 +498,7 @@ def test_engine_tokenize_check_does_not_post_token_ids_bodies(monkeypatch: pytes
 def test_stage1_audits_messages_bodies_and_fails_an_audit_that_checked_nothing(tmp_path: Path) -> None:
     """G2: a ``messages`` client's bodies extract as their message texts (media parts as placeholders), so the
     audit checks every captured input; an audit that checked zero inputs fails instead of passing vacuously."""
+    from rcp_ndcg_core.content import TEXT_JOIN
     from rcp_ndcg_vllm.equivalence import stages as stages_module
     from rcp_ndcg_vllm.equivalence.wire import Capture
 
@@ -525,7 +526,9 @@ def test_stage1_audits_messages_bodies_and_fails_an_audit_that_checked_nothing(t
     capture = Capture(recipe)
     capture.exchanges = [{"url": "http://engine/v1/embeddings", "status": 200, "request_body": body}]
     texts = capture.texts(capture.exchanges[0])
-    assert texts["input"] == ["doc: a caption [END]", "doc: plain [END]"]
+    # A message's text parts join as the engine joins them (vLLM's chat_utils: "\n"), the product's TEXT_JOIN.
+    assert TEXT_JOIN == "\n"
+    assert texts["input"] == ["doc: a caption\n [END]", "doc: plain [END]"]
     assert texts["media"] == [["image_url"], []]
     assert stages_module._captured_heads(capture, [])["first"][0]["media"] == [["image_url"], []]  # reported
     empty = {"rows": [{"shapes": {"document": {"texts": []}}, "cuts": 0, "over_cap": False}]}

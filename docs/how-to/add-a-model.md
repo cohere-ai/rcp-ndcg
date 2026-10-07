@@ -193,7 +193,7 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
   the rendered prompt's edge for the embed roles, and for a reranker the settle-once query (one settled span
   per row, identical across the row's pointwise requests, within its declared `query_max_tokens`, and no cut
   on an in-budget pair). Every wire shape is read: a `token_ids` body is audited on the ids it sends, a
-  `messages` body on its messages' text parts (its media parts are listed as placeholders beside them). An
+  `messages` body on its messages' text parts (joined with `"\n"`, as the engine joins them) (its media parts are listed as placeholders beside them). An
   audit that read no input fails. An `anchor: first` head is asserted up to its join to the content: the
   head's trailing whitespace tokens re-tokenize with the first content token on a byte-level BPE (`"doc: "`
   then reads `Ġdocument`), so they are not part of the asserted edge;

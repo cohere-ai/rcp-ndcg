@@ -100,7 +100,8 @@ released together.
   the engine `/tokenize` check reports `not_run` for it (the engine tokenizes nothing), and the render check
   compares those ids with the reference text's ids under the shape's `add_special_tokens` flag (it compared
   the id list with the text, so a `token_ids` recipe never passed stage 1 with a reference); a `messages`
-  body is audited on its messages' text parts, with its media parts listed as placeholders beside them (it
+  body is audited on its messages' text parts, joined with `rcp_ndcg_core.content.TEXT_JOIN` (`"\n"`, as
+  vLLM joins them), with its media parts listed as placeholders beside them (it
   extracted as no input, and the audit passed having checked nothing); an audit that read no input now
   fails. An `anchor: first` head is asserted up to its join to the content: on a byte-level BPE the head's
   trailing whitespace tokens re-tokenize with the first content token, which failed every request.

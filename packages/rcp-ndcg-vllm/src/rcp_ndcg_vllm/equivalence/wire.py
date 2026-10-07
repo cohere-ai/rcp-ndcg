@@ -22,6 +22,7 @@ import json
 from typing import Any
 
 import httpx
+from rcp_ndcg_core.content import TEXT_JOIN
 
 from ..errors import HarnessError
 from ..recipe import Recipe, client_config
@@ -112,7 +113,8 @@ class Capture:
         for the rerank wire (the spans the engine assembles -- for a reranker, the settled query span).
 
         A ``messages`` body (the chat-style input: a media item's route, or ``request_shape: messages``)
-        yields one ``input`` per message -- its text parts joined in order, the client's rendered text --
+        yields one ``input`` per message -- its text parts joined in order with ``TEXT_JOIN`` (``"\n"``, as
+        the engine joins them), the client's rendered text --
         and ``media``: per message, the placeholders of its media parts in order (their part ``type``, e.g.
         ``image_url``), which ride beside the rendered text and are never part of it.  A ``token_ids`` body
         yields its id lists as sent.
@@ -129,7 +131,8 @@ class Capture:
             for message in body["messages"]:
                 content = message.get("content") if isinstance(message, dict) else None
                 parts = [{"type": "text", "text": content}] if isinstance(content, str) else list(content or [])
-                texts.append("".join(str(part.get("text", "")) for part in parts if part.get("type") == "text"))
+                # The engine joins a message's text parts with "\n" (vLLM's chat_utils): the product's TEXT_JOIN.
+                texts.append(TEXT_JOIN.join(str(part.get("text", "")) for part in parts if part.get("type") == "text"))
                 media.append([str(part.get("type")) for part in parts if part.get("type") != "text"])
             return {"input": texts, "media": media}
         inputs = body.get("input", body.get("texts"))
