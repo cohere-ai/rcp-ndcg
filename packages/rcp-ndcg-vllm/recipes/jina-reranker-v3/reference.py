@@ -18,17 +18,19 @@ checkpoint's remote code at revision ``d7d7e73b6ea138ced340b83865931b5dfb6c97aa`
   then ``format_docs_prompts_func`` -- the exact prompt one block sends.  The model is listwise: the
   prompt depends on the whole document set, so ``docs`` may be one document (the 1-vs-1 prompt the
   recipe's declared pair shape mirrors) or a block's list.  ``render_query_and_document`` is the
-  1-vs-1 entry point; ``served_spans`` is the WIRE's cut content spans (the client's settle and
-  document cuts ported here), which is what stage 1 compares.
+  1-vs-1 entry point.
 
 This module runs as a SUBPROCESS in its own environment (see ``requirements-reference.txt`` beside
 it); the harness process never imports it.  CLI contract (``rcp_ndcg_vllm.equivalence.reference``):
 
     reference.py --mode <render|score> --pairs <file> --out <file> --tokenizer <spec> [--device <d>]
 
-- ``render`` -> ``{"rows": [{"index", "shape": "pair", "query", "documents"}]}``: the wire's cut
-  content spans per pairs row -- the settled query span and each document span (stage 1's rerank
-  render contract; the frame is the engine's own builder).
+- ``render`` -> ``{"rows": [{"index", "shape": "pair", "query", "documents"}]}``: per pairs row,
+  the spans fed to the model's own builder -- the checkpoint's per-text truncations (documents 2048
+  tokens, query 512, right, decode-back) applied to the raw texts, exactly as ``rerank()`` stages
+  them before formatting.  The reference never ports the client's cut (the operator's 09x rule):
+  under the per-text caps the spans are the raw texts and compare byte-identically with the wire's;
+  over-cap rows differ from the client's cuts and ride the declared ``over_cap_cut_differs`` table.
 - ``score``   -> ``{"rows": [{"index", "scores": [...]}]}``: one cosine in [-1, 1] per document,
   input order, empty documents 0.0.
 
@@ -62,14 +64,12 @@ BLOCK_SIZE = 125
 MAX_DOC_LENGTH = 2048
 MAX_QUERY_LENGTH = 512
 MODEL_MAX_LENGTH = 131072
-MAX_PAIR_TOKENS = 3219  # the recipe's client.max_tokens: 147 fixed + 2 x the 512 query share + 2048 doc
 
 __all__ = [
     "BLOCK_SIZE",
     "DOC_EMBED_TOKEN_ID",
     "JinaRerankerV3",
     "MAX_DOC_LENGTH",
-    "MAX_PAIR_TOKENS",
     "MAX_QUERY_LENGTH",
     "MODEL",
     "MODEL_MAX_LENGTH",
@@ -79,7 +79,6 @@ __all__ = [
     "load",
     "render_query_and_document",
     "render_rows",
-    "served_spans",
 ]
 
 
@@ -153,113 +152,30 @@ def render_query_and_document(query: str, document: str, tokenizer_spec: str, in
     return format_docs_prompt(truncated_query, [truncated_doc], instruction=instruction)
 
 
-def _count(text: str, tok: object, *, add_special_tokens: bool = False) -> int:
-    """How many tokens of ``text`` the engine counts (the post-processor's tokens included)."""
-    return len(tok.ids(text, add_special_tokens=add_special_tokens))
-
-
-def _offsets(text: str, tok: object) -> list[tuple[int, int]]:
-    """``(start, end)`` character offsets of each token of ``text``, in order."""
-    return [(offset[0], offset[1]) for offset in tok.backend.encode(text, add_special_tokens=False).offsets]
-
-
-def _token_prefix(
-    text: str,
-    max_tokens: int,
-    tok: object,
-    *,
-    rendered=None,
-    add_special_tokens: bool = False,
-) -> str:
-    """The longest prefix of ``text`` at one of its first ``max_tokens`` token boundaries that counts
-    at most ``max_tokens`` as the engine counts it (``rendered(piece)`` when given).
-
-    The cut is located on the ORIGINAL text's character offsets, so the result is a verbatim
-    prefix -- never a ``decode(encode(...))`` round trip (not the identity for a normalising
-    tokenizer; the wire carries text).  Port of ``rcp_ndcg.data.preprocess.token_prefix``: the
-    same galloping-then-binary search over token boundaries, the same counting.
-    """
-
-    def count(piece: str) -> int:
-        shown = rendered(piece) if rendered is not None else piece
-        return _count(shown, tok, add_special_tokens=add_special_tokens)
-
-    if count(text) <= max_tokens:
-        return text
-    offsets = _offsets(text, tok)
-
-    def prefix(tokens: int) -> str:
-        return text[: offsets[tokens - 1][1]] if tokens > 0 else ""
-
-    def fits(tokens: int) -> bool:
-        return count(prefix(tokens)) <= max_tokens
-
-    over = min(max_tokens, len(offsets))
-    if fits(over):
-        return prefix(over)
-    fitting, step = over - 1, 1
-    while fitting > 0 and not fits(fitting):
-        over, fitting, step = fitting, max(fitting - step, 0), step * 2
-    while over - fitting > 1:
-        middle = (over + fitting) // 2
-        fitting, over = (middle, over) if fits(middle) else (fitting, middle)
-    return prefix(fitting)
-
-
-def served_spans(tok: object, query: str, document: str) -> tuple[str, str]:
-    """The wire's cut content spans (query, document) for one pair: the client's rules ported here.
-
-    The pair fit binds on overflow only (an under-budget pair ships whole); the rerank client
-    settles the shared query span once per call -- to its declared share (``MAX_QUERY_LENGTH``,
-    the recipe's ``query_max_tokens``) whenever it exceeds it, then through fit's probe pair (the
-    query with an empty document: both query copies plus the fixed frame must fit) -- and each
-    document span gets what remains of ``MAX_PAIR_TOKENS``.  Every kept span is a verbatim prefix
-    at a token boundary of the original text; the engine's own builder assembles the frame around
-    these spans and each span keeps the marker slots.  Compared byte-identically against the
-    captured wire by stage 1.
-    """
-
-    def assembled(q: str, d: str) -> str:
-        return format_docs_prompt(q, [d])
-
-    # 1. the settled query: its share whenever it exceeds it (counted once; the frame reserves
-    #    both copies of the settled span).
-    if _count(query, tok) > MAX_QUERY_LENGTH:
-        q_final = _token_prefix(query, MAX_QUERY_LENGTH, tok)
-    else:
-        q_final = query
-    # 2. fit's probe pair: the query keeps the frame room even alone.
-    q_final = _token_prefix(
-        q_final, MAX_PAIR_TOKENS, tok, rendered=lambda piece: assembled(piece, ""), add_special_tokens=True
-    )
-    q_min = _count(assembled(q_final, ""), tok, add_special_tokens=True)
-    if q_min >= MAX_PAIR_TOKENS and _count(document, tok) > 0:
-        raise SystemExit(
-            f"the settled query fills the pair budget of {MAX_PAIR_TOKENS} tokens and leaves the document "
-            "nothing; lower the query share (or raise max_tokens), so the document keeps a share"
-        )
-    # 3. the document gets what remains after the settled query (both copies) and the frame.
-    d_final = _token_prefix(
-        document, MAX_PAIR_TOKENS, tok, rendered=lambda piece: assembled(q_final, piece), add_special_tokens=True
-    )
-    return q_final, d_final
-
-
 def render_rows(pairs: list[dict], tokenizer_spec: str) -> list[dict]:
-    """Stage 1's rerank render contract: the wire's cut content spans per pairs row.
+    """Stage 1's rerank render contract: the spans fed to the model's own builder, per pairs row.
 
-    ``{"index", "shape": "pair", "query": <settled query span>, "documents": [<doc span>, ...]}``
-    -- the spans the client ships (the frame is the engine's own builder).  One settled query span
-    per row; one document span per document, each cut within its (query, document) pair.
+    ``{"index", "shape": "pair", "query": <query span>, "documents": [<doc span>, ...]}`` -- the
+    checkpoint's per-text pre-templating truncation applied to the raw texts (``_truncate_text``:
+    512/2048 tokens, right, decode-back), exactly as ``rerank()`` stages them before formatting.
+    The reference never ports the client's cut (the operator's 09x rule): under the per-text caps
+    the spans are the raw texts and compare byte-identically with the wire's spans; over-cap rows
+    differ from the client's cuts and ride the declared ``over_cap_cut_differs`` table.
     """
-    tok = _product_tokenizer(tokenizer_spec)
+    tokenizer = _product_tokenizer(tokenizer_spec)
+    backend = tokenizer.backend
     rows: list[dict] = []
     for index, row in enumerate(pairs):
         query = str(row["query"])
         documents = [str(document) for document in row["documents"]] or [""]
-        query_span, _ = served_spans(tok, query, documents[0])
-        document_spans = [served_spans(tok, query, document)[1] for document in documents]
-        rows.append({"index": index, "shape": "pair", "query": query_span, "documents": document_spans})
+        rows.append(
+            {
+                "index": index,
+                "shape": "pair",
+                "query": _truncate_text(query, backend, MAX_QUERY_LENGTH),
+                "documents": [_truncate_text(document, backend, MAX_DOC_LENGTH) for document in documents],
+            }
+        )
     return rows
 
 

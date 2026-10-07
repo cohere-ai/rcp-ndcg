@@ -115,7 +115,7 @@ def test_recipe_loads_and_declares_the_product_endpoint() -> None:
     assert recipe.client.empty_doc == "omit_zero"
     assert recipe.client.use_activation is False
     assert recipe.reference.score_scale == "cosine"
-    assert recipe.reference.known_deviations == []
+    assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
     # The engine serves the model natively: no conversion, no plugin, no chat template file.
     assert recipe.serve.runner == "pooling"
     assert recipe.serve.convert is None
@@ -340,7 +340,12 @@ EXPECTED_CLIENT = {
     "video_policy": None,
     "wait_on_outage_s": None,
 }
-EXPECTED_REFERENCE = {"entry": "reference.py", "kind": "remote_code", "known_deviations": [], "score_scale": "cosine"}
+EXPECTED_REFERENCE = {
+    "entry": "reference.py",
+    "kind": "remote_code",
+    "known_deviations": ["over_cap_cut_differs"],
+    "score_scale": "cosine",
+}
 
 # Two mutants per recipe against the contract pin above (the sweep's weak-contract
 # finding #9): each drift must fail, naming the field.

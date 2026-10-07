@@ -254,7 +254,7 @@ def test_recipe_loads_with_the_product_endpoint_config() -> None:
     }
     assert recipe.serve.plugin is None and recipe.serve.pooler_config == {}
     assert recipe.reference.kind == "remote_code" and recipe.reference.score_scale == "cosine"
-    assert recipe.reference.known_deviations == []
+    assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
     assert recipe.status.state == "unverified"
     # The client block is the product's config: the dump constructs the product model unchanged.
     config = client_config(recipe, base_url="http://127.0.0.1:8100/v1")
@@ -272,15 +272,19 @@ def test_stage1_on_cpu_token_id_equality_and_anchors(tmp_path: Path) -> None:
     pairs_path = _write_pairs(tmp_path)
     document = stage1_prompts(recipe, pairs_path, sys.executable, over_length_per_shape=5)
     assert document["sampled"] == len(PAIRS) + 10 >= 20
-    assert document["passed"] is True, (
-        document["anchor_check"]["failures"][:1],
-        document["render_check"]["failures"][:1],
-    )
+    # The render comparison gates (zero tolerance); over-cap rows the client cut ride the declared
+    # over_cap_cut_differs table and do not gate.
+    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
+    anchor = document["anchor_check"]
     # The anchor check covered every sampled input, over-length ones included (one text per
     # declared shape per pairs row -- the query, and EVERY document of the row -- one per sample).
-    assert document["anchor_check"]["passed"] is True
-    assert document["anchor_check"]["checked"] == len(PAIRS) + sum(len(row["documents"]) for row in PAIRS) + 10
-    assert document["anchor_check"]["anchor"] == "first"
+    assert anchor["checked"] == len(PAIRS) + sum(len(row["documents"]) for row in PAIRS) + 10
+    assert anchor["anchor"] == "last_content"
+    # Its ONLY failures are its known gap for last_content (the strict-xfail below pins the gap):
+    # the tail-edge check with an empty expected edge reds every render of a content-final shape
+    # with no appended post-processor token, though the product declares last_content positional-free.
+    for failure in anchor["failures"]:
+        assert failure["check"] == "tail" and failure["expected_edge_ids"] == [], failure
     # Both declared shapes carried their five over-length samples and cut them (the content span
     # only; the fixed frame is reserved, which the anchor check just asserted). The facts come from
     # the role client's own capture and census (what the served path really sent).
@@ -377,9 +381,16 @@ def test_reference_load_resolves_the_pinned_snapshot(monkeypatch: pytest.MonkeyP
     assert all(entry["from_pretrained"] == "/local/snapshot" for entry in calls if "from_pretrained" in entry)
 
 
-def test_dropping_the_anchor_segment_turns_the_anchor_check_red(tmp_path: Path) -> None:
-    """The mutation: drop the template's anchor segment (the leading fixed marker segment; this
-    model's anchor is at the head) and the anchor check goes red on every render."""
+def test_dropping_the_anchor_segment_turns_the_render_check_red(tmp_path: Path) -> None:
+    """The mutation: drop the template's leading fixed marker segment ("Query:" / "Document:").
+
+    Under ``anchor: last_content`` the model pools the last kept content token (no positional
+    requirement), so the marker's protection is the DECLARED FRAME being byte-identical to the
+    checkpoint's own prompts -- and stage 1's render check (the reference's render against the
+    fit's captured prompt, zero tolerance) is the gate: dropping the marker silently changes every
+    prompt, and the render check reds naming the row.  (The anchor audit cannot see a frame
+    drop either: see the strict-xfail's harness-gap note.)
+    """
     tokenizer_path = tokenizer_file(tmp_path)
     mutated_dir = tmp_path / RECIPE_ID
     mutated_dir.mkdir()
@@ -395,9 +406,9 @@ def test_dropping_the_anchor_segment_turns_the_anchor_check_red(tmp_path: Path) 
 
     recipe = load_recipe(mutated_dir)  # still a valid recipe: add_special_tokens covers the rule
     document = stage1_prompts(recipe, _write_pairs(tmp_path), sys.executable, over_length_per_shape=2)
-    assert document["anchor_check"]["passed"] is False
-    assert document["anchor_check"]["failures"], "the anchor check must report the dropped anchor"
-    assert all(failure["check"] == "head" for failure in document["anchor_check"]["failures"])
+    render_check = document["render_check"]
+    assert render_check["passed"] is False
+    assert render_check["failures"], "the render check must report the dropped marker"
     assert document["passed"] is False
 
 
@@ -484,7 +495,12 @@ EXPECTED_CLIENT = {
     "video_policy": None,
     "wait_on_outage_s": None,
 }
-EXPECTED_REFERENCE = {"entry": "reference.py", "kind": "remote_code", "known_deviations": [], "score_scale": "cosine"}
+EXPECTED_REFERENCE = {
+    "entry": "reference.py",
+    "kind": "remote_code",
+    "known_deviations": ["over_cap_cut_differs"],
+    "score_scale": "cosine",
+}
 
 # Two mutants per recipe against the contract pin above (the sweep's weak-contract
 # finding #9): each drift must fail, naming the field.
@@ -549,3 +565,35 @@ def test_notes_pin_the_query_cap_check_the_feature_floor_and_the_download_figure
     assert "startup_timeout_s" not in (RECIPE_DIR / "recipe.yaml").read_text(encoding="utf-8")
     assert "first ships in v0.20.0" in notes  # the feature floor, named in the notes
     assert "1,192,133,208" in notes  # the Hub tree API's model.safetensors size at the pinned revision
+
+
+# ---------------------------------------------------------------------------
+# The harness gap, pinned in the open (this lane's scope: recipes and recipe tests only).
+# ---------------------------------------------------------------------------
+
+HARNESS_GAP_REASON = (
+    "rcp_ndcg_vllm.equivalence.stages._anchor_check/_anchor_edge_ids has no anchor: last_content "
+    "branch (the shipped product AnchorKind p1-tail 2h adds and this recipe declares): with no fixed "
+    "tail and no appended post-processor token the expected tail edge is empty and the `not edge` "
+    "test reds every render, though the product's TemplateSpec documents last_content as having no "
+    "positional requirement with the head markers reserved and audited.  The fix belongs to the "
+    "harness owner outside lane fam-dense's scope (the brief: stop and report) -- either audit the "
+    "HEAD edge for last_content (as for first: _anchor_edge_ids already returns it) or skip the "
+    "positional check as for mean.  Strict xfail: this test goes XPASS (a FAILURE) the moment the "
+    "harness branch lands, forcing this marker to be removed."
+)
+
+
+@pytest.mark.xfail(strict=True, reason=HARNESS_GAP_REASON)
+def test_stage1_anchor_check_knows_the_last_content_anchor(tmp_path: Path) -> None:
+    """The anchor gate goes green once the harness audits `anchor: last_content`.
+
+    Everything else in stage 1 already gates (the render comparison, the census facts); only the
+    anchor audit's positional tail check mishandles the declared anchor kind.  Under-cap rows keep
+    their head markers by construction and the cut keeps a content prefix, so a correct audit is
+    green.
+    """
+    tokenizer_path = tokenizer_file(tmp_path)
+    pairs_path = _write_pairs(tmp_path)
+    document = stage1_prompts(stage1_recipe(tokenizer_path), pairs_path, sys.executable, over_length_per_shape=2)
+    assert document["anchor_check"]["passed"] is True

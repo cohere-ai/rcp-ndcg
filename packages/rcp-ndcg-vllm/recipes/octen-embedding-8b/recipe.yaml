@@ -44,7 +44,11 @@ reference:
   kind: transformers
   score_scale: cosine
   entry: reference.py
-  known_deviations: []       # the paper's cut keeps the appended anchor (HF reserves it at 8192); nothing to declare
+  # The reference is the paper's in-process path verbatim (the operator's 09x rule: no client-cut
+  # port); its render carries the full text (the paper truncates at encode time: HF's right cut,
+  # the appended anchor kept) and its over-cap boundary can differ by a token from the client's
+  # content-boundary cut -- over-cap pairs ride the non-gating table.
+  known_deviations: ["over_cap_cut_differs"]
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
@@ -101,10 +105,12 @@ notes: >-
   over-length input keeps the prefix at the head and the anchor at the tail. The paper path makes the
   same anchor-preserving cut (experiments/paper/rerankers/reference/octen.py:33,64: truncation=True, max_length=8192, right side; HF reserves
   the post-processor's token -- the research's truncation check verified 8191 content ids + the appended
-  anchor), so reference.known_deviations stays empty; the cut BOUNDARY on an over-length input can differ
+  anchor). The cut BOUNDARY on an over-length input can differ
   by a token between the two paths (fit cuts at content-token boundaries of the original text and re-renders,
-  the paper cuts the assembled ids), which stage 1 deliberately does not compare and stage 2's vector gate
-  decides on the GPU wave. Wiring status (post-merge): every request is fitted to the declared
+  the paper cuts the assembled ids), and the render carries the full text over-cap (the truncation
+  happens at encode time in the paper path): the reference never ports the client's cut (the
+  operator's 09x rule), so the recipe declares reference.known_deviations: over_cap_cut_differs --
+  over-cap pairs are reported in the non-gating table and only under-cap pairs gate. Wiring status (post-merge): every request is fitted to the declared
   budget on the wire by the merged product's embedding client (rcp_ndcg.data.preprocess.fit:
   content spans cut, frame re-attached), audited in stage 1 against the captured wire; the
   engine's over-length HTTP 400 (renderers/params.py:485-510) is defense in depth -- loud, never a
