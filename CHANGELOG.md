@@ -57,8 +57,12 @@ released together.
   placement, geometry, tokens); a container's tokens are reported. A media recipe whose pairs carry no media row
   fails the stage; stages 1 and 2 compare the text rows only (`media_rows` in stage 1's report). Negative control
   (f) unpins the nested `images_kwargs` pin (or a flat one) and is caught by the engine count; it is
-  inapplicable, said why, where the client prepares every image inside its family's stock range (an unpinned
-  engine keeps such an image). The test stub engine resizes images as the engine's processor does
+  inapplicable, said why, where the pin lies inside the checkpoint's own image budget read at the pinned
+  revision (`equivalence.checkpoint.checkpoint_pixel_budget`: `preprocessor_config.json`, else
+  `processor_config.json`), which an unpinned engine applies and which keeps every image the client prepared
+  -- `qwen3-vl-reranker-2b` (4096..1310720 inside its 4095..1310720) and `topk-embed-v1-small`; served for
+  `qwen3-vl-embedding-2b` (its 1843200 px ceiling leaves its checkpoint's 1310720) -- and `unresolved`, a
+  wave blocker, when that budget cannot be read. The test stub engine resizes images as the engine's processor does
   (`--model-image-factor`, `--model-image-pixels`, `--mm-processor-kwargs`), and the `fixture-vl-embed`
   fixture is a vision embedder pinned below its family's stock floor.
 - **A recipe that declares a key twice is refused** (`rcp_ndcg_vllm.load_recipe`): YAML keeps the last of two equal

@@ -12,6 +12,7 @@ count on a vision embedder whose pixel pin lies below the family's stock floor.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -110,12 +111,21 @@ def test_control_e_float32_read_as_float16_fails_the_gates(pooling_wave: dict[st
     assert step["passed"] is True and step["blockers"] == []
 
 
-def test_control_f_an_unpinned_pixel_budget_fails_the_media_stage(tmp_path: Path) -> None:
+def test_control_f_an_unpinned_pixel_budget_fails_the_media_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """(f) unpins the nested ``images_kwargs`` pin of a vision embedder whose budget lies below the family's
     stock floor: the variant's engine re-resizes the prepared images under that floor, the media stage's engine
     count differs from the client's, and the control is caught -- while the recipe's own gates pass."""
+    from tests.conftest import hub_cache
     from tests.test_media import media_pairs
 
+    # The emulated checkpoint's own budget: Qwen2-VL's stock 3136..12845056 px, which the pinned 784 px floor leaves.
+    stock = {"min_pixels": 3136, "max_pixels": 12845056}
+    revision = "0123456789abcdef0123456789abcdef01234567"
+    hub_cache(
+        tmp_path, monkeypatch, "fixtures/VisionEmbedder", revision, {"preprocessor_config.json": json.dumps(stock)}
+    )
     pairs = tmp_path / "pairs"
     pairs.mkdir()
     media_pairs(pairs / "fixture-vl-embed.jsonl")
@@ -138,18 +148,56 @@ def test_control_f_an_unpinned_pixel_budget_fails_the_media_stage(tmp_path: Path
     assert step["passed"] is True and step["blockers"] == [], step["blockers"]
 
 
-def test_control_f_does_not_apply_where_the_client_prepares_inside_the_stock_range() -> None:
-    """A client that prepares every image inside its processor family's stock range (topk-embed-v1-small's
-    65536..1310720 px under qwen3_vl) sends images an unpinned engine keeps: the control says so instead of
-    passing as a blocker; a pinned budget below the floor (the fixture's) is served."""
+VL_RERANKER = ("Qwen/Qwen3-VL-Reranker-2B", "4bd860ac4f15ad1897a214615cccc700f8f71818")
+VL_EMBEDDING = ("Qwen/Qwen3-VL-Embedding-2B", "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda")
+TOPK = ("topk-io/topk-embed-v1-small", "e54485ebab921f2c18c4d092b3f4c40dcca26781")
+
+
+def _shipped(recipe_id: str) -> Any:
     from rcp_ndcg_vllm.recipe import iter_recipes
 
-    topk = next(recipe for recipe in iter_recipes() if recipe.id == "topk-embed-v1-small")
-    (row,) = [v for v in control_variants(topk) if v["control"] == "(f)"]
-    assert row["kind"] is None and "stock range" in row["reason"]
-    (row,) = [v for v in control_variants(load_recipe(RECIPES / "fixture-vl-embed")) if v["control"] == "(f)"]
-    assert row["kind"] == "recipe"
-    summary = controls_summary([{"control": "(f)", "name": row["name"], "equivalence": {"passed": True}}])
+    return next(recipe for recipe in iter_recipes() if recipe.id == recipe_id)
+
+
+def _control_f(recipe: Any) -> dict[str, Any]:
+    (row,) = [v for v in control_variants(recipe) if v["control"] == "(f)"]
+    return row
+
+
+def test_control_f_applies_only_where_the_pin_leaves_the_checkpoints_own_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unpinning hands the engine the checkpoint's own budget (its preprocessor config at the pinned revision),
+    and the engine keeps every image the client prepared inside it: (f) is a breakage only where the pin
+    leaves that budget. qwen3-vl-reranker-2b pins 4096..1310720 inside its checkpoint's 4095..1310720 and
+    topk-embed-v1-small 65536..1310720 inside 65536..16777216 -- not applicable, said why; qwen3-vl-embedding-2b
+    pins 1843200 px over its checkpoint's 1310720 -- served (the media stage's engine count catches it)."""
+    from tests.conftest import hub_cache
+
+    reranker = {"min_pixels": 4095, "max_pixels": 1310720, "size": {"shortest_edge": 65536, "longest_edge": 16777216}}
+    hub_cache(tmp_path / "r", monkeypatch, *VL_RERANKER, {"preprocessor_config.json": json.dumps(reranker)})
+    row = _control_f(_shipped("qwen3-vl-reranker-2b"))
+    assert row["kind"] is None and "4095-1310720" in row["reason"] and "preprocessor_config.json" in row["reason"]
+    embedding = {"min_pixels": 4096, "max_pixels": 1310720}
+    hub_cache(tmp_path / "e", monkeypatch, *VL_EMBEDDING, {"preprocessor_config.json": json.dumps(embedding)})
+    assert _control_f(_shipped("qwen3-vl-embedding-2b"))["kind"] == "recipe"
+    topk = {"image_processor": {"size": {"shortest_edge": 65536, "longest_edge": 16777216}}}
+    hub_cache(tmp_path / "t", monkeypatch, *TOPK, {"processor_config.json": json.dumps(topk)})
+    row = _control_f(_shipped("topk-embed-v1-small"))
+    assert row["kind"] is None and "processor_config.json" in row["reason"]
+
+
+def test_control_f_with_an_unreadable_checkpoint_budget_is_a_blocker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without the checkpoint's own budget the control cannot say whether unpinning changes anything: it is
+    never declared inapplicable on a guess -- it is unresolved, and the wave's summary counts it a blocker."""
+    from tests.conftest import hub_cache
+
+    hub_cache(tmp_path, monkeypatch, *VL_RERANKER, {})
+    row = _control_f(_shipped("qwen3-vl-reranker-2b"))
+    assert row["kind"] == "unresolved" and "no pixel budget resolves" in row["reason"]
+    summary = controls_summary([{"control": "(f)", "name": row["name"], "equivalence": {"passed": None}}])
     assert summary["passed"] is False and summary["blockers"][0]["control"] == "(f)"
 
 

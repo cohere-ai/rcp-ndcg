@@ -202,7 +202,10 @@ notes: |
   engine does; an image rides its side as {"content": [image, text]}, one pair per request. The
   harness's media stage holds the client's sent images (count, placement, prepared geometry,
   tokens) to reference.py --mode media and, against the engine, the engine's media count to the
-  client's; the negative control that unpins the budget fails it.
+  client's. The pin restates the checkpoint's own budget (preprocessor_config.json min_pixels 4095 /
+  max_pixels 1310720): an unpinned engine keeps every image the client prepares under 4096..1310720,
+  so the negative control that unpins it changes nothing and does not apply (said so in the wave's
+  control report); an engine pinned to other numbers fails the media stage's engine count.
 
   Video: out of scope (input: [text, image]). A sibling recipe declaring video follows the one
   video-policy decision (qwen3-vl-embedding-2b: 64 uniformly spaced frames per clip, the

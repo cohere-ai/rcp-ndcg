@@ -445,8 +445,8 @@ def test_the_media_stage_holds_the_client_to_the_card(tmp_path: Path, snapshot: 
     pair per request): the placement, the prepared geometry under the pinned budget, the tokens. Against the
     stub engine emulating the checkpoint (factor 32, its own preprocessor_config budget 4095..1310720 px),
     the engine's media count equals the client's under the pin -- and unpinned too: the pin restates the
-    checkpoint's default, so negative control (f) changes nothing the engine reads for a prepared image
-    (the reason the wave reports (f) uncaught for this recipe; an engine pinned to OTHER numbers fails)."""
+    checkpoint's default, so negative control (f) does not apply (its row says so, read from the checkpoint's
+    own preprocessor_config.json at the pinned revision); an engine pinned to other numbers fails."""
     from rcp_ndcg_vllm.equivalence.media import stage_media
     from rcp_ndcg_vllm.observe.controls import control_variants
     from rcp_ndcg_vllm.observe.media_set import MEDIA_BUCKETS
@@ -456,9 +456,16 @@ def test_the_media_stage_holds_the_client_to_the_card(tmp_path: Path, snapshot: 
     document = stage_media(loaded, pairs, sys.executable)
     assert document is not None and document["passed"] is True, (document["failures"][:3], document["refusals"][:2])
     assert document["items"] == len(MEDIA_BUCKETS) + 1
-    (unpinned,) = [v["recipe"] for v in control_variants(loaded) if v["control"] == "(f)"]
+    (control,) = [v for v in control_variants(loaded) if v["control"] == "(f)"]
+    assert control["kind"] is None and "4095-1310720" in control["reason"], control
+    unpinned = loaded.model_copy(update={"serve": loaded.serve.model_copy(update={"mm_processor_kwargs": {}})})
+    moved = loaded.model_copy(
+        update={
+            "serve": loaded.serve.model_copy(update={"mm_processor_kwargs": {"images_kwargs": {"max_pixels": 655360}}})
+        }
+    )
     results = {}
-    for name, served in (("pinned", loaded), ("unpinned", unpinned)):
+    for name, served in (("pinned", loaded), ("unpinned", unpinned), ("moved", moved)):
         argv = serve_argv(served, port=0, served_model_name=loaded.id)
         flags = [value for value in argv[argv.index(served.model) + 1 :] if value not in ("0.0.0.0", "--host")]
         model = ["--model-image-factor", "32", "--model-image-pixels", "4095,1310720"]
@@ -469,16 +476,4 @@ def test_the_media_stage_holds_the_client_to_the_card(tmp_path: Path, snapshot: 
             engine.stop()
     assert results["pinned"]["passed"] is True, results["pinned"]["engine_check"]
     assert results["unpinned"]["passed"] is True, results["unpinned"]["engine_check"]
-    other = loaded.model_copy(
-        update={
-            "serve": loaded.serve.model_copy(update={"mm_processor_kwargs": {"images_kwargs": {"max_pixels": 655360}}})
-        }
-    )
-    argv = serve_argv(other, port=0, served_model_name=loaded.id)
-    flags = [value for value in argv[argv.index(other.model) + 1 :] if value not in ("0.0.0.0", "--host")]
-    engine = start_stub("--tokenizer", str(snapshot / "tokenizer.json"), *flags, "--model-image-factor", "32")
-    try:
-        moved = stage_media(loaded, pairs, sys.executable, base_url=engine.base_url)
-    finally:
-        engine.stop()
-    assert moved is not None and moved["engine_check"]["passed"] is False
+    assert results["moved"]["engine_check"]["passed"] is False

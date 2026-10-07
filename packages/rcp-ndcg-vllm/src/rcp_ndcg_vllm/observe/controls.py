@@ -12,8 +12,10 @@ engine that refuses its argv would fail every gate and prove nothing):
   ``serve.chat_template``; (c) flips the client's ``use_activation`` (or the pooler config's); (d) flips the
   pooling key the recipe declares (``seq_pooling_type`` or ``pooling_type`` -- vLLM refuses both at once);
   (f) unpins ``max_pixels``/``min_pixels`` from ``serve.mm_processor_kwargs`` (the nested ``images_kwargs`` pin
-  or a flat one) -- inapplicable, said why, when the client prepares every image inside the processor family's
-  stock range, which an unpinned engine keeps;
+  or a flat one) -- inapplicable, said why, when the pin lies inside the checkpoint's own budget at the pinned
+  revision (:func:`~rcp_ndcg_vllm.equivalence.checkpoint.checkpoint_pixel_budget`), which an unpinned engine
+  applies and which keeps every image the client prepared (or, for a client that sends images unprepared, when
+  the pin restates that budget); ``unresolved`` -- a blocker -- when that budget cannot be read;
 - **wire variants** (the recipe's own engine, the request bodies patched on the way out through
   :func:`rcp_ndcg_vllm.equivalence.wire.patched_wire`): (b) adds the request fields vLLM cuts with
   (``truncate_prompt_tokens`` + ``truncation_side: right`` -- a request field, not a serve flag, in v0.31.0);
@@ -49,8 +51,9 @@ class ControlSpec:
         name: The variant's infix (a recipe variant's id becomes ``<recipe>.<name>``).
         description: What breaks and which gate must catch it.
         derive: ``derive(recipe) -> (kind, change, reason)``: ``kind`` is ``recipe`` (``change``: the
-            ``serve``/``client`` blocks), ``wire`` (``change``: the request-body fields per route path suffix)
-            or ``None`` with the ``reason`` the control does not apply.
+            ``serve``/``client`` blocks), ``wire`` (``change``: the request-body fields per route path suffix),
+            ``None`` with the ``reason`` the control does not apply, or ``unresolved`` with the ``reason`` its
+            applicability could not be decided (the wave counts it a blocker).
     """
 
     letter: str
@@ -143,19 +146,32 @@ def _unpinned_max_pixels(recipe: Any) -> tuple[str | None, dict[str, Any], str]:
     scoped = dict(kwargs.get("images_kwargs") or {}) if isinstance(kwargs.get("images_kwargs"), dict) else {}
     if not any(key in kwargs or key in scoped for key in _PIXEL_KEYS):
         return None, {}, "the recipe pins no max_pixels or min_pixels to unpin (a finding of its own for a VL recipe)"
-    policy = getattr(recipe.client, "image_policy", None)
-    processor = getattr(recipe.client, "image_processor", None)
-    if policy is not None and processor is not None and policy.max_px is not None and not policy.pinned:
-        from rcp_ndcg.data.resolution import PROCESSORS
+    pinned = (scoped.get("min_pixels", kwargs.get("min_pixels")), scoped.get("max_pixels", kwargs.get("max_pixels")))
+    from ..equivalence.checkpoint import checkpoint_pixel_budget
+    from ..errors import HarnessError
 
-        geometry = PROCESSORS[processor]
+    try:
+        source, (low, high) = checkpoint_pixel_budget(recipe)
+    except HarnessError as error:
+        # Never declared inapplicable on a guess: the control is unresolved, and the wave counts it a blocker.
+        return "unresolved", {}, f"the checkpoint's own pixel budget cannot be read: {error}"
+    pin_low = int(pinned[0]) if pinned[0] is not None else low
+    pin_high = int(pinned[1]) if pinned[1] is not None else high
+    prepares = getattr(recipe.client, "image_processor", None) is not None
+    if prepares and low <= pin_low and pin_high <= high:
         return (
             None,
             {},
-            f"the client prepares every image inside the {processor} stock range ({policy.min_px}-{policy.max_px} px "
-            f"within {geometry.min_pixels}-{geometry.max_pixels} px), which an unpinned engine keeps: unpinning "
-            "changes nothing the engine reads (the pin binds an image the client sends unprepared, and this "
-            "client prepares every image)",
+            f"the pin ({pin_low}-{pin_high} px) lies inside the checkpoint's own budget ({low}-{high} px, "
+            f"{source}), which an unpinned engine applies: it keeps every image the client prepared under the pin, "
+            "so unpinning changes nothing the engine reads",
+        )
+    if not prepares and (pin_low, pin_high) == (low, high):
+        return (
+            None,
+            {},
+            f"the pin ({pin_low}-{pin_high} px) restates the checkpoint's own budget ({source}): unpinning changes "
+            "nothing the engine resizes",
         )
     for key in _PIXEL_KEYS:  # the ONE pin shape is nested images_kwargs; a flat pin is unpinned the same way
         kwargs.pop(key, None)
@@ -222,8 +238,8 @@ def control_variants(recipe: Any) -> list[dict[str, Any]]:
     template and reference files).  Output: one dict per control, in (a)-(f) order: ``{"control", "name",
     "description", "kind"}`` plus, for ``kind: "recipe"``, ``recipe`` (the variant: id ``<recipe>.<name>``, which
     is also its served model name and its client's ``model``, so client and engine agree), for ``kind: "wire"``,
-    ``recipe`` (the recipe itself) and ``wire_patch`` (``{route suffix: fields}``), and for an inapplicable
-    control ``kind: None`` and ``reason``.
+    ``recipe`` (the recipe itself) and ``wire_patch`` (``{route suffix: fields}``), for an inapplicable
+    control ``kind: None`` and ``reason``, and for an undecidable one ``kind: "unresolved"`` and ``reason``.
     """
     out: list[dict[str, Any]] = []
     for spec in CONTROLS:
@@ -234,7 +250,7 @@ def control_variants(recipe: Any) -> list[dict[str, Any]]:
             "description": spec.description,
             "kind": kind,
         }
-        if kind is None:
+        if kind is None or kind == "unresolved":
             out.append({**entry, "reason": reason})
             continue
         if kind == "wire":

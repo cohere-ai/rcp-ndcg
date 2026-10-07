@@ -127,7 +127,8 @@ notes: >-
   the messages route only, each item its own conversation, media before text (the card's
   format_model_input order). The harness's media stage holds the client's sent images (count, placement,
   prepared geometry, tokens) to reference.py --mode media and, against the engine, the engine's media
-  count to the client's; the negative control that unpins the budget fails it.
+  count to the client's; the negative control that unpins the budget fails it (the pin's 1843200 px ceiling
+  leaves the checkpoint's own 1310720).
 
   Video, ONE declared sampling policy on every side (the reconciliation): a clip is sampled to 64
   uniformly spaced frames over its whole length - client.video_policy {num_frames: 64, wire:

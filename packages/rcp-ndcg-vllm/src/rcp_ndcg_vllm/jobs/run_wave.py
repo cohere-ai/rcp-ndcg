@@ -908,6 +908,10 @@ def _controls(
     for variant in variants:
         if variant["kind"] is None:
             rows.append({"control": variant["control"], "name": variant["name"], "reason": variant["reason"]})
+        elif variant["kind"] == "unresolved":
+            # Undecidable is never inapplicable: the row counts as a control the gates did not catch.
+            gates = {"passed": None, "error": variant["reason"]}
+            rows.append({"control": variant["control"], "name": variant["name"], "equivalence": gates})
         elif variant["kind"] == "wire":
             with patched_wire(variant["wire_patch"]):
                 gates = _control_gates(recipe, live_url, work / variant["name"], pairs_path, reference_python)
