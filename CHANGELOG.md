@@ -87,6 +87,75 @@ released together.
   rendered script (harness tests), the four-phase supervision re-run with the fake engines as its
   engines (`tests/runners/test_supervision_replay.py`) and the observed outage behaviour as a transport
   test (`tests/inference/test_outage_observed.py`).
+- **`rcp_ndcg.testing.engines`: the verified fake engines** (GPU-VALIDATION items 2-4, 7 and 8). One
+  emulator per (engine, version, recipe, behaviour fingerprint), selected as
+  `fake://vllm-0.31.0/<recipe>` (`rcp_ndcg.inference.fake` routes engine-version hosts there); the
+  protocol is emulated (routes, request validation, error bodies, result ordering and framing, usage
+  counts and token counting with the recipe's real tokenizer files) and the model outputs are
+  replayed for observed inputs -- a declared deterministic surrogate for unseen ones (`surrogate_vector`
+  and `surrogate_matrix` draw one SHAKE-256 stream per vector, `surrogate_scores` one draw per score;
+  no value is pinned), marked
+  `replayed`/`surrogate`/`mixed` in `x-rcp-ndcg-emulator-source`, recorded per reply in `answer_log`.
+  The emulators read corpora through the format's one reader, `rcp_ndcg.testing.corpus`
+  (`exchanges_of` views its records, `corpus_tolerance` takes the tolerance the corpus's
+  `nondeterminism.json` derived from same-request repetitions -- `None` when none was measured, so a
+  replay is compared exactly, never with an invented tolerance -- and each bound applies jointly);
+  `find_corpora` resolves corpora by scanning manifests, `normalise_raw` is the byte-level form of the
+  format's normalisation, `behaviour_diff` writes the per-input delta report, and
+  the registry (`registry`, `transport_for`, `split_engine_host` -- the one engine-host pattern
+  `rcp_ndcg.inference.fake.RE_ENGINE_URL` routes) resolves by (engine, version, fingerprint) with the
+  `rcp_ndcg.emulators` entry-point group for out-of-tree emulators. An emulator refuses an engine
+  version or recipe revision it was not verified against; the conformance suite
+  (`tests/conformance/`) replays every recorded exchange and the staleness check names the changed
+  fingerprint inputs (waivers: `tests/conformance/waivers.json`, empty at release).
+- **`rcp_ndcg_vllm.fingerprint`: the recipe behaviour fingerprint** (GPU-VALIDATION item 8):
+  `behaviour_fingerprint(recipe)` (rule `rcp-fp/3`: the SHA-256 of the checkpoint id and revision, the
+  serve block, the template file's bytes, the tokenizer's SHA-256 and exactly the client fields that
+  change the request bytes -- `CLIENT_FIELDS` classifies every client config field, so request packing
+  (`batch_size`) and the media caps are in, client-side post-processing of the reply (`normalize`,
+  `aggregation`, `dim`, `mrl_dim`, `document_skip_token_ids`, `outputs`) is out, and an unclassified
+  field is refused) and `fingerprint_inputs(recipe)` (every input named, for staleness messages), with
+  `fingerprint_changes` and the one tokenizer resolution (`load_recipe_tokenizer`,
+  `tokenizer_sha256`, `use_tokenizer_store` -- vendored `tokenizer.json` copies whose SHA-256 is
+  verified on every read).
+- **`rcp_ndcg_vllm.changes`: change handling** (OBSERVATIONS-SPEC section 7): `recipe_state` (one
+  recipe's fingerprint recomputed and compared with every committed corpus of it, found by scanning
+  manifests with `rcp_ndcg.testing.engines.find_corpora`), `resolve_corpus` (the corpus of the current
+  fingerprint, or `StaleCorpusError` naming the changed inputs per recorded corpus), `waiver_covers`
+  (a dated, reasoned, unexpired staleness waiver), `changed_recipes` (the re-record-changed-only
+  selection: `unchanged`/`changed`/`new`/`unloadable` per recipe, the changed inputs named) and
+  `behaviour_report` (the behaviour diff of two corpora of one recipe), as functions and
+  `python -m rcp_ndcg_vllm.changes` (`changed` and `diff`).
+- **The corpora under `tests/contract/engines/`**: the provisional shakedown corpus (12 recipes, 48
+  exchanges) as repository subsets in the observation-corpus format (`records.jsonl.gz`, the manifest
+  with a `provisional` statement -- valid to build and test the emulators, not release evidence --,
+  `nondeterminism.json`, `index.json`; the manifest hashes in the repository's corpus index; a shared
+  vendored tokenizer store), the append-only verification record beside each (`verification.jsonl`),
+  and the
+  golden replays (`tests/e2e/test_golden_replay.py`), **regression pins** labelled as such
+  (`kind: regression-pin`: computed by this code from the provisional corpus, which recorded no subset
+  run -- not independent GPU-run numbers; the RC0 subset corpus replaces them): a NanoBEIR-shaped mini
+  through the retrieval view (two documents, the model's order reversed against the gains, and a
+  moved document vector moves both metrics) and the rerank view, and the ViDoRe-shaped rerank view.
+  The ViDoRe retrieval view is waived -- the corpus observes no page image -- by a tripwire on the
+  corpus content. Every input is observed; the run fails on any surrogate answer, and with its
+  observations deleted.
+- **Conformance details**: the model layer replays an output only for the behaviour-shaping context it
+  was observed under (`FIELD_CLASSES` over vLLM v0.31.0's `ROUTE_FIELDS`: the engine prompt plus
+  `use_activation`, `dimensions`, `add_special_tokens` and `task`); an unobserved context answers the
+  marked surrogate, a field the emulator does not model (`instruction`, `truncate_prompt_tokens`, ...)
+  a 400 marked `refused-unmodelled`, an undeclared field is ignored as the engine ignores it, and a
+  corpus whose one key holds different outputs is refused. `compare_exchange` checks a
+  reply as the transport reads it: the status, the recorded headers that matter (content type, server,
+  the bytes framing's `metadata`), the body, and its raw bytes where the corpus recorded them
+  (`normalise_raw` masks the volatile ids and stamps); an undecodable body
+  is a named difference, and a recorded body the reader cannot decode (a base64 token matrix: vLLM
+  sends no shape) is refused naming the record. Every reply says whether a recording covers its route
+  (`x-rcp-ndcg-emulator-route`, `EMULATED_ROUTES`, `VllmEmulator.unobserved_routes`, listed in the
+  verification record); the unobserved `/pooling` and `/tokenize` follow vLLM v0.31.0's source
+  (`PoolingResponse`, the bytes framing's `metadata`, `TokenizeResponse`; `embed_dtype` `float32`,
+  `endianness` `native` by default). `RE_ENGINE_URL` is exported from `rcp_ndcg.inference.fake`
+  (`rcp_ndcg.testing.engines` is pinned as public API).
 - **`rcp_ndcg.testing.corpus`: the observation-corpus format and its one reader** (new module; `rcp_ndcg.testing`
   is now a package, its names unchanged). `load_corpus` reads a GPU wave's corpus directory -- the full corpus's
   `records.jsonl` or a repository subset's `records.jsonl.gz` with its `index.json` -- and migrates records of an

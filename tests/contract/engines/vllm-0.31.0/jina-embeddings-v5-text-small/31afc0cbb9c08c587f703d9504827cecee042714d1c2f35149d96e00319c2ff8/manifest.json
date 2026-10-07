@@ -1,0 +1,171 @@
+{
+  "schema": "rcp-ndcg.observation-corpus/1",
+  "record_schema": 1,
+  "normalisation_version": 1,
+  "engine": {
+    "name": "vllm",
+    "version": "0.31.0",
+    "image": "vllm/vllm-openai:v0.31.0",
+    "image_digest": {
+      "unavailable": "the shakedown recorded no image digest"
+    },
+    "vllm_version": {
+      "unavailable": "the shakedown recorder did not probe the engine environment"
+    },
+    "vllm_commit": {
+      "unavailable": "the shakedown recorder did not probe the engine environment"
+    },
+    "torch": {
+      "unavailable": "the shakedown recorder did not probe the engine environment"
+    },
+    "cuda": {
+      "unavailable": "the shakedown recorder did not probe the engine environment"
+    },
+    "driver": {
+      "unavailable": "the shakedown recorder did not query the GPUs"
+    },
+    "gpus": {
+      "unavailable": "the shakedown recorder did not query the GPUs"
+    },
+    "serve_argv": {
+      "unavailable": "the shakedown recorder kept no serve argv"
+    },
+    "env": {
+      "unavailable": "the shakedown recorder kept no engine environment"
+    },
+    "started": {
+      "unavailable": "the shakedown recorder kept no engine start time"
+    },
+    "ready_wait_s": {
+      "unavailable": "the shakedown recorder kept no readiness wait"
+    }
+  },
+  "model": {
+    "id": "jinaai/jina-embeddings-v5-text-small",
+    "revision": "dd76d535f5447ca3897a9c893fb1e612ead98192",
+    "weights": {
+      "unavailable": "jinaai/jina-embeddings-v5-text-small@dd76d535f5447ca3897a9c893fb1e612ead98192 is not in the Hugging Face cache on this machine"
+    },
+    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    "template_sha256": {
+      "unavailable": "the recipe serves no template file (the model's own chat template applies)"
+    },
+    "plugin": {
+      "unavailable": "the recipe installs no plugin"
+    },
+    "hf_overrides": {
+      "jina_task": "retrieval",
+      "is_matryoshka": true,
+      "matryoshka_dimensions": [
+        32,
+        64,
+        128,
+        256,
+        512,
+        768,
+        1024
+      ]
+    },
+    "pooler_config": {},
+    "mm_processor_kwargs": {},
+    "dtype": "bfloat16"
+  },
+  "recipe": {
+    "id": "jina-embeddings-v5-text-small",
+    "file_sha256": "b858375b84385f2f248e21a299ad4ae3e1dde6627680ea325f3eccb01b38d341",
+    "behaviour_fingerprint": "31afc0cbb9c08c587f703d9504827cecee042714d1c2f35149d96e00319c2ff8",
+    "fingerprint_inputs": {
+      "fingerprint_schema": "rcp-fp/3",
+      "model": "jinaai/jina-embeddings-v5-text-small",
+      "revision": "dd76d535f5447ca3897a9c893fb1e612ead98192",
+      "serve.chat_template": "null",
+      "serve.convert": "null",
+      "serve.dtype": "bfloat16",
+      "serve.extra_args": "[]",
+      "serve.hf_overrides": "{\"is_matryoshka\":true,\"jina_task\":\"retrieval\",\"matryoshka_dimensions\":[32,64,128,256,512,768,1024]}",
+      "serve.io_processor_plugin": "null",
+      "serve.limit_mm_per_prompt": "null",
+      "serve.max_model_len": "32768",
+      "serve.mm_processor_kwargs": "{}",
+      "serve.plugin": "null",
+      "serve.pooler_config": "{}",
+      "serve.runner": "pooling",
+      "serve.trust_remote_code": "true",
+      "template_file": "absent",
+      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+      "client.api": "openai_embeddings",
+      "client.batch_size": "32",
+      "client.doc_prompt": "",
+      "client.empty_doc": "send",
+      "client.max_images": "0",
+      "client.max_tokens": "32768",
+      "client.max_videos": "0",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_prompt": "",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"first\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"Document:\"},{\"fixed\":\" \"},{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"Query:\"},{\"fixed\":\" \"},{\"content\":\"query\"}]}"
+    },
+    "status": {
+      "state": "unverified",
+      "image": null,
+      "date": null,
+      "report": null
+    },
+    "declared_dim": null
+  },
+  "collector": {
+    "package": "rcp-ndcg-vllm",
+    "version": {
+      "unavailable": "the shakedown's rc build version was not recorded"
+    },
+    "commit": {
+      "unavailable": "the shakedown's source commit was not recorded"
+    },
+    "generator_version": {
+      "unavailable": "the recorder's fixed exchange set predates the request generator"
+    },
+    "corpus_plan_version": {
+      "unavailable": "the recorder's fixed exchange set predates the corpus plan"
+    },
+    "record_schema": 1,
+    "seed": {
+      "unavailable": "the recorder's fixed exchange set draws nothing"
+    },
+    "dataset_commits": {
+      "unavailable": "the recorder's fixed exchange set samples no dataset"
+    },
+    "wave_id": "shake-a2",
+    "job_id": {
+      "unavailable": "the shakedown's job id is not public"
+    },
+    "started": "2026-10-06",
+    "finished": "2026-10-06",
+    "host_sha256": {
+      "unavailable": "the shakedown recorder did not hash the node's hostname"
+    },
+    "recorder": "rcp_ndcg_vllm.record (the recorder's fixed exchange set)",
+    "note": "shakedown corpus, rewritten in the observation-corpus format without touching a recorded value: one repetition per request, no /tokenize ground truth, no engine image digest, bodies as the recorder kept them (parsed JSON; body_raw reconstructed, said so per record). recipe.file_sha256 is the recipe file's hash when the corpus was rewritten, not at recording: the recorded run predates the recipe fixes of 2026-10-07; the recorded prompts still render from the current recipes, which tests/conformance/test_recipe_sources.py checks for the embedding requests and every conformance replay checks for the rerank pair prompts."
+  },
+  "provisional": {
+    "status": "provisional",
+    "valid_for": "building and testing the verified fake engines (the emulators and their conformance suite)",
+    "not_valid_for": "release evidence: no recipe is verified, no GPU-run number is reproduced from this corpus",
+    "why": "recorded by the GPU shakedown (waves shake-a1/shake-a2 of 2026-10-06) with the recorder's fixed exchange set: one repetition per request, request and response bodies kept as parsed JSON (not raw bytes), no engine image digest, no /tokenize ground truth, no /pooling recording; some recipes of that shakedown were served with temporary shakedown-only patches",
+    "replaced_by": "the RC0 recording wave (rcp_ndcg_vllm.observe), keyed by behaviour fingerprint"
+  },
+  "integrity": {
+    "files": {
+      "nondeterminism.json": {
+        "sha256": "095a5477e6146d9ffcbab95e9e412f498e6d54f893352b5b8ad03dc55f92447c",
+        "bytes": 653
+      },
+      "records.jsonl": {
+        "sha256": "c509595ed2c9e949b81b7f86d8eca60cb03eea190e15ff31a320af481a45f362",
+        "bytes": 361491
+      }
+    },
+    "records_count": 4,
+    "manifest_sha256": "8819208b355e0227f1aaa6b39b46984e1424ffa8a9ed88f836b4797c5b261b7a"
+  }
+}

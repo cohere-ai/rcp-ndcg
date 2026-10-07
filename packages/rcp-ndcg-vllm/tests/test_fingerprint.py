@@ -155,3 +155,100 @@ def test_a_missing_tokenizer_raises_with_a_hint(tmp_path: Path) -> None:
     with pytest.raises(HarnessError) as error:
         fingerprint_inputs(load_recipe(edited))
     assert "tokenizer" in str(error.value).lower()
+
+
+# -- M4: exactly what changes the request bytes or the model outputs, in both directions -----------------
+
+MULTI = RECIPES / "fixture-multi-vector"
+RERANK = RECIPES / "fixture-rerank-pointwise"
+
+
+def _copy_of(source: Path, tmp_path: Path, rewrite) -> Path:
+    """A rewritten copy of any fixture recipe (its tokenizer path made absolute)."""
+    directory = tmp_path / source.name
+    shutil.copytree(source, directory)
+    text = (directory / "recipe.yaml").read_text(encoding="utf-8").replace("../../tokenizer.json", str(TOKENIZER))
+    data = rewrite(yaml.safe_load(text))
+    (directory / "recipe.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return directory
+
+
+@pytest.mark.parametrize(
+    ("source", "field", "value"),
+    [
+        (EMBED, "normalize", False),  # the client L2-normalises after the reply: no request byte moves
+        (MULTI, "mrl_dim", 4),  # the client cuts and renormalises the reply (/pooling refuses dimensions)
+        (MULTI, "document_skip_token_ids", [7, 9]),  # the client drops token vectors after the reply
+        (MULTI, "dim", 16),  # the width the client checks the reply against
+        (MULTI, "outputs", "per_chunk"),  # how the client reads the reply
+    ],
+)
+def test_client_side_post_processing_never_moves_the_fingerprint(
+    source: Path, field: str, value: object, tmp_path: Path
+) -> None:
+    """Out: a field applied to the reply after it arrives changes neither the request nor the model output."""
+    before = load_recipe(_copy_of(source, tmp_path / "before", lambda data: data))
+
+    def rewrite(data: dict) -> dict:
+        data["client"][field] = value
+        return data
+
+    after = load_recipe(_copy_of(source, tmp_path / "after", rewrite))
+    assert getattr(after.client, field) != getattr(before.client, field)
+    assert behaviour_fingerprint(after) == behaviour_fingerprint(before), field
+    assert f"client.{field}" not in fingerprint_inputs(after)
+
+
+def test_the_aggregation_rule_is_not_an_input() -> None:
+    """Out: chunk aggregation combines replies on the client (``max``); it never reaches the wire."""
+    for source in (EMBED, MULTI, RERANK):
+        assert "client.aggregation" not in fingerprint_inputs(load_recipe(source)), source.name
+
+
+@pytest.mark.parametrize(
+    ("source", "field", "value"),
+    [
+        (EMBED, "batch_size", 8),  # request packing: how many texts one request carries
+        (RERANK, "batch_size", 4),  # documents per pointwise request
+        (EMBED, "max_tokens", 64),  # the client cut: the text sent
+        (MULTI, "embed_dtype", "float32"),  # sent in the /pooling body
+        (RERANK, "use_activation", True),  # sent in the /rerank body, changes the score
+    ],
+)
+def test_a_request_shaping_field_moves_the_fingerprint_and_is_named(
+    source: Path, field: str, value: object, tmp_path: Path
+) -> None:
+    """In: a field that changes the request bytes moves the fingerprint, and the staleness names it."""
+    before = load_recipe(_copy_of(source, tmp_path / "before", lambda data: data))
+
+    def rewrite(data: dict) -> dict:
+        data["client"][field] = value
+        return data
+
+    after = load_recipe(_copy_of(source, tmp_path / "after", rewrite))
+    assert behaviour_fingerprint(after) != behaviour_fingerprint(before), field
+    assert _changed(fingerprint_inputs(before), fingerprint_inputs(after)) == {f"client.{field}"}
+
+
+def test_every_client_config_field_is_classified() -> None:
+    """A new client field forces a decision: the fingerprint refuses a field it has not classified, so a
+    field that shapes the request can never be silently left out (nor a post-processing one silently in)."""
+    from rcp_ndcg_vllm.fingerprint import CLIENT_FIELDS
+
+    from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+
+    for config in (EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint):
+        missing = sorted(set(config.model_fields) - set(CLIENT_FIELDS))
+        assert not missing, f"{config.__name__}: unclassified client fields {missing}"
+    assert set(CLIENT_FIELDS.values()) == {"request", "naming", "post_processing", "transport"}
+
+
+def test_an_unclassified_client_field_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    from rcp_ndcg_vllm import fingerprint
+
+    fields = dict(fingerprint.CLIENT_FIELDS)
+    del fields["max_tokens"]
+    monkeypatch.setattr(fingerprint, "CLIENT_FIELDS", fields)
+    with pytest.raises(HarnessError) as error:
+        fingerprint_inputs(_load())
+    assert "max_tokens" in str(error.value)

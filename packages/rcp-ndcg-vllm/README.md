@@ -101,7 +101,11 @@ waves](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/release-candi
 The stage-2 pairs files (`pairs/<id>.jsonl` and their `manifest.json`) come from the deterministic request
 generator `python -m rcp_ndcg_vllm.observe.requests`; the wave's observation-corpus step, the T3 quality stage
 and the negative controls are `run_wave.py`'s `--record-corpus`, `--quality` and `--controls`. The corpus
-format is documented in `schema/observation-corpus.md`; its one reader is `rcp_ndcg.testing.corpus`.
+format is documented in `schema/observation-corpus.md`; its one reader is `rcp_ndcg.testing.corpus`. Every
+corpus is keyed by the recipe behaviour fingerprint (`rcp_ndcg_vllm.fingerprint`); `python -m rcp_ndcg_vllm.changes`
+selects the recipes to re-record and diffs two corpora of one recipe. The verified fake engines that replay the
+corpora are `rcp_ndcg.testing.engines` ([use the verified fake
+engines](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/use-verified-fake-engines.md)).
 
 ## License
 

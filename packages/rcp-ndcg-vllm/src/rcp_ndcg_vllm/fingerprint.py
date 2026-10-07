@@ -3,11 +3,11 @@ what the model returns.
 
 One function, defined here once and reused by the observation-corpus writer, the wave runner's
 re-record-changed-only mode and the fake engines' conformance suite. The inputs are exactly what item 8
-names: the model id and revision, the ``serve`` block (overrides, pooler config, dtype, plugin name and
-version, ``mm_processor_kwargs``, ....), the template file's bytes, the tokenizer's ``tokenizer.json``
-SHA-256 and the client fields that shape the request (the product's own CONTENT classification of the
-endpoint config -- ``rcp_ndcg.support.identity.identity_payload`` -- plus the media caps, which decide how
-much media a request carries). rcp-ndcg's own internals are not in it: the emulators speak the wire, so
+names: the model id and revision, the ``serve`` block (overrides, pooler config, dtype, the plugin's pip
+spec, ``mm_processor_kwargs``, ...), the template file's bytes, the tokenizer's ``tokenizer.json``
+SHA-256 and the client fields that change the request bytes (:data:`CLIENT_FIELDS` classifies every
+client config field; client-side post-processing of the reply is out, request packing and the media caps
+are in). rcp-ndcg's own internals are not in it: the emulators speak the wire, so
 refactoring the package never needs a re-recording. Recipe identity (``id``) and harness metadata
 (``notes``, ``status``, ``reference``, ``gates``) are out: a renamed recipe with the same behaviour keys
 the same fingerprint.
@@ -46,6 +46,7 @@ from rcp_ndcg_vllm.errors import HarnessError
 from rcp_ndcg_vllm.recipe import Recipe
 
 __all__ = [
+    "CLIENT_FIELDS",
     "FINGERPRINT_SCHEMA",
     "behaviour_fingerprint",
     "fingerprint_changes",
@@ -55,18 +56,68 @@ __all__ = [
     "use_tokenizer_store",
 ]
 
-FINGERPRINT_SCHEMA = "rcp-fp/1"
+FINGERPRINT_SCHEMA = "rcp-fp/3"
 """The fingerprint rule's version, part of the hashed bytes: changing the input set or their
-canonicalisation is a new schema (``rcp-fp/2``), so old and new corpora never collide in one key."""
+canonicalisation is a new schema (``rcp-fp/4``), so old and new corpora never collide in one key.
+Version 3 keys exactly the client fields that change the request bytes (:data:`CLIENT_FIELDS`):
+client-side post-processing of the reply is out, request packing (``batch_size``) and the media caps
+are in."""
 
-_CLIENT_FIELDS_OUT = frozenset({"model", "revision", "recipe", "tokenizer"})
-"""Client config fields out of the fingerprint: they name where and what, they cannot change what the
-model returns (the served name and the revision are keyed separately as ``model``/``revision``; the
-tokenizer's bytes as ``tokenizer_sha256``)."""
-
-_CLIENT_FIELDS_IN = frozenset({"max_images", "max_videos"})
-"""RUNTIME client fields back in: they decide how much media a request carries, so they shape the
-request bytes even though they are runtime for an identity."""
+CLIENT_FIELDS: dict[str, str] = {
+    # request: the field changes the bytes the client sends (and with them what the model returns)
+    "api": "request",  # the wire adapter: route and body shape
+    "max_tokens": "request",  # the client cut: the text sent
+    "query_max_tokens": "request",
+    "template": "request",  # the rendered prompt
+    "on_overflow": "request",  # cut, chunk or refuse: which requests are sent
+    "chunk": "request",
+    "empty_doc": "request",  # an empty document sent, sent as text, or never sent
+    "empty_doc_text": "request",
+    "empty_query": "request",
+    "request_shape": "request",  # text, messages or token ids on the wire
+    "query_prompt": "request",
+    "doc_prompt": "request",
+    "dimensions": "request",  # sent in the /v1/embeddings body
+    "instruction": "request",  # folded into the prompt, or sent as a field or a system message
+    "use_activation": "request",  # sent in the /rerank body
+    "listwise": "request",  # one N-passage request instead of one request per pair
+    "embed_dtype": "request",  # sent in the /pooling body
+    "image_processor": "request",  # the client resizes the media it sends
+    "image_policy": "request",
+    "video_policy": "request",
+    "media_sides": "request",
+    "max_images": "request",  # how much media one request carries
+    "max_videos": "request",
+    "batch_size": "request",  # request packing: a bf16 batch's numbers can depend on its composition
+    # naming: keyed elsewhere or not behaviour at all
+    "model": "naming",  # keyed as ``model`` from the recipe
+    "revision": "naming",  # keyed as ``revision`` from the recipe
+    "recipe": "naming",
+    "tokenizer": "naming",  # its bytes are keyed as ``tokenizer_sha256``
+    # post_processing: applied to the reply after it arrives; neither the request nor the model output moves
+    "normalize": "post_processing",
+    "aggregation": "post_processing",
+    "dim": "post_processing",  # the width the client checks the reply against
+    "mrl_dim": "post_processing",  # the client cuts and renormalises the reply
+    "document_skip_token_ids": "post_processing",
+    "outputs": "post_processing",  # how the client reads one input's outputs
+    # transport: where, how fast and how often; never what
+    "base_url": "transport",
+    "api_key_env": "transport",
+    "headers_env": "transport",
+    "concurrency": "transport",
+    "timeout_s": "transport",
+    "connect_timeout_s": "transport",
+    "max_retries": "transport",
+    "wait_on_outage_s": "transport",
+}
+"""Every client config field of the three role configs, classified (GPU-VALIDATION.md item 8 keys "the
+client fields that shape the request"). Only ``request`` fields are fingerprint inputs: they change the
+request bytes, and with them what the model returns. ``post_processing`` fields act on the reply on the
+client, ``naming`` fields are keyed elsewhere (``model``, ``revision``, ``tokenizer_sha256``) and
+``transport`` fields decide where and how often a request goes. A field missing here is refused by
+:func:`fingerprint_inputs`, so a new product field forces a decision instead of falling silently in or
+out."""
 
 _STORES: list[Path] = []
 """Registered tokenizer stores, searched in registration order (see :func:`use_tokenizer_store`)."""
@@ -206,7 +257,7 @@ def fingerprint_inputs(recipe: Recipe) -> dict[str, str]:
     per field of the ``serve`` block (``model_dump`` on the frozen schema -- overrides, pooler config,
     dtype, plugin, ``mm_processor_kwargs``, ``max_model_len``, ``limit_mm_per_prompt``, ``extra_args``);
     ``template_file`` (the template file's bytes) and ``tokenizer_sha256``; and ``client.<field>`` for
-    every client field that shapes the request (the product's CONTENT classification plus the media caps).
+    every client field :data:`CLIENT_FIELDS` classifies as ``request`` (it changes the request bytes).
     ``fingerprint_schema`` records which rule hashed them.
 
     Args:
@@ -225,13 +276,21 @@ def fingerprint_inputs(recipe: Recipe) -> dict[str, str]:
         inputs[f"serve.{field}"] = _canonical(value)
     inputs["template_file"] = _template_file_sha(recipe)
     inputs["tokenizer_sha256"] = tokenizer_sha256(recipe)
-    client = dict(identity_payload(recipe.client))
-    for field in _CLIENT_FIELDS_IN:
-        value = getattr(recipe.client, field, None)
+    client = recipe.client
+    dumped = client.model_dump(mode="json")
+    unclassified = sorted((set(type(client).model_fields) | set(client.__pydantic_extra__ or {})) - set(CLIENT_FIELDS))
+    if unclassified:
+        raise HarnessError(
+            f"recipe {recipe.id}: the client fields {unclassified} are not classified in "
+            "rcp_ndcg_vllm.fingerprint.CLIENT_FIELDS; decide whether each changes the request bytes "
+            "('request', a fingerprint input) or not ('post_processing', 'naming', 'transport')"
+        )
+    content = identity_payload(client)  # the product's canonical form of its CONTENT fields
+    for field in sorted(dumped):
+        if CLIENT_FIELDS[field] != "request":
+            continue
+        value = content[field] if field in content else dumped[field]  # RUNTIME request fields: as declared
         if value is not None:
-            client[field] = value
-    for field, value in sorted(client.items()):
-        if field not in _CLIENT_FIELDS_OUT:
             inputs[f"client.{field}"] = _canonical(value)
     return inputs
 
