@@ -51,7 +51,7 @@ vLLM
   - packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/pooler.py:
     `PplxChunkPool` subclasses vLLM's `AllPool` and is modeled on its `StepPool`
     (vllm/model_executor/layers/pooler/tokwise/methods.py at v0.31.0).
-  - packages/rcp-ndcg-vllm/recipes/qwen3-reranker-0.6b/qwen3_reranker.jinja,
+  - packages/rcp-ndcg-vllm/recipes/qwen3-reranker-0.6b/template.jinja,
     packages/rcp-ndcg-vllm/recipes/qwen3-reranker-4b/template.jinja and
     packages/rcp-ndcg-vllm/recipes/qwen3-reranker-8b/template.jinja: adapted
     from examples/pooling/score/template/qwen3_reranker.jinja at the v0.31.0
@@ -92,13 +92,13 @@ ZeroEntropy zerank
   - packages/rcp-ndcg-vllm/recipes/zerank-1-reranker/template.jinja: the score
     frame reduced from the checkpoint's `chat_template` (embedded in
     tokenizer_config.json) at zeroentropy/zerank-1-reranker@d03c467e29e29c0a16a130a86ce3b62d30116a2c.
-  - packages/rcp-ndcg-vllm/recipes/zerank-1-small-reranker/zerank_score_template.jinja:
+  - packages/rcp-ndcg-vllm/recipes/zerank-1-small-reranker/template.jinja:
     the same checkpoint `chat_template` at
     zeroentropy/zerank-1-small-reranker@a65fd51c450e9b47fdddab98e31166ecad21af8d,
     kept verbatim as the file's fallback branch, plus a score branch derived
     from it. Both checkpoints embed one shared upstream template, SHA-256
     a55ee1b1660128b7098723e0abcd92caa0788061051c62d51cbe87d9cf1974d8.
-  - packages/rcp-ndcg-vllm/recipes/zerank-2-reranker/zerank2_score_template.jinja:
+  - packages/rcp-ndcg-vllm/recipes/zerank-2-reranker/template.jinja:
     the score frame derived from the checkpoint's chat_template.jinja at
     zeroentropy/zerank-2-reranker@5eae30d5ee3c6b2df2ef6d723bde45172d761c4c
     (upstream SHA-256 77137ede3bb2f14fabaab01c6e86eb49b77cf3db5061246115796b5f55998336).
