@@ -769,6 +769,66 @@ class TestUserInfoNeverLeaks:
         assert "sekrit-value" not in str(caught.value)
         assert all("sekrit-value" not in record.getMessage() for record in caplog.records)
 
+    SECRET_URL = "https://user:fake-secret-pw@gw.example/v1?key=fake-secret-q"
+
+    @staticmethod
+    def _everything_said(exc: BaseException) -> str:
+        """The exception as a -vv traceback shows it: its message, its details and every chained cause."""
+        import traceback
+
+        return "".join(traceback.format_exception(exc)) + repr(getattr(exc, "details", None))
+
+    def test_a_probe_error_record_carries_no_secret(self) -> None:
+        """A 401 on GET /models is recorded on the engine record, which the run manifest and the judgement
+        store persist: httpx's own message names the full URL, so the record carries the status only."""
+        transport = _transport(ReplicaScript(401), base_url=self.SECRET_URL)
+        (engine,) = asyncio.run(transport.probe())
+        transport.close()
+        assert engine.error and "401" in engine.error
+        assert "fake-secret" not in engine.model_dump_json()
+
+    def test_an_outage_s_chained_cause_carries_no_secret(self) -> None:
+        """BackendUnavailableError chains the last failure: a transport error whose own text names the URL
+        must not carry it into a traceback."""
+        script = ReplicaScript(httpx.ConnectError(f"cannot reach {self.SECRET_URL}"))
+        transport = _transport(script, base_url=self.SECRET_URL, wait_on_outage_s=0)
+        with pytest.raises(BackendUnavailableError) as caught:
+            asyncio.run(transport.send([Call("POST", "/a", {})]))
+        assert "fake-secret" not in self._everything_said(caught.value)
+
+    def test_the_retry_warning_carries_no_secret(self, caplog: pytest.LogCaptureFixture) -> None:
+        script = ReplicaScript(httpx.ConnectError(f"cannot reach {self.SECRET_URL}"), 200)
+        transport = _transport(script, base_url=self.SECRET_URL, max_retries=1)
+        with caplog.at_level(logging.WARNING, logger="rcp_ndcg"):
+            asyncio.run(transport.send([Call("POST", "/a", {})]))
+        messages = [record.getMessage() for record in caplog.records]
+        assert any("retrying" in message for message in messages)
+        assert all("fake-secret" not in message for message in messages)
+
+    def test_the_probe_s_model_warning_carries_no_secret(self, caplog: pytest.LogCaptureFixture) -> None:
+        def models(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"data": [{"id": "another-model"}]})
+
+        transport = Transport(
+            Endpoint(base_url=self.SECRET_URL, model="m"), httpx_transport=httpx.MockTransport(models)
+        )
+        with caplog.at_level(logging.WARNING, logger="rcp_ndcg"):
+            asyncio.run(transport.probe())
+        transport.close()
+        messages = [record.getMessage() for record in caplog.records]
+        assert any("another-model" in message for message in messages)
+        assert all("fake-secret" not in message for message in messages)
+
+    @pytest.mark.parametrize("status", [400, 401, 404, 413, 422])
+    def test_an_error_status_s_message_carries_no_secret(self, status: int) -> None:
+        transport = _transport(ReplicaScript(status), base_url=self.SECRET_URL)
+        try:
+            replies = asyncio.run(transport.send([Call("POST", "/a", {})]))
+        except Exception as exc:  # noqa: BLE001 - the status map raises on most of these
+            assert "fake-secret" not in self._everything_said(exc)
+        else:
+            assert all("fake-secret" not in str(reply.body) for reply in replies)
+
     def test_the_engine_record_strips_userinfo_and_query(self, tokenizer_json: str) -> None:
         from rcp_ndcg.inference.types import EngineInfo
 

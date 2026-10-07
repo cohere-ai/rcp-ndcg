@@ -1439,6 +1439,12 @@ released together.
   any other URL (a self-hosted engine, a gateway, a third party, a transport injected on another endpoint, a
   judge config swapped to another URL, a stranger in a replica list) carries a key only through the
   config's explicit `api_key_env`. A variable set for one vendor used to authenticate any `base_url`.
+- **Credentials embedded in a URL never reach a record, a log or a traceback** (`https://user:pw@host/v1?key=...`):
+  an engine record's `error` (persisted in the run manifest and the judgement store) carries the failure's
+  type and HTTP status instead of httpx's text, which names the full request URL; the transport chains a
+  redacted stand-in under `BackendUnavailableError` and `RequestRejectedError` instead of the httpx
+  exception; every rerank error names its server through `safe_url`, in the message and in `details`.
+  `rcp_ndcg.storage.uri.redact_urls` redacts every URL in free text, beside `safe_url`.
 - Dependabot alerts on the default branch's lock (operator snapshot): every alert the lock could carry is
   closed in this one. The `vllm` alerts (27 open when read, the operator's snapshot counted 11, highs among
   them) and its engine-only dependencies (`xgrammar`, `diskcache`) leave the lock with the extras;

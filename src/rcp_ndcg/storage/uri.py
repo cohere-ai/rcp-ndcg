@@ -122,6 +122,24 @@ def safe_url(url: str) -> str:
     return f"{scheme}://{authority}/{path}" if path else f"{scheme}://{authority}"
 
 
+#: A URL inside free text (an exception's message): a scheme, ``://``, then everything up to whitespace or a
+#: quote.
+_URL_IN_TEXT = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^\s'\"<>]+")
+
+
+def redact_urls(text: str) -> str:
+    """*text* with every URL in it passed through :func:`safe_url`: the form of an exception's message (an
+    httpx error names the request's full URL) that may reach a log, a record or a traceback.
+
+    Args:
+        text: Free text that may carry URLs.
+
+    Returns:
+        The text, each URL's userinfo, query and fragment stripped.
+    """
+    return _URL_IN_TEXT.sub(lambda match: safe_url(match.group(0)), text)
+
+
 __all__ = [
     "is_remote",
     "join",
@@ -129,6 +147,7 @@ __all__ = [
     "local_path",
     "parent",
     "protocol_of",
+    "redact_urls",
     "safe_url",
     "split_protocol",
 ]

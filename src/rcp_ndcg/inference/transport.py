@@ -43,7 +43,7 @@ from rcp_ndcg.errors import (
 )
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.fake import FAKE_SCHEME, fake_transport
-from rcp_ndcg.inference.probe import read_replica
+from rcp_ndcg.inference.probe import describe_failure, read_replica
 from rcp_ndcg.inference.types import Call, EngineInfo, Reply, TokenCount, Usage
 from rcp_ndcg.storage.uri import safe_url
 from rcp_ndcg.support.logging import get_logger
@@ -145,6 +145,18 @@ class _Replica:
         self.backoff: float | None = None
         """The next time it is set aside, for how long (``None``: the transport's first backoff)."""
         self.engine: EngineInfo | None = None
+
+
+class _RedactedFailure(Exception):
+    """The redacted stand-in for an HTTP library exception, chained under the errors the transport raises:
+    its message is :func:`~rcp_ndcg.inference.probe.describe_failure`'s (the type and status, every URL
+    redacted). The library's own exception names the full request URL -- userinfo and query included --
+    and would carry it into every traceback."""
+
+
+def _redacted(exc: BaseException) -> _RedactedFailure:
+    """The chainable, redacted form of a library exception."""
+    return _RedactedFailure(describe_failure(exc))
 
 
 class _Unavailable(Exception):
@@ -393,7 +405,7 @@ class Transport:
         try:
             response = await self._client().send(request)
         except httpx.TransportError as exc:
-            raise _Unavailable(f"{type(exc).__name__}: {exc}", cause=exc) from exc
+            raise _Unavailable(describe_failure(exc), cause=_redacted(exc)) from None
         status = response.status_code
         if status_is_unavailable(status):
             text = _body_text(response)
@@ -401,8 +413,8 @@ class Transport:
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:  # always: every unavailable status is an error status
                 raise _Unavailable(
-                    f"HTTP {status}: {text}", cause=exc, retry_after=_retry_after(response.headers)
-                ) from exc
+                    f"HTTP {status}: {text}", cause=_redacted(exc), retry_after=_retry_after(response.headers)
+                ) from None
             raise AssertionError(f"unreachable: HTTP {status} is an error status")
         error = status_error(
             status, url=safe_url(replica.url), path=path, model=self.endpoint.model, body=_body_text(response)
@@ -598,9 +610,7 @@ class Transport:
                 system_fingerprint=fingerprint,
             )
         except Exception as exc:  # best effort: what the endpoint says is recorded, never required
-            replica.engine = EngineInfo(
-                url=replica.url, system_fingerprint=fingerprint, error=f"{type(exc).__name__}: {exc}"
-            )
+            replica.engine = EngineInfo(url=replica.url, system_fingerprint=fingerprint, error=describe_failure(exc))
 
     @property
     def engines(self) -> list[EngineInfo]:

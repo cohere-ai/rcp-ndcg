@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.errors import DataError
-from rcp_ndcg.storage.uri import safe_url
+from rcp_ndcg.storage.uri import redact_urls, safe_url
 
 _EMPTY_HEADERS: Mapping[str, str] = MappingProxyType({})
 
@@ -153,6 +153,13 @@ class EngineInfo(BaseModel):
     def _no_userinfo_in_the_record(cls, value: str) -> str:
         """The record never carries userinfo or a query: a key embedded in the URL must not be persisted."""
         return safe_url(value)
+
+    @field_validator("error")
+    @classmethod
+    def _no_url_secret_in_the_error(cls, value: str | None) -> str | None:
+        """An error text names URLs as the exception wrote them (httpx: the full request URL); the record is
+        persisted, so every URL in it is redacted."""
+        return None if value is None else redact_urls(value)
 
 
 # ---------------------------------------------------------------------------
