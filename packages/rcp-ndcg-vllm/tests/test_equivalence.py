@@ -504,3 +504,53 @@ def test_stage1_audits_messages_bodies_and_fails_an_audit_that_checked_nothing(t
     nothing = stages_module._anchor_check(recipe, empty, load_tokenizer(str(TOKENIZER)))
     assert nothing["checked"] == 0 and nothing["passed"] is False
     assert nothing["failures"][0]["check"] == "nothing_checked"
+
+
+def _byte_level_bpe(path: Path) -> Path:
+    """A small byte-level BPE tokenizer (GPT-2's pre-tokenizer), trained in-test and written to ``path``: a
+    space joins the word after it (``" document"`` is one token), so a frame ending in a space merges into
+    the content that follows it -- the mergey tokenizers of the served models, offline."""
+    from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
+
+    backend = Tokenizer(models.BPE())
+    backend.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)  # type: ignore[assignment]
+    backend.decoder = decoders.ByteLevel()  # type: ignore[assignment]
+    texts = [row["query"] for row in sample_pairs()] + [text for row in sample_pairs() for text in row["documents"]]
+    corpus = [f"doc: {text}" for text in texts]  # the framed texts: " document" is learned as one token
+    trainer = trainers.BpeTrainer(
+        vocab_size=600,
+        special_tokens=["<|cls|>", "<|sep|>", "<|end|>"],
+        initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
+        show_progress=False,
+    )
+    backend.train_from_iterator(corpus * 20, trainer)
+    backend.save(str(path))
+    return path
+
+
+def test_stage1_head_edge_tolerates_the_join_merge_on_a_byte_level_bpe(tmp_path: Path) -> None:
+    """G3: on a byte-level BPE the head's trailing space merges into the first content token (``"doc: "`` ends
+    in ``Ġ`` alone, ``"doc: document"`` reads ``Ġdocument``). The ``anchor: first`` audit compares the head
+    up to that join -- the frame's whitespace the fit verifies on the assembled render -- so a whole head
+    passes, and a head whose own tokens changed still fails."""
+    from rcp_ndcg_vllm.equivalence import stages as stages_module
+
+    from rcp_ndcg.data.tokenizer import load_tokenizer
+
+    bpe = _byte_level_bpe(tmp_path / "tokenizer.json")
+    tokenizer = load_tokenizer(str(bpe))
+    cls = tokenizer.special_text("cls")
+    assert tokenizer.ids(cls + "doc: ")[:3] == tokenizer.ids(cls + "doc: document")[:3]
+    assert tokenizer.ids(cls + "doc: ")[3] != tokenizer.ids(cls + "doc: document")[3]  # the join merged
+    recipe = _with_client(load("fixture-embed-cls"), tokenizer=str(bpe))
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    for request_shape in ("text", "token_ids"):
+        shaped = _with_client(recipe, request_shape=request_shape)
+        audit = stage1_prompts(shaped, pairs, None, over_length_per_shape=2)["anchor_check"]
+        assert audit["passed"] is True, (request_shape, audit["failures"][:1])
+        assert audit["checked"] == len(sample_pairs()[0]["documents"]) + 2
+    for broken in ("doc: document 0", cls + "dog: document 0", cls + "do"):  # no cls, another head, a cut head
+        for body in (broken, tokenizer.ids(broken)):
+            probe = {"rows": [{"shapes": {"document": {"texts": [body]}}, "cuts": 0, "over_cap": False}]}
+            check = stages_module._anchor_check(recipe, probe, tokenizer)
+            assert check["passed"] is False, (broken, type(body).__name__)

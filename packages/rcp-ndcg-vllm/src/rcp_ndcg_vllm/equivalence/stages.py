@@ -308,6 +308,7 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
                 continue
             flag = _add_specials_flag(recipe, shape)
             edge = _anchor_edge_ids(recipe, tokenizer, shape)
+            join = _head_join_tokens(recipe, tokenizer, shape)
             for text in shape_body["texts"]:
                 # A ``token_ids`` body carries the ids as sent: the client tokenized its render with the
                 # shape's flag, so they already hold the edge and the post-processor's tokens (G1).
@@ -321,15 +322,19 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
                         failures.append({"shape": shape, "check": "markers", "missing_names": missing, "row": index})
                     continue
                 at_start = template.anchor == "first"
-                actual = ids[: len(edge)] if at_start else ids[-len(edge) :]
-                if not edge or actual != edge:
+                # The head edge stops before its join tokens: the whitespace where the head meets the content
+                # re-tokenizes with it on a byte-level BPE (G3), as the fit's assembled-render count allows.
+                expected = edge[: len(edge) - join] if at_start else edge
+                actual = ids[: len(expected)] if at_start else ids[-len(expected) :]
+                if not expected or actual != expected:
                     failures.append(
                         {
                             "shape": shape,
                             "check": "head" if at_start else "tail",
                             "row": index,
-                            "expected_edge_ids": edge,
+                            "expected_edge_ids": expected,
                             "actual_edge_ids": actual,
+                            **({"join_tokens": join} if at_start else {}),
                             "text": _head_of(text),
                         }
                     )
@@ -806,6 +811,31 @@ def _anchor_edge_ids(recipe: Recipe, tokenizer: Any, shape: Any) -> list[int]:
         else:
             ids = (*ids, *_post_processor_tail(tokenizer, text))
     return list(ids)
+
+
+def _head_join_tokens(recipe: Recipe, tokenizer: Any, shape: Any) -> int:
+    """How many of an ``anchor: first`` head's trailing tokens are its join to the content: whitespace only.
+
+    The fit counts the frame on the empty render and verifies every request on the assembled one, because a
+    byte-level merge across a span join re-tokenizes the frame's edge with the content: a head ending in a
+    space (``"doc: "``, alone ``... Ġ``) reads ``Ġdocument`` once the content follows it.  Those join tokens
+    are measured here on the head's own render (its tokens whose characters are whitespace, at its end) and
+    are not part of the head edge the audit asserts; every other head token is.  Zero for any other anchor,
+    and for a head whose first segment is not fixed (the post-processor's prefix alone is the edge).
+    """
+    template = recipe.client.template
+    if template is None or template.anchor != "first":
+        return 0
+    segments = template.segments(shape)
+    if not segments or segments[0].fixed is None:
+        return 0
+    head = segments[0].render(tokenizer)
+    join = 0
+    for start, end in reversed(tokenizer.offsets(head)):
+        if head[start:end].strip():
+            break
+        join += 1
+    return join
 
 
 # ---------------------------------------------------------------------------
