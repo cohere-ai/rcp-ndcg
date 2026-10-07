@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rcp-ndcg-test"
+version = "0.0.1"
+description = "The validation tooling for served models: the equivalence harness, the engine recorder and the GPU wave runner (unpublished)."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.12"
+authors = [
+  { name = "RCP-nDCG contributors" },
+]
+# The harness drives the product's role clients (rcp-ndcg) against the served recipes (rcp-ndcg-vllm):
+# it exercises both and reimplements neither (R30). Never published (docs-release Q2).
+dependencies = [
+  "rcp-ndcg==0.0.1",
+  "rcp-ndcg-vllm==0.0.1",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.0",
+  "jinja2>=3.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# The node scripts ship with the package (the sdist's graft covers them too); submit.sh mounts one from
+# the checkout at submission time.
+"rcp_ndcg_test.jobs" = ["*.sh"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "network: needs the public HuggingFace Hub; the test also skips itself unless RCP_NDCG_NETWORK_TESTS=1",
+]

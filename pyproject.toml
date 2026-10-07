@@ -3,12 +3,13 @@
 # layout_move.py keeps this split and the member list current.
 
 [tool.uv.workspace]
-members = ["rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-vllm"]
+members = ["rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-test", "rcp-ndcg-vllm"]
 
 [tool.uv.sources]
 # An inter-member requirement resolves to the checkout, never to an index.
 rcp-ndcg = { workspace = true }
 rcp-ndcg-core = { workspace = true }
+rcp-ndcg-test = { workspace = true }
 rcp-ndcg-vllm = { workspace = true }
 
 [tool.ruff.lint.isort]
@@ -49,7 +50,7 @@ exclude = ["*.md"]
 select = ["E", "F", "I", "B", "UP"]
 
 [tool.basedpyright]
-include = ["rcp-ndcg/src", "rcp-ndcg-core/src", "rcp-ndcg-vllm/src"]
+include = ["rcp-ndcg/src", "rcp-ndcg-core/src", "rcp-ndcg-vllm/src", "rcp-ndcg-test/src"]
 exclude = ["**/__pycache__"]
 # "standard" rather than basedpyright's default "all": the strict-adjacent rules
 # (reportAny, reportUnusedCallResult, reportMissingTypeArgument) fire thousands

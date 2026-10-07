@@ -19,7 +19,6 @@ in this package is internal.
 
 from __future__ import annotations
 
-from .errors import HarnessError as HarnessError
 from .errors import RecipeError as RecipeError
 from .recipe import PINNED_POOLER_CONFIG_FIELDS as PINNED_POOLER_CONFIG_FIELDS
 from .recipe import EngineSpec as EngineSpec
