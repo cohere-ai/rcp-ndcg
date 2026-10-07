@@ -32,8 +32,8 @@ Media is not exercised here (the media checks are the research's token-level che
 probe-image check): a pairs row carrying media columns is refused loudly (see :func:`_refuse_media_rows`).
 The recipe's ONE video sampling policy (64 uniformly spaced frames per clip) governs a future media wave:
 a video row would arrive as its 64 pre-sampled frames and pass through the card's frame-list route at
-``num_segments`` 64 unchanged. The vector path's stage 2 implements no over-cap exclusion: an over-cap
-stage-2 pair fails the cosine gate loudly, so the stage-2 pairs must sit under the recipe's budget.
+``num_segments`` 64 unchanged. Which over-cap rows the harness reports rather than gates is the
+recipe's notes' ("Budgets"); the pairs files keep every text within the budget minus the frame.
 
 Reference environment (``requirements-reference.txt`` in this directory, installed into the reference
 python): torch (the card pins 2.8.0), transformers>=4.57 (Qwen3VL), qwen-vl-utils>=0.0.14, pyyaml,

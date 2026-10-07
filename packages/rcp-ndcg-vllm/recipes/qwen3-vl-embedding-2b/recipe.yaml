@@ -56,7 +56,7 @@ reference:
   kind: transformers            # the model card's scripts/qwen3_vl_embedding.py (Qwen3VLEmbedder, transformers), vendored verbatim beside reference.py
   score_scale: cosine
   entry: reference.py
-  known_deviations: [anchor_drop_over_cap]   # the card's processor truncation (truncation=True at MAX_LENGTH=8192) right-cuts the rendered prompt: the frame's tail (im_end, the assistant header) is cut and only the post-processor's endoftext is re-appended. reference.py renders exactly that cut; the client keeps the whole frame. Over-cap rows are reported, not gated (see notes)
+  known_deviations: [anchor_drop_over_cap]   # the card's processor truncation (truncation=True at MAX_LENGTH=8192) right-cuts the rendered prompt: the frame's tail (im_end, the assistant header) is cut and only the post-processor's endoftext is re-appended. reference.py renders exactly that cut; the client keeps the whole frame. Which over-cap rows the harness reports rather than gates today: see notes, "Budgets"
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
@@ -99,7 +99,11 @@ notes: >-
   it does not run here; the recipe's test takes its place against the checkpoint's file. A custom
   instruction is a different serving mode - a new template and judgement family, not this recipe (the
   pairs files carry no instruction field, and the reference refuses rows that carry one). The card's
-  empty-input rule renders the text NULL, hence empty_doc: send_text. No query_max_tokens: the card
+  empty-input rule renders the text NULL, hence empty_doc: send_text "NULL" -- declared, but not yet
+  applied by the product: the embed client applies empty_doc after the template render, so a templated
+  role's empty document ships as an empty user turn, not NULL (a known product gap, being fixed on a
+  product lane; the recipe's test pins it as a strict xfail), so the pairs files carry no empty
+  documents until then. No query_max_tokens: the card
   caps the WHOLE prompt (MAX_LENGTH 8192) for both sides alike, mirrored by client.max_tokens.
 
   Budgets: client.max_tokens is the declared policy, reserved frame-first with the content span cut
@@ -107,9 +111,12 @@ notes: >-
   truncation (the processor's truncation=True at max_length 8192) right-cuts the whole prompt: the
   frame's tail is cut and only the post-processor's endoftext is re-appended - the declared
   anchor_drop_over_cap deviation. reference.py renders exactly that cut (by character offsets on the
-  rendered prompt, never a decode); over-cap rows are reported, not gated, and under-cap rows gate
-  exactly. On the vector path stage 2 implements no over-cap exclusion today: an over-cap pair in a
-  stage-2 pairs file fails the cosine gate loudly, so the stage-2 pairs must sit under the budget.
+  rendered prompt, never a decode). What the harness does today, in stage 1 and stage 2 alike: it treats
+  a text as over cap only when a cut's own content tokens (no frame) exceed client.max_tokens (8192);
+  those rows are reported in the non-gating table under the declared deviation. A text that overflows
+  only with the 20-token frame (content of at most 8192 tokens, render over 8192: content from about
+  8173 tokens) is gated, and fails there, because the card cuts its frame tail and the client does
+  not. The pairs files must keep every query and document within 8172 content tokens.
 
   Media (R20). Serve: serve.mm_processor_kwargs pins {min_pixels: 4096, max_pixels: 1843200} under the
   nested images_kwargs scope - ONE shape across the media recipes, decided from the v0.31.0 tag source:

@@ -56,9 +56,9 @@ client:
   query_max_tokens: 4096   # the query's share of the pair budget, settled by the rerank client:
                            # the pair fit binds on overflow, and the client settles the query at
                            # its share whenever it exceeds it (it then ships at 4096 even when
-                           # the pair fits). An over-share query is therefore a declared
-                           # divergence row (the reference keeps the query whole) and rows that
-                           # cross the share are dropped from the gates. The 4096 is the served
+                           # the pair fits), where the card keeps the query whole: the cuts
+                           # differ. The harness gates such a row today (notes, "Budgets"), so
+                           # the pairs files keep queries within the share. The 4096 is the served
                            # reranker's query cap (MAX_QUERY_LENGTH at the pre-unification
                            # retrieval tree); the reference caps the whole pair, not the query
                            # alone, but a declared share stops an over-long query from eating the
@@ -115,10 +115,12 @@ reference:
                                             # (keep every special token and the first
                                             # (8192 - specials) non-special tokens of all but the
                                             # last 5 ids, re-append those 5): the assistant tail
-                                            # (the anchor) survives, the kept content differs from
-                                            # the client's settle-once cut. reference.py renders
-                                            # the card's cut; over-cap rows are reported
-                                            # non-gating, under-cap rows gate exactly
+                                            # (the anchor) and every special token survive, the
+                                            # kept content differs from the client's settle-once
+                                            # cut. One exception, in the notes ("Budgets"): a cut
+                                            # inside the query also drops the fixed
+                                            # "\n<Document>:" text. reference.py renders the
+                                            # card's cut
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
@@ -132,7 +134,7 @@ sources:
      (the served template; this recipe's copy rewrites the two expression blocks to the
      query/document variable convention with a messages fallback, byte-equal under the engine's
      render)"
-  - "vllm v0.31.0 vllm/renderers/hf.py:757-778 safe_apply_chat_template; vllm/entrypoints/pooling/
+  - "vllm v0.31.0 vllm/renderers/hf.py:778 safe_apply_chat_template (its ChatTemplateResolutionError raise at :795); vllm/entrypoints/pooling/
      scoring/protocol.py:38-66 (the /rerank instruction field merged into chat_template_kwargs);
      scoring/io_processor.py:605 get_score_prompt, :690-707 the chat-template render with
      messages [{role: query}, {role: document}] (the template's messages fallback) and the
@@ -228,11 +230,22 @@ notes: |
   query_max_tokens (4096) whenever the query exceeds its share, even when the pair fits. The
   card cuts its own way: it keeps every special token and the first 8192 - specials non-special
   tokens of all but the last 5 ids, then re-appends those 5 (the assistant tail) -- so it keeps
-  the anchor, keeps an over-share query whole, and admits up to 8197 tokens. Every pair the
-  client had to cut (an over-share query or an over-cap pair) is reported in the non-gating
-  table under the declared over_cap_cut_differs; reference.py renders the card's own cut there
-  and never the client's. The wave's pairs file should keep queries within the share and pairs
-  within the budget, so the gates see enough rows.
+  the anchor, keeps an over-share query whole, and admits up to 8197 tokens; reference.py
+  renders that cut and never the client's. Hence over_cap_cut_differs: the anchor kept, the
+  content cut differently. The exception, precisely: when the query alone fills the card's body
+  (about 8100 query tokens or more), the card's cut lands inside the query, and the non-special
+  fixed text after it -- "\n<Document>:" -- is dropped together with the whole document, while
+  every special token and the assistant tail stay. No anchor is lost (the frame text is not the
+  model's read-out position), so the label stays, with this exception declared here; the client
+  never ships such a pair (its query settles at 4096).
+
+  What the harness does today: it treats a pair as over cap only when a cut's own content
+  tokens (query plus document text, no frame) exceed client.max_tokens (8192). Such pairs are
+  reported in the non-gating table under the declared deviation. Every other cut pair is gated:
+  an over-share query (over 4096 tokens) in a pair whose content is under 8192, and a pair that
+  overflows only with the 66-token frame (content between 8127 and 8192 tokens) -- the card's cut
+  differs there, so those rows fail. The wave's pairs files must keep queries within the
+  4096-token share and pairs within 8126 content tokens.
 
   Stage 1 on CPU proves: the declared pair shape renders byte-identically to the served
   template file (and hence to the card's reference prompt), the anchors survive every

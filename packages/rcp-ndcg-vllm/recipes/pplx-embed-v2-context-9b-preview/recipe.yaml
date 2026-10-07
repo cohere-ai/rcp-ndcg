@@ -52,7 +52,7 @@ client:
                       # not apply and is skipped
   template:
     # The role prefixes by NAME (the product's special-name resolution keeps a name's
-    # significant whitespace exactly, p1-tail 2i; these added tokens' names carry a
+    # significant whitespace exactly; these added tokens' names carry a
     # significant trailing space). The render check pins the resolved spelling against
     # the reference's constants.
     query:
@@ -84,14 +84,14 @@ sources:
   - https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/tokenizer_config.json
   - "modeling_pplx_contextual.py at the revision: :16-32 PplxContextualModel (Qwen3_5Model subclass, _keep_in_fp32_modules contextual_projection), :46-75 query prepare_inputs (the [Q] prefix id prepended over a split_special_tokens tokenize of the query text), :77-113 document prepare_inputs (the joined text tokenized split-side; chunk token spans from the offsets), :126-133 the 262144-token raise, :136-167 _pool (masked means; span means via the cumsum over the char spans), :214 round(tanh(x)*127) int8 head"
   - "configuration_pplx_contextual.py at the revision: :6-27 the remote config class the plugin's hf_config.py restates (model_type pplx_contextual_qwen3_5; embedding_dim/prefix/boundary-marker fields; query_length/document_length feeding max_position_embeddings; text_config.use_cache off)"
-  # vLLM at the pinned image (v0.31.0 ~= checkout d0d6e5f3a; load-bearing files checked against the tag).
-  - "vllm v0.31.0 (d0d6e5f3a): vllm/entrypoints/pooling/base/protocol.py:212-220 (completion input takes text and token ids; add_special_tokens defaults true)"
-  - "vllm v0.31.0 (d0d6e5f3a): vllm/entrypoints/pooling/pooling/protocol.py (PoolingCompletionRequest: /pooling text input renders no chat template)"
-  - "vllm v0.31.0 (d0d6e5f3a): vllm/entrypoints/pooling/base/io_processor.py:122-152 (the completion path applies no template, only tok_params)"
-  - "vllm v0.31.0 (d0d6e5f3a): vllm/config/pooler.py:33,60 (PoolerConfig.task, PoolerConfig.use_activation)"
-  - "vllm v0.31.0 (d0d6e5f3a): vllm/pooling_params.py:55 (use_activation default None -> the token_embed pooler's default activation)"
-  - "vllm v0.31.0 (d0d6e5f3a): vllm/model_executor/models/colqwen3_5.py:133 (is_pooling_model on an out-of-tree pooling precedent)"
-  - "vllm v0.31.0, the GDN dtype floors (why serve.dtype is bfloat16): vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:93-130 (_resolve_gdn_prefill_backend: flashinfer on Hopper/Blackwell CUDA, else Triton/FLA) and :242-262 (ChunkGatedDeltaRule binds the chosen kernel); the flashinfer path raises at flashinfer/gdn_kernels/blackwell/gdn_prefill.py:140 (_cutlass_io_dtype: 'Unsupported dtype torch.float32, expected bfloat16 or float16' -- the shake1c serve log's warmup and first-forward raises) and the Triton/FLA fallback refuses fp32 with 'ChunkGatedDeltaRuleFunction does not support float32. Please use bfloat16.' (vllm/third_party/flash_linear_attention/ops/chunk.py:213-215 at the tag). mamba_ssm_dtype: float32 (config.json) sets only the SSM cache dtype (vllm/model_executor/models/config.py:824-841 at the tag), whose values include float32 (FUSED_GDN_STATE_DTYPES)"
+  # vLLM at the pinned image: the v0.31.0 tag (db9527a46873454610df6dbedf79a36d6bf1a7f6).
+  - "vllm v0.31.0: vllm/entrypoints/pooling/base/protocol.py:212-220 (completion input takes text and token ids; add_special_tokens defaults true)"
+  - "vllm v0.31.0: vllm/entrypoints/pooling/pooling/protocol.py (PoolingCompletionRequest: /pooling text input renders no chat template)"
+  - "vllm v0.31.0: vllm/entrypoints/pooling/base/io_processor.py:135-149 (the completion branch applies no template, only tok_params)"
+  - "vllm v0.31.0: vllm/config/pooler.py:33,60 (PoolerConfig.task, PoolerConfig.use_activation)"
+  - "vllm v0.31.0: vllm/pooling_params.py:55 (use_activation default None -> the token_embed pooler's default activation)"
+  - "vllm v0.31.0: vllm/model_executor/models/colqwen3_5.py:133 (is_pooling_model on an out-of-tree pooling precedent)"
+  - "vllm v0.31.0, the GDN dtype floors (why serve.dtype is bfloat16): vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:93-130 (_resolve_gdn_prefill_backend: flashinfer on Hopper/Blackwell CUDA, else Triton/FLA) and :242-262 (ChunkGatedDeltaRule binds the chosen kernel); the flashinfer path raises at flashinfer/gdn_kernels/blackwell/gdn_prefill.py:140 (_cutlass_io_dtype: 'Unsupported dtype torch.float32, expected bfloat16 or float16' -- raised both at kernel warmup and on the first forward when the checkpoint was served in float32 on the stock v0.31.0 image) and the Triton/FLA fallback refuses fp32 with 'ChunkGatedDeltaRuleFunction does not support float32. Please use bfloat16.' (vllm/third_party/flash_linear_attention/ops/chunk.py:213-215 at the tag). mamba_ssm_dtype: float32 (config.json) sets only the SSM cache dtype (vllm/model_executor/models/config.py:824-841 at the tag), whose values include float32 (FUSED_GDN_STATE_DTYPES)"
   # The product this client block constructs.
   - "rcp-ndcg: src/rcp_ndcg/inference/config.py (PoolingEndpoint: api, request_shape, embed_dtype, dim, outputs, budget fields)"
   - "rcp-ndcg: src/rcp_ndcg/data/templates.py (TemplateSpec: segments, specials by name with whitespace kept, anchor, add_special_tokens)"
@@ -171,8 +171,9 @@ notes: |
 
   dtype: vLLM v0.31.0 cannot run this model in float32: the GDN prefill kernels
   refuse it on every backend (flashinfer's _cutlass_io_dtype raises
-  "Unsupported dtype torch.float32, expected bfloat16 or float16", observed at
-  shake1c both at kernel warmup and on the first forward; the Triton/FLA path
+  "Unsupported dtype torch.float32, expected bfloat16 or float16", observed both at
+  kernel warmup and on the first forward when the checkpoint was served in float32 on
+  the stock v0.31.0 image; the Triton/FLA path
   asserts "ChunkGatedDeltaRuleFunction does not support float32. Please use
   bfloat16.", third_party/flash_linear_attention/ops/chunk.py:213-215 at the
   tag). The recipe therefore serves dtype: bfloat16 (16.8 GB of weights; the
@@ -199,7 +200,10 @@ notes: |
   loudly at the engine's own max_model_len, never silently. The pooling role
   client fits every request to the declared tokenizer and budget before it
   derives the token ids (src/rcp_ndcg/inference/clients/pool.py: content-only
-  cuts, every cut census-recorded): the cut is the declared policy. max_model_len
+  cuts, every cut census-recorded): the cut is the declared policy. The model card
+  has no over-limit output to compare with (it raises), so the pairs files keep
+  every text under the limit; reference.py's render of such a row is the uncut
+  prompt, which stage 1 reports as a mismatch. max_model_len
   262144 reserves whole-sequence prefill (bidirectional pooling disables
   chunked prefill at the pinned engine): roughly 8.5 GB of bf16 KV per 262k
   sequence (the GDN state cache stays fp32 via mamba_ssm_dtype, small beside
@@ -220,7 +224,7 @@ notes: |
 
   Template segments: the two role prefixes are written by NAME
   ({special:[Q] } / {special:[D] }): the product's special-name resolution
-  keeps a name's significant whitespace exactly (p1-tail 2i), and these added
+  keeps a name's significant whitespace exactly, and these added
   tokens' names carry a significant trailing space. The render check against
   the reference's constants pins the resolved spelling.
 
