@@ -255,9 +255,10 @@ released together.
   without an `mrl_dim`; every request field unchanged); a
   `/pooling` recipe whose over-length samples exceed 32768 tokens records its render check as blocked (the
   full-budget stage 1 runs against the engine); a recipe whose validation pruned every row is a skipped
-  recipe with the first failure named, never an empty pairs file. The committed `pairs/` hold 17 of the 18
-  recipes (`jina-embeddings-v5-text-small` is skipped: the harness's anchor check does not read `anchor:
-  last_content` yet).
+  recipe with the first failure named, never an empty pairs file. The committed `pairs/` hold all 18
+  recipes, generated in render mode on CPU (no model weights); the manifest records two render checks as
+  blocked (`pplx-embed-v2-context-9b-preview`: the offline probe bound; `qwen3-vl-reranker-2b`: its
+  reference refuses the whitespace-only query the product sends).
 - **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
   are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric
   placements whose document has no Bradley-Terry theta, and the queries absent from `bt_scores`, instead of

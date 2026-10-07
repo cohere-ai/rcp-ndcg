@@ -1325,11 +1325,433 @@
       }
     },
     {
+      "recipe": "jina-embeddings-v5-text-small",
+      "path": "jina-embeddings-v5-text-small.jsonl",
+      "sha256": "f9e83143096bed0935afc5f27251d17d823bb8c5f81ac361508591737d645eea",
+      "bytes": 141368,
+      "rows": 23,
+      "strata": {
+        "shapes:document+query": {
+          "present": true
+        },
+        "shapes:query": {
+          "present": true
+        },
+        "shapes:document": {
+          "present": true
+        },
+        "instruction:none": {
+          "present": true
+        },
+        "content:ascii_prose": {
+          "present": true
+        },
+        "content:code": {
+          "present": true
+        },
+        "content:cjk": {
+          "present": true
+        },
+        "content:rtl": {
+          "present": true
+        },
+        "content:emoji_zwj": {
+          "present": true
+        },
+        "content:combining_marks": {
+          "present": true
+        },
+        "content:whitespace_only": {
+          "present": true
+        },
+        "content:empty": {
+          "present": true
+        },
+        "content:long_token_url": {
+          "present": true
+        },
+        "content:long_token_base64": {
+          "present": true
+        },
+        "content:special_token_spellings": {
+          "present": true
+        },
+        "source:nanobeir": {
+          "present": true
+        },
+        "source:bright": {
+          "present": true
+        },
+        "source:vidore": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "source:trecdl": {
+          "present": false,
+          "reason": "the trecdl corpora were not requested at generation time (--suites nanobeir,bright by default): its corpus is node-scale (TREC DL's full MS MARCO-passage corpus, ViDoRe's page images); the corpus request set samples it on the node"
+        },
+        "media:page_image": {
+          "present": false,
+          "reason": "the recipe is text-only (recipe.input declares no image)"
+        },
+        "length:tiny": {
+          "present": true
+        },
+        "length:short": {
+          "present": true
+        },
+        "length:median": {
+          "present": true
+        },
+        "length:at_90": {
+          "present": true,
+          "content_tokens": 29484,
+          "overhead_tokens": 3
+        },
+        "length:at_budget": {
+          "present": true,
+          "content_tokens": 32761,
+          "overhead_tokens": 3
+        },
+        "length:over_cap": {
+          "present": false,
+          "reason": "stage-2 vector gates have no over-cap exclusion (the recipe's own reference notes say the pairs must sit under the budget)"
+        }
+      },
+      "provenance": [
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoArguAnaRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "test-international-gmehwasr-pro05a",
+            "doc_ids": [
+              "validation-international-mewhwakapps-con02a",
+              "test-international-gmehwasr-pro05b",
+              "test-international-gmehwasr-con05a",
+              "validation-international-mewhwakapps-con03a"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoArguAnaRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoArguAnaRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "test-politics-ypppgvhwmv-pro03a",
+            "doc_ids": [
+              "test-politics-ypppgvhwmv-pro03b",
+              "test-politics-ypppgvhwmv-con01b",
+              "test-politics-ypppgvhwmv-pro05a",
+              "test-politics-ypppgvhwmv-pro02a"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoArguAnaRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFEVERRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "108352",
+            "doc_ids": [
+              "Nate_Diaz",
+              "World_Extreme_Cagefighting",
+              "Carlos_Condit",
+              "David_Díaz_vs._Manny_Pacquiao"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFEVERRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoFEVERRetrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "221252",
+            "doc_ids": [
+              "The_Block_(album)",
+              "Single_(New_Kids_on_the_Block_and_Ne-Yo_song)",
+              "Writer's_Block_(Just_Jack_song)",
+              "New_Kids_on_the_Block_(album)"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoFEVERRetrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoTouche2020Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "12",
+            "doc_ids": [
+              "16d7ef8d-2019-04-18T14:33:01Z-00005-000",
+              "8e214b94-2019-04-18T12:19:56Z-00001-000",
+              "deb2a1a4-2019-04-18T14:56:32Z-00000-000",
+              "3d9819c3-2019-04-18T18:25:50Z-00002-000"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoTouche2020Retrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "nanobeir",
+            "subset": "NanoTouche2020Retrieval",
+            "commit": "4517f2cb9e342479725bf0931a329998b4d35038",
+            "query_id": "13",
+            "doc_ids": [
+              "6e782a7f-2019-04-18T13:11:24Z-00003-000",
+              "3d507ec5-2019-04-18T19:02:10Z-00003-000",
+              "3d507ec5-2019-04-18T19:02:10Z-00000-000",
+              "8fdcc598-2019-04-18T19:16:21Z-00005-000"
+            ]
+          },
+          "strata": [
+            "source:nanobeir",
+            "source:nanobeir/NanoTouche2020Retrieval",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "pony",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "103",
+            "doc_ids": [
+              "Pony/src-collections-list-_82.txt",
+              "Pony/src-builtin-array-_0.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/pony",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "pony",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "4",
+            "doc_ids": [
+              "Pony/src-builtin-string-_153.txt",
+              "Pony/src-builtin-string-_154.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/pony",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "ascii_prose"
+          },
+          "strata": [
+            "content:ascii_prose",
+            "content:ascii_prose@document",
+            "content:ascii_prose@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "code"
+          },
+          "strata": [
+            "content:code",
+            "content:code@document",
+            "content:code@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "cjk"
+          },
+          "strata": [
+            "content:cjk",
+            "content:cjk@document",
+            "content:cjk@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "rtl"
+          },
+          "strata": [
+            "content:rtl",
+            "content:rtl@document",
+            "content:rtl@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "emoji_zwj"
+          },
+          "strata": [
+            "content:emoji_zwj",
+            "content:emoji_zwj@document",
+            "content:emoji_zwj@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "combining_marks"
+          },
+          "strata": [
+            "content:combining_marks",
+            "content:combining_marks@document",
+            "content:combining_marks@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "whitespace_only"
+          },
+          "strata": [
+            "content:whitespace_only",
+            "content:whitespace_only@document",
+            "content:whitespace_only@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_url"
+          },
+          "strata": [
+            "content:long_token_url",
+            "content:long_token_url@document",
+            "content:long_token_url@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "long_token_base64"
+          },
+          "strata": [
+            "content:long_token_base64",
+            "content:long_token_base64@document",
+            "content:long_token_base64@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "special_token_spellings"
+          },
+          "strata": [
+            "content:special_token_spellings",
+            "content:special_token_spellings@document",
+            "content:special_token_spellings@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:tiny"
+          },
+          "strata": [
+            "length:tiny",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:short"
+          },
+          "strata": [
+            "length:short",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:median"
+          },
+          "strata": [
+            "length:median",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_90"
+          },
+          "strata": [
+            "length:at_90",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_budget"
+          },
+          "strata": [
+            "length:at_budget",
+            "shapes:document+query"
+          ]
+        }
+      ],
+      "skipped_sources": [],
+      "validation": {
+        "render_check": "passed",
+        "pruned_rows": 1,
+        "over_length_per_shape": 2,
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+      }
+    },
+    {
       "recipe": "jina-reranker-v3",
       "path": "jina-reranker-v3.jsonl",
-      "sha256": "46d8a097979473b0ada77d743d012b9e0ce949cd6fbbfd2a444e1777ee9a9b9d",
-      "bytes": 41164,
-      "rows": 21,
+      "sha256": "1aaf6bc92e8c71c4e177fe9d24d5282aed723bfe470b5e702d7ca21057f3c078",
+      "bytes": 45945,
+      "rows": 22,
       "strata": {
         "shapes:pair": {
           "present": true
@@ -1709,12 +2131,22 @@
             "length:median",
             "shapes:pair"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:at_budget"
+          },
+          "strata": [
+            "length:at_budget",
+            "shapes:pair"
+          ]
         }
       ],
       "skipped_sources": [],
       "validation": {
         "render_check": "passed",
-        "pruned_rows": 2,
+        "pruned_rows": 1,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
       }
@@ -4281,9 +4713,9 @@
     {
       "recipe": "qwen3-vl-embedding-2b",
       "path": "qwen3-vl-embedding-2b.jsonl",
-      "sha256": "b5472f5ab45b194d4a78dc35dbc5dc901bf9fa8bfee41b1af7b2498b69330581",
-      "bytes": 77695,
-      "rows": 23,
+      "sha256": "a2f06c6c57c280d870f353461cfeca47a96e3c0b656c473315843724c558d3dd",
+      "bytes": 77918,
+      "rows": 24,
       "strata": {
         "shapes:document+query": {
           "present": true
@@ -4607,6 +5039,17 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -4694,7 +5137,7 @@
       "skipped_sources": [],
       "validation": {
         "render_check": "passed",
-        "pruned_rows": 1,
+        "pruned_rows": 0,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
       }
@@ -7266,13 +7709,21 @@
       }
     }
   ],
-  "skipped_recipes": [
+  "skipped_recipes": [],
+  "pruned": [
     {
       "recipe": "jina-embeddings-v5-text-small",
-      "error": "generation failed: ValueError: stage-1 validation pruned every row (24); the first: {\"actual_edge_ids\": [], \"check\": \"tail\", \"expected_edge_ids\": [], \"row\": 0, \"shape\": \"query\"}"
-    }
-  ],
-  "pruned": [
+      "source": {
+        "suite": "synthetic",
+        "content_kind": "empty"
+      },
+      "strata": [
+        "content:empty",
+        "content:empty@document",
+        "shapes:document+query"
+      ],
+      "reason": "{\"actual_ids_head\": [7524, 25, 220], \"actual_ids_tail\": [7524, 25, 220], \"check\": \"no_content_token\", \"expected_head_ids\": [7524, 25, 220], \"expected_head_text\": \"Document: \", \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"document\"}"
+    },
     {
       "recipe": "jina-reranker-v3",
       "source": {
@@ -7284,31 +7735,6 @@
         "shapes:pair"
       ],
       "reason": "{\"index\": 21, \"reference_text_head\": \"at_90 document pad00000 pad00001 pad00002 pad00003 pad00004 pad00005 pad00006 pad00007 pad00008 pad00009 pad00010 pad00011 pad00012 pad00013 pad00014 pad00015 pad00016 pad00017 pad00018 pad00019 pad00020 pad00021 pad00022 pad00023 pad00024 \", \"served_text_head\": \"at_90 document pad00000 pad00001 pad00002 pad00003 pad00004 pad00005 pad00006 pad00007 pad00008 pa"
-    },
-    {
-      "recipe": "jina-reranker-v3",
-      "source": {
-        "suite": "synthetic",
-        "content_kind": "length:at_budget"
-      },
-      "strata": [
-        "length:at_budget",
-        "shapes:pair"
-      ],
-      "reason": "{\"index\": 22, \"reference_text_head\": \"at_budget document pad00000 pad00001 pad00002 pad00003 pad00004 pad00005 pad00006 pad00007 pad00008 pad00009 pad00010 pad00011 pad00012 pad00013 pad00014 pad00015 pad00016 pad00017 pad00018 pad00019 pad00020 pad00021 pad00022 pad00023 pad00\", \"served_text_head\": \"at_budget document pad00000 pad00001 pad00002 pad00003 pad00004 pad00005 pad00006 pad00007 pad0000"
-    },
-    {
-      "recipe": "qwen3-vl-embedding-2b",
-      "source": {
-        "suite": "synthetic",
-        "content_kind": "empty"
-      },
-      "strata": [
-        "content:empty",
-        "content:empty@document",
-        "shapes:document+query"
-      ],
-      "reason": "{\"index\": 15, \"reference_text_head\": \"<|im_start|>system\\nRepresent the user's input.<|im_end|>\\n<|im_start|>user\\nNULL<|im_end|>\\n<|im_start|>assistant\\n\", \"served_text_head\": \"<|im_start|>system\\nRepresent the user's input.<|im_end|>\\n<|im_start|>user\\n<|im_end|>\\n<|im_start|>assistant\\n\", \"shape\": \"document\"}"
     },
     {
       "recipe": "topk-embed-v1-small",
