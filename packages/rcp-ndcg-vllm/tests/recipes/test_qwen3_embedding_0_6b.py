@@ -354,6 +354,7 @@ EXPECTED_CLIENT = {
     "checkpoint's sentence-transformers metadata (last-token + L2 normalize); bare strings on "
     "/v1/embeddings with the post-processor anchor appended",
     "request_shape": "text",
+    "add_generation_prompt": None,
     "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
     "template": {
         "add_special_tokens": True,

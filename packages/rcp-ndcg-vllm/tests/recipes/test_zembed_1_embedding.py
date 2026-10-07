@@ -531,6 +531,7 @@ EXPECTED_CLIENT = {
     "modules.json (last-token + normalize); the checkpoint's remote tokenize appends the trailing "
     "marker the template declares",
     "request_shape": "text",
+    "add_generation_prompt": None,
     "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
     "template": {
         "add_special_tokens": True,

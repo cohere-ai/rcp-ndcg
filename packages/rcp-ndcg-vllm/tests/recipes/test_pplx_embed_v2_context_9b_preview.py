@@ -130,6 +130,7 @@ EXPECTED_CLIENT = {
     "empty_doc": "send",
     "empty_doc_text": None,
     "request_shape": "token_ids",
+    "add_generation_prompt": None,
     "query_prompt": "",
     "doc_prompt": "",
     "normalize": True,

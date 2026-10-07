@@ -238,6 +238,7 @@ EXPECTED_CLIENT = {
     "empty_doc": "omit_zero",
     "empty_doc_text": None,
     "request_shape": "text",
+    "add_generation_prompt": None,
     "query_prompt": "",
     "doc_prompt": "",
     "normalize": True,
