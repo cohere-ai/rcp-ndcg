@@ -567,6 +567,7 @@ def test_score_mode_setup_parses_and_reaches_the_model_load() -> None:
     transformers_stub.AutoModelForCausalLM = _StubAutoModel
     monkey = pytest.MonkeyPatch()
     try:
+        monkey.setattr(sys, "dont_write_bytecode", True)  # tests write only to tmp_path, never a recipe dir
         monkey.setitem(sys.modules, "torch", torch_stub)
         monkey.setitem(sys.modules, "transformers", transformers_stub)
         spec = importlib.util.spec_from_file_location("qwen3_reranker_4b_reference", RECIPE_DIR / "reference.py")
