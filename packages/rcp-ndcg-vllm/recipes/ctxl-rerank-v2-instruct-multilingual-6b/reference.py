@@ -5,8 +5,8 @@ Derived with unchanged behaviour from the paper's exact in-process scorer
 ``src/rcp_ndcg/retrieval/external_rerankers.py:275-389`` until the in-process path left the
 package), with the constructor arguments the paper's factory passed for this checkpoint:
 ``max_seq_len=8192`` (the paper's ``MAX_SEQ_LENGTH``), ``batch_size=8``
-(``experiments/paper/rerankers/ctxl_rerank_6b.yaml`` as this worktree pins it; the migrated
-served-path config carries the budgets and ``instruction: none``), bfloat16 weights and the
+(the original in-process form of ``experiments/paper/rerankers/ctxl_rerank_6b.yaml``; its current
+served-path form carries the budgets and ``instruction: none``), bfloat16 weights and the
 revision the recipe pins. The score is the raw logit of vocabulary position 0 at the final position
 of the 2-line prompt (document before query, then " ??"); no sigmoid, no softmax, no temperature.
 
@@ -18,8 +18,8 @@ Deviations kept from the paper's code, declared in recipe.yaml:
   non-gating table); the served path cuts the content spans only and re-attaches the frame instead;
 - the prompt carries no instruction: the paper's factory never set ``ContextualRerank.instruction``
   and the recipe declares ``instruction: none`` -- the pairs file's per-row instruction field is
-  therefore ignored here (neither folded nor appended; the card's inline " {instruction}" form
-  survives only as the paper's inert ``_prompt_text`` slot);
+  therefore ignored here (neither folded nor appended: the prompt builder takes no instruction,
+  as in the 1b and 2b references);
 - a query over the declared 4096-token share is a declared divergence row: the merged rerank
   client settles the shared query once per call and ships it at the share whenever it exceeds it,
   while the paper's path has no query share and keeps the query whole. The gating pairs keep
@@ -29,8 +29,8 @@ Interface (the in-process view; the reference runs as a subprocess, never import
 the harness, which holds no torch -- the equivalence harness itself drives the CLI below):
 
     load(device=None)                                            -> the model on ``device``
-    render(query, doc, instruction=None) -> list[int]            -> the prompt's token ids
-    score(query, docs, instruction=None) -> list[float]          -> one raw logit per document
+    render(query, doc) -> list[int]                              -> the prompt's token ids
+    score(query, docs) -> list[float]                            -> one raw logit per document
 
 and the CLI the equivalence harness invokes:
 
@@ -64,8 +64,8 @@ DEFAULT_TOKENIZER_SPEC = f"{MODEL_ID}@{REVISION}"
 MAX_SEQ_LEN = 8192
 #: The score reads this vocabulary position at the final position (the paper: logits[:, -1, 0]).
 VOCAB_POSITION = 0
-#: Docs per forward (the paper's in-process config for this checkpoint, batch_size 8 at the
-#: pre-migration experiments/paper/rerankers/ctxl_rerank_6b.yaml).
+#: Docs per forward (batch_size 8 in the original in-process form of
+#: experiments/paper/rerankers/ctxl_rerank_6b.yaml).
 BATCH_SIZE = 8
 #: Padded-area budget (docs * max_char_len) that keeps near-max-length batches from OOMing.
 BATCH_SIZE_TOKENS = 15_000
@@ -75,16 +75,14 @@ _MID = "\n<Query> "
 _TAIL = " ??"
 
 
-def _prompt_text(query: str, doc: str, instruction: str | None = None) -> str:
-    """The exact prompt string: document before query, an optional instruction, then " ??".
+def _prompt_text(query: str, doc: str) -> str:
+    """The exact prompt string: document before query, then " ??".
 
-    This is the paper's ``ContextualRerank._format_prompts`` body. With ``instruction=None``
-    (the recipe's declared mode -- a pairs row's instruction is never passed here) it is
-    byte-identical to the served render of the recipe's declared pair shape for any pair under the
-    budget and within the query share.
+    The paper's ``ContextualRerank._format_prompts`` body with its ``instruction`` unset (the paper's
+    factory never set it; the recipe declares ``instruction: none``): byte-identical to the served
+    render of the recipe's declared pair shape for any pair under the budget and within the share.
     """
-    instruction_text = f" {instruction}" if instruction else ""
-    return f"{_HEAD}{doc}{_MID}{query}{instruction_text}{_TAIL}"
+    return f"{_HEAD}{doc}{_MID}{query}{_TAIL}"
 
 
 def _split_tokenizer_spec(spec: str) -> tuple[str, str | None]:
@@ -115,8 +113,10 @@ class CtxlRerank:
     def load(self, device: str | None = None) -> CtxlRerank:
         """Load the tokenizer and the causal LM onto ``device``; completes a render()-only instance.
 
-        bfloat16 weights on GPU, float32 on CPU (the card's fallback; the paper ran bfloat16) and
-        flash_attention_2, as the paper's code pins. Idempotent (a tokenizer loaded for ``render``
+        bfloat16 weights on every device (the paper factory's ``DTYPE = "bfloat16"``, passed explicitly,
+        so the class's own float32-on-CPU default never applied), flash_attention_2 on CUDA and the
+        default attention elsewhere (flash-attention-2 does not exist on CPU) -- the same rule in
+        the 1b, 2b and 6b references. Idempotent (a tokenizer loaded for ``render``
         is kept, the model attaches around it), so render-then-score works in one process.
         """
         import torch
@@ -128,15 +128,13 @@ class CtxlRerank:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         self.tokenizer.padding_side = "left"  # position -1 is the last real token of every row
         if self.model is None:
-            dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
-            self.model = AutoModelForCausalLM.from_pretrained(
-                MODEL_ID,
-                dtype=dtype,
-                revision=REVISION,
-                attn_implementation="flash_attention_2",
-            )
+            target = device or ("cuda" if torch.cuda.is_available() else "cpu")
+            model_kwargs: dict[str, Any] = {"dtype": torch.bfloat16, "revision": REVISION}
+            if target.startswith("cuda"):
+                model_kwargs["attn_implementation"] = "flash_attention_2"
+            self.model = AutoModelForCausalLM.from_pretrained(MODEL_ID, **model_kwargs)
             self.model.eval()
-            self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+            self.device = target
             self.model.to(self.device)
         return self
 
@@ -150,13 +148,13 @@ class CtxlRerank:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         self.tokenizer.padding_side = "left"
 
-    def render(self, query: str, doc: str, instruction: str | None = None) -> list[int]:
+    def render(self, query: str, doc: str) -> list[int]:
         """Token ids of the exact prompt (the tokenizer's post-processor prepends <s>, as served)."""
         if self.tokenizer is None:
             self.load_tokenizer()
-        return self.tokenizer(_prompt_text(query, doc, instruction), add_special_tokens=True)["input_ids"]
+        return self.tokenizer(_prompt_text(query, doc), add_special_tokens=True)["input_ids"]
 
-    def score(self, query: str, docs: list[str], instruction: str | None = None) -> list[float]:
+    def score(self, query: str, docs: list[str]) -> list[float]:
         """One raw relevance logit per document, aligned with ``docs`` (needs ``load``).
 
         The paper's batching: length-descending permutation, a padded-area budget
@@ -164,7 +162,7 @@ class CtxlRerank:
         halving. Batching affects throughput only, never the per-document score.
         """
         self.load()
-        prompts = [_prompt_text(query, doc, instruction) for doc in docs]
+        prompts = [_prompt_text(query, doc) for doc in docs]
 
         permutation = sorted(range(len(prompts)), key=lambda i: -len(prompts[i]))
         sorted_prompts = [prompts[i] for i in permutation]
@@ -231,14 +229,14 @@ def load(device: str | None = None) -> CtxlRerank:
     return _reference().load(device)
 
 
-def render(query: str, doc: str, instruction: str | None = None) -> list[int]:
+def render(query: str, doc: str) -> list[int]:
     """The harness's ``render(...)``: the prompt's token ids (tokenizer-only, no weights)."""
-    return _reference().render(query, doc, instruction)
+    return _reference().render(query, doc)
 
 
-def score(query: str, docs: list[str], instruction: str | None = None) -> list[float]:
+def score(query: str, docs: list[str]) -> list[float]:
     """The harness's ``score(...)``: one raw relevance logit per document (needs ``load``)."""
-    return _reference().score(query, docs, instruction)
+    return _reference().score(query, docs)
 
 
 def _main() -> int:

@@ -32,8 +32,10 @@ serve:
     method: no_post_processing
   # The score template vLLM serves (template.jinja, the one family-wide name): document before
   # query, no bos line (the post-processor adds
-  # <s>), no trailing content after the " ??" the score is read from. R10: the file ships in the
-  # recipe directory -- without it vLLM only warns and concatenates the raw prompts.
+  # <s>), no instruction slot, no trailing content after the " ??" the score is read from. The file
+  # ships in the recipe directory: without --chat-template, /rerank silently falls back to the
+  # un-templated encode of the concatenated texts (io_processor.py:677-678 at v0.31.0); the
+  # missing-template warning fires only for an original Qwen3 reranker (io_processor.py:430-432).
   chat_template: template.jinja
   # The classify pooler's default activation for num_labels < 2 is sigmoid; the raw logit the
   # reference reads (logits[:, -1, 0]) is pinned twice: the client sends use_activation from this
@@ -75,7 +77,7 @@ client:
   # in-process path never set ContextualRerank.instruction. The product's default is fold, which
   # would prepend "Task: ...\nQuery: ..." and diverge from the reference on instruction-bearing
   # data -- declared none here on purpose: a pairs row's instruction is ignored on both sides
-  # (sweep items #1/#2).
+  # (no side folds or appends it; the same decision as the 1b and 2b recipes).
   instruction: none
   # The reference's score is a raw logit (vocab position 0, final position): no activation. The
   # engine side is pinned by serve.pooler_config above; this records the client's intent.
@@ -97,30 +99,25 @@ sources:
   - "https://huggingface.co/ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b/tree/f14ca1a2fc204dc0934c84a3d2e278f8ff646b80 (config.json: MistralForCausalLM, model_type mistral, id2label {\"0\": \"LABEL_0\"}, vocab_size 131072, torch_dtype bfloat16; tokenizer.json: added tokens with id 0 \"<unk>\", 1 \"<s>\", 2 \"</s>\", 10 \"<pad>\", TemplateProcessing post-processor single: [<s>, A]; tokenizer_config.json: model_max_length ~1e30, add_bos_token true; no chat_template key in tokenizer_config.json -- the vendor chat_template.jinja emits a bos_token line)"
   - "https://huggingface.co/api/models/ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b (sha f14ca1a2fc204dc0934c84a3d2e278f8ff646b80; licence tag cc-by-nc-sa-4.0; safetensors 14.93 GB stored, 13.59 GB bf16-equivalent; gated false)"
   - "https://huggingface.co/ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b/blob/f14ca1a2fc204dc0934c84a3d2e278f8ff646b80/1_LogitScore/config.json (true_token_id 0; config_sentence_transformers.json activation_fn Identity -- the score is the raw vocab-position-0 logit)"
-  - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0; checkout d0d6e5f3a, ~6 h after the tag): model_executor/models/registry.py:177 (MistralForCausalLM registered in v0.31.0); model_executor/models/adapters.py:600-617 and :659-663 (SEQ_CLS_LOAD_METHODS: load_weights_no_post_processing lifts lm_head row of classifier_from_token); config/model.py:2279 (the ForSequenceClassification suffix defaults to runner pooling + convert classify, v0.31.0); pooling_params.py:110-128 and :193-197 (pooler config merges into requests that omit the field -- how use_activation: false reaches every /rerank score); entrypoints/pooling/scoring/io_processor.py (the /rerank render: two messages with roles query and document through --chat-template; render block ~:715-728, query pre-truncation :655); scoring/protocol.py:72 (the rendered prompt is tokenized with add_special_tokens=True); renderers/params.py:466-475 (engine-side truncation, right side -- unused here: the client cuts)"
+  - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0; line numbers read at the tag): model_executor/models/registry.py:177 (MistralForCausalLM registered in v0.31.0); model_executor/models/adapters.py:600-617 and :659-663 (SEQ_CLS_LOAD_METHODS: load_weights_no_post_processing lifts lm_head row of classifier_from_token); config/model.py:2279 (the ForSequenceClassification suffix defaults to runner pooling + convert classify, v0.31.0); pooling_params.py:110-128 and :193-197 (pooler config merges into requests that omit the field -- how use_activation: false reaches every /rerank score); entrypoints/pooling/scoring/io_processor.py:693-705 (the /rerank render: two messages with roles query and document through --chat-template) and :625-627 (the per-text query pre-truncation, off unless max_tokens_per_query is sent -- the product never sends it); scoring/protocol.py:72 (the rendered prompt is tokenized with add_special_tokens=True); renderers/params.py:466-475 (engine-side truncation, right side -- unused here: the client cuts)"
   - "experiments/paper/rerankers/reference/contextual.py:37-151 (the paper-exact reference: prompt at :92-97, score at :113, left padding at :73, flash_attention_2 at :52; moved unchanged in behaviour from the pre-unification retrieval/external_rerankers.py:275-389 -- removed at the rfc-0001 merge -- when the in-process path left the package)"
-  - "experiments/paper/rerankers/ctxl_rerank_6b.yaml (batch_size 8 in the in-process form this worktree pins; the migrated served-path form carries max_tokens 8192, query_max_tokens 4096, instruction none, tokenizer pinned at the revision above)"
-  - "research lane r-ctxl outputs (the r-ctxl work directory's report.md sections 1-8, check_prompt_equivalence.py 15/15 prompt-token equivalence + 4 mutations, recipe-ctxl-rerank-v2-instruct-multilingual-6b.yaml, reference-draft-6b.py), corrected by research/audit-synth/out/corrections.md table r-ctxl"
+  - "experiments/paper/rerankers/ctxl_rerank_6b.yaml (the paper's original in-process form set batch_size 8; the current served-path form carries max_tokens 8192, query_max_tokens 4096, instruction none, tokenizer pinned at the revision above)"
 notes: >-
   Pointwise reranker; one raw logit (vocabulary position 0 at the final position) per document,
   no sigmoid/softmax. The score template puts the document before the query, so both the query
   and the trailing " ??" sit at the tail: the anchor is last, and the client's cut reserves every
   fixed token and re-attaches the frame -- the paper's in-process path instead right-truncates
   the whole prompt at 8192 (declared above as the reference's known deviation over the cap; the
-  untruncated long-document prompt is ~14.0k tokens, 14,037 ids for this checkpoint at the
-  audit's seed). template.jinja (the one family-wide template name) renders in the engine's
+  untruncated long-document prompt of the measurement made when the recipe was written is ~14.0k
+  tokens, 14,037 ids for this checkpoint). template.jinja (the one family-wide template name) renders in the engine's
   context (vLLM's /rerank passes two messages, roles query and document) and in the CPU
-  harness's context (flat query/document kwargs); it honours the instruction kwarg / system
-  message the way the model card's usage does, which is dead code for this recipe: the client
-  declares instruction: none and never sends the field (a pairs row's instruction is ignored on
-  both sides -- sweep items #1/#2 -- and the reference never folds it). One harness constraint
-  that follows from that branch: the harness's served-template check renders the FIRST pairs row
-  with its raw instruction, which would reach this template but not the client's render -- keep
-  the wave pairs file's first row free of an instruction (later rows are dropped by both sides
-  and stay green).
+  harness's context (flat query/document kwargs). Like the 1b and 2b templates it has no
+  instruction slot: the vendor template's inline " {instruction}" (read from a kwarg or a system
+  message) is dropped, because the client declares instruction: none and a pairs row's
+  instruction is ignored on both sides (neither folded nor appended).
 
-  reference.py keeps the paper's own prompt construction and score path (the model card's
-  inline " {instruction}" form is kept as the paper's inert slot -- this recipe's mode is none).
+  reference.py keeps the paper's own prompt construction and score path; its prompt builder takes
+  no instruction (the paper's factory never set one; this recipe's mode is none).
   Its render mode fills the harness's rerank span format with the paper's own spans -- the raw
   query and the raw documents its prompt builder receives, uncut -- and never reproduces the
   client's cut (neither the settle rule nor the anchor-preserving content cut): under the cap and
@@ -137,7 +134,7 @@ notes: >-
   reads with use_fast=True). Numerics: bfloat16 weights; vLLM's pooling score head defaults to
   fp32 while the reference computes the whole model in bf16 -- bounded by the raw-logit gate,
   and --hf-overrides '{"head_dtype": "model"}' is the closer-to-reference fallback if the GPU
-  wave's logit gate ever fails (not measured; weights were over the research lane's cap). The
+  wave's logit gate ever fails (not measured on CPU: the 14.9 GB weights are the GPU wave's). The
   GPU wave must check: the raw-logit scale of the served scores (the card's example logits
   should reproduce, not their sigmoid), the 8192 budget with the 4096-token query share on
   over-budget pairs, and stage 1's /tokenize agreement (R29).

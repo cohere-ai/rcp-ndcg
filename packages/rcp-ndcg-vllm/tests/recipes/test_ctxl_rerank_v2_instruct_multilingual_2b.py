@@ -91,7 +91,7 @@ EXPECTED_CLIENT = {
     "on_overflow": "cut",
     "query_max_tokens": 4096,
     # Unset in the recipe (the family convention of these three): `client_config` records the
-    # recipe id; the serve block and `sources` keep the server-side settings (sweep finding 13).
+    # recipe id; the serve block and `sources` keep the server-side settings.
     "recipe": None,
     "request_shape": "text",
     "revision": REVISION,
@@ -136,7 +136,7 @@ EXPECTED_ENGINE = {
     "image": "vllm/vllm-openai:v0.31.0",
     "min_version": "0.31.0",
     "name": "vllm",
-    "startup_timeout_s": 1800,  # the schema default; the recipe no longer restates it (finding 15)
+    "startup_timeout_s": 1800,  # the schema default; the recipe no longer restates it
 }
 
 
@@ -259,7 +259,7 @@ def _mutated_recipe(tmp_path: Path, mutate):
 
 
 def test_mutant_dropping_the_serve_max_model_len_reds_the_contract_naming_the_field(tmp_path: Path) -> None:
-    """Mutant 1 (sweep finding 9): ``serve.max_model_len`` 8192 -> 16384 must red, naming the field."""
+    """Mutant 1: ``serve.max_model_len`` 8192 -> 16384 must red, naming the field."""
     mutated = _mutated_recipe(tmp_path, lambda data: data["serve"].__setitem__("max_model_len", 16384))
     with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
         assert_recipe_contract(
@@ -268,7 +268,7 @@ def test_mutant_dropping_the_serve_max_model_len_reds_the_contract_naming_the_fi
 
 
 def test_mutant_changing_the_reference_kind_reds_the_contract_naming_the_field(tmp_path: Path) -> None:
-    """Mutant 2 (sweep finding 9): ``reference.kind`` transformers -> remote_code must red, naming the
+    """Mutant 2: ``reference.kind`` transformers -> remote_code must red, naming the
     field."""
     mutated = _mutated_recipe(tmp_path, lambda data: data["reference"].__setitem__("kind", "remote_code"))
     with pytest.raises(AssertionError, match=r"reference\.kind"):
@@ -320,7 +320,7 @@ def test_the_reference_resolves_the_hub_tokenizer_spec_without_the_revision_suff
 
 
 def test_the_served_and_reference_prompts_ignore_the_pairs_row_instruction(tmp_path: Path) -> None:
-    """``instruction: none`` end to end (sweep items #1 and #2): a pairs row's instruction is ignored
+    """``instruction: none`` end to end (the family decision): a pairs row's instruction is ignored
     on the wire and by the reference — the bare query ships, paddings and all, and no side folds
     ``Task: ...\\nQuery: ...``."""
     recipe, tokenizer_file = _local_recipe(tmp_path)

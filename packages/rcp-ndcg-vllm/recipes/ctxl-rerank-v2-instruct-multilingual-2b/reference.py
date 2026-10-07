@@ -6,7 +6,8 @@ Derived with unchanged behaviour from the paper's exact in-process implementatio
 unchanged from the former ``src/rcp_ndcg/retrieval/external_rerankers.py`` when the package
 stopped carrying in-process models; the paper's numbers rest on it). The paper pipeline loaded it
 with ``max_seq_len=8192`` (``MAX_SEQ_LENGTH``, ``rcp_ndcg.retrieval.cross_encoder``), the config's
-``batch_size`` (16 for this model, ``experiments/paper/rerankers/ctxl_rerank_2b.yaml``), bfloat16
+``batch_size`` (16 for this model, the original in-process form of
+``experiments/paper/rerankers/ctxl_rerank_2b.yaml``), bfloat16
 (the pipeline's ``DTYPE``) and the config's revision (the paper configs pin none; the recipe's
 commit is pinned here, so a moved default checkpoint cannot silently break equivalence).
 
@@ -166,7 +167,8 @@ class CtxlRerankReference:
         """Load the checkpoint (first call) and move it to ``device`` (e.g. ``cuda:0`` or ``cpu``).
 
         The weights load here, in the reference process: the harness imports no torch. dtype is
-        the paper pipeline's bfloat16; the attention implementation is the paper class's default
+        the paper pipeline's bfloat16 on every device (the same rule in the 1b, 2b and 6b
+        references); the attention implementation is the paper class's default
         (flash-attention-2) where it exists — the paper's runs were single-GPU — and the plain
         implementation on a CPU diagnostic run, where flash-attention-2 does not exist.
         """

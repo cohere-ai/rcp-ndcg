@@ -181,8 +181,10 @@ ContextualAI ctxl-rerank-v2-instruct
     and ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b@f14ca1a2fc204dc0934c84a3d2e278f8ff646b80
     (upstream SHA-256 205dc6813ce869bfeeb28ae9af919f5e8bc54123d13e5d378edd466ad16d721a).
     The adaptations render the served /rerank route's two messages (roles
-    query and document) into the paper's two-line prompt; each recipe's notes
-    record its own delta lines.
+    query and document) into the paper's two-line prompt and drop the vendor
+    templates' instruction slot (the recipes declare instruction: none) and the
+    6B template's bos_token line; each recipe's notes record its own delta
+    lines.
 
 Jina AI jina-reranker-v3
   https://huggingface.co/jinaai/jina-reranker-v3

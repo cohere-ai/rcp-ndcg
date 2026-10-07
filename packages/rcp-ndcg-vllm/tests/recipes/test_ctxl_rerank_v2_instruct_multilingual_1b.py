@@ -20,6 +20,7 @@ through the shared ``fetch_tokenizer`` (``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when s
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -209,7 +210,7 @@ def _mutated_recipe(tmp_path: Path, mutate):
 
 
 def test_mutant_dropping_the_serve_max_model_len_reds_the_contract_naming_the_field(tmp_path: Path) -> None:
-    """Mutant 1 (sweep finding 9): ``serve.max_model_len`` 32768 -> 16384 must red, naming the field."""
+    """Mutant 1: ``serve.max_model_len`` 32768 -> 16384 must red, naming the field."""
     mutated = _mutated_recipe(tmp_path, lambda data: data["serve"].__setitem__("max_model_len", 16384))
     with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
         assert_recipe_contract(
@@ -218,7 +219,7 @@ def test_mutant_dropping_the_serve_max_model_len_reds_the_contract_naming_the_fi
 
 
 def test_mutant_changing_the_reference_kind_reds_the_contract_naming_the_field(tmp_path: Path) -> None:
-    """Mutant 2 (sweep finding 9): ``reference.kind`` transformers -> remote_code must red, naming the
+    """Mutant 2: ``reference.kind`` transformers -> remote_code must red, naming the
     field."""
     mutated = _mutated_recipe(tmp_path, lambda data: data["reference"].__setitem__("kind", "remote_code"))
     with pytest.raises(AssertionError, match=r"reference\.kind"):
@@ -229,7 +230,7 @@ def test_mutant_changing_the_reference_kind_reds_the_contract_naming_the_field(t
 
 def test_serve_argv_renders_the_golden_engine_command() -> None:
     """The recipe's ``vllm serve`` argv: the revision, the shipped template file and the raw-logit
-    pooler default (sweep finding 9: every file keeps a golden-argv test)."""
+    pooler default (every recipe test keeps a golden-argv test)."""
     recipe = load_recipe(RECIPE_DIR)
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
     assert argv[:3] == ["vllm", "serve", REPO]
@@ -244,15 +245,15 @@ def test_serve_argv_renders_the_golden_engine_command() -> None:
 
 
 def test_the_reference_environment_is_documented() -> None:
-    """The reference declares the environment it needs beside itself (the reference rule, sweep
-    finding 10: one ``requirements-reference.txt`` per recipe)."""
+    """The reference declares the environment it needs beside itself (the reference rule: one
+    ``requirements-reference.txt`` per recipe)."""
     text = (RECIPE_DIR / "requirements-reference.txt").read_text(encoding="utf-8")
     assert "torch==2.9.1" in text
     assert "transformers==4.57.6" in text
 
 
 def test_the_served_and_reference_prompts_ignore_the_pairs_row_instruction(tmp_path: Path) -> None:
-    """``instruction: none`` end to end (sweep items #1 and #2): a pairs row's instruction is ignored
+    """``instruction: none`` end to end (the family decision): a pairs row's instruction is ignored
     on the wire and by the reference — the bare query ships, paddings and all, and no side folds
     ``Task: ...\\nQuery: ...``."""
     recipe, tokenizer_file = _local_recipe(tmp_path)
@@ -347,7 +348,7 @@ def test_stage1_passes_on_cpu_with_the_anchor_audit_and_the_render_comparison(tm
     engine = document["engine_tokenize_check"]
     assert engine["status"] == "not_run" and engine["passed"] is None  # no engine on CPU: neutral
     assert document["passed"] is True, document
-    # The cut facts come from the client's own census (R30): the over-length samples and the
+    # The cut facts come from the client's own census (never re-derived by the test): the over-length samples and the
     # over-budget pair were cut; an in-budget pair's content never was.
     facts = stage1_facts(recipe, rows, tokenizer, 5)
     assert facts["per_shape"]["pair"]["cut_rows"] >= 5, facts["per_shape"]["pair"]["cut_rows"]
@@ -375,3 +376,34 @@ def test_dropping_the_trailing_anchor_segment_reddens_the_template_check(tmp_pat
     document = stage1_prompts(recipe, pairs_path, sys.executable, over_length_per_shape=1)
     assert document["template_render_check"]["passed"] is False  # the file still emits the " ??"
     assert document["anchor_check"]["passed"] is True  # the span audit does not read the frame
+
+
+#: Internal process labels that must not ship in a recipe (review shorthand, private work
+#: directories, rule ids no public document defines). Public rule ids (R29, documented in
+#: docs/how-to/add-a-model.md) stay allowed.
+INTERNAL_LABELS = re.compile(
+    r"p1-tail|fam-(?:dense|ctxl)|\bsweep|lanes' base|audit-synth|\br-(?:ctxl|jina[35]|octen|zembed1|qwen3-emb)\b"
+    r"|\bresearch\b|\blanes?\b|REVIEW-LOG|ANCHOR-FINDING|\bR(?!29\b)\d{1,2}\b|clients-final"
+    r"|\boperator\b|\b09x\b|\.refs/|recipe-common|corrections table|\bfinding #?\d"
+)
+
+
+@pytest.mark.parametrize(
+    "recipe_id",
+    [
+        "ctxl-rerank-v2-instruct-multilingual-1b",
+        "ctxl-rerank-v2-instruct-multilingual-2b",
+        "ctxl-rerank-v2-instruct-multilingual-6b",
+    ],
+)
+def test_shipped_recipe_files_carry_no_internal_labels(recipe_id: str) -> None:
+    """Every shipped file of the ctxl recipes reads as a self-contained public statement: no
+    internal process shorthand, private work directory or undefined rule id."""
+    hits = [
+        f"{path.name}:{number}: {line.strip()[:120]}"
+        for path in sorted((RECIPE_DIR.parent / recipe_id).iterdir())
+        if path.is_file()
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+        if INTERNAL_LABELS.search(line)
+    ]
+    assert not hits, "\n".join(hits)

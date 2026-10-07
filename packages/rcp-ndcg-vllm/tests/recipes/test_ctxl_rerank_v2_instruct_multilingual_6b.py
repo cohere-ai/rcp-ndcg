@@ -50,7 +50,7 @@ FRAME_MID = "\n<Query> "
 FRAME_TAIL = " ??"
 
 EXPECTED_SERVE = {
-    "chat_template": "template.jinja",  # the naming convention (sweep finding 11)
+    "chat_template": "template.jinja",  # the naming convention
     "convert": None,
     "dtype": "bfloat16",
     "extra_args": [],
@@ -137,7 +137,7 @@ EXPECTED_ENGINE = {
     "image": "vllm/vllm-openai:v0.31.0",
     "min_version": "0.31.0",
     "name": "vllm",
-    "startup_timeout_s": 1800,  # the schema default; the recipe no longer restates it (finding 15)
+    "startup_timeout_s": 1800,  # the schema default; the recipe no longer restates it
 }
 
 # 20 pairs (multilingual on purpose: the checkpoint is multilingual), all under the 8192-token
@@ -255,7 +255,7 @@ def _mutated_recipe(tmp_path: Path, mutate):
 
 
 def test_mutant_dropping_the_serve_max_model_len_reds_the_contract_naming_the_field(tmp_path: Path) -> None:
-    """Mutant 1 (sweep finding 9): ``serve.max_model_len`` 32768 -> 40960 must red, naming the field."""
+    """Mutant 1: ``serve.max_model_len`` 32768 -> 40960 must red, naming the field."""
     mutated = _mutated_recipe(tmp_path, lambda data: data["serve"].__setitem__("max_model_len", 40960))
     with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
         assert_recipe_contract(
@@ -264,7 +264,7 @@ def test_mutant_dropping_the_serve_max_model_len_reds_the_contract_naming_the_fi
 
 
 def test_mutant_changing_the_reference_kind_reds_the_contract_naming_the_field(tmp_path: Path) -> None:
-    """Mutant 2 (sweep finding 9): ``reference.kind`` transformers -> remote_code must red, naming the
+    """Mutant 2: ``reference.kind`` transformers -> remote_code must red, naming the
     field."""
     mutated = _mutated_recipe(tmp_path, lambda data: data["reference"].__setitem__("kind", "remote_code"))
     with pytest.raises(AssertionError, match=r"reference\.kind"):
@@ -287,7 +287,7 @@ def test_serve_argv_renders_the_pinned_engine_invocation() -> None:
 
 
 def test_the_served_and_reference_prompts_ignore_the_pairs_row_instruction(tmp_path: Path) -> None:
-    """``instruction: none`` end to end (sweep items #1 and #2): a pairs row's instruction is ignored
+    """``instruction: none`` end to end (the family decision): a pairs row's instruction is ignored
     on the wire and by the reference — the bare query ships, paddings and all (the reference never
     folds ``Task: ...`` nor appends the model card's inline form)."""
     recipe, tokenizer_file = _local_recipe(tmp_path)
@@ -468,3 +468,36 @@ def test_reference_score_mode_needs_its_own_environment(tmp_path: Path) -> None:
     )
     assert completed.returncode != 0
     assert "transformers" in completed.stderr or "ModuleNotFoundError" in completed.stderr
+
+
+def test_neither_the_template_nor_the_reference_appends_an_instruction() -> None:
+    """The family decision (``instruction: none``, as 1b and 2b): an instruction kwarg or a system
+    message never reaches the served prompt, and the reference's prompt builder takes no instruction
+    -- the bare query is the only query text on both sides."""
+    import importlib.util
+    import inspect
+
+    import jinja2
+
+    environment = jinja2.Environment(keep_trailing_newline=False)
+    template = environment.from_string((RECIPE_DIR / "template.jinja").read_text(encoding="utf-8"))
+    expected = FRAME_HEAD + "a document" + FRAME_MID + "a query" + FRAME_TAIL
+    assert template.render(query="a query", document="a document", instruction="Be strict.") == expected
+    messages = [
+        {"role": "system", "content": "Be strict."},
+        {"role": "query", "content": "a query"},
+        {"role": "document", "content": "a document"},
+    ]
+    assert template.render(messages=messages, instruction="Be strict.") == expected
+
+    module_spec = importlib.util.spec_from_file_location("ctxl_6b_reference_none", RECIPE_DIR / "reference.py")
+    module = importlib.util.module_from_spec(module_spec)
+    bytecode = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        module_spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
+    for function in (module._prompt_text, module.CtxlRerank.score, module.CtxlRerank.render, module.score):
+        assert "instruction" not in inspect.signature(function).parameters, function.__qualname__
+    assert module._prompt_text("a query", "a document") == expected

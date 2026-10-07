@@ -2,7 +2,7 @@
 
 Derived from ``experiments/paper/rerankers/reference/contextual.py`` (the paper's in-process
 ``ContextualRerank``: the move of the pre-unification ``retrieval/external_rerankers.py:275-389``
-behaviour, kept beside the paper configs from the clients-final lineage on), exposed through the
+behaviour, kept beside the paper configs since the inference layer was unified), exposed through the
 harness's subprocess CLI:
 
     reference.py --mode <render|score> --pairs <file> --out <file> --tokenizer <repo@rev|path> \
@@ -37,8 +37,8 @@ Declared behaviours, none of which touches a score the paper measured:
    queries within the share.
 
 Paper-exact everywhere else: the two-line prompt (document before query, then `` ??``), left
-padding, bfloat16 weights on CUDA and float32 on CPU, flash_attention_2 on CUDA (``None`` on CPU —
-the environment fallback the paper never exercised; the card's CPU path is fp32 too), right
+padding, bfloat16 weights on every device (the paper factory's ``DTYPE``), flash_attention_2 on
+CUDA (the default attention on CPU, where flash-attention-2 does not exist), right
 truncation of the whole prompt at 8192 tokens, and the paper's batching (length-descending
 permutation, a padded-area budget, OOM halving). Where the model card and the paper code disagree
 the paper code wins: the truncation budget is 8192 (``MAX_SEQ_LENGTH``, what the paper's factory
@@ -111,8 +111,10 @@ class CtxlRerankReference:
     def load(self, device: str | None = None) -> CtxlRerankReference:
         """Load the tokenizer and the causal LM (idempotent; completes a partially built instance).
 
-        bfloat16 weights on CUDA with flash_attention_2 (the paper's exact configuration), float32 on
-        CPU without it (the card's CPU path; a declared environment fallback the paper never ran).
+        bfloat16 weights on every device (the paper factory's ``DTYPE = "bfloat16"``, passed explicitly,
+        so the class's own float32-on-CPU default never applied), flash_attention_2 on CUDA and the
+        default attention elsewhere (flash-attention-2 does not exist on CPU) -- the same rule in
+        the 1b, 2b and 6b references.
         """
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -125,16 +127,13 @@ class CtxlRerankReference:
         # Left padding, so the final position is the last real token of every row (card + paper code).
         self.tokenizer.padding_side = "left"
         if self.model is None:
-            on_cuda = torch.cuda.is_available()
-            model_kwargs: dict[str, Any] = {
-                "dtype": torch.bfloat16 if on_cuda else torch.float32,
-                "revision": revision or None,
-            }
-            if on_cuda:
+            target = device or ("cuda" if torch.cuda.is_available() else "cpu")
+            model_kwargs: dict[str, Any] = {"dtype": torch.bfloat16, "revision": revision or None}
+            if target.startswith("cuda"):
                 model_kwargs["attn_implementation"] = "flash_attention_2"
             self.model = AutoModelForCausalLM.from_pretrained(repo, **model_kwargs)
             self.model.eval()
-            self.device = device or ("cuda" if on_cuda else "cpu")
+            self.device = target
             self.model.to(self.device)
         return self
 
