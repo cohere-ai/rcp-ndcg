@@ -1,50 +1,166 @@
-"""The negative controls (a)-(f): the broken variants and the wave report that flags a control that passes."""
+"""The negative controls (a)-(f): each provably fails the gates, through the wave, on the stub engine.
+
+GPU-VALIDATION.md item 5: every GPU check must prove it can fail -- each wave serves deliberately broken variants
+and requires the gates to fail them; a control that passes is a blocker.  Here every control runs through
+``run_wave --controls`` against the stub engine, which breaks exactly as vLLM v0.31.0 breaks (it honours
+``truncate_prompt_tokens``/``truncation_side``, ``use_activation`` and the requested ``embed_dtype``; and, as
+properties of the emulated checkpoint, ``--model-pooling`` and ``--model-needs-template``).  One test per
+control asserts its row was CAUGHT (the gates failed it) while the recipe's own gates passed; the mutation test
+makes a gate a no-op and shows the wave flag the control as a blocker; (f) has no media gate to fail it on CPU
+and none on the node either -- its test pins that the summary reports it as a blocker, not a pass.
+"""
 
 from __future__ import annotations
 
-import json
+import sys
+from pathlib import Path
+from typing import Any
 
-from rcp_ndcg_vllm.observe.controls import CONTROLS, control_variants, controls_summary
+import pytest
+from rcp_ndcg_vllm.jobs.run_wave import run_wave
+from rcp_ndcg_vllm.observe.controls import CONTROLS, control_variants, controls_summary, right_cut_tokens
 from rcp_ndcg_vllm.recipe import load_recipe
 
-from tests.conftest import RECIPES
+from tests.conftest import RECIPES, TOKENIZER, sample_pairs, write_pairs
+
+STUB = f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'} --tokenizer {TOKENIZER}"
 
 
-def test_control_variants_break_exactly_the_declared_field() -> None:
-    """(a)-(d) five text controls over the fixture recipe; each variant's breakage is the declared one."""
-    recipe = load_recipe(RECIPES / "fixture-embed")
-    variants = control_variants(recipe)
-    by_name = {entry["name"]: entry["recipe"] for entry in variants}
-    assert "--truncate-prompt-tokens" in by_name["right-cut"].serve.extra_args
-    assert by_name["wrong-pooling"].serve.pooler_config["pooling_type"] == "MEAN"
-    assert "template-removed" not in by_name, "chat_template is already None here: the control cannot apply"
-    for entry in variants:
-        assert entry["recipe"].id == f"fixture-embed.{entry['name']}"
+def _wave(tmp_path: Path, recipe_id: str, *, model: str = "") -> dict[str, Any]:
+    pairs = tmp_path / "pairs"
+    pairs.mkdir(exist_ok=True)
+    write_pairs(pairs / f"{recipe_id}.jsonl", sample_pairs(documents=3))
+    return run_wave(
+        [recipe_id],
+        RECIPES,
+        gpus=1,
+        out_dir=tmp_path / "wave",
+        pairs_dir=pairs,
+        reference_python=sys.executable,
+        vllm_cmd=f"{STUB} {model}".strip(),
+        port_base=0,
+        controls=True,
+    )
 
-    # A recipe WITH a chat template gets the (a) control: the served frame is dropped.
-    template_recipe = load_recipe(RECIPES / "fixture-rerank-pointwise")
-    templated = {entry["name"]: entry["recipe"] for entry in control_variants(template_recipe)}
-    assert templated["template-removed"].serve.chat_template is None
-    assert [spec.letter for spec in CONTROLS] == ["(a)", "(b)", "(c)", "(d)", "(e)", "(f)"]
+
+def _controls(document: dict[str, Any]) -> dict[str, Any]:
+    row = document["recipes"][0]
+    assert row["steps"]["equivalence"]["passed"] is True, "the recipe's own gates must pass first"
+    return row["steps"]["controls"]
 
 
-def test_the_no_op_gate_mutation_is_flagged_as_a_control_blocker() -> None:
-    """The mutation test (GPU-VALIDATION 5): with every gate live the controls are all caught; make a
-    control's gate a no-op (its broken variant now PASSES) and the report flags it as a blocker."""
-    caught_rows = [
-        {"control": "(a)", "name": "template-removed", "equivalence": {"passed": False}},
-        {"control": "(b)", "name": "right-cut", "equivalence": {"passed": False}},
-    ]
-    healthy = controls_summary(caught_rows)
-    assert healthy["passed"] is True and healthy["blockers"] == []
+def _caught(step: dict[str, Any], letter: str) -> dict[str, Any]:
+    rows = {row["control"]: row for row in step["rows"]}
+    assert letter in rows, f"control {letter} was not served: {step}"
+    return rows[letter]
 
-    # The mutation: (b)'s gate is made a no-op -- the broken variant's report now reads "passed".
-    rows = [
-        {"control": "(a)", "name": "template-removed", "equivalence": {"passed": False}},
-        {"control": "(b)", "name": "right-cut", "equivalence": {"passed": True}},
-    ]
-    report = controls_summary(rows)
-    assert report["passed"] is False
-    assert [blocker["control"] for blocker in report["blockers"]] == ["(b)"]
-    assert "no-op or blind gate" in report["blockers"][0]["reason"]
-    assert json.dumps(report)  # the wave report renders it as data (WAVE.md prints the blockers)"
+
+@pytest.fixture(scope="module")
+def rerank_wave(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
+    """One wave of the pointwise reranker fixture, its checkpoint pooled with LAST and needing its template."""
+    return _wave(
+        tmp_path_factory.mktemp("rerank"),
+        "fixture-rerank-pointwise",
+        model="--model-pooling LAST --model-needs-template",
+    )
+
+
+@pytest.fixture(scope="module")
+def embed_wave(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
+    return _wave(tmp_path_factory.mktemp("embed"), "fixture-embed", model="--model-pooling LAST")
+
+
+@pytest.fixture(scope="module")
+def pooling_wave(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
+    return _wave(tmp_path_factory.mktemp("pooling"), "fixture-multi-vector")
+
+
+def test_control_a_the_removed_template_fails_the_gates(rerank_wave: dict[str, Any]) -> None:
+    row = _caught(_controls(rerank_wave), "(a)")
+    assert row["caught"] is True and row["gates_passed"] is False
+
+
+def test_control_b_an_engine_side_right_cut_fails_the_gates(
+    rerank_wave: dict[str, Any], embed_wave: dict[str, Any], pooling_wave: dict[str, Any]
+) -> None:
+    """The wire carries ``truncate_prompt_tokens`` (a request field in vLLM v0.31.0; the earlier serve flag
+    ``--truncate-prompt-tokens`` does not exist and would only have kept the engine from starting)."""
+    for wave in (rerank_wave, embed_wave, pooling_wave):
+        assert _caught(_controls(wave), "(b)")["caught"] is True
+
+
+def test_control_c_a_flipped_use_activation_fails_the_gates(rerank_wave: dict[str, Any]) -> None:
+    assert _caught(_controls(rerank_wave), "(c)")["caught"] is True
+
+
+def test_control_d_the_wrong_pooling_fails_the_gates(rerank_wave: dict[str, Any], embed_wave: dict[str, Any]) -> None:
+    """fixture-embed declares ``seq_pooling_type: LAST``: the variant flips THAT key (adding ``pooling_type``
+    beside it, as before, makes vLLM refuse the config: "Cannot set both")."""
+    variant = next(v for v in control_variants(load_recipe(RECIPES / "fixture-embed")) if v["control"] == "(d)")
+    assert variant["recipe"].serve.pooler_config == {"seq_pooling_type": "MEAN"}
+    for wave in (rerank_wave, embed_wave):
+        assert _caught(_controls(wave), "(d)")["caught"] is True
+
+
+def test_control_e_float32_read_as_float16_fails_the_gates(pooling_wave: dict[str, Any]) -> None:
+    """The /pooling request asks for float32 while the client decodes float16 (flipping the dtype on BOTH
+    sides, as before, only lowers the precision -- the cosine gate passes that)."""
+    assert _caught(_controls(pooling_wave), "(e)")["caught"] is True
+    step = _controls(pooling_wave)
+    assert step["passed"] is True and step["blockers"] == []
+
+
+def test_control_f_has_no_media_gate_and_is_reported_as_a_blocker() -> None:
+    """(f) unpins ``max_pixels``: no gate of the harness sends media (stage 2 is text only), so on a VL recipe
+    the control passes and the summary MUST flag it -- a blocker owned by the harness's missing media stage."""
+    base = load_recipe(RECIPES / "fixture-embed")
+    media = base.model_copy(
+        update={
+            "input": ["text", "image"],
+            "serve": base.serve.model_copy(update={"mm_processor_kwargs": {"max_pixels": 1003520, "min_pixels": 3136}}),
+        }
+    )
+    variant = next(v for v in control_variants(media) if v["control"] == "(f)")
+    assert variant["kind"] == "recipe" and variant["recipe"].serve.mm_processor_kwargs == {}
+    summary = controls_summary([{"control": "(f)", "name": variant["name"], "equivalence": {"passed": True}}])
+    assert summary["passed"] is False and summary["blockers"][0]["control"] == "(f)"
+
+
+def test_every_control_is_served_or_says_why_not(embed_wave: dict[str, Any]) -> None:
+    """A control that does not apply is listed with its reason, never dropped."""
+    step = _controls(embed_wave)
+    served = {row["control"] for row in step["rows"]}
+    skipped = {row["control"]: row["reason"] for row in step["inapplicable"]}
+    assert served | set(skipped) == {spec.letter for spec in CONTROLS}
+    assert all(skipped.values())
+    assert served == {"(b)", "(d)"}
+
+
+def test_a_variant_is_served_and_asked_under_one_model_name() -> None:
+    """The variant's served name is its id, and so is its client's ``model`` (the earlier variants asked for
+    the base recipe's name, which the variant's engine does not serve)."""
+    for variant in control_variants(load_recipe(RECIPES / "fixture-rerank-pointwise")):
+        if variant["kind"] == "recipe":
+            assert (
+                variant["recipe"].client.model == variant["recipe"].id == f"fixture-rerank-pointwise.{variant['name']}"
+            )
+    assert right_cut_tokens(load_recipe(RECIPES / "fixture-rerank-pointwise")) == 40
+
+
+def test_a_no_op_gate_is_flagged_as_a_control_blocker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The mutation: stage 2's rerank gates made a no-op (every summary passes).  The recipe's own gates still
+    pass, the flipped-activation control now passes too -- and the wave flags it as a blocker and fails."""
+    from rcp_ndcg_vllm.equivalence import stages
+
+    real = stages._rerank_summary
+
+    def no_op(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {**real(*args, **kwargs), "passed": True}
+
+    monkeypatch.setattr(stages, "_rerank_summary", no_op)
+    document = _wave(tmp_path, "fixture-rerank-pointwise", model="--model-pooling LAST --model-needs-template")
+    step = _controls(document)
+    assert step["passed"] is False and "(c)" in {blocker["control"] for blocker in step["blockers"]}
+    assert document["recipes"][0]["state"] == "failed" and document["passed"] is False
+    assert "(c)" in {blocker["control"] for blocker in document["control_blockers"]["fixture-rerank-pointwise"]}
+    assert "BLOCKER fixture-rerank-pointwise control (c)" in (tmp_path / "wave" / "WAVE.md").read_text(encoding="utf-8")

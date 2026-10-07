@@ -60,6 +60,7 @@ def run_wave(
     record_corpus: bool = False,
     quality: bool = False,
     paper_numbers: str | Path | None = None,
+    controls: bool = False,
     changed_since_index: str | Path | None = None,
     pairs_dir: str | Path | None = None,
     reference_python: str | None = None,
@@ -165,7 +166,7 @@ def run_wave(
                     run, results, out, pairs_dir=pairs_dir, record=record, error=error,
                     reference_python=reference_python, reuse=reuse,
                     record_corpus=record_corpus, vllm_cmd=vllm_cmd, port_base=port_base,
-                    quality=quality, paper_numbers=paper_numbers,
+                    quality=quality, paper_numbers=paper_numbers, controls=controls,
                 )  # fmt: skip
                 running.remove(run)
                 used_gpus.difference_update(run.gpus)
@@ -421,6 +422,7 @@ def _finalise(
     record_corpus: bool = False,
     quality: bool = False,
     paper_numbers: str | Path | None = None,
+    controls: bool = False,
     vllm_cmd: str | None = None,
     port_base: int = 8100,
     error: str | None = None,
@@ -472,8 +474,14 @@ def _finalise(
                 run.status["steps"]["observation_corpus"] = step
                 run.status["behaviour_fingerprint"] = fingerprint
                 run.status["engine_version"] = _engine_version(run.recipe, vllm_cmd)
+            if controls:
+                # Last: the recipe-variant controls take the slot's GPUs one engine at a time (one owner).
+                run.status["steps"]["controls"] = _controls(
+                    run, out, pairs_dir, reference_python, vllm_cmd=vllm_cmd, port_base=port_base, restarted=restarted
+                )
             steps = run.status["steps"]
             record_ok = not record or steps["record"].get("state") == "passed"
+            controls_ok = not controls or steps["controls"].get("state") == "passed"
             corpus_ok = not record_corpus or steps["observation_corpus"].get("state") != "failed"
             quality_ok = not quality or steps["quality"].get("state") == "passed"
             run.status["state"] = (
@@ -483,6 +491,7 @@ def _finalise(
                 and record_ok
                 and corpus_ok
                 and quality_ok
+                and controls_ok
                 else "failed"
             )
         else:
@@ -752,6 +761,103 @@ def _quality(
     }
 
 
+def _control_gates(
+    recipe: Recipe, base_url: str, out_dir: Path, pairs_path: Path, reference_python: str
+) -> dict[str, Any]:
+    """Stages 1 and 2 for one control: the ordinary gates, which must fail it.  An error the served side raises
+    (a garbled frame the client cannot decode) is the stage failing on that request, recorded with its text."""
+    from rcp_ndcg.errors import RcpNdcgError
+
+    try:
+        document = run_equivalence(
+            recipe,
+            base_url=base_url,
+            pairs_path=str(pairs_path),
+            out_dir=str(out_dir),
+            stages=[1, 2],
+            reference_python=reference_python,
+            served_model_name=recipe.id,
+        )
+    except (HarnessError, RcpNdcgError) as error:
+        return {"passed": False, "error": f"{type(error).__name__}: {error}"}
+    return {
+        "passed": bool(document["passed"]),
+        "stage1": document.get("stage1", {}).get("passed"),
+        "stage2": document.get("stage2", {}).get("passed"),
+    }
+
+
+def _controls(
+    run: _EngineRun,
+    out: Path,
+    pairs_dir: str | Path | None,
+    reference_python: str | None,
+    *,
+    vllm_cmd: str | None,
+    port_base: int,
+    restarted: list[_EngineRun],
+) -> dict[str, Any]:
+    """The negative controls (a)-(f) of one recipe (GPU-VALIDATION.md item 5), through the ordinary gates.
+
+    Only after the recipe's own gates passed (a control "caught" by a gate that fails everything proves nothing).
+    Wire controls run against the recipe's live engine with the request bodies patched; then the recipe's
+    engines stop and each recipe variant is served on the slot in turn (one GPU owner at a time), its client and
+    engine agreeing on the variant's id.  A variant whose engine does not come up is NOT counted as caught (an
+    engine refusing its argv fails every gate and proves nothing): its row says so and the summary flags it.
+    Returns the step: :func:`~rcp_ndcg_vllm.observe.controls.controls_summary`'s report and its state.
+    """
+    from ..equivalence.wire import patched_wire
+    from ..observe.controls import control_variants, controls_summary
+
+    recipe = run.recipe
+    equivalence = run.status["steps"].get("equivalence") or {}
+    if not equivalence.get("passed"):
+        return {"state": "skipped", "reason": "the recipe's own gates did not pass: a control would prove nothing"}
+    pairs_path = _pairs_path(recipe, pairs_dir)
+    if pairs_path is None or reference_python is None:
+        return {"state": "failed", "error": "the controls need the pairs file and --reference-python"}
+    live = next((engine for engine in reversed(restarted) if not engine.exited()), run)
+    live_url = f"http://127.0.0.1:{live.port}"
+    work = out / recipe.id / "controls"
+    rows: list[dict[str, Any]] = []
+    variants = control_variants(recipe)
+    for variant in variants:
+        if variant["kind"] is None:
+            rows.append({"control": variant["control"], "name": variant["name"], "reason": variant["reason"]})
+        elif variant["kind"] == "wire":
+            with patched_wire(variant["wire_patch"]):
+                gates = _control_gates(recipe, live_url, work / variant["name"], pairs_path, reference_python)
+            rows.append({"control": variant["control"], "name": variant["name"], "equivalence": gates})
+    run.stop()
+    for engine in restarted:
+        engine.stop()
+    slot = max(run.port - port_base, 0) if port_base else 0
+    for variant in variants:
+        if variant["kind"] != "recipe":
+            continue
+        engine = _start(variant["recipe"], run.gpus, slot, out, vllm_cmd, port_base, disk=run.disk)
+        try:
+            deadline = time.monotonic() + run.timeout_s
+            while not engine.ready() and not engine.exited() and time.monotonic() < deadline:
+                time.sleep(_POLL_S)
+            if engine.ready():
+                gates = _control_gates(
+                    variant["recipe"], f"http://127.0.0.1:{engine.port}", work / variant["name"], pairs_path,
+                    reference_python,
+                )  # fmt: skip
+            else:
+                gates = {
+                    "passed": None,
+                    "error": "the variant's engine did not become ready: the control was not served",
+                }
+        finally:
+            engine.stop()
+        rows.append({"control": variant["control"], "name": variant["name"], "equivalence": gates})
+    rows.sort(key=lambda row: str(row["control"]))
+    summary = controls_summary(rows)
+    return {"state": "passed" if summary["passed"] else "failed", **summary}
+
+
 def _filter_changed(
     recipes: list[Recipe], index_path: Path, vllm_cmd: str | None
 ) -> tuple[list[Recipe], list[str], dict[str, Any]]:
@@ -860,6 +966,11 @@ def _wave_document(
         "protocol_due": (change_verdict or {}).get("protocol_due", []),
         "fingerprints": fingerprints,
         "engine_versions": engine_versions,
+        "control_blockers": {
+            row["recipe"]: row["steps"]["controls"]["blockers"]
+            for row in rows
+            if (row.get("steps") or {}).get("controls", {}).get("blockers")
+        },
         "passed": (bool(rows) or bool(skipped_unchanged)) and all(row["state"] == "verified" for row in rows),
         "finished": _now(),
     }
@@ -879,6 +990,9 @@ def _wave_markdown(document: dict[str, Any]) -> str:
     for row in document["recipes"]:
         error = (row.get("error") or "").replace("|", "\\|")
         lines.append(f"| {row['recipe']} | {row['gpus']} | {row['state']} | {error} |")
+    for recipe_id, blockers in sorted((document.get("control_blockers") or {}).items()):
+        for blocker in blockers:
+            lines.append(f"\n- BLOCKER {recipe_id} control {blocker['control']} {blocker['name']}: {blocker['reason']}")
     lines += ["", f"Verdict: **{'PASS' if document['passed'] else 'FAIL'}**"]
     return "\n".join(lines) + "\n"
 
@@ -900,6 +1014,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="write one observation corpus per recipe (the request plan's rows twice in one process and "
         "once after an engine restart, plus the protocol probes and /tokenize)",
+    )
+    parser.add_argument(
+        "--controls",
+        action="store_true",
+        help="serve the negative controls (a)-(f) per recipe through the ordinary gates; a control that passes "
+        "fails the recipe (GPU-VALIDATION.md item 5)",
     )
     parser.add_argument(
         "--quality",
@@ -938,6 +1058,7 @@ def main(argv: list[str] | None = None) -> int:
             record=args.record,
             record_corpus=args.record_corpus,
             quality=args.quality,
+            controls=args.controls,
             paper_numbers=args.paper_numbers,
             changed_since_index=args.changed_since,
             pairs_dir=args.pairs_dir,

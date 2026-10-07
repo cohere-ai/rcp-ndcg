@@ -18,7 +18,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
+import contextvars
 import json
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -27,7 +30,25 @@ from ..errors import HarnessError
 from ..recipe import Recipe, client_config
 from .fitting import resolved_tokenizer_spec
 
-__all__ = ["CapturingTransport", "Capture", "role_client"]
+__all__ = ["CapturingTransport", "Capture", "patched_wire", "role_client"]
+
+_WIRE_PATCH: contextvars.ContextVar[dict[str, dict[str, Any]] | None] = contextvars.ContextVar(
+    "rcp_ndcg_vllm_wire_patch", default=None
+)
+
+
+@contextlib.contextmanager
+def patched_wire(patch: dict[str, dict[str, Any]]) -> Iterator[None]:
+    """Within the block, every JSON request a role client sends to a path ending in one of ``patch``'s keys
+    carries that key's fields too -- the negative controls' wire breakages (an engine-side cut, a misread
+    ``embed_dtype``; :mod:`rcp_ndcg_vllm.observe.controls`).  The capture records the patched bytes: what crossed
+    the wire.  Never used outside the controls."""
+    token = _WIRE_PATCH.set(patch)
+    try:
+        yield
+    finally:
+        _WIRE_PATCH.reset(token)
+
 
 _CAPTURE_BASE = "fake://harness"
 """The ``fake://`` base URL a client probes through when the harness gave no engine: the product's offline
@@ -58,6 +79,7 @@ class CapturingTransport(httpx.AsyncBaseTransport):
         super().__init__()
         self.exchanges: list[dict[str, Any]] = []
         self._delegate = delegate
+        self._patch = _WIRE_PATCH.get()
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         """Send through the delegate and record the exchange (request body decoded, reply bytes kept)."""
@@ -66,6 +88,14 @@ class CapturingTransport(httpx.AsyncBaseTransport):
             body: Any = json.loads(raw) if raw else None
         except (ValueError, UnicodeDecodeError):
             body = {"base64": base64.b64encode(raw).decode("ascii")}
+        patch = next(
+            (fields for suffix, fields in (self._patch or {}).items() if request.url.path.endswith(suffix)), None
+        )
+        if patch and isinstance(body, dict):
+            body = {**body, **patch}
+            raw = json.dumps(body).encode("utf-8")
+            headers = {key: value for key, value in request.headers.items() if key.lower() != "content-length"}
+            request = httpx.Request(request.method, request.url, headers=headers, content=raw)
         async_handle = getattr(self._delegate, "handle_async_request", None)
         if async_handle is not None:
             response = await async_handle(request)

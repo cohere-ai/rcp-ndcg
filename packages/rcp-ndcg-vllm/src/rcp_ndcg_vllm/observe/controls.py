@@ -1,16 +1,29 @@
 """The negative controls (GPU-VALIDATION.md, "The GPU run is also the test suite's audit", item 5).
 
-Six broken variants of every recipe family -- the chat template removed, an engine-side right cut of
-the rendered prompt, ``use_activation`` flipped, the wrong pooling, ``float32`` decoded as ``float16``
-and an unpinned ``max_pixels`` -- each generated from its family's recipe and served as its own
-(slightly broken) recipe.  Every control must FAIL the ordinary gates; a control that passes is a
-blocker (:func:`controls_summary` flags it), because it proves the gates cannot see that breakage
-class.  The mutation test (a gate made a no-op) shows the summary flagging exactly that.
+Six deliberate breakages per recipe -- (a) the chat template removed, (b) an engine-side right cut of the rendered
+prompt, (c) ``use_activation`` flipped, (d) the wrong pooling, (e) float32 decoded as float16 and (f) an unpinned
+``max_pixels`` -- each derived from the recipe and served through the ordinary gates, which must FAIL it.  A
+control that passes is a blocker (:func:`controls_summary`): its gate cannot see that breakage class.
+
+Every breakage is one vLLM v0.31.0 really exhibits, so a control never "fails" for an unrelated reason (an
+engine that refuses its argv would fail every gate and prove nothing):
+
+- **recipe variants** (served as their own engine, client and engine agreeing on the variant's id): (a) drops
+  ``serve.chat_template``; (c) flips the client's ``use_activation`` (or the pooler config's); (d) flips the
+  pooling key the recipe declares (``seq_pooling_type`` or ``pooling_type`` -- vLLM refuses both at once);
+  (f) unpins ``max_pixels``/``min_pixels`` from ``serve.mm_processor_kwargs``;
+- **wire variants** (the recipe's own engine, the request bodies patched on the way out through
+  :func:`rcp_ndcg_vllm.equivalence.wire.patched_wire`): (b) adds the request fields vLLM cuts with
+  (``truncate_prompt_tokens`` + ``truncation_side: right`` -- a request field, not a serve flag, in v0.31.0);
+  (e) asks ``/pooling`` for the other ``embed_dtype`` than the client decodes, so float32 frames are read as
+  float16 (or the reverse).
+
+A control that does not apply to a recipe is listed with the reason (never dropped silently).
 
 Public surface:
 
-- :data:`CONTROLS`, :class:`ControlSpec` -- the six controls and which families they apply to.
-- :func:`control_variants` -- one broken recipe per applicable control, derived from a recipe.
+- :data:`CONTROLS`, :class:`ControlSpec` -- the six controls.
+- :func:`control_variants` -- every control of one recipe: its variant or wire patch, or why it does not apply.
 - :func:`controls_summary` -- the wave's control report; a passing control is a blocker.
 """
 
@@ -18,17 +31,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
-__all__ = ["CONTROLS", "ControlSpec", "control_variants", "controls_summary"]
+__all__ = ["CONTROLS", "ControlSpec", "control_variants", "controls_summary", "right_cut_tokens"]
 
-Family = Literal["dense", "multi_vector", "pointwise_rerank", "listwise_rerank", "vl_embed", "vl_rerank"]
-
-FAMILIES: dict[str, tuple[str, ...]] = {
-    "embed": ("dense", "vl_embed", "multi_vector"),
-    "multi_vector": ("multi_vector",),
-    "rerank": ("pointwise_rerank", "listwise_rerank", "vl_reranker"),
-}
+_ROUTES = {"embed": "/embeddings", "multi_vector": "/pooling", "rerank": "/rerank"}
 
 
 @dataclass(frozen=True)
@@ -37,184 +44,227 @@ class ControlSpec:
 
     Attributes:
         letter: The control's ``(a)``-``(f)`` label from GPU-VALIDATION.md item 5.
-        name: The variant's infix (its recipe id becomes ``<recipe>.<name>``).
+        name: The variant's infix (a recipe variant's id becomes ``<recipe>.<name>``).
         description: What breaks and which gate must catch it.
-        applies: Family kinds (``text`` / ``image``) the control applies to.
-        mutate: The mutation, applied to the loaded recipe's ``serve``/``client`` blocks.
+        derive: ``derive(recipe) -> (kind, change, reason)``: ``kind`` is ``recipe`` (``change``: the
+            ``serve``/``client`` blocks), ``wire`` (``change``: the request-body fields per route path suffix)
+            or ``None`` with the ``reason`` the control does not apply.
     """
 
     letter: str
     name: str
     description: str
-    applies: tuple[str, ...]
-    mutate: Callable[[dict[str, Any]], dict[str, Any]]
+    derive: Callable[[Any], tuple[str | None, dict[str, Any], str]]
 
 
-def _drop_template(blocks: dict[str, Any]) -> dict[str, Any]:
-    return {**blocks, "serve": {**blocks["serve"], "chat_template": None}}
+def right_cut_tokens(recipe: Any) -> int:
+    """The engine-side cut of control (b): a quarter of the client's budget (at least 4 tokens), so every pairs
+    row longer than that -- the length ladder's rows always are -- loses its tail, anchor included."""
+    return max(4, int(recipe.client.max_tokens or 64) // 4)
 
 
-def _right_cut(blocks: dict[str, Any]) -> dict[str, Any]:
-    extra = list(blocks["serve"].get("extra_args") or []) + ["--truncate-prompt-tokens", "32"]
-    return {**blocks, "serve": {**blocks["serve"], "extra_args": extra}}
+def _blocks(recipe: Any) -> dict[str, Any]:
+    return {"serve": recipe.serve.model_dump(), "client": recipe.client.model_dump()}
 
 
-def _flip_use_activation(blocks: dict[str, Any]) -> dict[str, Any]:
-    client = dict(blocks["client"])
-    if "use_activation" in client:
-        client["use_activation"] = not client["use_activation"]
-    return {**blocks, "client": client}
+def _template_removed(recipe: Any) -> tuple[str | None, dict[str, Any], str]:
+    if recipe.serve.chat_template is None:
+        return None, {}, "the recipe serves no template file (the client renders its prompts): nothing to remove"
+    blocks = _blocks(recipe)
+    blocks["serve"]["chat_template"] = None
+    return "recipe", blocks, ""
 
 
-def _wrong_pooling(blocks: dict[str, Any]) -> dict[str, Any]:
+def _right_cut(recipe: Any) -> tuple[str | None, dict[str, Any], str]:
+    fields = {"truncate_prompt_tokens": right_cut_tokens(recipe), "truncation_side": "right"}
+    return "wire", {_ROUTES[recipe.role]: fields}, ""
+
+
+def _flip_use_activation(recipe: Any) -> tuple[str | None, dict[str, Any], str]:
+    if recipe.role != "rerank":
+        return None, {}, "an embedder's vectors pass no activation: use_activation shapes rerank scores only"
+    blocks = _blocks(recipe)
+    if blocks["client"].get("use_activation") is not None:
+        blocks["client"]["use_activation"] = not blocks["client"]["use_activation"]
+        return "recipe", blocks, ""
     pooler = dict(blocks["serve"].get("pooler_config") or {})
-    pooler["pooling_type"] = "MEAN" if pooler.get("pooling_type") != "MEAN" else "LAST"
-    return {**blocks, "serve": {**blocks["serve"], "pooler_config": pooler}}
+    if pooler.get("use_activation") is not None:
+        pooler["use_activation"] = not pooler["use_activation"]
+        blocks["serve"]["pooler_config"] = pooler
+        return "recipe", blocks, ""
+    return None, {}, "neither the client nor the pooler config declares use_activation"
 
 
-def _float32_read_as_float16(blocks: dict[str, Any]) -> dict[str, Any]:
-    client = dict(blocks["client"])
-    if "embed_dtype" in client:
-        client["embed_dtype"] = "float16" if client["embed_dtype"] != "float16" else "float32"
-    return {**blocks, "client": client}
+def _wrong_pooling(recipe: Any) -> tuple[str | None, dict[str, Any], str]:
+    if recipe.role == "multi_vector":
+        return (
+            None,
+            {},
+            (
+                "token-level pooling has no wrong-but-servable alternative in vLLM v0.31.0 (STEP needs a step tag); "
+                "a sequence pooler would change the route's contract, not the pooling"
+            ),
+        )
+    blocks = _blocks(recipe)
+    pooler = dict(blocks["serve"].get("pooler_config") or {})
+    key = "seq_pooling_type" if "seq_pooling_type" in pooler else "pooling_type" if "pooling_type" in pooler else None
+    if key is None:
+        # Undeclared: the checkpoint's default applies.  MEAN is set; were MEAN the default, the control would
+        # pass and the summary would flag it -- declaring the pooling in the recipe is then the fix.
+        pooler["seq_pooling_type"] = "MEAN"
+    else:
+        pooler[key] = "LAST" if str(pooler[key]).upper() == "MEAN" else "MEAN"
+    blocks["serve"]["pooler_config"] = pooler
+    return "recipe", blocks, ""
 
 
-def _unpinned_max_pixels(blocks: dict[str, Any]) -> dict[str, Any]:
-    mm = dict(blocks["serve"].get("mm_processor_kwargs") or {})
-    mm.pop("max_pixels", None)
-    mm.pop("min_pixels", None)
-    return {**blocks, "serve": {**blocks["serve"], "mm_processor_kwargs": mm}}
+def _float32_read_as_float16(recipe: Any) -> tuple[str | None, dict[str, Any], str]:
+    if recipe.role != "multi_vector":
+        return (
+            None,
+            {},
+            ("only /pooling frames carry an embed_dtype; the dense /v1/embeddings float frames name their numbers"),
+        )
+    declared = str(getattr(recipe.client, "embed_dtype", "float16") or "float16")
+    other = "float32" if declared == "float16" else "float16"
+    return "wire", {"/pooling": {"embed_dtype": other}}, ""
+
+
+def _unpinned_max_pixels(recipe: Any) -> tuple[str | None, dict[str, Any], str]:
+    if "image" not in recipe.input:
+        return None, {}, "the recipe is text-only: no image is resized"
+    blocks = _blocks(recipe)
+    kwargs = dict(blocks["serve"].get("mm_processor_kwargs") or {})
+    if "max_pixels" not in kwargs and "min_pixels" not in kwargs:
+        return None, {}, "the recipe pins no max_pixels or min_pixels to unpin (a finding of its own for a VL recipe)"
+    kwargs.pop("max_pixels", None)
+    kwargs.pop("min_pixels", None)
+    blocks["serve"]["mm_processor_kwargs"] = kwargs
+    return "recipe", blocks, ""
 
 
 CONTROLS: tuple[ControlSpec, ...] = (
     ControlSpec(
         "(a)",
         "template-removed",
-        "the served chat template file is dropped (vLLM concatenates the spans with no frame): the "
-        "anchor and render gates must catch every prompt's missing frame",
-        ("text", "image"),
-        _drop_template,
+        "the served chat template file is dropped (the engine scores the unframed spans): the score gates must "
+        "catch every pair's missing frame",
+        _template_removed,
     ),
     ControlSpec(
         "(b)",
         "right-cut",
-        "an engine-side right cut of the rendered prompt (--truncate-prompt-tokens 32): the anchor "
-        "audit and the score/vector gates must catch the dropped anchor",
-        ("text", "image"),
+        "an engine-side right cut of the rendered prompt (truncate_prompt_tokens with truncation_side right on "
+        "every request): the score and vector gates must catch the dropped tail and its anchor",
         _right_cut,
     ),
     ControlSpec(
         "(c)",
         "use-activation-flipped",
-        "use_activation is flipped (sigmoid on a raw logit or the reverse): the probability-scale "
-        "gate must catch the score shift",
-        ("text", "image"),
+        "use_activation is flipped (a raw logit where a probability is declared, or the reverse): the score-scale "
+        "gate must catch the shift",
         _flip_use_activation,
     ),
     ControlSpec(
         "(d)",
         "wrong-pooling",
-        "the pooling is replaced (MEAN where LAST is declared): the vector and score gates must "
-        "catch the wrong pooled position",
-        ("text", "image"),
+        "the declared pooling is swapped (MEAN where LAST or CLS is declared, LAST where MEAN is): the vector and "
+        "score gates must catch the wrong pooled position",
         _wrong_pooling,
     ),
     ControlSpec(
         "(e)",
         "float16-read",
-        "float32 vectors are decoded as float16 (embed_dtype flipped on the transfer): the vector "
-        "gate must catch the precision change",
-        ("text", "image"),
+        "the /pooling request asks for the other embed_dtype than the client decodes (float32 frames read as "
+        "float16, or the reverse): the vector gate must catch the garbled vectors",
         _float32_read_as_float16,
     ),
     ControlSpec(
         "(f)",
         "unpinned-max-pixels",
-        "max_pixels is unpinned from mm_processor_kwargs (image tokens per page move): the media "
-        "token counts and the vector gates must catch the drift",
-        ("image",),
+        "max_pixels/min_pixels are unpinned from mm_processor_kwargs (image tokens per page move): a media gate "
+        "must catch the drift",
         _unpinned_max_pixels,
     ),
 )
 
 
 def control_variants(recipe: Any) -> list[dict[str, Any]]:
-    """Every applicable broken variant of ``recipe`` (from each control's recipe variant).
+    """Every control of ``recipe``: the broken variant or wire patch it is served with, or why it does not apply.
 
-    Input: a loaded :class:`~rcp_ndcg_vllm.recipe.Recipe`.  Output: one dict per applicable control:
-    ``{"control": <letter>, "name": ..., "recipe": <the mutated recipe>, "description": ...}``, the
-    mutated recipe's id being ``<recipe.id>.<name>`` (the wave serves it like any recipe, so the
-    ordinary gates run over it -- and MUST fail it).
+    Input: a loaded :class:`~rcp_ndcg_vllm.recipe.Recipe` (loaded from its directory: a variant keeps its
+    template and reference files).  Output: one dict per control, in (a)-(f) order: ``{"control", "name",
+    "description", "kind"}`` plus, for ``kind: "recipe"``, ``recipe`` (the variant: id ``<recipe>.<name>``, which
+    is also its served model name and its client's ``model``, so client and engine agree), for ``kind: "wire"``,
+    ``recipe`` (the recipe itself) and ``wire_patch`` (``{route suffix: fields}``), and for an inapplicable
+    control ``kind: None`` and ``reason``.
     """
-    from ..recipe import load_recipe
-
-    blocks = {
-        "serve": recipe.serve.model_dump(),
-        "client": recipe.client.model_dump(),
-    }
-    kinds = ("image",) if "image" in recipe.input else ("text",)
     out: list[dict[str, Any]] = []
     for spec in CONTROLS:
-        if not set(spec.applies) & set(kinds):
+        kind, change, reason = spec.derive(recipe)
+        entry: dict[str, Any] = {
+            "control": spec.letter,
+            "name": spec.name,
+            "description": spec.description,
+            "kind": kind,
+        }
+        if kind is None:
+            out.append({**entry, "reason": reason})
             continue
-        mutated = spec.mutate(blocks)
-        if mutated == blocks:
-            continue  # the recipe declares nothing this control breaks (its target field is absent)
-        directory = recipe._dir
-        variant = load_recipe(directory) if directory is not None else recipe
-        variant = variant.model_copy(
+        if kind == "wire":
+            out.append({**entry, "recipe": recipe, "wire_patch": change})
+            continue
+        variant_id = f"{recipe.id}.{spec.name}"
+        variant = recipe.model_copy(
             update={
-                "id": f"{recipe.id}.{spec.name}",
-                "serve": recipe.serve.__class__.model_validate(mutated["serve"]),
-                "client": recipe.client.__class__.model_validate(
-                    {**mutated["client"], "model": recipe.id, "revision": recipe.revision}
-                ),
+                "id": variant_id,
+                "serve": recipe.serve.__class__.model_validate(change["serve"]),
+                "client": recipe.client.__class__.model_validate({**change["client"], "model": variant_id}),
             }
         )
-        out.append(
-            {
-                "control": spec.letter,
-                "name": spec.name,
-                "recipe": variant,
-                "description": spec.description,
-            }
-        )
+        out.append({**entry, "recipe": variant})
     return out
 
 
 def controls_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """The wave's control report: every control must FAIL its gates; a pass is a blocker.
+    """The wave's control report: every applicable control must FAIL its gates; a pass is a blocker.
 
-    Inputs: one row per control variant as the wave recorded it (``{"recipe": ..., "control": ...,
-    "equivalence": <the stage report>}``, any gate document with a boolean ``passed``).  Output:
-    ``{"passed": bool, "blockers": [...], "rows": [...]}`` -- ``passed`` means every control was
-    CAUGHT (its gates reported failure); each blocker names the control whose breakage went unseen.
+    Inputs: one row per control as the wave recorded it (``{"control", "name", "equivalence": <the gate
+    document with a boolean "passed">}``, or ``{"control", "name", "reason"}`` for an inapplicable one).
+    Output: ``{"passed", "blockers", "rows", "inapplicable"}``: ``passed`` means every applicable control was
+    caught (its gates reported failure); each blocker names the control whose breakage went unseen.
     """
     blockers: list[dict[str, Any]] = []
     details: list[dict[str, Any]] = []
+    inapplicable: list[dict[str, Any]] = []
     for row in rows:
-        gates = row.get("equivalence") or {}
+        if row.get("equivalence") is None:
+            inapplicable.append({"control": row.get("control"), "name": row.get("name"), "reason": row.get("reason")})
+            continue
+        gates = row["equivalence"]
         caught = gates.get("passed") is False
-        entry = {
-            "control": row.get("control"),
-            "name": row.get("name"),
-            "caught": caught,
-            "gates_passed": gates.get("passed"),
-        }
-        details.append(entry)
+        details.append(
+            {
+                "control": row.get("control"),
+                "name": row.get("name"),
+                "caught": caught,
+                "gates_passed": gates.get("passed"),
+            }
+        )
         if not caught:
             blockers.append(
                 {
                     "control": row.get("control"),
                     "name": row.get("name"),
                     "reason": "the broken variant PASSED the gates (a no-op or blind gate): the control is a "
-                    "blocker until the gate catches this breakage class",
+                    "blocker until a gate catches this breakage class",
                 }
             )
     return {
         "passed": not blockers,
         "blockers": blockers,
         "rows": details,
-        "referent": "every negative control must fail its gates; a passing control means the gates cannot "
-        "see its breakage (GPU-VALIDATION.md item 5)",
+        "inapplicable": inapplicable,
+        "referent": "every applicable negative control must fail its gates; a passing control means the gates "
+        "cannot see its breakage (GPU-VALIDATION.md item 5)",
     }

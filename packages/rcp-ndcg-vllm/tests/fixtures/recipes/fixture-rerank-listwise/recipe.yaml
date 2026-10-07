@@ -34,7 +34,6 @@ client:
   instruction: field
   use_activation: true
   on_overflow: cut
-  use_activation: false
   empty_doc: send
   listwise: true
 reference:
