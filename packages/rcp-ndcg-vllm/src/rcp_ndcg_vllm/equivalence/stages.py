@@ -127,7 +127,13 @@ def _sampled_rows(
 
 
 def _over_length(seed: str, max_tokens: int | None, tokenizer: Any, index: int) -> str:
-    """A seed text padded to at least ``max_tokens`` tokens (plus one, per index), in whole words."""
+    """A seed text padded to at least twice ``max_tokens`` tokens (128 without a budget), in whole words.
+
+    The padding appends `` pad<index>`` words, so each sample index pads differently.  Raises
+    ``HarnessError`` when the recipe tokenizer's count never reaches the target within the bounded passes
+    (a count that saturates at an embedded truncation ceiling): an over-length sample that was never
+    measured over the target would audit an uncut input as if the client had cut it.
+    """
     budget = max_tokens or 128
     marker = f" pad{index}"
     # One probe measures the marker's token rate, and each step sizes the append from the measured
@@ -137,11 +143,17 @@ def _over_length(seed: str, max_tokens: int | None, tokenizer: Any, index: int) 
     # at 32768-token budgets (jina-embeddings-v5-text-small's stage-1 sample sat in tokenizer.count).
     unit_tokens = max(1, tokenizer.count(marker * 8))
     text = seed or "anchor"
-    for _ in range(8):  # declarative bound: 8 measured passes, each at most doubling the growth
+    for _ in range(8):  # declarative bound: at most 8 measured passes, each sized from the measured deficit
         deficit = budget * 2 - tokenizer.count(text)
         if deficit <= 0:
             return text
         text = text + marker * max(2, (deficit * 8) // unit_tokens + 2)
+    counted = tokenizer.count(text)
+    if counted < budget * 2:
+        raise HarnessError(
+            f"cannot build an over-length sample of {budget * 2} tokens: the recipe tokenizer counts {counted} "
+            "tokens after the bounded padding passes (does the tokenizer file carry a truncation ceiling?)"
+        )
     return text
 
 
