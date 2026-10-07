@@ -75,7 +75,7 @@ def stage1_prompts(
         "checked": probe["checked"],
         "client": probe["client"],
         "anchor_check": _anchor_check(recipe, probe, tokenizer),
-        "render_check": _render_check(recipe, reference_python, sampled, probe),
+        "render_check": _render_check(recipe, reference_python, sampled, probe, tokenizer),
         "template_render_check": _template_check(recipe, rows, probe, tokenizer),
         "engine_tokenize_check": _engine_tokenize_check(recipe, probe, tokenizer, base_url),
         "passed": False,
@@ -413,14 +413,20 @@ def _audit_rerank_span(
 
 
 def _render_check(
-    recipe: Recipe, reference_python: str | None, sampled: list[dict[str, Any]], probe: dict[str, Any]
+    recipe: Recipe,
+    reference_python: str | None,
+    sampled: list[dict[str, Any]],
+    probe: dict[str, Any],
+    tokenizer: Any,
 ) -> dict[str, Any] | None:
     """The reference render comparison, via the reference subprocess (stage 1's reference side).
 
     Only the pairs file's rows are compared (the injected over-length samples are audited for the cut, not
     compared: the reference cuts over-cap inputs its own way by declaration).  The comparison is on the
     client's captured texts: the rendered prompts the embed roles send, the settled query span and the
-    document spans for the rerank wire.  Under a declared ``anchor_drop_over_cap`` deviation, over-cap rows
+    document spans for the rerank wire.  A ``token_ids`` body is compared on ids: the ids it sent against
+    the reference text's ids under the shape's ``add_special_tokens`` flag (the product tokenizer, the ids
+    the client would have sent for that text).  Under a declared ``anchor_drop_over_cap`` deviation, over-cap rows
     are reported separately and do not gate (the reference cuts them differently by declaration).
     """
     if reference_python is None:
@@ -458,6 +464,21 @@ def _render_check(
         over = bool(probe["rows"][key[0]]["over_cap"])
         if recipe.role == "rerank":
             mismatches = _span_mismatches(row, served)
+        elif isinstance(served, list):
+            reference_text = str(row.get("text", ""))
+            reference_ids = list(tokenizer.ids(reference_text, add_special_tokens=_add_specials_flag(recipe, key[1])))
+            mismatches = []
+            if reference_ids != list(served):
+                mismatches.append(
+                    {
+                        "index": row["index"],
+                        "shape": key[1],
+                        "served_ids_head": list(served[:24]),
+                        "reference_ids_head": reference_ids[:24],
+                        "reference_text_head": reference_text[:_SNIPPET],
+                        "text": str(row.get("query", ""))[:_SNIPPET],
+                    }
+                )
         else:
             mismatches = []
             if row.get("text", "") != served:
@@ -549,7 +570,7 @@ def _served_texts_by_row(
     A pairs row without a ``shape`` is captured under every declared shape (the reference contract renders
     one row per declared shape at the row's index); a row that declares its shape is captured under that one.
     A rerank row's value is ``{"query": str, "documents": [...]}`` (the spans); an embed row's is the rendered
-    prompt string.
+    prompt string, or a ``token_ids`` body's sent ids (a list of ints).
     """
     out: dict[tuple[int, str], Any] = {}
     for index, entry in enumerate(probe["rows"]):

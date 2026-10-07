@@ -198,7 +198,8 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
   head's trailing whitespace tokens re-tokenize with the first content token on a byte-level BPE (`"doc: "`
   then reads `Ġdocument`), so they are not part of the asserted edge;
 - `render_check` compares the reference subprocess's `render` output against the captured texts, zero
-  tolerance — every declared shape of every pairs-file row (a row carrying the per-row `shape` field is
+  tolerance (a `token_ids` body on ids: the ids it sent against the reference text's ids under the shape's
+  `add_special_tokens` flag) — every declared shape of every pairs-file row (a row carrying the per-row `shape` field is
   compared too; the injected over-length samples are audited, not compared). Under a declared
   `reference.known_deviations: [anchor_drop_over_cap]`, the rows the client had to cut are reported in a
   separate non-gating table here as well (the reference renders them its own way by declaration);

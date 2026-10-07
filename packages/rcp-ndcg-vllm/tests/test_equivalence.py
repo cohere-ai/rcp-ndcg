@@ -450,6 +450,34 @@ def test_stage1_audits_token_ids_bodies_on_the_sent_ids(tmp_path: Path, recipe_i
     assert stages_module._anchor_check(recipe, broken, tokenizer)["passed"] is False
 
 
+def test_stage1_render_check_compares_token_ids_bodies_on_the_reference_ids(tmp_path: Path) -> None:
+    """G1: a ``token_ids`` client sends ids, the reference renders text: the render check compares the sent
+    ids with the reference text's ids (the product tokenizer, the shape's ``add_special_tokens`` flag), so a
+    faithful reference passes stage 1 and a one-character divergent one still fails (``dog:`` for ``doc:``;
+    a doubled space would not do: this tokenizer splits on whitespace, so its ids -- what the engine reads --
+    are the same)."""
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    recipe = _with_client(load("fixture-embed"), request_shape="token_ids")
+    document = stage1_prompts(recipe, pairs, REFERENCE_PYTHON, over_length_per_shape=1)
+    render = document["render_check"]
+    assert render["status"] == "run" and render["rows"] > 0
+    assert render["passed"] is True, render["failures"][:1]
+    assert document["passed"] is True
+    source = (RECIPES / "fixture-embed" / "reference.py").read_text(encoding="utf-8")
+    directory = tmp_path / "divergent" / "recipes" / "divergent"
+    directory.mkdir(parents=True)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "divergent" / "deterministic.py")
+    assert 'PREFIX = "doc: "' in source
+    (directory / "reference.py").write_text(source.replace('PREFIX = "doc: "', 'PREFIX = "dog: "'), encoding="utf-8")
+    manifest = (RECIPES / "fixture-embed" / "recipe.yaml").read_text(encoding="utf-8")
+    (directory / "recipe.yaml").write_text(_rebased(manifest, "divergent"), encoding="utf-8")
+    divergent = _with_client(load_recipe(directory), request_shape="token_ids")
+    render = stage1_prompts(divergent, pairs, REFERENCE_PYTHON, over_length_per_shape=1)["render_check"]
+    assert render["passed"] is False
+    failure = render["failures"][0]
+    assert failure["served_ids_head"] != failure["reference_ids_head"]
+
+
 def test_engine_tokenize_check_does_not_post_token_ids_bodies(monkeypatch: pytest.MonkeyPatch) -> None:
     """G1: a ``token_ids`` body is read by the engine as sent -- the /tokenize check posts no text for it and
     reports ``not_run`` (never a vacuous pass)."""
