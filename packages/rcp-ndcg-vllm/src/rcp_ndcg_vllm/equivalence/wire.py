@@ -85,6 +85,7 @@ class CapturingTransport(httpx.AsyncBaseTransport):
             {
                 "url": str(request.url),
                 "method": request.method,
+                "request_bytes": base64.b64encode(raw).decode("ascii"),
                 "request_body": body,
                 "status": response.status_code,
                 "headers": {key: response.headers.get(key, "") for key in ("content-type", "server")},
