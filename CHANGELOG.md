@@ -55,8 +55,18 @@ released together.
 - **The corpora under `tests/contract/engines/`**: the compact shakedown corpus (12 recipes, 48
   raw-first exchanges, manifest hashes per file and in the repository's corpus index, a shared
   vendored tokenizer store) with the append-only verification record (`verification.jsonl`), and the
-  golden replays (`tests/e2e/test_golden_replay.py`): NanoBEIR-shaped and ViDoRe-shaped minis through
-  the full retrieval and rerank path, reproducing the goldens to 1e-9 with every input observed.
+  golden replays (`tests/e2e/test_golden_replay.py`): a NanoBEIR-shaped mini through the full retrieval
+  and rerank path and the ViDoRe rerank view (its retrieval view is a tripwire-pinned recipe gap),
+  pinning the recomputed metrics to 1e-9 with every input observed -- regression pins generated from
+  the recorded corpus (the shakedown recorded no subset run); the RC0 subset corpus replaces them with
+  the GPU run's numbers.
+- **Behaviour fingerprint inputs, version `rcp-fp/2`**: the client-side post-processing fields
+  (`normalize`, `aggregation`) are out (they cannot change what the model returns) and `batch_size` is
+  in (request packing can change a bf16 batch's numbers). A knob-keyed model layer (the rerank
+  roles' `use_activation` and `instruction` are part of the observation key), header-checked conformance
+  (content type, server), an extended credential scanner (basic auth, api-key headers, cookie and
+  single-quoted or assigned secrets), and `RE_ENGINE_URL` exported from `rcp_ndcg.inference.fake`
+  (`rcp_ndcg.testing.engines` is pinned as public API).
 
 - **`FitDiagnostics` counts the fit's skips**: `skipped_observations` and `skipped_queries` (integers, default 0)
   are new fields, so `schemas/calibration-summary.v1.json` carries them. A tournament-mode fit counts the rubric

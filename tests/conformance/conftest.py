@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # the repo root, for tests._engines
+
 ROOT = Path(__file__).resolve().parents[2]
 ENGINES = ROOT / "tests" / "contract" / "engines"
 RECIPES = ROOT / "packages" / "rcp-ndcg-vllm" / "recipes"
@@ -22,13 +24,11 @@ _VLLM_SRC = str(ROOT / "packages" / "rcp-ndcg-vllm" / "src")
 
 @pytest.fixture(scope="session", autouse=True)
 def _harness_on_path_and_tokenizers_vendored() -> None:
-    """Put ``rcp_ndcg_vllm`` on the path and register the corpora's tokenizer stores, once per session."""
-    if _VLLM_SRC not in sys.path:
-        sys.path.insert(0, _VLLM_SRC)
-    from rcp_ndcg_vllm.fingerprint import use_tokenizer_store
+    """Put ``rcp_ndcg_vllm`` on the path and register the corpora's tokenizer stores, once per session
+    (the one wiring home: ``tests._engines.harness``)."""
+    from tests._engines import harness
 
-    for store in ENGINES.glob("*/_tokenizers"):
-        use_tokenizer_store(store)
+    harness()
 
 
 def harness_imports() -> None:

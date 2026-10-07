@@ -10,9 +10,12 @@ answer was a surrogate.
 The fixtures here are the shakedown's provisional minis (``tests/e2e/golden/``): the query, pages and
 pool texts are the recorded prompts' sources. The RCP gains are **synthetic declared fixture values**
 deliberately ranked opposite the models' scores, so the metric is sensitive to any order change; the
-qrels keep the texts' honest relevance. When the RC0 subset corpus lands (the full served exchanges of
-one real NanoBEIR and one ViDoRe subset), the fixtures grow from it and the goldens are regenerated
-with ``RCP_UPDATE_GOLDENS=1``.
+qrels keep the texts' honest relevance. The numbers are **regression pins generated from the recorded
+corpus** (``RCP_UPDATE_GOLDENS=1`` recomputes them from the same corpus the emulators replay -- the
+shakedown corpus recorded no subset run), not an independent GPU run's outputs: the RC0 subset corpus
+(the full served exchanges of one real NanoBEIR and one ViDoRe subset) replaces the fixtures and
+becomes the GPU run's numbers. The ViDoRe mini runs the rerank view only (its retrieval view is a
+tripwire-pinned recipe gap).
 
 Regenerate: ``RCP_UPDATE_GOLDENS=1 uv run --no-sync pytest tests/e2e/test_golden_replay.py``.
 """
@@ -198,6 +201,9 @@ def test_the_golden_replay_reproduces_the_metrics(case: str, tmp_path: Path) -> 
     emulator_for(CASES[case]["rerank"]["model"])
     if CASES[case]["retrieval"] is not None:
         emulator_for(CASES[case]["retrieval"]["encoder"])
+    for _view, _row in CASES[case].items():
+        if isinstance(_row, dict):
+            emulator_for(_row.get("encoder") or _row.get("model")).clear_answer_log()
     results = {}
     for view, runner in (("retrieval", run_retrieval_view), ("rerank", run_rerank_view)):
         row = CASES[case][view]
@@ -208,7 +214,7 @@ def test_the_golden_replay_reproduces_the_metrics(case: str, tmp_path: Path) -> 
         (tmp_path / view).mkdir(exist_ok=True)
         results[view] = score(rankings, system, row, tmp_path)
 
-    # a test that asserts numbers can only use observed inputs: every answer was a replay
+    # a test that asserts numbers can only use observed inputs: every answer of THIS run was a replay
     for _view, row in CASES[case].items():
         if not isinstance(row, dict):
             continue

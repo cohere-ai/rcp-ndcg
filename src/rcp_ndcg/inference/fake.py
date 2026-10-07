@@ -332,6 +332,7 @@ __all__ = [
     "FAKE_SCHEME",
     "FakeEndpoint",
     "FakeRouteHandler",
+    "RE_ENGINE_URL",
     "fake_transport",
     "fake_uniform",
     "hidden_ability",

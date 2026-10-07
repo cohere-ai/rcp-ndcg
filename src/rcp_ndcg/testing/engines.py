@@ -117,10 +117,15 @@ VOLATILE_FIELDS_1: tuple[str, ...] = (
 _CREDENTIALS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("authorization header", re.compile(r"(?i)\bauthorization\b\s*[:=]")),
     ("bearer token", re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{16,}")),
+    ("basic auth", re.compile(r"(?i)\bbasic\s+[A-Za-z0-9+/=]{16,}")),
+    ("api key header", re.compile(r"(?i)\bx-api-key\s*[:=]")),
     ("hugging face token", re.compile(r"\bhf_[A-Za-z0-9]{20,}")),
     ("google api key", re.compile(r"\bAIza[A-Za-z0-9_\-]{20,}")),
     ("private key block", re.compile(r"BEGIN [A-Z ]*PRIVATE KEY")),
+    ("cookie header", re.compile(r"(?i)\b(?:set-cookie|cookie)\s*[:=]\s*\S+=")),
     ("secret field", re.compile(r'(?i)"(?:api[_-]?key|secret|password|token)"\s*:\s*"[^"]{8,}"')),
+    ("secret field (single-quoted)", re.compile(r"(?i)'(?:api[_-]?key|secret|password|token)'\s*:\s*'[^']{8,}'")),
+    ("secret assignment", re.compile(r'(?i)\b(?:password|passwd|secret|api[_-]?key|access[_-]?token)\s*=\s*["\'][^"\']{8,}')),
 )
 
 
@@ -369,14 +374,13 @@ def verify_corpus_hashes(corpus: Corpus) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def normalise_body(method: str, path: str, status: int, body: Any) -> Any:
+def normalise_body(method: str, path: str, body: Any) -> Any:
     """The body with :data:`VOLATILE_FIELDS_1` stripped, so two replies compare equal when they differ
     only in request ids and creation timestamps.
 
     Args:
         method: The request method (rules are route-aware).
-        path: The request path (``/v1/embeddings``).
-        status: The response status.
+        path: The request path (``/v1/embeddings``, ``/rerank``, ``/v1/rerank``).
         body: The parsed response body.
 
     Returns:
@@ -385,13 +389,13 @@ def normalise_body(method: str, path: str, status: int, body: Any) -> Any:
     if not isinstance(body, dict):
         return body
     out = dict(body)
-    route = f"{method.upper()} {path}"
     if "created" in out:
         out.pop("created")
-    if "id" in out and ("POST /v1/embeddings" in route or "POST /rerank" in route):
+    route = path.rstrip("/")
+    if "id" in out and method.upper() == "POST" and route.endswith(("embeddings", "rerank", "v1/rerank")):
         out.pop("id")
     data = out.get("data")
-    if isinstance(data, list) and path.rstrip("/").endswith(("models", "embeddings")):
+    if isinstance(data, list) and route.endswith(("models", "embeddings")):
         out["data"] = [_normalise_item(item) for item in data]
     return out
 
@@ -426,10 +430,18 @@ def _float_leaves(value: Any, prefix: str = "") -> dict[str, float]:
 
 
 def compare_exchange(
-    recorded: Exchange, method: str, path: str, status: int, body: Any, tolerance: tuple[float, float]
+    recorded: Exchange,
+    method: str,
+    path: str,
+    status: int,
+    body: Any,
+    tolerance: tuple[float, float],
+    response_headers: Mapping[str, str] | None = None,
 ) -> list[str]:
     """The conformance check of one replayed exchange: identical status and body within the recorded
-    non-determinism (volatile fields stripped by :data:`NORMALISATION_VERSION`).
+    non-determinism (volatile fields stripped by :data:`NORMALISATION_VERSION`), plus the headers that
+    matter (content type, server) when the caller passes the replayed ones -- framing is protocol
+    behaviour (GPU-VALIDATION item 1) and a wrong ``content-type`` must not pass.
 
     Args:
         recorded: The recorded exchange.
@@ -438,6 +450,8 @@ def compare_exchange(
         status: The replayed response's status.
         body: The replayed response body (as the transport reads it).
         tolerance: ``(abs, rel)`` from the corpus's measured non-determinism (0, 0 is exact).
+        response_headers: The replayed response's headers (checked against the recorded ones that
+            matter; ``None`` skips the header check).
 
     Returns:
         A list of differences (``[]`` is conformant); each names the field that moved.
@@ -446,9 +460,14 @@ def compare_exchange(
     if status != recorded.status:
         problems.append(f"status {status} != recorded {recorded.status}")
         return problems
-    expected = normalise_body(recorded.method, recorded.path, recorded.status, recorded.response_json)
-    actual = normalise_body(method, path, status, body)
-    problems.extend(_diff_bodies(expected, actual, "", tolerance))
+    if response_headers is not None:
+        for name, expected in dict(recorded.response_headers).items():
+            actual = response_headers.get(name)
+            if actual != expected:
+                problems.append(f"header {name}: {actual!r} != recorded {expected!r}")
+    expected_body = normalise_body(recorded.method, recorded.path, recorded.response_json)
+    actual = normalise_body(method, path, body)
+    problems.extend(_diff_bodies(expected_body, actual, "", tolerance))
     return problems
 
 
@@ -477,7 +496,7 @@ def _diff_bodies(expected: Any, actual: Any, path: str, tolerance: tuple[float, 
 
 def _numeric_diff(expected: float, actual: float, path: str, tolerance: tuple[float, float]) -> list[str]:
     absolute = abs(actual - expected)
-    allowed = max(tolerance[0], abs(expected) * tolerance[1])
+    allowed = tolerance[0] + abs(expected) * tolerance[1]
     return [] if absolute <= allowed else [f"{path}: {actual!r} differs from recorded {expected!r} by {absolute:g}"]
 
 
@@ -498,12 +517,28 @@ class PromptSet:
             (a listwise prompt scores the whole candidate set at once).
         positions: For ``score``: the document index each prompt scores (prompt order is document
             order); otherwise identity.
+        knobs: The request's behaviour-shaping fields as canonical strings (the rerank roles'
+            ``use_activation`` and ``instruction``, ``absent`` distinct from any value): part of the
+            model layer's key, so a request field the engine folds into the prompt or the score is
+            never answered from another request's observation.
     """
 
     prompts: tuple[str, ...]
     add_special: tuple[bool, ...]
     slot: Literal["vector", "token_vector", "score", "score_list"]
     positions: tuple[int, ...] = ()
+    knobs: tuple[str, ...] = ()
+
+    def item_key(self, index: int) -> str:
+        """The model-layer observation key of one output: its prompt plus the request's knobs (the
+        whole set's key for a listwise prompt, whose one output scores the set)."""
+        prompts = list(self.prompts) if self.slot == "score_list" else [self.prompts[index]]
+        return json.dumps([prompts, list(self.knobs)], sort_keys=True, ensure_ascii=False)
+
+    @property
+    def set_key(self) -> str:
+        """The key of a set-level output (a listwise prompt scores its whole candidate set at once)."""
+        return json.dumps([list(self.prompts), list(self.knobs)], sort_keys=True, ensure_ascii=False)
 
     def counted(self, tokenizer: Any) -> int:
         """The engine's ``usage.prompt_tokens`` over this request's prompts (the recorded rule: the sum
@@ -552,7 +587,7 @@ class PairPrompts(PromptStrategy):
             self.template.render("pair", self.tokenizer, query=query, document=document) for document in documents
         )
         flag = self.template.adds_special_tokens("pair")
-        return PromptSet(prompts, (flag,) * len(prompts), "score", tuple(range(len(documents))))
+        return PromptSet(prompts, (flag,) * len(prompts), "score", tuple(range(len(documents))), _rerank_knobs(body))
 
 
 @dataclass(frozen=True)
@@ -568,7 +603,19 @@ class EnginePrompts(PromptStrategy):
     def prompts(self, body: Mapping[str, Any]) -> PromptSet:
         query = _text(body.get("query"))
         documents = [_text(document) for document in body.get("documents") or []]
-        return PromptSet((self.builder(query, documents),), (self.add_special,), "score_list", (0,))
+        return PromptSet(
+            (self.builder(query, documents),), (self.add_special,), "score_list", (0,), _rerank_knobs(body)
+        )
+
+
+def _rerank_knobs(body: Mapping[str, Any]) -> tuple[str, ...]:
+    """The rerank request's behaviour-shaping fields, canonical strings with ``absent`` distinct from
+    any value: the engine folds ``use_activation`` (raw logit vs probability) and its ``instruction``
+    into what it returns, so an observation under one value never answers a request carrying another."""
+    return tuple(
+        f"{name}=" + ("absent" if name not in body else json.dumps(body[name], sort_keys=True))
+        for name in ("use_activation", "instruction")
+    )
 
 
 def _text(item: Any) -> str:
@@ -704,10 +751,14 @@ class VllmEmulator:
         "model name mismatch -> 404",
         "too many media items -> 400",
         "top_n > documents -> truncated to the documents",
+        "the /pooling framings (float/base64/bytes) are emulated from the product's pooling wire but "
+        "unverified: the shakedown corpus holds no /pooling recording (RC0's corpus records them)",
+        "encoding_format base64 on /v1/embeddings is emulated unverified (the corpus recorded float)",
     )
     _counter: list[int] = field(default_factory=lambda: [0])
     answer_log: list[str] = field(default_factory=list)
-    """The provenance of every composed reply (``replayed``/``surrogate``/``mixed``): what tells a
+    """The provenance of every composed model-output reply (``/embeddings``, ``/pooling``, ``/rerank``;
+    errors and ``/models`` ``/tokenize`` carry no model output and are not logged): what tells a
     numbers-asserting test whether its inputs were observed (GPU-VALIDATION item 2)."""
 
     # -- construction ---------------------------------------------------------
@@ -901,8 +952,8 @@ class VllmEmulator:
             )
         return set_, None
 
-    def _observation(self, prompt: str) -> tuple[ModelObservation, str]:
-        history = self.observations.get(prompt)
+    def _observation(self, key: str) -> tuple[ModelObservation, str]:
+        history = self.observations.get(key)
         if history:
             return history[0], "replayed"
         return ModelObservation(), "surrogate"
@@ -915,7 +966,7 @@ class VllmEmulator:
         dimensions = body.get("dimensions") if isinstance(body.get("dimensions"), int) else None
         sources, data = [], []
         for index, prompt in enumerate(set_.prompts):
-            observation, source = self._observation(prompt)
+            observation, source = self._observation(set_.item_key(index))
             sources.append(source)
             vector = list(observation.vector or surrogate_vector(0, "embedding", prompt, dim=self.dim))
             if dimensions:
@@ -951,10 +1002,11 @@ class VllmEmulator:
         assert set_ is not None
         encoding = body.get("encoding_format") or "float"
         sources, data = [], []
+        raw = bytearray()
+        framing: list[dict[str, Any]] = []
         for index, prompt in enumerate(set_.prompts):
-            observation, source = self._observation(prompt)
+            observation, source = self._observation(set_.item_key(index))
             sources.append(source)
-            self.tokenizer.count(prompt, add_special_tokens=set_.add_special[index])
             if observation.matrix is not None:
                 matrix = [list(row) for row in observation.matrix]
                 token_ids = list(
@@ -966,15 +1018,35 @@ class VllmEmulator:
             packed: Any
             if encoding == "base64":
                 packed = _encode_matrix(matrix, body.get("embed_dtype") or "float16")
-            elif encoding == "bytes":
-                packed = {
-                    "base64": _encode_matrix(matrix, body.get("embed_dtype") or "float16"),
-                    "framing_headers": {"content-type": "application/octet-stream"},
-                }
+            elif encoding in ("bytes", "bytes_only"):
+                packed = None
+                dtype = str(body.get("embed_dtype") or "float16")
+                frame = _pack_frame(matrix, dtype)
+                start = len(raw)
+                raw += frame
+                framing.append(
+                    {
+                        "index": index,
+                        "embed_dtype": dtype,
+                        "endianness": "little",
+                        "start": start,
+                        "end": len(raw),
+                        "shape": [len(matrix), len(matrix[0]) if matrix else 0],
+                    }
+                )
             else:
                 packed = matrix
-            data.append({"object": "pooling", "index": index, "data": packed, "prompt_token_ids": token_ids})
+            if packed is not None:
+                data.append({"object": "pooling", "index": index, "data": packed, "prompt_token_ids": token_ids})
         usage = self._usage(set_)
+        if encoding in ("bytes", "bytes_only"):
+            # the pooling wire's bytes framing (vllm/entrypoints/pooling/utils.py::encode_pooling_bytes):
+            # raw frames in one body, split by the ``metadata`` header's start/end/shape; ``bytes_only``
+            # sends no metadata and the product's adapter refuses it, naming the lane that will pin it.
+            headers = {"content-type": "application/octet-stream"}
+            if encoding == "bytes":
+                headers["metadata"] = json.dumps({"data": framing, "usage": _usage_body(usage, wide=False)})
+            return self._marked(httpx.Response(200, content=bytes(raw), headers=headers), sources)
         return self._marked(
             _json(
                 200,
@@ -997,9 +1069,8 @@ class VllmEmulator:
         sources: list[str] = []
         scored: list[dict[str, Any]] = []
         if set_.slot == "score_list":
-            prompt, source = set_.prompts[0], "surrogate"
-            observation = self.observations.get(prompt, (ModelObservation(),))[0]
-            source = "replayed" if prompt in self.observations else "surrogate"
+            prompt = set_.prompts[0]
+            observation, source = self._observation(set_.set_key)
             sources.append(source)
             if observation.scores is not None:
                 scored = [{"index": position, "relevance_score": score} for position, score in observation.scores]
@@ -1010,7 +1081,7 @@ class VllmEmulator:
                 ]
         else:
             for position, prompt in enumerate(set_.prompts):
-                observation, source = self._observation(prompt)
+                observation, source = self._observation(set_.item_key(position))
                 sources.append(source)
                 score = (
                     observation.score
@@ -1074,9 +1145,14 @@ class VllmEmulator:
 
     # -- behaviour diff ---------------------------------------------------------
 
-    def replays(self, prompt: str) -> bool:
-        """Whether ``prompt`` was observed (its outputs replay) or unseen (surrogate)."""
-        return prompt in self.observations
+    def replays(self, key: str) -> bool:
+        """Whether the observation ``key`` (a :meth:`PromptSet.item_key`) was recorded -- its outputs
+        replay -- or unseen (surrogate)."""
+        return key in self.observations
+
+    def clear_answer_log(self) -> None:
+        """Forget the recorded reply provenance (golden runs assert over the run's own replies)."""
+        self.answer_log.clear()
 
 
 class BehaviourDiff(dict):
@@ -1152,10 +1228,12 @@ def behaviour_diff(before: Corpus, after: Corpus) -> BehaviourDiff:
 def measure_non_determinism(corpus: Corpus, strategy: PromptStrategy) -> dict[str, Any]:
     """The measured, never assumed, non-determinism of one recipe (OBSERVATIONS-SPEC section 2).
 
-    The rule (``rule`` is stored with the numbers): for every engine prompt observed more than once in
-    the corpus, the largest absolute and relative differences between any two observations of its
-    outputs; the maxima over all prompts are the emulator's verification tolerance. With one
-    repetition per request the rule measures nothing and the tolerance is zero (exact replay).
+    The rule (``rule`` is stored with the numbers): for every observation key (one engine prompt plus
+    the request's behaviour-shaping knobs) observed more than once in the corpus, the largest absolute
+    and relative differences between ANY two observations of its outputs; the maxima over all keys are
+    the emulator's verification tolerance -- an envelope that changed a model-shaping field is a
+    different key and measures nothing. With one repetition per request the rule measures nothing and
+    the tolerance is zero (exact replay).
 
     Args:
         corpus: The raw corpus.
@@ -1179,16 +1257,17 @@ def measure_non_determinism(corpus: Corpus, strategy: PromptStrategy) -> dict[st
             continue
         repeats += 1
         leaves = [_float_leaves(_observation_payload(value)) for value in values]
-        for first, second in zip(leaves, leaves[1:], strict=False):
-            for name, a in first.items():
-                b = second.get(name)
-                if b is None:
-                    continue
-                difference = abs(a - b)
-                max_abs = max(max_abs, difference)
-                max_rel = max(max_rel, difference / max(abs(a), abs(b), 1e-12))
+        for index, first in enumerate(leaves):
+            for second in leaves[index + 1 :]:
+                for name, a in first.items():
+                    b = second.get(name)
+                    if b is None:
+                        continue
+                    difference = abs(a - b)
+                    max_abs = max(max_abs, difference)
+                    max_rel = max(max_rel, difference / max(abs(a), abs(b), 1e-12))
     return {
-        "rule": "max-absolute-and-relative-difference-across-repeated-observations-of-one-engine-prompt",
+        "rule": "max-pairwise-difference-across-repeated-observations-of-one-key",
         "repetitions": ["same_process"],
         "repeated_prompts": repeats,
         "measured_max_abs": max_abs,
@@ -1362,29 +1441,88 @@ def _slot_of(strategy: PromptStrategy) -> str:
 
 
 def _outputs_from_response(set_: PromptSet, exchange: Exchange) -> list[tuple[str, ModelObservation]]:
-    """The model outputs one recorded 2xx exchange holds, keyed per engine prompt."""
-    body = exchange.response_json or {}
+    """The model outputs one recorded 2xx exchange holds, keyed per observation key (prompt + knobs).
+
+    A framed body (``bytes``/``bytes_only``) is decoded from its ``metadata`` framing when it carries
+    one, base64 item payloads in the request's ``embed_dtype``; anything else is refused loudly --
+    a corpus record whose outputs cannot be derived must never read as an empty replay table.
+    """
+    body = exchange.response_json
     pairs: list[tuple[str, ModelObservation]] = []
+    if body is None:
+        envelope = exchange.response if isinstance(exchange.response, dict) else {}
+        header = (envelope.get("framing_headers") or {}).get("metadata")
+        if header:
+            import base64
+
+            raw = base64.b64decode(envelope["base64"])
+            frames = json.loads(header).get("data") or []
+            dtype = str(exchange.request_body.get("embed_dtype") or "float16")
+            for item, frame in zip((exchange.request_body.get("input") or []), frames, strict=False):
+                matrix = _decode_frame(raw[int(frame["start"]) : int(frame["end"])], dtype, tuple(frame["shape"]))
+                pairs.append((_string(item), ModelObservation(matrix=matrix, token_ids=())))
+            return pairs
+        raise DataError(
+            f"{exchange.source or exchange.path}: a framed response without metadata cannot be decomposed "
+            "into per-prompt observations"
+        )
     if set_.slot in ("vector", "token_vector"):
         data = body.get("data") or []
-        for prompt, item in zip(set_.prompts, data, strict=False):
+        for index, (_prompt, item) in enumerate(zip(set_.prompts, data, strict=False)):
             if set_.slot == "vector":
-                pairs.append((prompt, ModelObservation(vector=tuple(item.get("embedding") or ()))))
+                pairs.append((set_.item_key(index), ModelObservation(vector=tuple(item.get("embedding") or ()))))
+                continue
+            payload = item.get("data")
+            ids = tuple(item.get("prompt_token_ids") or ())
+            if isinstance(payload, str):
+                dtype = str(exchange.request_body.get("embed_dtype") or "float16")
+                matrix = _decode_base64_matrix(payload, dtype, tokens=len(ids))
+            elif isinstance(payload, list):
+                matrix = tuple(tuple(float(v) for v in row) for row in payload)
+            elif _is_bytes_envelope(payload):
+                dtype = str(exchange.request_body.get("embed_dtype") or "float16")
+                import base64
+
+                raw = base64.b64decode(payload["base64"])
+                matrix = _decode_frame(raw, dtype, (len(ids), _frame_width(raw, dtype, len(ids))))
             else:
-                payload = item.get("data")
-                matrix = tuple(tuple(float(v) for v in row) for row in payload) if isinstance(payload, list) else ()
-                pairs.append(
-                    (prompt, ModelObservation(matrix=matrix, token_ids=tuple(item.get("prompt_token_ids") or ())))
-                )
+                raise DataError(f"{exchange.source or exchange.path}: an unparsable token-vector payload")
+            pairs.append((set_.item_key(index), ModelObservation(matrix=matrix, token_ids=ids)))
         return pairs
     results = body.get("results") or []
     scores = {int(entry.get("index", i)): float(entry["relevance_score"]) for i, entry in enumerate(results)}
     if set_.slot == "score":
-        for prompt, position in zip(set_.prompts, set_.positions or range(len(set_.prompts)), strict=False):
-            pairs.append((prompt, ModelObservation(score=scores.get(position))))
+        for position, _prompt in enumerate(set_.prompts):
+            pairs.append((set_.item_key(position), ModelObservation(score=scores.get(position))))
     else:
-        pairs.append((set_.prompts[0], ModelObservation(scores=tuple(sorted(scores.items())))))
+        pairs.append((set_.set_key, ModelObservation(scores=tuple(sorted(scores.items())))))
     return pairs
+
+
+def _string(item: Any) -> str:
+    return _text(item)
+
+
+def _frame_width(raw: bytes, dtype: str, tokens: int) -> int:
+    import numpy as np
+
+    if tokens <= 0:
+        return 0
+    return len(np.frombuffer(raw, dtype=np.dtype("<f4" if dtype == "float32" else "<f2"))) // tokens
+
+
+def _decode_frame(raw: bytes, dtype: str, shape: tuple[int, ...]) -> tuple[tuple[float, ...], ...]:
+    import numpy as np
+
+    array = np.frombuffer(raw, dtype=np.dtype("<f4" if dtype == "float32" else "<f2"))
+    return tuple(tuple(float(v) for v in row) for row in array.reshape(shape))
+
+
+def _decode_base64_matrix(payload: str, dtype: str, *, tokens: int) -> tuple[tuple[float, ...], ...]:
+    import base64
+
+    raw = base64.b64decode(payload)
+    return _decode_frame(raw, dtype, (tokens, _frame_width(raw, dtype, tokens)))
 
 
 def _usage_body(usage: int, *, wide: bool) -> dict[str, Any]:
@@ -1422,10 +1560,13 @@ def _marked(response: httpx.Response, sources: Sequence[str]) -> httpx.Response:
 def _encode_matrix(matrix: Sequence[Sequence[float]], dtype: str) -> str:
     import base64
 
+    return base64.b64encode(_pack_frame(matrix, dtype)).decode("ascii")
+
+
+def _pack_frame(matrix: Sequence[Sequence[float]], dtype: str) -> bytes:
     import numpy as np
 
-    array = np.asarray(matrix, dtype=np.dtype(dtype))
-    return base64.b64encode(array.tobytes()).decode("ascii")
+    return np.asarray(matrix, dtype=np.dtype("<f4" if dtype == "float32" else "<f2")).tobytes()
 
 
 def _l2(vector: Sequence[float]) -> list[float]:

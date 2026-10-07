@@ -55,18 +55,22 @@ __all__ = [
     "use_tokenizer_store",
 ]
 
-FINGERPRINT_SCHEMA = "rcp-fp/1"
+FINGERPRINT_SCHEMA = "rcp-fp/2"
 """The fingerprint rule's version, part of the hashed bytes: changing the input set or their
-canonicalisation is a new schema (``rcp-fp/2``), so old and new corpora never collide in one key."""
+canonicalisation is a new schema (``rcp-fp/3``), so old and new corpora never collide in one key.
+Version 2 drops the client-side post-processing fields (they cannot change what the model returns)
+and keys ``batch_size`` (request packing can)."""
 
-_CLIENT_FIELDS_OUT = frozenset({"model", "revision", "recipe", "tokenizer"})
-"""Client config fields out of the fingerprint: they name where and what, they cannot change what the
-model returns (the served name and the revision are keyed separately as ``model``/``revision``; the
-tokenizer's bytes as ``tokenizer_sha256``)."""
+_CLIENT_FIELDS_OUT = frozenset({"model", "revision", "recipe", "tokenizer", "normalize", "aggregation"})
+"""Client config fields out of the fingerprint. Naming fields (``model``, ``revision``, ``recipe``,
+``tokenizer`` -- the served name and the revision are keyed separately, the tokenizer's bytes as
+``tokenizer_sha256``) and pure client-side post-processing (``normalize``, ``aggregation``: applied
+after the response arrives) cannot change what the model returns (item 8's own definition)."""
 
-_CLIENT_FIELDS_IN = frozenset({"max_images", "max_videos"})
-"""RUNTIME client fields back in: they decide how much media a request carries, so they shape the
-request bytes even though they are runtime for an identity."""
+_CLIENT_FIELDS_IN = frozenset({"max_images", "max_videos", "batch_size"})
+"""RUNTIME client fields back in: they decide how much media and how many texts a request carries, so
+they shape the request bytes even though they are runtime for an identity (a bf16 batch's numbers can
+depend on its composition)."""
 
 _STORES: list[Path] = []
 """Registered tokenizer stores, searched in registration order (see :func:`use_tokenizer_store`)."""

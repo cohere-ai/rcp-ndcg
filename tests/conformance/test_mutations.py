@@ -112,7 +112,8 @@ def test_the_result_ordering_making_conformance_red() -> None:
 
 
 def test_editing_a_recipes_template_fails_staleness_naming_the_template(tmp_path: Path) -> None:
-    """Mutation: one byte in the recipe's template file. The staleness check names the template input."""
+    """Mutation: one byte in the recipe's template file. The staleness gate fails and NAMES the template
+    (through the corpus scan, so an edited recipe can never crash the check with a missing directory)."""
     from rcp_ndcg_vllm.fingerprint import fingerprint_changes, fingerprint_inputs
 
     harness()
@@ -128,6 +129,8 @@ def test_editing_a_recipes_template_fails_staleness_naming_the_template(tmp_path
 
     changed = fingerprint_changes(recorded, fingerprint_inputs(edited))
     assert changed == ["template_file"], changed
+    # the gate's own lookup path (corpus_of scans manifests) resolves the corpus for the edited recipe
+    assert dict(corpus_of(edited).manifest["recipe"]["fingerprint_inputs"]) == recorded
     assert fingerprint_changes(recorded, fingerprint_inputs(original)) == []
 
 

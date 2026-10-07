@@ -23,6 +23,25 @@ vLLM
   - tests/data/_media_reference.py: `vllm_frame_indices`, copied from
     `VideoBackend.compute_frames_index_to_sample` (vllm/multimodal/video.py,
     lines 214-240, at commit 3627a6a), as a test oracle.
+  - packages/rcp-ndcg-vllm/plugins/pplx/src/rcp_vllm_pplx/model.py: the plugin's
+    model class is a thin subclass of vLLM's `Qwen3_5ForCausalLMBase`, the class it
+    registers the checkpoint under; the subclassing boundary is the adaptation, and
+    every line that adapts the checkpoint's naming or pooling is the plugin's own.
+  - packages/rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/model.py:
+    `TopkEmbedModel` subclasses
+    `vllm.model_executor.models.colqwen3_5.ColQwen3_5Model` (vLLM v0.31.0) and
+    reuses its weight mapping, pooling wiring and forward pass unmodified.
+  - packages/rcp-ndcg-vllm/plugins/topk/src/rcp_ndcg_vllm_topk/weights.py: the
+    checkpoint-name mapping table restates the prefix mappings of
+    `vllm.model_executor/models/qwen3_vl.py` (`hf_to_vllm_mapper`), so the tests can
+    verify the served mapping without importing vLLM.
+
+The plugin distributions under `packages/rcp-ndcg-vllm/plugins/` ship no model
+weights and download nothing. The served checkpoints they adapt --
+perplexity-ai/pplx-embed-v2-context-9b-preview (MIT, by its authors) and
+topk-io/topk-embed-v1-small (Apache-2.0) at revision
+e54485ebab921f2c18c4d092b3f4c40dcca26781 -- are separate works under their own
+licences.
 
 SGLang
   https://github.com/sgl-project/sglang
