@@ -12,7 +12,6 @@ red by name. Stage 1 was re-run after the G5 tokenizer-loading fix with over-len
 
 from __future__ import annotations
 
-import base64
 import json
 import shutil
 import sys
@@ -20,8 +19,6 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-import httpx
-import numpy as np
 import pytest
 import yaml
 from rcp_ndcg_vllm import load_recipe
@@ -30,7 +27,6 @@ from rcp_ndcg_vllm.equivalence.fitting import load_pairs
 from rcp_ndcg_vllm.recipe import serve_argv
 
 from rcp_ndcg.data.tokenizer import load_tokenizer
-from rcp_ndcg.inference.fake import FakeEndpoint, fake_uniform, register_fake_route
 
 from ._contract import assert_recipe_contract
 from ._served import served_rows, served_texts
@@ -67,74 +63,6 @@ _PAIRS: list[tuple[str, str]] = [
     ("why is the sky blue", "Air molecules scatter shorter blue wavelengths of sunlight more than longer red ones."),
     ("sql join types", "INNER JOIN keeps matches; LEFT JOIN keeps all rows of the left table with nulls."),
 ]
-
-
-def _pooling_at_the_recipe_tokenizer(request: httpx.Request, endpoint: FakeEndpoint) -> httpx.Response:
-    """The fake endpoint's ``POST /pooling`` answer, counted at the RECIPE's tokenizer.
-
-    The product's built-in fake answers one vector per whitespace word (its deterministic stand-in
-    token; the product's own tests pair it with a word-level fixture tokenizer). This recipe's
-    ``document_skip_token_ids`` makes the pooling client check a reply's per-item vector count
-    against the ids IT sent (typed ProviderError on a mismatch -- pool.py's silent-misalignment
-    guard), so an offline probe of this recipe must answer at the real tokenizer's counts. The
-    seam is the product's own :func:`register_fake_route` ("a registered route answers first"):
-    this handler mirrors the built-in ``_pooling`` reply shape and only replaces the counts with
-    the request's own id lists (``request_shape: token_ids``) or the recipe tokenizer's id lists of
-    the sent texts. Stage 1 reads the REQUESTS; the reply is scaffolding -- only its counts (and
-    the skip alignment they guard) are load-bearing here.
-    """
-    body = json.loads(request.content)
-    items = body.get("input") if isinstance(body.get("input"), list) else []
-    tokenizer = _counting_tokenizer()
-    encoding = body.get("encoding_format", "float")
-    dtype = np.dtype(body.get("embed_dtype") or "float16")
-    data = []
-    prompt_tokens = 0
-    for index, item in enumerate(items):
-        ids = list(item) if isinstance(item, list) else tokenizer.ids(str(item), add_special_tokens=True)
-        count = max(1, len(ids))
-        matrix = np.asarray(
-            [
-                [
-                    fake_uniform(endpoint.seed, "token", index, token, component) * 2.0 - 1.0
-                    for component in range(endpoint.dim)
-                ]
-                for token in range(count)
-            ],
-            dtype=np.float32,
-        )
-        norms = np.linalg.norm(matrix, axis=1, keepdims=True)
-        matrix = matrix / np.where(norms == 0, 1, norms)
-        if encoding == "base64":
-            embedding: str | list[list[float]] = base64.b64encode(matrix.astype(dtype).tobytes()).decode("ascii")
-        else:
-            embedding = matrix.tolist()
-        data.append({"index": index, "data": embedding, "prompt_token_ids": ids})
-        prompt_tokens += count
-    return httpx.Response(
-        200,
-        json={
-            "object": "list",
-            "model": endpoint.model,
-            "data": data,
-            "usage": {"prompt_tokens": prompt_tokens, "total_tokens": 0},
-        },
-    )
-
-
-_COUNTING_TOKENIZER = None
-
-
-def _counting_tokenizer():
-    """The recipe's tokenizer for the counting fake route (loaded once; the tests' hub reachability
-    fixture skips before the route is ever needed when the tokenizer cannot be fetched)."""
-    global _COUNTING_TOKENIZER
-    if _COUNTING_TOKENIZER is None:
-        _COUNTING_TOKENIZER = load_tokenizer(TOKENIZER_SPEC)
-    return _COUNTING_TOKENIZER
-
-
-register_fake_route("POST", "/pooling", _pooling_at_the_recipe_tokenizer)
 
 
 @pytest.fixture(scope="module")
@@ -189,25 +117,30 @@ def _mutated_recipe(tmp_path: Path, change: Callable[[dict], dict]) -> Path:
 
 
 def _probe_recipe(tmp_path: Path, change: Callable[[dict], dict] | None = None) -> Path:
-    """A probe copy of the recipe at a tiny vector width (``dim: 8``): the runtime bound on stage 1.
+    """A probe copy of the recipe for the offline fake: the reply-side fields bounded, the requests unchanged.
 
-    The offline fake generates one ``dim``-wide hash-seeded unit vector per KEPT TOKEN of a
-    multi-vector request (``rcp_ndcg.inference.fake._pooling`` -> ``_unit_vector`` ->
-    ``fake_uniform``: one sha256 per scalar), so at the shipped width (2048) the stage-1 samples'
-    2x8192-token inputs cost ~33.5M hash draws per probed text -- tens of minutes per test (the
-    network run's known hang; faulthandler dumps it inside ``fake.fake_uniform``). A width of 8
-    bounds every probe to a second, and every assertion these tests make is width-independent
-    (texts, ids, cuts, anchors, the render comparison); the shipped 2048 is pinned by
-    test_recipe_validates. ``test_cut_preserves_the_frame_head`` bounds the same cost by shrinking
-    ``max_tokens`` instead (its point is the budget).
+    Stage 1 audits what the role client SENDS; the offline fake's answer is scaffolding. Two reply-side
+    fields of the shipped recipe make that answer heavy or unanswerable, so the probe copy changes exactly
+    those two and nothing a request carries:
+
+    - ``dim: 8`` -- the answer's size: the fake answers one ``dim``-wide vector per token, and the
+      stage-1 samples run to 2 x 8192 tokens per probed text, so the shipped 2048-wide answer is a
+      multi-megabyte reply per text for nothing the audit reads;
+    - ``document_skip_token_ids: []`` -- the fake counts one token per whitespace word, not the recipe
+      tokenizer's tokens, and the pooling client refuses a document answer whose vector count is not the
+      count of the ids it sent (the skip ids would not align). The skip ids act on the reply only.
+
+    Every assertion these tests make reads requests (texts, ids, cuts, anchors, the render comparison);
+    the shipped values are pinned by ``test_recipe_contract``. ``test_cut_preserves_the_frame_head``
+    additionally shrinks ``max_tokens`` (its point is the budget).
 
     Args:
         tmp_path: the test's temporary directory (the recipe copy lives there).
-        change: an optional further YAML mutation, applied after the width bound.
+        change: an optional further YAML mutation, applied after the probe bounds.
     """
 
     def bound(data: dict) -> dict:
-        narrowed = {**data, "client": {**data["client"], "dim": 8}}
+        narrowed = {**data, "client": {**data["client"], "dim": 8, "document_skip_token_ids": []}}
         return change(narrowed) if change else narrowed
 
     return _mutated_recipe(tmp_path, bound)
@@ -232,10 +165,7 @@ EXPECTED_SERVE = {
     "dtype": "bfloat16",
     "plugin": "rcp-ndcg-vllm-topk",
     "io_processor_plugin": None,
-    "mm_processor_kwargs": {
-        "min_pixels": 65536,
-        "max_pixels": 1310720,
-    },
+    "mm_processor_kwargs": {"images_kwargs": {"min_pixels": 65536, "max_pixels": 1310720}},
     "limit_mm_per_prompt": {
         "image": 1,
     },
@@ -436,7 +366,8 @@ def test_contract_mutant_reference_kind_is_red(tmp_path: Path) -> None:
 
 
 def test_serve_argv_carries_the_serving_facts() -> None:
-    """The rendered argv: the revision, the pixel cap, one image per prompt, no template file.
+    """The rendered argv: the revision, the pixel cap (the nested R20 shape), one image per prompt, no
+    template file.
 
     R10 considered (recipe notes, note 5): the checkpoint ships its own chat template at the pinned
     revision and vLLM resolves it through AutoProcessor for the pooling-chat path, so no
@@ -447,9 +378,9 @@ def test_serve_argv_carries_the_serving_facts() -> None:
     argv = serve_argv(load_recipe(RECIPE_DIR), port=8100, served_model_name="topk-embed-v1-small")
     assert "--chat-template" not in argv
     assert "--trust-remote-code" not in argv
-    assert argv[argv.index("--mm-processor-kwargs") + 1] == json.dumps(
-        {"max_pixels": 1310720, "min_pixels": 65536}, sort_keys=True
-    )
+    assert json.loads(argv[argv.index("--mm-processor-kwargs") + 1]) == {
+        "images_kwargs": {"min_pixels": 65536, "max_pixels": 1310720}
+    }
     assert argv[argv.index("--limit-mm-per-prompt") + 1] == json.dumps({"image": 1}, sort_keys=True)
     assert argv[argv.index("--revision") + 1] == REVISION
     assert argv[argv.index("--max-model-len") + 1] == "8448"
@@ -550,7 +481,7 @@ def format_uncut(text: str, shape: str) -> str:
     return DOCUMENT_HEAD + text.strip()
 
 
-def test_the_declared_normalisation_corners(tokenizer) -> None:
+def test_the_declared_normalisation_corners(tmp_path: Path, tokenizer) -> None:
     """The [strip] normalisation: exact on the query and the document's trailing edge; two declared
     corners where the reference's whole-render strip cannot be a content-span strip.
 
@@ -561,7 +492,7 @@ def test_the_declared_normalisation_corners(tokenizer) -> None:
     empty-document note). Those two rows are the recipe's declared divergence rows (the notes,
     "Content normalisation"); pinning both sides here is what keeps the declaration true.
     """
-    recipe = load_recipe(RECIPE_DIR)
+    recipe = load_recipe(_probe_recipe(tmp_path))
     assert served_texts(recipe, ["  what was q3 revenue?  "], "query") == [QUERY_HEAD + "what was q3 revenue?"]
     assert served_texts(recipe, ["q3 revenue was $12 million  "], "document") == [
         DOCUMENT_HEAD + "q3 revenue was $12 million"
@@ -703,7 +634,7 @@ def test_cut_preserves_the_frame_head(tmp_path: Path, tokenizer) -> None:
         data["client"]["query_max_tokens"] = 64
         return data
 
-    recipe = load_recipe(_mutated_recipe(tmp_path, small_budget))
+    recipe = load_recipe(_probe_recipe(tmp_path, small_budget))
     budget = 64
     for shape in ("query", "document"):
         head = QUERY_HEAD if shape == "query" else DOCUMENT_HEAD
