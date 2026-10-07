@@ -273,6 +273,38 @@ class TestRequestShapes:
         assert [part["type"] for part in parts] == ["image_url", "text"]
         assert call.json["dimensions"] == 256
 
+    def test_a_messages_request_is_one_conversation_per_item(self) -> None:
+        """vLLM v0.31.0 reads ``messages`` as ONE conversation (``EmbeddingChatRequest``, one embedding) and a
+        list of conversations as a batch (``EmbeddingBatchChatRequest``,
+        vllm/entrypoints/pooling/embed/protocol.py:69-102): one item goes as its own conversation of one user
+        message, several as one conversation each -- never as the turns of one conversation, which the engine
+        would embed into a single vector. The declared ``add_special_tokens`` travels with the request (the chat
+        route's own default is ``false``, vllm/entrypoints/pooling/base/protocol.py:248-257)."""
+        one = self.adapter.calls(
+            EmbedRequest(
+                contents=(Content.from_text("a"),),
+                role=EncodeRole.DOCUMENT,
+                request_shape="messages",
+                add_special_tokens=True,
+            ),
+            model="m",
+        )[0].json
+        assert one["messages"] == [{"role": "user", "content": [{"type": "text", "text": "a"}]}]
+        assert one["add_special_tokens"] is True
+        batch = self.adapter.calls(
+            EmbedRequest(
+                contents=(Content.from_text("a"), Content.from_text("b")),
+                role=EncodeRole.DOCUMENT,
+                request_shape="messages",
+            ),
+            model="m",
+        )[0].json
+        assert batch["messages"] == [
+            [{"role": "user", "content": [{"type": "text", "text": "a"}]}],
+            [{"role": "user", "content": [{"type": "text", "text": "b"}]}],
+        ]
+        assert "add_special_tokens" not in batch, "an undeclared flag leaves the engine's default"
+
     def test_a_video_container_lowers_as_a_video_url_part(self, tmp_path: Any) -> None:
         from tests.conftest import write_mjpeg_avi
 

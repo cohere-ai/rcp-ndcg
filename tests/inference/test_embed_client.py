@@ -463,6 +463,39 @@ class TestRequestShapes:
         assert vectors.num_items == 1
         assert sender.calls[0].json["input"] == [word_tokenizer().ids(text)]
 
+    def test_the_messages_route_sends_the_content_and_the_engine_frames_it_once(self, tmp_path: Any) -> None:
+        """H5: vLLM v0.31.0 renders every chat-shaped ``/embeddings`` request through its chat template
+        (vllm/entrypoints/pooling/embed/io_processor.py:302-355), and a media part's placeholder lands where the
+        part sits in the message -- inside the template's user turn. So the client sends each item's CONTENT
+        (the prompt and the cut content span, its media parts beside it), never the framed render: framed, the
+        engine would frame it a second time. The engine's frame (here the declared template's own head and
+        tail around the user turn, as the served chat template renders them) then equals the declared render
+        exactly once; the declared ``add_special_tokens`` rides along (the chat route's default is false)."""
+        from rcp_ndcg.data.templates import Segment, TemplateSpec
+
+        template = TemplateSpec(
+            query=(Segment(fixed="query turn: "), Segment(content="query"), Segment(fixed=" end of turn")),
+            document=(Segment(fixed="document turn: "), Segment(content="document"), Segment(fixed=" end of turn")),
+        )
+        sender = FakeSender(handler("openai_embeddings", {}))
+        client = self._messages_client(sender, template=template, max_tokens=20)
+        image = self._png(tmp_path, "page.png")
+        long_text = " ".join(["the"] * 40)
+        for role, shape in ((EncodeRole.QUERY, "query"), (EncodeRole.DOCUMENT, "document")):
+            client.encode([Content.from_parts([TextPart(text=long_text), ImagePart(ref=image.media[0])])], role)
+            body = sender.calls[-1].json
+            (message,) = body["messages"]
+            parts = message["content"]
+            assert [part["type"] for part in parts] == ["text", "image_url"]
+            sent = parts[0]["text"]
+            assert long_text.startswith(sent) and sent != long_text, "the cut content span, unframed"
+            assert body["add_special_tokens"] is template.adds_special_tokens(shape)
+            head, tail = (segment.fixed for segment in template.segments(shape) if segment.fixed is not None)
+            engine_render = head + sent + tail  # the served chat template's user turn around the message text
+            declared = template.render(shape, word_tokenizer(), query=sent, document=sent)
+            assert engine_render == declared
+            assert engine_render.count(head) == 1 and engine_render.count(tail) == 1, "framed exactly once"
+
     def test_token_ids_without_a_tokenizer_are_refused(self) -> None:
         with pytest.raises(ConfigError, match="token_ids"):
             EmbeddingClient(endpoint("cohere", request_shape="token_ids"), sender=FakeSender(handler("cohere", {})))

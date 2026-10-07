@@ -9441,6 +9441,12 @@
             "name": "token_ids"
           },
           {
+            "annotation": "bool | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "add_special_tokens"
+          },
+          {
             "returns": "None"
           }
         ],

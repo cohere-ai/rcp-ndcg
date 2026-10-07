@@ -188,11 +188,18 @@ def _models(endpoint: FakeEndpoint) -> httpx.Response:
 
 
 def _items(body: dict) -> list[str]:
-    """The items of a request: its ``input`` (text, token ids or part lists), else the ``messages``
-    contents (the chat-style embeddings input, 2e; an image part keys by its rendered form)."""
+    """The items of a request: its ``input`` (text, token ids or part lists), else its ``messages`` read as
+    vLLM v0.31.0 reads them (the chat-style embeddings input, 2e): a list of messages is ONE conversation, one
+    item, and a list of conversations is a batch, one item each (an item keys by its messages' contents; an
+    image part by its rendered form)."""
     items = body.get("input")
-    if items is None and isinstance(body.get("messages"), list):
-        items = [message.get("content") for message in body["messages"]]
+    messages = body.get("messages")
+    if items is None and isinstance(messages, list) and messages:
+        conversations = messages if all(isinstance(entry, list) for entry in messages) else [messages]
+        items = [
+            [message.get("content") for message in conversation if isinstance(message, dict)]
+            for conversation in conversations
+        ]
     if isinstance(items, str):
         return [items]
     return [_text(item) for item in items] if isinstance(items, list) else []

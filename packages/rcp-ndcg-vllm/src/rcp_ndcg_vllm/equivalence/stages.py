@@ -200,7 +200,7 @@ def _probe(recipe: Recipe, sampled: list[dict[str, Any]], base_url: str | None, 
         if recipe.role == "rerank":
             _probe_rerank(client, capture, row, entry)
         else:
-            _probe_vectors(client, capture, row, shapes, entry)
+            _probe_vectors(client, capture, row, shapes, entry, tokenizer)
         cuts = [cut for cut in census.cuts()[start:] if _changes(cut)]
         entry["over_cap"] = bool(cuts)
         entry["cuts"] = len(cuts)
@@ -247,32 +247,57 @@ def _probe_rerank(client: Any, capture: Capture, row: dict[str, Any], entry: dic
 
 
 def _probe_vectors(
-    client: Any, capture: Capture, row: dict[str, Any], shapes: list[str], entry: dict[str, Any]
+    client: Any, capture: Capture, row: dict[str, Any], shapes: list[str], entry: dict[str, Any], tokenizer: Any
 ) -> None:
-    """One encode call per declared side: the captured ``input`` texts are the client's rendered prompts."""
+    """One encode call per declared side: the captured ``input`` texts are the client's rendered prompts.
+
+    On the ``messages`` route the client sends the content and the engine's chat template frames it, so the
+    rendered prompt is the declared frame around the captured content -- the product's one render
+    (:func:`rcp_ndcg.data.preprocess.rendered_request`, under the client's own budget), which the template
+    check holds the served chat template to -- and the captured conversations are kept for that check.
+    """
     from rcp_ndcg_core.content import Content
 
+    from rcp_ndcg.data.preprocess import rendered_request
     from rcp_ndcg.inference.types import EncodeRole
 
-    def _captured(start: int) -> list[str]:
-        return [text for exchange in capture.exchanges[start:] for text in capture.texts(exchange)["input"]]
+    budget = getattr(client, "text_budget", None)
+
+    def _captured(start: int, shape: str, conversations: list[Any]) -> list[Any]:
+        texts: list[Any] = []
+        for exchange in capture.exchanges[start:]:
+            captured = capture.texts(exchange)
+            if "conversations" not in captured:
+                texts.extend(captured["input"])
+                continue
+            conversations.extend(captured["conversations"])
+            for content in captured["input"]:
+                texts.append(
+                    rendered_request(budget, tokenizer, fitting.cast_shape(shape), query=content, document=content)
+                    if budget is not None
+                    else content
+                )
+        return texts
 
     for shape in shapes:
         if shape == "pair":
             continue  # the embed roles have no pair wire; a rerank recipe owns that shape
+        conversations: list[Any] = []
         if shape == "query":
             start = len(capture.exchanges)
             client.encode([Content.from_text(row["query"])], EncodeRole.QUERY)
-            entry["shapes"]["query"] = {"texts": _captured(start)}
+            texts = _captured(start, shape, conversations)
         elif shape == "document":
             # One call per text: the client's fan-out runs concurrently, so the captured exchange order is a
             # completion order, not an input order -- per-call captures keep the position attribution exact.
-            texts: list[str] = []
+            texts = []
             for document in row["documents"]:
                 start = len(capture.exchanges)
                 client.encode([Content.from_text(document)], EncodeRole.DOCUMENT)
-                texts.extend(_captured(start))
-            entry["shapes"]["document"] = {"texts": texts}
+                texts.extend(_captured(start, shape, conversations))
+        else:  # pragma: no cover - the declared shapes are the template's
+            continue
+        entry["shapes"][shape] = {"texts": texts, **({"conversations": conversations} if conversations else {})}
 
 
 def _content_ids(tokenizer: Any, body: str | list[int], flag: bool) -> list[int]:
@@ -769,7 +794,10 @@ def _template_check(
     Every declared shape is checked (the engine renders each of them): the file is rendered with the engine's
     own jinja2 settings over the first pairs row's inputs, and the declared template's render
     (:meth:`~rcp_ndcg.data.templates.TemplateSpec.render`, the string the client sends) must be byte-identical.
+    A ``messages`` recipe is checked on its captured conversations instead (:func:`_messages_template_check`).
     """
+    if getattr(recipe.client, "request_shape", "text") == "messages" and recipe.client.template is not None:
+        return _messages_template_check(recipe, probe)
     if recipe.serve.chat_template is None or recipe.client.template is None or not rows:
         return None
     directory = recipe._dir
@@ -813,8 +841,66 @@ def _template_check(
     }
 
 
-def _jinja_environment() -> Any:
-    """The jinja2 environment the engine renders chat templates with (transformers' compile settings)."""
+def _messages_template_check(recipe: Recipe, probe: dict[str, Any]) -> dict[str, Any]:
+    """The ``messages`` route's frame check: the engine frames each sent conversation exactly once.
+
+    vLLM v0.31.0 renders every chat-shaped ``/embeddings`` request through the served chat template
+    (vllm/entrypoints/pooling/embed/io_processor.py:302-355, with ``add_generation_prompt`` false by default,
+    vllm/entrypoints/pooling/base/protocol.py:230-237), and the client sends the content only.  So the served
+    template file, rendered with transformers' jinja2 settings over every captured conversation (its content
+    parts as sent), must equal the declared template's render of the same content -- the frame the client's
+    budget reserved, once.  Without ``serve.chat_template`` the engine renders the checkpoint's own template,
+    which the harness does not read: ``not_run``, never passed (the recipe's own test pins that file).
+    """
+    if recipe.serve.chat_template is None:
+        return {
+            "status": "not_run",
+            "passed": None,
+            "reason": "request_shape messages without serve.chat_template: the engine frames the content with the "
+            "checkpoint's own chat template, which the harness does not read (the recipe's test must pin it)",
+        }
+    directory = recipe._dir
+    if directory is None:  # pragma: no cover - load_recipe sets it
+        raise HarnessError(f"recipe {recipe.id} was not loaded from a directory")
+    template = _jinja_environment(strict=False).from_string(
+        (directory / recipe.serve.chat_template).read_text(encoding="utf-8")
+    )
+    failures: list[dict[str, Any]] = []
+    checked = 0
+    for index, entry in enumerate(probe["rows"]):
+        for shape, shape_body in entry["shapes"].items():
+            for conversation, declared in zip(
+                shape_body.get("conversations", []), shape_body.get("texts", []), strict=False
+            ):
+                checked += 1
+                engine = template.render(messages=conversation, add_generation_prompt=False, tools=None)
+                if engine != declared:
+                    failures.append(
+                        {
+                            "shape": shape,
+                            "row": index,
+                            "engine_head": engine[:_SNIPPET],
+                            "declared_head": str(declared)[:_SNIPPET],
+                        }
+                    )
+    if not checked:
+        failures.append({"check": "nothing_checked", "note": "no captured conversation to render"})
+    return {
+        "template": recipe.serve.chat_template,
+        "status": "run",
+        "checked": checked,
+        "passed": not failures,
+        "failures": failures,
+        "referent": "the served chat template, rendered over every conversation the client sent (its content), "
+        "must render exactly the declared template's frame around it -- framed once",
+    }
+
+
+def _jinja_environment(*, strict: bool = True) -> Any:
+    """The jinja2 environment the engine renders chat templates with (transformers' compile settings).
+
+    ``strict`` makes an undefined variable an error (the query/document score templates); a chat template is
+    rendered as transformers renders it, where an unset variable (``tools``, ``add_vision_id``) is undefined."""
     try:
         from jinja2 import StrictUndefined
         from jinja2.sandbox import ImmutableSandboxedEnvironment
@@ -822,6 +908,8 @@ def _jinja_environment() -> Any:
         raise HarnessError(
             "the template-render check renders the served chat template with jinja2: install rcp-ndcg-vllm[test]"
         ) from error
+    if not strict:
+        return ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True)
     return ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True, undefined=StrictUndefined)
 
 

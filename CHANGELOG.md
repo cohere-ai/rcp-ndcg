@@ -147,6 +147,19 @@ released together.
 
 ### Fixed
 
+- **The embed `messages` route frames once** (`EmbeddingClient`, `openai_embeddings`): the client sent the
+  declared template's framed render as the user message, and vLLM v0.31.0 renders every chat-shaped
+  `/embeddings` request through its chat template (vllm/entrypoints/pooling/embed/io_processor.py:302-355), so
+  the frame went out twice; the content cannot ride a single client-side frame either, because the template
+  places each media part inside its user turn. The route now sends each item's content (the prompt and the cut
+  content span, its media parts beside it) and the engine frames it once; the request carries the declared
+  `add_special_tokens` (new `EmbedRequest.add_special_tokens`; the chat route's default is false,
+  base/protocol.py:248-257). Each item is its own conversation: several items went as the turns of ONE
+  conversation, which the engine embeds into a single vector (embed/protocol.py:69-102); a batch now sends a
+  list of conversations. The offline fake reads `messages` the same way. The equivalence harness reads a
+  `messages` capture per conversation, audits the declared frame around the sent content, and its
+  `template_render_check` renders the served chat template over every captured conversation against the
+  declared render (`not_run` without `serve.chat_template`).
 - **The anchor audit implements `anchor: last_content`** (`rcp_ndcg_vllm.equivalence`): a recipe declaring
   it (jina-embeddings-v5) fell into the `last` branch, whose edge -- the last fixed segment, not at the edge,
   plus the post-processor's tail -- is empty for a content-final shape on a tokenizer that appends nothing, so

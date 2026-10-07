@@ -112,12 +112,14 @@ class Capture:
         """The texts one captured request carries: ``input`` for the embed roles, ``query``/``documents``
         for the rerank wire (the spans the engine assembles -- for a reranker, the settled query span).
 
-        A ``messages`` body (the chat-style input: a media item's route, or ``request_shape: messages``)
-        yields one ``input`` per message -- its text parts joined in order with ``TEXT_JOIN`` (``"\n"``, as
-        the engine joins them), the client's rendered text --
-        and ``media``: per message, the placeholders of its media parts in order (their part ``type``, e.g.
-        ``image_url``), which ride beside the rendered text and are never part of it.  A ``token_ids`` body
-        yields its id lists as sent.
+        A ``messages`` body (the chat-style input: a media item's route, or ``request_shape: messages``) is
+        read as vLLM v0.31.0 reads it: a list of messages is ONE conversation and a list of conversations a
+        batch.  It yields one ``input`` per conversation -- its messages' text parts joined in order with
+        ``TEXT_JOIN`` (``"\n"``, as the engine joins them): the content the client sent, which the engine's
+        chat template frames -- ``conversations``, the conversations as sent (the served template renders
+        them), and ``media``: per conversation, the placeholders of its media parts in order (their part
+        ``type``, e.g. ``image_url``), which ride beside the text and are never part of it.  A ``token_ids``
+        body yields its id lists as sent.
         """
         body = exchange.get("request_body") or {}
         if self.role == "rerank":
@@ -125,18 +127,22 @@ class Capture:
             if isinstance(documents, str):
                 documents = [documents]
             return {"query": body.get("query"), "documents": [str(document) for document in documents]}
-        if "input" not in body and isinstance(body.get("messages"), list):
+        if "input" not in body and isinstance(body.get("messages"), list) and body["messages"]:
+            messages = body["messages"]
+            conversations = messages if all(isinstance(entry, list) for entry in messages) else [messages]
             texts: list[str] = []
             media: list[list[str]] = []
-            for message in body["messages"]:
-                content = message.get("content") if isinstance(message, dict) else None
-                parts = [{"type": "text", "text": content}] if isinstance(content, str) else list(content or [])
-                # A bare string part is a text part (vLLM's chat_utils reads it so).
-                parts = [{"type": "text", "text": part} if isinstance(part, str) else part for part in parts]
-                # The engine joins a message's text parts with "\n" (vLLM's chat_utils): the product's TEXT_JOIN.
+            for conversation in conversations:
+                parts: list[dict[str, Any]] = []
+                for message in conversation:
+                    content = message.get("content") if isinstance(message, dict) else None
+                    raw = [{"type": "text", "text": content}] if isinstance(content, str) else list(content or [])
+                    # A bare string part is a text part (vLLM's chat_utils reads it so).
+                    parts += [{"type": "text", "text": part} if isinstance(part, str) else part for part in raw]
+                # The engine joins text parts with "\n" (vLLM's chat_utils): the product's TEXT_JOIN.
                 texts.append(TEXT_JOIN.join(str(part.get("text", "")) for part in parts if part.get("type") == "text"))
                 media.append([str(part.get("type")) for part in parts if part.get("type") != "text"])
-            return {"input": texts, "media": media}
+            return {"input": texts, "media": media, "conversations": conversations}
         inputs = body.get("input", body.get("texts"))
         return {"input": [inputs] if isinstance(inputs, str) else list(inputs or [])}
 

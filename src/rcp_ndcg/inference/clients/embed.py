@@ -155,6 +155,7 @@ class EmbeddingClient(RoleClient):
             return Embeddings.single(np.zeros((len(contents), 0), dtype=np.float32))
 
         token_ids = self._token_ids_of(prepared.items, role)
+        add_special_tokens = self._messages_special_tokens(role)
         requests = [
             EmbedRequest(
                 contents=tuple(prepared.items[offset : offset + size]),
@@ -162,6 +163,7 @@ class EmbeddingClient(RoleClient):
                 dimensions=self.config.dimensions,
                 request_shape=self.config.request_shape,
                 token_ids=token_ids[offset : offset + size],
+                add_special_tokens=add_special_tokens,
             )
             for offset in range(0, len(prepared.items), size)
         ]
@@ -234,9 +236,12 @@ class EmbeddingClient(RoleClient):
             )
         if self._budget is not None:
             result = self._fit([content.text for content in prepared], shape, media_tokens=media_tokens)
-            prepared = tuple(
-                self._with_text(content, text) for content, text in zip(prepared, result.texts, strict=True)
-            )
+            # The text and token-ids routes send the framed render; the messages route sends the cut content
+            # and leaves the frame to the engine's chat template, which renders every chat-shaped request
+            # (framed here, it would be framed twice): the declared template is what that chat template must
+            # render, and the fit measured it.
+            sent = result.contents if self.config.request_shape == "messages" else result.texts
+            prepared = tuple(self._with_text(content, str(text)) for content, text in zip(prepared, sent, strict=True))
         kept, omitted = self._apply_empty_documents(prepared)
         positions = [index for index in range(len(prepared)) if index not in set(omitted)]
         return PreparedItems(
@@ -244,6 +249,15 @@ class EmbeddingClient(RoleClient):
             positions=tuple(positions),
             omitted=tuple(omitted),
         )
+
+    def _messages_special_tokens(self, role: EncodeRole) -> bool | None:
+        """The ``add_special_tokens`` flag a ``messages`` request carries: the declared template's flag for the
+        side's shape, so the engine adds exactly the declared post-processor tokens to its chat-template render
+        (the chat route's own default is ``false``, vllm/entrypoints/pooling/base/protocol.py:248-257).
+        ``None`` (nothing sent) on the other routes and without a template."""
+        if self.config.request_shape != "messages" or self.config.template is None:
+            return None
+        return self.config.template.adds_special_tokens("query" if role is EncodeRole.QUERY else "document")
 
     def _token_ids_of(self, items: Sequence[Content], role: EncodeRole) -> tuple[tuple[int, ...], ...]:
         """The token ids of each sent text, as the engine reads it, for ``request_shape: token_ids`` (3):

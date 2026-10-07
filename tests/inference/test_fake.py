@@ -114,19 +114,17 @@ class TestEmbeddings:
         replies = transport.run(transport.send([Call("POST", "/embeddings", {"input": ["", "a b"]})]))
         assert replies[0].body["usage"]["prompt_tokens"] == 3  # an empty item still holds its one token
 
-    def test_a_chat_style_embeddings_input_is_answered_one_vector_per_message(self) -> None:
-        """2e: the chat-style embeddings input (``messages`` with content parts) is answered one vector per
-        message, keyed by its parts -- the vision-language embedders' input over the fake engine."""
+    def test_a_chat_style_embeddings_input_is_answered_one_vector_per_conversation(self) -> None:
+        """2e: the chat-style embeddings input is answered as vLLM v0.31.0 reads it: ``messages`` as one
+        conversation is one vector (whatever its turns), a list of conversations one vector each, keyed by
+        their parts -- the vision-language embedders' input over the fake engine."""
         transport = _transport("fake://embed?dim=4", "enc")
-        body = {
-            "messages": [
-                {"role": "user", "content": [{"type": "text", "text": "a caption"}, {"type": "image_url"}]},
-                {"role": "user", "content": [{"type": "text", "text": "another"}]},
-            ]
-        }
-        replies = transport.run(transport.send([Call("POST", "/embeddings", body)]))
-        assert len(replies[0].body["data"]) == 2
-        assert [entry["index"] for entry in replies[0].body["data"]] == [0, 1]
+        first = {"role": "user", "content": [{"type": "text", "text": "a caption"}, {"type": "image_url"}]}
+        second = {"role": "user", "content": [{"type": "text", "text": "another"}]}
+        one = transport.run(transport.send([Call("POST", "/embeddings", {"messages": [first, second]})]))
+        assert len(one[0].body["data"]) == 1
+        batch = transport.run(transport.send([Call("POST", "/embeddings", {"messages": [[first], [second]]})]))
+        assert [entry["index"] for entry in batch[0].body["data"]] == [0, 1]
 
     def test_the_matryoshka_dimensions_cut_the_vector(self) -> None:
         transport = _transport("fake://embed?dim=8", "enc")

@@ -198,8 +198,9 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
   the rendered prompt's edge for the embed roles, and for a reranker the settle-once query (one settled span
   per row, identical across the row's pointwise requests, within its declared `query_max_tokens`, and no cut
   on an in-budget pair). Every wire shape is read: a `token_ids` body is audited on the ids it sends, a
-  `messages` body on its messages' text parts (joined with `"\n"`, as the engine joins them) (its media parts are listed as placeholders beside them). An
-  audit that read no input fails. An `anchor: first` head is asserted as the engine reads it: where the head
+  `messages` body as the declared frame around its conversation's text parts (joined with `"\n"`, as the
+  engine joins them; its media parts are listed as placeholders beside them): the client sends the content
+  and the engine's chat template frames it. An audit that read no input fails. An `anchor: first` head is asserted as the engine reads it: where the head
   meets the content a byte-level BPE re-tokenizes across the join (`"doc: "` then reads `Ġdocument`; under a
   Qwen-style pre-tokenizer `"Query:"` reads `:Paris`), so the edge is the post-processor's prefix and the
   head's own tokens in the assembled render: a text body must start with the head's characters, and its
@@ -220,7 +221,10 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
   captured text to equal the recipe tokenizer's; reported `not_run` without an engine, never as passed (and
   for a `token_ids` client, which sends ids and leaves the engine nothing to tokenize);
 - `template_render_check`, when `serve.chat_template` is set: the template file's jinja2 render (the engine's
-  settings) against the declared template's render, for every declared shape.
+  settings) against the declared template's render, for every declared shape. On the `messages` route the file
+  is the engine's chat template: it is rendered over every conversation the client sent and must equal the
+  declared frame around that content, once (without `serve.chat_template` the check is `not_run`: the engine
+  renders the checkpoint's own template, which the recipe's own test pins).
 
 Stage 2 sends the same pairs through the product's role clients (`EmbeddingClient`, `PoolingClient`,
 `RerankClient`) built from the recipe's real budget — the client prompts, fits and settles exactly as the
