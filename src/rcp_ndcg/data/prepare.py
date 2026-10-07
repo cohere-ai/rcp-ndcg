@@ -40,7 +40,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
-import json
 import os
 from collections.abc import Sequence
 from functools import lru_cache
@@ -504,9 +503,10 @@ class MediaCensus:
     def __init__(self, *, sink: str | Path | None = None) -> None:
         self.sink = Path(sink) if sink is not None else None
         self._seen: set[tuple[str, str, str]] = set()
-        if self.sink is not None and self.sink.is_file():
-            for line in self.sink.read_text(encoding="utf-8").splitlines():
-                row = json.loads(line)
+        if self.sink is not None:
+            from rcp_ndcg.data.preprocess import read_census_rows
+
+            for row in read_census_rows(self.sink):
                 if row.get("mechanism") == MEDIA_MECHANISM:
                     self._seen.add((row["corpus"], row["doc_id"], row["uri"]))
 
@@ -524,8 +524,11 @@ class MediaCensus:
             self._seen.add(key)
             fresh.append(item.as_row(corpus=corpus, doc_id=doc_id, dropped=dropped))
         if fresh and self.sink is not None:
-            with open(self.sink, "a", encoding="utf-8") as handle:
-                handle.writelines(json.dumps(row, sort_keys=True) + "\n" for row in fresh)
+            from rcp_ndcg.data.preprocess import append_census_rows
+
+            # The one census append: the torn tail cut and the rows written under the sink's writer lock, on
+            # every append (a peer killed after this writer started leaves a tail only its next append merges).
+            append_census_rows(self.sink, fresh)
 
 
 __all__ = [

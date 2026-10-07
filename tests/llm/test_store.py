@@ -122,3 +122,41 @@ def test_the_store_and_merge_keep_the_same_copy_of_a_window(tmp_path: Path) -> N
     ]
     merged = JudgementSet.merge([JudgementSet(judgements=(copy,), families={family.key: family}) for copy in copies])
     assert kept.response == merged.judgements[0].response == "later answer"
+
+
+def test_an_empty_stage_file_appends_cleanly(tmp_path: Path) -> None:
+    """A zero-byte stage file (a killed writer's repair truncated a lone fragment to nothing) appends: the
+    tail probe guards the empty file instead of seeking to -1."""
+    store = JudgementStore(tmp_path)
+    (tmp_path / "tournament.jsonl").write_text("", encoding="utf-8")
+    store.append(_window("r1"))
+    assert len(store.records("tournament")) == 1
+
+
+def test_an_unterminated_but_parseable_last_record_is_torn_not_counted(tmp_path: Path) -> None:
+    """A kill that lands after the record's JSON bytes but before its newline leaves a line `records()` can
+    parse; the cutters' definition of unfinished governs -- the reader skips it (the window is asked again),
+    so the next append can never silently delete a record the pass counted as reused."""
+    store = JudgementStore(tmp_path)
+    with (tmp_path / "tournament.jsonl").open("w", encoding="utf-8") as handle:
+        handle.write(_window("r1").model_dump_json() + "\n")
+        handle.write(_window("r2").model_dump_json())  # complete JSON, no trailing newline: a killed write
+    records = store.records("tournament")
+    assert set(records) == {"r1"}, "the unterminated record is a torn write: absent, asked again"
+    store.append(_window("r3"))
+    records = store.records("tournament")
+    assert set(records) == {"r1", "r3"}, "the cut did not resurrect the lost record, and r3 landed"
+    assert (tmp_path / "tournament.jsonl").read_text(encoding="utf-8").endswith("\n")
+
+
+def test_a_zero_byte_identity_file_is_absent_not_a_crash(tmp_path: Path) -> None:
+    """A zero-byte identity.json (the store's own torn write: a supersede copyfile killed mid-write) is
+    the torn tail the store already governs: the state is absent, so the claim that reads it rewrites the
+    file instead of failing the parse."""
+    family = Family(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+    store = JudgementStore(tmp_path)
+    store.claim("tournament", {"a": 1}, family)
+    (tmp_path / "identity.json").write_bytes(b"")
+    assert store.identities() == {}, "the empty file is treated as the store's torn tail"
+    store.claim("tournament", {"a": 2}, family)
+    assert store.identities()["tournament"]["identity"] == {"a": 2}

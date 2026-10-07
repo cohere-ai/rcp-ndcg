@@ -17,7 +17,7 @@ therefore never share cached judgements or pool observations.
 # in a run config
 dataset: beir:data/my_corpus
 preprocessing:
-  text: {on_overflow: truncate, max_tokens: 20000}    # or chunk, see below
+  text: {on_overflow: truncate, max_tokens: 20000}    # or chunk, see below; unset: 32768
 ```
 
 ### The judge's tokenizer
@@ -52,7 +52,7 @@ Without a tokenizer no text is cut, because there is no character fallback. `kee
 | `fail` | refused with `DocumentOverCapError` (exit 12) | the offending document id |
 | `chunk` | split into overlapping chunks, each judged | the `chunk_mapping` on every judged row |
 
-`max_tokens` defaults to 20,000 for `truncate` and `fail`, and `chunk` takes it from the chunk geometry.
+`max_tokens` defaults to 32,768 (2^15) for `truncate` and `fail`, and `chunk` takes it from the chunk geometry. A store judged under an earlier default (20,000) keeps its recorded policy: an unset cap that re-judges after this change resolves differently and the store refuses the mixed instrument, so pin `max_tokens: 20000` explicitly when a config must keep the old cap's identity.
 
 ### Where a cut falls
 
