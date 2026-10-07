@@ -44,7 +44,6 @@ from rcp_ndcg.data.preprocess import (
     DataError,
     FitResult,
     TextTruncationCensus,
-    fixed_overhead,
     max_pool_scores_by_document,
     rendered_pair_tokens,
     token_prefix,
@@ -287,36 +286,41 @@ class RerankClient(RoleClient):
         prepared_documents = list(request_prepared.contents[1:])
         pair_media = [0] * len(prepared_documents)
         query_media = 0
+        # The span that will ship: the settled query is share-capped first, so the media allowances reserve
+        # ITS render -- never the raw over-share text that never rides the wire (reserving that drops media
+        # which fit the shipped pair). rendered_pair_tokens measures the assembled render WITH the fixed
+        # frame, so the pair's frame cost is subtracted exactly once.
+        original_query = prepared_query.text
+        query_text = original_query
+        if (
+            self._tokenizer is not None
+            and self._budget is not None
+            and self._budget.query_max_tokens is not None
+            and self._tokenizer.count(query_text) > self._budget.query_max_tokens
+        ):
+            query_text = token_prefix(query_text, self._budget.query_max_tokens, self._tokenizer)
         if self._budget is not None and request_prepared.media:
-            allowance = max(
-                self._budget.max_tokens
-                - fixed_overhead(self._budget, self._tokenizer, "pair", instruction=instruction or ""),
-                0,
-            )
-            # The media reserve what a servable pair needs beside them: the query's media (raw, before its
-            # own fit), the query's empty-render (fit refuses a pair whose document text cannot keep one
-            # token beside the settled query -- the settled span must stay below the pair's cap), and that
-            # one token. Without these the media fit keeps media that exactly fill the budget-minus-overhead
-            # and the text fit refuses the request blaming the query.
             if self._tokenizer is not None:
                 query_render = rendered_pair_tokens(
                     self._budget,
                     self._tokenizer,
-                    query=request_prepared.contents[0].text,
+                    query=query_text,
                     document="",
                     instruction=instruction or "",
                 )
             else:
                 query_render = 0
             query_media_raw = request_prepared.content_tokens[0].tokens
-            # The documents first: each pair's document media, against the budget minus everything the
-            # pair needs beside its media.
+            # The documents first: each pair's document media, against the budget minus the settled query's
+            # render and the one document-text token fit's empty-query invariant keeps for a text document.
             doc_fits = [
                 self._fit_media_for_request(
                     [content],
                     doc_ids=[str(index)],
                     prepared=request_prepared.select([1 + index]),
-                    allowance=max(allowance - query_media_raw - query_render - (1 if content.text else 0), 0),
+                    allowance=max(
+                        self._budget.max_tokens - query_media_raw - query_render - (1 if content.text else 0), 0
+                    ),
                 )
                 for index, content in enumerate(prepared_documents)
             ]
@@ -330,7 +334,7 @@ class RerankClient(RoleClient):
                 [prepared_query],
                 doc_ids=[QUERY_DOC_ID],
                 prepared=request_prepared.select([0]),
-                allowance=max(allowance - max(pair_media, default=0) - text_floor, 0),
+                allowance=max(self._budget.max_tokens - max(pair_media, default=0) - query_render - text_floor, 0),
             )
             prepared_query = query_fit[0][0]
             query_media = query_fit[1]
@@ -367,13 +371,8 @@ class RerankClient(RoleClient):
         # declared share when the query exceeds it, then through fit's own probe pair (the query with an
         # empty document, reserving the query's media beside the documents' maximum media count, so the
         # settled span fits every pair's cap -- a pair with less media only has more room).
-        original_query = query.text
-        query_text = original_query
         kept_pair_media = [query_media + pair_media[position] for position in kept_positions]
         if self._tokenizer is not None:
-            share = self._budget.query_max_tokens
-            if share is not None and self._tokenizer.count(query_text) > share:
-                query_text = token_prefix(query_text, share, self._tokenizer)
             settled = self._fit(
                 [(query_text, "")],
                 "pair",
@@ -467,8 +466,8 @@ class RerankClient(RoleClient):
             if total + media_tokens > budget.max_tokens:
                 raise DataError(
                     f"the shipped pair is {total + media_tokens} tokens (render {total} + media "
-                    "{media_tokens}) over the budget of {budget.max_tokens}; the fit verified a pair that "
-                    "differs from the one the wire carries",
+                    f"{media_tokens}) over the budget of {budget.max_tokens}; the fit verified a pair that "
+                    f"differs from the one the wire carries",
                     hint="this is a bug in the rerank pair fit: report it with the inputs",
                 )
 
