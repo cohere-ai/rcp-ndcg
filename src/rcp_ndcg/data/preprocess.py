@@ -1004,6 +1004,23 @@ class TextBudget(BaseModel):
                 )
         return self
 
+    def shape_max_tokens(self, shape: RequestShape) -> int:
+        """The token budget one request of ``shape`` is measured against: on the embedding roles
+        ``query_max_tokens`` caps the query shape whole (its whole budget there); on a pair it stays the
+        query's share inside ``max_tokens``, and on the document shape (and without a declared share)
+        ``max_tokens`` caps. :func:`fit` measures every cut against it, and a role client's media allowance
+        counts from it, so the two thresholds never disagree.
+
+        Args:
+            shape: The request shape.
+
+        Returns:
+            The shape's budget, in the declared tokenizer's tokens.
+        """
+        if self.query_max_tokens is not None and shape == "query":
+            return self.query_max_tokens
+        return self.max_tokens
+
     def identity(self, tokenizer: TextTokenizer | None = None) -> dict[str, Any]:
         """The content identity payload of the budget, with the tokenizer file's SHA-256 -- the one field
         the method exists to carry, so a budget that declares a tokenizer is never identified without it
@@ -1271,14 +1288,9 @@ def fit(
             cli_hint="set the same tokenizer the budget declares (judge-style: --set <role>.tokenizer=...), or "
             "drop the tokenizer field for a hosted profile",
         )
-    # The shape's budget: on the embedding roles ``query_max_tokens`` caps the query shape whole (its whole
-    # budget there; ``max_tokens`` caps the document shape), on a pair it stays the query's share of the
-    # budget, and on the document shape (and without a declared share) ``max_tokens`` caps. Every cap and
-    # every message below counts against the shape's own budget.
-    if budget.query_max_tokens is not None and shape == "query":
-        shape_budget = budget.query_max_tokens
-    else:
-        shape_budget = budget.max_tokens
+    # The shape's budget (:meth:`TextBudget.shape_max_tokens`): every cap and every message below counts
+    # against the shape's own budget.
+    shape_budget = budget.shape_max_tokens(shape)
     if tokenizer is None:
         if media_tokens is not None and any(media):
             raise ConfigError(

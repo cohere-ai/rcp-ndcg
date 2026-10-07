@@ -5102,6 +5102,26 @@
                 "returns": "dict[str, Any]"
               }
             ]
+          },
+          "shape_max_tokens": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "RequestShape",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "shape"
+              },
+              {
+                "returns": "int"
+              }
+            ]
           }
         }
       },
@@ -5974,6 +5994,26 @@
               },
               {
                 "returns": "dict[str, Any]"
+              }
+            ]
+          },
+          "shape_max_tokens": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "RequestShape",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "shape"
+              },
+              {
+                "returns": "int"
               }
             ]
           }

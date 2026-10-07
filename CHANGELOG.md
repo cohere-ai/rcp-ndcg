@@ -44,7 +44,9 @@ released together.
   persists credentials embedded in a URL.
 - `rcp_ndcg.data.preprocess`: `fixed_overhead` (the one home of a request frame's fixed token cost, shared by
   `fit` and the role clients' media allowances), `rendered_request` and `rendered_pair_tokens` (the one home
-  of the assembled render, so a client's budget check measures what `fit` verified).
+  of the assembled render, so a client's budget check measures what `fit` verified), and
+  `TextBudget.shape_max_tokens(shape)` (the one home of a shape's budget: `query_max_tokens` on the embedding
+  roles' query shape, else `max_tokens`).
 - `rcp_ndcg.data.prepare`: `PreparedRequest.content_tokens` (per-content media token counts) and
   `PreparedRequest.select` (a slice of a prepared request -- the role clients prepare a request once, never
   re-inline prepared bytes); `MediaCensus.recorded()` (the public read the tests use instead of private
@@ -849,6 +851,13 @@ released together.
 
 ### Fixed
 
+- **The embedding and pooling media allowances count from the item shape's own budget.** Under a declared
+  `query_max_tokens` a query's media were fitted against `max_tokens` while the text fit measured the query
+  against its share, so an image that fit `max_tokens` but not the share was kept whole and the request was
+  refused (`the fixed template overhead ... plus the declared media ... already fill the budget`). The embed
+  role's `messages` route now fits its media like the pooling route: one preparation sliced per item (a second
+  preparation re-inlined the prepared bytes and recorded census rows against `data:` URIs), the kept media
+  recorded, and the allowance reserving the shape's fixed frame.
 - **The judge's engine media check is the served roles' delta check.** The judge's probe now sends the probe
   image and the same request without it, so a served chat template cancels and an honest engine passes; the
   delta counts no text, so the check no longer needs (or loads) the judge's tokenizer.

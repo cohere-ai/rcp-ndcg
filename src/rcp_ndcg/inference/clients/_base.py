@@ -53,6 +53,7 @@ from rcp_ndcg.data.preprocess import (
     TextBudgetExceededError,
     TextTruncationCensus,
     fit,
+    fixed_overhead,
 )
 from rcp_ndcg.data.resolution import ImagePolicy, MediaTokenCount, VideoPolicy, content_media_tokens
 from rcp_ndcg.data.templates import RequestShape
@@ -447,6 +448,36 @@ class RoleClient[C: Endpoint]:
                         hint="embed a text rendering of the media; video embedding is wired with the "
                         "media-preparation mechanism",
                     )
+
+    def _fit_media_per_item(
+        self, request: PreparedRequest, *, shape: RequestShape, doc_ids: Sequence[str]
+    ) -> tuple[list[Content], list[int]]:
+        """The media fit of a request whose wire carries ONE item per budget (the pooling items, the
+        embeddings inputs): each item's media fitted on its own, sliced from the one preparation
+        (:meth:`PreparedRequest.select`, never a second preparation), against the item shape's budget
+        (:meth:`~rcp_ndcg.data.preprocess.TextBudget.shape_max_tokens`) minus that shape's fixed frame
+        (:func:`~rcp_ndcg.data.preprocess.fixed_overhead`) -- the threshold the text fit measures, so the
+        media fit never keeps what the text fit then refuses.
+
+        Args:
+            request: The request's one preparation (:meth:`_prepare_request`).
+            shape: The items' request shape (``query`` or ``document``).
+            doc_ids: One census doc_id per item, for the drop rows.
+
+        Returns:
+            ``(contents, media_tokens)``: per item, the content to send and its media token count after
+            the fit. Without a budget or media, the prepared contents and zeros.
+        """
+        if self._budget is None or not request.media:
+            return list(request.contents), [0] * len(request.contents)
+        allowance = max(self._budget.shape_max_tokens(shape) - fixed_overhead(self._budget, self._tokenizer, shape), 0)
+        fitted = [
+            self._fit_media_for_request(
+                [content], doc_ids=[doc_ids[index]], prepared=request.select([index]), allowance=allowance
+            )
+            for index, content in enumerate(request.contents)
+        ]
+        return [pair[0][0] for pair in fitted], [pair[1] for pair in fitted]
 
     def _fit_media_for_request(
         self,

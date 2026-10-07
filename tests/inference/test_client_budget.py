@@ -1782,6 +1782,91 @@ class TestPoolFramePerShape:
 
         assert result.num_items == 1, "the request is served against its own shape's frame"
 
+    def test_a_query_batch_reserves_against_its_own_query_budget(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """With a per-shape ``query_max_tokens``, the query shape's budget is that share (fit measures a query
+        against it), so the media allowance must be counted from it too: a 258-token query image under a
+        200-token query budget is shrunk to fit and served -- an allowance from ``max_tokens`` keeps the
+        image whole, and the text fit then refuses the request blaming media the fit had kept."""
+        sender = _GatedSender(
+            PoolingServer({}, default=np.ones((2, 2), dtype=np.float16), media_vector=np.ones((2, 2), dtype=np.float16))
+        )
+        client = PoolingClient(
+            PoolingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="colqwen",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                query_max_tokens=200,
+                image_policy=dict(self.POLICY),
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            sender=sender,
+        )
+
+        result = asyncio.run(client.aencode([_image_content(tmp_path, 0, 448)], EncodeRole.QUERY))
+
+        assert result.num_items == 1, "the query is served within its own budget"
+
+
+class TestEmbedMessagesMediaFit:
+    """The embed role's ``messages`` route fits its media exactly as the pooling route does: one preparation
+    of the request, sliced per item (never a second preparation of already-prepared contents), against the
+    item shape's budget minus its fixed frame."""
+
+    POLICY = {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"}
+
+    def _client(self, tokenizer_json: str, *, max_tokens: int, template: Any = None, census: Any = None) -> Any:
+        from rcp_ndcg.inference import EmbeddingClient
+        from rcp_ndcg.inference.config import EmbeddingEndpoint
+
+        return EmbeddingClient(
+            EmbeddingEndpoint(
+                base_url="fake://seed/7?dim=4",
+                model="m",
+                request_shape="messages",
+                tokenizer=tokenizer_json,
+                max_tokens=max_tokens,
+                template=template,
+                image_policy=dict(self.POLICY),
+                image_processor="qwen2_vl",
+                max_images=2,
+            ),
+            media_census=census,
+        )
+
+    def test_a_document_reserves_the_document_frame(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """Frame-heavy ``document`` shape (101 tokens), max_tokens 300, one 258-token image: an allowance of
+        the bare max_tokens keeps the image whole and the text fit then refuses the request; the media fit
+        must shrink within the room the frame leaves and serve it."""
+        template = TemplateSpec(
+            query=(Segment(content="query"),),
+            document=(Segment(fixed=" ".join(["frame"] * 101)), Segment(content="document")),
+        )
+        client = self._client(tokenizer_json, max_tokens=300, template=template)
+
+        result = client.encode([_image_content(tmp_path, 0, 448)], EncodeRole.DOCUMENT)
+        client.close()
+
+        assert result.num_items == 1, "the request is served (the media fit ran within the document frame)"
+
+    def test_the_census_rows_name_the_source_never_a_data_uri(self, tokenizer_json: str, tmp_path: Any) -> None:
+        """The kept and the dropped media are recorded under their SOURCE uri: a second preparation of the
+        already-prepared contents would record the inlined ``data:`` bytes instead."""
+        from rcp_ndcg.data.prepare import MediaCensus
+
+        census = MediaCensus()
+        client = self._client(tokenizer_json, max_tokens=4, census=census)
+        page = _image_content(tmp_path, 0, 448)
+
+        client.encode([Content.from_parts([*page.parts, *page.parts])], EncodeRole.DOCUMENT)
+        client.close()
+
+        rows = census.recorded()
+        assert rows and any(dropped for *_rest, dropped in rows), "the drops are recorded"
+        assert not [uri for _corpus, _doc, uri, _dropped in rows if uri.startswith("data:")], rows
+
 
 def test_the_pair_fit_invariant_message_carries_its_numbers() -> None:
     """The bug-report DataError interpolates its numbers -- no literal braces in the message a user reports."""

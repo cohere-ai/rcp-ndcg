@@ -37,7 +37,7 @@ import numpy as np
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.data.prepare import MediaCensus
-from rcp_ndcg.data.preprocess import TextTruncationCensus, fixed_overhead
+from rcp_ndcg.data.preprocess import TextTruncationCensus
 from rcp_ndcg.data.templates import RequestShape
 from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError
 from rcp_ndcg.inference.adapters.base import Adapter, get_adapter
@@ -235,26 +235,9 @@ class PoolingClient(RoleClient):
         position_ids = [str(index) for index in range(len(prompted))]
         request = self._prepare_request(prompted, doc_ids=position_ids)
         shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
-        if self._budget is not None and request.media:
-            # The media fit runs per wire request: the pooling wire sends one media item per call, so one
-            # item's fit bounds that item's media -- against the budget minus THIS BATCH SHAPE's fixed frame
-            # (the fit's own reservation, never the bare max_tokens: the two thresholds must not disagree;
-            # and never the query shape's frame -- a document batch measures the document shape's).
-            allowance = max(self._budget.max_tokens - fixed_overhead(self._budget, self._tokenizer, shape), 0)
-            prepared = [
-                self._fit_media_for_request(
-                    [content],
-                    doc_ids=[position_ids[index]],
-                    prepared=request.select([index]),
-                    allowance=allowance,
-                )
-                for index, content in enumerate(request.contents)
-            ]
-            fitted = [pair[0][0] for pair in prepared]
-            media_tokens = [pair[1] for pair in prepared]
-        else:
-            fitted = list(request.contents)
-            media_tokens = [0] * len(fitted)
+        # The media fit runs per wire request: the pooling wire sends one media item per call, so one
+        # item's fit bounds that item's media, against this batch shape's own budget and frame.
+        fitted, media_tokens = self._fit_media_per_item(request, shape=shape, doc_ids=position_ids)
         kept, omitted = self._apply_empty_documents(fitted)
         positions = [index for index in range(len(fitted)) if index not in set(omitted)]
         if self._budget is None or not kept:

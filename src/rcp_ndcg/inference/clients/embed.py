@@ -228,19 +228,17 @@ class EmbeddingClient(RoleClient):
             on the text and token-ids routes media is refused before it is fetched.
         """
         prompt = self.config.query_prompt if role is EncodeRole.QUERY else self.config.doc_prompt
+        shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
         prepared = tuple(content.with_text_prefix(prompt) for content in contents)
         self._refuse_media_off_its_side(role.value, prepared)
         if self._media_is_on_wire():
             # Media on the messages wire (2e): one preparation path, each item's media sized exactly as the
             # judge's, its tokens reserved whole beside the item's text (the embeddings budget is per item:
             # each input must fit the served context, the batch is how fast).
-            request = self._prepare_request(list(prepared))
-            fitted_pairs = [
-                self._fit_media_for_request([content], doc_ids=[str(index)])
-                for index, content in enumerate(request.contents)
-            ]
-            prepared = tuple(pair[0][0] for pair in fitted_pairs)
-            media_tokens = [pair[1] for pair in fitted_pairs]
+            position_ids = [str(index) for index in range(len(prepared))]
+            request = self._prepare_request(list(prepared), doc_ids=position_ids)
+            fitted, media_tokens = self._fit_media_per_item(request, shape=shape, doc_ids=position_ids)
+            prepared = tuple(fitted)
         else:
             media_tokens = [0] * len(prepared)
         if self._budget is None:
@@ -251,11 +249,7 @@ class EmbeddingClient(RoleClient):
                 omitted=tuple(omitted),
             )
         if self._budget is not None:
-            result = self._fit(
-                [content.text for content in prepared],
-                "query" if role is EncodeRole.QUERY else "document",
-                media_tokens=media_tokens,
-            )
+            result = self._fit([content.text for content in prepared], shape, media_tokens=media_tokens)
             prepared = tuple(
                 self._with_text(content, text) for content, text in zip(prepared, result.texts, strict=True)
             )
