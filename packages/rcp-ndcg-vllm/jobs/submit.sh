@@ -15,8 +15,9 @@
 #   --priority C   the Kueue priority class: dev-high or dev-medium; passed as the override
 #                  priority_class=<C> to kjobs-go submit (which renders <C>-training-priority;
 #                  default dev-medium; verify with a dry run)
-#   --script NAME  what the job runs on the node: bootstrap (a recipe wave; the default) or wave0
-#                  (the node test; its script is mounted next to bootstrap.sh)
+#   --script NAME  what the job runs on the node: bootstrap (a recipe wave; the default), wave0
+#                  (the node test; its script is mounted next to bootstrap.sh) or e2e (the T4 run
+#                  scenarios: e2e.sh drives them in the pod; the wave list names scenario ids)
 #
 # Environment (required, no defaults: this script must not name any machine's paths or buckets):
 #   RCP_KJOBS_CONFIG   the job-CLI config file (the job CLI's -f argument)
@@ -31,7 +32,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: submit.sh [--max-jobs N] [--priority CLASS] [--script bootstrap|wave0] \\
+  echo "usage: submit.sh [--max-jobs N] [--priority CLASS] [--script bootstrap|wave0|e2e] \\
          <RC_STAGE_URI> <OUT_PREFIX> <WAVE_NAME> [<WAVE_NAME>...]" >&2
 }
 
@@ -47,7 +48,7 @@ while (($#)); do
   case "$1" in
     --max-jobs) MAX_JOBS="${2:?--max-jobs needs a number}"; shift 2 ;;
     --priority) PRIORITY="${2:?--priority needs a class}"; shift 2 ;;
-    --script) SCRIPT_NAME="${2:?--script needs bootstrap or wave0}"; shift 2 ;;
+    --script) SCRIPT_NAME="${2:?--script needs bootstrap, wave0 or e2e}"; shift 2 ;;
     --image) IMAGE="${2:?--image needs a repository:tag}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     --*) echo "submit.sh: unknown option: $1" >&2; usage; exit 2 ;;
@@ -55,8 +56,8 @@ while (($#)); do
   esac
 done
 [[ -n "$RC_STAGE_URI" && -n "$OUT_PREFIX" && ${#WAVES[@]} -ge 1 ]] || { usage; exit 2; }
-[[ "$SCRIPT_NAME" == "bootstrap" || "$SCRIPT_NAME" == "wave0" ]] || {
-  echo "submit.sh: --script must be bootstrap or wave0, got $SCRIPT_NAME" >&2
+[[ "$SCRIPT_NAME" == "bootstrap" || "$SCRIPT_NAME" == "wave0" || "$SCRIPT_NAME" == "e2e" ]] || {
+  echo "submit.sh: --script must be bootstrap, wave0 or e2e, got $SCRIPT_NAME" >&2
   exit 2
 }
 [[ "$MAX_JOBS" =~ ^[0-9]+$ && "$MAX_JOBS" -ge 1 ]] || { echo "submit.sh: --max-jobs must be a positive number" >&2; exit 2; }
@@ -87,8 +88,16 @@ case "$(basename "$HERE")" in
   jobs) WAVE0_SH="$HERE/../src/rcp_ndcg_vllm/jobs/wave0.sh" ;;
   *) WAVE0_SH="$HERE/jobs/wave0.sh" ;;
 esac
+case "$(basename "$HERE")" in
+  jobs) E2E_SH="$HERE/../src/rcp_ndcg_vllm/jobs/e2e.sh" ;;
+  *) E2E_SH="$HERE/jobs/e2e.sh" ;;
+esac
 [[ "$SCRIPT_NAME" != "wave0" || -f "$WAVE0_SH" ]] || {
   echo "submit.sh: wave0.sh not found at $WAVE0_SH (run submit.sh from the checkout)" >&2
+  exit 2
+}
+[[ "$SCRIPT_NAME" != "e2e" || -f "$E2E_SH" ]] || {
+  echo "submit.sh: e2e.sh not found at $E2E_SH (run submit.sh from the checkout)" >&2
   exit 2
 }
 
@@ -198,6 +207,13 @@ for wave in "${WAVES[@]}"; do
       "files.wave0.from_file=$WAVE0_SH" "files.wave0.mount_path=/etc/rcp/files/wave0/wave0.sh"
       "files.wave0host.from_file=$HERE/wave0_host.py" "files.wave0host.mount_path=/etc/rcp/files/wave0host/wave0_host.py"
       # wave 0's step (b) runs the bootstrap: mounted beside its own script.
+      "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
+    )
+  elif [[ "$SCRIPT_NAME" == "e2e" ]]; then
+    # The T4 scenarios: e2e.sh builds the environments and drives the wave's scenario ids.
+    args+=(
+      "worker.command=/bin/bash /etc/rcp/files/e2e/e2e.sh $RC_STAGE_URI $OUT_URI --wave $wave"
+      "files.e2e.from_file=$E2E_SH" "files.e2e.mount_path=/etc/rcp/files/e2e/e2e.sh"
       "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
     )
   else
