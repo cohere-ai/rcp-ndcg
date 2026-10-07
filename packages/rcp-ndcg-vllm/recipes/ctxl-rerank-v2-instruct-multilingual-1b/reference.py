@@ -1,51 +1,53 @@
 """The reference implementation of recipe ``ctxl-rerank-v2-instruct-multilingual-1b``.
 
 Derived from ``experiments/paper/rerankers/reference/contextual.py`` (the paper's in-process
-``ContextualRerank``: ``src/rcp_ndcg/retrieval/external_rerankers.py:275-389`` as this branch
-carries it, and its paper-exact copy beside the paper configs on the clients-final lineage),
-exposed through the harness's subprocess CLI:
+``ContextualRerank``: the move of the pre-unification ``retrieval/external_rerankers.py:275-389``
+behaviour, kept beside the paper configs since the inference layer was unified), exposed through the
+harness's subprocess CLI:
 
     reference.py --mode <render|score> --pairs <file> --out <file> --tokenizer <repo@rev|path> \
                  [--device <cpu|cuda:0>]
 
-- ``--mode render`` (stage 1): ``{"rows": [{"index", "shape", "text"}]}`` — the exact prompt text the
-  reference expects the engine to see for each pairs row, pure string work, no weights and no
-  imports beyond the standard library. Byte-identical to the served render for every pair under
-  ``MAX_SEQ_LEN`` (the paper constructs the prompt text and truncates only at encode); a pairs-file
-  row over the budget is a declared stage-1 failure (the reference keeps the paper's uncut prompt;
-  the served path renders the client's anchor-preserving cut) — keep the wave's pairs rows under
-  ``client.max_tokens``, and let stage 2's non-gating over-cap table carry the over-budget ones.
+- ``--mode render`` (stage 1): ``{"rows": [{"index", "shape": "pair", "query", "documents"}]}`` --
+  the harness's rerank span format, filled with the spans the paper's prompt builder receives: the
+  raw query and the raw documents, uncut (the paper's own cut is the whole-prompt right truncation
+  at encode, inside ``score``).  No tokenizer, no weights.  Under the cap and within the query share
+  these are exactly the spans the served wire carries; over the cap they differ by declaration
+  (``anchor_drop_over_cap``: stage 1 reports such rows in its non-gating table).  The reference never
+  reproduces the product client's cut (its settle rule or its anchor-preserving content cut).
 - ``--mode score`` (stage 2, GPU): ``{"rows": [{"index", "scores": [...]}]}`` — one raw relevance
   logit per document (vocabulary position 0 at the final position; no sigmoid/softmax), the paper's
   quantity.
 
-Three declared adaptations, none of which touches a score the paper measured:
+Declared behaviours, none of which touches a score the paper measured:
 
-1. The harness's CLI shell wraps the scorer; ``load`` is idempotent and ``render`` is
-   tokenizer-free, so stage 1 runs without the weights (stored ~3.28 GB; bf16-equivalent ~2.65 GB).
-2. The pairs row's instruction is folded into the query as the served path folds it (only when
-   the row carries one; ``Task: <instruction>\\nQuery: <text>`` with both fields stripped, per the
-   product's fold). The paper's in-process path never sends an instruction (its ``instruction``
-   attribute stays ``None``), so this affects only instruction-bearing rows, and only to match the
-   served prompt.
-3. ``score`` keeps the paper's whole-prompt right truncation at 8192 tokens, which for a pair whose
+1. The pairs row's ``instruction`` is ignored on both sides: the recipe declares
+   ``instruction: none`` (the paper's served-path mode in
+   ``experiments/paper/rerankers/ctxl_rerank_1b.yaml``) and the paper's in-process path never sent an
+   instruction either (its ``instruction`` attribute stays ``None``).  No fold, no append.
+2. ``score`` keeps the paper's whole-prompt right truncation at 8192 tokens, which for a pair whose
    document alone pushes the prompt over the cap drops the query block and the trailing `` ??``
-   anchor the last-position score reads. The recipe's served path never drops an anchor (the
-   client-side cut keeps every fixed segment), so the recipe declares
-   ``reference.known_deviations: [anchor_drop_over_cap]`` and the harness gates under-cap pairs only.
+   anchor the last-position score reads.  The served path never drops an anchor (the client-side cut
+   keeps every fixed segment), so the recipe declares
+   ``reference.known_deviations: [anchor_drop_over_cap]`` and the harness reports over-cap pairs in
+   its non-gating table.
+3. A query over the declared 4096-token share is a declared divergence row (the merged rerank
+   client settles the shared query once per call and ships it at the share whenever it exceeds it,
+   while the paper's path has no query share and keeps the query whole): the gating pairs keep
+   queries within the share.
 
 Paper-exact everywhere else: the two-line prompt (document before query, then `` ??``), left
-padding, bfloat16 weights on CUDA and float32 on CPU, flash_attention_2 on CUDA (``None`` on CPU —
-the environment fallback the paper never exercised; the card's CPU path is fp32 too), right
+padding, bfloat16 weights on every device (the paper factory's ``DTYPE``), flash_attention_2 on
+CUDA (the default attention on CPU, where flash-attention-2 does not exist), right
 truncation of the whole prompt at 8192 tokens, and the paper's batching (length-descending
 permutation, a padded-area budget, OOM halving). Where the model card and the paper code disagree
-the paper code wins: the truncation budget is 8192 (``src/rcp_ndcg/retrieval/cross_encoder.py:42``,
-``MAX_SEQ_LENGTH``, what the paper's factory passed), not the card's tokenizer-level 131072.
+the paper code wins: the truncation budget is 8192 (``MAX_SEQ_LENGTH``, what the paper's factory
+passed over the 32768 default), not the card's tokenizer-level 131072.
 
-Runs as a subprocess in the reference environment
-(``experiments/paper/rerankers/reference/requirements.txt``: torch 2.9.1, transformers 4.57.6,
-flash-attn 2.8.3 on Linux) — never inside the harness process, which imports no torch. ``score``
-needs the weights at the pinned revision (a ~3.28 GB download) and a GPU.
+Runs as a subprocess in the reference environment (``requirements-reference.txt`` beside this file:
+torch 2.9.1, transformers 4.57.6, flash-attn 2.8.3 on Linux) — never inside the harness process,
+which imports no torch. ``render`` is pure string work (the standard library only);
+``score`` needs the weights at the pinned revision (a ~3.28 GB download) and a GPU.
 """
 
 from __future__ import annotations
@@ -55,12 +57,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-__all__ = ["CtxlRerankReference", "fold", "load", "main", "prompt_text", "render"]
+__all__ = ["CtxlRerankReference", "load", "main", "paper_spans", "prompt_text", "render"]
 
 MODEL_ID = "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b"
 REVISION = "8fd1edf6a98564cb712064f884b8ef7df5c1b876"
 MAX_SEQ_LEN = 8192
-"""The paper's combined (query, document) prompt budget (cross_encoder.py:42 MAX_SEQ_LENGTH)."""
+"""The paper's combined (query, document) prompt budget (the factory's ``MAX_SEQ_LENGTH``)."""
 BATCH_SIZE = 32
 """Documents per forward at most (experiments/paper/rerankers/ctxl_rerank_1b.yaml)."""
 BATCH_SIZE_TOKENS = 15_000
@@ -69,35 +71,32 @@ VOCAB_POSITION = 0
 """The vocabulary position whose logit is the relevance score (the checkpoint's token id 0, "!")."""
 
 _PROMPT_HEAD = "Check whether a given document contains information helpful to answer the query.\n"
+_HEAD = f"{_PROMPT_HEAD}<Document> "
+_MID = "\n<Query> "
+_TAIL = " ??"
 
 _loaded: CtxlRerankReference | None = None
 
 
-def fold(query: str, instruction: str | None) -> str:
-    """The served path's fold for ``instruction: fold``: ``Task: <instruction>\\nQuery: <text>``.
-
-    Byte-exact with the wire: the client folds only when the row carries an instruction (the
-    harness's ``fold_query`` and the rerank client both short-circuit on the raw value), and the
-    fold itself strips both fields (``rcp_ndcg_core`` ``Query.format_query`` — a whitespace-only
-    instruction therefore folds to the stripped bare query). The reference folds the pairs row's
-    instruction the same way, so the compared prompts match byte for byte.
-    """
-    if not instruction:
-        return query
-    task = instruction.strip()
-    if task:
-        return f"Task: {task}\nQuery: {query.strip()}"
-    return query.strip()
-
-
 def prompt_text(query: str, doc: str) -> str:
-    """The paper's exact prompt string: document before query, the fold already applied to ``query``."""
-    return f"{_PROMPT_HEAD}<Document> {doc}\n<Query> {query} ??"
+    """The paper's exact prompt string: document before query, bare query, the `` ??`` tail."""
+    return f"{_HEAD}{doc}{_MID}{query}{_TAIL}"
 
 
 def render(query: str, doc: str, instruction: str | None = None) -> str:
-    """The prompt text for one pair: the fold applied to the query, then the paper's prompt."""
-    return prompt_text(fold(query, instruction), doc)
+    """The paper's prompt for one pair. ``instruction`` is accepted and ignored (the recipe
+    declares ``instruction: none``; a pairs row's instruction is never folded nor appended)."""
+    del instruction
+    return prompt_text(query, doc)
+
+
+def paper_spans(row: dict[str, Any]) -> dict[str, Any]:
+    """One pairs row in the harness's rerank span format: the spans the paper's prompt builder gets.
+
+    The raw query and the raw documents, uncut: the paper builds its prompt from them and cuts only at
+    encode (the whole-prompt right truncation of ``_forward_scores``).  The row's instruction is ignored
+    (``instruction: none``)."""
+    return {"query": str(row["query"]), "documents": [str(document) for document in row["documents"]]}
 
 
 class CtxlRerankReference:
@@ -112,8 +111,10 @@ class CtxlRerankReference:
     def load(self, device: str | None = None) -> CtxlRerankReference:
         """Load the tokenizer and the causal LM (idempotent; completes a partially built instance).
 
-        bfloat16 weights on CUDA with flash_attention_2 (the paper's exact configuration), float32 on
-        CPU without it (the card's CPU path; a declared environment fallback the paper never ran).
+        bfloat16 weights on every device (the paper factory's ``DTYPE = "bfloat16"``, passed explicitly,
+        so the class's own float32-on-CPU default never applied), flash_attention_2 on CUDA and the
+        default attention elsewhere (flash-attention-2 does not exist on CPU) -- the same rule in
+        the 1b, 2b and 6b references.
         """
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -126,16 +127,13 @@ class CtxlRerankReference:
         # Left padding, so the final position is the last real token of every row (card + paper code).
         self.tokenizer.padding_side = "left"
         if self.model is None:
-            on_cuda = torch.cuda.is_available()
-            model_kwargs: dict[str, Any] = {
-                "dtype": torch.bfloat16 if on_cuda else torch.float32,
-                "revision": revision or None,
-            }
-            if on_cuda:
+            target = device or ("cuda" if torch.cuda.is_available() else "cpu")
+            model_kwargs: dict[str, Any] = {"dtype": torch.bfloat16, "revision": revision or None}
+            if target.startswith("cuda"):
                 model_kwargs["attn_implementation"] = "flash_attention_2"
             self.model = AutoModelForCausalLM.from_pretrained(repo, **model_kwargs)
             self.model.eval()
-            self.device = device or ("cuda" if on_cuda else "cpu")
+            self.device = target
             self.model.to(self.device)
         return self
 
@@ -219,15 +217,13 @@ def main() -> int:
 
     pairs = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
     if args.mode == "render":
-        rows = [
-            {"index": index, "shape": "pair", "text": render(row["query"], row["documents"][0], row.get("instruction"))}
-            for index, row in enumerate(pairs)
-        ]
+        # The harness's rerank span format, filled with the paper's own spans (uncut; see paper_spans).
+        rows = [{"index": index, "shape": "pair", **paper_spans(row)} for index, row in enumerate(pairs)]
         output: dict[str, Any] = {"rows": rows}
     else:
         reference = load(args.tokenizer, args.device)
         rows = [
-            {"index": index, "scores": reference.predict(fold(row["query"], row.get("instruction")), row["documents"])}
+            {"index": index, "scores": reference.predict(row["query"], row["documents"])}
             for index, row in enumerate(pairs)
         ]
         output = {"rows": rows}

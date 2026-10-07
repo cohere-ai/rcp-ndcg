@@ -6,7 +6,9 @@ checkpoint's remote code at revision ``d7d7e73b6ea138ced340b83865931b5dfb6c97aa`
 - ``load(device)`` builds the paper's ``JinaRerank`` (``AutoModel.from_pretrained(..., dtype="auto",
   trust_remote_code=True, revision=...)`` -> the remote ``JinaForRanking``; the paper's factory passed
   only model, device and revision -- every runtime parameter is the remote code's default);
-- ``score(query, docs)`` is the paper's harness (``external_rerankers.py:427-455``): whitespace-only
+- ``score(query, docs)`` is the paper's harness (``JinaRerank.predict`` in
+  ``experiments/paper/rerankers/reference/jina.py:65-76``; the pre-unification
+  ``src/rcp_ndcg/retrieval/external_rerankers.py:427-455``): whitespace-only
   documents score exactly 0.0 without a model call, the rest go to the checkpoint's ``model.rerank()``
   (which blocks at 125 documents or a residual token capacity of ``131072 - 2*q_len`` flushed at
   ``<= 2048``, weights blocks by ``max((1+cos)/2)``, block-averages the query embed and scores every
@@ -15,14 +17,20 @@ checkpoint's remote code at revision ``d7d7e73b6ea138ced340b83865931b5dfb6c97aa`
   the remote code's pre-templating truncation (documents 2048 tokens, query 512, right, decode-back)
   then ``format_docs_prompts_func`` -- the exact prompt one block sends.  The model is listwise: the
   prompt depends on the whole document set, so ``docs`` may be one document (the 1-vs-1 prompt the
-  recipe's declared pair shape mirrors) or a block's list.
+  recipe's declared pair shape mirrors) or a block's list.  ``render_query_and_document`` is the
+  1-vs-1 entry point.
 
 This module runs as a SUBPROCESS in its own environment (see ``requirements-reference.txt`` beside
 it); the harness process never imports it.  CLI contract (``rcp_ndcg_vllm.equivalence.reference``):
 
     reference.py --mode <render|score> --pairs <file> --out <file> --tokenizer <spec> [--device <d>]
 
-- ``render`` -> ``{"rows": [{"index", "shape", "text"}]}``: the exact prompt text per pairs row.
+- ``render`` -> ``{"rows": [{"index", "shape": "pair", "query", "documents"}]}``: per pairs row,
+  the spans fed to the model's own builder -- the checkpoint's per-text truncations (documents 2048
+  tokens, query 512, right, decode-back) applied to the raw texts, exactly as ``rerank()`` stages
+  them before formatting.  The reference never ports the client's cut (``docs/how-to/add-a-model.md``):
+  under the per-text caps the spans are the raw texts and compare byte-identically with the wire's;
+  over-cap rows differ from the client's cuts and ride the declared ``over_cap_cut_differs`` table.
 - ``score``   -> ``{"rows": [{"index", "scores": [...]}]}``: one cosine in [-1, 1] per document,
   input order, empty documents 0.0.
 
@@ -69,6 +77,8 @@ __all__ = [
     "REVISION",
     "format_docs_prompt",
     "load",
+    "render_query_and_document",
+    "render_rows",
 ]
 
 
@@ -120,11 +130,16 @@ def _product_tokenizer(spec: str):
 
 def _truncate_text(text: str, backend: object, max_length: int) -> str:
     """modeling.py ``_truncate_texts``' per-text rule: right-truncate the RAW text before templating; a
-    truncated text is decode(max_length tokens) back to text (skip_special_tokens, as HF's decode)."""
-    backend.enable_truncation(max_length)  # type: ignore[attr-defined]
+    text that reaches ``max_length`` tokens is ``decode(ids[:max_length])`` back to text.
+
+    ``tokenizer(text, truncation=True, max_length=N)`` keeps the first N ids here (this tokenizer's
+    post-processor adds no special tokens), and HF's ``decode`` keeps special tokens
+    (``skip_special_tokens=False``, its default).  The shared backend is never reconfigured (no
+    ``enable_truncation``): the product's ``load_tokenizer`` caches it, so a mutation would cap every
+    later count in the same process."""
     ids = list(backend.encode(text, add_special_tokens=True).ids)  # type: ignore[attr-defined]
     if len(ids) >= max_length:
-        text = backend.decode(ids)  # type: ignore[attr-defined]
+        text = backend.decode(ids[:max_length], skip_special_tokens=False)  # type: ignore[attr-defined]
     return text
 
 
@@ -133,13 +148,40 @@ def render_query_and_document(query: str, document: str, tokenizer_spec: str, in
 
     Applies the remote code's pre-templating truncation (2048/512 tokens, right, decode-back) exactly as
     ``rerank()`` does, then formats.  This is the text the recipe's declared pair shape must render to
-    byte for byte (stage 1's render check).
+    byte for byte (the prompt-level view; stage 1's render check compares the wire's SPANS instead).
     """
     tokenizer = _product_tokenizer(tokenizer_spec)
     backend = tokenizer.backend
     truncated_query = _truncate_text(query, backend, MAX_QUERY_LENGTH)
     truncated_doc = _truncate_text(document, backend, MAX_DOC_LENGTH)
     return format_docs_prompt(truncated_query, [truncated_doc], instruction=instruction)
+
+
+def render_rows(pairs: list[dict], tokenizer_spec: str) -> list[dict]:
+    """Stage 1's rerank render contract: the spans fed to the model's own builder, per pairs row.
+
+    ``{"index", "shape": "pair", "query": <query span>, "documents": [<doc span>, ...]}`` -- the
+    checkpoint's per-text pre-templating truncation applied to the raw texts (``_truncate_text``:
+    512/2048 tokens, right, decode-back), exactly as ``rerank()`` stages them before formatting.
+    The reference never ports the client's cut (``docs/how-to/add-a-model.md``): under the per-text caps
+    the spans are the raw texts and compare byte-identically with the wire's spans; over-cap rows
+    differ from the client's cuts and ride the declared ``over_cap_cut_differs`` table.
+    """
+    tokenizer = _product_tokenizer(tokenizer_spec)
+    backend = tokenizer.backend
+    rows: list[dict] = []
+    for index, row in enumerate(pairs):
+        query = str(row["query"])
+        documents = [str(document) for document in row["documents"]] or [""]
+        rows.append(
+            {
+                "index": index,
+                "shape": "pair",
+                "query": _truncate_text(query, backend, MAX_QUERY_LENGTH),
+                "documents": [_truncate_text(document, backend, MAX_DOC_LENGTH) for document in documents],
+            }
+        )
+    return rows
 
 
 class JinaRerankerV3:
@@ -256,16 +298,7 @@ def main() -> int:
 
     rows = _rows_of(args.pairs)
     if args.mode == "render":
-        output = {
-            "rows": [
-                {
-                    "index": index,
-                    "shape": "pair",
-                    "text": render_query_and_document(str(row["query"]), str(row["documents"][0]), args.tokenizer),
-                }
-                for index, row in enumerate(rows)
-            ]
-        }
+        output = {"rows": render_rows(rows, args.tokenizer)}
     else:
         reranker = load(args.device)
         output = {
