@@ -127,15 +127,29 @@ def _sampled_rows(
 
 
 def _over_length(seed: str, max_tokens: int | None, tokenizer: Any, index: int) -> str:
-    """A seed text padded to at least ``max_tokens`` tokens (plus one, per index), in whole words."""
+    """A seed text padded past the budget -- at least twice ``max_tokens`` tokens -- in whole words.
+
+    The pad is located by the tokenizer's offset mapping over ONE tokenization of the pool, never by
+    a growth loop re-tokenizing whole candidate strings (a long seed made that quadratic: 122 s per
+    call measured on a 4000-word document).  The seed is kept verbatim; the pad words carry the
+    sample's index.  A runtime bound on a long synthetic document guards this
+    (``tests/test_stage1_overlength_speed.py``).
+    """
     budget = max_tokens or 128
-    words = seed.split() or ["anchor"]
+    target = budget * 2
     marker = f" pad{index}"
-    text = seed
-    while tokenizer.count(text) < budget * 2:
-        text = text + marker * max(1, (budget * 2 - tokenizer.count(text)) // max(1, len(words) + 1))
-        if text == seed:
-            text = seed + marker
+    seed_tokens = tokenizer.count(seed)
+    if seed_tokens >= target:
+        return seed
+    gap = target - seed_tokens
+    pool = seed + marker * (gap + 32)
+    offsets = tokenizer.offsets(pool)
+    want = min(target + 16, len(offsets))
+    text = pool[: offsets[want - 1][1]]
+    for _ in range(16):
+        if tokenizer.count(text) >= target:
+            break
+        text = text + marker
     return text
 
 
