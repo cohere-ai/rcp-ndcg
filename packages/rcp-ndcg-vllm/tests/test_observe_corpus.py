@@ -487,3 +487,39 @@ def test_the_media_request_set_is_recorded_with_its_media(tmp_path: Path) -> Non
     }
     assert edges["edge:too_many_images"] == 400 and edges["edge:corrupt_image"] == 400
     assert report["passed"] is True, [check for check in report["checks"] if not check.get("passed")]
+
+
+def test_a_media_side_the_client_refuses_is_recorded_as_its_refusal(tmp_path: Path) -> None:
+    """A client that refuses a media side (topk-embed-v1-small's under its skip ids; here a vision embedder
+    left on the text route) records the refusal -- the request id accounted for, nothing sent, no status --
+    instead of raising out of the corpus step and losing every text row with it; the corpus is accepted."""
+    from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
+    from rcp_ndcg_vllm.observe.requests import plan_recipe
+
+    recipe = load_recipe(RECIPES / "fixture-vl-embed")
+    text_route = recipe.model_copy(
+        update={"client": recipe.client.model_copy(update={"request_shape": "text", "add_generation_prompt": None})}
+    )
+    plan = plan_recipe(text_route, tokenizer_of(text_route), {})
+    rows = [{**row.to_pairs_row(), "request_id": f"pairs:{index}"} for index, row in enumerate(plan.rows)]
+    rows = [row for row in rows if row.get("media")][:1] + [row for row in rows if not row.get("media")][:1]
+    first = start_stub("--tokenizer", str(TOKENIZER))
+    try:
+        report = record_corpus(
+            text_route,
+            first.base_url,
+            rows,
+            tmp_path / "corpus",
+            server_run_id="run-1",
+            engine_facts=_engine_facts(),
+            batch_sizes=(1,),
+        )
+    finally:
+        first.stop()
+    records = _records(tmp_path / "corpus")
+    refused = [r for r in records if r["inputs"].get("probe") == "client_refusal"]
+    assert len(refused) == 2, "one refusal per pass of the same process"
+    assert all(r["response"]["status"] is None and "CapabilityError" in json.dumps(r["response"]) for r in refused)
+    assert {r["inputs"]["request_id"] for r in refused} == {rows[0]["request_id"]}
+    assert any(r["inputs"].get("request_id") == rows[1]["request_id"] for r in records), "the text row recorded"
+    assert report["passed"] is True, [check for check in report["checks"] if not check.get("passed")]

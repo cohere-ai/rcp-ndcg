@@ -31,7 +31,7 @@ from .equivalence.wire import role_client
 from .errors import HarnessError
 from .recipe import Recipe
 
-__all__ = ["bare_exchange", "entry_from_exchange", "record", "record_corpus"]
+__all__ = ["bare_exchange", "entry_from_exchange", "record", "record_corpus", "refusal_exchange"]
 
 _PLACEHOLDER = "http://engine"
 _TIMEOUT_S = 120.0
@@ -311,6 +311,26 @@ def _safe_json(payload: bytes) -> Any:
         return None
 
 
+def refusal_exchange(recipe: Recipe, request_id: str, item: str, error: Exception) -> dict[str, Any]:
+    """A request the product's client refused before sending, as a captured exchange: no status (nothing
+    crossed the wire), the refusal's type and message as the reply bytes, and a request body that names the
+    refused item (``client_refusal``) -- so each refusal is its own record and the plan's request id is
+    accounted for."""
+    route = _ROLE_ROUTES[recipe.role]
+    body = {"client_refusal": {"request_id": request_id, "item": item}}
+    message = f"{type(error).__name__}: {error}"
+    return {
+        "url": f"{_PLACEHOLDER}{route}",
+        "method": "POST",
+        "request_bytes": "",
+        "request_body": body,
+        "status": None,
+        "headers": {},
+        "response_bytes": base64.b64encode(message.encode("utf-8")).decode("ascii"),
+        "response_json": None,
+    }
+
+
 class _Collector:
     """One corpus recording: the records in sending order, the pass being sent and its engine run."""
 
@@ -508,23 +528,37 @@ def _model_layer(
     # The media rows (the media request set's inline images): each media side alone, as the media stage
     # sends it -- one item per request, a reranker's pair per request; their texts are not /tokenize-probed
     # (the engine's chat render of media is not a text the client sends).
+    from rcp_ndcg.errors import RcpNdcgError
+
+    def send_side(row: dict[str, Any], item: str, side: str, call: Any) -> None:
+        """One media side through the client; a client that refuses it is recorded as its refusal (nothing
+        was sent: the media stage reports the same refusal), never an exception that ends the corpus."""
+        context = {"size": 1, "request_ids": [row["request_id"]], "positions": [0], "media": True}
+        start = len(capture.exchanges)
+        try:
+            call()
+        except RcpNdcgError as error:
+            collected.add(
+                refusal_exchange(recipe, row["request_id"], item, error),
+                batch_context=context,
+                inputs=collected.inputs(row, item=item, side=side, probe="client_refusal"),
+            )
+            return
+        captured_since(start, context, collected.inputs(row, item=item, side=side))
+
     media = media_rows(rows)
     for _, row in media:
         query, documents = side_contents(row)
-        context = {"size": 1, "request_ids": [row["request_id"]], "positions": [0], "media": True}
         for position, document in enumerate(documents):
             if not (document.has_media or (recipe.role == "rerank" and query.has_media)):
                 continue
-            start = len(capture.exchanges)
             if recipe.role == "rerank":
-                client.rerank(query, [document], instruction=row.get("instruction"))
+                call = lambda d=document, q=query, r=row: client.rerank(q, [d], instruction=r.get("instruction"))  # noqa: E731
             else:
-                client.encode([document], EncodeRole.DOCUMENT)
-            captured_since(start, context, collected.inputs(row, item=f"document:{position}", side="document"))
+                call = lambda d=document: client.encode([d], EncodeRole.DOCUMENT)  # noqa: E731
+            send_side(row, f"document:{position}", "document", call)
         if query.has_media and recipe.role != "rerank":
-            start = len(capture.exchanges)
-            client.encode([query], EncodeRole.QUERY)
-            captured_since(start, context, collected.inputs(row, item="query:0", side="query"))
+            send_side(row, "query:0", "query", lambda q=query: client.encode([q], EncodeRole.QUERY))
     media_ids = {id(row) for _, row in media}
     rows = [row for row in rows if id(row) not in media_ids]
 
