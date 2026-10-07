@@ -1,0 +1,9 @@
+{
+  "full_corpus_sha256": "36aaba898f1f83bd600e3535a2a8ca720dbfb8b8551e47032d081512aa134790",
+  "gcs_path": null,
+  "sampling": {
+    "rule": "all exchanges of the recorder's fixed set (the whole shakedown corpus)",
+    "seed": null
+  },
+  "schema": "rcp-ndcg.corpus-index/1"
+}

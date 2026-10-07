@@ -27,7 +27,7 @@ def _harness_on_path_and_tokenizers_vendored() -> None:
         sys.path.insert(0, _VLLM_SRC)
     from rcp_ndcg_vllm.fingerprint import use_tokenizer_store
 
-    for store in ENGINES.glob("*/*/_tokenizers"):
+    for store in ENGINES.glob("*/_tokenizers"):
         use_tokenizer_store(store)
 
 

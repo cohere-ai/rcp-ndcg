@@ -1,0 +1,101 @@
+{
+  "collector": {
+    "documents_format": "recorder-record/1",
+    "generator_version": null,
+    "hostname": "hashed-unavailable",
+    "note": "shakedown corpus (provisional): one repetition per request, no /tokenize ground truth, request bodies as the recorder serialised them (parsed JSON, not raw bytes), no engine image digest. The release corpus is re-recorded at RC0 with rcp_ndcg_vllm.observe and keyed by fingerprint.",
+    "recorded_at": "2026-10-06",
+    "recorder": "rcp_ndcg_vllm.record (the recorder's fixed exchange set)",
+    "waves": [
+      "shake-a2"
+    ]
+  },
+  "documents": "exchanges.jsonl.gz",
+  "engine": {
+    "image": "vllm/vllm-openai:v0.31.0",
+    "image_digest": null,
+    "name": "vllm",
+    "version": "0.31.0"
+  },
+  "files": {
+    "exchanges.jsonl.gz": "e9add27495b8710eb2a79e3d10c9af62dd57855cda1f1e99d85aefe733eedc80"
+  },
+  "model": {
+    "id": "Qwen/Qwen3-Reranker-4B",
+    "revision": "22e683669bc0f0bd69640a1354a6d0aebcfeede5"
+  },
+  "non_determinism": {
+    "measured_max_abs": 0.0007804036140441895,
+    "measured_max_rel": 0.040195861383249876,
+    "note": "measured across the corpus's repeated observations of one engine prompt (the recorder's two same-process requests share the pair prompts); one repetition per request, so a second repetition and an after-restart repeat remain for the RC0 corpus to measure",
+    "repeated_prompts": 2,
+    "repetitions": [
+      "same_process"
+    ],
+    "rule": "max-absolute-and-relative-difference-across-repeated-observations-of-one-engine-prompt",
+    "tolerance_abs": 0.0007804036140441895,
+    "tolerance_rel": 0.040195861383249876
+  },
+  "recipe": {
+    "behaviour_fingerprint": "54dcf0ef1d70a4e1e1ad35b6a94ea0090cd6a64ec33c30e4aa5509aaa1572d82",
+    "fingerprint_inputs": {
+      "client.aggregation": "max",
+      "client.api": "rerank",
+      "client.empty_doc": "send",
+      "client.empty_query": "refuse",
+      "client.instruction": "none",
+      "client.listwise": "false",
+      "client.max_images": "0",
+      "client.max_tokens": "8192",
+      "client.max_videos": "0",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_max_tokens": "4096",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \\\"yes\\\" or \\\"no\\\".{special:im_end}\\n{special:im_start}user\\n<Instruct>: Given a web search query, retrieve relevant passages that answer the query\\n<Query>: \"},{\"content\":\"query\"},{\"fixed\":\"\\n<Document>: \"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n{special:<think>}\\n\\n{special:</think>}\\n\\n\"}]}",
+      "client.use_activation": "true",
+      "fingerprint_schema": "rcp-fp/1",
+      "model": "Qwen/Qwen3-Reranker-4B",
+      "revision": "22e683669bc0f0bd69640a1354a6d0aebcfeede5",
+      "serve.chat_template": "template.jinja",
+      "serve.convert": "null",
+      "serve.dtype": "bfloat16",
+      "serve.extra_args": "[]",
+      "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"no\",\"yes\"],\"is_original_qwen3_reranker\":true}",
+      "serve.io_processor_plugin": "null",
+      "serve.limit_mm_per_prompt": "null",
+      "serve.max_model_len": "10000",
+      "serve.mm_processor_kwargs": "{}",
+      "serve.plugin": "null",
+      "serve.pooler_config": "{}",
+      "serve.runner": "pooling",
+      "serve.trust_remote_code": "false",
+      "template_file": "sha256:9c4e94c1c2f3c82e59604720ad8b7edc5dd3448b6be48259e32227dbbeadf38b",
+      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+    },
+    "id": "qwen3-reranker-4b",
+    "recipe_file": "recipe.yaml",
+    "recipe_file_sha256": "459aac08984b1e428b001e603ea96b8e8d82d8ecd3fde0b8c405383b9f937bd6",
+    "revision": "22e683669bc0f0bd69640a1354a6d0aebcfeede5",
+    "role": "rerank",
+    "scoring": "pointwise",
+    "status": {
+      "date": null,
+      "image": null,
+      "report": null,
+      "state": "unverified"
+    }
+  },
+  "schema": "rcp-ndcg.observation/1",
+  "source": {
+    "full_corpus": {
+      "gcs_path": null,
+      "note": "the shakedown recorder's node-local output (12 recipes, files hashed together)",
+      "sha256": "38c96aacc19cf90881ba971bc10940b5fabc4e82921cc9ca275bb60ab55c6426"
+    },
+    "sampling": {
+      "rule": "all exchanges of the recorder's fixed set (the whole shakedown corpus)",
+      "seed": null
+    }
+  }
+}
