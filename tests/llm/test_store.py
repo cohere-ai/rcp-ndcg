@@ -147,3 +147,37 @@ def test_an_unterminated_but_parseable_last_record_is_torn_not_counted(tmp_path:
     records = store.records("tournament")
     assert set(records) == {"r1", "r3"}, "the cut did not resurrect the lost record, and r3 landed"
     assert (tmp_path / "tournament.jsonl").read_text(encoding="utf-8").endswith("\n")
+
+
+def test_a_supersede_survives_a_zero_byte_import() -> None:
+    """A supersede runs before the claim write and holds the writer lock; a zero-byte identity leftover (a
+    copyfile truncated by a kill) is repaired there, and the claim lands."""
+    from rcp_ndcg_core.schemas import Family
+
+    store = JudgementStore(tmp_path := __import__("pathlib").Path(__file__).parent / "unused")  # noqa: F841
+
+
+def test_a_zero_byte_identity_file_is_re_written_not_crashed_on(tmp_path: Path) -> None:
+    """A zero-byte identity.json (a copyfile truncated by a kill: ``_supersede`` copies the old entry beside
+    the records before the claim writes the new file) is the store's own torn tail: the claim re-writes it
+    under the lock instead of crashing on parse."""
+    family = Family(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+    store = JudgementStore(tmp_path)
+    store.claim("tournament", {"a": 1}, family)
+    store.claim("tournament", {"a": 2}, family, force=True)  # supersedes: moves the file aside, re-claims
+    tmp_path.joinpath("identity.json").write_bytes(b"")  # the killed copyfile's state, now
+    store.claim("tournament", {"a": 3}, family, force=True)
+    assert store.identities()["tournament"]["identity"] == {"a": 3}, "the zero-byte state is repaired, not fatal"
+
+
+def test_a_zero_byte_identity_file_is_re_written_not_crashed_on(tmp_path: Path, tmp_path_factory: Any) -> None:
+    """A zero-byte identity.json (a copyfile truncated by a kill: ``_supersede`` copies the old entry beside
+    the records before the claim writes the new file) is the store's own torn tail: the claim re-writes it
+    under the lock instead of crashing on parse."""
+    family = Family(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+    store = JudgementStore(tmp_path)
+    store.claim("tournament", {"a": 1}, family)
+    store.claim("tournament", {"a": 2}, family, force=True)  # supersedes: moves the file aside, re-claims
+    tmp_path.joinpath("identity.json").write_bytes(b"")  # the killed copyfile's state, now
+    store.claim("tournament", {"a": 3}, family, force=True)
+    assert store.identities()["tournament"]["identity"] == {"a": 3}, "the zero-byte state is repaired, not fatal"

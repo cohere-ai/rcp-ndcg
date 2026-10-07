@@ -201,13 +201,19 @@ class JudgeConfig(Endpoint):
     def identity(self) -> dict[str, Any]:
         """The CONTENT fields: who judges, and how they are asked to answer.
 
-        Naming the default wire (``api: openai_chat``) is a spelling of the default, not a different
-        instrument: the payload leaves it out exactly as an unset one (the store identity and the step
-        identities then key the same whatever the spelling; another wire's name stays in)."""
+        Naming the default wire is a spelling of the default, not a different instrument: the payload leaves
+        it out exactly as an unset one (the store identity and the step identities then key the same whatever
+        the spelling; another wire's name stays in)."""
         payload = identity_payload(self)
-        if payload.get("api") == "openai_chat":
-            del payload["api"]
+        if self.api_key_for_identity() is None:
+            payload.pop("api", None)
         return payload
+
+    def api_key_for_identity(self) -> str | None:
+        """The wire adapter's name for identity purposes: the default wire's own name counts as unset (a
+        spelling of the default, not a different instrument), another name as it is given. The one home of
+        that rule; the judgement family's ``api`` field reads it too."""
+        return None if self.api in (None, "openai_chat") else self.api
 
     def api_key(self) -> str:
         """The API key from :attr:`api_key_env`, or ``"EMPTY"`` when none is configured.
