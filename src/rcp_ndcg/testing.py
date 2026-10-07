@@ -216,18 +216,13 @@ def adapter_contract(
     if not isinstance(name, str) or not name:
         failures.append(f"{cls.__name__}.name is not a non-empty string: {name!r}")
     from rcp_ndcg.errors import ProviderError
-    from rcp_ndcg.inference.adapters.base import ADAPTER_FACTS, ADAPTER_MEMBERS, ROLES
+    from rcp_ndcg.inference.adapters.base import ROLES, _adapter_shape_problems
     from rcp_ndcg.inference.types import TokenCount
 
     adapter_role = role or getattr(cls, "role", None)
     if adapter_role not in ROLES:
         failures.append(f"{cls.__name__}.role {adapter_role!r} is not one of {', '.join(ROLES)}")
-    for member in ADAPTER_MEMBERS:
-        if not callable(getattr(cls, member, None)):
-            failures.append(f"{cls.__name__} has no callable {member}(...)")
-    for fact in ADAPTER_FACTS:
-        if not hasattr(cls, fact):
-            failures.append(f"{cls.__name__} declares no credential fact {fact}")
+    failures.extend(f"{cls.__name__} {problem}" for problem in _adapter_shape_problems(cls))
     if isinstance(adapter, type):
         try:
             adapter(config)

@@ -236,27 +236,31 @@ def _aligned_by_index(entries: Sequence[Any], *, source: str, where: str) -> lis
     return list(entries)
 
 
+def _adapter_shape_problems(cls: Any) -> list[str]:
+    """What an adapter class lacks: each of the three members that is not callable, each credential fact it
+    does not declare -- the one shape check, which registration raises on and the contract kit
+    (:func:`rcp_ndcg.testing.adapter_contract`) lists."""
+    problems = [
+        f"has no callable {member}(...)" for member in ADAPTER_MEMBERS if not callable(getattr(cls, member, None))
+    ]
+    problems += [f"declares no credential fact {fact}" for fact in ADAPTER_FACTS if not hasattr(cls, fact)]
+    return problems
+
+
 def _check_adapter_shape(cls: Any, *, entry: str | None = None) -> None:
     """The registration-time shape of an adapter class: the three members callable, the credential facts
     declared. A class that fails here registers nothing -- before the fix, a member missing was a first
     request's ``AttributeError`` and a missing fact was a silent (possibly wrong) default."""
-    where = f"the adapter entry point {entry!r}" if entry else f"{cls.__name__}"
-    for member in ADAPTER_MEMBERS:
-        if not callable(getattr(cls, member, None)):
-            raise ConfigError(
-                f"{where} is not an adapter: it has no callable {member}(...)",
-                hint="an adapter implements calls, interpret and usage; subclass "
-                "rcp_ndcg.inference.adapters.base.AdapterBase for the facts and the constructor convention",
-            )
-    for fact in ADAPTER_FACTS:
-        if not hasattr(cls, fact):
-            raise ConfigError(
-                f"{where} declares no credential fact {fact}",
-                hint=f"declare {', '.join(ADAPTER_FACTS)} (or subclass "
-                "rcp_ndcg.inference.adapters.base.AdapterBase, which carries the declared defaults): a "
-                "missing fact would be silently duck-typed, and the default could send a key where none "
-                "belongs",
-            )
+    problems = _adapter_shape_problems(cls)
+    if problems:
+        where = f"the adapter entry point {entry!r}" if entry else f"{cls.__name__}"
+        raise ConfigError(
+            f"{where} is not a complete adapter: it {'; it '.join(problems)}",
+            hint=f"an adapter implements {', '.join(ADAPTER_MEMBERS)} and declares {', '.join(ADAPTER_FACTS)}: "
+            "subclass rcp_ndcg.inference.adapters.base.AdapterBase, which carries the facts' declared defaults "
+            "and the constructor convention (a missing fact would be silently duck-typed, and the default could "
+            "send a key where none belongs)",
+        )
 
 
 def register_adapter(cls: type[Adapter[Any, Any]]) -> type[Adapter[Any, Any]]:

@@ -351,6 +351,23 @@ def test_an_incomplete_rerank_wire_subclass_is_refused_at_construction() -> None
         _HalfWire(_config())
 
 
+def test_the_wire_facts_refusal_asks_only_for_what_a_subclass_can_miss() -> None:
+    """The credential facts are AdapterBase's declared contract (inherited with their defaults, checked at
+    registration): a RerankWire subclass cannot miss them, so its own refusal names the rerank facts alone
+    and never asks for a credential fact as if it were required."""
+    from rcp_ndcg.inference.adapters.base import ADAPTER_FACTS
+    from rcp_ndcg.inference.adapters.rerank import RerankWire
+
+    class _HalfWire(RerankWire):
+        name = "half_wire"
+
+    with pytest.raises(ConfigError) as caught:
+        _HalfWire(_config())
+    said = f"{caught.value} {caught.value.hint}"
+    assert [fact for fact in ADAPTER_FACTS if fact in said] == []
+    assert all(fact in said for fact in ("SERVER", "REQUEST_CAP", "PAUSE_S", "SENDS_TOP_N", "HAS_INSTRUCTION_FIELD"))
+
+
 def test_an_adapter_without_the_profile_facts_is_refused_at_registration() -> None:
     """The registration contract: a class whose credential facts are undeclared registers nothing -- before
     the check, a missing fact was silently duck-typed with a default that could send a key where none
