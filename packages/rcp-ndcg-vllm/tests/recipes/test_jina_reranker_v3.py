@@ -2,7 +2,8 @@
 
 The recipe is only loaded (the client block constructs the product's ``RerankEndpoint``) and stage 1
 runs on CPU with tokenizer files only: the test downloads ``tokenizer.json`` at the pinned revision
-into ``tmp_path`` (the product's own loader reads it), copies the recipe beside it, and runs
+through the shared ``_served.fetch_tokenizer`` (the tokenizer cache, sha256-pinned; the product's own
+loader reads it), copies the recipe beside it, and runs
 :func:`rcp_ndcg_vllm.equivalence.stages.stage1_prompts` with the reference subprocess (render mode is
 tokenizer-only, no torch).  Offline CI skips the CPU stage with a clear reason; the recipe still
 validates offline (the first test).
@@ -22,26 +23,20 @@ from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 from rcp_ndcg_vllm.recipe import load_recipe
 
 from ._contract import assert_recipe_contract
-from ._served import stage1_facts
+from ._served import fetch_tokenizer, stage1_facts
 
 REPO = "jinaai/jina-reranker-v3"
 REVISION = "d7d7e73b6ea138ced340b83865931b5dfb6c97aa"
 RECIPES = Path(__file__).resolve().parents[2] / "recipes"
 RECIPE_DIR = RECIPES / "jina-reranker-v3"
+TOKENIZER_URL = f"https://huggingface.co/{REPO}/resolve/{REVISION}/tokenizer.json"
+TOKENIZER_SHA256 = "4e95945ab0cef486709f760b81efcc7a6e75747f9165d13ead29159737455803"  # Hub LFS oid at REVISION
 
 
 def _tokenizer_file(tmp: Path) -> Path:
-    """``tokenizer.json`` at the pinned revision, downloaded into ``tmp``; skips offline."""
-    try:
-        from huggingface_hub import hf_hub_download
-    except ModuleNotFoundError as error:  # huggingface_hub is rcp-ndcg's optional [hf] extra, not a
-        # dependency of this package: in an env without it (e.g. a bare `rcp-ndcg-vllm[test]` install)
-        # every tokenizer-backed test here skips, and stage 1 never runs in that env.
-        pytest.skip(f"huggingface_hub is not installed: {error}")
-    try:
-        return Path(hf_hub_download(REPO, "tokenizer.json", revision=REVISION, cache_dir=str(tmp / "hf")))
-    except Exception as error:  # noqa: BLE001 - any fetch failure (offline, DNS, 4xx) skips the stage
-        pytest.skip(f"offline: could not fetch {REPO}@{REVISION} tokenizer.json ({type(error).__name__}: {error})")
+    """``tokenizer.json`` at the pinned revision, sha256-checked, through the shared tokenizer cache;
+    skips offline."""
+    return fetch_tokenizer(TOKENIZER_URL, f"jina-reranker-v3@{REVISION}/tokenizer.json", tmp, sha256=TOKENIZER_SHA256)
 
 
 def _recipe_copy_with_local_tokenizer(tmp_path: Path, tokenizer_file: Path) -> Path:
@@ -407,3 +402,7 @@ def test_notes_state_the_settle_rule_and_the_query_cap() -> None:
     assert "fit binds on overflow only" in notes
     assert "settles the shared query span once per call" in notes
     assert "query_max_tokens 512 declares exactly it" in notes
+    # The served client's wire, as merged: no per-text request caps are ever sent (the stale claim
+    # that it sends max_tokens_per_query=4096 and truncate_prompt_tokens=8192 is gone).
+    assert "never sends the engine's per-text request caps" in notes
+    assert "max_tokens_per_query=4096" not in notes and "truncate_prompt_tokens=8192" not in notes

@@ -28,7 +28,7 @@ it); the harness process never imports it.  CLI contract (``rcp_ndcg_vllm.equiva
 - ``render`` -> ``{"rows": [{"index", "shape": "pair", "query", "documents"}]}``: per pairs row,
   the spans fed to the model's own builder -- the checkpoint's per-text truncations (documents 2048
   tokens, query 512, right, decode-back) applied to the raw texts, exactly as ``rerank()`` stages
-  them before formatting.  The reference never ports the client's cut (the operator's 09x rule):
+  them before formatting.  The reference never ports the client's cut (``docs/how-to/add-a-model.md``):
   under the per-text caps the spans are the raw texts and compare byte-identically with the wire's;
   over-cap rows differ from the client's cuts and ride the declared ``over_cap_cut_differs`` table.
 - ``score``   -> ``{"rows": [{"index", "scores": [...]}]}``: one cosine in [-1, 1] per document,
@@ -130,11 +130,16 @@ def _product_tokenizer(spec: str):
 
 def _truncate_text(text: str, backend: object, max_length: int) -> str:
     """modeling.py ``_truncate_texts``' per-text rule: right-truncate the RAW text before templating; a
-    truncated text is decode(max_length tokens) back to text (skip_special_tokens, as HF's decode)."""
-    backend.enable_truncation(max_length)  # type: ignore[attr-defined]
+    text that reaches ``max_length`` tokens is ``decode(ids[:max_length])`` back to text.
+
+    ``tokenizer(text, truncation=True, max_length=N)`` keeps the first N ids here (this tokenizer's
+    post-processor adds no special tokens), and HF's ``decode`` keeps special tokens
+    (``skip_special_tokens=False``, its default).  The shared backend is never reconfigured (no
+    ``enable_truncation``): the product's ``load_tokenizer`` caches it, so a mutation would cap every
+    later count in the same process."""
     ids = list(backend.encode(text, add_special_tokens=True).ids)  # type: ignore[attr-defined]
     if len(ids) >= max_length:
-        text = backend.decode(ids)  # type: ignore[attr-defined]
+        text = backend.decode(ids[:max_length], skip_special_tokens=False)  # type: ignore[attr-defined]
     return text
 
 
@@ -158,7 +163,7 @@ def render_rows(pairs: list[dict], tokenizer_spec: str) -> list[dict]:
     ``{"index", "shape": "pair", "query": <query span>, "documents": [<doc span>, ...]}`` -- the
     checkpoint's per-text pre-templating truncation applied to the raw texts (``_truncate_text``:
     512/2048 tokens, right, decode-back), exactly as ``rerank()`` stages them before formatting.
-    The reference never ports the client's cut (the operator's 09x rule): under the per-text caps
+    The reference never ports the client's cut (``docs/how-to/add-a-model.md``): under the per-text caps
     the spans are the raw texts and compare byte-identically with the wire's spans; over-cap rows
     differ from the client's cuts and ride the declared ``over_cap_cut_differs`` table.
     """
