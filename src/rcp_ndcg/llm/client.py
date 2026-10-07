@@ -429,8 +429,7 @@ class JudgeClient(RoleClient[JudgeConfig]):
         except Exception:
             self._refused += 1
             raise
-        for reply in replies:
-            transport.add_usage(adapter.usage(reply))
+        self._record_usage(replies)  # the role clients' one rule: each reply's tokens, through the adapter
         fingerprint = getattr(adapter, "fingerprint", None)
         if fingerprint is not None and replies[0].url is not None:
             reported = fingerprint(replies[0])

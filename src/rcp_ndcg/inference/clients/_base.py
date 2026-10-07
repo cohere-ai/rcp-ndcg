@@ -763,23 +763,20 @@ class RoleClient[C: Endpoint]:
     @property
     def usage(self) -> Usage:
         """The sender's accounting (requests, failed requests, tokens): the role client folds every reply's
-        token report into it at send time (:meth:`_record_usage`), the way the judge client folds the
-        judge's -- an embed/pool/rerank run records the tokens its replies reported, never zeros."""
+        token report into it at send time (:meth:`_record_usage`, the rule the judge's replies go through
+        too) -- an embed/pool/rerank run records the tokens its replies reported, never zeros."""
         return self._sender.usage
 
     def _record_usage(self, replies: Sequence[Any]) -> None:
-        """Fold each reply's token report into the transport's usage, once per reply, exactly as the judge's
-        client does: the adapter reads the tokens (the API's field names are its business), the transport
-        accumulates them. A sender without accounting (a bare fake) adds nothing."""
+        """Fold each reply's token report into the transport's usage, once per reply -- the one rule every
+        role client (the judge's included) sends its replies through: the adapter reads the tokens (the API's
+        field names are its business), the transport accumulates them. A sender without accounting (a bare
+        fake) adds nothing."""
         add_usage = getattr(self._sender, "add_usage", None)
         if add_usage is None:
             return
         for reply in replies:
-            add_usage(self._adapter_usage_of(reply))
-
-    def _adapter_usage_of(self, reply: Any) -> TokenCount | None:
-        """The reply's token report, through the adapter (``None`` when its API reports none)."""
-        return self._adapter.usage(reply)
+            add_usage(self._adapter.usage(reply))
 
     # -- the fan-out, one rule ------------------------------------------------
     @staticmethod
