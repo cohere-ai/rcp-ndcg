@@ -196,8 +196,8 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
 
 - `anchor_check` asserts every anchor survived the client's cut, on the captured requests of every shape —
   the rendered prompt's edge for the embed roles, and for a reranker the settle-once query (one settled span
-  per row, identical across the row's pointwise requests, within its declared `query_max_tokens`, and no cut
-  on an in-budget pair). Every wire shape is read: a `token_ids` body is audited on the ids it sends, a
+  per row, identical across the row's pointwise requests, within its declared `query_max_tokens`, every
+  document span within its declared `document_max_tokens`, and no cut on an in-budget pair). Every wire shape is read: a `token_ids` body is audited on the ids it sends, a
   `messages` body as the declared frame around its conversation's text parts (joined with `"\n"`, as the
   engine joins them; its media parts are listed as placeholders beside them): the client sends the content
   and the engine's chat template frames it. An audit that read no input fails. An `anchor: first` head is asserted as the engine reads it: where the head
