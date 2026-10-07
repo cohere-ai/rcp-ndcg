@@ -587,8 +587,10 @@ def render_phased_script(
     wrapped = job.model_copy(
         update={"phases": tuple(phase.model_copy(update={"argv": wrap(phase.argv)}) for phase in job.phases)}
     )
-    rendered = backend.render([wrapped])
-    return rendered[wrapped.name]
+    render = getattr(backend, "render", None)  # the slurm runner's own (the product's render_run pattern)
+    if render is None:
+        raise HarnessError("the slurm runner cannot render what it would submit")
+    return render([wrapped])[wrapped.name]
 
 
 def write_probe(out: Path) -> tuple[Path, Path]:
@@ -1461,7 +1463,7 @@ def _resolve_scenarios(names: Sequence[str], roots: Sequence[Path]) -> list[Path
 def main(argv: Sequence[str] | None = None) -> int:
     """The CLI: drive the scenarios named on the command line in this pod.  Exit 0 when every scenario
     passed, 1 when one failed, 2 for a bad request."""
-    parser = argparse.ArgumentParser(prog="python -m rcp_ndcg_vllm.e2e", description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(prog="python -m rcp_ndcg_vllm.e2e", description=(__doc__ or "").splitlines()[0])
     parser.add_argument(
         "--scenarios", required=True, help="scenario ids, files, directories, or @file listing ids/paths (one per line)"
     )
