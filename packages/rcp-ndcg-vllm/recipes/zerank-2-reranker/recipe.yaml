@@ -17,7 +17,7 @@
 #     --hf-overrides '{"architectures": ["Qwen3ForSequenceClassification"], "classifier_from_token":
 #                      ["Yes"], "method": "no_post_processing"}' \
 #     --pooler-config '{"logit_sigma": 5, "use_activation": true}' \
-#     --chat-template zerank2_score_template.jinja \
+#     --chat-template template.jinja \
 #     --max-model-len 8192
 # --chat-template is LOAD-BEARING: without it the score path falls back to raw query+document
 # concatenation and this model gets no warning (R10; only architectures matching the Qwen3-Reranker
@@ -40,7 +40,7 @@ serve:
     architectures: ["Qwen3ForSequenceClassification"]
     classifier_from_token: ["Yes"]
     method: no_post_processing   # score head := the "Yes" LM-head row (id 9454); num_labels:=1 is automatic
-  chat_template: zerank2_score_template.jinja
+  chat_template: template.jinja
   pooler_config:
     logit_sigma: 5         # sigmoid(l_Yes / 5); logit_mean stays None
     use_activation: true   # pinned SERVER-side as well as on the wire (client.use_activation): the
@@ -52,7 +52,7 @@ serve:
   extra_args: []
 client:
   api: rerank
-  recipe: "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + classifier_from_token [Yes] + method no_post_processing, --chat-template zerank2_score_template.jinja, pooler logit_sigma 5 + use_activation true (sigmoid(l_Yes/5) at the last token, 1-label head)"
+  recipe: "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + classifier_from_token [Yes] + method no_post_processing, --chat-template template.jinja, pooler logit_sigma 5 + use_activation true (sigmoid(l_Yes/5) at the last token, 1-label head)"
   tokenizer: "zeroentropy/zerank-2-reranker@5eae30d5ee3c6b2df2ef6d723bde45172d761c4c"
   max_tokens: 8192         # the paper's whole-pair budget (external_rerankers MAX_SEQ_LENGTH)
   query_max_tokens: 4096   # the query's share of the pair budget (the paper's query cap; the pair
@@ -129,17 +129,20 @@ notes: >
   render for every sampled row, and stage 2 on the GPU wave exercises the engine branch end to
   end. The paper's query.strip()/doc.strip() is the declared content normalisation (client.template
   normalize: [strip]): fit strips the spans before measuring, the wire ships the stripped spans and
-  the reference's spans agree byte for byte (the r-zerank2 "strip asymmetry" closes as declared
+  the reference's spans agree byte for byte on every under-cap row (the r-zerank2 "strip asymmetry" closes as declared
   policy, one rule for the family). Known served-vs-reference differences, all inherited from the
   paper's served path and recorded in the research report section 6: (1) the reference truncates
   only the whole rendered prompt at 8192 (declared known_deviations: anchor_drop_over_cap), the
   served path cuts the content spans and keeps the anchor; (2) the settle rule (above) settles a
   query over its 4096-token share served-side while the in-process reference keeps it whole
-  (experiments/paper/rerankers/zerank_2.yaml); over-share queries are declared divergence rows: keep
-  them out of the wave's pairs file or drop the share (the schema's known_deviations vocabulary has
-  no entry for it yet: recorded product gap); (3) the score-head matmul runs in fp32 on the (head_dtype default for pooling) and bf16 in the reference - expected well
-  inside the probability gates; (4) reference.py implements the recipe's anchor-preserving render
-  itself (the reference environment has no rcp-ndcg), pinned byte-identical to the product's fit by
-  the recipe tests. GPU wave must also: run the negative control (serve without --chat-template
+  (experiments/paper/rerankers/zerank_2.yaml); over-share queries are declared divergence rows - an
+  over-share query in an UNDER-budget pair is an under-cap row and gates red by design (the
+  reference never ports the client's settle rule), so the wave's pairs files keep queries well
+  within the share and drop any row stage 1 goes red on; (3) the score-head matmul runs in fp32 on
+  the engine (head_dtype default for pooling) and bf16 in the reference - expected well inside the
+  probability gates; (4) reference.py's --mode render writes the paper's own cut as the content
+  spans (the whole-prompt right cut at raw character offsets; under the cap the stripped texts),
+  never the client's cut. template.jinja is the family's file name (formerly
+  zerank2_score_template.jinja). GPU wave must also: run the negative control (serve without --chat-template
   falls back to raw concatenation with no warning on this model), and check /tokenize agreement
   (stage 1 does with an engine URL).

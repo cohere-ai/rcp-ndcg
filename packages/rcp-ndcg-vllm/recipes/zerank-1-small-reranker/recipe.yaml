@@ -22,7 +22,7 @@
 #     --hf-overrides '{"architectures": ["Qwen3ForSequenceClassification"], "classifier_from_token":
 #                      ["Yes"], "method": "no_post_processing"}' \
 #     --pooler-config '{"logit_sigma": 5, "use_activation": true}' \
-#     --chat-template zerank_score_template.jinja \
+#     --chat-template template.jinja \
 #     --max-model-len 32768 --dtype bfloat16
 # --chat-template is LOAD-BEARING (R10): without it the score path silently falls back to raw
 # query+document pair encoding, and this converted architecture gets no warning (the startup warning fires
@@ -47,7 +47,7 @@ serve:
     method: no_post_processing         # score head := the "Yes" LM-head row; num_labels := 1 is automatic.
                                        # Dropping either override silently yields the config's 2-label
                                        # softmax head - a different model (research risk R7).
-  chat_template: zerank_score_template.jinja
+  chat_template: template.jinja
   pooler_config:
     logit_sigma: 5           # sigmoid(l_Yes / 5); logit_mean stays None
     use_activation: true     # the 1-label head's default is already sigmoid; pinned so the served scale
@@ -61,7 +61,7 @@ serve:
   extra_args: []
 client:
   api: rerank
-  recipe: "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + classifier_from_token [Yes] + method no_post_processing, --chat-template zerank_score_template.jinja, pooler logit_sigma 5 + use_activation true (sigmoid(l_Yes/5) at the last token, 1-label head)"
+  recipe: "vllm v0.31.0: --runner pooling, hf_overrides Qwen3ForSequenceClassification + classifier_from_token [Yes] + method no_post_processing, --chat-template template.jinja, pooler logit_sigma 5 + use_activation true (sigmoid(l_Yes/5) at the last token, 1-label head)"
   tokenizer: "zeroentropy/zerank-1-small-reranker@a65fd51c450e9b47fdddab98e31166ecad21af8d"
   max_tokens: 8192           # the paper's whole-pair budget (MAX_SEQ_LENGTH, retrieval/cross_encoder.py:42):
                              # the frame, the query and the document together, in this tokenizer's tokens;
@@ -157,14 +157,16 @@ sources:
     config fallback check is a measurement, not a gate, and the serve-time revision pin is rendered by the
     harness's serve_argv (--revision), closing the corrections' serve-time revision risk."
 notes: >
-  Template: zerank_score_template.jinja is the research lane's derived score template with the
+  Template: template.jinja (the family's file name; formerly zerank_score_template.jinja) is the
+  research lane's derived score template with the
   `messages is defined` guard: the engine's score route renders the zerank branch (query message to
   the system turn, document message to the user turn, unconditional assistant header) and the
   harness's stage-1 check renders the plain-text branch; both build the identical frame, and stage 1
   asserts the equality byte-for-byte (template_render_check). The content spans carry the family's
   declared normalisation (client.template normalize: [strip]): fit strips the spans before
   measuring and the wire ships them stripped - the paper's query.strip()/doc.strip() - the
-  reference's spans agree byte for byte, and the template file carries no jinja trim filter. The
+  reference's spans agree byte for byte on every under-cap row, and the template file carries no
+  jinja trim filter. The
   research's strip asymmetry (report section 6 row 1) closes as declared policy here, one rule for
   the family.
   Known served-vs-reference differences, all inherited from the paper's own paths and recorded in
@@ -173,9 +175,10 @@ notes: >
   content spans and keeps the assistant header; (2) the settle rule (above) settles a query over
   its 4096-token share served-side while the in-process reference keeps it whole - the r-zerank1
   research measured 904 prompt tokens lost at a 5000-token query under the former engine-side
-  constant; over-share queries are declared divergence rows: keep them out of the wave's pairs
-  file (stage 1's render table and stage 2's over_cap rows name every affected pair; the schema's
-  known_deviations vocabulary has no entry for it yet: recorded product gap); (3) the score-head matmul runs in fp32 on the
+  constant; over-share queries are declared divergence rows - an over-share query in an
+  UNDER-budget pair is an under-cap row and gates red by design (the reference never ports the
+  client's settle rule), so the wave's pairs files keep queries well within the share and drop any
+  row stage 1 goes red on; (3) the score-head matmul runs in fp32 on the
   engine (head_dtype default for pooling) and bf16 in the reference - expected well inside the
   probability gates; --hf-overrides '{"head_dtype": "model"}' is the closer-to-reference option if
   the gate ever fails. The paper's last prompt token is the newline after the assistant header
@@ -194,8 +197,8 @@ notes: >
   histogram (difference 2 above). reference.py derives from
   experiments/paper/rerankers/reference/zerank.py (the paper's ZerankRerank, unchanged in
   behaviour: strip, chat template, right padding, whole-prompt right cut at 8192, the "Yes" logit
-  at the last non-pad position over 5, sigmoided); its --mode render implements the recipe's
-  anchor-preserving served render (the reference environment has no rcp-ndcg), pinned byte-identical
-  to the product's fit by the recipe tests. Environment: requirements-reference.txt beside
+  at the last non-pad position over 5, sigmoided); its --mode render writes the paper's own cut as
+  the content spans (the whole-prompt right cut at raw character offsets; under the cap the stripped
+  texts), never the client's cut. Environment: requirements-reference.txt beside
   reference.py (the paper reference's pins, minus flash-attn and accelerate, neither of which
   zerank.py imports).
