@@ -678,6 +678,112 @@ def test_a_mixed_length_batch_measures_differing_lengths(tmp_path: Path) -> None
         load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
 
 
+def test_a_media_path_may_not_escape_the_media_directory_even_when_the_target_exists(tmp_path: Path) -> None:
+    """(v1-F3) ``image: media/../outside.png`` must NOT load even though the file exists: the
+    documented containment guarantee ("paths live under ``media/``") holds against ``..`` too, and
+    the file content is later inlined into wire payloads -- an escape would leak bytes off-tree."""
+    import shutil
+
+    shutil.copytree(TEST_RECIPES, tmp_path / "recipes")
+    (tmp_path / "tokenizer.json").write_bytes(
+        (Path(__file__).resolve().parent / "fixtures" / "tokenizer.json").read_bytes()
+    )
+    body = """
+        id: fake-pool/escape
+        recipe: fake-pool
+        role: multi_vector
+        source: {kind: generated}
+        strata: {modality: image, length: short, batch: single}
+        inputs:
+          queries: [{id: q1, text: describe the image}]
+          documents:
+            - id: d1
+              text: an image of a round shape
+              image: media/../outside.png
+        expected:
+          kind: similarity_matrix
+          values: null
+          tolerance: {abs: 0.01}
+          origin: reference
+          status: pending_gpu
+    """
+    case_file = write_case(tmp_path / "cases", "fake-pool", "escape", body)
+    (case_file.parent / "outside.png").write_bytes(_tiny_png())  # the escape TARGET EXISTS
+    (case_file.parent / "media").mkdir()
+    recipe = load_recipe(tmp_path / "recipes" / "fake-pool")
+    with pytest.raises(CaseError, match="escapes the media directory"):
+        load_case(case_file)
+
+
+def test_a_mixed_length_label_is_measured_on_every_batch_label(tmp_path: Path) -> None:
+    """(v1-F4) ``length: mixed`` means the batch mixes lengths -- measured -- on EVERY batch label,
+    ``mixed_modality`` included: a mislabel cannot satisfy the grid (the CHANGELOG promises this and
+    the mixed-length cross-check must not be satisfiable by a lie)."""
+    body = """
+        id: fake-pool/mixed-lie
+        recipe: fake-pool
+        role: multi_vector
+        source: {kind: generated}
+        strata: {modality: mixed, length: mixed, batch: mixed_modality}
+        inputs:
+          queries:
+            - {id: q1, text: aaaa}
+            - {id: q2, text: aaaa}
+          documents:
+            - {id: d1, text: aaaa}
+            - id: d2
+              text: aaaa
+              image: media/pixel.png
+        expected:
+          kind: similarity_matrix
+          values: null
+          tolerance: {abs: 0.01}
+          origin: reference
+          status: pending_gpu
+    """
+    case_file = write_case(tmp_path, "fake-pool", "mixed-lie", body)
+    (case_file.parent / "media").mkdir()
+    (case_file.parent / "media" / "pixel.png").write_bytes(_tiny_png())
+    recipe = load_recipe(TEST_RECIPES / "fake-pool")
+    with pytest.raises(CaseError, match="holds no mixed lengths"):
+        load_cases(tmp_path, recipe, recipes_root=TEST_RECIPES, check_lengths=True)
+
+
+def test_a_run_level_instruction_must_be_on_the_wire_for_the_embed_side(tmp_path: Path) -> None:
+    """(v1-F1) The embed/multi_vector clients have no instruction slot: the run-level ``instruction``
+    reaches the wire ONLY through the recipe's ``query_prompt`` (the product's one text-prefix
+    mechanism for that side). A case declaring an instruction the recipe's query prompt does not
+    carry is refused at the recipe-validated load -- the declared inputs would not be what is sent,
+    silently."""
+    import shutil
+
+    shutil.copytree(TEST_RECIPES, tmp_path / "recipes")
+    (tmp_path / "tokenizer.json").write_bytes(
+        (Path(__file__).resolve().parent / "fixtures" / "tokenizer.json").read_bytes()
+    )
+    body = """
+        id: fake-pool/instruction-dropped
+        recipe: fake-pool
+        role: multi_vector
+        source: {kind: generated}
+        strata: {modality: text, length: short, batch: single}
+        inputs:
+          instruction: Given a search query, retrieve the passage
+          queries: [{id: q1, text: describe the image}]
+          documents: [{id: d1, text: a round shape}]
+        expected:
+          kind: similarity_matrix
+          values: null
+          tolerance: {abs: 0.01}
+          origin: reference
+          status: pending_gpu
+    """
+    write_case(tmp_path, "fake-pool", "instruction-dropped", body)
+    recipe = load_recipe(tmp_path / "recipes" / "fake-pool")
+    with pytest.raises(CaseError, match="instruction the recipe's query prompt does not carry"):
+        load_cases(tmp_path, recipe, recipes_root=TEST_RECIPES, check_lengths=False)
+
+
 def test_a_media_case_needs_the_recipe_to_declare_its_media_policy(tmp_path: Path) -> None:
     """(the shakedown's sweep-recipes finding #7) A case naming an image needs a recipe whose client
     declares it reads images (``max_images >= 1`` and an ``image_policy``; ``max_videos`` /

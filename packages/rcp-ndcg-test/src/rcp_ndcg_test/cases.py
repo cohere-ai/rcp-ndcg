@@ -532,14 +532,23 @@ def load_case(path: str | Path) -> Case:
 def _check_media(case: Case, recipe_cases_dir: Path) -> None:
     """Every media file a case names exists, under the recipe's ``media/`` directory.
 
-    No network at test time: the file is the case's asset. A media path that escapes the recipe's
-    directory (``..``, an absolute path) never matches a file and is refused by the existence check.
+    No network at test time: the file is the case's asset. Containment is resolved, not string-matched:
+    a path that ``..``-escapes the recipe's ``media/`` directory is refused **even when its target
+    exists** (the file's bytes are later inlined into wire payloads, so an escape would leak bytes
+    off-tree).
     """
+    media_dir = (recipe_cases_dir / _MEDIA_PREFIX).resolve()
     for document in case.inputs.documents:
         for field in ("image", "video"):
             value = getattr(document, field)
             if value is None:
                 continue
+            resolved = (recipe_cases_dir / value).resolve()
+            if not resolved.is_relative_to(media_dir):
+                raise CaseError(
+                    f"case {case.id!r}: document {document.id!r} names {field} {value!r}, which escapes "
+                    f"the media directory ({media_dir})"
+                )
             media = recipe_cases_dir / value
             if not media.is_file():
                 raise CaseError(
@@ -640,6 +649,7 @@ def _validate_against_recipe(recipe: Recipe, cases: list[Case], *, check_lengths
                 f"case {case.id!r} declares role {case.role!r} but recipe {recipe.id} serves role {recipe.role!r}"
             )
         _check_media_kinds(recipe, case)
+        _check_instruction_on_the_wire(recipe, case)
         _check_template_shapes(recipe, case)
     if check_lengths:
         _check_lengths(recipe, cases)
@@ -649,12 +659,36 @@ def _validate_against_recipe(recipe: Recipe, cases: list[Case], *, check_lengths
         skipped.append(f"lengths:{recipe.id} (no max_tokens declared)")
 
 
+def _check_instruction_on_the_wire(recipe: Recipe, case: Case) -> None:
+    """A run-level ``inputs.instruction`` must reach the wire, or the load refuses (nothing is
+    dropped silently).
+
+    The actionable fix without a recipe is to drop ``inputs.instruction`` (move the instruction text
+    into ``inputs.queries[].text`` if the card means it literally); with a recipe, the recipe's
+    ``query_prompt`` is the product's one text-prefix mechanism for the query side and must carry the
+    instruction verbatim. ``role: embed`` and ``multi_vector`` are checked this way because their
+    clients have no instruction slot (rerank folds ``instruction=`` itself and is sent as declared);
+    for those two the case's declared *inputs* equal what is sent only when the recipe carries it.
+    """
+    instruction = case.inputs.instruction
+    if instruction is None or case.role == "rerank":
+        return
+    query_prompt = getattr(recipe.client, "query_prompt", None) or ""
+    if instruction not in str(query_prompt):
+        raise CaseError(
+            f"case {case.id!r} declares an instruction the recipe's query prompt does not carry "
+            f"({case.role} clients have no instruction slot on the wire): either render the "
+            f"instruction in the recipe's query_prompt (the product's one text-prefix mechanism for "
+            f"the query side) or drop inputs.instruction (its text may live in each query's text)"
+        )
+
+
 def _check_media_kinds(recipe: Recipe, case: Case) -> None:
     """A case only names media the recipe's model accepts *and* its client declares a policy for.
 
     Two product facts back this: the recipe's ``input`` names what the model takes, and the client's
     media gate refuses a call declaring images the endpoint config does not declare to read
-    (``max_images: 0``) -- the shakedown's sweep-recipes finding #7 hit exactly that pair (image in
+    (``max_images: 0``) -- the shakedown's media-policy finding hit exactly that pair (image in
     ``recipe.input``, empty client policy), which fails the send, not the load. Refuse it here.
     """
     client = getattr(recipe, "client", None)
@@ -665,13 +699,15 @@ def _check_media_kinds(recipe: Recipe, case: Case) -> None:
             raise CaseError(f"case {case.id!r} names an image, but recipe {recipe.id} accepts input {recipe.input}")
         if document.video is not None and "video" not in recipe.input:
             raise CaseError(f"case {case.id!r} names a video, but recipe {recipe.id} accepts input {recipe.input}")
-        if document.image is not None and max_images < 1:
+        if document.image is not None and max_images < 1 and recipe.role != "embed":
+            # embed media cases are declared skips (the EmbeddingEndpoint refuses media before
+            # preparation regardless of a policy), so the policy demand cannot help there (v2-F5)
             raise CaseError(
                 f"case {case.id!r} names an image, but the recipe's client does not declare it reads "
                 f"images (max_images: {max_images}); the product's media gate refuses the send -- "
-                "declare the media policy ('image_policy' and 'max_images') in the recipe's client block"
+                "declare the media policy ('max_images' and 'image_policy') in the recipe's client block"
             )
-        if document.video is not None and max_videos < 1:
+        if document.video is not None and max_videos < 1 and recipe.role != "embed":
             raise CaseError(
                 f"case {case.id!r} names a video, but the recipe's client does not declare it reads "
                 f"videos (max_videos: {max_videos}); the product's media gate refuses the send -- "
@@ -803,15 +839,18 @@ def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
     max_tokens = recipe.client.max_tokens
     tokenizer = _tokenizer_of(recipe)
     for case in cases:
-        if case.strata.batch == "mixed_length":
+        if case.strata.length == "mixed" or case.strata.batch == "mixed_length":
+            # length 'mixed' promises the batch mixes lengths on EVERY batch label (mixed_length or
+            # mixed_modality): measure, never trust the label (v1-F4: an unmeasured pair was a lie).
             measured_batch = [
                 tokenizer.count(text)
                 for text in [text_of(query) or "" for query in case.inputs.queries]
                 + [text_of(document) or "" for document in case.inputs.documents]
             ]
             if len(set(measured_batch)) < 2:
+                mixing = "length mixed" if case.strata.length == "mixed" else "batch mixed_length"
                 raise CaseError(
-                    f"case {case.id!r}: batch mixed_length, but every text input measures "
+                    f"case {case.id!r}: {mixing}, but every text input measures "
                     f"{measured_batch[0]} tokens; the batch holds no mixed lengths"
                 )
         if case.strata.length not in ("long_under", "long_over", "short"):
