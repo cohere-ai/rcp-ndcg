@@ -2,7 +2,7 @@
 #
 # The declared pair shape below mirrors the engine's own 1-vs-1 prompt builder byte for byte
 # (vLLM JinaRankingIOProcessorMixin.format_docs_prompts_func, itself byte-identical to the
-# checkpoint's modeling.py at the pinned revision; both verified by the research lane's instrument).
+# checkpoint's modeling.py at the pinned revision; both measured when the recipe was written).
 # The specials are written by name and resolved from the recipe tokenizer's added tokens; nothing
 # is typed literally.  The listwise N-passage prompt is the engine's own builder too; the pair shape
 # is the per-pair frame the product's text budget reserves and cuts against.
@@ -23,7 +23,11 @@ serve:
   convert: null
   hf_overrides: {}
   chat_template: null
-  pooler_config: {}
+  # use_activation cannot change this model's score: JinaForRanking's token_embed pooler has no
+  # head (vllm/model_executor/models/jina.py:67-73, layers/pooler/tokwise/poolers.py:60 head=None)
+  # and the score is the cosine similarity of the projected marker embeddings. The pin (here and
+  # on the wire) is kept only for the rerank family's uniform declaration; it is inert.
+  pooler_config: {use_activation: false}
   trust_remote_code: false
   max_model_len: 131072
   dtype: bfloat16
@@ -31,6 +35,9 @@ serve:
   extra_args: []
 client:
   api: rerank
+  # Identity content (client_config keeps it, and fills the recipe id when absent): the merged
+  # product's serving settings the client cannot read.
+  recipe: "vllm v0.31.0: --runner pooling; the server-side Jina ranking prompt builder and the marker-token projector pooler (float32 cosine); no per-text request caps are sent (the client cuts to its pair budget)"
   request_shape: text
   template:
     pair:
@@ -56,7 +63,11 @@ reference:
   kind: remote_code
   score_scale: cosine
   entry: reference.py
-  known_deviations: []
+  # The reference is faithful to the checkpoint's own per-text truncation (decode-back, 512/2048)
+  # and never ports the client's cut (docs/how-to/add-a-model.md). The markers survive every cut
+  # (they ride in the engine-built frame), but over-cap spans differ from the client's verbatim
+  # cuts -- over-cap rows are the declared non-gating table.
+  known_deviations: ["over_cap_cut_differs"]
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
@@ -65,48 +76,52 @@ sources:
   - "https://huggingface.co/jinaai/jina-reranker-v3/raw/d7d7e73b6ea138ced340b83865931b5dfb6c97aa/modeling.py (rerank(): block_size 125, max_doc_length 2048, max_query_length 512, flush at >=125 docs or capacity <= 2048; _truncate_texts; format_docs_prompts_func; projector 1024->512->ReLU->512; ids 151670/151671)"
   - "https://huggingface.co/jinaai/jina-reranker-v3/raw/d7d7e73b6ea138ced340b83865931b5dfb6c97aa/added_tokens.json (embed_token 151670, rerank_token 151671)"
   - "https://huggingface.co/jinaai/jina-reranker-v3/raw/d7d7e73b6ea138ced340b83865931b5dfb6c97aa/README.md (licence CC BY-NC 4.0)"
-  - ".refs/vllm@v0.31.0 vllm/model_executor/models/registry.py (JinaForRanking; :269 at the .refs HEAD d0d6e5f3a, :278 at the tag); vllm/model_executor/models/jina.py:44-146 (JinaForRanking, DispatchPooler token_embed, hard-coded ids 151670/151671, float32 cosine)"
-  - ".refs/vllm@v0.31.0 vllm/entrypoints/pooling/scoring/io_processor.py:754-812 (JinaRankingIOProcessorMixin.format_docs_prompts_func, the server-side builder; no chat template on this path), :830-883 (one query's whole candidate set in one prompt), vllm/entrypoints/pooling/scoring/protocol.py:21-44 (max_tokens_per_query/max_tokens_per_doc defaults 0 = off; instruction via chat_template_kwargs) and vllm/entrypoints/pooling/scoring/utils.py:42-54 (truncate_text_to_tokens, the per-text offset slice the request caps apply)"
-  - ".refs/vllm@v0.31.0 vllm/entrypoints/pooling/embed/io_processor.py:656-700 (JinaRankingTokenEmbedIOProcessor: POST /pooling task token_embed, docs-then-query, for the client-side block replication)"
-  - ".refs/vllm@v0.31.0 tests/models/language/pooling/test_jina_reranker_v3.py:25-41 (listwise dependence: 0.345703125 1-vs-1 vs 0.294921875 1-vs-N; TOL 0.01), :50,62 (serving flags)"
+  - "vLLM v0.31.0 vllm/model_executor/models/registry.py:278 (JinaForRanking); vllm/model_executor/models/jina.py:44-146 (JinaForRanking, DispatchPooler token_embed, hard-coded ids 151670/151671, float32 cosine)"
+  - "vLLM v0.31.0 vllm/entrypoints/pooling/scoring/io_processor.py:725-795 (JinaRankingIOProcessorMixin.format_docs_prompts_func, the server-side builder; no chat template on this path), :796-883 (JinaRankingIOProcessor: one query's whole candidate set in one prompt), vllm/entrypoints/pooling/scoring/protocol.py:21-44 (max_tokens_per_query/max_tokens_per_doc defaults 0 = off; instruction via chat_template_kwargs) and vllm/entrypoints/pooling/scoring/utils.py:42-54 (truncate_text_to_tokens, the per-text offset slice the request caps apply)"
+  - "vLLM v0.31.0 vllm/entrypoints/pooling/embed/io_processor.py:656-700 (JinaRankingTokenEmbedIOProcessor: POST /pooling task token_embed, docs-then-query, for the client-side block replication)"
+  - "vLLM v0.31.0 tests/models/language/pooling/test_jina_reranker_v3.py:25-41 (listwise dependence: 0.345703125 1-vs-1 vs 0.294921875 1-vs-N; TOL 0.01), :50,62 (serving flags)"
   - "experiments/paper/rerankers/jina_v3.yaml (the paper's served-path config; recipe: jina-reranker-v3)"
   - "experiments/paper/rerankers/reference/jina.py (the paper-exact in-process reference this reference.py derives from)"
-  - "src/rcp_ndcg/retrieval/external_rerankers.py:397-455 (the paper's JinaRerank harness: empty docs score 0.0, index re-alignment; predict() at :427-455)"
-  - "src/rcp_ndcg/retrieval/_api.py:205 and src/rcp_ndcg/cli/retrieval.py:133 (the paper reranks depth-150 pools)"
-  - "research record: research/r-jina3/out/ (report.md, digest.md, recipe-draft.yaml, reference-draft.py, review/guard.md); corrections r-jina3 rows in research/audit-synth/out/corrections.md; ANCHOR-FINDING.md; REVIEW-LOG.md R10/R20"
+  - "experiments/paper/rerankers/reference/jina.py (the paper's JinaRerank harness, moved unchanged out of the removed src/rcp_ndcg/retrieval/external_rerankers.py:397-455 when retrieval unified -- the old line cites name that pre-unification tree: empty docs score 0.0, index re-alignment; predict() at :65-76)"
+  - "src/rcp_ndcg/cli/retrieval.py:132 (the paper reranks depth-150 pools -- the CLI's rerank depth default)"
 notes: >-
   Score: raw cosine similarity in [-1, 1] (float32) of the projector-transformed states at the two
   marker tokens (embed_token 151670 per document, rerank_token 151671 for the query); no sigmoid,
-  softmax, temperature or scale, so use_activation is explicitly false.  The model is listwise: one
+  softmax, temperature or scale. use_activation cannot change it (the token_embed pooler has no
+  head: vllm/model_executor/models/jina.py:67-73; the score is the cosine of the projected marker
+  embeddings), so the false pin on the wire and in serve.pooler_config is inert -- kept only for
+  the rerank family's uniform declaration.  The model is listwise: one
   query's whole candidate set travels in one prompt, built SERVER-SIDE by vLLM's native Python
   builder (JinaRankingIOProcessorMixin.format_docs_prompts_func), which is byte-identical to the
-  checkpoint's modeling.py (measured by the research instrument; re-verified at the v0.31.0 tag).
+  checkpoint's modeling.py (measured when the recipe was written; re-verified at the v0.31.0 tag).
   NO chat-template file ships on purpose (serve.chat_template: null): this architecture's prompt
   builder is Python, not a jinja template, and vLLM never consults a chat template on the Jina path;
-  the R10 warn-and-concatenate fallback belongs to template-driven io processors.  The declared pair
+  the warn-and-concatenate fallback belongs to template-driven io processors.  The declared pair
   template mirrors that builder's 1-vs-1 render byte for byte (stage 1's render check proves it);
   the N-passage listwise prompt is the engine's own builder with the same frame.  The query appears
-  twice (the intro line and the <query> block): the declared pair shape spans it twice, and the
-  product's fit cuts it once to query_max_tokens and fills both spans, exactly the checkpoint's
-  single truncation.  Budget: max_tokens 3219 = the measured fixed frame (147 tokens, empty content,
+  twice (the intro line and the <query> block): the declared pair shape spans it twice. The pair
+  fit binds on overflow only (an under-budget pair ships whole); the rerank client settles the
+  shared query span once per call -- whenever the query exceeds its share (query_max_tokens 512)
+  it ships at it, recorded once in the census under the doc id <query> -- and fills both spans
+  with the settled query, exactly the checkpoint's single truncation. Per-shape query cap
+  (whether query_max_tokens applies): the reference truncates queries at 512
+  tokens (the checkpoint's max_query_length, decode-back, modeling.py _truncate_texts) --
+  query_max_tokens 512 declares exactly it.  Budget: max_tokens 3219 = the measured fixed frame (147 tokens, empty content,
   pinned tokenizer) + query_max_tokens 512 TWICE (the query spans the prompt two times -- the intro
   line and the <query> block -- so the budget reserves both copies) + 2048 (the checkpoint's
   per-document cap); 147 + 2*512 + 2048 = 3219 is the checkpoint's own worst-case 1-vs-1 prompt, and
   every pair within its per-text caps (query <= 512, document <= 2048) renders under this budget
   uncut.  The client's document cut therefore binds at 3072 - 2*q_tokens (q = the fitted query's
-  tokens), at or above the checkpoint's 2048 cap for every declared query; documents over the cap
-  then bind at the engine's per-text max_tokens_per_doc=2048 -- the consumer MUST send the engine's
-  request fields max_tokens_per_doc=2048 and max_tokens_per_query=512 on every rerank request (vLLM
-  defaults are 0 = off, while the checkpoint truncates 2048/512 per text BEFORE templating on every
-  call; the two rules were measured byte-identical on a 4000-token document).  Without those request
-  fields a document in (2048, 3072 - 2*q] would reach the model uncut where the paper truncated it.
-  Product gap (this recipe cannot fix
-  it, report to the owner): today's served client sends no max_tokens_per_doc, sends
-  max_tokens_per_query=4096, hard-codes truncate_prompt_tokens=8192 (a right cut that silently drops
-  later passages and the <query> block on prompts over 8192 tokens -- never send it), folds dataset
-  instructions into the query text as "Task: ..." (this recipe's instruction is none: the paper
-  sends the bare query), and does not filter empty documents (empty_doc: omit_zero declares the
-  paper's rule: whitespace-only documents score exactly 0.0 without a model call).  EQUIVALENCE HAS
+  tokens), at or above the checkpoint's 2048 cap for every declared query.  Product gap (this
+  recipe cannot fix it; reported to the owner): the merged rerank client cuts client-side and never
+  sends the engine's per-text request caps (no max_tokens_per_doc, max_tokens_per_query or
+  truncate_prompt_tokens: src/rcp_ndcg/inference/clients/rerank.py module docstring), and the
+  schema has no per-document cap beside the pair budget, so a document in (2048, 3072 - 2*q]
+  reaches the model uncut where the checkpoint truncates it per text BEFORE templating -- such a
+  pair is a divergence row the stage-1 render comparison fails loudly (the evaluated-pairs rule
+  below keeps documents at or under 2048 tokens).  The instruction is none (the paper sends the
+  bare query), and empty_doc: omit_zero declares the paper's rule (an empty document scores exactly
+  0.0 without a model call).  EQUIVALENCE HAS
   TWO REGIMES.  (1) Single-block (fewer than 125 documents AND residual capacity 131072 - 2*q_len
   strictly above 2048 after every document -- the flush test is <=): POST /rerank with the whole
   candidate set equals the paper's scores up to bf16 numerics (vLLM's own tolerance 0.01; the gate
@@ -135,9 +150,12 @@ notes: >-
   scored.
   Reference: the checkpoint's remote code (transformers AutoModel, auto_map, trust_remote_code=true,
   revision pinned) -- kind: remote_code; its environment is documented in requirements-reference.txt
-  beside reference.py.  The reference truncates per text (decode-back) where the served client cuts
-  verbatim prefixes; both honoured the anchors on every probed document, so no
-  known_deviations is declared and over-cap pairs stay inside the gates.  The checkpoint also
+  beside reference.py.  The reference stays faithful to the checkpoint's per-text truncation
+  (decode-back, 2048/512 -- exactly as rerank() stages the texts) and never ports the client's cut
+  (docs/how-to/add-a-model.md); the served client cuts verbatim prefixes against its pair budget.
+  Both honour the anchors (the markers ride in the engine-built frame), but the over-cap cuts
+  differ -- so the recipe declares reference.known_deviations: over_cap_cut_differs, and over-cap
+  pairs are reported in the non-gating table while only under-cap pairs gate.  The checkpoint also
   sanitizes the two marker tokens out of the user text before formatting; the declared template
   cannot express that, so a pairs row whose query or document contains a marker literal would fail
   stage 1's render check by design -- keep marker literals out of evaluated inputs.  Stage 1's render
@@ -146,6 +164,8 @@ notes: >-
   sits between the checkpoint's per-text cap (2048) and that cut renders differently on the two
   sides (the checkpoint truncates, the declared budget does not yet bind), and evaluated pairs
   therefore keep documents at or under 2048 tokens and queries at or under 512 (147 + 2*512 + 2048
-  = 3219 = the budget, so such pairs always render uncut); over-budget behaviour is audited by
-  stage 1's own over-length samples (anchors only) and gated in stage 2, where the engine's per-text
-  caps make the served prompt equal the reference's.
+  = 3219 = the budget, so such pairs always render uncut); over-budget behaviour rides the
+  declared over_cap_cut_differs table (reported, not gated).  An over-share query (over 512 tokens) is a
+  declared divergence row: the client settles the query verbatim at its 512-token share while the
+  checkpoint truncates decode-back (both honour the cap; the boundary bytes can differ), so
+  evaluated pairs keep queries at or under 512 tokens.

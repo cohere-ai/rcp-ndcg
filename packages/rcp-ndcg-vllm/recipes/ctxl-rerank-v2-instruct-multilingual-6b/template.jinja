@@ -2,17 +2,17 @@
 
     Two render contexts, one output byte string:
     - the engine (vLLM's /rerank): the template receives `messages` -- exactly two messages,
-      roles "query" and "document" -- and the request's instruction as a template kwarg;
-    - the CPU equivalence harness: it renders this file with flat `query` / `document` /
-      `instruction` kwargs, so the flat branch mirrors the engine's render for the same texts.
+      roles "query" and "document";
+    - the CPU equivalence harness: it renders this file with flat `query` / `document` kwargs, so
+      the flat branch mirrors the engine's render for the same texts.
 
     No BOS line: this checkpoint's tokenizer post-processor already prepends <s> (id 1) to the
     rendered prompt under vLLM's fixed add_special_tokens=True; the vendor template's bos_token
     line would emit it twice (measured ids [1, 1, ...] vs the reference's [1, ...]).
 
-    The instruction (the model card's inline form, " {instruction}" before " ??") reaches the
-    prompt only through the kwarg or a system message. This recipe's client declares
-    instruction: none and never sends the field, so the branch is inert for the served path. -#}
+    No instruction: the family declares instruction: none (the paper's mode). The vendor template's
+    inline " {instruction}" slot is dropped, as in the 1b and 2b templates -- an instruction kwarg
+    or a system message never reaches the prompt. -#}
 {%- if query is defined and document is defined -%}
 {%- set query_text = query -%}
 {%- set document_text = document -%}
@@ -20,11 +20,6 @@
 {%- set query_text = messages | selectattr("role", "eq", "query") | map(attribute="content") | first -%}
 {%- set document_text = messages | selectattr("role", "eq", "document") | map(attribute="content") | first -%}
 {%- endif -%}
-{%- if instruction is defined -%}
-{%- set instruction_text = instruction -%}
-{%- else -%}
-{%- set instruction_text = messages | selectattr("role", "eq", "system") | map(attribute="content") | first | default("") -%}
-{%- endif -%}
 Check whether a given document contains information helpful to answer the query.
 <Document> {{ document_text }}
-<Query> {{ query_text }}{% if instruction_text %} {{ instruction_text }}{% endif %} ??
+<Query> {{ query_text }} ??

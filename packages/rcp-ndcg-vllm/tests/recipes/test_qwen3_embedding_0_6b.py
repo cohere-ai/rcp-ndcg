@@ -1,12 +1,12 @@
 """The ``qwen3-embedding-0.6b`` recipe: the schema validates, and stage 1 passes on CPU.
 
 Stage 1 runs the harness's own ``stage1_prompts`` with the recipe directory's ``reference.py`` as the
-subprocess (its render mode needs only ``tokenizers`` + ``huggingface_hub`` -- no torch, no weights).
-The pinned tokenizer files are downloaded into a scratch cache (``RCP_QWEN3_EMBED_HF_CACHE`` when
-set, so a lane's scratch dir can hold them; ``tmp_path`` otherwise) and the tests skip with a clear
-reason when the Hub is unreachable or ``huggingface_hub`` is absent (CI's slim venv).
+subprocess (its render mode needs only ``huggingface_hub`` -- no torch, no weights). The pinned
+tokenizer files are downloaded into the shared tokenizer cache (``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when
+set, ``tmp_path`` otherwise; ``_served.tokenizer_cache``) and the tests skip with a clear reason
+when the Hub is unreachable or ``huggingface_hub`` is absent (CI's slim venv).
 
-The measured invariants (research lane r-qwen3-emb, final instrument run 14/14): the card's example
+The measured invariants (at the pinned revision): the card's example
 query renders to 27 token ids and the example document to 8, each ending on the post-processor's
 endoftext anchor (id 151643) that last-token pooling reads.
 """
@@ -22,7 +22,7 @@ from typing import Any
 
 import pytest
 import yaml
-from rcp_ndcg_vllm import default_recipes_root, load_recipe, serve_argv
+from rcp_ndcg_vllm import load_recipe, serve_argv
 from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg_vllm.equivalence.fitting import tokenizer_of
 from rcp_ndcg_vllm.equivalence.reference import run_reference
@@ -30,16 +30,17 @@ from rcp_ndcg_vllm.equivalence.reference import run_reference
 from rcp_ndcg.data.templates import Segment
 from rcp_ndcg.inference.config import EmbeddingEndpoint
 
-from ._served import served_texts, stage1_facts
+from ._contract import assert_recipe_contract
+from ._served import served_texts, stage1_facts, tokenizer_cache
 
 REPO = "Qwen/Qwen3-Embedding-0.6B"
 REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"  # re-checked against the Hub API; not gated
 END_OF_TEXT_NAME = "endoftext"  # the appended anchor the last-token pooler reads; never typed out
 END_OF_TEXT_ID = 151643
-RECIPE_DIR = default_recipes_root() / "qwen3-embedding-0.6b"
+RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "qwen3-embedding-0.6b"
 CARD_QUERY = "What is the capital of China?"
 CARD_DOCUMENT = "The capital of China is Beijing."
-#: The measured invariant on the card's example (the research instrument's token equality, run 3).
+#: The measured invariant on the card's example (token equality at the pinned revision).
 CARD_QUERY_IDS = 27
 CARD_DOCUMENT_IDS = 8
 N_PAIRS = 22
@@ -71,9 +72,8 @@ def _skip_unless_hub_reachable() -> None:
 
 @pytest.fixture
 def hub_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """The Hub cache for the tokenizer downloads: the lane's scratch dir when it names one."""
-    cache = Path(os.environ.get("RCP_QWEN3_EMBED_HF_CACHE") or tmp_path / "hf-cache")
-    cache.mkdir(parents=True, exist_ok=True)
+    """The Hub cache for the tokenizer downloads: the shared tokenizer cache (one home)."""
+    cache = tokenizer_cache(tmp_path / "hf-cache")
     monkeypatch.setenv("HF_HOME", str(cache))
     monkeypatch.setenv("HF_HUB_CACHE", str(cache))
     return cache
@@ -126,8 +126,9 @@ def write_pairs(path: Path, rows: list[dict[str, Any]]) -> Path:
 
 
 def test_the_recipe_loads_and_declares_the_served_path() -> None:
-    """The schema validates and the rendered argv is the researched served path."""
+    """The schema validates and the rendered argv is the served path."""
     recipe = load_recipe(RECIPE_DIR)
+    _assert_contract(recipe)  # every serve, client and reference field pinned, exactly
     assert recipe.id == "qwen3-embedding-0.6b"
     assert recipe.model == REPO and recipe.revision == REVISION
     assert recipe.role == "embed" and recipe.input == ["text"] and recipe.licence == "apache-2.0"
@@ -146,7 +147,7 @@ def test_the_recipe_loads_and_declares_the_served_path() -> None:
     assert recipe.serve.chat_template is None and recipe.serve.trust_remote_code is False
     assert recipe.serve.pooler_config == {} and recipe.serve.plugin is None
     assert recipe.reference.kind == "transformers" and recipe.reference.score_scale == "cosine"
-    assert recipe.reference.known_deviations == [] and recipe.status.state == "unverified"
+    assert recipe.reference.known_deviations == ["over_cap_cut_differs"] and recipe.status.state == "unverified"
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
     assert argv[:3] == ["vllm", "serve", REPO]
     assert argv[argv.index("--revision") + 1] == REVISION
@@ -203,7 +204,7 @@ def test_stage1_token_ids_and_anchors_pass_on_cpu(tmp_path: Path, hub_cache: Pat
 
 
 def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, hub_cache: Path) -> None:
-    """Token-id equality against the reference subprocess, with the research's measured invariants."""
+    """Token-id equality against the reference subprocess, with the measured invariants."""
     _skip_unless_hub_reachable()
 
     recipe = load_recipe(RECIPE_DIR)
@@ -226,7 +227,7 @@ def test_the_card_example_renders_to_the_measured_ids(tmp_path: Path, hub_cache:
     assert query_row["text"] == frame + CARD_QUERY
     assert document_row["text"] == CARD_DOCUMENT
     # The served fit renders the same strings (what the engine receives), and the ids carry the
-    # research's measured invariants: 27 and 8 tokens, each ending on the endoftext anchor.
+    # measured invariants: 27 and 8 tokens, each ending on the endoftext anchor.
     served_query = served_texts(recipe, [CARD_QUERY], "query")[0]
     served_document = served_texts(recipe, [CARD_DOCUMENT], "document")[0]
     assert served_query == query_row["text"]
@@ -265,19 +266,172 @@ def test_dropping_the_trailing_anchor_position_declaration_turns_the_anchor_chec
     assert "document" in {failure["shape"] for failure in document["anchor_check"]["failures"]}
 
 
-def test_stage1_survives_over_cap_pairs_rows(tmp_path: Path, hub_cache: Path) -> None:
-    """A pairs row over the budget is compared too: the reference renders the card's truncated prompt.
-
-    The harness compares every pairs row's render (only the derived over-length samples carry their
-    own shape and skip the comparison), so the reference's render mode must implement the same
-    anchor-preserving cut the served fit makes: 8191 content+frame ids, then the post-processor's
-    anchor at 8192 -- measured byte-identical to fit at the cap.
-    """
+def test_an_over_cap_pairs_row_rides_the_declared_table_with_the_cards_uncut_prompt(
+    tmp_path: Path, hub_cache: Path
+) -> None:
+    """Decision 9: the reference renders the card's prompt uncut (the card truncates ids at encode)
+    and never ports the client's cut.  An over-budget pairs row therefore differs from the client's
+    content-only cut by declaration (``over_cap_cut_differs``): stage 1 reports it in the non-gating
+    table and still passes on every under-cap row."""
     _skip_unless_hub_reachable()
     recipe = load_recipe(RECIPE_DIR)
     rows = pairs_rows()
-    rows.append({"query": CARD_QUERY, "documents": ["long document about retrieval " * 9000]})
+    long_document = "long document about retrieval " * 9000
+    rows.append({"query": CARD_QUERY, "documents": [long_document]})
     pairs = write_pairs(tmp_path / "pairs.jsonl", rows)
     document = stage1_prompts(recipe, str(pairs), sys.executable, over_length_per_shape=OVER_LENGTH_PER_SHAPE)
-    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
+    render = document["render_check"]
+    assert render["passed"] is True, render["failures"][:1]
+    over_cap = render["over_cap"]
+    assert over_cap["known_deviation"] is True and over_cap["gating"] is False
+    assert [(entry["index"], entry["shape"]) for entry in over_cap["rows"]] == [(len(rows) - 1, "document")]
+    reference = run_reference(
+        sys.executable,
+        str(RECIPE_DIR / recipe.reference.entry),
+        mode="render",
+        pairs_path=str(pairs),
+        out_path=tmp_path / "reference.json",
+        tokenizer_spec=f"{REPO}@{REVISION}",
+    )
+    texts = {(row["index"], row["shape"]): row["text"] for row in reference["rows"]}
+    assert texts[(len(rows) - 1, "document")] == long_document  # the card's uncut prompt
     assert document["passed"] is True
+
+
+# ---------------------------------------------------------------------------
+# The declared contract: every serve, client and reference field pinned.
+# ---------------------------------------------------------------------------
+
+EXPECTED_TOP = {
+    "id": "qwen3-embedding-0.6b",
+    "input": ["text"],
+    "licence": "apache-2.0",
+    "model": "Qwen/Qwen3-Embedding-0.6B",
+    "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+    "role": "embed",
+}
+EXPECTED_SERVE = {
+    "chat_template": None,
+    "convert": None,
+    "dtype": "bfloat16",
+    "extra_args": [],
+    "hf_overrides": {},
+    "io_processor_plugin": None,
+    "limit_mm_per_prompt": None,
+    "max_model_len": 32768,
+    "mm_processor_kwargs": {},
+    "plugin": None,
+    "pooler_config": {},
+    "runner": "pooling",
+    "trust_remote_code": False,
+}
+EXPECTED_CLIENT = {
+    "aggregation": "max",
+    "api": "openai_embeddings",
+    "api_key_env": None,
+    "batch_size": 32,
+    "chunk": None,
+    "concurrency": 64,
+    "connect_timeout_s": 5.0,
+    "dimensions": None,
+    "doc_prompt": "",
+    "empty_doc": "send",
+    "empty_doc_text": None,
+    "headers_env": {},
+    "image_policy": None,
+    "image_processor": None,
+    "max_images": 0,
+    "max_retries": 2,
+    "max_tokens": 8192,
+    "max_videos": 0,
+    "media_sides": ["query", "document"],
+    "model": "qwen3-embedding-0.6b",
+    "normalize": True,
+    "on_overflow": "cut",
+    "query_max_tokens": None,
+    "query_prompt": "",
+    "recipe": "vllm v0.31.0: --runner pooling (convert auto -> embed); the pooler resolves from the "
+    "checkpoint's sentence-transformers metadata (last-token + L2 normalize); bare strings on "
+    "/v1/embeddings with the post-processor anchor appended",
+    "request_shape": "text",
+    "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+    "template": {
+        "add_special_tokens": True,
+        "anchor": "last",
+        "anchor_markers": [],
+        "document": [{"content": "document", "fixed": None}],
+        "normalize": [],
+        "pair": None,
+        "query": [
+            {
+                "content": None,
+                "fixed": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:",
+            },
+            {"content": "query", "fixed": None},
+        ],
+    },
+    "timeout_s": 600.0,
+    "tokenizer": "Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+    "video_policy": None,
+    "wait_on_outage_s": None,
+}
+EXPECTED_REFERENCE = {
+    "entry": "reference.py",
+    "kind": "transformers",
+    "known_deviations": ["over_cap_cut_differs"],
+    "score_scale": "cosine",
+}
+
+# Two mutants per recipe against the contract pin above: each drift must fail, naming the field.
+MUTANTS: list[tuple[str, tuple[str, ...], object, str]] = [
+    ("serve.max_model_len drifts to 40960", ("serve", "max_model_len"), 40960, "max_model_len"),
+    ("client.max_tokens drifts to 4096", ("client", "max_tokens"), 4096, "client.max_tokens"),
+]
+
+
+def _mutated_recipe(tmp_path: Path, path: tuple[str, ...], value: object) -> object:
+    """The recipe directory copied into ``tmp_path`` with one YAML field set to ``value``."""
+    import shutil
+
+    import yaml
+
+    target = tmp_path / RECIPE_DIR.name
+    shutil.copytree(RECIPE_DIR, target)
+    yaml_path = target / "recipe.yaml"
+    data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    node = data
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = value
+    yaml_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return load_recipe(target)
+
+
+def _assert_contract(recipe: object) -> None:
+    assert_recipe_contract(
+        recipe,
+        serve=EXPECTED_SERVE,
+        client=EXPECTED_CLIENT,
+        reference=EXPECTED_REFERENCE,
+        top=EXPECTED_TOP,
+    )
+
+
+@pytest.mark.parametrize(("label", "path", "value", "needle"), MUTANTS, ids=[m[0] for m in MUTANTS])
+def test_two_contract_mutants_are_red(
+    label: str, path: tuple[str, ...], value: object, needle: str, tmp_path: Path
+) -> None:
+    """A drifted field fails the contract assertion naming it (two mutants per recipe)."""
+    _assert_contract(load_recipe(RECIPE_DIR))  # the pinned recipe itself is green
+    with pytest.raises(AssertionError) as caught:
+        _assert_contract(_mutated_recipe(tmp_path, path, value))
+    assert needle in str(caught.value), f"{label}: the failure must name {needle}: {caught.value}"
+
+
+def test_notes_state_the_merged_budget_wiring_and_the_query_cap_check() -> None:
+    """The notes read the merged product: the budget is fitted on the
+    wire, and the query_max_tokens check found no separate referent cap."""
+    notes = load_recipe(RECIPE_DIR).notes
+    assert "fitted to the declared budget on the wire" in notes
+    assert "not wired yet" not in notes and "harness pre-fits" not in notes
+    assert "no separate query cap exists in the referent" in notes

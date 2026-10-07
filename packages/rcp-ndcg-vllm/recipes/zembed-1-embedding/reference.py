@@ -9,31 +9,36 @@ marker plus a newline; the token whose hidden state the last-token pooler reads)
 the whole prompt at ``max_seq_length`` (``sentence_bert_config.json``: 32768), ``Pooling`` pools the
 last token, ``Normalize`` L2-normalizes.
 
-Before encoding, the reference applies the recipe's own anchor-preserving cut: the content is cut to
-the budget that remains after reserving every fixed template token, and the frame is re-attached --
-the same policy the served client declares (``on_overflow: cut``). Feeding the model raw over-cap
-text would instead trigger the remote tokenize's whole-prompt right cut, which can drop the pooled
-suffix token -- the exact anchor defect research/ANCHOR-FINDING.md bans (the mmmv commit 302b1c9d
-class) -- so the reference does not reproduce it, and the recipe declares no
-``reference.known_deviations``: stage 2 compares served against reference on identical renders at
-every length. Every constant here is read from the checkpoint's own files at run time (bound at
+The reference is the model's published path verbatim and never ports the client's cut: it encodes
+the raw texts and lets the remote tokenize's whole-prompt right cut do its own work at
+``max_seq_length``.  That cut drops the pooled suffix token on over-cap inputs (the anchor defect the
+served path must never have), while the SERVED side keeps the anchor by the recipe's declared client
+cut (``on_overflow: cut``, content only, frame re-attached).  The reference's over-cap cut therefore
+differs from the client's AND drops the anchor, so the recipe declares
+``reference.known_deviations: [anchor_drop_over_cap]``: over-cap rows ride the non-gating table and
+only under-cap rows gate.
+
+Every constant here is read from the checkpoint's own files at run time (bound at
 startup, never transcribed), and the suffix is checked against the literal the remote module
 appends whenever ``modeling_zembed.py`` is resolvable beside the config.
 
 Reference environment (its own python, never the harness's process): torch>=2.0,
-transformers>=4.40, numpy, and sentence-transformers>=3.0,<6 (5.1.x measured). sentence-transformers
-6.x must not be used: its preprocess-first pipeline bypasses tokenize-only remote modules and
-silently drops the suffix. ``--mode render`` needs only transformers (tokenizer files); ``--mode
-embed`` downloads the ~8 GB checkpoint and wants a GPU (the wave passes ``--device``).
+transformers>=4.51, numpy, and sentence-transformers>=5.3,<5.4 -- the last line whose encode calls
+the remote tokenize; from 5.4.0 the preprocess-first pipeline bypasses the tokenize-only remote
+module and silently drops the suffix (requirements-reference.txt has the lines and the install).
+``--mode render`` is string work over the checkpoint's config files
+(stdlib; ``huggingface_hub`` for a Hub spec); ``--mode embed`` downloads the ~8 GB checkpoint and
+wants a GPU (the wave passes ``--device``).
 
 CLI (the harness's subprocess contract, enforced by
 ``rcp_ndcg_vllm.equivalence.reference.run_reference``)::
 
     reference.py --mode <render|embed> --pairs <file> --out <file> --tokenizer <spec> [--device <d>]
 
-``--mode render`` writes ``{"rows": [{"index", "shape", "text"}]}`` -- per pair, the rendered prompt
-for every declared shape (``query``, ``document``): prefix + content (cut to the budget) + suffix,
-the exact string ``--mode embed`` then encodes. ``--mode embed`` writes
+``--mode render`` writes ``{"rows": [{"index", "shape", "text"}]}`` -- per pair, the assembled
+prompt for every declared shape (``query``, ``document``): prefix + content + suffix, uncut (the
+model's own truncation is the remote tokenize's whole-prompt right cut, inside encode; over-cap
+rows differ from the client's cut and ride the declared ``anchor_drop_over_cap`` table). ``--mode embed`` writes
 ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[...]]}]}`` -- one 2560-dim
 L2-normalized vector per query and per document, on the model's published path.
 """
@@ -167,86 +172,17 @@ def _check_suffix_literal(module_path: Path, suffix: str) -> None:
         )
 
 
-def _tokenizer(spec: str):
-    """The checkpoint's tokenizer (transformers, the model's own stack), loaded once.
-
-    A local directory loads with ``local_files_only`` so a stage-1 run never touches the network;
-    a Hub spec downloads (or reuses the cache) at the pinned revision.
-    """
-    from transformers import AutoTokenizer
-
-    directory = _local_dir(spec)
-    if directory is not None:
-        tokenizer = AutoTokenizer.from_pretrained(str(directory), local_files_only=True)
-    else:
-        repo, _, revision = spec.partition("@")
-        tokenizer = AutoTokenizer.from_pretrained(repo, revision=revision or None)
-    if not getattr(tokenizer, "is_fast", False):
-        raise RuntimeError(
-            "the reference needs the fast tokenizer (tokenizer.json) for offset-based cutting; "
-            f"the checkpoint at {spec} loaded {type(tokenizer).__name__}"
-        )
-    return tokenizer
-
-
-def _count(tokenizer: object, text: str, *, add_special_tokens: bool) -> int:
-    """The token count of ``text`` as the engine reads it (the post-processor's tokens included when
-    ``add_special_tokens``)."""
-    encoded = tokenizer(text, add_special_tokens=add_special_tokens)  # type: ignore[attr-defined]
-    return len(encoded["input_ids"])
-
-
-def token_prefix(
-    text: str,
-    max_tokens: int,
-    tokenizer: object,
-    *,
-    rendered,  # noqa: ANN001 - a (str -> str) frame closure; typed loosely on purpose
-    add_special_tokens: bool,
-) -> str:
-    """A prefix of ``text`` that ends at one of its first ``max_tokens`` token boundaries and whose
-    assembled render counts at most ``max_tokens``: the longest such prefix the search finds.
-
-    The reference's independent implementation of the recipe's declared cut (the product implements
-    the same search in ``rcp_ndcg.data.preprocess.token_prefix``; stage 1 proves the two agree byte
-    for byte). The cut is located with the tokenizer's offset mapping on the original text, so the
-    result is a verbatim prefix; a candidate is counted as the engine reads it -- ``rendered(prefix)``,
-    the full frame around the piece -- because a cut word can re-tokenize differently in place.
-    """
-    offsets = tokenizer(text, add_special_tokens=False, return_offsets_mapping=True)["offset_mapping"]  # type: ignore[attr-defined]
-
-    def count(piece: str) -> int:
-        return _count(tokenizer, rendered(piece), add_special_tokens=add_special_tokens)
-
-    def prefix(tokens: int) -> str:
-        return text[: offsets[tokens - 1][1]] if tokens > 0 else ""
-
-    def fits(tokens: int) -> bool:
-        return count(prefix(tokens)) <= max_tokens
-
-    over = min(max_tokens, len(offsets))
-    if fits(over):
-        return prefix(over)
-    fitting, step = over - 1, 1
-    while fitting > 0 and not fits(fitting):
-        over, fitting, step = fitting, max(fitting - step, 0), step * 2
-    while over - fitting > 1:
-        middle = (over + fitting) // 2
-        fitting, over = (middle, over) if fits(middle) else (fitting, middle)
-    return prefix(fitting)
-
-
 class Renderer:
-    """The reference's render of one text: the model's frame, the content cut to the model's cap.
+    """The reference's render of one text: the model's frame around the content, uncut.
 
-    The cut reserves the frame: the content piece is searched so that ``prompt + piece + suffix``
-    counts at most ``max_seq_length`` tokens, then the frame is re-attached -- the anchor (the
-    suffix, the pooled token) survives every cut.
+    The prompt is prefix + content + suffix exactly as the model's own path assembles it; the
+    over-cap truncation is the remote tokenize's whole-prompt right cut INSIDE the model (which
+    over-cap drops the pooled suffix token -- the faithful behaviour the recipe declares as
+    ``anchor_drop_over_cap``), never a port of the client's cut.
     """
 
-    def __init__(self, checkpoint: Checkpoint, tokenizer_spec: str) -> None:
+    def __init__(self, checkpoint: Checkpoint) -> None:
         self.checkpoint = checkpoint
-        self.tokenizer = _tokenizer(tokenizer_spec)
 
     def prompt_of(self, shape: str) -> str:
         """The checkpoint's prompt for one declared shape (the frame's head)."""
@@ -254,24 +190,9 @@ class Renderer:
             raise ValueError(f"shape must be one of {sorted(self.checkpoint.prompts)}, got {shape!r}")
         return self.checkpoint.prompts[shape]
 
-    def content_piece(self, text: str, shape: str) -> str:
-        """The content span as the reference fits it: cut to the budget the frame leaves, else whole."""
-        prompt = self.prompt_of(shape)
-        suffix = self.checkpoint.suffix
-        cap = self.checkpoint.max_seq_length
-        if _count(self.tokenizer, prompt + text + suffix, add_special_tokens=_ADD_SPECIAL_TOKENS) <= cap:
-            return text
-        return token_prefix(
-            text,
-            cap,
-            self.tokenizer,
-            rendered=lambda piece: prompt + piece + suffix,
-            add_special_tokens=_ADD_SPECIAL_TOKENS,
-        )
-
     def render(self, text: str, shape: str) -> str:
-        """The exact prompt string the recipe sends the engine for one text and shape."""
-        return self.prompt_of(shape) + self.content_piece(text, shape) + self.checkpoint.suffix
+        """The assembled prompt string for one text and shape: prefix + content + suffix, uncut."""
+        return self.prompt_of(shape) + text + self.checkpoint.suffix
 
 
 def _rows_of(pairs_path: str) -> list[dict[str, object]]:
@@ -291,7 +212,7 @@ def _rows_of(pairs_path: str) -> list[dict[str, object]]:
 
 def render_rows(pairs_path: str, tokenizer_spec: str) -> dict[str, object]:
     """Stage 1's reference side: per pair and declared shape, the rendered prompt text (CPU; no weights)."""
-    renderer = Renderer(Checkpoint.load(tokenizer_spec), tokenizer_spec)
+    renderer = Renderer(Checkpoint.load(tokenizer_spec))
     rows = []
     for index, row in enumerate(_rows_of(pairs_path)):
         for shape in SHAPES:
@@ -301,22 +222,22 @@ def render_rows(pairs_path: str, tokenizer_spec: str) -> dict[str, object]:
 
 
 def embed_rows(pairs_path: str, tokenizer_spec: str, device: str) -> dict[str, object]:
-    """Stage 2's reference side: the model's published path over the recipe's fitted renders.
+    """Stage 2's reference side: the model's published path over the RAW texts.
 
-    The content piece is cut exactly as in ``--mode render`` (same constants, same search), then the
-    model card's usage encodes it: ``encode_query``/``encode_document`` apply the role prompt, the
-    remote tokenize appends the suffix (a no-op truncation at this length, since the piece was cut
-    to leave the frame room), Pooling reads the last token, Normalize L2-normalizes. Vectors come
-    back float32, one per query and one per document, 2560 dims.
+    ``encode_query``/``encode_document`` apply the role prompt, the remote tokenize appends the
+    suffix and right-truncates the whole prompt at ``max_seq_length`` (its own rule -- over-cap
+    drops the pooled suffix, the declared ``anchor_drop_over_cap`` behaviour), Pooling reads the
+    last token, Normalize L2-normalizes. Vectors come back float32, one per query and one per
+    document, 2560 dims.  Never a port of the client's cut.
     """
     import numpy as np
 
-    renderer = Renderer(Checkpoint.load(tokenizer_spec), tokenizer_spec)
+    renderer = Renderer(Checkpoint.load(tokenizer_spec))
     try:  # the model stack imports lazily: render mode runs without torch or sentence-transformers
         from sentence_transformers import SentenceTransformer
     except ModuleNotFoundError as error:  # pragma: no cover - the reference env ships it
         raise RuntimeError(
-            "embed mode needs the reference environment (torch, transformers, sentence-transformers>=3.0,<6, "
+            "embed mode needs the reference environment (torch, transformers, sentence-transformers>=5.3,<5.4, "
             "numpy): install requirements-reference.txt into the --reference-python"
         ) from error
     model = SentenceTransformer(
@@ -328,13 +249,12 @@ def embed_rows(pairs_path: str, tokenizer_spec: str, device: str) -> dict[str, o
     )
     rows = []
     for index, row in enumerate(_rows_of(pairs_path)):
-        query_piece = renderer.content_piece(str(row["query"]), "query")
-        query_vectors = [[float(value) for value in vector] for vector in np.asarray(model.encode_query([query_piece]))]
+        query_text = str(row["query"])
+        query_vectors = [[float(value) for value in vector] for vector in np.asarray(model.encode_query([query_text]))]
         documents = [str(document) for document in row["documents"]]
         if documents:
-            pieces = [renderer.content_piece(document, "document") for document in documents]
             document_vectors = [
-                [float(value) for value in vector] for vector in np.asarray(model.encode_document(pieces))
+                [float(value) for value in vector] for vector in np.asarray(model.encode_document(documents))
             ]
         else:
             document_vectors = []

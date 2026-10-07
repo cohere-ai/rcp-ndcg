@@ -1,12 +1,12 @@
 """Stage 1 on CPU for the zembed-1-embedding recipe (``recipes/zembed-1-embedding``).
 
-What is checked, per the recipe lane's done-when:
+What is checked:
 
 - the recipe loads against the product's endpoint config (offline; no tokenizer needed);
 - stage 1 on CPU -- the product's ``fit`` renders, the anchor audit, and the reference subprocess's
   render -- passes token-id equality and the anchor check on a pairs file of at least 20 pairs
-  including at least 5 over-cap ones. The tokenizer files are downloaded once into the scratch dir
-  (``RCP_ZEMBED_1_EMBEDDING_SCRATCH``, a temp dir otherwise); the tests skip with a clear reason
+  including at least 5 over-cap ones. The tokenizer files are downloaded once into the shared tokenizer
+  cache (``RCP_NDCG_VLLM_TOKENIZER_CACHE``, a temp dir otherwise); the tests skip with a clear reason
   when the download cannot run (offline in CI);
 - the reference's render ids equal the ids the checkpoint's own remote code produces
   (``modeling_zembed.ZembedTransformer.tokenize``, run in the reference environment via
@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -34,6 +35,9 @@ from rcp_ndcg_vllm.equivalence import stage1_prompts
 from rcp_ndcg.data.preprocess import TextBudget, fit
 from rcp_ndcg.data.templates import TemplateSpec
 from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
+
+from ._contract import assert_recipe_contract
+from ._served import stage1_facts, tokenizer_cache
 
 RECIPE_DIR = Path(__file__).resolve().parents[2] / "recipes" / "zembed-1-embedding"
 REPO = "zeroentropy/zembed-1-embedding"
@@ -54,27 +58,24 @@ MIN_PAIRS = 20
 MIN_OVER_LENGTH = 5
 MAX_TOKENS = 32768
 
-_SCRATCH_ENV = "RCP_ZEMBED_1_EMBEDDING_SCRATCH"
 _REFERENCE_PYTHON_ENV = "RCP_ZEMBED_1_EMBEDDING_REFERENCE_PYTHON"
 
 
 @pytest.fixture(scope="session")
 def scratch(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The lane's scratch dir when named (so re-runs reuse the download), else a session temp dir."""
-    env = os.environ.get(_SCRATCH_ENV)
-    base = Path(env) if env else tmp_path_factory.mktemp("zembed-1-embedding")
-    base.mkdir(parents=True, exist_ok=True)
-    return base
+    """The shared tokenizer cache (``_served.tokenizer_cache``: re-runs reuse the download), else a
+    session temp dir."""
+    return tokenizer_cache(tmp_path_factory.mktemp("zembed-1-embedding"))
 
 
 @pytest.fixture(scope="session")
 def tokenizer_dir(scratch: Path) -> Iterator[Path]:
-    """The checkpoint's tokenizer and config files, downloaded once into the scratch dir.
+    """The checkpoint's tokenizer and config files, downloaded once into the tokenizer cache.
 
     Skips with a clear reason when the files are absent and cannot be fetched (offline in CI);
     nothing is written into the checkout.
     """
-    target = scratch / "checkpoint" / REVISION
+    target = scratch / f"zembed-1-embedding@{REVISION}"
     if not (target / "tokenizer.json").is_file():
         try:
             from huggingface_hub import hf_hub_download
@@ -91,7 +92,7 @@ def tokenizer_dir(scratch: Path) -> Iterator[Path]:
 
 @pytest.fixture(scope="session")
 def recipe(tokenizer_dir: Path) -> Recipe:
-    """The loaded recipe, with client.tokenizer pointed at the scratch download (the shipped recipe
+    """The loaded recipe, with client.tokenizer pointed at the cached download (the shipped recipe
     keeps the Hub spec ``<repo>@<revision>``; the local copy only fixes where the files come from)."""
     loaded = load_recipe(RECIPE_DIR)
     client = loaded.client.model_copy(update={"tokenizer": str(tokenizer_dir)})
@@ -107,7 +108,7 @@ def tokenizer(tokenizer_dir: Path) -> TextTokenizer:
 def _pair_rows(tokenizer: TextTokenizer) -> list[dict[str, object]]:
     """The pairs file's rows: 15 in-budget pairs (varied lengths, one empty document, two with several
     documents) plus 6 over-cap ones (5 long documents, 1 long query and document) -- at least 20 pairs
-    including at least 5 over-length, per the lane's done-when."""
+    including at least 5 over-length."""
     unit = "Retrieval models map a query and its documents into one shared vector space. "
     long_text = unit * 64
     while tokenizer.count(long_text) < 33100:  # over the 32768-token whole-prompt cap
@@ -212,9 +213,9 @@ def _pair_rows(tokenizer: TextTokenizer) -> list[dict[str, object]]:
 
 
 @pytest.fixture(scope="session")
-def pairs_path(scratch: Path, tokenizer: TextTokenizer) -> Path:
-    """The pairs file, written into the scratch dir once per session."""
-    path = scratch / "zembed-1-embedding-pairs.jsonl"
+def pairs_path(tmp_path_factory: pytest.TempPathFactory, tokenizer: TextTokenizer) -> Path:
+    """The pairs file, written into a session temp dir once per session."""
+    path = tmp_path_factory.mktemp("zembed-1-embedding-pairs") / "pairs.jsonl"
     path.write_text("".join(json.dumps(row) + "\n" for row in _pair_rows(tokenizer)), encoding="utf-8")
     return path
 
@@ -234,6 +235,7 @@ def reference_python() -> str | None:
 def test_recipe_loads_and_declares_the_serving_shape() -> None:
     """The recipe validates against the product's endpoint config, with every serving decision explicit."""
     recipe = load_recipe(RECIPE_DIR)
+    _assert_contract(recipe)  # every serve, client and reference field pinned, exactly
     assert recipe.id == "zembed-1-embedding"
     assert recipe.model == REPO
     assert recipe.revision == REVISION
@@ -261,7 +263,7 @@ def test_recipe_loads_and_declares_the_serving_shape() -> None:
     assert client.dimensions is None, "the projections are learned, not Matryoshka: dimensions is refused"
     assert recipe.reference.kind == "sentence_transformers"
     assert recipe.reference.score_scale == "cosine"
-    assert recipe.reference.known_deviations == []
+    assert recipe.reference.known_deviations == ["anchor_drop_over_cap"]  # the model's over-cap cut drops the anchor
     assert recipe.status.state == "unverified"
     assert recipe.sources, "the recipe lists the URLs and path:line references it rests on"
 
@@ -296,26 +298,27 @@ def test_recipe_template_declares_both_shapes_with_named_specials() -> None:
 def test_stage1_on_cpu_passes_anchors_and_render(
     recipe: Recipe, tokenizer: TextTokenizer, pairs_path: Path, reference_python: str | None
 ) -> None:
-    """Stage 1 on CPU: the anchor audit, the declared overhead, and (with a reference python) the
-    render comparison against the reference subprocess -- on >= 20 pairs including >= 5 over-cap."""
-    document = stage1_prompts(recipe, pairs_path, reference_python)
+    """Stage 1 on CPU: the anchor audit, the declared overhead, and the render comparison against the
+    reference subprocess -- on >= 20 pairs including >= 5 over-cap."""
+    # The render needs no environment of its own (string work over the checkpoint's config files),
+    # so the harness's interpreter runs it when no reference python is named.
+    document = stage1_prompts(recipe, pairs_path, reference_python or sys.executable)
     assert document["pairs"] >= MIN_PAIRS
     assert document["sampled"] >= MIN_PAIRS + 2 * 20, "every declared shape sampled with over-length inputs"
     anchor = document["anchor_check"]
     assert anchor["passed"] is True, anchor["failures"][:2]
     assert anchor["checked"] >= MIN_PAIRS
-    fit_document = document["fit"]["document"]
-    assert fit_document["overhead"] == recipe.client.template.overhead("document", tokenizer)
-    assert fit_document["budget_source"] == "tokenizer"
+    # The declared overhead and the cut census come from the role client's own capture (the seam
+    # stage 1 audits; the report's older fit section is gone since the harness rewired stage 1).
+    rows = [json.loads(line) for line in pairs_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    shape_facts = stage1_facts(recipe, rows, tokenizer, 20)["per_shape"]["document"]
+    assert shape_facts["overhead"] == recipe.client.template.overhead("document", tokenizer)
     # the over-cap rows really were cut: the census carried them and the anchors survived anyway
-    assert fit_document["cuts"] >= MIN_OVER_LENGTH + 20
-    if reference_python is None:
-        assert document["render_check"]["status"] == "not_run"
-    else:
-        render_check = document["render_check"]
-        assert render_check["status"] == "run"
-        assert render_check["passed"] is True, render_check["failures"][:2]
-        assert render_check["rows"] >= 2 * MIN_PAIRS, "every pair rendered under every declared shape"
+    assert shape_facts["cuts"] >= MIN_OVER_LENGTH + 20
+    render_check = document["render_check"]
+    assert render_check["status"] == "run"
+    assert render_check["passed"] is True, render_check["failures"][:2]
+    assert render_check["rows"] >= 2 * MIN_PAIRS, "every pair rendered under every declared shape"
 
 
 def test_fitted_renders_carry_the_anchor_and_fit_the_budget(
@@ -356,7 +359,7 @@ def test_reference_render_ids_match_the_model_own_remote_code(
     sentence-transformers): ``ZembedTransformer.tokenize`` with no weights -- the model's published
     suffix append and whole-prompt truncation. Under cap the ids must equal the client's; over cap
     the remote code drops the suffix anchor (the defect the recipe's cut exists to prevent), and the
-    test pins that divergence as the reason the reference pre-cuts.
+    test pins that divergence (the declared anchor_drop_over_cap rows; the reference never pre-cuts).
     """
     if reference_python is None:
         pytest.skip(f"no reference interpreter: set {_REFERENCE_PYTHON_ENV} to a python with torch, transformers")
@@ -412,7 +415,7 @@ def test_reference_render_ids_match_the_model_own_remote_code(
         on_overflow=recipe.client.on_overflow,
     )
     suffix_ids = tokenizer.ids(tokenizer.special_text("im_end") + "\n", add_special_tokens=False)
-    # the research's pinned constants, re-read from the downloaded checkpoint file
+    # the pinned constants, re-read from the downloaded checkpoint file
     added = json.loads((tokenizer_dir / "added_tokens.json").read_text(encoding="utf-8"))
     assert int(added[tokenizer.special_text("im_start")]) == 151644
     assert int(added[tokenizer.special_text("im_end")]) == 151645
@@ -470,3 +473,148 @@ def test_mutation_dropping_the_trailing_anchor_segment_turns_the_anchor_check_re
     failures = red["anchor_check"]["failures"]
     assert failures, "the anchor check must report the renders whose tail is no longer the anchor"
     assert all(entry["check"] == "tail" for entry in failures)
+
+
+# ---------------------------------------------------------------------------
+# The declared contract: every serve, client and reference field pinned.
+# ---------------------------------------------------------------------------
+
+EXPECTED_TOP = {
+    "id": "zembed-1-embedding",
+    "input": ["text"],
+    "licence": "apache-2.0",
+    "model": "zeroentropy/zembed-1-embedding",
+    "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
+    "role": "embed",
+}
+EXPECTED_SERVE = {
+    "chat_template": None,
+    "convert": "embed",
+    "dtype": "bfloat16",
+    "extra_args": [],
+    "hf_overrides": {},
+    "io_processor_plugin": None,
+    "limit_mm_per_prompt": None,
+    "max_model_len": 32768,
+    "mm_processor_kwargs": {},
+    "plugin": None,
+    "pooler_config": {},
+    "runner": "pooling",
+    "trust_remote_code": False,
+}
+EXPECTED_CLIENT = {
+    "aggregation": "max",
+    "api": "openai_embeddings",
+    "api_key_env": None,
+    "batch_size": 32,
+    "chunk": None,
+    "concurrency": 64,
+    "connect_timeout_s": 5.0,
+    "dimensions": None,
+    "doc_prompt": "",
+    "empty_doc": "send",
+    "empty_doc_text": None,
+    "headers_env": {},
+    "image_policy": None,
+    "image_processor": None,
+    "max_images": 0,
+    "max_retries": 2,
+    "max_tokens": 32768,
+    "max_videos": 0,
+    "media_sides": ["query", "document"],
+    "model": "zembed-1-embedding",
+    "normalize": True,
+    "on_overflow": "cut",
+    "query_max_tokens": None,
+    "query_prompt": "",
+    "recipe": "vllm v0.31.0: --runner pooling --convert embed; the pooler resolves from the checkpoint's "
+    "modules.json (last-token + normalize); the checkpoint's remote tokenize appends the trailing "
+    "marker the template declares",
+    "request_shape": "text",
+    "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
+    "template": {
+        "add_special_tokens": True,
+        "anchor": "last",
+        "anchor_markers": [],
+        "document": [
+            {"content": None, "fixed": "{special:im_start}system\ndocument{special:im_end}\n{special:im_start}user\n"},
+            {"content": "document", "fixed": None},
+            {"content": None, "fixed": "{special:im_end}\n"},
+        ],
+        "normalize": [],
+        "pair": None,
+        "query": [
+            {"content": None, "fixed": "{special:im_start}system\nquery{special:im_end}\n{special:im_start}user\n"},
+            {"content": "query", "fixed": None},
+            {"content": None, "fixed": "{special:im_end}\n"},
+        ],
+    },
+    "timeout_s": 600.0,
+    "tokenizer": "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a",
+    "video_policy": None,
+    "wait_on_outage_s": None,
+}
+EXPECTED_REFERENCE = {
+    "entry": "reference.py",
+    "kind": "sentence_transformers",
+    "known_deviations": ["anchor_drop_over_cap"],
+    "score_scale": "cosine",
+}
+
+# Two mutants per recipe against the contract pin above: each drift must fail, naming the field.
+MUTANTS: list[tuple[str, tuple[str, ...], object, str]] = [
+    ("serve.max_model_len drifts to 40960", ("serve", "max_model_len"), 40960, "max_model_len"),
+    ("reference.kind drifts to transformers", ("reference", "kind"), "transformers", "reference.kind"),
+]
+
+
+def _mutated_recipe(tmp_path: Path, path: tuple[str, ...], value: object) -> object:
+    """The recipe directory copied into ``tmp_path`` with one YAML field set to ``value``."""
+    import shutil
+
+    import yaml
+
+    target = tmp_path / RECIPE_DIR.name
+    shutil.copytree(RECIPE_DIR, target)
+    yaml_path = target / "recipe.yaml"
+    data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    node = data
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = value
+    yaml_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return load_recipe(target)
+
+
+def _assert_contract(recipe: object) -> None:
+    assert_recipe_contract(
+        recipe,
+        serve=EXPECTED_SERVE,
+        client=EXPECTED_CLIENT,
+        reference=EXPECTED_REFERENCE,
+        top=EXPECTED_TOP,
+    )
+
+
+@pytest.mark.parametrize(("label", "path", "value", "needle"), MUTANTS, ids=[m[0] for m in MUTANTS])
+def test_two_contract_mutants_are_red(
+    label: str, path: tuple[str, ...], value: object, needle: str, tmp_path: Path
+) -> None:
+    """A drifted field fails the contract assertion naming it (two mutants per recipe)."""
+    _assert_contract(load_recipe(RECIPE_DIR))  # the pinned recipe itself is green
+    with pytest.raises(AssertionError) as caught:
+        _assert_contract(_mutated_recipe(tmp_path, path, value))
+    assert needle in str(caught.value), f"{label}: the failure must name {needle}: {caught.value}"
+
+
+def test_requirements_reference_ships_the_documented_environment() -> None:
+    """Finding #10: the note-7 referent exists -- requirements-reference.txt beside reference.py
+    with the documented pins -- and no startup default is restated in the YAML."""
+    path = RECIPE_DIR / "requirements-reference.txt"
+    assert path.is_file(), "every recipe of this family ships its reference environment"
+    text = path.read_text(encoding="utf-8")
+    for pin in ("torch>=2.0", "transformers>=4.51", "sentence-transformers>=5.3,<5.4"):
+        assert pin in text
+    assert "startup_timeout_s" not in (RECIPE_DIR / "recipe.yaml").read_text(encoding="utf-8")
+    notes = load_recipe(RECIPE_DIR).notes
+    assert "no separate query cap exists in the referent" in notes
