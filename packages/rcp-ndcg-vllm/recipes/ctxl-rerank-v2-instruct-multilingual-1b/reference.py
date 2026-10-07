@@ -1,51 +1,52 @@
 """The reference implementation of recipe ``ctxl-rerank-v2-instruct-multilingual-1b``.
 
 Derived from ``experiments/paper/rerankers/reference/contextual.py`` (the paper's in-process
-``ContextualRerank``: ``src/rcp_ndcg/retrieval/external_rerankers.py:275-389`` as this branch
-carries it, and its paper-exact copy beside the paper configs on the clients-final lineage),
-exposed through the harness's subprocess CLI:
+``ContextualRerank``: the move of the pre-unification ``retrieval/external_rerankers.py:275-389``
+behaviour, kept beside the paper configs from the clients-final lineage on), exposed through the
+harness's subprocess CLI:
 
     reference.py --mode <render|score> --pairs <file> --out <file> --tokenizer <repo@rev|path> \
                  [--device <cpu|cuda:0>]
 
-- ``--mode render`` (stage 1): ``{"rows": [{"index", "shape", "text"}]}`` — the exact prompt text the
-  reference expects the engine to see for each pairs row, pure string work, no weights and no
-  imports beyond the standard library. Byte-identical to the served render for every pair under
-  ``MAX_SEQ_LEN`` (the paper constructs the prompt text and truncates only at encode); a pairs-file
-  row over the budget is a declared stage-1 failure (the reference keeps the paper's uncut prompt;
-  the served path renders the client's anchor-preserving cut) — keep the wave's pairs rows under
-  ``client.max_tokens``, and let stage 2's non-gating over-cap table carry the over-budget ones.
+- ``--mode render`` (stage 1): ``{"rows": [{"index", "shape", "pair", "query", "documents"}]}`` —
+  the cut content spans the served wire carries per pairs row (the harness's rerank reference
+  contract): the query settled once per row, the document spans cut to what remains.  That's an
+  independent port of the product's role client for this recipe's declaration (the settle rule and
+  the anchor-preserving cut of ``rcp_ndcg.data.preprocess``)—tokenizer and ``tokenizers`` only, no
+  weights.  The pair's own prompt (what ``score`` scores) stays the paper's own construction below.
 - ``--mode score`` (stage 2, GPU): ``{"rows": [{"index", "scores": [...]}]}`` — one raw relevance
   logit per document (vocabulary position 0 at the final position; no sigmoid/softmax), the paper's
   quantity.
 
-Three declared adaptations, none of which touches a score the paper measured:
+Declared behaviours, none of which touches a score the paper measured:
 
-1. The harness's CLI shell wraps the scorer; ``load`` is idempotent and ``render`` is
-   tokenizer-free, so stage 1 runs without the weights (stored ~3.28 GB; bf16-equivalent ~2.65 GB).
-2. The pairs row's instruction is folded into the query as the served path folds it (only when
-   the row carries one; ``Task: <instruction>\\nQuery: <text>`` with both fields stripped, per the
-   product's fold). The paper's in-process path never sends an instruction (its ``instruction``
-   attribute stays ``None``), so this affects only instruction-bearing rows, and only to match the
-   served prompt.
-3. ``score`` keeps the paper's whole-prompt right truncation at 8192 tokens, which for a pair whose
+1. The pairs row's ``instruction`` is ignored on both sides: the recipe declares
+   ``instruction: none`` (the paper's served-path mode in
+   ``experiments/paper/rerankers/ctxl_rerank_1b.yaml``) and the paper's in-process path never sent an
+   instruction either (its ``instruction`` attribute stays ``None``).  No fold, no append.
+2. ``score`` keeps the paper's whole-prompt right truncation at 8192 tokens, which for a pair whose
    document alone pushes the prompt over the cap drops the query block and the trailing `` ??``
-   anchor the last-position score reads. The recipe's served path never drops an anchor (the
-   client-side cut keeps every fixed segment), so the recipe declares
-   ``reference.known_deviations: [anchor_drop_over_cap]`` and the harness gates under-cap pairs only.
+   anchor the last-position score reads.  The served path never drops an anchor (the client-side cut
+   keeps every fixed segment), so the recipe declares
+   ``reference.known_deviations: [anchor_drop_over_cap]`` and the harness reports over-cap pairs in
+   its non-gating table.
+3. A query over the declared 4096-token share is a declared divergence row (the wire's settle rule
+   ships it at the share whenever it exceeds it — the merged rerank client settles the shared query
+   once per call — while the paper's score path keeps the query whole): the gating pairs keep
+   queries within the share.
 
 Paper-exact everywhere else: the two-line prompt (document before query, then `` ??``), left
 padding, bfloat16 weights on CUDA and float32 on CPU, flash_attention_2 on CUDA (``None`` on CPU —
 the environment fallback the paper never exercised; the card's CPU path is fp32 too), right
 truncation of the whole prompt at 8192 tokens, and the paper's batching (length-descending
 permutation, a padded-area budget, OOM halving). Where the model card and the paper code disagree
-the paper code wins: the truncation budget is 8192 (``src/rcp_ndcg/retrieval/cross_encoder.py:42``,
-``MAX_SEQ_LENGTH``, what the paper's factory passed), not the card's tokenizer-level 131072.
+the paper code wins: the truncation budget is 8192 (``MAX_SEQ_LENGTH``, what the paper's factory
+passed over the 32768 default), not the card's tokenizer-level 131072.
 
-Runs as a subprocess in the reference environment
-(``experiments/paper/rerankers/reference/requirements.txt``: torch 2.9.1, transformers 4.57.6,
-flash-attn 2.8.3 on Linux) — never inside the harness process, which imports no torch. ``score``
-needs the weights at the pinned revision (a ~3.28 GB download) and a GPU.
+Runs as a subprocess in the reference environment (``requirements-reference.txt`` beside this file:
+torch 2.9.1, transformers 4.57.6, flash-attn 2.8.3 on Linux) — never inside the harness process,
+which imports no torch. ``render`` needs the tokenizer only (the ``tokenizers`` library);
+``score`` needs the weights at the pinned revision (a ~3.28 GB download) and a GPU.
 """
 
 from __future__ import annotations
@@ -55,49 +56,145 @@ import json
 from pathlib import Path
 from typing import Any
 
-__all__ = ["CtxlRerankReference", "fold", "load", "main", "prompt_text", "render"]
+__all__ = ["CtxlRerankReference", "load", "main", "prompt_text", "render", "served_spans"]
 
 MODEL_ID = "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b"
 REVISION = "8fd1edf6a98564cb712064f884b8ef7df5c1b876"
 MAX_SEQ_LEN = 8192
-"""The paper's combined (query, document) prompt budget (cross_encoder.py:42 MAX_SEQ_LENGTH)."""
+"""The paper's combined (query, document) prompt budget (the factory's ``MAX_SEQ_LENGTH``)."""
+QUERY_MAX_TOKENS = 4096
+"""The query's declared share (the paper's ``MAX_QUERY_LENGTH``): the wire settles the shared query
+at the share whenever it exceeds it (the merged rerank client's settle rule); the paper's score
+path keeps the query whole — an over-share query is a declared divergence row."""
 BATCH_SIZE = 32
 """Documents per forward at most (experiments/paper/rerankers/ctxl_rerank_1b.yaml)."""
 BATCH_SIZE_TOKENS = 15_000
 """The padded-area budget (documents * max prompt characters) the paper's batching keeps small."""
 VOCAB_POSITION = 0
 """The vocabulary position whose logit is the relevance score (the checkpoint's token id 0, "!")."""
+ADD_SPECIAL_TOKENS = True
+"""The pair shape's post-processor flag (the engine tokenizes the render with it; this
+checkpoint's ByteLevel post-processor adds no tokens)."""
 
 _PROMPT_HEAD = "Check whether a given document contains information helpful to answer the query.\n"
+_HEAD = f"{_PROMPT_HEAD}<Document> "
+_MID = "\n<Query> "
+_TAIL = " ??"
 
 _loaded: CtxlRerankReference | None = None
 
 
-def fold(query: str, instruction: str | None) -> str:
-    """The served path's fold for ``instruction: fold``: ``Task: <instruction>\\nQuery: <text>``.
-
-    Byte-exact with the wire: the client folds only when the row carries an instruction (the
-    harness's ``fold_query`` and the rerank client both short-circuit on the raw value), and the
-    fold itself strips both fields (``rcp_ndcg_core`` ``Query.format_query`` — a whitespace-only
-    instruction therefore folds to the stripped bare query). The reference folds the pairs row's
-    instruction the same way, so the compared prompts match byte for byte.
-    """
-    if not instruction:
-        return query
-    task = instruction.strip()
-    if task:
-        return f"Task: {task}\nQuery: {query.strip()}"
-    return query.strip()
-
-
 def prompt_text(query: str, doc: str) -> str:
-    """The paper's exact prompt string: document before query, the fold already applied to ``query``."""
-    return f"{_PROMPT_HEAD}<Document> {doc}\n<Query> {query} ??"
+    """The paper's exact prompt string: document before query, bare query, the `` ??`` tail."""
+    return f"{_HEAD}{doc}{_MID}{query}{_TAIL}"
 
 
 def render(query: str, doc: str, instruction: str | None = None) -> str:
-    """The prompt text for one pair: the fold applied to the query, then the paper's prompt."""
-    return prompt_text(fold(query, instruction), doc)
+    """The paper's prompt for one pair. ``instruction`` is accepted and ignored (the recipe
+    declares ``instruction: none``; a pairs row's instruction is never folded nor appended)."""
+    del instruction
+    return prompt_text(query, doc)
+
+
+def _tokenizer_file(spec: str) -> Path:
+    """The ``tokenizer.json`` file ``spec`` names: a local path as given, else the Hub's pinned copy."""
+    candidate = Path(spec).expanduser()
+    file = candidate / "tokenizer.json" if candidate.is_dir() else candidate
+    if file.is_file():
+        return file
+    from huggingface_hub import hf_hub_download
+
+    repo, _, revision = spec.partition("@")
+    return Path(hf_hub_download(repo, "tokenizer.json", revision=revision or None))
+
+
+def _load_backend_tokenizer(spec: str):
+    """The counting tokenizer: the ``tokenizers`` library over the recipe's ``tokenizer.json``."""
+    from tokenizers import Tokenizer
+
+    return Tokenizer.from_file(str(_tokenizer_file(spec)))
+
+
+def _count(text: str, tokenizer, *, add_special_tokens: bool = False) -> int:
+    """The number of tokens of ``text``, as the engine counts it when ``add_special_tokens``."""
+    return len(tokenizer.encode(text, add_special_tokens=add_special_tokens).ids)
+
+
+def _offsets(text: str, tokenizer) -> list[tuple[int, int]]:
+    """``(start, end)`` character offsets of each token of ``text``, in order."""
+    return [(offset[0], offset[1]) for offset in tokenizer.encode(text, add_special_tokens=False).offsets]
+
+
+def _token_prefix(text, max_tokens, tokenizer, *, rendered=None, add_special_tokens=False) -> str:
+    """The longest prefix of ``text`` that ends at one of its first ``max_tokens`` token boundaries
+    and counts at most ``max_tokens`` as the engine reads it (``rendered(piece)`` when given).
+
+        The cut is located on the original text's offset mapping, so the result is a verbatim prefix
+        (never tokens decoded back to text — NFC-safe).  Port of ``rcp_ndcg.data.preprocess``
+        ``token_prefix``: the same galloping-then-binary search over token boundaries.
+    """
+
+    def count(piece: str) -> int:
+        shown = rendered(piece) if rendered is not None else piece
+        return _count(shown, tokenizer, add_special_tokens=add_special_tokens)
+
+    if count(text) <= max_tokens:
+        return text
+    offsets = _offsets(text, tokenizer)
+
+    def prefix(tokens: int) -> str:
+        return text[: offsets[tokens - 1][1]] if tokens > 0 else ""
+
+    def fits(tokens: int) -> bool:
+        return count(prefix(tokens)) <= max_tokens
+
+    over = min(max_tokens, len(offsets))
+    if fits(over):
+        return prefix(over)
+    fitting, step = over - 1, 1
+    while fitting > 0 and not fits(fitting):
+        over, fitting, step = fitting, max(fitting - step, 0), step * 2
+    while over - fitting > 1:
+        middle = (over + fitting) // 2
+        fitting, over = (middle, over) if fits(middle) else (fitting, middle)
+    return prefix(fitting)
+
+
+def served_spans(tokenizer, query: str, document: str) -> tuple[str, str]:
+    """The cut content spans (query, document) the served wire carries for one pair.
+
+    Port of the product's role client for this recipe's declaration: the query's span settles once
+    per request — to its declared share (``QUERY_MAX_TOKENS``) whenever it exceeds it (the settle
+    rule the wire carries; a bare pair fit binds the share on overflow only) — then through fit's
+    probe pair (the query with an empty document) that guarantees the frame and its anchor fit even
+    alone, and each document gets what remains.  Every cut is a verbatim token-boundary prefix; the
+    frame and its trailing anchor are re-attached by the engine around these spans.
+    """
+
+    def assemble(q: str, d: str) -> str:
+        return f"{_HEAD}{d}{_MID}{q}{_TAIL}"
+
+    cap = MAX_SEQ_LEN
+    if _count(query, tokenizer) > QUERY_MAX_TOKENS:
+        q_final = _token_prefix(query, QUERY_MAX_TOKENS, tokenizer)
+    else:
+        q_final = query
+    # fit's probe pair (the query with an empty document): the query keeps the frame room.
+    q_final = _token_prefix(
+        q_final, cap, tokenizer, rendered=lambda piece: assemble(piece, ""), add_special_tokens=ADD_SPECIAL_TOKENS
+    )
+    if (
+        _count(assemble(q_final, ""), tokenizer, add_special_tokens=ADD_SPECIAL_TOKENS) >= cap
+        and _count(document, tokenizer) > 0
+    ):
+        raise SystemExit(
+            f"the query fills the pair budget of {cap} tokens and leaves the document nothing; "
+            "lower QUERY_MAX_TOKENS (or raise MAX_SEQ_LEN), so the document keeps a share"
+        )
+    d_final = _token_prefix(
+        document, cap, tokenizer, rendered=lambda piece: assemble(q_final, piece), add_special_tokens=ADD_SPECIAL_TOKENS
+    )
+    return q_final, d_final
 
 
 class CtxlRerankReference:
@@ -219,15 +316,21 @@ def main() -> int:
 
     pairs = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
     if args.mode == "render":
-        rows = [
-            {"index": index, "shape": "pair", "text": render(row["query"], row["documents"][0], row.get("instruction"))}
-            for index, row in enumerate(pairs)
-        ]
+        # The harness's rerank reference contract: the wire's content spans per pairs row (the
+        # query settled once, each document cut to what remains). The row's instruction is ignored
+        # (the recipe declares instruction: none).
+        tokenizer = _load_backend_tokenizer(args.tokenizer)
+        rows = []
+        for index, row in enumerate(pairs):
+            documents = [str(document) for document in row["documents"]]
+            query_span, _ = served_spans(tokenizer, row["query"], documents[0] if documents else "")
+            document_spans = [served_spans(tokenizer, row["query"], document)[1] for document in documents]
+            rows.append({"index": index, "shape": "pair", "query": query_span, "documents": document_spans})
         output: dict[str, Any] = {"rows": rows}
     else:
         reference = load(args.tokenizer, args.device)
         rows = [
-            {"index": index, "scores": reference.predict(fold(row["query"], row.get("instruction")), row["documents"])}
+            {"index": index, "scores": reference.predict(row["query"], row["documents"])}
             for index, row in enumerate(pairs)
         ]
         output = {"rows": rows}
