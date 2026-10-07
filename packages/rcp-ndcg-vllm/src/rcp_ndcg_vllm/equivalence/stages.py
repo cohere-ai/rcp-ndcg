@@ -238,6 +238,11 @@ def _probe_vectors(
             entry["shapes"]["document"] = {"texts": texts}
 
 
+def _head_of(body: str | list[int]) -> str | list[int]:
+    """A sent body's head for a report: the text's first characters, or a ``token_ids`` body's first ids."""
+    return body[:_SNIPPET] if isinstance(body, str) else list(body[:24])
+
+
 def _probe_texts(entry: dict[str, Any]) -> list[str]:
     """Every text one probe entry carries, in order (the audit and the /tokenize check read them)."""
     texts: list[str] = []
@@ -303,14 +308,14 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
             flag = _add_specials_flag(recipe, shape)
             edge = _anchor_edge_ids(recipe, tokenizer, shape)
             for text in shape_body["texts"]:
-                ids = tokenizer.ids(text, add_special_tokens=flag)
+                # A ``token_ids`` body carries the ids as sent: the client tokenized its render with the
+                # shape's flag, so they already hold the edge and the post-processor's tokens (G1).
+                ids = list(text) if isinstance(text, list) else tokenizer.ids(text, add_special_tokens=flag)
                 checked += 1
                 if template is None or template.anchor == "mean":
                     continue
                 if template.anchor == "marker":
-                    missing = sorted(
-                        name for name in template.anchor_markers if tokenizer.special_text(name) not in text
-                    )
+                    missing = sorted(name for name in template.anchor_markers if tokenizer.special_id(name) not in ids)
                     if missing:
                         failures.append({"shape": shape, "check": "markers", "missing_names": missing, "row": index})
                     continue
@@ -324,7 +329,7 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
                             "row": index,
                             "expected_edge_ids": edge,
                             "actual_edge_ids": actual,
-                            "text": text[:_SNIPPET],
+                            "text": _head_of(text),
                         }
                     )
     return {
@@ -627,9 +632,13 @@ def _engine_tokenize_check(
         }
     failures: list[dict[str, Any]] = []
     checked = 0
+    sent_as_ids = 0
     for shape, body in _captured_texts_per_shape(recipe, probe).items():
         add_flag = _add_specials_flag(recipe, shape) if recipe.role != "rerank" else False
         for text in body:
+            if isinstance(text, list):
+                sent_as_ids += 1  # a token_ids body: the engine reads these ids as sent and tokenizes nothing
+                continue
             engine_ids = _engine_tokenize(recipe, base_url, text, add_special_tokens=add_flag)
             fit_ids = tokenizer.ids(text, add_special_tokens=add_flag)
             checked += 1
@@ -644,6 +653,13 @@ def _engine_tokenize_check(
                         "text": text[:_SNIPPET],
                     }
                 )
+    if sent_as_ids and not checked:
+        return {
+            "status": "not_run",
+            "passed": None,
+            "reason": "request_shape token_ids: the client sends ids, so the engine tokenizes no text "
+            "(the anchor audit reads the sent ids)",
+        }
     return {
         "status": "run",
         "checked": checked,

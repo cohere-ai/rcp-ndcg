@@ -415,3 +415,53 @@ def test_stage3_metrics_compares_served_against_reference(tmp_path: Path) -> Non
     )
     document = stage3_metrics(rankings_dir, gates)
     assert document["passed"] is True
+
+
+def _with_client(recipe: Any, **updates: Any) -> Any:
+    """``recipe`` with its client config updated (e.g. another wire ``request_shape``), revalidated."""
+    client = type(recipe.client)(**{**recipe.client.model_dump(), **updates})
+    return recipe.model_copy(update={"client": client})
+
+
+@pytest.mark.parametrize("recipe_id", ["fixture-embed", "fixture-embed-cls", "fixture-embed-marker"])
+def test_stage1_audits_token_ids_bodies_on_the_sent_ids(tmp_path: Path, recipe_id: str) -> None:
+    """G1: a ``request_shape: token_ids`` client sends ``{"input": [[ids]]}``; the audit reads those ids as
+    sent (they already carry the anchor edge and the post-processor's tokens) -- and a cut edge fails it."""
+    from rcp_ndcg_vllm.equivalence import stages as stages_module
+
+    from rcp_ndcg.data.tokenizer import load_tokenizer
+
+    recipe = _with_client(load(recipe_id), request_shape="token_ids")
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    document = stage1_prompts(recipe, pairs, None, over_length_per_shape=2)
+    audit = document["anchor_check"]
+    assert audit["passed"] is True, audit["failures"][:1]
+    assert audit["checked"] > 0
+    tokenizer = load_tokenizer(str(TOKENIZER))
+    sent = tokenizer.ids("doc: Paris is the capital of France. [END]", add_special_tokens=True)
+    if recipe_id == "fixture-embed-cls":
+        sent = tokenizer.ids(tokenizer.special_text("cls") + "doc: Paris is the capital.")
+    elif recipe_id == "fixture-embed-marker":
+        sent = tokenizer.ids("doc: Paris is the capital." + tokenizer.special_text("sep"))
+    whole = {"rows": [{"shapes": {"document": {"texts": [sent]}}, "cuts": 0, "over_cap": False}]}
+    assert stages_module._anchor_check(recipe, whole, tokenizer)["passed"] is True
+    cut = sent[1:] if recipe_id == "fixture-embed-cls" else sent[:-1]
+    broken = {"rows": [{"shapes": {"document": {"texts": [cut]}}, "cuts": 0, "over_cap": False}]}
+    assert stages_module._anchor_check(recipe, broken, tokenizer)["passed"] is False
+
+
+def test_engine_tokenize_check_does_not_post_token_ids_bodies(monkeypatch: pytest.MonkeyPatch) -> None:
+    """G1: a ``token_ids`` body is read by the engine as sent -- the /tokenize check posts no text for it and
+    reports ``not_run`` (never a vacuous pass)."""
+    import httpx
+
+    from rcp_ndcg.data.tokenizer import load_tokenizer
+
+    def no_post(url: str, **_: Any) -> Any:
+        raise AssertionError("a token_ids body has no text to /tokenize")
+
+    monkeypatch.setattr(httpx, "post", no_post)
+    recipe = _with_client(load("fixture-embed"), request_shape="token_ids")
+    probe = {"rows": [{"shapes": {"document": {"texts": [[5, 6, 7]]}}, "cuts": 0, "over_cap": False}]}
+    check = stages_module_check(recipe, probe, load_tokenizer(str(TOKENIZER)))
+    assert check is not None and check["status"] == "not_run" and check["passed"] is None
